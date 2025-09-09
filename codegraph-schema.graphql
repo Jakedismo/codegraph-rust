@@ -1,0 +1,545 @@
+# CodeGraph GraphQL Schema for Code Intelligence Queries
+# Designed for sub-50ms response times with optimized graph traversal
+
+# Core Types
+scalar DateTime
+scalar JSON
+scalar FileHash
+
+# Enums
+enum NodeType {
+  FILE
+  FUNCTION
+  CLASS
+  VARIABLE
+  INTERFACE
+  MODULE
+  NAMESPACE
+  IMPORT
+  EXPORT
+  TYPE_ALIAS
+  ENUM
+  CONSTANT
+}
+
+enum RelationType {
+  DEPENDS_ON
+  CALLS
+  EXTENDS
+  IMPLEMENTS
+  IMPORTS
+  EXPORTS
+  CONTAINS
+  REFERENCES
+  DEFINES
+  OVERRIDES
+  INSTANTIATES
+}
+
+enum AnalysisType {
+  SYNTAX
+  SEMANTIC
+  CONTROL_FLOW
+  DATA_FLOW
+  TYPE_INFERENCE
+}
+
+enum CachePolicy {
+  NO_CACHE
+  SHORT_TERM  # 1-5 minutes
+  MEDIUM_TERM # 1-24 hours
+  LONG_TERM   # 1-7 days
+  PERSISTENT  # Until code change
+}
+
+# Core Graph Node Interface
+interface CodeNode {
+  id: ID!
+  type: NodeType!
+  name: String!
+  qualifiedName: String
+  location: Location!
+  metadata: JSON
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Graph traversal methods
+  parents(
+    types: [RelationType!]
+    depth: Int = 1
+    filter: GraphFilter
+  ): [CodeRelation!]!
+  
+  children(
+    types: [RelationType!]
+    depth: Int = 1
+    filter: GraphFilter
+  ): [CodeRelation!]!
+  
+  neighbors(
+    types: [RelationType!]
+    direction: Direction = BOTH
+    depth: Int = 1
+    filter: GraphFilter
+  ): [CodeRelation!]!
+}
+
+# Specific node implementations
+type FileNode implements CodeNode {
+  id: ID!
+  type: NodeType!
+  name: String!
+  qualifiedName: String
+  location: Location!
+  metadata: JSON
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # File-specific fields
+  path: String!
+  hash: FileHash!
+  size: Int!
+  language: String!
+  encoding: String!
+  
+  parents(types: [RelationType!], depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+  children(types: [RelationType!], depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+  neighbors(types: [RelationType!], direction: Direction = BOTH, depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+}
+
+type FunctionNode implements CodeNode {
+  id: ID!
+  type: NodeType!
+  name: String!
+  qualifiedName: String
+  location: Location!
+  metadata: JSON
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Function-specific fields
+  signature: String!
+  parameters: [Parameter!]!
+  returnType: String
+  isAsync: Boolean!
+  isExported: Boolean!
+  complexity: Int
+  
+  parents(types: [RelationType!], depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+  children(types: [RelationType!], depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+  neighbors(types: [RelationType!], direction: Direction = BOTH, depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+}
+
+type ClassNode implements CodeNode {
+  id: ID!
+  type: NodeType!
+  name: String!
+  qualifiedName: String
+  location: Location!
+  metadata: JSON
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Class-specific fields
+  isAbstract: Boolean!
+  isExported: Boolean!
+  methods: [FunctionNode!]!
+  properties: [VariableNode!]!
+  
+  parents(types: [RelationType!], depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+  children(types: [RelationType!], depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+  neighbors(types: [RelationType!], direction: Direction = BOTH, depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+}
+
+type VariableNode implements CodeNode {
+  id: ID!
+  type: NodeType!
+  name: String!
+  qualifiedName: String
+  location: Location!
+  metadata: JSON
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Variable-specific fields
+  dataType: String
+  isConstant: Boolean!
+  scope: String!
+  
+  parents(types: [RelationType!], depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+  children(types: [RelationType!], depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+  neighbors(types: [RelationType!], direction: Direction = BOTH, depth: Int = 1, filter: GraphFilter): [CodeRelation!]!
+}
+
+# Graph relationship type
+type CodeRelation {
+  id: ID!
+  type: RelationType!
+  source: CodeNode!
+  target: CodeNode!
+  weight: Float
+  metadata: JSON
+  confidence: Float!
+}
+
+# Location and positioning
+type Location {
+  file: String!
+  startLine: Int!
+  endLine: Int!
+  startColumn: Int!
+  endColumn: Int!
+}
+
+type Parameter {
+  name: String!
+  type: String
+  defaultValue: String
+  isOptional: Boolean!
+}
+
+# Graph traversal utilities
+enum Direction {
+  IN
+  OUT
+  BOTH
+}
+
+input GraphFilter {
+  nodeTypes: [NodeType!]
+  relationTypes: [RelationType!]
+  languages: [String!]
+  pathPattern: String
+  namePattern: String
+  hasMetadata: [String!]
+  complexity: IntRange
+  createdAfter: DateTime
+  updatedAfter: DateTime
+}
+
+input IntRange {
+  min: Int
+  max: Int
+}
+
+# Analysis results
+type AnalysisResult {
+  id: ID!
+  type: AnalysisType!
+  nodes: [CodeNode!]!
+  relations: [CodeRelation!]!
+  metrics: JSON
+  insights: [String!]!
+  performance: PerformanceMetrics!
+  createdAt: DateTime!
+}
+
+type PerformanceMetrics {
+  queryTime: Float! # milliseconds
+  nodesTraversed: Int!
+  cacheHitRatio: Float!
+  memoryUsage: Int! # bytes
+}
+
+# Query complexity and caching
+type QueryComplexity {
+  score: Int!
+  breakdown: JSON!
+  estimatedTime: Float! # milliseconds
+  cacheStrategy: CachePolicy!
+}
+
+# Root Query Type
+type Query {
+  # Core node queries with performance optimization
+  node(id: ID!): CodeNode
+  nodes(
+    ids: [ID!]!
+    cachePolicy: CachePolicy = MEDIUM_TERM
+  ): [CodeNode!]!
+  
+  # Graph traversal queries
+  findPath(
+    from: ID!
+    to: ID!
+    maxDepth: Int = 10
+    relationTypes: [RelationType!]
+    algorithm: PathfindingAlgorithm = BIDIRECTIONAL_BFS
+  ): [CodeRelation!]!
+  
+  shortestPaths(
+    from: ID!
+    to: [ID!]!
+    maxDepth: Int = 10
+    relationTypes: [RelationType!]
+  ): [[CodeRelation!]!]!
+  
+  # Neighborhood queries
+  subgraph(
+    rootIds: [ID!]!
+    depth: Int = 3
+    filter: GraphFilter
+    includeMetrics: Boolean = false
+  ): SubgraphResult!
+  
+  # Search and discovery
+  searchNodes(
+    query: String!
+    types: [NodeType!]
+    filter: GraphFilter
+    limit: Int = 100
+    offset: Int = 0
+  ): NodeSearchResult!
+  
+  # Dependency analysis
+  dependencyGraph(
+    rootId: ID!
+    direction: Direction = OUT
+    maxDepth: Int = 5
+    includeTransitive: Boolean = true
+  ): DependencyGraphResult!
+  
+  # Impact analysis
+  impactAnalysis(
+    nodeId: ID!
+    changeType: ChangeType = MODIFY
+    depth: Int = 3
+  ): ImpactAnalysisResult!
+  
+  # Code metrics and insights
+  codeMetrics(
+    nodeIds: [ID!]!
+    metrics: [MetricType!]!
+  ): [MetricResult!]!
+  
+  # Query performance analysis
+  analyzeQuery(
+    query: String!
+    variables: JSON
+  ): QueryComplexity!
+  
+  # Batch operations for optimization
+  batchAnalysis(
+    requests: [AnalysisRequest!]!
+    cachePolicy: CachePolicy = MEDIUM_TERM
+  ): [AnalysisResult!]!
+}
+
+# Additional result types
+type SubgraphResult {
+  nodes: [CodeNode!]!
+  relations: [CodeRelation!]!
+  metrics: SubgraphMetrics!
+  performance: PerformanceMetrics!
+}
+
+type SubgraphMetrics {
+  nodeCount: Int!
+  relationCount: Int!
+  density: Float!
+  centralityScores: JSON!
+}
+
+type NodeSearchResult {
+  nodes: [CodeNode!]!
+  totalCount: Int!
+  hasMore: Boolean!
+  performance: PerformanceMetrics!
+}
+
+type DependencyGraphResult {
+  graph: SubgraphResult!
+  cycles: [[CodeNode!]!]!
+  layers: [[CodeNode!]!]!
+}
+
+type ImpactAnalysisResult {
+  affectedNodes: [CodeNode!]!
+  riskScore: Float!
+  recommendations: [String!]!
+}
+
+enum ChangeType {
+  ADD
+  MODIFY
+  DELETE
+  RENAME
+  MOVE
+}
+
+enum MetricType {
+  CYCLOMATIC_COMPLEXITY
+  COUPLING
+  COHESION
+  DEPTH_OF_INHERITANCE
+  LINES_OF_CODE
+  MAINTAINABILITY_INDEX
+}
+
+type MetricResult {
+  nodeId: ID!
+  metric: MetricType!
+  value: Float!
+  threshold: Float
+  status: MetricStatus!
+}
+
+enum MetricStatus {
+  GOOD
+  WARNING
+  CRITICAL
+}
+
+enum PathfindingAlgorithm {
+  BFS
+  DFS
+  DIJKSTRA
+  A_STAR
+  BIDIRECTIONAL_BFS
+}
+
+input AnalysisRequest {
+  type: AnalysisType!
+  nodeIds: [ID!]!
+  parameters: JSON
+}
+
+# Subscription Type for Real-time Updates
+type Subscription {
+  # Real-time code changes
+  codeChanged(
+    filePattern: String
+    nodeTypes: [NodeType!]
+  ): CodeChangeEvent!
+  
+  # Graph structure updates
+  graphUpdated(
+    nodeIds: [ID!]
+    relationTypes: [RelationType!]
+  ): GraphUpdateEvent!
+  
+  # Analysis progress
+  analysisProgress(
+    analysisId: ID!
+  ): AnalysisProgressEvent!
+  
+  # Performance monitoring
+  performanceAlert(
+    thresholdMs: Float = 50.0
+  ): PerformanceAlert!
+  
+  # Cache invalidation events
+  cacheInvalidated(
+    pattern: String
+  ): CacheInvalidationEvent!
+}
+
+# Subscription event types
+type CodeChangeEvent {
+  type: ChangeType!
+  node: CodeNode!
+  oldValue: JSON
+  newValue: JSON
+  timestamp: DateTime!
+  source: String!
+}
+
+type GraphUpdateEvent {
+  type: GraphUpdateType!
+  affectedNodes: [ID!]!
+  affectedRelations: [ID!]!
+  changeCount: Int!
+  timestamp: DateTime!
+}
+
+enum GraphUpdateType {
+  NODES_ADDED
+  NODES_REMOVED
+  NODES_MODIFIED
+  RELATIONS_ADDED
+  RELATIONS_REMOVED
+  RELATIONS_MODIFIED
+}
+
+type AnalysisProgressEvent {
+  analysisId: ID!
+  progress: Float! # 0.0 to 1.0
+  currentStep: String!
+  estimatedTimeRemaining: Float # seconds
+  partialResults: AnalysisResult
+}
+
+type PerformanceAlert {
+  queryId: ID!
+  executionTime: Float!
+  threshold: Float!
+  query: String!
+  variables: JSON
+  suggestions: [String!]!
+  timestamp: DateTime!
+}
+
+type CacheInvalidationEvent {
+  pattern: String!
+  affectedQueries: [String!]!
+  reason: String!
+  timestamp: DateTime!
+}
+
+# Mutation Type for Updates and Cache Management
+type Mutation {
+  # Cache management
+  invalidateCache(
+    pattern: String
+    nodeIds: [ID!]
+  ): CacheInvalidationResult!
+  
+  preloadCache(
+    queries: [String!]!
+    variables: [JSON!]!
+  ): CachePreloadResult!
+  
+  # Query optimization
+  optimizeQuery(
+    query: String!
+    variables: JSON
+  ): QueryOptimizationResult!
+  
+  # Batch cache warming
+  warmupCache(
+    patterns: [CacheWarmupPattern!]!
+  ): CacheWarmupResult!
+}
+
+input CacheWarmupPattern {
+  nodeTypes: [NodeType!]!
+  relationTypes: [RelationType!]
+  depth: Int!
+  priority: Int!
+}
+
+type CacheInvalidationResult {
+  success: Boolean!
+  patternsCleared: [String!]!
+  itemsRemoved: Int!
+}
+
+type CachePreloadResult {
+  success: Boolean!
+  queriesPreloaded: Int!
+  estimatedSpeedup: Float! # milliseconds saved
+}
+
+type QueryOptimizationResult {
+  originalComplexity: Int!
+  optimizedComplexity: Int!
+  optimizedQuery: String!
+  estimatedSpeedup: Float! # percentage improvement
+}
+
+type CacheWarmupResult {
+  success: Boolean!
+  patternsWarmed: Int!
+  itemsCached: Int!
+  timeSpent: Float! # milliseconds
+}

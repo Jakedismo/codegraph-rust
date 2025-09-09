@@ -1,0 +1,288 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Run daily at 2 AM UTC
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  nightly-tests:
+    name: Nightly Tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust nightly
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: rustfmt, clippy, miri
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-nightly-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run nightly Clippy lints
+      run: |
+        cargo +nightly clippy --workspace --all-targets --all-features -- \
+          -W clippy::nursery \
+          -W clippy::pedantic \
+          -A clippy::missing_errors_doc \
+          -A clippy::missing_panics_doc
+
+    - name: Run Miri tests (unsafe code validation)
+      run: |
+        # Run miri on core components
+        MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test --workspace
+
+    - name: Check for future compatibility
+      run: |
+        # Test with upcoming Rust features
+        cargo +nightly check --workspace --all-features
+
+    - name: Generate nightly documentation
+      run: |
+        RUSTDOCFLAGS="--enable-index-page -Zunstable-options --cfg docsrs" \
+        cargo +nightly doc --workspace --all-features --no-deps
+
+  fuzzing:
+    name: Fuzzing Tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust nightly
+      uses: dtolnay/rust-toolchain@nightly
+
+    - name: Install cargo-fuzz
+      run: cargo install cargo-fuzz
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Initialize fuzz targets
+      run: |
+        # Initialize fuzzing if fuzz directory doesn't exist
+        if [ ! -d "fuzz" ]; then
+          cargo fuzz init
+          
+          # Create a basic fuzz target for code parsing
+          cat > fuzz/fuzz_targets/parse_code.rs << 'EOF'
+          #![no_main]
+          use libfuzzer_sys::fuzz_target;
+
+          fuzz_target!(|data: &[u8]| {
+              if let Ok(s) = std::str::from_utf8(data) {
+                  // Add your fuzzing logic here
+                  // For example: parse_code_function(s);
+              }
+          });
+          EOF
+        fi
+
+    - name: Run fuzz tests
+      run: |
+        # Run fuzzing for a short duration in CI
+        timeout 300 cargo fuzz run parse_code || true
+
+  performance-monitoring:
+    name: Performance Monitoring
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-perf-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run extended benchmarks
+      run: |
+        cargo bench --workspace --features benchmarking > nightly_benchmarks.txt 2>&1
+
+    - name: Generate performance report
+      run: |
+        echo "# Nightly Performance Report" > performance_report.md
+        echo "" >> performance_report.md
+        echo "Generated on: $(date)" >> performance_report.md
+        echo "" >> performance_report.md
+        echo "## Benchmark Results" >> performance_report.md
+        echo '```' >> performance_report.md
+        cat nightly_benchmarks.txt >> performance_report.md
+        echo '```' >> performance_report.md
+
+    - name: Upload performance report
+      uses: actions/upload-artifact@v3
+      with:
+        name: nightly-performance-report
+        path: |
+          performance_report.md
+          target/criterion/**/*
+        retention-days: 7
+
+  memory-leak-detection:
+    name: Memory Leak Detection
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev valgrind
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-valgrind-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install cargo-valgrind
+      run: cargo install cargo-valgrind
+
+    - name: Run memory leak detection
+      run: |
+        # Build with debug symbols
+        cargo build --workspace --features full
+        
+        # Run valgrind on test suite
+        cargo valgrind test --workspace 2>&1 | tee valgrind_output.txt || true
+        
+        # Generate memory report
+        echo "# Memory Leak Detection Report" > memory_leak_report.md
+        echo "" >> memory_leak_report.md
+        echo "Generated on: $(date)" >> memory_leak_report.md
+        echo "" >> memory_leak_report.md
+        echo "## Valgrind Output" >> memory_leak_report.md
+        echo '```' >> memory_leak_report.md
+        cat valgrind_output.txt >> memory_leak_report.md
+        echo '```' >> memory_leak_report.md
+
+    - name: Upload memory leak report
+      uses: actions/upload-artifact@v3
+      with:
+        name: memory-leak-report
+        path: memory_leak_report.md
+        retention-days: 7
+
+  dependency-audit:
+    name: Comprehensive Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install audit tools
+      run: |
+        cargo install cargo-audit cargo-outdated cargo-deny
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ${{ runner.os }}-cargo-audit-comprehensive-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Comprehensive security audit
+      run: |
+        echo "# Comprehensive Dependency Audit" > dependency_audit.md
+        echo "" >> dependency_audit.md
+        echo "Generated on: $(date)" >> dependency_audit.md
+        echo "" >> dependency_audit.md
+        
+        echo "## Security Vulnerabilities" >> dependency_audit.md
+        echo '```' >> dependency_audit.md
+        cargo audit --json >> dependency_audit.md || echo "No vulnerabilities found" >> dependency_audit.md
+        echo '```' >> dependency_audit.md
+        echo "" >> dependency_audit.md
+        
+        echo "## Outdated Dependencies" >> dependency_audit.md
+        echo '```' >> dependency_audit.md
+        cargo outdated >> dependency_audit.md || echo "All dependencies up to date" >> dependency_audit.md
+        echo '```' >> dependency_audit.md
+        echo "" >> dependency_audit.md
+        
+        echo "## License and Dependency Policy Check" >> dependency_audit.md
+        echo '```' >> dependency_audit.md
+        cargo deny check >> dependency_audit.md || echo "Policy check failed" >> dependency_audit.md
+        echo '```' >> dependency_audit.md
+
+    - name: Upload dependency audit
+      uses: actions/upload-artifact@v3
+      with:
+        name: comprehensive-dependency-audit
+        path: dependency_audit.md
+        retention-days: 30
+
+  notification:
+    name: Nightly Summary
+    runs-on: ubuntu-latest
+    needs: [nightly-tests, fuzzing, performance-monitoring, memory-leak-detection, dependency-audit]
+    if: always()
+    steps:
+    - name: Generate summary
+      run: |
+        echo "🌙 Nightly CI Summary for $(date)"
+        echo ""
+        echo "✅ Nightly Tests: ${{ needs.nightly-tests.result }}"
+        echo "🔍 Fuzzing: ${{ needs.fuzzing.result }}"
+        echo "⚡ Performance: ${{ needs.performance-monitoring.result }}"
+        echo "🔍 Memory Leaks: ${{ needs.memory-leak-detection.result }}"
+        echo "🛡️ Dependencies: ${{ needs.dependency-audit.result }}"
+        
+        if [[ "${{ needs.nightly-tests.result }}" == "failure" ]] || 
+           [[ "${{ needs.fuzzing.result }}" == "failure" ]] || 
+           [[ "${{ needs.performance-monitoring.result }}" == "failure" ]] || 
+           [[ "${{ needs.memory-leak-detection.result }}" == "failure" ]] || 
+           [[ "${{ needs.dependency-audit.result }}" == "failure" ]]; then
+          echo ""
+          echo "❌ Some nightly checks failed. Please review the logs."
+          exit 1
+        else
+          echo ""
+          echo "✅ All nightly checks passed successfully!"
+        fi

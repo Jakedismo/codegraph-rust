@@ -1,0 +1,31 @@
+[package]
+name = "codegraph-vector"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Vector storage and similarity search using FAISS for CodeGraph"
+
+[dependencies]
+codegraph-core = { workspace = true }
+faiss = { workspace = true, optional = true }
+ndarray = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+bincode = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+parking_lot = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+tempfile = { workspace = true }
+approx = { workspace = true }
+
+[features]
+default = ["faiss"]
+faiss = ["dep:faiss"]

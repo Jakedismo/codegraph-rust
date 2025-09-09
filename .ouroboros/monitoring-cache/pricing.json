@@ -1,0 +1,85 @@
+{
+  "timestamp": 1756723221664,
+  "pricing": {
+    "claude-4-opus": {
+      "model": "claude-4-opus",
+      "inputTokenCost": 15,
+      "outputTokenCost": 75,
+      "cacheCreationCost": 18.75,
+      "cacheReadCost": 1.875,
+      "maxTokens": 200000
+    },
+    "4-opus": {
+      "model": "claude-4-opus",
+      "inputTokenCost": 15,
+      "outputTokenCost": 75,
+      "cacheCreationCost": 18.75,
+      "cacheReadCost": 1.875,
+      "maxTokens": 200000
+    },
+    "claude-sonnet-4-20250514-4": {
+      "model": "claude-sonnet-4-20250514-4",
+      "inputTokenCost": 3,
+      "outputTokenCost": 15,
+      "cacheCreationCost": 3.75,
+      "cacheReadCost": 0.3,
+      "maxTokens": 200000
+    },
+    "sonnet-4-20250514-4": {
+      "model": "claude-sonnet-4-20250514-4",
+      "inputTokenCost": 3,
+      "outputTokenCost": 15,
+      "cacheCreationCost": 3.75,
+      "cacheReadCost": 0.3,
+      "maxTokens": 200000
+    },
+    "claude-3.5-sonnet": {
+      "model": "claude-3.5-sonnet",
+      "inputTokenCost": 3,
+      "outputTokenCost": 15,
+      "cacheCreationCost": 3.75,
+      "cacheReadCost": 0.3,
+      "maxTokens": 200000
+    },
+    "3.5-sonnet": {
+      "model": "claude-3.5-sonnet",
+      "inputTokenCost": 3,
+      "outputTokenCost": 15,
+      "cacheCreationCost": 3.75,
+      "cacheReadCost": 0.3,
+      "maxTokens": 200000
+    },
+    "claude-haiku-4": {
+      "model": "claude-haiku-4",
+      "inputTokenCost": 0.25,
+      "outputTokenCost": 1.25,
+      "cacheCreationCost": 0.3,
+      "cacheReadCost": 0.03,
+      "maxTokens": 200000
+    },
+    "haiku-4": {
+      "model": "claude-haiku-4",
+      "inputTokenCost": 0.25,
+      "outputTokenCost": 1.25,
+      "cacheCreationCost": 0.3,
+      "cacheReadCost": 0.03,
+      "maxTokens": 200000
+    },
+    "claude-3-haiku": {
+      "model": "claude-3-haiku",
+      "inputTokenCost": 0.25,
+      "outputTokenCost": 1.25,
+      "cacheCreationCost": 0.3,
+      "cacheReadCost": 0.03,
+      "maxTokens": 200000
+    },
+    "3-haiku": {
+      "model": "claude-3-haiku",
+      "inputTokenCost": 0.25,
+      "outputTokenCost": 1.25,
+      "cacheCreationCost": 0.3,
+      "cacheReadCost": 0.03,
+      "maxTokens": 200000
+    }
+  }
+}

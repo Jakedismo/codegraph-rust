@@ -1,0 +1,53 @@
+# Build artifacts
+target/
+*.pdb
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+docs/
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Node.js (if present)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env*
+
+# Test files
+tests/
+benches/
+examples/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Development tools
+.clippy.toml
+rustfmt.toml
+Makefile

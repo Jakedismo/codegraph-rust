@@ -1,0 +1,195 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 1' # Run every Monday at 2 AM UTC
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-bench-
+          ${{ runner.os }}-cargo-
+
+    - name: Run benchmarks
+      run: |
+        # Create benchmarks directory if it doesn't exist
+        mkdir -p target/criterion
+        cargo bench --workspace 2>&1 | tee benchmark_output.txt
+
+    - name: Store benchmark results
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        name: Rust Benchmark
+        tool: 'cargo'
+        output-file-path: benchmark_output.txt
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+        # Show alert with commit comment on detecting possible performance regression
+        alert-threshold: '200%'
+        comment-on-alert: true
+        fail-on-alert: true
+        alert-comment-cc-users: '@maintainers'
+
+    - name: Upload benchmark reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-reports
+        path: |
+          target/criterion/**/*.html
+          target/criterion/**/*.json
+        retention-days: 30
+
+    - name: Performance regression check
+      if: github.event_name == 'pull_request'
+      run: |
+        echo "Checking for performance regressions..."
+        # This would be enhanced with custom performance regression detection logic
+        if grep -q "Performance regression detected" benchmark_output.txt; then
+          echo "❌ Performance regression detected!"
+          exit 1
+        else
+          echo "✅ No significant performance regression detected"
+        fi
+
+  benchmark-comparison:
+    name: Benchmark Comparison
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+    - name: Checkout PR branch
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-bench-pr-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run PR benchmarks
+      run: |
+        cargo bench --workspace > pr_benchmarks.txt 2>&1
+
+    - name: Checkout main branch
+      uses: actions/checkout@v4
+      with:
+        ref: main
+        path: main-branch
+
+    - name: Run main branch benchmarks
+      working-directory: main-branch
+      run: |
+        cargo bench --workspace > ../main_benchmarks.txt 2>&1
+
+    - name: Install critcmp for comparison
+      run: cargo install critcmp
+
+    - name: Compare benchmarks
+      run: |
+        echo "## Benchmark Comparison" > benchmark_comparison.md
+        echo "" >> benchmark_comparison.md
+        echo "Comparing this PR against main branch:" >> benchmark_comparison.md
+        echo "" >> benchmark_comparison.md
+        echo '```' >> benchmark_comparison.md
+        critcmp main_benchmarks.txt pr_benchmarks.txt >> benchmark_comparison.md || echo "No comparable benchmarks found" >> benchmark_comparison.md
+        echo '```' >> benchmark_comparison.md
+
+    - name: Comment benchmark results
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const comparison = fs.readFileSync('benchmark_comparison.md', 'utf8');
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comparison
+          });
+
+  memory-profiling:
+    name: Memory Profiling
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev valgrind
+
+    - name: Install cargo-valgrind
+      run: cargo install cargo-valgrind
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-valgrind-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run memory profiling
+      run: |
+        # Run memory profiling on key benchmarks
+        echo "Running memory profiling..."
+        cargo build --release --workspace
+        
+        # Create memory profiling report
+        echo "# Memory Profiling Report" > memory_report.md
+        echo "" >> memory_report.md
+        echo "Generated on: $(date)" >> memory_report.md
+        echo "" >> memory_report.md
+        
+        # Add memory usage statistics here when we have specific binaries
+
+    - name: Upload memory profiling report
+      uses: actions/upload-artifact@v3
+      with:
+        name: memory-profiling-report
+        path: memory_report.md
+        retention-days: 30

@@ -1,0 +1,4486 @@
+[
+  {
+    "timestamp": 1757422677398,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757422737400,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757422797401,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757422857403,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757423048129,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757423108130,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757423168131,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757423228133,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757431974606,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432034606,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432094607,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432154607,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432214608,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432274610,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432334610,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432394611,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432454612,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432514612,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432574614,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432634615,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432694615,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432754615,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432814613,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432874614,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432934614,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757432994616,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433054617,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433114616,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433174617,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433234618,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433294619,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433354620,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433414620,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433474620,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433534624,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433594625,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433654626,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433714626,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433774628,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433834628,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433894630,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757433954630,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434014632,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434074656,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434134659,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434194660,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434254661,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434314661,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434374661,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434434664,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434494665,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434554668,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434614670,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434674672,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434734674,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434794677,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434854679,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434914682,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757434974682,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435034684,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435094684,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435154684,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435214687,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435274689,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435334636,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435394638,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435454638,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435514640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435574641,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435634643,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435694643,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435754643,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435814644,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435874644,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435934645,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757435994645,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436054645,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436114646,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436174647,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436234646,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436294647,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436354648,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436414648,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436474649,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436534649,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436594649,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436654639,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436714638,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436774639,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436834639,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436894639,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757436954640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437014640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437074641,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437134641,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437194641,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437254642,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437314641,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437374641,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437434640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437494640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437554639,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437614638,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437674639,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437734639,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437794639,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437854640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437914639,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757437974640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438034640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438094640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438154640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438214640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438274640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438334640,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438394641,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438454641,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438514641,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438574641,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438634642,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438694643,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438754643,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438814644,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438874708,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438934710,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757438994710,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439054713,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439114715,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439174717,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439234720,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439294721,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439354724,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439414725,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439474727,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439534728,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439594729,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439654730,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439714732,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439774732,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439834734,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439894735,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757439954735,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440103436,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440163436,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440223437,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440283438,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440343439,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440403440,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440463441,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440523441,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440583441,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440643441,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440703442,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440763442,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440823441,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440883442,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757440943455,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441003460,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441063460,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441123461,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441183461,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441243463,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441303464,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441363465,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441423466,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441483467,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441543469,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441603469,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441663471,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441723472,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441783473,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441843474,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441903475,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757441963476,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442023477,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442083478,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442143480,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442203482,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442263484,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442323485,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442383485,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442443487,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442503488,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442563490,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442623491,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442683492,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442743494,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442803495,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442863497,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442923497,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757442983499,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443043500,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443103501,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443163503,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443223504,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443283505,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443343507,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443403509,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443463509,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443523510,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443583512,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443643513,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443703514,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443763515,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443823484,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443883474,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757443943475,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444003476,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444063476,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444123477,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444183478,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444243478,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444303480,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444363480,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444423481,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444483482,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444543482,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444603483,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444663484,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444723484,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444783485,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444843486,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444903487,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757444963488,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445023487,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445083488,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445143489,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445203490,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445263490,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445323491,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445383492,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445443492,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445503493,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445563494,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445623495,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  },
+  {
+    "timestamp": 1757445683496,
+    "metrics": {
+      "totalEvolutions": 0,
+      "successRate": 0,
+      "averageFitnessGain": 0,
+      "rollbackRate": 0,
+      "chaosExperiments": 0,
+      "chaosSuccessRate": 0,
+      "distributionMetrics": {
+        "totalShards": 0,
+        "activeNodes": 5,
+        "reconstructionSuccessRate": 0.95,
+        "averageFragmentCount": 3.5,
+        "consensusParticipation": 0
+      }
+    },
+    "activeEvolutions": 0
+  }
+]

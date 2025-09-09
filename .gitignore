@@ -1,0 +1,168 @@
+# CodeGraph High-Performance Code Intelligence System
+# .gitignore for Rust workspace with RocksDB, FAISS, tree-sitter integration
+
+# Rust/Cargo
+/target/
+**/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# Build artifacts
+/build/
+/dist/
+/out/
+
+# Debug builds
+debug/
+release/
+
+# RocksDB data directories
+/data/
+/db/
+/rocksdb/
+*.sst
+*.log
+LOG*
+MANIFEST-*
+CURRENT
+LOCK
+OPTIONS-*
+*.ldb
+
+# FAISS indices and vector storage
+/indices/
+/vectors/
+*.faiss
+*.index
+*.vec
+/embeddings/
+
+# Tree-sitter generated files
+/grammars/
+/parsers/
+tree-sitter-*/
+*.so
+*.dylib
+*.dll
+
+# Test artifacts
+/test-data/
+/test-output/
+/test-repos/
+*.profraw
+
+# Benchmarking results
+/benches/target/
+criterion/
+flamegraph.svg
+perf.data*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment and configuration
+.env
+.env.local
+.env.*.local
+config.toml
+local.toml
+
+# Documentation build artifacts
+/docs/target/
+/book/
+mdbook-*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+/temp/
+
+# Logs
+*.log
+logs/
+/logs/
+
+# Cache directories
+.cache/
+/cache/
+
+# Development databases and test files
+*.db
+*.sqlite
+*.sqlite3
+dev.db
+test.db
+
+# Profiling and debugging
+*.prof
+*.trace
+heaptrack.*
+massif.out.*
+
+# Security sensitive files
+*.pem
+*.key
+*.p12
+secrets.json
+credentials.json
+
+# Local development overrides
+local_config.toml
+dev_settings.toml
+
+# Generated documentation
+/target/doc/
+/doc/
+
+# Package manager files (if using additional tools)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Python cache (if any Python tooling is used)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Coverage reports
+tarpaulin-report.html
+cobertura.xml
+lcov.info
+coverage/
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Agent instruction files are tracked
+!CLAUDE.md
+!AGENTS.md
+!GEMINI.md
+!QWEN.md
+!OUROBOROS.md
+
+# Keep important config templates
+!config.example.toml
+!settings.template.toml

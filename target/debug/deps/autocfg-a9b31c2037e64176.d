@@ -1,0 +1,10 @@
+/Users/jokkeruokolainen/Documents/Solita/GenAI/IDE/ouroboros-demo/target/debug/deps/autocfg-a9b31c2037e64176.d: /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/lib.rs /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/error.rs /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/rustc.rs /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/version.rs
+
+/Users/jokkeruokolainen/Documents/Solita/GenAI/IDE/ouroboros-demo/target/debug/deps/libautocfg-a9b31c2037e64176.rlib: /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/lib.rs /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/error.rs /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/rustc.rs /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/version.rs
+
+/Users/jokkeruokolainen/Documents/Solita/GenAI/IDE/ouroboros-demo/target/debug/deps/libautocfg-a9b31c2037e64176.rmeta: /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/lib.rs /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/error.rs /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/rustc.rs /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/version.rs
+
+/Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/lib.rs:
+/Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/error.rs:
+/Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/rustc.rs:
+/Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.0/src/version.rs:

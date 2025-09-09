@@ -1,0 +1,13 @@
+cognitive-complexity-threshold = 25
+too-many-lines-threshold = 150
+type-complexity-threshold = 250
+single-char-binding-names-threshold = 4
+trivial-copy-size-limit = 128
+pass-by-value-size-limit = 256
+too-many-arguments-threshold = 7
+enum-variant-size-threshold = 200
+verbose-bit-mask-threshold = 1
+literal-representation-threshold = 10
+trivially-copy-pass-by-ref-size-limit = 256
+avoid-breaking-exported-api = true
+msrv = "1.70"

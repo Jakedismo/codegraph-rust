@@ -1,0 +1,10 @@
+{
+  "timestamp": "2025-09-09T15:28:15.466Z",
+  "totalAgents": 0,
+  "byStatus": {},
+  "byConfidence": {
+    "active": [],
+    "waiting": [],
+    "completed": []
+  }
+}

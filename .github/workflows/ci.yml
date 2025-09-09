@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable, beta]
+        exclude:
+          - os: windows-latest
+            rust: beta
+          - os: macos-latest
+            rust: beta
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt, clippy
+
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev
+
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install pkg-config
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-${{ matrix.rust }}-
+          ${{ runner.os }}-cargo-
+
+    - name: Check formatting
+      if: matrix.rust == 'stable' && matrix.os == 'ubuntu-latest'
+      run: cargo fmt --all -- --check
+
+    - name: Run Clippy
+      if: matrix.rust == 'stable'
+      run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+    - name: Build
+      run: cargo build --workspace --verbose
+
+    - name: Run tests
+      run: cargo test --workspace --verbose
+
+    - name: Run tests with all features
+      run: cargo test --workspace --all-features --verbose
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: llvm-tools-preview
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev
+
+    - name: Install cargo-llvm-cov
+      uses: taiki-e/install-action@cargo-llvm-cov
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Generate code coverage
+      run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: lcov.info
+        fail_ci_if_error: true
+
+  build:
+    name: Build Release
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build release
+      run: cargo build --workspace --release
+
+    - name: Run release tests
+      run: cargo test --workspace --release
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: release-build
+        path: |
+          target/release/codegraph-*
+          !target/release/deps/
+          !target/release/build/
+        if-no-files-found: warn

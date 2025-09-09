@@ -1,0 +1,260 @@
+name: Security
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 6 * * *' # Run daily at 6 AM UTC
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run cargo audit
+      run: cargo audit --json > audit-results.json
+
+    - name: Parse audit results
+      run: |
+        if [ -s audit-results.json ]; then
+          echo "## Security Audit Results" > audit-summary.md
+          echo "" >> audit-summary.md
+          
+          # Check if there are any vulnerabilities
+          if jq -e '.vulnerabilities.found | length > 0' audit-results.json > /dev/null; then
+            echo "❌ **Vulnerabilities Found**" >> audit-summary.md
+            echo "" >> audit-summary.md
+            jq -r '.vulnerabilities.list[] | "- **\(.package.name)** \(.package.version): \(.advisory.title)"' audit-results.json >> audit-summary.md
+            echo "" >> audit-summary.md
+          else
+            echo "✅ **No vulnerabilities found**" >> audit-summary.md
+            echo "" >> audit-summary.md
+          fi
+          
+          # Check for warnings
+          if jq -e '.warnings | length > 0' audit-results.json > /dev/null; then
+            echo "⚠️ **Warnings**" >> audit-summary.md
+            echo "" >> audit-summary.md
+            jq -r '.warnings[] | "- \(.kind): \(.package.name) \(.package.version)"' audit-results.json >> audit-summary.md
+          fi
+        else
+          echo "✅ **Security audit completed successfully with no issues**" > audit-summary.md
+        fi
+
+    - name: Upload audit results
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-audit-results
+        path: |
+          audit-results.json
+          audit-summary.md
+
+    - name: Fail on vulnerabilities
+      run: |
+        if jq -e '.vulnerabilities.found | length > 0' audit-results.json > /dev/null; then
+          echo "❌ Security vulnerabilities found!"
+          exit 1
+        fi
+
+  dependency-check:
+    name: Dependency Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install cargo-deny
+      run: cargo install cargo-deny
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ${{ runner.os }}-cargo-deny-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Create deny.toml config
+      run: |
+        cat > deny.toml << 'EOF'
+        [licenses]
+        allow = [
+            "MIT",
+            "Apache-2.0",
+            "Apache-2.0 WITH LLVM-exception",
+            "BSD-2-Clause",
+            "BSD-3-Clause",
+            "ISC",
+            "Unicode-DFS-2016",
+            "CC0-1.0",
+        ]
+        deny = [
+            "GPL-2.0",
+            "GPL-3.0",
+            "AGPL-3.0",
+        ]
+
+        [[licenses.exceptions]]
+        allow = ["Unicode-DFS-2016"]
+        name = "unicode-ident"
+
+        [bans]
+        multiple-versions = "warn"
+        wildcards = "allow"
+        deny = [
+            { name = "openssl", version = "*" },  # Prefer rustls
+        ]
+
+        [advisories]
+        vulnerability = "deny"
+        unmaintained = "warn"
+        yanked = "deny"
+        notice = "warn"
+
+        [sources]
+        unknown-registry = "deny"
+        unknown-git = "deny"
+        allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+        EOF
+
+    - name: Run dependency check
+      run: cargo deny check
+
+    - name: Check for outdated dependencies
+      run: |
+        cargo install cargo-outdated
+        cargo outdated --root-deps-only > outdated-deps.txt || true
+        
+        echo "## Outdated Dependencies Report" > outdated-report.md
+        echo "" >> outdated-report.md
+        echo '```' >> outdated-report.md
+        cat outdated-deps.txt >> outdated-report.md
+        echo '```' >> outdated-report.md
+
+    - name: Upload dependency reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: dependency-reports
+        path: |
+          outdated-deps.txt
+          outdated-report.md
+
+  supply-chain:
+    name: Supply Chain Security
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install cargo-supply-chain
+      run: cargo install cargo-supply-chain
+
+    - name: Analyze supply chain
+      run: |
+        echo "## Supply Chain Analysis" > supply-chain-report.md
+        echo "" >> supply-chain-report.md
+        echo "Generated on: $(date)" >> supply-chain-report.md
+        echo "" >> supply-chain-report.md
+        
+        echo "### Crate Authors Analysis" >> supply-chain-report.md
+        echo '```' >> supply-chain-report.md
+        cargo supply-chain authors >> supply-chain-report.md || echo "Analysis completed" >> supply-chain-report.md
+        echo '```' >> supply-chain-report.md
+
+    - name: Upload supply chain analysis
+      uses: actions/upload-artifact@v3
+      with:
+        name: supply-chain-analysis
+        path: supply-chain-report.md
+
+  semgrep:
+    name: Static Analysis (Semgrep)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Semgrep
+      uses: semgrep/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/rust
+          p/secrets
+        generateSarif: "1"
+
+    - name: Upload SARIF file
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: semgrep.sarif
+      if: always()
+
+  clippy-security:
+    name: Clippy Security Lints
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-clippy-security-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run security-focused Clippy lints
+      run: |
+        cargo clippy --workspace --all-targets --all-features -- \
+          -W clippy::integer_overflow \
+          -W clippy::panic \
+          -W clippy::unwrap_used \
+          -W clippy::expect_used \
+          -W clippy::indexing_slicing \
+          -W clippy::arithmetic_side_effects \
+          -W clippy::as_conversions \
+          -W clippy::cast_precision_loss \
+          -W clippy::cast_possible_truncation \
+          -W clippy::cast_sign_loss \
+          -W clippy::float_cmp \
+          -W clippy::lossy_float_literal

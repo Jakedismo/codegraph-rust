@@ -1,0 +1,454 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libssl-dev
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-docs-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build rustdoc documentation
+      run: |
+        # Set rustdoc flags for better documentation
+        export RUSTDOCFLAGS="--enable-index-page -Zunstable-options --cfg docsrs"
+        
+        # Build documentation for all workspace members
+        cargo +nightly doc --workspace --all-features --no-deps
+        
+        # Create a root index.html that redirects to the main crate
+        cat > target/doc/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>CodeGraph Documentation</title>
+            <meta http-equiv="refresh" content="0; url=codegraph_core/index.html">
+            <style>
+                body { 
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    text-align: center; 
+                    padding: 2rem;
+                    background: #f5f5f5;
+                }
+                .container { 
+                    max-width: 600px; 
+                    margin: 0 auto; 
+                    background: white;
+                    padding: 3rem;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                h1 { color: #333; }
+                p { color: #666; margin: 1rem 0; }
+                a { color: #0066cc; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>CodeGraph Documentation</h1>
+                <p>Redirecting to the main documentation...</p>
+                <p>If you are not redirected, <a href="codegraph_core/index.html">click here</a>.</p>
+            </div>
+        </body>
+        </html>
+        EOF
+
+    - name: Install mdBook
+      run: |
+        curl -L https://github.com/rust-lang/mdBook/releases/download/v0.4.36/mdbook-v0.4.36-x86_64-unknown-linux-gnu.tar.gz | tar xz
+        sudo mv mdbook /usr/local/bin/
+
+    - name: Create mdBook documentation
+      run: |
+        # Create book structure
+        mkdir -p book/src
+        
+        # Create book.toml
+        cat > book/book.toml << 'EOF'
+        [book]
+        authors = ["CodeGraph Team"]
+        language = "en"
+        multilingual = false
+        src = "src"
+        title = "CodeGraph User Guide"
+        description = "Comprehensive guide for CodeGraph embedding system"
+
+        [build]
+        build-dir = "../target/book"
+
+        [output.html]
+        additional-css = ["custom.css"]
+        git-repository-url = "https://github.com/codegraph/embedding-system"
+        edit-url-template = "https://github.com/codegraph/embedding-system/edit/main/book/src/{path}"
+
+        [output.html.search]
+        enable = true
+
+        [output.html.print]
+        enable = true
+        EOF
+
+        # Create custom CSS
+        cat > book/custom.css << 'EOF'
+        .sidebar { background: #2d3142; }
+        .sidebar-active { background: #4f5b93 !important; }
+        h1, h2, h3, h4, h5, h6 { color: #2d3142; }
+        .hljs { background: #f8f9fa; }
+        EOF
+
+        # Create SUMMARY.md
+        cat > book/src/SUMMARY.md << 'EOF'
+        # Summary
+
+        [Introduction](./introduction.md)
+
+        # User Guide
+        - [Installation](./installation.md)
+        - [Quick Start](./quick-start.md)
+        - [Configuration](./configuration.md)
+
+        # Architecture
+        - [System Overview](./architecture/overview.md)
+        - [Core Components](./architecture/components.md)
+        - [Graph Structure](./architecture/graph.md)
+        - [Vector Search](./architecture/vector-search.md)
+
+        # API Reference
+        - [REST API](./api/rest.md)
+        - [GraphQL API](./api/graphql.md)
+        - [Embedding API](./api/embedding.md)
+
+        # Performance
+        - [Benchmarks](./performance/benchmarks.md)
+        - [Optimization](./performance/optimization.md)
+        - [Scaling](./performance/scaling.md)
+
+        # Development
+        - [Contributing](./development/contributing.md)
+        - [Testing](./development/testing.md)
+        - [Release Process](./development/releases.md)
+
+        [FAQ](./faq.md)
+        EOF
+
+        # Create introduction
+        cat > book/src/introduction.md << 'EOF'
+        # Introduction
+
+        CodeGraph is a high-performance embedding generation system built in Rust using the Candle ML framework. It provides local code analysis and embedding generation capabilities for building code intelligence applications.
+
+        ## Key Features
+
+        - **High Performance**: Built in Rust with optimized ML operations
+        - **Local Processing**: No data leaves your infrastructure
+        - **Flexible APIs**: REST and GraphQL interfaces
+        - **Scalable Architecture**: Designed for enterprise workloads
+        - **Cross-platform**: Supports Linux, macOS, and Windows
+
+        ## Architecture Overview
+
+        CodeGraph consists of several core components:
+
+        - **Core Engine**: Fundamental data structures and algorithms
+        - **Parser**: Multi-language code parsing using Tree-sitter
+        - **Graph Store**: Optimized graph storage with RocksDB
+        - **Vector Engine**: High-performance vector search with FAISS
+        - **API Layer**: REST and GraphQL endpoints
+
+        Continue reading to learn how to install and use CodeGraph in your projects.
+        EOF
+
+        # Create other placeholder files
+        mkdir -p book/src/architecture book/src/api book/src/performance book/src/development
+        
+        # Create placeholder content for key sections
+        echo "# Installation\n\nThis section covers how to install CodeGraph..." > book/src/installation.md
+        echo "# Quick Start\n\nGet up and running with CodeGraph in minutes..." > book/src/quick-start.md
+        echo "# Configuration\n\nLearn how to configure CodeGraph for your needs..." > book/src/configuration.md
+        echo "# System Overview\n\nDetailed architecture overview..." > book/src/architecture/overview.md
+        echo "# Core Components\n\nExplore the core components..." > book/src/architecture/components.md
+        echo "# Graph Structure\n\nUnderstanding the graph data model..." > book/src/architecture/graph.md
+        echo "# Vector Search\n\nHow vector search works in CodeGraph..." > book/src/architecture/vector-search.md
+        echo "# REST API\n\nComplete REST API reference..." > book/src/api/rest.md
+        echo "# GraphQL API\n\nComplete GraphQL API reference..." > book/src/api/graphql.md
+        echo "# Embedding API\n\nEmbedding generation API reference..." > book/src/api/embedding.md
+        echo "# Benchmarks\n\nPerformance benchmarks and comparisons..." > book/src/performance/benchmarks.md
+        echo "# Optimization\n\nPerformance optimization techniques..." > book/src/performance/optimization.md
+        echo "# Scaling\n\nScaling CodeGraph for production..." > book/src/performance/scaling.md
+        echo "# Contributing\n\nHow to contribute to CodeGraph..." > book/src/development/contributing.md
+        echo "# Testing\n\nTesting guidelines and procedures..." > book/src/development/testing.md
+        echo "# Release Process\n\nHow we handle releases..." > book/src/development/releases.md
+        echo "# FAQ\n\nFrequently asked questions..." > book/src/faq.md
+
+        # Build the book
+        cd book && mdbook build
+
+    - name: Generate OpenAPI documentation
+      run: |
+        # Create OpenAPI spec from code comments or annotations
+        # This would typically be generated from your actual API code
+        mkdir -p target/openapi
+        
+        cat > target/openapi/openapi.yaml << 'EOF'
+        openapi: 3.0.0
+        info:
+          title: CodeGraph API
+          version: 1.0.0
+          description: RESTful API for CodeGraph embedding system
+          license:
+            name: MIT OR Apache-2.0
+        servers:
+          - url: http://localhost:8080
+            description: Development server
+        paths:
+          /health:
+            get:
+              summary: Health check endpoint
+              responses:
+                '200':
+                  description: Service is healthy
+          /embed:
+            post:
+              summary: Generate embeddings for code
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                          description: Source code to embed
+                        language:
+                          type: string
+                          description: Programming language
+              responses:
+                '200':
+                  description: Embeddings generated successfully
+                  content:
+                    application/json:
+                      schema:
+                        type: object
+                        properties:
+                          embeddings:
+                            type: array
+                            items:
+                              type: number
+        EOF
+
+    - name: Combine all documentation
+      run: |
+        # Create a unified documentation site structure
+        mkdir -p target/final-docs
+        
+        # Copy rustdoc
+        cp -r target/doc target/final-docs/api
+        
+        # Copy mdBook
+        cp -r target/book target/final-docs/guide
+        
+        # Copy OpenAPI
+        cp -r target/openapi target/final-docs/openapi
+        
+        # Create main index
+        cat > target/final-docs/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>CodeGraph Documentation Hub</title>
+            <style>
+                body { 
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    margin: 0; 
+                    padding: 2rem;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    min-height: 100vh;
+                }
+                .container { 
+                    max-width: 800px; 
+                    margin: 0 auto; 
+                }
+                h1 { 
+                    font-size: 3rem; 
+                    margin-bottom: 1rem;
+                    text-align: center;
+                }
+                .subtitle {
+                    text-align: center;
+                    font-size: 1.2rem;
+                    opacity: 0.9;
+                    margin-bottom: 3rem;
+                }
+                .docs-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                    gap: 2rem;
+                    margin: 2rem 0;
+                }
+                .doc-card {
+                    background: rgba(255,255,255,0.1);
+                    padding: 2rem;
+                    border-radius: 12px;
+                    text-align: center;
+                    transition: transform 0.3s ease;
+                    backdrop-filter: blur(10px);
+                }
+                .doc-card:hover {
+                    transform: translateY(-5px);
+                }
+                .doc-card h3 {
+                    margin-top: 0;
+                    font-size: 1.5rem;
+                }
+                .doc-card p {
+                    opacity: 0.9;
+                    margin: 1rem 0;
+                }
+                .doc-link {
+                    display: inline-block;
+                    padding: 0.8rem 1.5rem;
+                    background: rgba(255,255,255,0.2);
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 8px;
+                    transition: background 0.3s ease;
+                }
+                .doc-link:hover {
+                    background: rgba(255,255,255,0.3);
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>CodeGraph</h1>
+                <div class="subtitle">High-performance code embedding system</div>
+                
+                <div class="docs-grid">
+                    <div class="doc-card">
+                        <h3>📚 User Guide</h3>
+                        <p>Complete user documentation including installation, configuration, and usage examples.</p>
+                        <a href="guide/index.html" class="doc-link">Read Guide</a>
+                    </div>
+                    
+                    <div class="doc-card">
+                        <h3>🔧 API Reference</h3>
+                        <p>Comprehensive Rust API documentation generated from source code.</p>
+                        <a href="api/index.html" class="doc-link">Browse API</a>
+                    </div>
+                    
+                    <div class="doc-card">
+                        <h3>🌐 REST API</h3>
+                        <p>Interactive OpenAPI documentation for the REST endpoints.</p>
+                        <a href="openapi/openapi.yaml" class="doc-link">View Spec</a>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        EOF
+
+    - name: Upload documentation artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: target/final-docs/
+        retention-days: 30
+
+  deploy-docs:
+    name: Deploy Documentation
+    runs-on: ubuntu-latest
+    needs: build-docs
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - name: Download documentation artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: documentation
+        path: docs-site
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs-site
+        force_orphan: true
+
+  docs-link-check:
+    name: Documentation Link Check
+    runs-on: ubuntu-latest
+    needs: build-docs
+    steps:
+    - name: Download documentation artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: documentation
+        path: docs-site
+
+    - name: Link Checker
+      uses: lycheeverse/lychee-action@v1
+      with:
+        args: --verbose --no-progress 'docs-site/**/*.html' 'docs-site/**/*.md'
+        fail: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docs-accessibility:
+    name: Documentation Accessibility Check
+    runs-on: ubuntu-latest
+    needs: build-docs
+    steps:
+    - name: Download documentation artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: documentation
+        path: docs-site
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Install axe-core CLI
+      run: npm install -g @axe-core/cli
+
+    - name: Serve documentation locally
+      run: |
+        cd docs-site
+        python3 -m http.server 8000 &
+        sleep 5
+
+    - name: Run accessibility tests
+      run: |
+        axe http://localhost:8000 --exit
