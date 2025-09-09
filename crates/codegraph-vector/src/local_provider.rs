@@ -1,0 +1,401 @@
+#[cfg(feature = "local-embeddings")]
+use crate::providers::{
+    BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
+};
+use codegraph_core::{CodeGraphError, CodeNode, Result};
+use async_trait::async_trait;
+use std::time::{Duration, Instant};
+use std::sync::Arc;
+use tokio::task;
+use tracing::{debug, info, warn};
+
+#[cfg(feature = "local-embeddings")]
+use candle_core::{Device, Tensor, DType};
+use candle_nn::VarBuilder;
+use candle_transformers::models::bert::{BertModel, Config as BertConfig};
+use hf_hub::api::tokio::Api;
+use tokenizers::Tokenizer;
+
+/// Configuration for local embedding models
+#[derive(Debug, Clone)]
+pub struct LocalEmbeddingConfig {
+    pub model_name: String,
+    pub device: DeviceType,
+    pub cache_dir: Option<String>,
+    pub max_sequence_length: usize,
+    pub pooling_strategy: PoolingStrategy,
+}
+
+#[derive(Debug, Clone)]
+pub enum DeviceType {
+    Cpu,
+    Cuda(usize), // GPU device ID
+    Metal,       // Apple Silicon
+}
+
+#[derive(Debug, Clone)]
+pub enum PoolingStrategy {
+    /// Use [CLS] token
+    Cls,
+    /// Mean pooling over all tokens
+    Mean,
+    /// Max pooling over all tokens
+    Max,
+}
+
+impl Default for LocalEmbeddingConfig {
+    fn default() -> Self {
+        Self {
+            model_name: "sentence-transformers/all-MiniLM-L6-v2".to_string(),
+            device: DeviceType::Cpu,
+            cache_dir: None,
+            max_sequence_length: 512,
+            pooling_strategy: PoolingStrategy::Mean,
+        }
+    }
+}
+
+/// Local embedding provider using Candle framework
+#[cfg(feature = "local-embeddings")]
+pub struct LocalEmbeddingProvider {
+    model: Arc<BertModel>,
+    tokenizer: Arc<Tokenizer>,
+    device: Device,
+    config: LocalEmbeddingConfig,
+    bert_config: BertConfig,
+}
+
+#[cfg(feature = "local-embeddings")]
+impl LocalEmbeddingProvider {
+    /// Create new local embedding provider
+    pub async fn new(config: LocalEmbeddingConfig) -> Result<Self> {
+        info!("Loading local embedding model: {}", config.model_name);
+        
+        let device = match config.device {
+            DeviceType::Cpu => Device::Cpu,
+            DeviceType::Cuda(id) => Device::new_cuda(id)
+                .map_err(|e| CodeGraphError::Configuration(format!("CUDA device error: {}", e)))?,
+            DeviceType::Metal => Device::new_metal(0)
+                .map_err(|e| CodeGraphError::Configuration(format!("Metal device error: {}", e)))?,
+        };
+
+        // Download model files from HuggingFace Hub
+        let api = Api::new()
+            .map_err(|e| CodeGraphError::External(format!("HuggingFace Hub error: {}", e)))?;
+        let repo = api.model(config.model_name.clone());
+
+        // Load tokenizer
+        info!("Loading tokenizer...");
+        let tokenizer_filename = repo
+            .get("tokenizer.json")
+            .await
+            .map_err(|e| CodeGraphError::External(format!("Failed to download tokenizer: {}", e)))?;
+        let tokenizer = Tokenizer::from_file(tokenizer_filename)
+            .map_err(|e| CodeGraphError::External(format!("Failed to load tokenizer: {}", e)))?;
+
+        // Load model configuration
+        info!("Loading model configuration...");
+        let config_filename = repo
+            .get("config.json")
+            .await
+            .map_err(|e| CodeGraphError::External(format!("Failed to download config: {}", e)))?;
+        let bert_config: BertConfig = serde_json::from_str(
+            &std::fs::read_to_string(config_filename)
+                .map_err(|e| CodeGraphError::Io(format!("Failed to read config: {}", e)))?,
+        )
+        .map_err(|e| CodeGraphError::Serialization(format!("Failed to parse config: {}", e)))?;
+
+        // Load model weights
+        info!("Loading model weights...");
+        let weights_filename = repo
+            .get("pytorch_model.bin")
+            .await
+            .or_else(|_| async { repo.get("model.safetensors").await })
+            .await
+            .map_err(|e| CodeGraphError::External(format!("Failed to download model weights: {}", e)))?;
+
+        let weights = if weights_filename.to_string_lossy().ends_with(".safetensors") {
+            candle_core::safetensors::load(weights_filename, &device)
+                .map_err(|e| CodeGraphError::External(format!("Failed to load safetensors: {}", e)))?
+        } else {
+            // Handle PyTorch checkpoint
+            return Err(CodeGraphError::Configuration(
+                "PyTorch model loading not implemented. Please use a model with safetensors format.".to_string(),
+            ));
+        };
+
+        // Build model
+        info!("Building BERT model...");
+        let vs = VarBuilder::from_tensors(weights, DType::F32, &device);
+        let model = BertModel::load(&vs, &bert_config)
+            .map_err(|e| CodeGraphError::External(format!("Failed to load BERT model: {}", e)))?;
+
+        info!("Local embedding model loaded successfully");
+
+        Ok(Self {
+            model: Arc::new(model),
+            tokenizer: Arc::new(tokenizer),
+            device,
+            config,
+            bert_config,
+        })
+    }
+
+    /// Prepare text from CodeNode for embedding
+    fn prepare_text(&self, node: &CodeNode) -> String {
+        let mut text = format!(
+            "{} {} {}",
+            node.language
+                .as_ref()
+                .map_or("unknown".to_string(), |l| format!("{:?}", l).to_lowercase()),
+            node.node_type
+                .as_ref()
+                .map_or("unknown".to_string(), |t| format!("{:?}", t).to_lowercase()),
+            node.name
+        );
+
+        if let Some(content) = &node.content {
+            text.push(' ');
+            text.push_str(content);
+        }
+
+        // Truncate to max sequence length (approximate token count)
+        let max_chars = self.config.max_sequence_length * 4;
+        if text.len() > max_chars {
+            text.truncate(max_chars);
+        }
+
+        text
+    }
+
+    /// Tokenize text and create input tensors
+    fn tokenize_text(&self, text: &str) -> Result<(Tensor, Tensor)> {
+        let encoding = self.tokenizer
+            .encode(text, true)
+            .map_err(|e| CodeGraphError::External(format!("Tokenization failed: {}", e)))?;
+
+        let token_ids = encoding.get_ids();
+        let attention_mask = encoding.get_attention_mask();
+
+        // Truncate to max sequence length
+        let max_len = self.config.max_sequence_length.min(token_ids.len());
+        let token_ids = &token_ids[..max_len];
+        let attention_mask = &attention_mask[..max_len];
+
+        let token_ids = Tensor::new(token_ids, &self.device)
+            .map_err(|e| CodeGraphError::External(format!("Failed to create token tensor: {}", e)))?
+            .unsqueeze(0)?; // Add batch dimension
+
+        let attention_mask = Tensor::new(
+            attention_mask.iter().map(|&x| x as f32).collect::<Vec<_>>().as_slice(),
+            &self.device,
+        )
+        .map_err(|e| CodeGraphError::External(format!("Failed to create attention mask: {}", e)))?
+        .unsqueeze(0)?; // Add batch dimension
+
+        Ok((token_ids, attention_mask))
+    }
+
+    /// Apply pooling strategy to get final embedding
+    fn apply_pooling(
+        &self,
+        sequence_output: &Tensor,
+        attention_mask: &Tensor,
+    ) -> Result<Tensor> {
+        match self.config.pooling_strategy {
+            PoolingStrategy::Cls => {
+                // Use [CLS] token embedding (first token)
+                let cls_embedding = sequence_output.i((.., 0, ..))?;
+                Ok(cls_embedding)
+            }
+            PoolingStrategy::Mean => {
+                // Mean pooling with attention mask
+                let input_mask_expanded = attention_mask
+                    .unsqueeze(2)?
+                    .expand(sequence_output.shape())?;
+
+                let masked_embeddings = sequence_output.mul(&input_mask_expanded)?;
+                let sum_embeddings = masked_embeddings.sum_keepdim(1)?;
+                let sum_mask = input_mask_expanded
+                    .sum_keepdim(1)?
+                    .clamp(1e-9, f64::INFINITY)?;
+
+                let pooled = sum_embeddings.div(&sum_mask)?;
+                Ok(pooled.squeeze(1)?) // Remove sequence dimension
+            }
+            PoolingStrategy::Max => {
+                // Max pooling
+                let pooled = sequence_output.max_keepdim(1)?;
+                Ok(pooled.squeeze(1)?) // Remove sequence dimension
+            }
+        }
+    }
+
+    /// Generate embedding for a single text using the loaded model
+    async fn generate_single_embedding(&self, text: String) -> Result<Vec<f32>> {
+        let model = Arc::clone(&self.model);
+        let tokenizer = Arc::clone(&self.tokenizer);
+        let device = self.device.clone();
+        let config = self.config.clone();
+
+        // Run in blocking task to avoid blocking async runtime
+        let result = task::spawn_blocking(move || -> Result<Vec<f32>> {
+            // Tokenize
+            let encoding = tokenizer
+                .encode(text, true)
+                .map_err(|e| CodeGraphError::External(format!("Tokenization failed: {}", e)))?;
+
+            let token_ids = encoding.get_ids();
+            let attention_mask = encoding.get_attention_mask();
+
+            // Truncate to max sequence length
+            let max_len = config.max_sequence_length.min(token_ids.len());
+            let token_ids = &token_ids[..max_len];
+            let attention_mask = &attention_mask[..max_len];
+
+            let token_ids = Tensor::new(token_ids, &device)?.unsqueeze(0)?;
+            let attention_mask = Tensor::new(
+                attention_mask.iter().map(|&x| x as f32).collect::<Vec<_>>().as_slice(),
+                &device,
+            )?.unsqueeze(0)?;
+
+            // Forward pass
+            let sequence_output = model.forward(&token_ids, &attention_mask)?;
+
+            // Apply pooling
+            let pooled = match config.pooling_strategy {
+                PoolingStrategy::Cls => sequence_output.i((.., 0, ..))?,
+                PoolingStrategy::Mean => {
+                    let input_mask_expanded = attention_mask
+                        .unsqueeze(2)?
+                        .expand(sequence_output.shape())?;
+                    let masked_embeddings = sequence_output.mul(&input_mask_expanded)?;
+                    let sum_embeddings = masked_embeddings.sum_keepdim(1)?;
+                    let sum_mask = input_mask_expanded.sum_keepdim(1)?.clamp(1e-9, f64::INFINITY)?;
+                    sum_embeddings.div(&sum_mask)?.squeeze(1)?
+                }
+                PoolingStrategy::Max => sequence_output.max_keepdim(1)?.squeeze(1)?,
+            };
+
+            // L2 normalize
+            let norm = pooled.pow(&Tensor::new(2.0, &device)?)?.sum_keepdim(-1)?.sqrt()?;
+            let normalized = pooled.div(&norm.clamp(1e-12, f64::INFINITY)?)?;
+
+            // Convert to Vec<f32>
+            let embedding = normalized.squeeze(0)?.to_vec1::<f32>()?;
+            Ok(embedding)
+        })
+        .await
+        .map_err(|e| CodeGraphError::Threading(format!("Task join error: {}", e)))??;
+
+        Ok(result)
+    }
+
+    /// Process multiple texts in optimized batches
+    async fn process_batch(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // For now, process sequentially to avoid complex batching logic
+        // In a production implementation, this would batch multiple texts together
+        let mut embeddings = Vec::with_capacity(texts.len());
+        
+        for text in texts {
+            let embedding = self.generate_single_embedding(text).await?;
+            embeddings.push(embedding);
+        }
+
+        Ok(embeddings)
+    }
+}
+
+#[cfg(feature = "local-embeddings")]
+#[async_trait]
+impl EmbeddingProvider for LocalEmbeddingProvider {
+    async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
+        let text = self.prepare_text(node);
+        self.generate_single_embedding(text).await
+    }
+
+    async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {
+        let config = BatchConfig::default();
+        let (embeddings, _) = self.generate_embeddings_with_config(nodes, &config).await?;
+        Ok(embeddings)
+    }
+
+    async fn generate_embeddings_with_config(
+        &self,
+        nodes: &[CodeNode],
+        config: &BatchConfig,
+    ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)> {
+        if nodes.is_empty() {
+            return Ok((Vec::new(), EmbeddingMetrics::new("Local".to_string(), 0, Duration::ZERO)));
+        }
+
+        let start_time = Instant::now();
+        
+        // Prepare texts
+        let texts: Vec<String> = nodes.iter().map(|node| self.prepare_text(node)).collect();
+
+        // Process in batches
+        let mut all_embeddings = Vec::with_capacity(nodes.len());
+        
+        for chunk in texts.chunks(config.batch_size) {
+            debug!("Processing local batch of {} texts", chunk.len());
+            let batch_embeddings = self.process_batch(chunk.to_vec()).await?;
+            all_embeddings.extend(batch_embeddings);
+        }
+
+        let duration = start_time.elapsed();
+        let metrics = EmbeddingMetrics::new(
+            "Local".to_string(),
+            nodes.len(),
+            duration,
+        );
+
+        info!(
+            "Local embedding generation completed: {} texts in {:?} ({:.2} texts/s)",
+            metrics.texts_processed, metrics.duration, metrics.throughput
+        );
+
+        Ok((all_embeddings, metrics))
+    }
+
+    fn embedding_dimension(&self) -> usize {
+        self.bert_config.hidden_size
+    }
+
+    fn provider_name(&self) -> &str {
+        "Local"
+    }
+
+    async fn is_available(&self) -> bool {
+        // Always available once loaded
+        true
+    }
+
+    fn performance_characteristics(&self) -> ProviderCharacteristics {
+        ProviderCharacteristics {
+            expected_throughput: 100.0, // Target: ≥100 texts/s
+            typical_latency: Duration::from_millis(10),
+            max_batch_size: 64, // Limited by GPU memory
+            supports_streaming: false,
+            requires_network: false,
+            memory_usage: MemoryUsage::Medium, // BERT models are ~100MB - 1GB
+        }
+    }
+}
+
+// Provide empty implementations when local-embeddings feature is disabled
+#[cfg(not(feature = "local-embeddings"))]
+pub struct LocalEmbeddingProvider;
+
+#[cfg(not(feature = "local-embeddings"))]
+impl LocalEmbeddingProvider {
+    pub async fn new(_config: LocalEmbeddingConfig) -> Result<Self> {
+        Err(CodeGraphError::Configuration(
+            "Local embeddings feature not enabled. Enable with --features local-embeddings".to_string(),
+        ))
+    }
+}

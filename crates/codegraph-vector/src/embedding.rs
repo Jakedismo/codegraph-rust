@@ -1,5 +1,4 @@
 use codegraph_core::{CodeGraphError, CodeNode, Result};
-use std::collections::HashMap;
 
 pub struct EmbeddingGenerator {
     model_config: ModelConfig,

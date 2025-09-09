@@ -1,10 +1,10 @@
 [package]
-name = "codegraph-vector"
+name = "codegraph-cache"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Vector storage and similarity search using FAISS for CodeGraph"
+description = "AI-powered caching system for CodeGraph vector operations"
 
 [dependencies]
 codegraph-core = { workspace = true }
@@ -27,11 +27,8 @@ rayon = { workspace = true }
 crossbeam-channel = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
-num_cpus = { workspace = true }
-
-# OpenAI API client
-reqwest = { workspace = true, optional = true }
-
+rocksdb = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
@@ -39,18 +36,14 @@ tempfile = { workspace = true }
 approx = { workspace = true }
 criterion = { workspace = true }
 fastrand = { workspace = true }
+futures = { workspace = true }
 
 [[bench]]
-name = "knn_benchmark"
+name = "cache_benchmark"
 harness = false
 
 [features]
-default = ["openai"]
+default = ["faiss", "persistent"]
 faiss = ["dep:faiss"]
 persistent = ["dep:memmap2", "dep:flate2"]
 gpu = ["faiss/gpu"]
-openai = ["dep:reqwest"]
-
-[[example]]
-name = "rag_demo"
-path = "examples/rag_demo.rs"

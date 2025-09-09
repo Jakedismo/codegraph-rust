@@ -46,6 +46,21 @@ pub enum CodeGraphError {
 
     #[error("Not found: {0}")]
     NotFound(String),
+
+    #[error("Training error: {0}")]
+    Training(String),
+
+    #[error("External error: {0}")]
+    External(String),
+
+    #[error("Network error: {0}")]
+    Network(String),
+
+    #[error("Timeout error: {0}")]
+    Timeout(String),
+
+    #[error("Threading error: {0}")]
+    Threading(String),
 }
 
 pub type Result<T> = std::result::Result<T, CodeGraphError>;

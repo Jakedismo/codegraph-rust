@@ -1,9 +1,9 @@
-use crate::EmbeddingGenerator;
 #[cfg(feature = "faiss")]
 use crate::FaissVectorStore;
-use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
+use codegraph_core::{CodeNode, NodeId, CodeGraphError, Result};
 #[cfg(feature = "faiss")]
-use codegraph_core::VectorStore;
+use codegraph_core::{VectorStore};
+use crate::EmbeddingGenerator;
 use std::sync::Arc;
 
 #[derive(Clone)]

@@ -2,9 +2,10 @@
 members = [
     "crates/codegraph-core",
     "crates/codegraph-vector",
+    "crates/codegraph-cache",
+    "crates/codegraph-parser",
     # Temporarily disabled due to compilation issues
     # "crates/codegraph-graph", 
-    # "crates/codegraph-parser",
     # "crates/codegraph-api"
 ]
 resolver = "2"
@@ -51,6 +52,10 @@ rocksdb = "0.22"
 faiss = "0.12"
 ndarray = "0.15"
 
+# OpenAI API client
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+
 # Additional utilities
 bincode = "1.3"
 dashmap = "6.0"
@@ -96,6 +101,7 @@ codegraph-core = { path = "crates/codegraph-core" }
 codegraph-graph = { path = "crates/codegraph-graph" }
 codegraph-parser = { path = "crates/codegraph-parser" }
 codegraph-vector = { path = "crates/codegraph-vector" }
+codegraph-cache = { path = "crates/codegraph-cache" }
 codegraph-api = { path = "crates/codegraph-api" }
 
 # Development dependencies
