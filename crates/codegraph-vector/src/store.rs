@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result, VectorStore};
-use faiss::{Index, IndexImpl, MetricType};
+use faiss::{Index, index::IndexImpl, MetricType};
 use ndarray::Array1;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -30,7 +30,7 @@ impl FaissVectorStore {
     fn ensure_index(&self) -> Result<()> {
         let mut index_guard = self.index.write();
         if index_guard.is_none() {
-            let index = faiss::index_factory(self.dimension, "Flat", MetricType::InnerProduct)
+            let index = faiss::index_factory(self.dimension as u32, "Flat", MetricType::InnerProduct)
                 .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
             *index_guard = Some(index);
         }

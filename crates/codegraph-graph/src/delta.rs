@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use codegraph_core::{CodeGraphError, CodeNode, NodeId};
-use crate::{CodeGraph, Edge, EdgeType};
+use codegraph_core::{CodeGraphError, CodeNode, NodeId, EdgeType};
+use crate::{CodeGraph, CodeEdge};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DeltaOperation {
@@ -292,8 +292,10 @@ impl GraphDeltaProcessor {
                 graph.add_node(new_node.clone()).await?;
             }
             DeltaOperation::AddEdge(from, to, edge_type, metadata) => {
-                let edge = Edge::new(from.clone(), to.clone(), edge_type.clone())
-                    .with_metadata(metadata.clone());
+                let mut edge = CodeEdge::new(from.clone(), to.clone(), edge_type.clone());
+                for (key, value) in metadata {
+                    edge = edge.with_metadata(key.clone(), value.clone());
+                }
                 graph.add_edge(edge).await?;
             }
             DeltaOperation::RemoveEdge(from, to, edge_type) => {
@@ -302,8 +304,10 @@ impl GraphDeltaProcessor {
             DeltaOperation::UpdateEdge(from, to, edge_type, metadata) => {
                 // Remove old edge and add new one with updated metadata
                 graph.remove_edge(from, to, Some(edge_type.clone())).await?;
-                let edge = Edge::new(from.clone(), to.clone(), edge_type.clone())
-                    .with_metadata(metadata.clone());
+                let mut edge = CodeEdge::new(from.clone(), to.clone(), edge_type.clone());
+                for (key, value) in metadata {
+                    edge = edge.with_metadata(key.clone(), value.clone());
+                }
                 graph.add_edge(edge).await?;
             }
         }

@@ -23,6 +23,8 @@ tokio = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+sha2 = { workspace = true }
+memmap2 = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }

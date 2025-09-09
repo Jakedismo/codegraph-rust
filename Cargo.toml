@@ -1,10 +1,11 @@
 [workspace]
 members = [
     "crates/codegraph-core",
-    "crates/codegraph-graph", 
-    "crates/codegraph-parser",
     "crates/codegraph-vector",
-    "crates/codegraph-api"
+    # Temporarily disabled due to compilation issues
+    # "crates/codegraph-graph", 
+    # "crates/codegraph-parser",
+    # "crates/codegraph-api"
 ]
 resolver = "2"
 

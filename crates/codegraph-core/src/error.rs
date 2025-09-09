@@ -25,6 +25,27 @@ pub enum CodeGraphError {
 
     #[error("Invalid operation: {0}")]
     InvalidOperation(String),
+
+    #[error("Transaction error: {0}")]
+    Transaction(String),
+
+    #[error("Version error: {0}")]
+    Version(String),
+
+    #[error("Conflict error: {0}")]
+    Conflict(String),
+
+    #[error("Recovery error: {0}")]
+    Recovery(String),
+
+    #[error("Configuration error: {0}")]
+    Configuration(String),
+
+    #[error("Validation error: {0}")]
+    Validation(String),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
 }
 
 pub type Result<T> = std::result::Result<T, CodeGraphError>;

@@ -1,6 +1,6 @@
-use crate::index::IndexConfig;
+use crate::faiss_manager::IndexConfig;
 use codegraph_core::{CodeGraphError, NodeId, Result};
-use faiss::IndexImpl;
+use faiss::index::IndexImpl;
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use memmap2::{MmapOptions, Mmap};
 use parking_lot::RwLock;

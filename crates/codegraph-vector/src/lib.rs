@@ -1,6 +1,9 @@
 pub mod embedding;
-pub mod store;
 pub mod search;
+
+#[cfg(feature = "faiss")]
+pub mod store;
+#[cfg(feature = "faiss")]
 pub mod faiss_manager;
 
 #[cfg(feature = "persistent")]
@@ -13,8 +16,11 @@ pub mod incremental;
 pub mod consistency;
 
 pub use embedding::*;
-pub use store::*;
 pub use search::*;
+
+#[cfg(feature = "faiss")]
+pub use store::*;
+#[cfg(feature = "faiss")]
 pub use faiss_manager::*;
 
 #[cfg(feature = "persistent")]
@@ -28,4 +34,6 @@ pub use consistency::*;
 
 // Re-export common types for convenience
 pub use codegraph_core::{CodeGraphError, NodeId, Result};
+
+#[cfg(feature = "faiss")]
 pub use faiss::MetricType;

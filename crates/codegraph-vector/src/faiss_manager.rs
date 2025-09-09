@@ -1,6 +1,6 @@
 use crate::storage::PersistentStorage;
 use codegraph_core::{CodeGraphError, NodeId, Result};
-use faiss::{Index, IndexImpl, MetricType};
+use faiss::{Index, index::IndexImpl, MetricType};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -57,7 +57,7 @@ impl SimpleFaissManager {
         }
 
         let index = faiss::index_factory(
-            self.config.dimension,
+            self.config.dimension as u32,
             &self.config.index_type,
             self.config.metric_type,
         )
@@ -73,7 +73,7 @@ impl SimpleFaissManager {
         self.create_index()?;
 
         if vectors.is_empty() {
-            return Ok();
+            return Ok(());
         }
 
         // Prepare flat vector array for FAISS

@@ -49,7 +49,6 @@ pub struct SerializableEdge {
     pub metadata: HashMap<String, String>,
 }
 
-pub use SerializableEdge as HighPerformanceEdge;
 
 impl From<CodeNode> for SerializableCodeNode {
     fn from(node: CodeNode) -> Self {

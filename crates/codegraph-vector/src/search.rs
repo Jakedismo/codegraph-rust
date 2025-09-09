@@ -1,5 +1,9 @@
-use crate::{EmbeddingGenerator, FaissVectorStore};
-use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result, VectorStore};
+use crate::EmbeddingGenerator;
+#[cfg(feature = "faiss")]
+use crate::FaissVectorStore;
+use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
+#[cfg(feature = "faiss")]
+use codegraph_core::VectorStore;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -9,11 +13,13 @@ pub struct SearchResult {
     pub node: Option<CodeNode>,
 }
 
+#[cfg(feature = "faiss")]
 pub struct SemanticSearch {
     vector_store: Arc<FaissVectorStore>,
     embedding_generator: Arc<EmbeddingGenerator>,
 }
 
+#[cfg(feature = "faiss")]
 impl SemanticSearch {
     pub fn new(
         vector_store: Arc<FaissVectorStore>,
@@ -67,7 +73,7 @@ impl SemanticSearch {
         function_node: &CodeNode,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        if !matches!(function_node.node_type, codegraph_core::NodeType::Function) {
+        if !matches!(function_node.node_type, Some(codegraph_core::NodeType::Function)) {
             return Err(CodeGraphError::InvalidOperation(
                 "Node must be a function".to_string(),
             ));

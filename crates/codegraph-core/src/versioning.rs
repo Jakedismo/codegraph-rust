@@ -1,4 +1,4 @@
-use crate::{CodeGraphError, NodeId, Result};
+use crate::{NodeId, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
@@ -218,4 +218,53 @@ pub trait CrashRecovery {
     async fn verify_data_integrity(&self) -> Result<Vec<String>>;
     
     async fn repair_corruption(&mut self, corruption_reports: Vec<String>) -> Result<()>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConflictType {
+    ContentMismatch,
+    DeletedByUs,
+    DeletedByThem,
+    AddedByBoth,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeConflict {
+    pub node_id: NodeId,
+    pub base_content_hash: Option<String>,
+    pub ours_content_hash: String,
+    pub theirs_content_hash: String,
+    pub conflict_type: ConflictType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RebaseResult {
+    Success {
+        new_head: VersionId,
+        commits_rebased: Vec<VersionId>,
+    },
+    Conflicts {
+        conflicted_commit: VersionId,
+        conflicts: Vec<MergeConflict>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionStatistics {
+    pub active_transactions: u32,
+    pub committed_transactions: u64,
+    pub aborted_transactions: u64,
+    pub average_commit_time_ms: f64,
+    pub deadlocks_detected: u64,
+    pub lock_contention_count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecoveryStatistics {
+    pub last_recovery_time: Option<DateTime<Utc>>,
+    pub successful_recoveries: u64,
+    pub failed_recoveries: u64,
+    pub corrupted_data_repaired: u64,
+    pub orphaned_data_cleaned: u64,
+    pub integrity_checks_performed: u64,
 }

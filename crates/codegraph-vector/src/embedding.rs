@@ -51,8 +51,8 @@ impl EmbeddingGenerator {
 
     fn prepare_text(&self, node: &CodeNode) -> String {
         let mut text = format!("{} {} {}", 
-            node.language.to_string(),
-            node.node_type.to_string(),
+            node.language.as_ref().map_or("unknown".to_string(), language_to_string),
+            node.node_type.as_ref().map_or("unknown".to_string(), node_type_to_string),
             node.name
         );
 
@@ -106,33 +106,31 @@ fn simple_hash(text: &str) -> u32 {
     hash
 }
 
-impl std::fmt::Display for codegraph_core::Language {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            codegraph_core::Language::Rust => write!(f, "rust"),
-            codegraph_core::Language::TypeScript => write!(f, "typescript"),
-            codegraph_core::Language::JavaScript => write!(f, "javascript"),
-            codegraph_core::Language::Python => write!(f, "python"),
-            codegraph_core::Language::Go => write!(f, "go"),
-            codegraph_core::Language::Other(name) => write!(f, "{}", name),
-        }
+fn language_to_string(lang: &codegraph_core::Language) -> String {
+    match lang {
+        codegraph_core::Language::Rust => "rust".to_string(),
+        codegraph_core::Language::TypeScript => "typescript".to_string(),
+        codegraph_core::Language::JavaScript => "javascript".to_string(),
+        codegraph_core::Language::Python => "python".to_string(),
+        codegraph_core::Language::Go => "go".to_string(),
+        codegraph_core::Language::Java => "java".to_string(),
+        codegraph_core::Language::Cpp => "cpp".to_string(),
+        codegraph_core::Language::Other(name) => name.clone(),
     }
 }
 
-impl std::fmt::Display for codegraph_core::NodeType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            codegraph_core::NodeType::Function => write!(f, "function"),
-            codegraph_core::NodeType::Struct => write!(f, "struct"),
-            codegraph_core::NodeType::Enum => write!(f, "enum"),
-            codegraph_core::NodeType::Trait => write!(f, "trait"),
-            codegraph_core::NodeType::Module => write!(f, "module"),
-            codegraph_core::NodeType::Variable => write!(f, "variable"),
-            codegraph_core::NodeType::Import => write!(f, "import"),
-            codegraph_core::NodeType::Class => write!(f, "class"),
-            codegraph_core::NodeType::Interface => write!(f, "interface"),
-            codegraph_core::NodeType::Type => write!(f, "type"),
-            codegraph_core::NodeType::Other(name) => write!(f, "{}", name),
-        }
+fn node_type_to_string(node_type: &codegraph_core::NodeType) -> String {
+    match node_type {
+        codegraph_core::NodeType::Function => "function".to_string(),
+        codegraph_core::NodeType::Struct => "struct".to_string(),
+        codegraph_core::NodeType::Enum => "enum".to_string(),
+        codegraph_core::NodeType::Trait => "trait".to_string(),
+        codegraph_core::NodeType::Module => "module".to_string(),
+        codegraph_core::NodeType::Variable => "variable".to_string(),
+        codegraph_core::NodeType::Import => "import".to_string(),
+        codegraph_core::NodeType::Class => "class".to_string(),
+        codegraph_core::NodeType::Interface => "interface".to_string(),
+        codegraph_core::NodeType::Type => "type".to_string(),
+        codegraph_core::NodeType::Other(name) => name.clone(),
     }
 }

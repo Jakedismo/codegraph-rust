@@ -40,7 +40,7 @@ name = "knn_benchmark"
 harness = false
 
 [features]
-default = ["faiss", "persistent"]
+default = []
 faiss = ["dep:faiss"]
 persistent = ["dep:memmap2", "dep:flate2"]
 gpu = ["faiss/gpu"]
