@@ -1,274 +1,188 @@
-# CodeGraph MCP Server
+# CodeGraph
 
-A comprehensive Model Context Protocol (MCP) server implementation for multi-agent coordination, built with WebSocket transport and sophisticated agent orchestration capabilities.
+A sophisticated code analysis and embedding system built in Rust. CodeGraph provides graph-based code representation, vector search capabilities, and a comprehensive API for code understanding and analysis.
 
-## Features
+## Overview
 
-### 🚀 Core Capabilities
-- **Full MCP Protocol Compliance** - Implements MCP specification 2025-03-26
-- **WebSocket Transport** - Real-time bidirectional communication with fallback support
-- **Multi-Agent Coordination** - Sophisticated orchestration patterns for distributed agents
-- **Advanced Message Routing** - Intelligent routing with load balancing and failover
-- **Comprehensive Validation** - JSON-RPC 2.0 and custom schema validation
-- **Production Ready** - Built for scalability, reliability, and performance
+CodeGraph transforms source code into intelligent, searchable knowledge graphs that enable advanced code understanding, analysis, and retrieval. Built with performance and scalability in mind, it supports multiple programming languages and provides both REST API access and embedding capabilities.
 
-### 🤖 Agent System
-- **Base Agent Framework** - Extensible foundation for custom agent implementations
-- **Built-in Agent Types** - Coordinator, Analyzer, Transformer, Validator, Reporter
-- **Dynamic Capabilities** - Runtime capability registration and discovery
-- **Health Monitoring** - Automatic health checks and status tracking
-- **Task Management** - Sophisticated task assignment and lifecycle management
+### Key Features
 
-### 🔀 Communication Patterns
-- **Point-to-Point** - Direct agent communication
-- **Publish-Subscribe** - Event-driven messaging
-- **Broadcast** - One-to-many messaging
-- **Pipeline** - Sequential processing chains
-- **Scatter-Gather** - Parallel processing with result aggregation
+- **Multi-language Support** - Parse and analyze Rust, Python, JavaScript, TypeScript, Go, and more
+- **Graph-based Analysis** - Rich code relationships and dependency tracking
+- **Vector Embeddings** - Semantic code search using FAISS vector similarity
+- **High Performance** - RocksDB storage with optimized graph operations
+- **REST API** - Comprehensive HTTP API for integration
+- **Thread-safe Operations** - Concurrent processing with Rust's safety guarantees
 
-### 🎯 Coordination Features
-- **Workflow Orchestration** - Complex multi-step workflow execution
-- **Consensus Algorithms** - Distributed decision making
-- **Load Balancing** - Intelligent task distribution
-- **Synchronization** - Barrier synchronization for coordinated execution
-- **Conflict Resolution** - Automated conflict detection and resolution
+## Architecture
+
+CodeGraph uses a modular workspace structure with specialized crates:
+
+```
+crates/
+├── codegraph-core/     # Core types, traits, and shared functionality
+├── codegraph-graph/    # Graph data structures and RocksDB storage  
+├── codegraph-parser/   # Tree-sitter based code parsing
+├── codegraph-vector/   # Vector embeddings and FAISS search
+└── codegraph-api/      # REST API server using Axum
+```
 
 ## Quick Start
 
+### Prerequisites
+
+- Rust 1.70+ with Cargo
+- System dependencies: clang, cmake (for native dependencies)
+
+### Building
+
 ```bash
-# Install dependencies
-npm install
+# Clone the repository
+git clone <repository-url>
+cd codegraph
 
-# Run development server
-npm run dev
+# Build all crates
+cargo build
 
-# Build and run production server
-npm run build
-npm start
+# Run tests
+cargo test
+
+# Development with watching
+make dev
 ```
 
-## Architecture Overview
+### Running the API Server
 
-The CodeGraph MCP Server implements a sophisticated multi-agent coordination framework with:
+```bash
+# Start the REST API server
+cargo run --bin codegraph-api
 
-1. **WebSocket Transport Layer** - Full-duplex real-time communication
-2. **Message Router** - Intelligent routing with validation
-3. **Coordination Engine** - Multi-agent orchestration patterns
-4. **Agent SDK** - Extensible agent framework
-5. **Protocol Compliance** - Full MCP specification support
-
-## File Structure
-
-```
-src/
-├── core/
-│   ├── agents/                    # Agent framework and types
-│   ├── coordination/              # Multi-agent coordination engine
-│   ├── routing/                   # Message routing system
-│   ├── transport/                 # WebSocket transport layer
-│   └── validation/                # Message validation
-├── server/                        # Main MCP server implementation
-├── examples/                      # Example agents and demo server
-└── README.md                      # This file
+# The server will be available at http://localhost:8080
 ```
 
-## Example Usage
+### Basic Usage
 
-The server provides MCP tools for agent coordination:
+```rust
+use codegraph_core::*;
+use codegraph_parser::Parser;
+use codegraph_graph::GraphStorage;
 
-- `register_agent` - Register new agents with the coordination system
-- `distribute_task` - Distribute tasks to specified agents
-- `coordinate_agents` - Coordinate multiple agents for consensus or synchronization
-- `get_agent_status` - Get the current status of agents
+// Parse a source file
+let parser = Parser::new();
+let nodes = parser.parse_file("src/main.rs")?;
 
-MCP resources:
+// Store in graph
+let mut graph = GraphStorage::new("./graph_db")?;
+graph.add_nodes(nodes)?;
 
-- `agents` - List of all registered agents
-- `tasks` - Active tasks and their status
-- `metrics` - Server performance metrics
-
-## GraphQL Schema Highlights
-
-### Core Types
-- `CodeNode` interface with implementations for Files, Functions, Classes, Variables
-- `CodeRelation` for expressing relationships between nodes
-- Rich metadata and location information
-- Performance-optimized field resolvers
-
-### Query Patterns
-- **Graph Traversal**: `findPath`, `subgraph`, `neighbors`
-- **Search & Discovery**: `searchNodes`, `batchAnalysis`  
-- **Dependency Analysis**: `dependencyGraph`, `impactAnalysis`
-- **Code Metrics**: `codeMetrics` with complexity analysis
-
-### Real-time Subscriptions
-- `codeChanged` - File and code structure changes
-- `graphUpdated` - Relationship changes  
-- `performanceAlert` - System performance monitoring
-- `analysisProgress` - Long-running analysis updates
-
-## Caching Strategy
-
-### Multi-tier Architecture
-1. **L1 Cache** - In-memory LRU (5 min TTL, 1000 items)
-2. **L2 Cache** - Redis distributed cache (1 hour TTL, 10k items) 
-3. **L3 Cache** - Persistent storage (24 hour TTL)
-
-### Cache Policies
-- `SHORT_TERM` - Frequently changing data
-- `MEDIUM_TERM` - Stable code structures  
-- `LONG_TERM` - Historical analysis results
-- `PERSISTENT` - Immutable reference data
-
-## Authentication & Authorization
-
-### Permission System
-- Granular permissions for different operation types
-- Resource-level access control
-- Organization and project-scoped data access
-- Rate limiting by user tier and query complexity
-
-### Security Features
-- JWT token authentication with caching
-- Permission hierarchy and inheritance
-- Rate limiting with Redis backend
-- Automatic token refresh and validation
-
-## Performance Monitoring
-
-### Real-time Metrics
-- Query execution time breakdown
-- Cache hit ratios and performance
-- Resource utilization tracking  
-- Error rate monitoring
-
-### Alerting System
-- Performance threshold violations
-- Resource utilization alerts
-- Error rate spike detection
-- Automatic optimization suggestions
-
-## Usage Examples
-
-### Basic Node Query
-```graphql
-query GetFunction($id: ID!) {
-  node(id: $id) {
-    ... on FunctionNode {
-      id
-      name
-      signature
-      location {
-        file
-        startLine
-        endLine
-      }
-    }
-  }
-}
+// Query relationships
+let deps = graph.find_dependencies(node_id)?;
 ```
 
-### Graph Traversal
-```graphql
-query FindDependencies($rootId: ID!) {
-  dependencyGraph(rootId: $rootId, maxDepth: 3) {
-    graph {
-      nodes {
-        id
-        name
-        type
-      }
-      relations {
-        type
-        source { id }
-        target { id }
-      }
-    }
-    cycles {
-      id
-      name
-    }
-  }
-}
+## Documentation
+
+Comprehensive documentation is organized in the `docs/` directory:
+
+### 📚 [Documentation Hub](docs/index.md)
+Central hub for all project documentation
+
+### 🏗️ Architecture
+- [CodeGraph RAG Architecture](docs/architecture/CODEGRAPH_RAG_ARCHITECTURE.md)
+- [Unified Architecture Specification](docs/architecture/UNIFIED_ARCHITECTURE_SPECIFICATION.md)
+- [REST API Architecture](docs/architecture/REST_API_ARCHITECTURE.md)
+
+### 🔧 API Documentation
+- [MCP Server Specification](docs/api/codegraph-mcp-spec.md)
+
+### 📖 Guides
+- [Getting Started](docs/guides/startup.md)
+- [CI/CD Setup](docs/guides/CI_CD_README.md)
+
+### 📋 Specifications
+- [RAG Integration Specifications](docs/specifications/RAG_INTEGRATION_SPECIFICATIONS.md)
+- [Implementation Plan](docs/specifications/IMPLEMENTATION_PLAN.md)
+- [Phase 1 Roadmap](docs/specifications/PHASE_1_IMPLEMENTATION_ROADMAP.md)
+- [Feature Inventory](docs/specifications/FEATURE_INVENTORY.md)
+- [Technical Implementation](docs/specifications/CodeGraph-Technical-Implementation.md)
+- [Performance Benchmarks](docs/specifications/performance_benchmarks.md)
+- [And more...](docs/specifications/)
+
+## Development
+
+### Build Commands
+
+```bash
+# Quick development check
+make quick         # Format and lint only
+make dev          # Full development check (format, lint, test)
+
+# Individual commands
+cargo fmt         # Format code
+cargo clippy      # Lint code
+cargo test        # Run tests
+cargo bench       # Run benchmarks
 ```
 
-### Real-time Subscription
-```graphql
-subscription WatchCodeChanges($filePattern: String) {
-  codeChanged(filePattern: $filePattern) {
-    type
-    node {
-      id
-      name
-      location {
-        file
-      }
-    }
-    timestamp
-  }
-}
+### Watch Mode
+
+```bash
+# Watch for changes and recompile
+cargo watch -c -x check
+
+# Watch and run tests
+cargo watch -c -x test
+
+# Development watch mode
+make watch
 ```
 
-### Batch Analysis
-```graphql
-query AnalyzeCodebase($requests: [AnalysisRequest!]!) {
-  batchAnalysis(requests: $requests, cachePolicy: MEDIUM_TERM) {
-    nodes {
-      id
-      type
-    }
-    metrics
-    performance {
-      queryTime
-      nodesTraversed
-      cacheHitRatio
-    }
-  }
-}
+### Docker
+
+```bash
+# Build Docker image
+docker build -t codegraph .
+
+# Run with Docker Compose
+docker-compose up -d
 ```
-
-## Implementation Guidelines
-
-### Database Integration
-The schema assumes integration with a graph database (Neo4j, Amazon Neptune) or optimized relational database with graph capabilities. Key considerations:
-
-- Use connection pooling for database access
-- Implement prepared statements for common queries
-- Batch database operations when possible
-- Index frequently queried relationships
-
-### Deployment Considerations
-- Use Redis cluster for distributed caching
-- Implement horizontal scaling with load balancers
-- Monitor memory usage for large graph operations  
-- Configure connection limits and timeouts appropriately
-
-### Development Setup
-1. Install dependencies: `npm install`
-2. Configure Redis connection
-3. Set up database connections
-4. Configure JWT secrets and authentication
-5. Start GraphQL server with schema
 
 ## Contributing
 
-When contributing to this API:
+1. **Code Standards**: Follow the guidelines in [CLAUDE.md](CLAUDE.md)
+2. **Testing**: Add tests for new features and ensure all tests pass
+3. **Documentation**: Update documentation for API changes
+4. **Performance**: Maintain performance standards as documented
 
-1. Maintain sub-50ms performance requirements
-2. Add comprehensive performance monitoring
-3. Include authentication checks for new operations
-4. Update caching strategies as needed
-5. Document new query patterns and optimizations
+### Pull Request Process
 
-## Performance Testing
+1. Run `make dev` to ensure code quality
+2. Add/update tests for changes
+3. Update relevant documentation
+4. Submit PR with clear description
 
-Run the included performance validation:
+## Performance
 
-```typescript
-import { performanceValidator } from './performance-specifications';
+CodeGraph is designed for high performance:
 
-const results = await performanceValidator.runPerformanceTests();
-console.log('Performance test results:', results);
-```
+- **Concurrent Operations**: Thread-safe graph operations using DashMap and parking_lot
+- **Optimized Storage**: RocksDB with appropriate column families and caching
+- **Efficient Parsing**: Tree-sitter based parsing with visitor patterns
+- **Vector Search**: FAISS integration for fast similarity search
+- **Batch Processing**: Bulk operations for improved throughput
 
-The system includes automated performance testing that validates response times against targets and provides optimization recommendations.
+See [performance benchmarks](docs/specifications/performance_benchmarks.md) for detailed metrics.
+
+## License
+
+[License information]
+
+## Support
+
+- **Issues**: Please report bugs and feature requests via GitHub Issues
+- **Documentation**: See the [docs/](docs/) directory for detailed information
+- **Development**: Follow the development setup in [CLAUDE.md](CLAUDE.md)
+
+---
+
+Built with ❤️ in Rust for advanced code understanding and analysis.

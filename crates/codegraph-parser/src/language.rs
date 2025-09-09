@@ -55,6 +55,22 @@ impl LanguageRegistry {
             },
         );
 
+        configs.insert(
+            Language::Java,
+            LanguageConfig {
+                language: tree_sitter_java::language(),
+                file_extensions: vec!["java"],
+            },
+        );
+
+        configs.insert(
+            Language::Cpp,
+            LanguageConfig {
+                language: tree_sitter_cpp::language(),
+                file_extensions: vec!["cpp", "cxx", "cc", "c", "hpp", "hxx", "h"],
+            },
+        );
+
         Self { configs }
     }
 

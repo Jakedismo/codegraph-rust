@@ -20,12 +20,27 @@ async-trait = { workspace = true }
 tokio = { workspace = true }
 parking_lot = { workspace = true }
 uuid = { workspace = true }
+memmap2 = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
+dashmap = { workspace = true }
+rayon = { workspace = true }
+crossbeam-channel = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
 tempfile = { workspace = true }
 approx = { workspace = true }
+criterion = { workspace = true }
+fastrand = { workspace = true }
+
+[[bench]]
+name = "knn_benchmark"
+harness = false
 
 [features]
-default = ["faiss"]
+default = ["faiss", "persistent"]
 faiss = ["dep:faiss"]
+persistent = ["dep:memmap2", "dep:flate2"]
+gpu = ["faiss/gpu"]

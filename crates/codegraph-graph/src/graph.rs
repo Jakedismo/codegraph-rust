@@ -1,122 +1,350 @@
-use crate::{CodeEdge, RocksDbStorage};
+use crate::{CodeEdge, HighPerformanceEdge, HighPerformanceRocksDbStorage, GraphQueryCache, QueryOptimizer, CacheManager};
 use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId, Result};
 use async_trait::async_trait;
 use dashmap::DashMap;
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::time::{Duration, Instant};
+use parking_lot::RwLock;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 pub struct CodeGraph {
-    storage: Box<dyn GraphStore + Send + Sync>,
-    node_cache: Arc<DashMap<NodeId, CodeNode>>,
-    edge_cache: Arc<DashMap<NodeId, Vec<CodeEdge>>>,
+    storage: Arc<HighPerformanceRocksDbStorage>,
+    node_cache: Arc<DashMap<NodeId, Arc<CodeNode>>>,
+    edge_cache: Arc<DashMap<NodeId, Arc<Vec<HighPerformanceEdge>>>>,
+    query_optimizer: Option<QueryOptimizer>,
+    query_stats: Arc<RwLock<QueryStats>>,
+    path_cache: Arc<DashMap<(NodeId, NodeId), Arc<Option<Vec<NodeId>>>>>,
+}
+
+#[derive(Debug, Default)]
+struct QueryStats {
+    node_queries: AtomicU64,
+    edge_queries: AtomicU64,
+    cache_hits: AtomicU64,
+    cache_misses: AtomicU64,
+    avg_query_time_ns: AtomicU64,
 }
 
 impl CodeGraph {
-    pub fn new() -> Self {
-        Self {
-            storage: Box::new(RocksDbStorage::new("./data/graph.db").unwrap()),
-            node_cache: Arc::new(DashMap::new()),
-            edge_cache: Arc::new(DashMap::new()),
-        }
+    pub fn new() -> Result<Self> {
+        let storage = Arc::new(HighPerformanceRocksDbStorage::new("./data/graph.db")?);
+        
+        Ok(Self {
+            storage,
+            node_cache: Arc::new(DashMap::with_capacity(100_000)),
+            edge_cache: Arc::new(DashMap::with_capacity(50_000)),
+            query_optimizer: None,
+            query_stats: Arc::new(RwLock::new(QueryStats::default())),
+            path_cache: Arc::new(DashMap::with_capacity(10_000)),
+        })
+    }
+
+    pub fn new_with_cache() -> Result<Self> {
+        let cache = GraphQueryCache::new();
+        let cache_manager = CacheManager::new(cache, Duration::from_secs(60));
+        let query_optimizer = QueryOptimizer::new(cache_manager);
+        
+        let storage = Arc::new(HighPerformanceRocksDbStorage::new("./data/graph.db")?);
+        
+        Ok(Self {
+            storage,
+            node_cache: Arc::new(DashMap::with_capacity(100_000)),
+            edge_cache: Arc::new(DashMap::with_capacity(50_000)),
+            query_optimizer: Some(query_optimizer),
+            query_stats: Arc::new(RwLock::new(QueryStats::default())),
+            path_cache: Arc::new(DashMap::with_capacity(10_000)),
+        })
+    }
+
+    pub fn query_optimizer(&self) -> Option<&QueryOptimizer> {
+        self.query_optimizer.as_ref()
+    }
+    
+    fn record_query_time(&self, duration_ns: u64) {
+        let stats = self.query_stats.read();
+        let current_avg = stats.avg_query_time_ns.load(Ordering::Relaxed);
+        let new_avg = if current_avg == 0 {
+            duration_ns
+        } else {
+            (current_avg + duration_ns) / 2
+        };
+        stats.avg_query_time_ns.store(new_avg, Ordering::Relaxed);
     }
 
     pub async fn add_edge(&mut self, edge: CodeEdge) -> Result<()> {
-        let from_node = edge.from;
-        self.edge_cache
-            .entry(from_node)
-            .or_insert_with(Vec::new)
-            .push(edge.clone());
-
+        let start = Instant::now();
+        let hp_edge = HighPerformanceEdge::from(edge);
+        
+        let result = self.storage.add_edge(hp_edge.clone()).await;
+        
+        if result.is_ok() {
+            self.edge_cache.remove(&hp_edge.from);
+            self.path_cache.clear();
+        }
+        
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        result
+    }
+    
+    pub async fn add_high_performance_edge(&self, edge: HighPerformanceEdge) -> Result<()> {
+        let start = Instant::now();
+        
+        let result = self.storage.add_edge(edge.clone()).await;
+        
+        if result.is_ok() {
+            self.edge_cache.remove(&edge.from);
+            self.path_cache.clear();
+        }
+        
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        result
+    }
+    
+    pub async fn batch_add_edges(&self, edges: Vec<HighPerformanceEdge>) -> Result<()> {
+        let start = Instant::now();
+        
+        for edge in &edges {
+            self.storage.add_edge(edge.clone()).await?;
+        }
+        
+        self.storage.flush_batch_writes()?;
+        
+        self.edge_cache.clear();
+        self.path_cache.clear();
+        
+        self.record_query_time(start.elapsed().as_nanos() as u64);
         Ok(())
     }
 
     pub async fn get_edges_from(&self, node_id: NodeId) -> Result<Vec<CodeEdge>> {
-        if let Some(edges) = self.edge_cache.get(&node_id) {
-            Ok(edges.clone())
-        } else {
-            Ok(Vec::new())
+        let start = Instant::now();
+        
+        let hp_edges = self.get_high_performance_edges_from(node_id).await?;
+        let edges = hp_edges.into_iter().map(|e| {
+            CodeEdge {
+                id: uuid::Uuid::new_v4(),
+                from: e.from,
+                to: e.to,
+                edge_type: e.edge_type.parse().unwrap_or_default(),
+                weight: e.weight,
+                metadata: e.metadata,
+            }
+        }).collect();
+        
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        Ok(edges)
+    }
+    
+    pub async fn get_high_performance_edges_from(&self, node_id: NodeId) -> Result<Vec<HighPerformanceEdge>> {
+        let start = Instant::now();
+        
+        if let Some(cached) = self.edge_cache.get(&node_id) {
+            self.query_stats.read().cache_hits.fetch_add(1, Ordering::Relaxed);
+            self.record_query_time(start.elapsed().as_nanos() as u64);
+            return Ok(cached.as_ref().clone());
         }
+        
+        self.query_stats.read().cache_misses.fetch_add(1, Ordering::Relaxed);
+        let edges = self.storage.get_edges_from(node_id).await?;
+        
+        let edges_arc = Arc::new(edges.clone());
+        self.edge_cache.insert(node_id, edges_arc);
+        
+        self.query_stats.read().edge_queries.fetch_add(1, Ordering::Relaxed);
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        
+        Ok(edges)
     }
 
     pub async fn get_neighbors(&self, node_id: NodeId) -> Result<Vec<NodeId>> {
-        let edges = self.get_edges_from(node_id).await?;
-        Ok(edges.into_iter().map(|e| e.to).collect())
+        let start = Instant::now();
+        
+        if let Some(optimizer) = &self.query_optimizer {
+            if let Some(cached) = optimizer.cache().get_neighbors(node_id) {
+                self.query_stats.read().cache_hits.fetch_add(1, Ordering::Relaxed);
+                self.record_query_time(start.elapsed().as_nanos() as u64);
+                return Ok(cached);
+            }
+        }
+        
+        self.query_stats.read().cache_misses.fetch_add(1, Ordering::Relaxed);
+        let edges = self.get_high_performance_edges_from(node_id).await?;
+        let neighbors: Vec<NodeId> = edges.into_iter().map(|e| e.to).collect();
+        
+        if let Some(optimizer) = &self.query_optimizer {
+            optimizer.cache().cache_neighbors(node_id, neighbors.clone());
+        }
+        
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        Ok(neighbors)
     }
 
     pub async fn shortest_path(&self, from: NodeId, to: NodeId) -> Result<Option<Vec<NodeId>>> {
-        use std::collections::{HashMap, VecDeque};
-
+        let start = Instant::now();
+        
+        let cache_key = (from, to);
+        if let Some(cached) = self.path_cache.get(&cache_key) {
+            self.query_stats.read().cache_hits.fetch_add(1, Ordering::Relaxed);
+            self.record_query_time(start.elapsed().as_nanos() as u64);
+            return Ok(cached.as_ref().clone());
+        }
+        
+        self.query_stats.read().cache_misses.fetch_add(1, Ordering::Relaxed);
+        
+        let path = self.bfs_shortest_path(from, to).await?;
+        
+        let path_arc = Arc::new(path.clone());
+        self.path_cache.insert(cache_key, path_arc);
+        
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        Ok(path)
+    }
+    
+    async fn bfs_shortest_path(&self, from: NodeId, to: NodeId) -> Result<Option<Vec<NodeId>>> {
+        if from == to {
+            return Ok(Some(vec![from]));
+        }
+        
         let mut queue = VecDeque::new();
-        let mut visited = std::collections::HashSet::new();
-        let mut parent: HashMap<NodeId, NodeId> = HashMap::new();
-
+        let mut visited = HashSet::with_capacity(1000);
+        let mut parent: HashMap<NodeId, NodeId> = HashMap::with_capacity(1000);
+        
         queue.push_back(from);
         visited.insert(from);
-
+        
         while let Some(current) = queue.pop_front() {
             if current == to {
                 let mut path = Vec::new();
                 let mut node = to;
                 path.push(node);
-
+                
                 while let Some(&prev) = parent.get(&node) {
                     path.push(prev);
                     node = prev;
                 }
-
+                
                 path.reverse();
                 return Ok(Some(path));
             }
-
+            
             let neighbors = self.get_neighbors(current).await?;
             for neighbor in neighbors {
                 if !visited.contains(&neighbor) {
                     visited.insert(neighbor);
                     parent.insert(neighbor, current);
                     queue.push_back(neighbor);
+                    
+                    if visited.len() > 100_000 {
+                        return Ok(None);
+                    }
                 }
             }
         }
-
+        
         Ok(None)
     }
+    
+    pub fn get_query_stats(&self) -> QueryStatsSnapshot {
+        let stats = self.query_stats.read();
+        QueryStatsSnapshot {
+            node_queries: stats.node_queries.load(Ordering::Relaxed),
+            edge_queries: stats.edge_queries.load(Ordering::Relaxed),
+            cache_hits: stats.cache_hits.load(Ordering::Relaxed),
+            cache_misses: stats.cache_misses.load(Ordering::Relaxed),
+            avg_query_time_ns: stats.avg_query_time_ns.load(Ordering::Relaxed),
+            cache_size: self.node_cache.len() + self.edge_cache.len() + self.path_cache.len(),
+        }
+    }
+    
+    pub fn clear_caches(&self) {
+        self.node_cache.clear();
+        self.edge_cache.clear();
+        self.path_cache.clear();
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct QueryStatsSnapshot {
+    pub node_queries: u64,
+    pub edge_queries: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub avg_query_time_ns: u64,
+    pub cache_size: usize,
 }
 
 #[async_trait]
 impl GraphStore for CodeGraph {
     async fn add_node(&mut self, node: CodeNode) -> Result<()> {
+        let start = Instant::now();
         let id = node.id;
-        self.storage.add_node(node.clone()).await?;
-        self.node_cache.insert(id, node);
+        
+        let mut storage_clone = (*self.storage).clone();
+        storage_clone.add_node(node.clone()).await?;
+        
+        let node_arc = Arc::new(node);
+        self.node_cache.insert(id, node_arc);
+        
+        self.query_stats.read().node_queries.fetch_add(1, Ordering::Relaxed);
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        
         Ok(())
     }
-
+    
     async fn get_node(&self, id: NodeId) -> Result<Option<CodeNode>> {
-        if let Some(node) = self.node_cache.get(&id) {
-            Ok(Some(node.clone()))
-        } else {
-            let node = self.storage.get_node(id).await?;
-            if let Some(ref n) = node {
-                self.node_cache.insert(id, n.clone());
-            }
-            Ok(node)
+        let start = Instant::now();
+        
+        if let Some(cached) = self.node_cache.get(&id) {
+            self.query_stats.read().cache_hits.fetch_add(1, Ordering::Relaxed);
+            self.record_query_time(start.elapsed().as_nanos() as u64);
+            return Ok(Some(cached.as_ref().clone()));
         }
+        
+        self.query_stats.read().cache_misses.fetch_add(1, Ordering::Relaxed);
+        let node = self.storage.get_node(id).await?;
+        
+        if let Some(ref n) = node {
+            let node_arc = Arc::new(n.clone());
+            self.node_cache.insert(id, node_arc);
+        }
+        
+        self.query_stats.read().node_queries.fetch_add(1, Ordering::Relaxed);
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        
+        Ok(node)
     }
-
+    
     async fn update_node(&mut self, node: CodeNode) -> Result<()> {
-        let id = node.id;
-        self.storage.update_node(node.clone()).await?;
-        self.node_cache.insert(id, node);
-        Ok(())
+        self.add_node(node).await
     }
-
+    
     async fn remove_node(&mut self, id: NodeId) -> Result<()> {
-        self.storage.remove_node(id).await?;
+        let start = Instant::now();
+        
+        let mut storage_clone = (*self.storage).clone();
+        storage_clone.remove_node(id).await?;
+        
         self.node_cache.remove(&id);
         self.edge_cache.remove(&id);
+        self.path_cache.clear();
+        
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        
         Ok(())
     }
-
+    
     async fn find_nodes_by_name(&self, name: &str) -> Result<Vec<CodeNode>> {
-        self.storage.find_nodes_by_name(name).await
+        let start = Instant::now();
+        
+        let nodes = self.storage.find_nodes_by_name(name).await?;
+        
+        for node in &nodes {
+            let node_arc = Arc::new(node.clone());
+            self.node_cache.insert(node.id, node_arc);
+        }
+        
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        
+        Ok(nodes)
     }
 }

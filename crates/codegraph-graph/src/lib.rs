@@ -1,7 +1,23 @@
 pub mod edge;
 pub mod graph;
 pub mod storage;
+pub mod traversal;
+pub mod cache;
+pub mod versioned_storage;
+pub mod transactional_graph;
+pub mod git_like_versioning;
+pub mod recovery;
+pub mod delta;
+pub mod incremental;
 
 pub use edge::*;
 pub use graph::*;
 pub use storage::*;
+pub use traversal::*;
+pub use cache::*;
+pub use versioned_storage::*;
+pub use transactional_graph::*;
+pub use git_like_versioning::*;
+pub use recovery::*;
+pub use delta::*;
+pub use incremental::*;

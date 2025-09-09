@@ -12,6 +12,8 @@ pub enum Language {
     JavaScript,
     Python,
     Go,
+    Java,
+    Cpp,
     Other(String),
 }
 

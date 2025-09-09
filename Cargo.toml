@@ -56,6 +56,12 @@ dashmap = "6.0"
 parking_lot = "0.12"
 tokio-util = "0.7"
 
+# File system monitoring and diff processing
+notify = "6.1"
+similar = "2.4"
+memmap2 = "0.9"
+flate2 = "1.0"
+
 # Tree-sitter for parsing
 tree-sitter = "0.25"
 tree-sitter-rust = "0.24"
@@ -63,6 +69,8 @@ tree-sitter-python = "0.23"
 tree-sitter-javascript = "0.25"
 tree-sitter-typescript = "0.23"
 tree-sitter-go = "0.23"
+tree-sitter-java = "0.23"
+tree-sitter-cpp = "0.23"
 
 # GraphQL
 async-graphql = "7.0"
@@ -94,6 +102,7 @@ tokio-test = "0.4"
 tempfile = "3.8"
 approx = "0.5"
 criterion = { version = "0.5", features = ["html_reports"] }
+fastrand = "2.0"
 
 [profile.release]
 opt-level = 3

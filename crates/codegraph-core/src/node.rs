@@ -5,19 +5,20 @@ use serde::{Deserialize, Serialize};
 pub struct CodeNode {
     pub id: NodeId,
     pub name: String,
-    pub node_type: NodeType,
-    pub language: Language,
+    pub node_type: Option<NodeType>,
+    pub language: Option<Language>,
     pub location: Location,
     pub content: Option<String>,
     pub metadata: Metadata,
     pub embedding: Option<Vec<f32>>,
+    pub complexity: Option<f32>,
 }
 
 impl CodeNode {
     pub fn new(
         name: String,
-        node_type: NodeType,
-        language: Language,
+        node_type: Option<NodeType>,
+        language: Option<Language>,
         location: Location,
     ) -> Self {
         let now = chrono::Utc::now();
@@ -34,6 +35,7 @@ impl CodeNode {
                 updated_at: now,
             },
             embedding: None,
+            complexity: None,
         }
     }
 
@@ -44,6 +46,11 @@ impl CodeNode {
 
     pub fn with_embedding(mut self, embedding: Vec<f32>) -> Self {
         self.embedding = Some(embedding);
+        self
+    }
+
+    pub fn with_complexity(mut self, complexity: f32) -> Self {
+        self.complexity = Some(complexity);
         self
     }
 }
