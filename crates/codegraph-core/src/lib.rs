@@ -7,6 +7,8 @@ pub mod shared;
 pub mod arena;
 pub mod buffer_pool;
 pub mod optimized_types;
+pub mod performance_monitor;
+pub mod optimization_coordinator;
 
 pub use error::*;
 pub use node::*;
@@ -17,3 +19,5 @@ pub use shared::*;
 pub use arena::*;
 pub use buffer_pool::*;
 pub use optimized_types::*;
+pub use performance_monitor::*;
+pub use optimization_coordinator::*;

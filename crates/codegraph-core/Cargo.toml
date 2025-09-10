@@ -17,6 +17,9 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+num_cpus = { workspace = true }
 
 # Zero-copy and serialization support
 bytes = "1.6"

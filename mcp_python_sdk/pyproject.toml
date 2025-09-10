@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-sdk"
+version = "0.0.1"
+authors = [
+  { name="Gemini", email="gemini@google.com" },
+]
+description = "Python client SDK for the Meta-Cognitive Protocol (MCP)"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/example/mcp-python-sdk"
+"Bug Tracker" = "https://github.com/example/mcp-python-sdk/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "websockets",
+]

@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>CodeGraph MCP SDK Browser Demo</title>
+  </head>
+  <body>
+    <pre id="out"></pre>
+    <script type="module">
+      import MCPClient from '../sdk/src/client/MCPClient.js';
+      const out = document.getElementById('out');
+      const log = (x) => out.textContent += `\n${typeof x === 'string' ? x : JSON.stringify(x, null, 2)}`;
+
+      const client = new MCPClient({ url: 'ws://localhost:3001', agent: { agentId: '00000000-0000-0000-0000-00000000b01' } });
+      client.on('open', () => log('connected'));
+      client.on('session', ({ sessionId }) => log({ sessionId }));
+      client.on('error', (e) => log(`error: ${e.message}`));
+
+      await client.handshake();
+      log(`latency: ${await client.ping()}ms`);
+
+      const res = await client.call({ method: 'codegraph/task/distribute', params: {
+        taskId: 'browser-demo',
+        targetAgents: [],
+        payload: { type: 'noop', data: {} }
+      }});
+      log(res);
+      await client.close();
+    </script>
+  </body>
+  </html>
+

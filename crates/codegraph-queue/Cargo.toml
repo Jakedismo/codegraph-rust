@@ -1,0 +1,25 @@
+
+[package]
+name = "codegraph-queue"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+tokio-stream = "0.1"
+futures = { workspace = true }
+priority-queue = "1.3.1"
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+metrics = "0.22.0"
+
+codegraph-core = { path = "../codegraph-core" }
+codegraph-concurrent = { path = "../codegraph-concurrent" }
+
+[dev-dependencies]
+tokio-test = { workspace = true }

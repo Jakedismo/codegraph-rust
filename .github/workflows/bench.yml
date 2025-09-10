@@ -1,0 +1,45 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: "Baseline name to save/compare"
+        required: false
+        default: "ci-baseline"
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run benches (no FAISS)
+        env:
+          BASELINE_NAME: ${{ github.event.inputs.baseline }}
+          ENABLE_FAISS_BENCH: "0"
+        run: |
+          make bench
+
+      - name: Generate report
+        run: |
+          make bench-report
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-reports
+          path: |
+            benchmarks/reports/**
+            benchmarks/artifacts/**
+          if-no-files-found: warn
+

@@ -1,0 +1,35 @@
+[package]
+name = "codegraph-mcp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Model Context Protocol implementation for CodeGraph"
+
+[dependencies]
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+url = { workspace = true }
+dashmap = { workspace = true }
+parking_lot = { workspace = true }
+tokio-util = { workspace = true }
+fastrand = { workspace = true }
+
+# Internal dependencies
+codegraph-core = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+tempfile = { workspace = true }
+
+[features]
+default = []

@@ -1,0 +1,20 @@
+Metadata-Version: 2.4
+Name: mcp-sdk
+Version: 0.0.1
+Summary: Python client SDK for the Meta-Cognitive Protocol (MCP)
+Author-email: Gemini <gemini@google.com>
+Project-URL: Homepage, https://github.com/example/mcp-python-sdk
+Project-URL: Bug Tracker, https://github.com/example/mcp-python-sdk/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-asyncio; extra == "dev"
+Requires-Dist: websockets; extra == "dev"
+
+# MCP Python SDK
+
+This is the Python client SDK for the Meta-Cognitive Protocol (MCP).

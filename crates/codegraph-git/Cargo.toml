@@ -1,0 +1,37 @@
+[package]
+name = "codegraph-git"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Git repository integration for CodeGraph using libgit2 and notify"
+
+[dependencies]
+git2 = { workspace = true }
+notify = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Optional, useful for history analysis
+rayon = { workspace = true }
+crossbeam-channel = { workspace = true }
+
+# Internal deps
+codegraph-core = { workspace = true }
+
+[features]
+default = ["watch"]
+watch = []
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio-test = { workspace = true }

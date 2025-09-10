@@ -1,0 +1,20 @@
+groups:
+- name: sync_alerts
+  rules:
+  - alert: SyncJobFailed
+    expr: sync_operations_total{status="failed"} > 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Sync job failed
+      description: The sync job has failed. Please investigate immediately.
+
+  - alert: SyncJobSlow
+    expr: histogram_quantile(0.95, sum(rate(sync_operation_duration_seconds_bucket[5m])) by (le)) > 3600
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: Sync job is running slow
+      description: The 95th percentile of sync job duration is over 1 hour.

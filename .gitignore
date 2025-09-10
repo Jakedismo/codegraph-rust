@@ -166,3 +166,6 @@ coverage/
 # Keep important config templates
 !config.example.toml
 !settings.template.toml
+
+# ouroboros
+.ouroboros/

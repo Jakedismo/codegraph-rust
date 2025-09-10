@@ -1,5 +1,6 @@
 use crate::edge::CodeEdge;
-use codegraph_core::{CodeNode, Language, Location, NodeType, EdgeType, NodeId};
+use codegraph_core::{CodeNode, Language, Location, NodeType, EdgeType, NodeId, SharedStr};
+use std::sync::Arc;
 use tree_sitter::{Node, TreeCursor};
 use std::collections::{HashMap, HashSet};
 
@@ -25,7 +26,7 @@ pub struct AstToGraphConverter {
     pub language: Language,
     pub file_path: String,
     pub source: String,
-    source_bytes: Vec<u8>,
+    source_bytes: Arc<[u8]>,
     pub entities: Vec<CodeEntity>,
     pub relationships: Vec<SemanticRelationship>,
     symbol_table: HashMap<String, NodeId>,
@@ -35,7 +36,7 @@ pub struct AstToGraphConverter {
 
 impl AstToGraphConverter {
     pub fn new(language: Language, file_path: String, source: String) -> Self {
-        let source_bytes = source.as_bytes().to_vec();
+        let source_bytes: Arc<[u8]> = Arc::from(source.clone().into_bytes().into_boxed_slice());
         Self {
             language,
             file_path,
@@ -139,7 +140,7 @@ impl AstToGraphConverter {
     }
 
     fn analyze_function_relationships(&mut self, entity: &CodeEntity) -> Result<(), Box<dyn std::error::Error>> {
-        let empty = String::new();
+        let empty = SharedStr::default();
         let content = entity.node.content.as_ref().unwrap_or(&empty);
         
         for other_entity in &self.entities {
@@ -172,7 +173,7 @@ impl AstToGraphConverter {
     }
 
     fn analyze_class_relationships(&mut self, entity: &CodeEntity) -> Result<(), Box<dyn std::error::Error>> {
-        let empty2 = String::new();
+        let empty2 = SharedStr::default();
         let content = entity.node.content.as_ref().unwrap_or(&empty2);
         
         if self.language == Language::Rust {
@@ -215,7 +216,7 @@ impl AstToGraphConverter {
     }
 
     fn analyze_import_relationships(&mut self, entity: &CodeEntity) -> Result<(), Box<dyn std::error::Error>> {
-        let empty3 = String::new();
+        let empty3 = SharedStr::default();
         let content = entity.node.content.as_ref().unwrap_or(&empty3);
         
         for other_entity in &self.entities {
@@ -240,10 +241,10 @@ impl AstToGraphConverter {
     }
 
     fn resolve_symbols(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut unresolved_references: Vec<(String, NodeId, String)> = Vec::new();
+        let mut unresolved_references: Vec<(String, NodeId, SharedStr)> = Vec::new();
         
         for entity in &self.entities {
-            let empty4 = String::new();
+            let empty4 = SharedStr::default();
             let content = entity.node.content.as_ref().unwrap_or(&empty4);
             
             for (symbol, node_id) in &self.symbol_table {
@@ -421,10 +422,10 @@ impl AstToGraphConverter {
         }
     }
 
-    fn node_text(&self, node: &Node) -> String {
-        node.utf8_text(&self.source_bytes)
-            .unwrap_or("")
-            .to_string()
+    fn node_text(&self, node: &Node) -> SharedStr {
+        let start = node.start_byte() as usize;
+        let end = node.end_byte() as usize;
+        SharedStr::from_arc_slice(self.source_bytes.clone(), start, end)
     }
 
     pub fn get_edges(&self) -> Vec<CodeEdge> {

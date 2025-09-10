@@ -8,14 +8,16 @@ members = [
     "crates/codegraph-queue",
     "crates/codegraph-git",
     "crates/codegraph-concurrent",
-    "crates/codegraph-graph"
+    "crates/codegraph-graph",
+    "crates/codegraph-zerocopy"
 ]
 default-members = [
     "crates/codegraph-core",
     "crates/codegraph-vector",
     "crates/codegraph-cache",
     "crates/codegraph-mcp",
-    "crates/codegraph-git"
+    "crates/codegraph-git",
+    "crates/codegraph-zerocopy"
 ]
 resolver = "2"
 
@@ -40,7 +42,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Zero-copy serialization
-rkyv = { version = "0.8", features = ["validation", "alloc", "std"] }
+rkyv = { version = "0.8", features = ["alloc", "std"] }
 bytecheck = "0.8"
 rend = "0.5"
 

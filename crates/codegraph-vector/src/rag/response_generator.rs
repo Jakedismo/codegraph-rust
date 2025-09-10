@@ -265,7 +265,7 @@ impl ResponseGenerator {
                     let snippet = if content.len() > 200 { 
                         format!("{}...", &content[..200])
                     } else {
-                        content.clone()
+                        content.to_string()
                     };
                     answer = answer.replace("{content}", &snippet);
                 }

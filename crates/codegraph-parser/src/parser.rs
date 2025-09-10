@@ -225,7 +225,7 @@ impl TreeSitterParser {
         let result = self.parse_file_internal(file_path).await;
         
         match &result {
-            Ok((nodes, _, content)) => {
+            Ok((_, _, content)) => {
                 // Cache successful parse
                 let language = self.registry.detect_language(file_path).unwrap_or(Language::Other("unknown".to_string()));
                 let content_hash = format!("{:x}", sha2::Sha256::digest(&content));
@@ -233,7 +233,7 @@ impl TreeSitterParser {
                 let parsed_file = ParsedFile {
                     file_path: file_path.to_string(),
                     language,
-                    content,
+                    content: content.clone(),
                     tree: None, // We'd need to clone the tree here for full caching
                     last_modified,
                     content_hash,

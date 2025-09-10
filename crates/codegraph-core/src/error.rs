@@ -61,6 +61,15 @@ pub enum CodeGraphError {
 
     #[error("Threading error: {0}")]
     Threading(String),
+
+    #[error("Concurrency error: {0}")]
+    Concurrency(String),
+
+    #[error("Compression error: {0}")]
+    Compression(String),
+
+    #[error("Memory pool error: {0}")]
+    MemoryPool(String),
 }
 
 pub type Result<T> = std::result::Result<T, CodeGraphError>;
