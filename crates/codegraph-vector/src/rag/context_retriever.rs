@@ -1,5 +1,5 @@
-use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result, Location, Metadata};
-use crate::{EmbeddingGenerator, SearchResult};
+use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
+use crate::EmbeddingGenerator;
 #[cfg(feature = "faiss")]
 use crate::SemanticSearch;
 use serde::{Deserialize, Serialize};

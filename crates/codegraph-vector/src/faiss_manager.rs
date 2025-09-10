@@ -4,10 +4,9 @@ use faiss::index::ConcurrentIndex;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Simplified FAISS index configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

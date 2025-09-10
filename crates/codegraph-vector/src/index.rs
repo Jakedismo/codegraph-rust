@@ -6,7 +6,6 @@ use faiss::index::IndexImpl;
 use serde::{Deserialize, Serialize};
 use parking_lot::RwLock;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 /// Configuration for different FAISS index types optimized for various use cases
@@ -123,7 +122,7 @@ impl IndexConfig {
             IndexType::IVF { nlist, nprobe } => {
                 format!("IVF{},Flat", nlist)
             },
-            IndexType::HNSW { m, ef_construction, .. } => {
+            IndexType::HNSW { m,  .. } => {
                 format!("HNSW{}", m)
             },
             IndexType::LSH { nbits } => {
@@ -363,7 +362,7 @@ impl FaissIndexManager {
         let overhead = match &self.config.index_type {
             IndexType::Flat => 0,
             IndexType::IVF { nlist, .. } => nlist * self.config.dimension * 4,
-            IndexType::HNSW { m, .. } => (index.ntotal() as usize * m * 8), // 8 bytes per link
+            IndexType::HNSW { m, .. } => index.ntotal() as usize * m * 8, // 8 bytes per link
             IndexType::LSH { nbits } => nbits / 8,
             IndexType::PQ { m, nbits } => {
                 let codebook_size = (1 << nbits) * m * 4;

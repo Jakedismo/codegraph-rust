@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result, VectorStore};
 use faiss::{Index, index::IndexImpl, MetricType};
 use faiss::index::ConcurrentIndex;
-use ndarray::Array1;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;

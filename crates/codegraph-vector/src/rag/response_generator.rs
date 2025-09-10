@@ -1,5 +1,5 @@
-use codegraph_core::{CodeGraphError, CodeNode, Result, Location, Metadata};
-use crate::rag::{RankedResult, RetrievalResult};
+use codegraph_core::Result;
+use crate::rag::RankedResult;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tracing::{debug, instrument};
