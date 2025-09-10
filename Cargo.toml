@@ -11,15 +11,14 @@ members = [
     "crates/codegraph-graph",
     "crates/codegraph-zerocopy",
     "crates/codegraph-lb",
-    "crates/codegraph-api"
+    "crates/codegraph-api",
+    "crates/core-rag-mcp-server"
 , "scripts"]
 default-members = [
     "crates/codegraph-core",
     "crates/codegraph-vector",
-    "crates/codegraph-cache",
     "crates/codegraph-mcp",
-    "crates/codegraph-git",
-    "crates/codegraph-zerocopy"
+    "crates/codegraph-git"
 ]
 resolver = "2"
 
@@ -79,7 +78,8 @@ faiss = "0.12"
 ndarray = "0.15"
 
 # OpenAI API client
-reqwest = { version = "0.12", features = ["json", "stream"] }
+# Minimize reqwest features for smaller binaries; prefer system TLS
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "native-tls"] }
 
 
 # Additional utilities
@@ -126,6 +126,9 @@ hyper = "1.0"
 http = "1.1"
 prometheus = { version = "0.13", features = ["process"] }
 
+# Memory leak detection and tracking (optional, feature-gated in binaries)
+memscope-rs = "0.1.4"
+
 # WebSocket support
 tokio-tungstenite = { version = "0.27", features = ["native-tls"] }
 url = "2.5"
@@ -138,6 +141,23 @@ once_cell = "1.19"
 
 # Configuration
 config = "0.14"
+schemars = "0.8"
+secrecy = { version = "0.8", features = ["serde"] }
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+base64 = "0.22"
+
+# Security
+jsonwebtoken = "9.3"
+argon2 = "0.5"
+
+# Testing
+tempfile = "3.8"
+tokio-test = "0.4"
+approx = "0.5"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Official MCP Rust SDK
+rmcp = { version = "0.6.0", features = ["server", "transport-io", "transport-streamable-http-server"] }
 
 # Internal crates
 codegraph-core = { path = "crates/codegraph-core" }
@@ -149,15 +169,14 @@ codegraph-api = { path = "crates/codegraph-api" }
 codegraph-mcp = { path = "crates/codegraph-mcp" }
 codegraph-git = { path = "crates/codegraph-git" }
 codegraph-zerocopy = { path = "crates/codegraph-zerocopy" }
+core-rag-mcp-server = { path = "crates/core-rag-mcp-server" }
+
 
 # Development dependencies
-tokio-test = "0.4"
-tempfile = "3.8"
-approx = "0.5"
-criterion = { version = "0.5", features = ["html_reports"] }
 
 
 [profile.release]
+# Performance-oriented release (kept as-is for general builds)
 opt-level = 3
 lto = "fat"
 codegen-units = 1
@@ -176,3 +195,14 @@ incremental = true
 [profile.test]
 opt-level = 1
 debug = true
+
+# Size-optimized release profile for smallest possible binaries
+[profile.release-size]
+inherits = "release"
+opt-level = "z"
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+strip = true
+debug = false
+overflow-checks = false

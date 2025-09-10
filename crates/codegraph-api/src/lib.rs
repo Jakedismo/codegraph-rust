@@ -3,7 +3,9 @@ pub mod error;
 pub mod event_bus;
 pub mod graphql;
 pub mod handlers;
+pub mod health;
 pub mod mutations;
+pub mod service_registry;
 pub mod queries;
 pub mod rate_limit;
 pub mod routes;
@@ -18,10 +20,13 @@ pub mod connection_pool;
 pub mod streaming_handlers;
 pub mod http2_optimizer;
 pub mod http2_handlers;
+pub mod leak_guard;
 #[cfg(feature = "lb")]
 pub mod lb_proxy;
 
 pub use handlers::*;
+pub use health::*;
+pub use service_registry::*;
 pub use vector_handlers::*;
 pub use versioning_handlers::*;
 pub use routes::*;

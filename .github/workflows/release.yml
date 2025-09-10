@@ -1,4 +1,4 @@
-name: Release
+name: Production Release Pipeline
 
 on:
   push:
@@ -10,9 +10,27 @@ on:
         description: 'Release version (e.g., v1.0.0)'
         required: true
         type: string
+      environment:
+        description: 'Target Environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      deployment_strategy:
+        description: 'Deployment Strategy'
+        required: true
+        default: 'rolling'
+        type: choice
+        options:
+          - rolling
+          - blue_green
+          - canary
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
   create-release:
@@ -73,22 +91,19 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            name: codegraph-linux-x86_64
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            name: codegraph-linux-x86_64-musl
+            name: codegraph-api-linux-x86_64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            name: codegraph-linux-aarch64
+            name: codegraph-api-linux-aarch64
           - target: x86_64-apple-darwin
             os: macos-latest
-            name: codegraph-macos-x86_64
+            name: codegraph-api-macos-x86_64
           - target: aarch64-apple-darwin
             os: macos-latest
-            name: codegraph-macos-aarch64
+            name: codegraph-api-macos-aarch64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            name: codegraph-windows-x86_64.exe
+            name: codegraph-api-windows-x86_64.exe
 
     steps:
     - name: Checkout code
@@ -135,17 +150,38 @@ jobs:
         echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
         echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
 
+    - name: Set platform-specific optimization flags
+      shell: bash
+      run: |
+        case "${{ matrix.target }}" in
+          x86_64-unknown-linux-gnu|x86_64-unknown-linux-musl|x86_64-apple-darwin|x86_64-pc-windows-msvc)
+            echo "RUSTFLAGS=-C target-cpu=x86-64-v2" >> $GITHUB_ENV
+            ;;
+          *)
+            echo "RUSTFLAGS=" >> $GITHUB_ENV
+            ;;
+        esac
+
     - name: Build release binary
       run: |
         cargo build --release --target ${{ matrix.target }} --workspace
-        
+    
+    - name: Verify binary (--version)
+      shell: bash
+      run: |
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          target\\${{ matrix.target }}\\release\\codegraph-api.exe --version
+        else
+          target/${{ matrix.target }}/release/codegraph-api --version
+        fi
+
     - name: Prepare release asset
       shell: bash
       run: |
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          cp target/${{ matrix.target }}/release/codegraph.exe ${{ matrix.name }}
+          cp target/${{ matrix.target }}/release/codegraph-api.exe ${{ matrix.name }}
         else
-          cp target/${{ matrix.target }}/release/codegraph ${{ matrix.name }}
+          cp target/${{ matrix.target }}/release/codegraph-api ${{ matrix.name }}
         fi
         
         # Create compressed archive
@@ -157,6 +193,9 @@ jobs:
           echo "ASSET=${{ matrix.name }}.tar.gz" >> $GITHUB_ENV
         fi
 
+        # Create checksum
+        (shasum -a 256 "$ASSET" > "$ASSET.sha256") || (sha256sum "$ASSET" > "$ASSET.sha256")
+
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
       env:
@@ -166,6 +205,16 @@ jobs:
         asset_path: ${{ env.ASSET }}
         asset_name: ${{ env.ASSET }}
         asset_content_type: application/octet-stream
+
+    - name: Upload Checksum
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ${{ env.ASSET }}.sha256
+        asset_name: ${{ env.ASSET }}.sha256
+        asset_content_type: text/plain
 
   build-docker:
     name: Build Docker Images
@@ -201,7 +250,7 @@ jobs:
             && rm -rf /var/lib/apt/lists/*
 
         # Build the application
-        RUN cargo build --release --workspace
+        RUN cargo build --release --package codegraph-api
 
         # Production stage
         FROM debian:bookworm-slim
@@ -216,16 +265,16 @@ jobs:
         RUN useradd -r -s /bin/false codegraph
 
         # Copy the binary from builder stage
-        COPY --from=builder /app/target/release/codegraph /usr/local/bin/codegraph
+        COPY --from=builder /app/target/release/codegraph-api /usr/local/bin/codegraph-api
 
         # Set ownership and permissions
-        RUN chown root:root /usr/local/bin/codegraph && \
-            chmod 755 /usr/local/bin/codegraph
+        RUN chown root:root /usr/local/bin/codegraph-api && \
+            chmod 755 /usr/local/bin/codegraph-api
 
         USER codegraph
         EXPOSE 8080
 
-        CMD ["codegraph"]
+        CMD ["codegraph-api"]
         EOF
 
     - name: Build and push Docker image

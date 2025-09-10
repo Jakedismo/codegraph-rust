@@ -13,3 +13,12 @@ literal-representation-threshold = 10
 trivially-copy-pass-by-ref-size-limit = 256
 avoid-breaking-exported-api = false
 suppress-restriction-lint-in-const = false
+disallowed-methods = [
+    "std::mem::forget",
+    "std::boxed::Box::leak",
+]
+disallowed-types = [
+    # Avoid raw pointers where safe abstractions exist
+    "*const _",
+    "*mut _",
+]

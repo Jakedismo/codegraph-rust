@@ -3,6 +3,8 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
 use std::time::{SystemTime, Duration, Instant};
 use std::thread;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::alloc::{GlobalAlloc, Layout, System};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
@@ -10,7 +12,7 @@ use tracing::{debug, warn, info, error};
 use tokio::sync::mpsc;
 
 use crate::memory::{MemoryManager, MemoryPressure, OptimizationRecommendation};
-use crate::cache_optimized::{PaddedAtomicUsize, CACHE_LINE_SIZE};
+use crate::cache_optimized::PaddedAtomicUsize;
 
 /// Global memory profiler instance
 pub static MEMORY_PROFILER: once_cell::sync::Lazy<Arc<MemoryProfiler>> = 

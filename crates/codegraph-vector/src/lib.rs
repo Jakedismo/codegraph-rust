@@ -16,6 +16,10 @@ pub mod local_provider;
 pub mod store;
 #[cfg(feature = "faiss")]
 pub mod faiss_manager;
+#[cfg(feature = "faiss")]
+pub mod index;
+#[cfg(feature = "faiss")]
+pub mod serde_utils;
 
 #[cfg(feature = "persistent")]
 pub mod storage;

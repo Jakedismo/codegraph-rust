@@ -1,0 +1,167 @@
+# ==============================================================================
+# Security-focused .dockerignore for CodeGraph
+# Prevents sensitive files and unnecessary content from being included
+# ==============================================================================
+
+# Version control
+.git
+.gitignore
+.gitattributes
+.gitmodules
+
+# Build artifacts and cache
+target/
+Cargo.lock
+.cargo/
+**/.DS_Store
+
+# Security sensitive files
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+*.der
+id_rsa*
+id_ed25519*
+id_ecdsa*
+.ssh/
+.gnupg/
+
+# Environment and configuration
+.env*
+.secrets
+config/local*
+config/development*
+*.local
+secrets/
+certs/private/
+
+# Development tools
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vim/
+
+# Documentation (unless needed)
+README.md
+CHANGELOG.md
+LICENSE*
+CONTRIBUTING.md
+docs/
+*.md
+
+# Test files
+tests/
+test/
+**/*_test.rs
+**/*_bench.rs
+benches/
+examples/
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+logs/
+temp/
+tmp/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Package manager files
+package-lock.json
+yarn.lock
+node_modules/
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+docker-compose.dev.yml
+docker-compose.test.yml
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/
+database/
+
+# Large binary files
+*.zip
+*.tar.gz
+*.tar.bz2
+*.rar
+*.7z
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-*
+.vim/
+.emacs.d/
+
+# Runtime files
+pid/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage reports
+coverage/
+.nyc_output/
+.coverage
+htmlcov/
+
+# Dependency directories
+vendor/
+bower_components/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Docker-related files we don't need in the image
+Dockerfile*
+docker-compose*.yml
+.dockerignore*
+docker-security.yaml
+
+# Performance profiling
+*.prof
+*.pprof
+flamegraph.svg
+
+# Core dumps
+core
+core.*
+vgcore.*
+
+# Memory analysis
+*.hprof
+*.out
+
+# Backup files
+*.backup
+*.old
+*.orig

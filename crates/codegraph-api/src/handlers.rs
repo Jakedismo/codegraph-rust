@@ -643,3 +643,73 @@ pub async fn metrics_handler() -> (StatusCode, String) {
     };
     (StatusCode::OK, res)
 }
+
+// -------- Memory Leak Detection & Reporting (feature-gated) --------
+
+#[cfg(feature = "leak-detect")]
+#[derive(Serialize)]
+pub struct MemoryStatsResponse {
+    pub total_allocations: usize,
+    pub total_deallocations: usize,
+    pub active_allocations: usize,
+    pub active_memory_bytes: usize,
+    pub peak_memory_bytes: usize,
+    pub leaked_allocations: usize,
+    pub leaked_memory_bytes: usize,
+}
+
+#[cfg(feature = "leak-detect")]
+pub async fn memory_stats() -> ApiResult<Json<MemoryStatsResponse>> {
+    let tracker = memscope_rs::get_global_tracker();
+    let stats = tracker.get_stats().map_err(|e| ApiError::Internal(e.to_string()))?;
+    Ok(Json(MemoryStatsResponse {
+        total_allocations: stats.total_allocations,
+        total_deallocations: stats.total_deallocations,
+        active_allocations: stats.active_allocations,
+        active_memory_bytes: stats.active_memory,
+        peak_memory_bytes: stats.peak_memory,
+        leaked_allocations: stats.leaked_allocations,
+        leaked_memory_bytes: stats.leaked_memory,
+    }))
+}
+
+#[cfg(feature = "leak-detect")]
+#[derive(Serialize)]
+pub struct LeakExportResponse {
+    pub exported: bool,
+    pub path: String,
+    pub active_allocations: usize,
+    pub active_memory_bytes: usize,
+    pub note: String,
+}
+
+#[cfg(feature = "leak-detect")]
+pub async fn export_leak_report() -> ApiResult<Json<LeakExportResponse>> {
+    use std::fs;
+    use std::path::PathBuf;
+
+    let tracker = memscope_rs::get_global_tracker();
+    let stats = tracker.get_stats().map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    // Prepare output directory under target/memory_reports by default
+    let mut out_dir = PathBuf::from(std::env::var("MEMREPORT_DIR").unwrap_or_else(|_| "target/memory_reports".into()));
+    if let Err(e) = fs::create_dir_all(&out_dir) {
+        return Err(ApiError::Internal(format!("Failed to create report dir: {}", e)));
+    }
+
+    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    out_dir.push(format!("leak_report_{}.json", ts));
+    let out_path = out_dir;
+
+    tracker
+        .export_to_json(&out_path)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    Ok(Json(LeakExportResponse {
+        exported: true,
+        path: out_path.to_string_lossy().to_string(),
+        active_allocations: stats.active_allocations,
+        active_memory_bytes: stats.active_memory,
+        note: "Import JSON into memscope-rs tools for deep analysis or view raw".into(),
+    }))
+}

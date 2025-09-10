@@ -1,0 +1,120 @@
+# ==============================================================================
+# CodeGraph Multi-Stage Docker Build
+# Optimized for: Minimal Size, Security Hardening, Performance
+# ==============================================================================
+
+# Build stage - Full Rust environment with build tools
+FROM rust:1.75-slim AS chef
+RUN cargo install cargo-chef
+WORKDIR /app
+
+# Dependency planning stage - Creates recipe for dependency caching
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Dependencies build stage - Builds dependencies separately for optimal caching
+FROM chef AS dependencies
+COPY --from=planner /app/recipe.json recipe.json
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    pkg-config \
+    libssl-dev \
+    libclang-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Application build stage - Builds only the application code
+FROM chef AS builder
+COPY . .
+COPY --from=dependencies /app/target target
+COPY --from=dependencies /usr/local/cargo /usr/local/cargo
+
+# Build the application with optimizations
+RUN cargo build --release --bin codegraph-api \
+    && strip target/release/codegraph-api \
+    && ldd target/release/codegraph-api
+
+# ==============================================================================
+# Security-hardened runtime stage using distroless
+# ==============================================================================
+FROM gcr.io/distroless/cc-debian12:latest AS runtime
+
+# Add labels for metadata
+LABEL maintainer="CodeGraph Team"
+LABEL version="1.0.0"
+LABEL description="CodeGraph API - High-performance code intelligence system"
+LABEL org.opencontainers.image.source="https://github.com/codegraph/embedding-system"
+LABEL org.opencontainers.image.licenses="MIT OR Apache-2.0"
+
+# Copy CA certificates for HTTPS
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Copy the statically linked binary
+COPY --from=builder /app/target/release/codegraph-api /codegraph-api
+
+# Create non-root user (distroless includes nonroot user)
+USER nonroot:nonroot
+
+# Set working directory
+WORKDIR /app
+
+# Expose port
+EXPOSE 3000
+
+# Set environment variables
+ENV RUST_LOG=info
+ENV RUST_BACKTRACE=1
+
+# Run the binary
+ENTRYPOINT ["/codegraph-api"]
+
+# ==============================================================================
+# Development stage with debugging tools (optional target)
+# ==============================================================================
+FROM debian:bookworm-slim AS development
+
+# Install runtime and debugging tools
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    curl \
+    htop \
+    strace \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create app user
+RUN useradd -r -s /bin/false -u 1001 codegraph
+
+# Copy binary from builder
+COPY --from=builder /app/target/release/codegraph-api /usr/local/bin/codegraph-api
+
+# Set permissions
+RUN chown codegraph:codegraph /usr/local/bin/codegraph-api \
+    && chmod +x /usr/local/bin/codegraph-api
+
+# Create data directory
+RUN mkdir -p /app/data && chown -R codegraph:codegraph /app
+
+# Switch to non-root user
+USER codegraph
+
+# Set working directory
+WORKDIR /app
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+# Set environment variables
+ENV RUST_LOG=debug
+ENV RUST_BACKTRACE=full
+
+# Run the binary
+CMD ["codegraph-api"]

@@ -1,0 +1,406 @@
+# ==============================================================================
+# CodeGraph Production Docker Compose
+# Optimized for: High Performance, Security, Observability
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  # ==============================================================================
+  # CodeGraph API Service - Main application
+  # ==============================================================================
+  codegraph-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+      target: runtime
+      args:
+        RUST_VERSION: 1.75
+      cache_from:
+        - codegraph/api:cache
+    image: codegraph/api:latest
+    container_name: codegraph-api
+    hostname: codegraph-api
+    
+    # Resource constraints
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+    
+    # Security configuration
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:docker-default
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    user: "65534:65534"
+    
+    # Environment configuration
+    environment:
+      RUST_LOG: info
+      RUST_BACKTRACE: 1
+      TOKIO_WORKER_THREADS: 4
+      ROCKSDB_PATH: /app/data/rocksdb
+      FAISS_INDEX_PATH: /app/data/faiss
+      EMBEDDING_MODEL_PATH: /app/models
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 3000
+      METRICS_PORT: 9090
+    
+    # Port mapping
+    ports:
+      - "3000:3000"   # API port
+      - "9090:9090"   # Metrics port
+    
+    # Volume mounts
+    volumes:
+      - codegraph_data:/app/data:rw
+      - codegraph_models:/app/models:ro
+      - codegraph_logs:/app/logs:rw
+      - /tmp:/tmp:rw,noexec,nosuid
+    
+    # Temporary filesystems
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /var/tmp:noexec,nosuid,size=50m
+    
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    # Dependencies
+    depends_on:
+      redis:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+    
+    # Network configuration
+    networks:
+      - codegraph_network
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+        labels: "service=codegraph-api"
+
+  # ==============================================================================
+  # Redis Cache Service
+  # ==============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: codegraph-redis
+    hostname: codegraph-redis
+    
+    # Resource constraints
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Security configuration
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    user: "999:999"
+    
+    # Redis configuration
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --loglevel notice
+      --tcp-keepalive 60
+      --timeout 300
+    
+    # Port mapping (internal only)
+    expose:
+      - "6379"
+    
+    # Volume mounts
+    volumes:
+      - redis_data:/data:rw
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    
+    # Network configuration
+    networks:
+      - codegraph_network
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "2"
+
+  # ==============================================================================
+  # Prometheus Monitoring Service
+  # ==============================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: codegraph-prometheus
+    hostname: codegraph-prometheus
+    
+    # Resource constraints
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Security configuration
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    user: "65534:65534"
+    
+    # Configuration
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+      - '--log.level=info'
+    
+    # Port mapping
+    ports:
+      - "9091:9090"
+    
+    # Volume mounts
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus:rw
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    # Network configuration
+    networks:
+      - codegraph_network
+
+  # ==============================================================================
+  # Grafana Visualization Service
+  # ==============================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: codegraph-grafana
+    hostname: codegraph-grafana
+    
+    # Resource constraints
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    
+    # Security configuration
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "472:472"
+    
+    # Environment configuration
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin123}
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    
+    # Port mapping
+    ports:
+      - "3001:3000"
+    
+    # Volume mounts
+    volumes:
+      - grafana_data:/var/lib/grafana:rw
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    
+    # Dependencies
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    
+    # Network configuration
+    networks:
+      - codegraph_network
+
+  # ==============================================================================
+  # NGINX Reverse Proxy
+  # ==============================================================================
+  nginx:
+    image: nginxinc/nginx-unprivileged:alpine
+    container_name: codegraph-nginx
+    hostname: codegraph-nginx
+    
+    # Resource constraints
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+    
+    # Security configuration
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    user: "101:101"
+    
+    # Port mapping
+    ports:
+      - "80:8080"
+      - "443:8443"
+    
+    # Volume mounts
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_cache:/var/cache/nginx:rw
+      - nginx_logs:/var/log/nginx:rw
+    
+    # Temporary filesystems
+    tmpfs:
+      - /tmp:noexec,nosuid,size=10m
+      - /var/run:noexec,nosuid,size=10m
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    # Dependencies
+    depends_on:
+      codegraph-api:
+        condition: service_healthy
+    
+    # Network configuration
+    networks:
+      - codegraph_network
+
+# ==============================================================================
+# Network Configuration
+# ==============================================================================
+networks:
+  codegraph_network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: codegraph0
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+
+# ==============================================================================
+# Volume Configuration
+# ==============================================================================
+volumes:
+  # Application data volumes
+  codegraph_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data
+  
+  codegraph_models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./models
+  
+  codegraph_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./logs
+  
+  # Cache and temporary volumes
+  redis_data:
+    driver: local
+  
+  nginx_cache:
+    driver: local
+  
+  nginx_logs:
+    driver: local
+  
+  # Monitoring volumes
+  prometheus_data:
+    driver: local
+  
+  grafana_data:
+    driver: local
+
+# ==============================================================================
+# Secrets Configuration
+# ==============================================================================
+secrets:
+  api_key:
+    file: ./secrets/api_key.txt
+  
+  db_password:
+    file: ./secrets/db_password.txt
+  
+  ssl_cert:
+    file: ./secrets/ssl_cert.pem
+  
+  ssl_key:
+    file: ./secrets/ssl_key.pem

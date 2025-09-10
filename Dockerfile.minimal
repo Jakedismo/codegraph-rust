@@ -1,0 +1,46 @@
+# ==============================================================================
+# CodeGraph Ultra-Minimal Docker Build
+# Target: Smallest possible image size using static linking
+# ==============================================================================
+
+# Build stage - Static compilation with musl
+FROM clux/muslrust:stable AS builder
+
+# Install additional dependencies for static linking
+RUN apt-get update && apt-get install -y \
+    cmake \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy source code
+COPY . .
+
+# Build statically linked binary
+ENV RUSTFLAGS="-C target-cpu=native -C link-arg=-s"
+RUN cargo build --target x86_64-unknown-linux-musl --release --bin codegraph-api
+
+# Verify static linking
+RUN file target/x86_64-unknown-linux-musl/release/codegraph-api
+RUN ldd target/x86_64-unknown-linux-musl/release/codegraph-api || echo "Static binary confirmed"
+
+# ==============================================================================
+# Ultra-minimal runtime using scratch
+# ==============================================================================
+FROM scratch
+
+# Copy CA certificates for HTTPS
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+# Copy the static binary
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/codegraph-api /codegraph-api
+
+# Expose port
+EXPOSE 3000
+
+# Set user to non-root (scratch doesn't have users, but this sets the UID)
+USER 65534:65534
+
+# Run the binary
+ENTRYPOINT ["/codegraph-api"]

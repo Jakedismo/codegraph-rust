@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result, VectorStore};
 use faiss::{Index, index::IndexImpl, MetricType};
+use faiss::index::ConcurrentIndex;
 use ndarray::Array1;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -100,30 +101,20 @@ impl VectorStore for FaissVectorStore {
             )));
         }
 
-        let index_guard = self.index.read();
+        let mut index_guard = self.index.write();
         let index = index_guard
-            .as_ref()
+            .as_mut()
             .ok_or_else(|| CodeGraphError::Vector("Index not initialized".to_string()))?;
 
-        let results = tokio::task::spawn_blocking({
-            let query = query_embedding.to_vec();
-            let index_ptr = index as *const IndexImpl;
-            let limit = limit;
-            
-            move || unsafe {
-                let index_ref = &*index_ptr;
-                index_ref.search(&query, limit)
-            }
-        })
-        .await
-        .map_err(|e| CodeGraphError::Vector(e.to_string()))?
-        .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+        let results = index
+            .search(query_embedding, limit)
+            .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
 
         let id_mapping = self.id_mapping.read();
         let node_ids: Vec<NodeId> = results
             .labels
             .into_iter()
-            .filter_map(|faiss_id| id_mapping.get(&faiss_id).cloned())
+            .filter_map(|faiss_id| faiss_id.get().and_then(|v| id_mapping.get(&((v as i64))).cloned()))
             .collect();
 
         Ok(node_ids)

@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeGraph Architecture Interactive Report</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.2rem;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            padding: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .nav-tab {
+            flex: 1;
+            padding: 15px 20px;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .nav-tab:hover {
+            background: rgba(102, 126, 234, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .nav-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .tab-content {
+            display: none;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .component-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .component-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            border-left: 5px solid #667eea;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .component-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+
+        .component-card.critical {
+            border-left-color: #e74c3c;
+        }
+
+        .component-card.moderate {
+            border-left-color: #f39c12;
+        }
+
+        .component-card.simple {
+            border-left-color: #27ae60;
+        }
+
+        .component-title {
+            font-weight: 700;
+            font-size: 1.3rem;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .component-description {
+            color: #7f8c8d;
+            margin-bottom: 15px;
+        }
+
+        .component-metrics {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .metric {
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .metric.deps {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .metric.complexity {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .metric.performance {
+            background: #e8f5e8;
+            color: #388e3c;
+        }
+
+        .diagram-container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .diagram-title {
+            font-weight: 700;
+            font-size: 1.4rem;
+            color: #2c3e50;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .mermaid {
+            text-align: center;
+        }
+
+        .performance-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .performance-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+        }
+
+        .performance-card:hover {
+            transform: scale(1.05);
+        }
+
+        .performance-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .performance-label {
+            color: #7f8c8d;
+            font-weight: 600;
+        }
+
+        .toggle-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-section:hover {
+            background: #e9ecef;
+        }
+
+        .toggle-header {
+            display: flex;
+            align-items: center;
+            justify-content: between;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .toggle-content {
+            display: none;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .toggle-content.active {
+            display: block;
+        }
+
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 20px;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 12px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            font-size: 1rem;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .highlight {
+            background-color: #fff3cd;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        @media (max-width: 768px) {
+            .nav-tabs {
+                flex-direction: column;
+            }
+            
+            .component-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .legend {
+                justify-content: center;
+            }
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔗 CodeGraph Architecture</h1>
+            <p>Interactive Architecture Analysis & Documentation</p>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showTab('overview')">System Overview</button>
+            <button class="nav-tab" onclick="showTab('components')">Components</button>
+            <button class="nav-tab" onclick="showTab('dependencies')">Dependencies</button>
+            <button class="nav-tab" onclick="showTab('performance')">Performance</button>
+            <button class="nav-tab" onclick="showTab('deployment')">Deployment</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="overview" class="tab-content active">
+            <div class="diagram-container">
+                <div class="diagram-title">🏗️ High-Level Architecture</div>
+                <div class="mermaid">
+                    graph TB
+                        subgraph "Client Layer"
+                            WebUI[Web UI]
+                            CLI[CLI Client]
+                            SDK[SDK/API Clients]
+                        end
+                        
+                        subgraph "API Gateway"
+                            API[CodeGraph API<br/>Axum + GraphQL]
+                            Auth[Authentication<br/>JWT]
+                            RateLimit[Rate Limiting<br/>Governor]
+                        end
+                        
+                        subgraph "Core Services"
+                            Parser[Code Parser<br/>Tree-sitter]
+                            Vector[Vector Engine<br/>FAISS]
+                            Graph[Graph Store<br/>RocksDB]
+                            Cache[Cache Layer<br/>Memory Cache]
+                        end
+                        
+                        subgraph "Storage Layer"
+                            RocksDB[(RocksDB<br/>Graph Storage)]
+                            FAISS[(FAISS Index<br/>Vector Search)]
+                            MemCache[(Memory Cache<br/>Hot Data)]
+                        end
+                        
+                        WebUI --> API
+                        CLI --> API
+                        SDK --> API
+                        
+                        API --> Auth
+                        API --> RateLimit
+                        API --> Parser
+                        API --> Vector
+                        API --> Graph
+                        API --> Cache
+                        
+                        Vector --> FAISS
+                        Graph --> RocksDB
+                        Cache --> MemCache
+                        
+                        classDef client fill:#e1f5fe
+                        classDef api fill:#f3e5f5
+                        classDef core fill:#e8f5e8
+                        classDef storage fill:#fff3e0
+                        
+                        class WebUI,CLI,SDK client
+                        class API,Auth,RateLimit api
+                        class Parser,Vector,Graph,Cache core
+                        class RocksDB,FAISS,MemCache storage
+                </div>
+            </div>
+
+            <div class="performance-grid">
+                <div class="performance-card">
+                    <div class="performance-value">&lt;50ms</div>
+                    <div class="performance-label">Query Latency (p99)</div>
+                </div>
+                <div class="performance-card">
+                    <div class="performance-value">1000+</div>
+                    <div class="performance-label">Concurrent Queries</div>
+                </div>
+                <div class="performance-card">
+                    <div class="performance-value">50k+</div>
+                    <div class="performance-label">LOC/min Parsing</div>
+                </div>
+                <div class="performance-card">
+                    <div class="performance-value">12</div>
+                    <div class="performance-label">Crate Modules</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Components Tab -->
+        <div id="components" class="tab-content">
+            <input type="text" class="search-box" placeholder="Search components..." onkeyup="filterComponents(this.value)">
+            
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #27ae60;"></div>
+                    <span>Simple (0-2 deps)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #f39c12;"></div>
+                    <span>Moderate (3-5 deps)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #e74c3c;"></div>
+                    <span>Complex (6+ deps)</span>
+                </div>
+            </div>
+
+            <div class="component-grid" id="component-grid">
+                <div class="component-card simple" data-name="codegraph-core">
+                    <div class="component-title">🏗️ codegraph-core</div>
+                    <div class="component-description">Foundation types, traits, and shared functionality. No external dependencies.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">0 deps</span>
+                        <span class="metric complexity">Simple</span>
+                        <span class="metric performance">Stable</span>
+                    </div>
+                </div>
+
+                <div class="component-card simple" data-name="codegraph-zerocopy">
+                    <div class="component-title">⚡ codegraph-zerocopy</div>
+                    <div class="component-description">Zero-copy serialization utilities using rkyv for high-performance data handling.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">1 dep</span>
+                        <span class="metric complexity">Simple</span>
+                        <span class="metric performance">High</span>
+                    </div>
+                </div>
+
+                <div class="component-card moderate" data-name="codegraph-graph">
+                    <div class="component-title">🗄️ codegraph-graph</div>
+                    <div class="component-description">RocksDB-based graph storage with persistent data structures and efficient querying.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">2 deps</span>
+                        <span class="metric complexity">Moderate</span>
+                        <span class="metric performance">Medium</span>
+                    </div>
+                </div>
+
+                <div class="component-card moderate" data-name="codegraph-vector">
+                    <div class="component-title">🔍 codegraph-vector</div>
+                    <div class="component-description">FAISS integration for vector similarity search and embedding management.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">2 deps</span>
+                        <span class="metric complexity">Moderate</span>
+                        <span class="metric performance">High</span>
+                    </div>
+                </div>
+
+                <div class="component-card moderate" data-name="codegraph-cache">
+                    <div class="component-title">💾 codegraph-cache</div>
+                    <div class="component-description">Multi-level caching system with memory management and TTL policies.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">3 deps</span>
+                        <span class="metric complexity">Moderate</span>
+                        <span class="metric performance">Medium</span>
+                    </div>
+                </div>
+
+                <div class="component-card moderate" data-name="codegraph-parser">
+                    <div class="component-title">🌳 codegraph-parser</div>
+                    <div class="component-description">Tree-sitter based code parsing for multiple programming languages.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">1 dep</span>
+                        <span class="metric complexity">Moderate</span>
+                        <span class="metric performance">Medium</span>
+                    </div>
+                </div>
+
+                <div class="component-card moderate" data-name="codegraph-queue">
+                    <div class="component-title">📋 codegraph-queue</div>
+                    <div class="component-description">Async task queue management with backpressure and priority handling.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">1 dep</span>
+                        <span class="metric complexity">Moderate</span>
+                        <span class="metric performance">Medium</span>
+                    </div>
+                </div>
+
+                <div class="component-card simple" data-name="codegraph-git">
+                    <div class="component-title">🔗 codegraph-git</div>
+                    <div class="component-description">Git integration for repository scanning and version tracking.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">1 dep</span>
+                        <span class="metric complexity">Simple</span>
+                        <span class="metric performance">Low</span>
+                    </div>
+                </div>
+
+                <div class="component-card simple" data-name="codegraph-concurrent">
+                    <div class="component-title">🚀 codegraph-concurrent</div>
+                    <div class="component-description">Concurrency primitives and parallel processing utilities.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">1 dep</span>
+                        <span class="metric complexity">Simple</span>
+                        <span class="metric performance">High</span>
+                    </div>
+                </div>
+
+                <div class="component-card moderate" data-name="codegraph-mcp">
+                    <div class="component-title">🤖 codegraph-mcp</div>
+                    <div class="component-description">Model Context Protocol server for AI agent integration.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">4 deps</span>
+                        <span class="metric complexity">Moderate</span>
+                        <span class="metric performance">Medium</span>
+                    </div>
+                </div>
+
+                <div class="component-card critical" data-name="codegraph-api">
+                    <div class="component-title">🌐 codegraph-api</div>
+                    <div class="component-description">REST and GraphQL API server with comprehensive endpoint coverage.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">7 deps</span>
+                        <span class="metric complexity">Complex</span>
+                        <span class="metric performance">Critical</span>
+                    </div>
+                </div>
+
+                <div class="component-card moderate" data-name="codegraph-lb">
+                    <div class="component-title">⚖️ codegraph-lb</div>
+                    <div class="component-description">Load balancer for distributed deployments and traffic shaping.</div>
+                    <div class="component-metrics">
+                        <span class="metric deps">2 deps</span>
+                        <span class="metric complexity">Moderate</span>
+                        <span class="metric performance">Medium</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dependencies Tab -->
+        <div id="dependencies" class="tab-content">
+            <div class="diagram-container">
+                <div class="diagram-title">📦 Component Dependency Graph</div>
+                <div class="mermaid">
+                    graph LR
+                        subgraph "Foundation Layer"
+                            Core[codegraph-core<br/>Types & Traits]
+                            ZeroCopy[codegraph-zerocopy<br/>Serialization]
+                        end
+                        
+                        subgraph "Data Layer"
+                            Graph[codegraph-graph<br/>RocksDB Storage]
+                            Vector[codegraph-vector<br/>FAISS Integration]
+                            Cache[codegraph-cache<br/>Memory Management]
+                        end
+                        
+                        subgraph "Processing Layer"
+                            Parser[codegraph-parser<br/>Tree-sitter AST]
+                            Queue[codegraph-queue<br/>Task Processing]
+                            Git[codegraph-git<br/>Repository Handler]
+                            Concurrent[codegraph-concurrent<br/>Parallel Processing]
+                        end
+                        
+                        subgraph "Service Layer"
+                            API[codegraph-api<br/>REST + GraphQL]
+                            MCP[codegraph-mcp<br/>MCP Protocol]
+                            LB[codegraph-lb<br/>Load Balancer]
+                        end
+                        
+                        Graph --> Core
+                        Vector --> Core
+                        Cache --> Core
+                        Parser --> Core
+                        Queue --> Core
+                        Git --> Core
+                        Concurrent --> Core
+                        API --> Core
+                        MCP --> Core
+                        LB --> Core
+                        
+                        Graph --> ZeroCopy
+                        Vector --> ZeroCopy
+                        Cache --> ZeroCopy
+                        
+                        API --> Graph
+                        API --> Vector
+                        API --> Cache
+                        API --> Parser
+                        API --> Queue
+                        
+                        MCP --> Graph
+                        MCP --> Vector
+                        MCP --> Parser
+                        
+                        LB --> API
+                        
+                        classDef foundation fill:#e3f2fd
+                        classDef data fill:#e8f5e8
+                        classDef processing fill:#fff3e0
+                        classDef service fill:#f3e5f5
+                        
+                        class Core,ZeroCopy foundation
+                        class Graph,Vector,Cache data
+                        class Parser,Queue,Git,Concurrent processing
+                        class API,MCP,LB service
+                </div>
+            </div>
+
+            <div class="toggle-section" onclick="toggleSection('critical-paths')">
+                <div class="toggle-header">
+                    <span>🚨 Critical Dependency Paths</span>
+                    <span>▼</span>
+                </div>
+                <div id="critical-paths" class="toggle-content">
+                    <ul>
+                        <li><strong>Foundation Failure:</strong> core → ALL (foundation failure affects everything)</li>
+                        <li><strong>Service Failure:</strong> api → graph|vector|cache|parser (service failure affects core functionality)</li>
+                        <li><strong>Protocol Failure:</strong> mcp → graph|vector|parser (protocol failure affects integration)</li>
+                        <li><strong>Storage Failure:</strong> graph → vector (storage failure affects search)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="toggle-section" onclick="toggleSection('refactoring-priorities')">
+                <div class="toggle-header">
+                    <span>🔧 Refactoring Priorities</span>
+                    <span>▼</span>
+                </div>
+                <div id="refactoring-priorities" class="toggle-content">
+                    <ul>
+                        <li><strong>Very High:</strong> codegraph-api (API stability, 7 dependencies)</li>
+                        <li><strong>High:</strong> codegraph-parser (language support), codegraph-mcp (protocol evolution)</li>
+                        <li><strong>Medium:</strong> codegraph-graph (storage evolution), codegraph-vector (ML integration)</li>
+                        <li><strong>Low:</strong> codegraph-core (stable foundation), codegraph-zerocopy (isolated optimization)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Tab -->
+        <div id="performance" class="tab-content">
+            <div class="performance-grid">
+                <div class="performance-card">
+                    <div class="performance-value">&lt;50ms</div>
+                    <div class="performance-label">Query Latency (p99)</div>
+                </div>
+                <div class="performance-card">
+                    <div class="performance-value">1000+</div>
+                    <div class="performance-label">QPS Capacity</div>
+                </div>
+                <div class="performance-card">
+                    <div class="performance-value">&lt;500MB</div>
+                    <div class="performance-label">Memory Usage</div>
+                </div>
+                <div class="performance-card">
+                    <div class="performance-value">50k+</div>
+                    <div class="performance-label">LOC/min Parsing</div>
+                </div>
+                <div class="performance-card">
+                    <div class="performance-value">&lt;10ms</div>
+                    <div class="performance-label">Vector Search (p95)</div>
+                </div>
+                <div class="performance-card">
+                    <div class="performance-value">95%+</div>
+                    <div class="performance-label">Cache Hit Rate</div>
+                </div>
+            </div>
+
+            <div class="diagram-container">
+                <div class="diagram-title">⚡ Performance Optimization Layers</div>
+                <div class="mermaid">
+                    graph TD
+                        subgraph "Request Level"
+                            Compress[Response Compression<br/>Brotli, Gzip, Deflate]
+                            Stream[Streaming Responses<br/>Large Dataset Handling]
+                            Batch[Request Batching<br/>Multiple Operations]
+                        end
+                        
+                        subgraph "Application Level"
+                            MemPool[Memory Pooling<br/>Object Reuse]
+                            ZeroCopy[Zero-Copy Serialization<br/>rkyv Archives]
+                            Parallel[Parallel Processing<br/>rayon, crossbeam]
+                            Cache[Multi-Level Caching<br/>Hot Data Management]
+                        end
+                        
+                        subgraph "Database Level"
+                            RocksOpt[RocksDB Tuning<br/>Column Families, Bloom Filters]
+                            FAISSIdx[FAISS Index Optimization<br/>IVF, PQ Compression]
+                            MemMap[Memory Mapping<br/>Large File Handling]
+                            Bulk[Bulk Operations<br/>Batch Writes]
+                        end
+                        
+                        subgraph "System Level"
+                            Async[Async I/O<br/>Tokio Runtime]
+                            LockFree[Lock-Free Data Structures<br/>DashMap, Arc-Swap]
+                            NUMA[NUMA Awareness<br/>Thread Affinity]
+                            Profiling[Continuous Profiling<br/>Memory Leak Detection]
+                        end
+                        
+                        Compress --> MemPool
+                        Stream --> ZeroCopy
+                        Batch --> Parallel
+                        MemPool --> RocksOpt
+                        ZeroCopy --> FAISSIdx
+                        Parallel --> MemMap
+                        Cache --> Bulk
+                        RocksOpt --> Async
+                        FAISSIdx --> LockFree
+                        MemMap --> NUMA
+                        Bulk --> Profiling
+                        
+                        classDef request fill:#e3f2fd
+                        classDef app fill:#e8f5e8
+                        classDef db fill:#fff3e0
+                        classDef system fill:#f3e5f5
+                        
+                        class Compress,Stream,Batch request
+                        class MemPool,ZeroCopy,Parallel,Cache app
+                        class RocksOpt,FAISSIdx,MemMap,Bulk db
+                        class Async,LockFree,NUMA,Profiling system
+                </div>
+            </div>
+
+            <div class="toggle-section" onclick="toggleSection('bottlenecks')">
+                <div class="toggle-header">
+                    <span>🎯 Common Bottlenecks & Solutions</span>
+                    <span>▼</span>
+                </div>
+                <div id="bottlenecks" class="toggle-content">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div>
+                            <h4>Parser CPU Usage</h4>
+                            <ul>
+                                <li>Multi-threading with rayon</li>
+                                <li>File-level parallelism</li>
+                                <li>Incremental parsing</li>
+                                <li>Parser result caching</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4>Vector Search Latency</h4>
+                            <ul>
+                                <li>Index optimization (HNSW/PQ)</li>
+                                <li>Query batching</li>
+                                <li>Approximate search</li>
+                                <li>Multi-level caching</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4>Database I/O</h4>
+                            <ul>
+                                <li>SST file optimization</li>
+                                <li>Bloom filter tuning</li>
+                                <li>Background compaction threads</li>
+                                <li>Write buffer optimization</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4>Memory Pressure</h4>
+                            <ul>
+                                <li>Memory mapping for large files</li>
+                                <li>Lazy loading strategies</li>
+                                <li>Memory pool management</li>
+                                <li>Garbage collection tuning</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Deployment Tab -->
+        <div id="deployment" class="tab-content">
+            <div class="diagram-container">
+                <div class="diagram-title">☸️ Deployment Architecture</div>
+                <div class="mermaid">
+                    graph TB
+                        subgraph "Load Balancer Tier"
+                            LB[Load Balancer<br/>codegraph-lb]
+                            Health[Health Checks<br/>HTTP/TCP]
+                        end
+                        
+                        subgraph "Application Tier"
+                            API1[API Instance 1<br/>codegraph-api]
+                            API2[API Instance 2<br/>codegraph-api]
+                            API3[API Instance N<br/>codegraph-api]
+                        end
+                        
+                        subgraph "Processing Tier"
+                            Worker1[Worker Node 1<br/>Parser + Vector]
+                            Worker2[Worker Node 2<br/>Parser + Vector]
+                            Queue[Message Queue<br/>Redis/RabbitMQ]
+                        end
+                        
+                        subgraph "Storage Tier"
+                            RocksCluster[RocksDB Cluster<br/>Sharded Storage]
+                            FAISSCluster[FAISS Cluster<br/>Distributed Index]
+                            CacheCluster[Cache Cluster<br/>Redis/Memcached]
+                        end
+                        
+                        subgraph "Monitoring Tier"
+                            Prometheus[Prometheus<br/>Metrics Collection]
+                            Grafana[Grafana<br/>Visualization]
+                            Jaeger[Jaeger<br/>Distributed Tracing]
+                        end
+                        
+                        LB --> API1
+                        LB --> API2
+                        LB --> API3
+                        
+                        API1 --> Queue
+                        API2 --> Queue
+                        API3 --> Queue
+                        Queue --> Worker1
+                        Queue --> Worker2
+                        
+                        API1 --> RocksCluster
+                        API2 --> RocksCluster
+                        API3 --> RocksCluster
+                        Worker1 --> FAISSCluster
+                        Worker2 --> FAISSCluster
+                        API1 --> CacheCluster
+                        API2 --> CacheCluster
+                        API3 --> CacheCluster
+                        
+                        API1 --> Prometheus
+                        API2 --> Prometheus
+                        API3 --> Prometheus
+                        Prometheus --> Grafana
+                        API1 --> Jaeger
+                        
+                        classDef lb fill:#e3f2fd
+                        classDef app fill:#e8f5e8
+                        classDef processing fill:#fff3e0
+                        classDef storage fill:#f3e5f5
+                        classDef monitoring fill:#fce4ec
+                        
+                        class LB,Health lb
+                        class API1,API2,API3 app
+                        class Worker1,Worker2,Queue processing
+                        class RocksCluster,FAISSCluster,CacheCluster storage
+                        class Prometheus,Grafana,Jaeger monitoring
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <div class="toggle-section" onclick="toggleSection('development')">
+                    <div class="toggle-header">
+                        <span>🔧 Development Environment</span>
+                        <span>▼</span>
+                    </div>
+                    <div id="development" class="toggle-content">
+                        <ul>
+                            <li><strong>CPU:</strong> 4-8 cores</li>
+                            <li><strong>RAM:</strong> 8-16 GB</li>
+                            <li><strong>Storage:</strong> 100 GB SSD</li>
+                            <li><strong>QPS:</strong> 10-50</li>
+                            <li><strong>Latency:</strong> &lt; 100ms</li>
+                            <li><strong>Projects:</strong> 1-5</li>
+                            <li><strong>Users:</strong> 1-3</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="toggle-section" onclick="toggleSection('staging')">
+                    <div class="toggle-header">
+                        <span>🧪 Staging Environment</span>
+                        <span>▼</span>
+                    </div>
+                    <div id="staging" class="toggle-content">
+                        <ul>
+                            <li><strong>CPU:</strong> 8-16 cores</li>
+                            <li><strong>RAM:</strong> 32-64 GB</li>
+                            <li><strong>Storage:</strong> 500 GB NVMe</li>
+                            <li><strong>QPS:</strong> 100-500</li>
+                            <li><strong>Latency:</strong> &lt; 75ms</li>
+                            <li><strong>Projects:</strong> 10-50</li>
+                            <li><strong>Users:</strong> 5-25</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="toggle-section" onclick="toggleSection('production')">
+                    <div class="toggle-header">
+                        <span>🚀 Production Environment</span>
+                        <span>▼</span>
+                    </div>
+                    <div id="production" class="toggle-content">
+                        <ul>
+                            <li><strong>CPU:</strong> 32+ cores/node</li>
+                            <li><strong>RAM:</strong> 128+ GB/node</li>
+                            <li><strong>Storage:</strong> 2+ TB NVMe</li>
+                            <li><strong>QPS:</strong> 1000-10000</li>
+                            <li><strong>Latency:</strong> &lt; 50ms</li>
+                            <li><strong>Projects:</strong> 100-1000</li>
+                            <li><strong>Users:</strong> 100-10000</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#667eea',
+                primaryTextColor: '#2c3e50',
+                primaryBorderColor: '#667eea',
+                lineColor: '#667eea',
+                secondaryColor: '#f8f9fa',
+                tertiaryColor: '#e9ecef'
+            }
+        });
+
+        // Tab switching
+        function showTab(tabName) {
+            // Hide all tab contents
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => {
+                content.classList.remove('active');
+            });
+
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.nav-tab');
+            tabs.forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+
+            // Re-render mermaid diagrams when tab becomes visible
+            setTimeout(() => {
+                mermaid.init();
+            }, 100);
+        }
+
+        // Toggle sections
+        function toggleSection(sectionId) {
+            const content = document.getElementById(sectionId);
+            const header = content.previousElementSibling;
+            const arrow = header.querySelector('span:last-child');
+            
+            if (content.classList.contains('active')) {
+                content.classList.remove('active');
+                arrow.textContent = '▼';
+            } else {
+                content.classList.add('active');
+                arrow.textContent = '▲';
+            }
+        }
+
+        // Component filtering
+        function filterComponents(searchTerm) {
+            const components = document.querySelectorAll('.component-card');
+            const term = searchTerm.toLowerCase();
+
+            components.forEach(component => {
+                const name = component.dataset.name.toLowerCase();
+                const title = component.querySelector('.component-title').textContent.toLowerCase();
+                const description = component.querySelector('.component-description').textContent.toLowerCase();
+
+                if (name.includes(term) || title.includes(term) || description.includes(term)) {
+                    component.style.display = 'block';
+                    // Highlight matching text
+                    highlightText(component, searchTerm);
+                } else {
+                    component.style.display = 'none';
+                }
+            });
+        }
+
+        // Text highlighting
+        function highlightText(element, term) {
+            if (!term) return;
+
+            const title = element.querySelector('.component-title');
+            const description = element.querySelector('.component-description');
+
+            [title, description].forEach(el => {
+                const originalText = el.textContent;
+                const regex = new RegExp(`(${term})`, 'gi');
+                const highlightedText = originalText.replace(regex, '<span class="highlight">$1</span>');
+                el.innerHTML = highlightedText;
+            });
+        }
+
+        // Component card interactions
+        document.addEventListener('DOMContentLoaded', function() {
+            const componentCards = document.querySelectorAll('.component-card');
+            
+            componentCards.forEach(card => {
+                card.addEventListener('click', function() {
+                    const title = this.querySelector('.component-title').textContent;
+                    const description = this.querySelector('.component-description').textContent;
+                    
+                    alert(`${title}\n\n${description}\n\nClick outside to close this dialog.`);
+                });
+            });
+        });
+
+        // Performance monitoring simulation
+        function updatePerformanceMetrics() {
+            const performanceCards = document.querySelectorAll('.performance-value');
+            
+            // Simulate real-time updates (in a real app, this would come from your monitoring system)
+            setInterval(() => {
+                performanceCards.forEach((card, index) => {
+                    const currentValue = card.textContent;
+                    
+                    // Add subtle animation to indicate live data
+                    card.style.transform = 'scale(1.05)';
+                    card.style.color = '#27ae60';
+                    
+                    setTimeout(() => {
+                        card.style.transform = 'scale(1)';
+                        card.style.color = '#667eea';
+                    }, 200);
+                });
+            }, 10000); // Update every 10 seconds
+        }
+
+        // Initialize performance monitoring
+        updatePerformanceMetrics();
+
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey || e.metaKey) {
+                switch(e.key) {
+                    case '1':
+                        e.preventDefault();
+                        showTab('overview');
+                        break;
+                    case '2':
+                        e.preventDefault();
+                        showTab('components');
+                        break;
+                    case '3':
+                        e.preventDefault();
+                        showTab('dependencies');
+                        break;
+                    case '4':
+                        e.preventDefault();
+                        showTab('performance');
+                        break;
+                    case '5':
+                        e.preventDefault();
+                        showTab('deployment');
+                        break;
+                }
+            }
+        });
+    </script>
+</body>
+</html>

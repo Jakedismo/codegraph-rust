@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     libclang-dev \
+    upx \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -20,8 +21,10 @@ COPY crates/ crates/
 # Build dependencies first (for layer caching)
 RUN cargo fetch
 
-# Build the application
-RUN cargo build --release --bin codegraph-api
+# Build the application with size-optimized profile
+RUN cargo build --profile release-size --bin codegraph-api && \
+    strip target/release-size/codegraph-api || true && \
+    upx --best --lzma target/release-size/codegraph-api || true
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -36,7 +39,7 @@ RUN apt-get update && apt-get install -y \
 RUN useradd -r -s /bin/false codegraph
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/codegraph-api /usr/local/bin/codegraph-api
+COPY --from=builder /app/target/release-size/codegraph-api /usr/local/bin/codegraph-api
 
 # Set permissions
 RUN chown codegraph:codegraph /usr/local/bin/codegraph-api

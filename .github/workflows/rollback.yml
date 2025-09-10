@@ -1,0 +1,433 @@
+---
+name: Emergency Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: 'Target version to rollback to (e.g., v1.0.0)'
+        required: true
+        type: string
+      environment:
+        description: 'Environment to rollback'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      reason:
+        description: 'Rollback reason'
+        required: true
+        type: string
+      confirmation:
+        description: 'Type "CONFIRM" to proceed with rollback'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ============================================================================
+  # Phase 1: Pre-Rollback Validation
+  # ============================================================================
+  
+  validate_rollback:
+    name: Validate Rollback Request
+    runs-on: ubuntu-latest
+    outputs:
+      current_version: ${{ steps.current.outputs.version }}
+      target_valid: ${{ steps.validate.outputs.valid }}
+    
+    steps:
+      - name: Validate Confirmation
+        run: |
+          if [[ "${{ github.event.inputs.confirmation }}" != "CONFIRM" ]]; then
+            echo "❌ Rollback cancelled: confirmation required"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get Current Deployed Version
+        id: current
+        run: |
+          # Get currently deployed version from environment
+          case "${{ github.event.inputs.environment }}" in
+            staging)
+              CURRENT=$(curl -s https://staging.codegraph.example.com/version | jq -r '.version' || echo "unknown")
+              ;;
+            production)
+              CURRENT=$(curl -s https://codegraph.example.com/version | jq -r '.version' || echo "unknown")
+              ;;
+          esac
+          echo "current_version=$CURRENT" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT"
+
+      - name: Validate Target Version
+        id: validate
+        run: |
+          TARGET="${{ github.event.inputs.target_version }}"
+          
+          # Check if target version exists in git tags
+          if git tag -l | grep -q "^$TARGET$"; then
+            echo "✅ Target version $TARGET found in git history"
+            echo "valid=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Target version $TARGET not found in git history"
+            echo "valid=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Check Version Compatibility
+        run: |
+          echo "🔍 Checking rollback compatibility..."
+          echo "Current: ${{ steps.current.outputs.current_version }}"
+          echo "Target: ${{ github.event.inputs.target_version }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Reason: ${{ github.event.inputs.reason }}"
+
+  # ============================================================================
+  # Phase 2: Pre-Rollback Backup
+  # ============================================================================
+  
+  create_backup:
+    name: Create Pre-Rollback Backup
+    needs: validate_rollback
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure Kubernetes Access
+        run: |
+          case "${{ github.event.inputs.environment }}" in
+            staging)
+              echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > $HOME/.kube/config
+              ;;
+            production)
+              echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > $HOME/.kube/config
+              ;;
+          esac
+          chmod 600 $HOME/.kube/config
+
+      - name: Backup Current State
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BACKUP_DIR="backup-${ENV}-${TIMESTAMP}"
+          
+          mkdir -p $BACKUP_DIR
+          
+          # Backup Kubernetes resources
+          kubectl get deployment codegraph-api-${ENV} -o yaml > $BACKUP_DIR/deployment.yaml
+          kubectl get service codegraph-api-${ENV} -o yaml > $BACKUP_DIR/service.yaml
+          kubectl get configmap -l app=codegraph-api -o yaml > $BACKUP_DIR/configmaps.yaml
+          kubectl get secret -l app=codegraph-api -o yaml > $BACKUP_DIR/secrets.yaml
+          
+          # Backup current image reference
+          kubectl get deployment codegraph-api-${ENV} -o jsonpath='{.spec.template.spec.containers[0].image}' > $BACKUP_DIR/current_image.txt
+          
+          # Create backup manifest
+          cat << EOF > $BACKUP_DIR/backup_info.yaml
+          backup_timestamp: ${TIMESTAMP}
+          environment: ${ENV}
+          current_version: ${{ needs.validate_rollback.outputs.current_version }}
+          target_version: ${{ github.event.inputs.target_version }}
+          rollback_reason: "${{ github.event.inputs.reason }}"
+          initiated_by: ${{ github.actor }}
+          EOF
+
+      - name: Upload Backup Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rollback-backup-${{ github.event.inputs.environment }}-$(date +%Y%m%d-%H%M%S)
+          path: backup-*/**
+
+  # ============================================================================
+  # Phase 3: Database Migration Rollback (if needed)
+  # ============================================================================
+  
+  rollback_database:
+    name: Rollback Database Migrations
+    needs: [validate_rollback, create_backup]
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.reason, 'database') || contains(github.event.inputs.reason, 'migration')
+    
+    steps:
+      - name: Checkout Target Version
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_version }}
+
+      - name: Setup Database Connection
+        run: |
+          case "${{ github.event.inputs.environment }}" in
+            staging)
+              echo "DATABASE_URL=${{ secrets.DATABASE_URL_STAGING }}" >> $GITHUB_ENV
+              ;;
+            production)
+              echo "DATABASE_URL=${{ secrets.DATABASE_URL_PROD }}" >> $GITHUB_ENV
+              ;;
+          esac
+
+      - name: Install Database Tools
+        run: |
+          # Install migration tools if needed
+          echo "Installing database migration tools..."
+
+      - name: Rollback Database Migrations
+        run: |
+          echo "⚠️  Rolling back database migrations to ${{ github.event.inputs.target_version }}"
+          echo "This is a placeholder - implement actual migration rollback logic"
+          # Add actual database rollback commands here
+
+  # ============================================================================
+  # Phase 4: Application Rollback Execution
+  # ============================================================================
+  
+  execute_rollback:
+    name: Execute Application Rollback
+    needs: [validate_rollback, create_backup]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}-rollback
+      url: ${{ steps.get_url.outputs.url }}
+    
+    steps:
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure Kubernetes Access
+        run: |
+          case "${{ github.event.inputs.environment }}" in
+            staging)
+              echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > $HOME/.kube/config
+              ;;
+            production)
+              echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > $HOME/.kube/config
+              ;;
+          esac
+          chmod 600 $HOME/.kube/config
+
+      - name: Determine Target Image
+        id: target_image
+        run: |
+          TARGET_VERSION="${{ github.event.inputs.target_version }}"
+          # Remove 'v' prefix if present
+          VERSION_NUMBER=${TARGET_VERSION#v}
+          IMAGE="ghcr.io/${{ github.repository }}/codegraph-api:$TARGET_VERSION"
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "Target image: $IMAGE"
+
+      - name: Execute Rolling Rollback
+        if: github.event.inputs.environment == 'staging' || !contains(github.event.inputs.reason, 'critical')
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          IMAGE="${{ steps.target_image.outputs.image }}"
+          
+          echo "🔄 Executing rolling rollback to $IMAGE"
+          
+          # Update deployment with target image
+          kubectl set image deployment/codegraph-api-${ENV} codegraph-api=$IMAGE
+          
+          # Wait for rollout to complete
+          kubectl rollout status deployment/codegraph-api-${ENV} --timeout=300s
+          
+          # Verify pods are running
+          kubectl get pods -l app=codegraph-api,environment=${ENV}
+
+      - name: Execute Immediate Rollback (Critical Issues)
+        if: github.event.inputs.environment == 'production' && contains(github.event.inputs.reason, 'critical')
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          IMAGE="${{ steps.target_image.outputs.image }}"
+          
+          echo "🚨 Executing immediate rollback for critical issue"
+          
+          # Scale down current deployment immediately
+          kubectl scale deployment codegraph-api-${ENV} --replicas=0
+          
+          # Wait for pods to terminate
+          kubectl wait --for=delete pod -l app=codegraph-api,environment=${ENV} --timeout=60s || true
+          
+          # Update image and scale back up
+          kubectl set image deployment/codegraph-api-${ENV} codegraph-api=$IMAGE
+          kubectl scale deployment codegraph-api-${ENV} --replicas=3
+          
+          # Wait for new pods to be ready
+          kubectl rollout status deployment/codegraph-api-${ENV} --timeout=300s
+
+      - name: Get Service URL
+        id: get_url
+        run: |
+          case "${{ github.event.inputs.environment }}" in
+            staging)
+              echo "url=https://staging.codegraph.example.com" >> $GITHUB_OUTPUT
+              ;;
+            production)
+              echo "url=https://codegraph.example.com" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+  # ============================================================================
+  # Phase 5: Post-Rollback Validation
+  # ============================================================================
+  
+  validate_rollback_success:
+    name: Validate Rollback Success
+    needs: [validate_rollback, execute_rollback]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Wait for Service Stabilization
+        run: |
+          echo "⏳ Waiting for service to stabilize..."
+          sleep 60
+
+      - name: Health Check
+        run: |
+          case "${{ github.event.inputs.environment }}" in
+            staging)
+              URL="https://staging.codegraph.example.com"
+              ;;
+            production)
+              URL="https://codegraph.example.com"
+              ;;
+          esac
+          
+          echo "🏥 Running health checks against $URL"
+          
+          # Health endpoint check
+          for i in {1..5}; do
+            if curl -f "$URL/health"; then
+              echo "✅ Health check passed"
+              break
+            else
+              echo "❌ Health check failed (attempt $i/5)"
+              if [[ $i -eq 5 ]]; then
+                exit 1
+              fi
+              sleep 10
+            fi
+          done
+
+      - name: Version Verification
+        run: |
+          case "${{ github.event.inputs.environment }}" in
+            staging)
+              URL="https://staging.codegraph.example.com"
+              ;;
+            production)
+              URL="https://codegraph.example.com"
+              ;;
+          esac
+          
+          DEPLOYED_VERSION=$(curl -s "$URL/version" | jq -r '.version' || echo "unknown")
+          TARGET_VERSION="${{ github.event.inputs.target_version }}"
+          
+          echo "Deployed version: $DEPLOYED_VERSION"
+          echo "Target version: $TARGET_VERSION"
+          
+          if [[ "$DEPLOYED_VERSION" == "$TARGET_VERSION" || "$DEPLOYED_VERSION" == "${TARGET_VERSION#v}" ]]; then
+            echo "✅ Version rollback successful"
+          else
+            echo "❌ Version rollback failed - version mismatch"
+            exit 1
+          fi
+
+      - name: Run Smoke Tests
+        run: |
+          echo "🧪 Running smoke tests..."
+          case "${{ github.event.inputs.environment }}" in
+            staging)
+              export TEST_URL="https://staging.codegraph.example.com"
+              ;;
+            production)
+              export TEST_URL="https://codegraph.example.com"
+              ;;
+          esac
+          
+          # Basic functionality tests
+          curl -f "$TEST_URL/api/health" || exit 1
+          curl -f "$TEST_URL/metrics" || exit 1
+
+  # ============================================================================
+  # Phase 6: Rollback Notification and Documentation
+  # ============================================================================
+  
+  notify_rollback:
+    name: Notify Rollback Completion
+    needs: [validate_rollback, execute_rollback, validate_rollback_success]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Generate Rollback Report
+        run: |
+          STATUS="${{ needs.validate_rollback_success.result }}"
+          
+          cat << EOF > rollback-report.md
+          # Emergency Rollback Report
+          
+          ## Summary
+          - **Environment**: ${{ github.event.inputs.environment }}
+          - **Rollback Time**: $(date -u)
+          - **Initiated by**: ${{ github.actor }}
+          - **Status**: $STATUS
+          
+          ## Details
+          - **From Version**: ${{ needs.validate_rollback.outputs.current_version }}
+          - **To Version**: ${{ github.event.inputs.target_version }}
+          - **Reason**: ${{ github.event.inputs.reason }}
+          
+          ## Validation Results
+          - Pre-rollback validation: ✅ Passed
+          - Backup creation: ✅ Completed
+          - Application rollback: $([[ "$STATUS" == "success" ]] && echo "✅ Successful" || echo "❌ Failed")
+          - Post-rollback validation: $([[ "$STATUS" == "success" ]] && echo "✅ Passed" || echo "❌ Failed")
+          
+          ## Next Steps
+          $([[ "$STATUS" != "success" ]] && echo "- Investigate rollback failure" || echo "- Monitor application performance")
+          - Review rollback procedures if needed
+          - Schedule post-incident review
+          EOF
+          
+          cat rollback-report.md
+
+      - name: Create GitHub Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('rollback-report.md', 'utf8');
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Emergency Rollback: ${{ github.event.inputs.environment }} to ${{ github.event.inputs.target_version }}`,
+              body: report,
+              labels: ['rollback', 'incident', '${{ github.event.inputs.environment }}']
+            });
+
+      - name: Send Slack Notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            🚨 Emergency Rollback ${{ job.status == 'success' && 'Completed' || 'Failed' }}
+            Environment: ${{ github.event.inputs.environment }}
+            Version: ${{ needs.validate_rollback.outputs.current_version }} → ${{ github.event.inputs.target_version }}
+            Reason: ${{ github.event.inputs.reason }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

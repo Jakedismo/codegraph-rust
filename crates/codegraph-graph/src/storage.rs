@@ -378,26 +378,35 @@ impl HighPerformanceRocksDbStorage {
         let prefix = format!("from:{}", node_id);
         let mut read_opts = self.read_options.clone();
         read_opts.set_prefix_same_as_start(true);
+        read_opts.set_readahead_size(2 * 1024 * 1024);
         
-        let iter = self.db.prefix_iterator_cf(&from_index_cf, &prefix);
-        let mut edges = Vec::new();
-        
+        let iter = self.db.iterator_cf_opt(
+            &from_index_cf,
+            read_opts,
+            IteratorMode::From(prefix.as_bytes(), rocksdb::Direction::Forward),
+        );
+        let mut edge_ids: Vec<u64> = Vec::new();
         for item in iter {
             let (key, _) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            
+            if !key.starts_with(prefix.as_bytes()) { break; }
             if key.len() >= 8 {
-                let edge_id_bytes = &key[key.len()-8..];
+                let edge_id_bytes = &key[key.len() - 8..];
                 let edge_id = u64::from_be_bytes(edge_id_bytes.try_into().unwrap_or_default());
-                
-                let edge_key = Self::edge_key(edge_id);
-                if let Some(edge_data) = self.db.get_cf(&edges_cf, edge_key)
-                    .map_err(|e| CodeGraphError::Database(e.to_string()))? {
-                    
-                    let edge: SerializableEdge = bincode::deserialize(&edge_data)
-                        .map_err(|e| CodeGraphError::Database(e.to_string()))?;
-                    
-                    edges.push(edge);
-                }
+                edge_ids.push(edge_id);
+            }
+        }
+
+        let mut edges = Vec::with_capacity(edge_ids.len());
+        for edge_id in edge_ids {
+            let edge_key = Self::edge_key(edge_id);
+            if let Some(edge_data) = self
+                .db
+                .get_cf(&edges_cf, edge_key)
+                .map_err(|e| CodeGraphError::Database(e.to_string()))?
+            {
+                let edge: SerializableEdge = bincode::deserialize(&edge_data)
+                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                edges.push(edge);
             }
         }
         
@@ -439,15 +448,12 @@ impl GraphStore for HighPerformanceRocksDbStorage {
         
         let name_index_key = Self::index_key(b"name:", &node.name, node_id);
         
-        let mut batch = self.batch_writes.lock();
-        batch.put_cf(&nodes_cf, node_key, node_bytes);
-        batch.put_cf(&name_index_cf, name_index_key, b"");
-        
-        if batch.len() > 1000 {
-            self.db.write_opt(&*batch, &self.write_options)
-                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            batch.clear();
+        {
+            let mut batch = self.batch_writes.lock();
+            batch.put_cf(&nodes_cf, node_key, node_bytes);
+            batch.put_cf(&name_index_cf, name_index_key, b"");
         }
+        self.maybe_flush_writes()?;
         
         let node_arc = Arc::new(node);
         self.read_cache.insert(node_id, node_arc);
@@ -462,23 +468,8 @@ impl GraphStore for HighPerformanceRocksDbStorage {
             return Ok(Some(cached.as_ref().clone()));
         }
         
-        let nodes_cf = self.get_cf_handle(NODES_CF)?;
-        let node_key = Self::node_key(id);
-        
-        match self.db.get_cf(&nodes_cf, node_key) {
-            Ok(Some(data)) => {
-                let serializable_node: SerializableCodeNode = bincode::deserialize(&data)
-                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
-                
-                let node = CodeNode::from(serializable_node);
-                let node_arc = Arc::new(node.clone());
-                self.read_cache.insert(id, node_arc);
-                
-                Ok(Some(node))
-            }
-            Ok(None) => Ok(None),
-            Err(e) => Err(CodeGraphError::Database(e.to_string())),
-        }
+        // Delegate to read coalescer for batched DB access
+        self.read_coalescer.get_node(id).await
     }
     
     async fn update_node(&mut self, node: CodeNode) -> Result<()> {
@@ -493,13 +484,12 @@ impl GraphStore for HighPerformanceRocksDbStorage {
             let node_key = Self::node_key(id);
             let name_index_key = Self::index_key(b"name:", &node.name, id);
             
-            let mut batch = self.batch_writes.lock();
-            batch.delete_cf(&nodes_cf, node_key);
-            batch.delete_cf(&name_index_cf, name_index_key);
-            
-            self.db.write_opt(&*batch, &self.write_options)
-                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            batch.clear();
+            {
+                let mut batch = self.batch_writes.lock();
+                batch.delete_cf(&nodes_cf, node_key);
+                batch.delete_cf(&name_index_cf, name_index_key);
+            }
+            self.maybe_flush_writes()?;
         }
         
         self.read_cache.remove(&id);
@@ -514,20 +504,22 @@ impl GraphStore for HighPerformanceRocksDbStorage {
         let prefix = format!("name:{}", name);
         let mut read_opts = self.read_options.clone();
         read_opts.set_prefix_same_as_start(true);
+        read_opts.set_readahead_size(2 * 1024 * 1024);
         
-        let iter = self.db.prefix_iterator_cf(&name_index_cf, &prefix);
+        let iter = self.db.iterator_cf_opt(
+            &name_index_cf,
+            read_opts,
+            IteratorMode::From(prefix.as_bytes(), rocksdb::Direction::Forward),
+        );
         let mut nodes = Vec::new();
         
         for item in iter {
             let (key, _) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            
+            if !key.starts_with(prefix.as_bytes()) { break; }
             if key.len() >= 8 {
-                let node_id_bytes = &key[key.len()-8..];
+                let node_id_bytes = &key[key.len() - 8..];
                 let node_id = u64::from_be_bytes(node_id_bytes.try_into().unwrap_or_default());
-                
-                if let Some(node) = self.get_node(node_id).await? {
-                    nodes.push(node);
-                }
+                if let Some(node) = self.get_node(node_id).await? { nodes.push(node); }
             }
         }
         

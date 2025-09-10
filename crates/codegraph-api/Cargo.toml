@@ -11,12 +11,14 @@ codegraph-core = { workspace = true }
 codegraph-graph = { workspace = true }
 codegraph-parser = { workspace = true }
 codegraph-vector = { workspace = true }
+memscope-rs = { workspace = true, optional = true }
 
 axum = { workspace = true }
 tower = { workspace = true }
 # Enable compression features for response compression
 tower-http = { workspace = true, features = ["compression-br", "compression-gzip", "compression-deflate", "compression-zstd", "trace", "cors"] }
 hyper = { workspace = true }
+http = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 reqwest = { workspace = true }
@@ -26,12 +28,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+lazy_static = { workspace = true }
 
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+sysinfo = { workspace = true }
 
 # GraphQL
 async-graphql = { workspace = true }
@@ -53,10 +57,22 @@ hyper = { workspace = true }
 criterion = { workspace = true }
 axum-test = "18.1"
 async-trait = { workspace = true }
+tempfile = { workspace = true }
+
+[features]
+# Enable runtime memory leak detection, stack traces, and Prometheus metrics.
+# This pulls in a global tracking allocator from memscope-rs and adds routes
+# for memory stats and leak report exports.
+leak-detect = ["dep:memscope-rs"]
 
 [[bench]]
 name = "api_benchmarks"
 harness = false
 path = "src/graphql/benchmarks.rs"
+
+[[bench]]
+name = "streaming_benchmarks"
+harness = false
+path = "benches/streaming_benchmarks.rs"
 
  

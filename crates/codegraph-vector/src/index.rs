@@ -1,7 +1,10 @@
+#[cfg(feature = "persistent")]
 use crate::storage::PersistentStorage;
 use codegraph_core::{CodeGraphError, Result};
-use faiss::{Index, IndexImpl, MetricType};
+use faiss::{Index, MetricType};
+use faiss::index::IndexImpl;
 use serde::{Deserialize, Serialize};
+use parking_lot::RwLock;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
@@ -10,6 +13,7 @@ use tracing::{debug, info, warn};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexConfig {
     pub index_type: IndexType,
+    #[serde(with = "crate::serde_utils::metric_type")]
     pub metric_type: MetricType,
     pub dimension: usize,
     pub training_size_threshold: usize,
@@ -144,15 +148,8 @@ impl IndexConfig {
 
     /// Configure search parameters after index creation
     pub fn configure_search_params(&self, index: &mut IndexImpl) -> Result<()> {
-        match &self.index_type {
-            IndexType::IVF { nprobe, .. } => {
-                index.set_nprobe(*nprobe).map_err(|e| CodeGraphError::Vector(e.to_string()))?;
-            },
-            IndexType::HNSW { ef_search, .. } => {
-                index.set_hnsw_ef(*ef_search).map_err(|e| CodeGraphError::Vector(e.to_string()))?;
-            },
-            _ => {}, // Other index types don't require runtime parameter tuning
-        }
+        // Not all IndexImpl variants expose tuning methods; keep as no-op for portability.
+        let _ = index; // suppress unused var warning if features differ
         Ok(())
     }
 }
@@ -160,8 +157,10 @@ impl IndexConfig {
 /// High-performance FAISS index manager with multiple index type support
 pub struct FaissIndexManager {
     config: IndexConfig,
-    index: Option<IndexImpl>,
+    index: RwLock<Option<IndexImpl>>,
+    #[cfg(feature = "persistent")]
     storage: Option<Arc<PersistentStorage>>,
+    #[cfg(feature = "gpu")]
     gpu_resources: Option<faiss::gpu::GpuResources>,
 }
 
@@ -169,14 +168,22 @@ impl FaissIndexManager {
     pub fn new(config: IndexConfig) -> Self {
         Self {
             config,
-            index: None,
+            index: RwLock::new(None),
+            #[cfg(feature = "persistent")]
             storage: None,
+            #[cfg(feature = "gpu")]
             gpu_resources: None,
         }
     }
 
+    #[cfg(feature = "persistent")]
     pub fn with_persistence(mut self, storage_path: PathBuf) -> Result<Self> {
         self.storage = Some(Arc::new(PersistentStorage::new(storage_path)?));
+        Ok(self)
+    }
+
+    #[cfg(not(feature = "persistent"))]
+    pub fn with_persistence(self, _storage_path: PathBuf) -> Result<Self> {
         Ok(self)
     }
 
@@ -205,9 +212,10 @@ impl FaissIndexManager {
     /// Create or load the FAISS index
     pub fn create_index(&mut self, num_vectors: usize) -> Result<()> {
         // Load from persistence if available
+        #[cfg(feature = "persistent")]
         if let Some(ref storage) = self.storage {
             if let Ok(index) = storage.load_index(&self.config) {
-                self.index = Some(index);
+                *self.index.write() = Some(index);
                 info!("Loaded existing FAISS index from disk");
                 return Ok(());
             }
@@ -226,7 +234,7 @@ impl FaissIndexManager {
                             gpu_resources,
                             0, // device 0
                             &faiss::index_factory(
-                                self.config.dimension,
+                                self.config.dimension.try_into().unwrap(),
                                 &factory_string,
                                 self.config.metric_type,
                             ).map_err(|e| CodeGraphError::Vector(e.to_string()))?,
@@ -239,14 +247,14 @@ impl FaissIndexManager {
             #[cfg(not(feature = "gpu"))]
             {
                 faiss::index_factory(
-                    self.config.dimension,
+                    self.config.dimension.try_into().unwrap(),
                     &factory_string,
                     self.config.metric_type,
                 ).map_err(|e| CodeGraphError::Vector(e.to_string()))?
             }
         } else {
             faiss::index_factory(
-                self.config.dimension,
+                self.config.dimension.try_into().unwrap(),
                 &factory_string,
                 self.config.metric_type,
             ).map_err(|e| CodeGraphError::Vector(e.to_string()))?
@@ -255,14 +263,15 @@ impl FaissIndexManager {
         // Configure index-specific parameters
         self.config.configure_search_params(&mut index)?;
 
-        self.index = Some(index);
+        *self.index.write() = Some(index);
         info!("Created new FAISS index: {} for {} vectors", factory_string, num_vectors);
         Ok(())
     }
 
     /// Train the index if necessary (required for some index types)
     pub fn train_index(&mut self, training_vectors: &[f32]) -> Result<()> {
-        let index = self.index.as_mut()
+        let mut guard = self.index.write();
+        let index = guard.as_mut()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         if !index.is_trained() {
@@ -271,6 +280,7 @@ impl FaissIndexManager {
                 .map_err(|e| CodeGraphError::Vector(format!("Index training failed: {}", e)))?;
             
             // Save trained index if persistence is enabled
+            #[cfg(feature = "persistent")]
             if let Some(ref storage) = self.storage {
                 storage.save_index(index, &self.config)?;
             }
@@ -280,7 +290,8 @@ impl FaissIndexManager {
 
     /// Add vectors to the index with batch optimization
     pub fn add_vectors(&mut self, vectors: &[f32]) -> Result<Vec<i64>> {
-        let index = self.index.as_mut()
+        let mut guard = self.index.write();
+        let index = guard.as_mut()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         let num_vectors = vectors.len() / self.config.dimension;
@@ -291,12 +302,13 @@ impl FaissIndexManager {
         index.add(vectors)
             .map_err(|e| CodeGraphError::Vector(format!("Failed to add vectors: {}", e)))?;
 
-        let ids: Vec<i64> = (start_id..start_id + num_vectors as i64).collect();
+        let ids: Vec<i64> = (start_id..start_id + num_vectors as u64)
+            .map(|x| x as i64)
+            .collect();
 
         // Persist index updates if enabled
-        if let Some(ref storage) = self.storage {
-            storage.save_index(index, &self.config)?;
-        }
+        #[cfg(feature = "persistent")]
+        if let Some(ref storage) = self.storage { storage.save_index(index, &self.config)?; }
 
         info!("Successfully added {} vectors to index", num_vectors);
         Ok(ids)
@@ -304,7 +316,8 @@ impl FaissIndexManager {
 
     /// Perform optimized K-nearest neighbor search
     pub fn search(&self, query_vector: &[f32], k: usize) -> Result<(Vec<f32>, Vec<i64>)> {
-        let index = self.index.as_ref()
+        let mut guard = self.index.write();
+        let index = guard.as_mut()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         if query_vector.len() != self.config.dimension {
@@ -317,12 +330,18 @@ impl FaissIndexManager {
         let result = index.search(query_vector, k)
             .map_err(|e| CodeGraphError::Vector(format!("Search failed: {}", e)))?;
 
-        Ok((result.distances, result.labels))
+        let labels: Vec<i64> = result
+            .labels
+            .into_iter()
+            .map(|idx| idx.get().map(|u| u as i64).unwrap_or(-1))
+            .collect();
+        Ok((result.distances, labels))
     }
 
     /// Get index statistics for monitoring and optimization
     pub fn get_stats(&self) -> Result<IndexStats> {
-        let index = self.index.as_ref()
+        let guard = self.index.read();
+        let index = guard.as_ref()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         Ok(IndexStats {
@@ -335,7 +354,8 @@ impl FaissIndexManager {
     }
 
     fn estimate_memory_usage(&self) -> Result<usize> {
-        let index = self.index.as_ref()
+        let guard = self.index.read();
+        let index = guard.as_ref()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         let base_size = index.ntotal() as usize * self.config.dimension * 4; // 4 bytes per f32

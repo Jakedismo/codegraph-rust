@@ -2,7 +2,6 @@ use axum::{
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::Response,
     extract::{Request, Path, Query},
-    middleware::Next,
     body::Body,
 };
 use hyper::Version;
@@ -12,7 +11,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{RwLock, Semaphore};
-use tower::{Service, ServiceExt};
 use tracing::{debug, info, warn, instrument};
 use serde::{Deserialize, Serialize};
 
@@ -532,27 +530,8 @@ pub struct Http2Metrics {
     pub current_window_size: u64,
 }
 
-// Middleware function for HTTP/2 optimization
-#[instrument(skip(request, next, optimizer))]
-pub async fn http2_optimization_middleware(
-    request: Request<Body>,
-    next: Next,
-    optimizer: Http2Optimizer,
-) -> Result<Response<Body>, StatusCode> {
-    let optimized_request = optimizer
-        .optimize_request(request)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let response = next.run(optimized_request.clone()).await;
-
-    let optimized_response = optimizer
-        .optimize_response(response, &optimized_request)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(optimized_response)
-}
+// HTTP/2 optimization middleware can be applied at the service level
+// For now, optimization is handled through the AppState and handlers
 
 #[cfg(test)]
 mod tests {

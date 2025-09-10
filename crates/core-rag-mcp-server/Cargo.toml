@@ -1,0 +1,60 @@
+[package]
+name = "core-rag-mcp-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Production-ready MCP server exposing CodeGraph RAG functionality"
+
+[[bin]]
+name = "core-rag-mcp-server-stdio"
+path = "src/bin/stdio_server.rs"
+
+[[bin]]
+name = "core-rag-mcp-server-http"
+path = "src/bin/http_server.rs"
+
+[dependencies]
+# Official MCP Rust SDK
+rmcp = { workspace = true }
+
+# Additional dependencies for HTTP server
+axum = { workspace = true }
+tower = { workspace = true }
+
+# Async Runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error Handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Tracing and logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Internal dependencies - CodeGraph functionality
+codegraph-core = { workspace = true }
+codegraph-graph = { workspace = true }
+codegraph-vector = { workspace = true }
+codegraph-cache = { workspace = true }
+codegraph-parser = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+tempfile = { workspace = true }
+
+[features]
+default = ["stdio", "http"]
+stdio = []
+http = []

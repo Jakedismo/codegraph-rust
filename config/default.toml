@@ -1,0 +1,27 @@
+env = "development"
+
+[server]
+host = "0.0.0.0"
+port = 3000
+
+[rocksdb]
+path = "data/graph.db"
+read_only = false
+
+[vector]
+dimension = 384
+index = "ivf_flat"
+
+[logging]
+level = "info"
+
+[security]
+require_auth = false
+allowed_origins = ["*"]
+rate_limit_per_minute = 1200
+
+# Secrets are loaded from environment or config/secrets.enc (encrypted)
+[secrets]
+openai_api_key = ""
+jwt_secret = ""
+

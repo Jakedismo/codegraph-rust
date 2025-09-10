@@ -45,7 +45,8 @@ name = "knn_benchmark"
 harness = false
 
 [features]
-default = ["openai"]
+# Enable FAISS by default for API usage; avoid pulling OpenAI client by default
+default = ["faiss"]
 faiss = ["dep:faiss"]
 persistent = ["dep:memmap2", "dep:flate2"]
 gpu = ["faiss/gpu"]

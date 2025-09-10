@@ -1,4 +1,4 @@
-use crate::{handlers, vector_handlers, versioning_handlers, streaming_handlers, http2_handlers, AppState, auth_middleware, create_schema, RateLimitManager, http2_optimization_middleware};
+use crate::{handlers, health, service_registry, vector_handlers, versioning_handlers, streaming_handlers, http2_handlers, AppState, auth_middleware, create_schema, RateLimitManager};
 use axum::{
     routing::{get, post},
     Router,
@@ -25,9 +25,11 @@ use axum::response::Html;
 pub fn create_router(state: AppState) -> Router {
     let schema = create_schema(state.clone());
 
-    let app = Router::new()
-        // Health check
-        .route("/health", get(handlers::health))
+    let mut app = Router::new()
+        // Health and readiness checks
+        .route("/health", get(health::comprehensive_health_check))
+        .route("/health/live", get(health::liveness_check))
+        .route("/health/ready", get(health::readiness_check))
         .route("/metrics", get(handlers::metrics_handler))
         
         // GraphQL HTTP endpoint and GraphiQL IDE
@@ -117,10 +119,19 @@ pub fn create_router(state: AppState) -> Router {
         .route("/http2/performance", get(http2_handlers::get_performance_metrics))
         .route("/http2/tune", post(http2_handlers::tune_http2_optimization))
         
+        // Service Discovery and Registration
+        .route("/services", post(service_registry::register_service_handler))
+        .route("/services", get(service_registry::list_services_handler))
+        .route("/services/discover", get(service_registry::discover_services_handler))
+        .route("/services/:id", get(service_registry::get_service_handler))
+        .route("/services/:id", axum::routing::delete(service_registry::deregister_service_handler))
+        .route("/services/heartbeat", post(service_registry::heartbeat_handler))
+        
         // Add state
         .with_state(state)
         
         // Add middleware (order matters)
+        .layer(middleware::from_fn(crate::metrics::http_metrics_middleware))
         .layer(
             CorsLayer::new()
                 .allow_origin(tower_http::cors::Any)
@@ -144,5 +155,16 @@ pub fn create_router(state: AppState) -> Router {
         .layer(ConcurrencyLimitLayer::new(512))
         .layer(LoadShedLayer::new())
         .layer(TimeoutLayer::new(Duration::from_secs(30)))
-        .layer(TraceLayer::new_for_http())
+        .layer(TraceLayer::new_for_http());
+
+    // Memory leak detection routes (only when feature enabled)
+    #[cfg(feature = "leak-detect")]
+    {
+        let leak_routes = Router::new()
+            .route("/memory/stats", get(handlers::memory_stats))
+            .route("/memory/leaks", get(handlers::export_leak_report));
+        app = app.merge(leak_routes);
+    }
+
+    app
 }

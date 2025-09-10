@@ -1,8 +1,8 @@
 use governor::{Quota, RateLimiter};
 use governor::state::direct::NotKeyed;
+use governor::state::InMemoryState;
 use governor::clock::DefaultClock;
 use std::num::NonZeroU32;
-use std::time::Duration;
 use std::sync::Arc;
 use parking_lot::RwLock;
 use http::{Request, Method};
@@ -16,15 +16,20 @@ pub struct RouteRule {
 
 #[derive(Clone)]
 pub struct TrafficShaper {
-    rules: Arc<RwLock<Vec<(RouteRule, Option<Arc<RateLimiter<NotKeyed, DefaultClock>>>)>>>,
+    rules: Arc<RwLock<Vec<(RouteRule, Option<Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>>>)>>>,
 }
 
 impl TrafficShaper {
     pub fn new(rules: Vec<RouteRule>) -> Self {
-        let compiled = rules.into_iter().map(|r| {
-            let rl = r.limit_per_second.map(|l| Arc::new(RateLimiter::direct(Quota::per_second(NonZeroU32::new(l).unwrap()))));
-            (r, rl)
-        }).collect();
+        let compiled = rules
+            .into_iter()
+            .map(|r| {
+                let rl = r
+                    .limit_per_second
+                    .map(|l| Arc::new(RateLimiter::direct(Quota::per_second(NonZeroU32::new(l).unwrap()))));
+                (r, rl)
+            })
+            .collect();
         Self { rules: Arc::new(RwLock::new(compiled)) }
     }
 
@@ -41,4 +46,3 @@ impl TrafficShaper {
         true
     }
 }
-

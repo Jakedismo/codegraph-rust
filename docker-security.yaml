@@ -1,0 +1,200 @@
+# ==============================================================================
+# Docker Security Configuration for CodeGraph
+# Production-ready security hardening settings
+# ==============================================================================
+
+# Security context configurations
+security:
+  # Runtime security options
+  runtime:
+    # Drop all capabilities except required ones
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE  # Only if binding to privileged ports
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined  # Use default seccomp profile
+    
+    # Read-only root filesystem
+    read_only: true
+    
+    # Temporary filesystems for writable areas
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /var/tmp:noexec,nosuid,size=50m
+    
+    # User namespace remapping
+    user: "65534:65534"  # nobody:nobody
+    
+    # Process limits
+    ulimits:
+      nproc: 1024
+      nofile: 4096
+    
+    # Memory and CPU limits
+    memory: "512m"
+    memory_swap: "512m"
+    cpus: "2.0"
+    cpu_shares: 1024
+    
+    # Network security
+    network_mode: bridge
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    
+    # Disable privileged mode
+    privileged: false
+    
+    # Container restart policy
+    restart: unless-stopped
+
+# Image scanning configuration
+scanning:
+  # Enable vulnerability scanning
+  enabled: true
+  
+  # Scan tools
+  tools:
+    - trivy
+    - grype
+    - docker-scout
+  
+  # Severity thresholds
+  severity_threshold: HIGH
+  
+  # Fail build on vulnerabilities
+  fail_on_vulnerabilities: true
+  
+  # SBOM generation
+  sbom:
+    enabled: true
+    format: spdx-json
+
+# Secret management
+secrets:
+  # External secret providers
+  providers:
+    - vault
+    - kubernetes-secrets
+  
+  # Runtime secret injection
+  runtime_secrets:
+    - source: api_key
+      target: /run/secrets/api_key
+      mode: 0400
+    - source: db_password
+      target: /run/secrets/db_password
+      mode: 0400
+
+# Compliance and auditing
+compliance:
+  # Security standards
+  standards:
+    - CIS Docker Benchmark
+    - NIST Cybersecurity Framework
+    - OWASP Container Security
+  
+  # Audit logging
+  audit_log: true
+  
+  # Image provenance
+  provenance:
+    enabled: true
+    slsa_level: 3
+
+# Network security
+network:
+  # Default deny policy
+  default_policy: deny
+  
+  # Allowed outbound connections
+  egress:
+    - host: api.openai.com
+      port: 443
+      protocol: https
+    - host: registry-1.docker.io
+      port: 443
+      protocol: https
+  
+  # Ingress restrictions
+  ingress:
+    - port: 3000
+      protocol: http
+      source: load_balancer
+  
+  # TLS configuration
+  tls:
+    min_version: "1.3"
+    ciphers:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_CHACHA20_POLY1305_SHA256
+
+# Monitoring and alerting
+monitoring:
+  # Security events
+  security_events:
+    - privilege_escalation
+    - network_anomalies
+    - file_integrity_violations
+    - resource_exhaustion
+  
+  # Log aggregation
+  log_shipping:
+    enabled: true
+    destinations:
+      - splunk
+      - elk
+  
+  # Metrics collection
+  metrics:
+    - container_runtime_metrics
+    - security_metrics
+    - performance_metrics
+
+# Container runtime configuration
+runtime_config:
+  # OCI runtime
+  runtime: runc
+  
+  # Rootless mode
+  rootless: true
+  
+  # User namespace
+  userns_mode: host
+  
+  # AppArmor profile
+  apparmor_profile: docker-default
+  
+  # SELinux context
+  selinux_type: container_t
+
+# Build-time security
+build_security:
+  # Base image requirements
+  base_image:
+    - must_be_signed: true
+    - must_have_sbom: true
+    - max_vulnerabilities:
+        critical: 0
+        high: 0
+        medium: 5
+  
+  # Dockerfile linting
+  dockerfile_lint:
+    enabled: true
+    rules:
+      - no_root_user
+      - no_sudo
+      - no_latest_tag
+      - pin_versions
+      - minimize_layers
+  
+  # Supply chain security
+  supply_chain:
+    - verify_signatures: true
+    - check_provenance: true
+    - validate_checksums: true

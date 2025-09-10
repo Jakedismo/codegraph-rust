@@ -1,6 +1,6 @@
-use crate::storage::PersistentStorage;
 use codegraph_core::{CodeGraphError, NodeId, Result};
 use faiss::{Index, index::IndexImpl, MetricType};
+use faiss::index::ConcurrentIndex;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -14,6 +14,7 @@ use tracing::{debug, info, warn};
 pub struct SimpleIndexConfig {
     pub dimension: usize,
     pub index_type: String,
+    #[serde(with = "crate::serde_utils::metric_type")]
     pub metric_type: MetricType,
     pub training_threshold: usize,
 }
@@ -95,6 +96,7 @@ impl SimpleFaissManager {
         let mut reverse_mapping = self.reverse_mapping.write();
         let mut next_id = self.next_id.write();
 
+        let added_count = vectors.len();
         for (node_id, _) in vectors {
             let faiss_id = *next_id;
             *next_id += 1;
@@ -103,7 +105,7 @@ impl SimpleFaissManager {
             reverse_mapping.insert(node_id, faiss_id);
         }
 
-        info!("Added {} vectors to FAISS index", vectors.len());
+        info!("Added {} vectors to FAISS index", added_count);
         Ok(())
     }
 
@@ -119,9 +121,9 @@ impl SimpleFaissManager {
             )));
         }
 
-        let index_guard = self.index.read();
+        let mut index_guard = self.index.write();
         let index = index_guard
-            .as_ref()
+            .as_mut()
             .ok_or_else(|| CodeGraphError::Vector("Index not initialized".to_string()))?;
 
         let search_result = index
@@ -133,8 +135,10 @@ impl SimpleFaissManager {
         let mut results = Vec::new();
 
         for (distance, label) in search_result.distances.into_iter().zip(search_result.labels) {
-            if let Some(node_id) = id_mapping.get(&label) {
-                results.push((*node_id, distance));
+            if let Some(raw) = label.get() {
+                if let Some(node_id) = id_mapping.get(&((raw as i64))) {
+                    results.push((*node_id, distance));
+                }
             }
         }
 

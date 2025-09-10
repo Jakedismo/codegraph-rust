@@ -122,6 +122,7 @@ massif.out.*
 *.p12
 secrets.json
 credentials.json
+config/secrets.enc
 
 # Local development overrides
 local_config.toml

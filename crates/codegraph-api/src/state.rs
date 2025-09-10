@@ -6,9 +6,13 @@ use tokio::sync::RwLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::connection_pool::{ConnectionPoolConfig, HttpClientPool, load_base_urls_from_env};
 use crate::http2_optimizer::{Http2Optimizer, Http2OptimizerConfig};
+use crate::service_registry::ServiceRegistry;
+use codegraph_core::{ConfigManager, Settings};
 
 #[derive(Clone)]
 pub struct AppState {
+    pub settings: Arc<RwLock<Settings>>,
+    pub config: Arc<ConfigManager>,
     pub graph: Arc<RwLock<CodeGraph>>,
     pub parser: Arc<TreeSitterParser>,
     pub vector_store: Arc<FaissVectorStore>,
@@ -17,10 +21,11 @@ pub struct AppState {
     pub ws_metrics: Arc<WebSocketMetrics>,
     pub http_client_pool: Arc<HttpClientPool>,
     pub http2_optimizer: Arc<Http2Optimizer>,
+    pub service_registry: Arc<ServiceRegistry>,
 }
 
 impl AppState {
-    pub async fn new() -> codegraph_core::Result<Self> {
+    pub async fn new(config: Arc<ConfigManager>) -> codegraph_core::Result<Self> {
         let graph = Arc::new(RwLock::new(CodeGraph::new()));
         let parser = Arc::new(TreeSitterParser::new());
         let vector_store = Arc::new(FaissVectorStore::new(384)?);
@@ -51,6 +56,8 @@ impl AppState {
         }
 
         Ok(Self {
+            settings: config.settings().clone(),
+            config,
             graph,
             parser,
             vector_store,
@@ -59,6 +66,7 @@ impl AppState {
             ws_metrics: Arc::new(WebSocketMetrics::default()),
             http_client_pool,
             http2_optimizer,
+            service_registry: Arc::new(ServiceRegistry::new()),
         })
     }
 }

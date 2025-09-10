@@ -5,17 +5,48 @@ use tokio::signal;
 use tower::ServiceBuilder;
 use tracing::{info, warn};
 use std::time::Duration;
+use codegraph_core::ConfigManager;
+use std::sync::Arc;
 
 pub struct Server {
     state: AppState,
     addr: SocketAddr,
+    _config: Arc<ConfigManager>,
 }
 
 impl Server {
-    pub async fn new(addr: SocketAddr) -> Result<Self> {
+    pub async fn new(addr: SocketAddr, config: Arc<ConfigManager>) -> Result<Self> {
         crate::metrics::register_metrics();
-        let state = AppState::new().await?;
-        Ok(Self { state, addr })
+        let state = AppState::new(config.clone()).await?;
+        // Spawn background task for memory/leak metrics if enabled
+        // Spawn background task for metrics collection
+        {
+            tokio::spawn(async {
+                use std::time::Duration;
+                loop {
+                    // Update all system metrics
+                    crate::metrics::update_system_metrics();
+                    crate::metrics::update_uptime();
+                    
+                    #[cfg(feature = "leak-detect")]
+                    {
+                        crate::metrics::update_memory_metrics();
+                        // Optional alerting: warn if any leaks detected
+                        let leaked_allocs = crate::metrics::MEM_LEAKED_ALLOCATIONS.get();
+                        if leaked_allocs > 0 {
+                            warn!(
+                                leaked_allocations = leaked_allocs,
+                                leaked_bytes = crate::metrics::MEM_LEAKED_BYTES.get(),
+                                "Potential memory leaks detected by memscope. See /metrics or /memory/leaks."
+                            );
+                        }
+                    }
+                    
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                }
+            });
+        }
+        Ok(Self { state, addr, _config: config })
     }
 
     pub async fn run(self) -> Result<()> {
@@ -44,12 +75,15 @@ impl Server {
         };
 
         info!("Server listening on http://{}", self.addr);
-        info!("Health check available at http://{}/health", self.addr);
+        info!("Health endpoints available:");
+        info!("  GET /health - Comprehensive health check");
+        info!("  GET /health/live - Liveness probe");
+        info!("  GET /health/ready - Readiness probe");
+        info!("  GET /metrics - Prometheus metrics");
         info!("GraphQL endpoint available at http://{}/graphql", self.addr);
         info!("GraphiQL UI available at http://{}/graphiql", self.addr);
         info!("GraphQL subscriptions over WebSocket at ws://{}/graphql/ws", self.addr);
         info!("API documentation:");
-        info!("  GET /health - Health check");
         info!("  POST /parse - Parse source file");
         info!("  GET /nodes/:id - Get node by ID");
         info!("  GET /nodes/:id/similar - Find similar nodes");

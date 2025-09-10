@@ -35,6 +35,10 @@ The application exposes the following metrics on the `/metrics` endpoint:
 
 -   `sync_operations_total`: A counter for the total number of sync operations.
 -   `sync_operation_duration_seconds`: A histogram for the duration of sync operations.
+-   `memscope_active_memory_bytes` (feature: `leak-detect`): Active heap bytes tracked by memscope.
+-   `memscope_active_allocations` (feature: `leak-detect`): Count of active allocations.
+-   `memscope_leaked_memory_bytes` (feature: `leak-detect`): Bytes considered leaked.
+-   `memscope_leaked_allocations` (feature: `leak-detect`): Leaked allocation count.
 
 ## Dashboards
 
@@ -51,3 +55,5 @@ The following alerts are configured in `prometheus.rules.yml`:
 
 -   `SyncJobFailed`: Fires when a sync job fails.
 -   `SyncJobSlow`: Fires when the 95th percentile of sync job duration is over 1 hour.
+-   `MemoryLeaksDetected`: Fires when leaked allocations are non-zero.
+-   `RisingActiveMemory`: Warns on >100MB growth in 10m.

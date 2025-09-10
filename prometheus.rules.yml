@@ -18,3 +18,23 @@ groups:
     annotations:
       summary: Sync job is running slow
       description: The 95th percentile of sync job duration is over 1 hour.
+
+- name: memory_leak_alerts
+  rules:
+  - alert: MemoryLeaksDetected
+    expr: memscope_leaked_allocations > 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: Memory leaks detected by memscope
+      description: One or more leaked allocations have been observed. Export report via /memory/leaks.
+
+  - alert: RisingActiveMemory
+    expr: increase(memscope_active_memory_bytes[10m]) > 104857600
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: Active heap grew >100MB in the last 10m
+      description: Possible leak or memory growth trend. Investigate recent changes.

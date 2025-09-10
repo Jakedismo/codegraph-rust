@@ -1,0 +1,402 @@
+# =============================================================================
+# CodeGraph Production Monitoring Rules
+# Prometheus alerting rules for zero-downtime deployments
+# =============================================================================
+
+groups:
+  # ==========================================================================
+  # Application Health and Availability
+  # ==========================================================================
+  - name: codegraph.application.health
+    rules:
+      - alert: CodeGraphDown
+        expr: up{job="codegraph-api"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: application
+          runbook: "https://docs.codegraph.example.com/runbooks/application-down"
+        annotations:
+          summary: "CodeGraph API is down"
+          description: "CodeGraph API instance {{ $labels.instance }} has been down for more than 30 seconds"
+          impact: "Complete service unavailability"
+          action: "Immediate investigation required - check pod status, logs, and resource availability"
+
+      - alert: CodeGraphHealthCheckFailing
+        expr: codegraph_health_check_status != 1
+        for: 2m
+        labels:
+          severity: warning
+          component: health
+        annotations:
+          summary: "CodeGraph health check failing"
+          description: "Health check for {{ $labels.instance }} has been failing for 2 minutes"
+          action: "Check application logs and dependent services"
+
+      - alert: CodeGraphHighErrorRate
+        expr: |
+          (
+            rate(http_requests_total{job="codegraph-api",status=~"5.."}[5m]) /
+            rate(http_requests_total{job="codegraph-api"}[5m])
+          ) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: application
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }}% for {{ $labels.instance }}"
+          action: "Check application logs for error patterns and investigate root cause"
+
+  # ==========================================================================
+  # Performance and Latency
+  # ==========================================================================
+  - name: codegraph.performance
+    rules:
+      - alert: CodeGraphHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket{job="codegraph-api"}[5m])
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "High request latency"
+          description: "95th percentile latency is {{ $value }}s for {{ $labels.instance }}"
+          target: "Sub-50ms P95 latency per architecture requirements"
+          action: "Monitor query performance, check database connections, review memory usage"
+
+      - alert: CodeGraphExtremeLatency
+        expr: |
+          histogram_quantile(0.99,
+            rate(http_request_duration_seconds_bucket{job="codegraph-api"}[5m])
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: critical
+          component: performance
+        annotations:
+          summary: "Extreme request latency detected"
+          description: "99th percentile latency is {{ $value }}s for {{ $labels.instance }}"
+          action: "Immediate investigation required - potential system overload or resource contention"
+
+      - alert: CodeGraphLowThroughput
+        expr: rate(http_requests_total{job="codegraph-api"}[5m]) < 1
+        for: 15m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "Unusually low request throughput"
+          description: "Request rate is {{ $value }} req/s for {{ $labels.instance }}"
+          action: "Check if this is expected traffic pattern or investigate connectivity issues"
+
+  # ==========================================================================
+  # Resource Utilization
+  # ==========================================================================
+  - name: codegraph.resources
+    rules:
+      - alert: CodeGraphHighMemoryUsage
+        expr: |
+          (process_resident_memory_bytes{job="codegraph-api"} / 1024 / 1024 / 1024) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: memory
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}GB for {{ $labels.instance }}"
+          target: "Architecture target: <500MB for 100k LOC"
+          action: "Monitor memory leaks, check cache sizes, review graph data retention"
+
+      - alert: CodeGraphMemoryExhaustion
+        expr: |
+          (process_resident_memory_bytes{job="codegraph-api"} / 1024 / 1024 / 1024) > 1.5
+        for: 2m
+        labels:
+          severity: critical
+          component: memory
+        annotations:
+          summary: "Memory exhaustion risk"
+          description: "Memory usage is {{ $value }}GB for {{ $labels.instance }}"
+          action: "Immediate action required - consider pod restart or traffic reduction"
+
+      - alert: CodeGraphHighCPUUsage
+        expr: rate(process_cpu_seconds_total{job="codegraph-api"}[5m]) * 100 > 80
+        for: 15m
+        labels:
+          severity: warning
+          component: cpu
+        annotations:
+          summary: "High CPU utilization"
+          description: "CPU usage is {{ $value }}% for {{ $labels.instance }}"
+          action: "Monitor query complexity, check for infinite loops, review algorithm efficiency"
+
+      - alert: CodeGraphDiskSpaceLow
+        expr: |
+          (
+            (node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs"} - 
+             node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs"}) / 
+             node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs"}
+          ) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Low disk space"
+          description: "Disk usage is {{ $value }}% on {{ $labels.device }}"
+          action: "Monitor RocksDB growth, implement data retention policies, consider storage expansion"
+
+  # ==========================================================================
+  # Database and Storage
+  # ==========================================================================
+  - name: codegraph.database
+    rules:
+      - alert: CodeGraphRocksDBErrors
+        expr: increase(rocksdb_errors_total{job="codegraph-api"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "RocksDB errors detected"
+          description: "{{ $value }} RocksDB errors in the last 5 minutes for {{ $labels.instance }}"
+          action: "Check RocksDB logs, verify disk health, monitor I/O metrics"
+
+      - alert: CodeGraphSlowQueries
+        expr: |
+          histogram_quantile(0.95,
+            rate(graph_query_duration_seconds_bucket{job="codegraph-api"}[5m])
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "Slow graph queries detected"
+          description: "95th percentile query time is {{ $value }}s for {{ $labels.instance }}"
+          target: "Architecture target: sub-50ms query latency"
+          action: "Review query patterns, check index efficiency, monitor graph size"
+
+      - alert: CodeGraphCacheHitRateLow
+        expr: |
+          (
+            rate(graph_cache_hits_total{job="codegraph-api"}[10m]) /
+            (rate(graph_cache_hits_total{job="codegraph-api"}[10m]) + 
+             rate(graph_cache_misses_total{job="codegraph-api"}[10m]))
+          ) * 100 < 85
+        for: 15m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value }}% for {{ $labels.instance }}"
+          target: "Architecture target: >92% cache hit rate"
+          action: "Review cache configuration, monitor cache eviction patterns, check memory allocation"
+
+  # ==========================================================================
+  # Vector Search Performance
+  # ==========================================================================
+  - name: codegraph.vector
+    rules:
+      - alert: CodeGraphVectorSearchSlow
+        expr: |
+          histogram_quantile(0.95,
+            rate(vector_search_duration_seconds_bucket{job="codegraph-api"}[5m])
+          ) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+          component: vector-search
+        annotations:
+          summary: "Slow vector search performance"
+          description: "95th percentile vector search time is {{ $value }}s for {{ $labels.instance }}"
+          action: "Check FAISS index efficiency, monitor embedding generation, review query complexity"
+
+      - alert: CodeGraphEmbeddingGenerationSlow
+        expr: |
+          histogram_quantile(0.95,
+            rate(embedding_generation_duration_seconds_bucket{job="codegraph-api"}[5m])
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: embeddings
+        annotations:
+          summary: "Slow embedding generation"
+          description: "95th percentile embedding generation time is {{ $value }}s for {{ $labels.instance }}"
+          target: "Architecture target: <100ms P95"
+          action: "Monitor model performance, check CPU/GPU utilization, review batch processing"
+
+  # ==========================================================================
+  # Deployment and Release Monitoring
+  # ==========================================================================
+  - name: codegraph.deployment
+    rules:
+      - alert: CodeGraphDeploymentRollback
+        expr: increase(deployment_rollback_total{job="codegraph-api"}[1h]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: deployment
+        annotations:
+          summary: "Deployment rollback occurred"
+          description: "{{ $value }} rollback(s) detected in the last hour for {{ $labels.instance }}"
+          action: "Investigate rollback cause, review deployment logs, assess system stability"
+
+      - alert: CodeGraphNewVersionDeployed
+        expr: changes(codegraph_version_info[30m]) > 0
+        for: 1m
+        labels:
+          severity: info
+          component: deployment
+        annotations:
+          summary: "New version deployed"
+          description: "New CodeGraph version deployed: {{ $labels.version }}"
+          action: "Monitor system metrics closely for performance regressions or issues"
+
+      - alert: CodeGraphPodRestartLoop
+        expr: |
+          rate(kube_pod_container_status_restarts_total{
+            container="codegraph-api"
+          }[15m]) * 60 * 15 > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: kubernetes
+        annotations:
+          summary: "Pod restart loop detected"
+          description: "Pod {{ $labels.pod }} is restarting frequently"
+          action: "Check pod logs, review resource limits, investigate liveness/readiness probes"
+
+  # ==========================================================================
+  # Security and Compliance
+  # ==========================================================================
+  - name: codegraph.security
+    rules:
+      - alert: CodeGraphUnauthorizedAccess
+        expr: |
+          rate(http_requests_total{
+            job="codegraph-api",
+            status="401"
+          }[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "High rate of unauthorized access attempts"
+          description: "{{ $value }} unauthorized requests per second for {{ $labels.instance }}"
+          action: "Review authentication logs, check for brute force attacks, verify API key management"
+
+      - alert: CodeGraphSuspiciousActivity
+        expr: |
+          rate(http_requests_total{
+            job="codegraph-api",
+            status=~"4.."
+          }[5m]) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "High rate of client errors"
+          description: "{{ $value }} client errors per second for {{ $labels.instance }}"
+          action: "Review error patterns, check for potential attacks or misconfigurations"
+
+  # ==========================================================================
+  # Business Logic and Application-Specific
+  # ==========================================================================
+  - name: codegraph.business
+    rules:
+      - alert: CodeGraphParsingSlow
+        expr: |
+          histogram_quantile(0.95,
+            rate(code_parsing_duration_seconds_bucket{job="codegraph-api"}[5m])
+          ) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+          component: parser
+        annotations:
+          summary: "Code parsing is slow"
+          description: "95th percentile parsing time is {{ $value }}s for {{ $labels.instance }}"
+          action: "Review parser efficiency, check file size limits, monitor language-specific performance"
+
+      - alert: CodeGraphGraphBuilding
+        expr: |
+          histogram_quantile(0.95,
+            rate(graph_building_duration_seconds_bucket{job="codegraph-api"}[5m])
+          ) > 2.0
+        for: 15m
+        labels:
+          severity: warning
+          component: graph
+        annotations:
+          summary: "Graph building is slow"
+          description: "95th percentile graph building time is {{ $value }}s for {{ $labels.instance }}"
+          action: "Monitor graph complexity, check dependency resolution, review incremental update logic"
+
+      - alert: CodeGraphIndexingBacklog
+        expr: codegraph_indexing_queue_size{job="codegraph-api"} > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: indexing
+        annotations:
+          summary: "Indexing queue backlog"
+          description: "Indexing queue has {{ $value }} items pending for {{ $labels.instance }}"
+          action: "Monitor indexing throughput, check for stuck jobs, review resource allocation"
+
+  # ==========================================================================
+  # Kubernetes and Infrastructure
+  # ==========================================================================
+  - name: codegraph.kubernetes
+    rules:
+      - alert: CodeGraphPodNotReady
+        expr: |
+          kube_pod_status_ready{
+            condition="false",
+            pod=~"codegraph-api-.*"
+          } == 1
+        for: 5m
+        labels:
+          severity: warning
+          component: kubernetes
+        annotations:
+          summary: "Pod not ready"
+          description: "Pod {{ $labels.pod }} has been not ready for 5 minutes"
+          action: "Check pod status, review readiness probe configuration, investigate resource constraints"
+
+      - alert: CodeGraphServiceEndpointDown
+        expr: |
+          up{job="codegraph-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: service
+        annotations:
+          summary: "Service endpoint is down"
+          description: "CodeGraph service endpoint {{ $labels.instance }} is unreachable"
+          action: "Immediate investigation - check service configuration, network connectivity, pod status"
+
+      - alert: CodeGraphHPAMaxReplicas
+        expr: |
+          kube_horizontalpodautoscaler_status_current_replicas{
+            horizontalpodautoscaler=~"codegraph-api.*"
+          } >= 
+          kube_horizontalpodautoscaler_spec_max_replicas{
+            horizontalpodautoscaler=~"codegraph-api.*"
+          }
+        for: 15m
+        labels:
+          severity: warning
+          component: scaling
+        annotations:
+          summary: "HPA at maximum replicas"
+          description: "HPA {{ $labels.horizontalpodautoscaler }} has reached maximum replicas"
+          action: "Review scaling metrics, consider increasing max replicas or optimizing performance"

@@ -75,6 +75,10 @@ jobs:
     - name: Run tests with all features
       run: cargo test --workspace --all-features --verbose
 
+    - name: Verify codegraph-api binary (--version)
+      run: |
+        cargo run --bin codegraph-api -- -V
+
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
