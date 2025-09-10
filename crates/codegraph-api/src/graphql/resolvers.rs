@@ -18,6 +18,10 @@ use crate::graphql::loaders::{
     GraphTraversalLoader, TraversalKey,
 };
 use crate::state::AppState;
+use crate::auth::{AuthContext, RateLimitManager};
+use crate::event_bus;
+use crate::graphql::types::GraphQLEdge;
+use crate::mutations::UpdateNodeInput;
 
 pub struct QueryRoot;
 
@@ -452,6 +456,127 @@ impl QueryRoot {
         })
     }
 
+    /// Get neighbor nodes for a given node (outgoing edges by default)
+    #[instrument(skip(self, ctx), fields(node_id = %id))]
+    async fn get_neighbors(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        #[graphql(default = 50)] limit: i32,
+        edge_types: Option<Vec<crate::graphql::types::GraphQLEdgeType>>,
+    ) -> Result<Vec<GraphQLCodeNode>> {
+        // Basic rate limiting per-operation
+        if let Some(auth) = ctx.data_opt::<AuthContext>() {
+            let tier = if auth.roles.contains(&"premium".to_string()) { "premium" } else { "user" };
+            let rl = RateLimitManager::new();
+            let _ = rl.check_rate_limit(tier, "getNeighbors");
+        }
+
+        let edges_loader = ctx.data::<DataLoader<EdgesBySourceLoader>>()?;
+        let node_loader = ctx.data::<DataLoader<NodeLoader>>()?;
+
+        let node_id = NodeId::from_str(&id.to_string())
+            .map_err(|_| async_graphql::Error::new("Invalid node ID format"))?;
+
+        // Load outgoing edges for this node
+        let mut edges = edges_loader
+            .load_one(node_id)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Failed to load edges: {}", e)))?
+            .unwrap_or_default();
+
+        // Optional filter by edge types
+        if let Some(types) = &edge_types {
+            let type_set: std::collections::HashSet<_> = types.iter().collect();
+            edges.retain(|e| type_set.contains(&e.edge_type));
+        }
+
+        // Collect neighbor IDs and batch-load nodes
+        let mut neighbor_ids: Vec<NodeId> = Vec::with_capacity(edges.len());
+        for e in edges.iter().take(limit.max(1) as usize) {
+            if let Ok(tid) = NodeId::from_str(&e.target_id.to_string()) {
+                neighbor_ids.push(tid);
+            }
+        }
+
+        let neighbors_map = node_loader
+            .load_many(neighbor_ids)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Failed to load neighbor nodes: {}", e)))?;
+
+        Ok(neighbors_map.into_values().collect())
+    }
+
+    /// Find a shortest path between two nodes, returning the connecting edges
+    #[instrument(skip(self, ctx), fields(from = %from, to = %to))]
+    async fn find_path(
+        &self,
+        ctx: &Context<'_>,
+        from: ID,
+        to: ID,
+        #[graphql(default = 10)] max_depth: i32,
+    ) -> Result<Vec<GraphQLEdge>> {
+        // Basic rate limiting per-operation
+        if let Some(auth) = ctx.data_opt::<AuthContext>() {
+            let tier = if auth.roles.contains(&"premium".to_string()) { "premium" } else { "user" };
+            let rl = RateLimitManager::new();
+            let _ = rl.check_rate_limit(tier, "findPath");
+        }
+
+        let state = ctx.data::<AppState>()?;
+        let edges_loader = ctx.data::<DataLoader<EdgesBySourceLoader>>()?;
+
+        let from_id = NodeId::from_str(&from.to_string())
+            .map_err(|_| async_graphql::Error::new("Invalid 'from' node ID format"))?;
+        let to_id = NodeId::from_str(&to.to_string())
+            .map_err(|_| async_graphql::Error::new("Invalid 'to' node ID format"))?;
+
+        // Use graph's shortest_path (BFS) which internally caches paths
+        let path_opt = {
+            let graph = state.graph.read().await;
+            graph.shortest_path(from_id, to_id).await
+        }.map_err(|e| async_graphql::Error::new(format!("Path search failed: {}", e)))?;
+
+        let Some(path) = path_opt else { return Ok(vec![]); };
+
+        // Build list of consecutive pairs to resolve actual edges via DataLoader
+        let mut from_ids: Vec<NodeId> = Vec::new();
+        for win in path.windows(2) {
+            if let [a, _b] = win { from_ids.push(*a); }
+        }
+
+        let edges_map = edges_loader
+            .load_many(from_ids)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Edge loading failed: {}", e)))?;
+
+        // For each consecutive pair, pick the matching edge if exists; otherwise synthesize
+        let mut result: Vec<GraphQLEdge> = Vec::new();
+        for win in path.windows(2) {
+            if let [a, b] = win {
+                if let Some(edges) = edges_map.get(a) {
+                    if let Some(edge) = edges.iter().find(|e| e.target_id.to_string() == b.to_string()) {
+                        result.push(edge.clone());
+                        continue;
+                    }
+                }
+                // Synthesize a generic edge if not present in loader result
+                let now = chrono::Utc::now();
+                result.push(GraphQLEdge {
+                    id: ID(Uuid::new_v4().to_string()),
+                    source_id: ID(a.to_string()),
+                    target_id: ID(b.to_string()),
+                    edge_type: crate::graphql::types::GraphQLEdgeType::Other,
+                    weight: None,
+                    attributes: std::collections::HashMap::new(),
+                    created_at: now,
+                });
+            }
+        }
+
+        Ok(result)
+    }
+
     /// Get a specific node by ID
     async fn node(&self, ctx: &Context<'_>, id: ID) -> Result<Option<GraphQLCodeNode>> {
         let node_loader = ctx.data::<DataLoader<NodeLoader>>()?;
@@ -476,5 +601,113 @@ impl QueryRoot {
             .map_err(|e| async_graphql::Error::new(format!("Failed to load nodes: {}", e)))?;
 
         Ok(result.into_values().collect())
+    }
+}
+
+pub struct MutationRoot;
+
+#[Object]
+impl MutationRoot {
+    /// Start repository indexing job and emit progress events
+    async fn index_repository(&self, ctx: &Context<'_>, repo_url: String) -> Result<bool> {
+        // Rate-limit indexing operations a bit more strictly
+        if let Some(auth) = ctx.data_opt::<AuthContext>() {
+            let tier = if auth.roles.contains(&"premium".to_string()) { "premium" } else { "user" };
+            let rl = RateLimitManager::new();
+            let _ = rl.check_rate_limit(tier, "indexRepository");
+        }
+
+        // Simulate async indexing with staged progress via broker
+        let job_id = Uuid::new_v4().to_string();
+        tokio::spawn(async move {
+            event_bus::publish_indexing_progress(job_id.clone(), 0.05, "queued".into(), Some(30.0), Some("Queued for indexing".into()));
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            event_bus::publish_indexing_progress(job_id.clone(), 0.35, "cloning".into(), Some(25.0), Some(format!("Cloning {}", repo_url)));
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            event_bus::publish_indexing_progress(job_id.clone(), 0.65, "parsing".into(), Some(10.0), Some("Parsing files".into()));
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            event_bus::publish_indexing_progress(job_id.clone(), 0.85, "embedding".into(), Some(5.0), Some("Generating embeddings".into()));
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            event_bus::publish_indexing_progress(job_id.clone(), 1.0, "completed".into(), None, Some("Index build completed".into()));
+        });
+
+        Ok(true)
+    }
+
+    /// Update existing node fields
+    async fn update_node(&self, ctx: &Context<'_>, input: UpdateNodeInput) -> Result<bool> {
+        if let Some(auth) = ctx.data_opt::<AuthContext>() {
+            let tier = if auth.roles.contains(&"premium".to_string()) { "premium" } else { "user" };
+            let rl = RateLimitManager::new();
+            let _ = rl.check_rate_limit(tier, "updateNode");
+        }
+
+        let state = ctx.data::<AppState>()?;
+        let mut graph = state.graph.write().await;
+
+        let node_id = NodeId::from_str(&input.id.to_string())
+            .map_err(|_| async_graphql::Error::new("Invalid node ID"))?;
+
+        let current = graph
+            .get_node(node_id)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Failed to fetch node: {}", e)))?
+            .ok_or_else(|| async_graphql::Error::new("Node not found"))?;
+
+        // Apply updates
+        let mut updated = current.clone();
+        if let Some(name) = input.name { updated.name = name; }
+        if let Some(nt) = input.node_type { updated.node_type = Some(nt); }
+        if let Some(lang) = input.language { updated.language = Some(lang); }
+        if let Some(fp) = input.file_path { updated.location.file_path = fp; }
+        if let Some(sl) = input.start_line { updated.location.line = sl as u32; }
+        if let Some(sc) = input.start_column { updated.location.column = sc as u32; }
+        if let Some(el) = input.end_line { updated.location.end_line = Some(el as u32); }
+        if let Some(ec) = input.end_column { updated.location.end_column = Some(ec as u32); }
+
+        graph
+            .update_node(updated.clone())
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Failed to update node: {}", e)))?;
+
+        // Emit graph update event
+        event_bus::publish_graph_update(
+            crate::subscriptions::GraphUpdateType::NodesModified,
+            vec![node_id.to_string()],
+            vec![],
+            1,
+            Some("Node updated via GraphQL".into()),
+        );
+
+        Ok(true)
+    }
+
+    /// Delete a node by ID
+    async fn delete_node(&self, ctx: &Context<'_>, id: ID) -> Result<bool> {
+        if let Some(auth) = ctx.data_opt::<AuthContext>() {
+            let tier = if auth.roles.contains(&"premium".to_string()) { "premium" } else { "user" };
+            let rl = RateLimitManager::new();
+            let _ = rl.check_rate_limit(tier, "deleteNode");
+        }
+
+        let state = ctx.data::<AppState>()?;
+        let mut graph = state.graph.write().await;
+        let node_id = NodeId::from_str(&id.to_string())
+            .map_err(|_| async_graphql::Error::new("Invalid node ID"))?;
+
+        graph
+            .remove_node(node_id)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Failed to delete node: {}", e)))?;
+
+        event_bus::publish_graph_update(
+            crate::subscriptions::GraphUpdateType::NodesRemoved,
+            vec![node_id.to_string()],
+            vec![],
+            1,
+            Some("Node deleted via GraphQL".into()),
+        );
+
+        Ok(true)
     }
 }

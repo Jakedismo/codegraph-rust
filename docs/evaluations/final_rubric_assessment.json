@@ -1,0 +1,3140 @@
+{
+  "meta": {
+    "total_features_parsed": 206,
+    "expected_total": 187,
+    "parsed_ok": false
+  },
+  "phase_completion": [
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "features": 15,
+      "weighted_completion_percent": 94.17
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "features": 60,
+      "weighted_completion_percent": 60.14
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "features": 19,
+      "weighted_completion_percent": 66.82
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "features": 40,
+      "weighted_completion_percent": 44.14
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "features": 15,
+      "weighted_completion_percent": 56.77
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "features": 20,
+      "weighted_completion_percent": 57.78
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "features": 37,
+      "weighted_completion_percent": 59.44
+    }
+  ],
+  "section_scores": [
+    {
+      "section": "0.1 Workspace Structure & Configuration",
+      "percent": 100.0,
+      "count": 5
+    },
+    {
+      "section": "0.3 Data Models",
+      "percent": 92.5,
+      "count": 5
+    },
+    {
+      "section": "0.2 Core Traits & Abstractions",
+      "percent": 91.11,
+      "count": 5
+    },
+    {
+      "section": "1.1 RocksDB Integration",
+      "percent": 90.91,
+      "count": 5
+    },
+    {
+      "section": "1.5 Tree-sitter Integration",
+      "percent": 84.0,
+      "count": 5
+    },
+    {
+      "section": "2.3 RAG Implementation",
+      "percent": 80.0,
+      "count": 5
+    },
+    {
+      "section": "4.2 Git Integration",
+      "percent": 74.55,
+      "count": 5
+    },
+    {
+      "section": "5.3 I/O Optimization",
+      "percent": 73.33,
+      "count": 5
+    },
+    {
+      "section": "1.2 Graph Operations",
+      "percent": 72.31,
+      "count": 5
+    },
+    {
+      "section": "2.4 ML Pipeline",
+      "percent": 70.91,
+      "count": 4
+    },
+    {
+      "section": "1.6 Entity Extraction",
+      "percent": 70.0,
+      "count": 5
+    },
+    {
+      "section": "3.3 Real-time Features",
+      "percent": 67.27,
+      "count": 5
+    },
+    {
+      "section": "Observability",
+      "percent": 67.27,
+      "count": 5
+    },
+    {
+      "section": "6.3 Deployment Tooling",
+      "percent": 66.67,
+      "count": 5
+    },
+    {
+      "section": "1.4 Versioning & Snapshots",
+      "percent": 66.15,
+      "count": 5
+    },
+    {
+      "section": "6.1 Binary Optimization",
+      "percent": 65.0,
+      "count": 5
+    },
+    {
+      "section": "Security",
+      "percent": 64.0,
+      "count": 5
+    },
+    {
+      "section": "3.4 Performance Optimization",
+      "percent": 62.0,
+      "count": 5
+    },
+    {
+      "section": "5.4 Network Optimization",
+      "percent": 61.82,
+      "count": 5
+    },
+    {
+      "section": "Testing",
+      "percent": 61.67,
+      "count": 5
+    },
+    {
+      "section": "5.1 Memory Optimization",
+      "percent": 61.43,
+      "count": 5
+    },
+    {
+      "section": "1.9 FAISS Integration",
+      "percent": 60.0,
+      "count": 5
+    },
+    {
+      "section": "2.2 Text Processing",
+      "percent": 60.0,
+      "count": 5
+    },
+    {
+      "section": "6.2 Configuration Management",
+      "percent": 60.0,
+      "count": 5
+    },
+    {
+      "section": "1.3 Indexing & Search",
+      "percent": 58.57,
+      "count": 5
+    },
+    {
+      "section": "1.10 Vector Operations",
+      "percent": 57.78,
+      "count": 5
+    },
+    {
+      "section": "2.1 Embedding Generation",
+      "percent": 54.55,
+      "count": 5
+    },
+    {
+      "section": "4.3 Update Pipeline",
+      "percent": 52.73,
+      "count": 5
+    },
+    {
+      "section": "1.8 Incremental Parsing",
+      "percent": 47.69,
+      "count": 5
+    },
+    {
+      "section": "1.12 Index Management",
+      "percent": 44.0,
+      "count": 5
+    },
+    {
+      "section": "1.7 Dependency Analysis",
+      "percent": 42.5,
+      "count": 5
+    },
+    {
+      "section": "5.2 CPU Optimization",
+      "percent": 41.18,
+      "count": 5
+    },
+    {
+      "section": "1.11 Search Optimization",
+      "percent": 40.0,
+      "count": 5
+    },
+    {
+      "section": "3.5 Protocol Implementation",
+      "percent": 40.0,
+      "count": 5
+    },
+    {
+      "section": "3.6 Agent Communication",
+      "percent": 40.0,
+      "count": 5
+    },
+    {
+      "section": "3.7 Multi-Agent Coordination",
+      "percent": 40.0,
+      "count": 5
+    },
+    {
+      "section": "3.8 SDK Development",
+      "percent": 40.0,
+      "count": 5
+    },
+    {
+      "section": "4.1 File System Monitoring",
+      "percent": 40.0,
+      "count": 5
+    },
+    {
+      "section": "By Phase",
+      "percent": 40.0,
+      "count": 7
+    },
+    {
+      "section": "3.1 Schema Definition",
+      "percent": 33.33,
+      "count": 5
+    },
+    {
+      "section": "3.2 Resolvers Implementation",
+      "percent": 32.31,
+      "count": 5
+    }
+  ],
+  "weighted_completion_percent": 58.91,
+  "overall_score_with_ci": {
+    "mean_percent": 58.91,
+    "ci95_percent": 3.21
+  },
+  "rubric_scores": {
+    "coverage": 5.9,
+    "quality": 10.0,
+    "compliance": 8.0,
+    "efficiency": 10.0,
+    "overall": 7.2
+  },
+  "improvement_suggestions": [
+    "Priority 3: Address gaps in 3.2 Resolvers Implementation with missing features and tests",
+    "Priority 3: Address gaps in 3.1 Schema Definition with missing features and tests",
+    "Priority 3: Address gaps in 1.11 Search Optimization with missing features and tests",
+    "Priority 3: Address gaps in 3.5 Protocol Implementation with missing features and tests",
+    "Priority 3: Address gaps in 3.6 Agent Communication with missing features and tests"
+  ],
+  "features": [
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.1 Workspace Structure & Configuration",
+      "feature": "Cargo workspace setup",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Multi-crate workspace configuration",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 5,
+      "evidence": [
+        "Cargo.toml:[workspace]"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.1 Workspace Structure & Configuration",
+      "feature": "CI/CD pipeline",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "GitHub Actions for testing and builds",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        ".github/workflows/ci.yml"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.1 Workspace Structure & Configuration",
+      "feature": "Development tooling",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Rustfmt, Clippy, pre-commit hooks",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 5,
+      "evidence": [
+        "rustfmt.toml or clippy.toml"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.1 Workspace Structure & Configuration",
+      "feature": "Build optimization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Release profile tuning, binary size optimization",
+      "estimated_hours": "6",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "Cargo.toml:[profile.release]"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.1 Workspace Structure & Configuration",
+      "feature": "Documentation structure",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "README, CHANGELOG, API docs framework",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 5,
+      "evidence": [
+        "docs/*",
+        "README.md"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.2 Core Traits & Abstractions",
+      "feature": "GraphStore trait",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Core graph operations interface",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-core/src/traits.rs:trait GraphStore"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.2 Core Traits & Abstractions",
+      "feature": "VectorIndex trait",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Vector search operations interface",
+      "estimated_hours": "6",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-core/src/traits.rs:trait VectorStore"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.2 Core Traits & Abstractions",
+      "feature": "CodeAnalyzer trait",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Code parsing and analysis interface",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-core/src/traits.rs:trait CodeParser"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.2 Core Traits & Abstractions",
+      "feature": "EmbeddingProvider trait",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Embedding generation interface",
+      "estimated_hours": "6",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-vector/src/providers.rs:trait EmbeddingProvider"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.2 Core Traits & Abstractions",
+      "feature": "Error handling types",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Custom error types with context",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-core/src/error.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.3 Data Models",
+      "feature": "Node/Edge structures",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Core graph data structures",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-core/src/node.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.3 Data Models",
+      "feature": "Entity types (AST nodes)",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Language-agnostic code entities",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-core/src/types.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.3 Data Models",
+      "feature": "Embedding metadata",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Vector storage metadata",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-core/src/node.rs:embedding"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.3 Data Models",
+      "feature": "Serialization formats",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Zero-copy serialization with rkyv",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-zerocopy"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.3 Data Models",
+      "feature": "Configuration structures",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Application configuration models",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-core/src/config.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.1 RocksDB Integration",
+      "feature": "Database initialization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "RocksDB setup with column families",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-graph/src/storage.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.1 RocksDB Integration",
+      "feature": "Transaction support",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "ACID transactions for graph operations",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-graph/src/storage.rs:begin/commit/rollback"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.1 RocksDB Integration",
+      "feature": "Batch operations",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Efficient bulk read/write operations",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-graph/src/storage.rs:WriteBatch"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.1 RocksDB Integration",
+      "feature": "Backup/restore",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Database backup and point-in-time recovery",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-graph/src/storage.rs:backup_snapshot/restore_from_snapshot"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.1 RocksDB Integration",
+      "feature": "Compaction tuning",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "LSM-tree optimization for workload",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-graph/src/storage.rs:Options tuning"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.2 Graph Operations",
+      "feature": "Node CRUD operations",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Create, read, update, delete nodes",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-graph/src/storage.rs:add_node/get_node/remove_node"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.2 Graph Operations",
+      "feature": "Edge CRUD operations",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Create, read, update, delete edges",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [
+        "crates/codegraph-graph/src/storage.rs:add_edge"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.2 Graph Operations",
+      "feature": "Graph traversal",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "BFS/DFS traversal with filters",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-graph/src/traversal.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.2 Graph Operations",
+      "feature": "Subgraph extraction",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Efficient subgraph queries",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [
+        "crates/codegraph-api/src/graphql/resolvers.rs:extract_subgraph"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.2 Graph Operations",
+      "feature": "Path finding",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Shortest path algorithms",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-graph/src/traversal.rs:dijkstra/astar"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.3 Indexing & Search",
+      "feature": "Secondary indices",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Property-based indexing",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-graph/src/storage.rs:indices"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.3 Indexing & Search",
+      "feature": "Full-text search",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Text search within nodes",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 1,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.3 Indexing & Search",
+      "feature": "Composite queries",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Multi-criteria search",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.3 Indexing & Search",
+      "feature": "Query optimization",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "Query plan optimization",
+      "estimated_hours": "24",
+      "complexity_weight": 4,
+      "score_0_5": 3,
+      "evidence": [
+        "crates/codegraph-graph/src/cache.rs",
+        "crates/codegraph-graph/src/graph.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.3 Indexing & Search",
+      "feature": "Caching layer",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Result caching with invalidation",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-graph/src/cache.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.4 Versioning & Snapshots",
+      "feature": "Version tracking",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Node/edge versioning",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-graph/src/versioned_storage.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.4 Versioning & Snapshots",
+      "feature": "Snapshot creation",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Point-in-time snapshots",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-graph/src/storage.rs:backup_snapshot"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.4 Versioning & Snapshots",
+      "feature": "Diff computation",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Change detection between versions",
+      "estimated_hours": "18",
+      "complexity_weight": 3,
+      "score_0_5": 3,
+      "evidence": [
+        "crates/codegraph-graph/src/versioned_storage.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.4 Versioning & Snapshots",
+      "feature": "Rollback operations",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Restore to previous versions",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [
+        "crates/codegraph-graph/src/storage.rs:restore_from_snapshot"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.4 Versioning & Snapshots",
+      "feature": "Cleanup strategies",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Old version garbage collection",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.5 Tree-sitter Integration",
+      "feature": "Parser initialization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Tree-sitter setup for languages",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-parser/src/parser.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.5 Tree-sitter Integration",
+      "feature": "Language detection",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "File extension to language mapping",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-parser/src/parser.rs:detect_language"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.5 Tree-sitter Integration",
+      "feature": "AST parsing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Parse files to syntax trees",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-parser/src/parser.rs:parse_content_with_recovery"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.5 Tree-sitter Integration",
+      "feature": "Error handling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Graceful parsing error recovery",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-core/src/error.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.5 Tree-sitter Integration",
+      "feature": "Memory optimization",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Efficient AST memory usage",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 3,
+      "evidence": [
+        "crates/codegraph-parser/src/parser.rs:parser_pool"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.6 Entity Extraction",
+      "feature": "Python extractor",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Classes, functions, variables, imports",
+      "estimated_hours": "16",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-parser/src/visitor.rs:Python mappings"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.6 Entity Extraction",
+      "feature": "JavaScript extractor",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Functions, classes, modules, exports",
+      "estimated_hours": "16",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-parser/src/visitor.rs:JavaScript mappings"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.6 Entity Extraction",
+      "feature": "TypeScript extractor",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Types, interfaces, decorators",
+      "estimated_hours": "18",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-parser/src/visitor.rs:TypeScript mappings"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.6 Entity Extraction",
+      "feature": "Rust extractor",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83e\udd1d",
+      "description": "Structs, traits, impls, macros",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-parser/src/visitor.rs:Rust mappings"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.6 Entity Extraction",
+      "feature": "Generic extractor",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Language-agnostic entity patterns",
+      "estimated_hours": "24",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.7 Dependency Analysis",
+      "feature": "Import resolution",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Resolve import statements to files",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.7 Dependency Analysis",
+      "feature": "Call graph building",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Function/method call relationships",
+      "estimated_hours": "24",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.7 Dependency Analysis",
+      "feature": "Type inference",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "Basic type inference for variables",
+      "estimated_hours": "32",
+      "complexity_weight": 4,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.7 Dependency Analysis",
+      "feature": "Data flow analysis",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "Variable usage and dependencies",
+      "estimated_hours": "28",
+      "complexity_weight": 4,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.7 Dependency Analysis",
+      "feature": "Circular dependency detection",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Detect and report cycles",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [
+        "crates/codegraph-graph/src/traversal.rs:find_strongly_connected_components"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.8 Incremental Parsing",
+      "feature": "Change detection",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "File modification tracking",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.8 Incremental Parsing",
+      "feature": "Delta parsing",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Parse only changed portions",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 3,
+      "evidence": [
+        "crates/codegraph-parser/src/parser.rs:incremental_update"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.8 Incremental Parsing",
+      "feature": "Graph updates",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Incrementally update graph structure",
+      "estimated_hours": "18",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [
+        "crates/codegraph-graph/src/update_scheduler.rs",
+        "crates/codegraph-graph/src/delta_processor.rs",
+        "crates/codegraph-graph/src/graph_updater.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.8 Incremental Parsing",
+      "feature": "Invalidation cascade",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Update dependent nodes efficiently",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [
+        "crates/codegraph-graph/src/update_scheduler.rs",
+        "crates/codegraph-graph/src/delta_processor.rs",
+        "crates/codegraph-graph/src/graph_updater.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.8 Incremental Parsing",
+      "feature": "Conflict resolution",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle concurrent modifications",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [
+        "crates/codegraph-graph/src/update_scheduler.rs",
+        "crates/codegraph-graph/src/delta_processor.rs",
+        "crates/codegraph-graph/src/graph_updater.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.9 FAISS Integration",
+      "feature": "Index initialization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "FAISS index setup and configuration",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/store.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.9 FAISS Integration",
+      "feature": "Index types",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "IVF, HNSW, Flat index implementations",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [
+        "crates/codegraph-vector/src/store.rs:index_factory(\"Flat\")"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.9 FAISS Integration",
+      "feature": "GPU support",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "GPU-accelerated indexing (optional)",
+      "estimated_hours": "24",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [
+        "crates/codegraph-vector/src/gpu.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.9 FAISS Integration",
+      "feature": "Memory mapping",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Memory-mapped index files",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/storage.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.9 FAISS Integration",
+      "feature": "Index persistence",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Save/load index to/from disk",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/storage.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.10 Vector Operations",
+      "feature": "Vector addition",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Add vectors to index",
+      "estimated_hours": "6",
+      "complexity_weight": 1,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/store.rs:add"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.10 Vector Operations",
+      "feature": "Batch operations",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Bulk vector operations",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/store.rs:build_index"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.10 Vector Operations",
+      "feature": "KNN search",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "K-nearest neighbor search",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/search.rs:search_by_embedding"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.10 Vector Operations",
+      "feature": "Range queries",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Distance-based range searches",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 1,
+      "evidence": [
+        "crates/codegraph-vector/src/*"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.10 Vector Operations",
+      "feature": "Vector updates",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Update existing vectors",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [
+        "crates/codegraph-vector/src/*"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.11 Search Optimization",
+      "feature": "Query optimization",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Optimize search parameters",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.11 Search Optimization",
+      "feature": "Result ranking",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Score-based result ordering",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.11 Search Optimization",
+      "feature": "Search caching",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Cache frequent queries",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.11 Search Optimization",
+      "feature": "Parallel search",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Multi-threaded search execution",
+      "estimated_hours": "18",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.11 Search Optimization",
+      "feature": "SIMD optimization",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "SIMD vector operations",
+      "estimated_hours": "24",
+      "complexity_weight": 4,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.12 Index Management",
+      "feature": "Index rebuilding",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Full index reconstruction",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.12 Index Management",
+      "feature": "Incremental updates",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Add/remove vectors without rebuild",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.12 Index Management",
+      "feature": "Index compaction",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Optimize index structure",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.12 Index Management",
+      "feature": "Health monitoring",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Index health and performance metrics",
+      "estimated_hours": "6",
+      "complexity_weight": 1,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.12 Index Management",
+      "feature": "Backup/restore",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Index backup and recovery",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.1 Embedding Generation",
+      "feature": "Local embeddings (Candle)",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "BERT-like models with Candle",
+      "estimated_hours": "24",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [
+        "crates/codegraph-vector/src/local_provider.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.1 Embedding Generation",
+      "feature": "OpenAI API integration",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "External embedding service",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [
+        "crates/codegraph-vector/src/openai_provider.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.1 Embedding Generation",
+      "feature": "Batch processing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Efficient batch embedding generation",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.1 Embedding Generation",
+      "feature": "Model management",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Model loading and caching",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.1 Embedding Generation",
+      "feature": "Fallback strategies",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle model failures gracefully",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/providers.rs:HybridEmbeddingPipeline"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.2 Text Processing",
+      "feature": "Code tokenization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Language-aware tokenization",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-parser/src/text_processor.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.2 Text Processing",
+      "feature": "Text chunking",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Semantic text segmentation",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.2 Text Processing",
+      "feature": "Context extraction",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Relevant context for embeddings",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.2 Text Processing",
+      "feature": "Deduplication",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Remove duplicate text segments",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.2 Text Processing",
+      "feature": "Normalization",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Text preprocessing and cleanup",
+      "estimated_hours": "6",
+      "complexity_weight": 1,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.3 RAG Implementation",
+      "feature": "Query processing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Natural language query analysis",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/rag/rag_system.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.3 RAG Implementation",
+      "feature": "Context retrieval",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Relevant context fetching",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/rag/rag_system.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.3 RAG Implementation",
+      "feature": "Result ranking",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Relevance-based ranking",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/rag/rag_system.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.3 RAG Implementation",
+      "feature": "Response generation",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Generate responses from context",
+      "estimated_hours": "18",
+      "complexity_weight": 3,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/rag/rag_system.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.3 RAG Implementation",
+      "feature": "Answer validation",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Validate response quality",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-vector/src/rag/rag_system.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.4 ML Pipeline",
+      "feature": "Model training",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "Train domain-specific models",
+      "estimated_hours": "40",
+      "complexity_weight": 4,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.4 ML Pipeline",
+      "feature": "Inference pipeline",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Real-time model inference",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 5,
+      "evidence": [
+        ".github/workflows/ci.yml"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.4 ML Pipeline",
+      "feature": "Model evaluation",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Performance metrics and validation",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.4 ML Pipeline",
+      "feature": "A/B testing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Compare model versions",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.1 Schema Definition",
+      "feature": "Query types",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Define GraphQL query schema",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 1,
+      "evidence": [
+        "crates/codegraph-api/src/schema.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.1 Schema Definition",
+      "feature": "Mutation types",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Define GraphQL mutation schema",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 1,
+      "evidence": [
+        "crates/codegraph-api/src/schema.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.1 Schema Definition",
+      "feature": "Subscription types",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Define GraphQL subscription schema",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 1,
+      "evidence": [
+        "crates/codegraph-api/src/schema.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.1 Schema Definition",
+      "feature": "Custom scalars",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "UUID, DateTime, JSON scalars",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.1 Schema Definition",
+      "feature": "Input validation",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Request validation and sanitization",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.2 Resolvers Implementation",
+      "feature": "Query resolvers",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Implement query logic",
+      "estimated_hours": "24",
+      "complexity_weight": 3,
+      "score_0_5": 1,
+      "evidence": [
+        "crates/codegraph-api/src/graphql/resolvers.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.2 Resolvers Implementation",
+      "feature": "Mutation resolvers",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Implement mutation logic",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 1,
+      "evidence": [
+        "crates/codegraph-api/src/graphql/resolvers.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.2 Resolvers Implementation",
+      "feature": "Subscription resolvers",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Real-time subscription handling",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 1,
+      "evidence": [
+        "crates/codegraph-api/src/graphql/resolvers.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.2 Resolvers Implementation",
+      "feature": "DataLoader integration",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Batch and cache database queries",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 1,
+      "evidence": [
+        "crates/codegraph-api/src/graphql/resolvers.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.2 Resolvers Implementation",
+      "feature": "Error handling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "GraphQL error formatting",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-core/src/error.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.3 Real-time Features",
+      "feature": "WebSocket support",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "WebSocket connection handling",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-api/src/subscriptions.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.3 Real-time Features",
+      "feature": "Subscription management",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Manage active subscriptions",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.3 Real-time Features",
+      "feature": "Event broadcasting",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Broadcast updates to subscribers",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.3 Real-time Features",
+      "feature": "Connection lifecycle",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle connection drops and reconnects",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.3 Real-time Features",
+      "feature": "Rate limiting",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Prevent subscription abuse",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-api/src/auth.rs:RateLimitManager"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.4 Performance Optimization",
+      "feature": "Query complexity analysis",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Analyze and limit complex queries",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.4 Performance Optimization",
+      "feature": "Response caching",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Cache frequent queries",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.4 Performance Optimization",
+      "feature": "Connection pooling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Database connection management",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-api/src/connection_pool.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.4 Performance Optimization",
+      "feature": "Pagination",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Efficient result pagination",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-api/src/graphql/resolvers.rs:PageInfo"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.4 Performance Optimization",
+      "feature": "Compression",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Response compression",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.5 Protocol Implementation",
+      "feature": "Message parsing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "MCP message serialization/deserialization",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.5 Protocol Implementation",
+      "feature": "Protocol validation",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Validate MCP protocol compliance",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.5 Protocol Implementation",
+      "feature": "Connection handling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "WebSocket connection management",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.5 Protocol Implementation",
+      "feature": "Heartbeat mechanism",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Keep-alive and connection monitoring",
+      "estimated_hours": "6",
+      "complexity_weight": 1,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.5 Protocol Implementation",
+      "feature": "Protocol versioning",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle multiple protocol versions",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.6 Agent Communication",
+      "feature": "Request/response handling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle agent requests and responses",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.6 Agent Communication",
+      "feature": "Publish/subscribe",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Event-driven communication",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.6 Agent Communication",
+      "feature": "Message routing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Route messages to appropriate handlers",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.6 Agent Communication",
+      "feature": "Session management",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Manage agent sessions",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.6 Agent Communication",
+      "feature": "Authentication",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Agent authentication and authorization",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.7 Multi-Agent Coordination",
+      "feature": "Agent registry",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Track active agents and capabilities",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.7 Multi-Agent Coordination",
+      "feature": "Task distribution",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Distribute tasks among agents",
+      "estimated_hours": "18",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.7 Multi-Agent Coordination",
+      "feature": "Result aggregation",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Combine results from multiple agents",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.7 Multi-Agent Coordination",
+      "feature": "Conflict resolution",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle conflicting agent actions",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.7 Multi-Agent Coordination",
+      "feature": "Coordination protocols",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "Advanced coordination strategies",
+      "estimated_hours": "24",
+      "complexity_weight": 4,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.8 SDK Development",
+      "feature": "Rust SDK",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Native Rust client library",
+      "estimated_hours": "16",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.8 SDK Development",
+      "feature": "Python SDK",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Python client library",
+      "estimated_hours": "16",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.8 SDK Development",
+      "feature": "JavaScript SDK",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "JavaScript/TypeScript client library",
+      "estimated_hours": "16",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.8 SDK Development",
+      "feature": "Examples and docs",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83e\udd1d",
+      "description": "Usage examples and documentation",
+      "estimated_hours": "12",
+      "complexity_weight": 1,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.8 SDK Development",
+      "feature": "Testing utilities",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "SDK testing and validation tools",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.1 File System Monitoring",
+      "feature": "File watcher",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Monitor file system changes",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.1 File System Monitoring",
+      "feature": "Event filtering",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Filter relevant file changes",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.1 File System Monitoring",
+      "feature": "Batch processing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Batch multiple changes efficiently",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.1 File System Monitoring",
+      "feature": "Recursive watching",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Monitor directory trees",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.1 File System Monitoring",
+      "feature": "Ignore patterns",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Skip irrelevant files and directories",
+      "estimated_hours": "6",
+      "complexity_weight": 1,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.2 Git Integration",
+      "feature": "Git repository detection",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Detect Git repositories",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-git/src/repo.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.2 Git Integration",
+      "feature": "Commit hook integration",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Pre/post-commit hooks",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-git/src/repo.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.2 Git Integration",
+      "feature": "Branch tracking",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Track changes across branches",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-git/src/repo.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.2 Git Integration",
+      "feature": "Merge conflict handling",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle merge conflicts gracefully",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 3,
+      "evidence": [
+        "crates/codegraph-git/src/repo.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.2 Git Integration",
+      "feature": "History analysis",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Analyze commit history for insights",
+      "estimated_hours": "18",
+      "complexity_weight": 3,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-git/src/repo.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.3 Update Pipeline",
+      "feature": "Change queue",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Queue file changes for processing",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.3 Update Pipeline",
+      "feature": "Priority scheduling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Prioritize critical changes",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.3 Update Pipeline",
+      "feature": "Parallel processing",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Process changes in parallel",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.3 Update Pipeline",
+      "feature": "Progress tracking",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Track update progress",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.3 Update Pipeline",
+      "feature": "Rollback mechanism",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Rollback failed updates",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.1 Memory Optimization",
+      "feature": "Arena allocators",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Custom memory allocation strategies",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 3,
+      "evidence": [
+        "crates/codegraph-core/src/arena.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.1 Memory Optimization",
+      "feature": "Zero-copy operations",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd04",
+      "description": "Eliminate unnecessary copying",
+      "estimated_hours": "24",
+      "complexity_weight": 4,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-zerocopy"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.1 Memory Optimization",
+      "feature": "Memory pools",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Reusable memory pools",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.1 Memory Optimization",
+      "feature": "Leak detection",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Memory leak detection and prevention",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [
+        "crates/codegraph-api/src/metrics.rs:memscope"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.1 Memory Optimization",
+      "feature": "Profiling tools",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Memory usage profiling",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.2 CPU Optimization",
+      "feature": "SIMD operations",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd04",
+      "description": "Use SIMD for vector operations",
+      "estimated_hours": "24",
+      "complexity_weight": 4,
+      "score_0_5": 0,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.2 CPU Optimization",
+      "feature": "Lock-free data structures",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd04",
+      "description": "Eliminate locking overhead",
+      "estimated_hours": "28",
+      "complexity_weight": 4,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-core/src/node.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.2 CPU Optimization",
+      "feature": "CPU cache optimization",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Optimize for CPU cache efficiency",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.2 CPU Optimization",
+      "feature": "Branch prediction",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Optimize conditional logic",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 1,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.2 CPU Optimization",
+      "feature": "Hot path optimization",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Optimize frequently executed code",
+      "estimated_hours": "18",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.3 I/O Optimization",
+      "feature": "Async I/O",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Fully asynchronous I/O operations",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.3 I/O Optimization",
+      "feature": "Memory-mapped files",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Use mmap for large files",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-core/src/mmap.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.3 I/O Optimization",
+      "feature": "I/O batching",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Batch I/O operations",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-graph/src/io_batcher.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.3 I/O Optimization",
+      "feature": "Read-ahead strategies",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Predictive data loading",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.3 I/O Optimization",
+      "feature": "Write coalescing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Combine multiple writes",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.4 Network Optimization",
+      "feature": "Connection pooling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Reuse network connections",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.4 Network Optimization",
+      "feature": "Response streaming",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Stream large responses",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.4 Network Optimization",
+      "feature": "Compression",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Compress network traffic",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.4 Network Optimization",
+      "feature": "HTTP/2 support",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Use HTTP/2 features",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [
+        "crates/codegraph-api/src/http2_optimizer.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.4 Network Optimization",
+      "feature": "Load balancing",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Distribute load across instances",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.1 Binary Optimization",
+      "feature": "Link-time optimization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "LTO for smaller binaries",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.1 Binary Optimization",
+      "feature": "Dead code elimination",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Remove unused code",
+      "estimated_hours": "6",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.1 Binary Optimization",
+      "feature": "Asset embedding",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Embed resources in binary",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.1 Binary Optimization",
+      "feature": "Strip symbols",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Remove debug symbols",
+      "estimated_hours": "2",
+      "complexity_weight": 1,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.1 Binary Optimization",
+      "feature": "Compression",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Compress final binary",
+      "estimated_hours": "6",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.2 Configuration Management",
+      "feature": "Config file parsing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "TOML/JSON/YAML configuration",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.2 Configuration Management",
+      "feature": "Environment variables",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Environment-based configuration",
+      "estimated_hours": "4",
+      "complexity_weight": 1,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.2 Configuration Management",
+      "feature": "Command-line arguments",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "CLI argument parsing",
+      "estimated_hours": "6",
+      "complexity_weight": 1,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.2 Configuration Management",
+      "feature": "Config validation",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Validate configuration values",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.2 Configuration Management",
+      "feature": "Dynamic reloading",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Reload configuration without restart",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.3 Deployment Tooling",
+      "feature": "Docker images",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Containerization support",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.3 Deployment Tooling",
+      "feature": "Kubernetes manifests",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "K8s deployment configurations",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.3 Deployment Tooling",
+      "feature": "Service discovery",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Automatic service discovery",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.3 Deployment Tooling",
+      "feature": "Health checks",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Health check endpoints",
+      "estimated_hours": "6",
+      "complexity_weight": 1,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.3 Deployment Tooling",
+      "feature": "Graceful shutdown",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Clean shutdown procedures",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Observability",
+      "feature": "Structured logging",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "JSON-structured logs with tracing",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Observability",
+      "feature": "Metrics collection",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Prometheus metrics",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Observability",
+      "feature": "Distributed tracing",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "OpenTelemetry integration",
+      "estimated_hours": "16",
+      "complexity_weight": 3,
+      "score_0_5": 1,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Observability",
+      "feature": "Performance profiling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "CPU/memory profiling",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Observability",
+      "feature": "Error tracking",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Error aggregation and alerting",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 5,
+      "evidence": [
+        "crates/codegraph-core/src/error.rs"
+      ],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Security",
+      "feature": "Authentication",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "JWT-based authentication",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Security",
+      "feature": "Authorization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Role-based access control",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Security",
+      "feature": "Rate limiting",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Prevent abuse and DoS",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Security",
+      "feature": "Input validation",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Sanitize all inputs",
+      "estimated_hours": "10",
+      "complexity_weight": 2,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Security",
+      "feature": "TLS support",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "HTTPS/WSS encryption",
+      "estimated_hours": "8",
+      "complexity_weight": 2,
+      "score_0_5": 1,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Testing",
+      "feature": "Unit tests",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Comprehensive unit test suite",
+      "estimated_hours": "40",
+      "complexity_weight": 2,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Testing",
+      "feature": "Integration tests",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "End-to-end integration tests",
+      "estimated_hours": "30",
+      "complexity_weight": 3,
+      "score_0_5": 4,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Testing",
+      "feature": "Performance tests",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Benchmark and load tests",
+      "estimated_hours": "20",
+      "complexity_weight": 3,
+      "score_0_5": 3,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Testing",
+      "feature": "Property-based tests",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Proptest-based testing",
+      "estimated_hours": "16",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "Testing",
+      "feature": "Fuzzing tests",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Fuzz testing critical components",
+      "estimated_hours": "12",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "By Phase",
+      "feature": "Phase 0",
+      "complexity": "19",
+      "parallel": "114",
+      "description": "5",
+      "estimated_hours": "High (95%)",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "By Phase",
+      "feature": "Phase 1",
+      "complexity": "66",
+      "parallel": "1,056",
+      "description": "18",
+      "estimated_hours": "Medium (60%)",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "By Phase",
+      "feature": "Phase 2",
+      "complexity": "20",
+      "parallel": "298",
+      "description": "5",
+      "estimated_hours": "Medium (65%)",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "By Phase",
+      "feature": "Phase 3",
+      "complexity": "32",
+      "parallel": "442",
+      "description": "8",
+      "estimated_hours": "High (75%)",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "By Phase",
+      "feature": "Phase 4",
+      "complexity": "15",
+      "parallel": "168",
+      "description": "3",
+      "estimated_hours": "Medium (50%)",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "By Phase",
+      "feature": "Phase 5",
+      "complexity": "20",
+      "parallel": "298",
+      "description": "8",
+      "estimated_hours": "High (80%)",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "By Phase",
+      "feature": "Phase 6",
+      "complexity": "15",
+      "parallel": "106",
+      "description": "2",
+      "estimated_hours": "High (90%)",
+      "complexity_weight": 2,
+      "score_0_5": 2,
+      "evidence": [],
+      "rationale": ""
+    }
+  ]
+}

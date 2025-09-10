@@ -1,11 +1,12 @@
-use async_graphql::{EmptyMutation, Schema, dataloader::DataLoader};
+use async_graphql::{Schema, dataloader::DataLoader};
 use crate::queries::Query;
 use crate::subscriptions::SubscriptionRoot;
+use crate::graphql::resolvers::MutationRoot;
 use crate::state::AppState;
 use crate::graphql::loaders::{LoaderFactory, NodeLoader, EdgesBySourceLoader, SemanticSearchLoader, GraphTraversalLoader};
 use std::sync::Arc;
 
-pub type CodeGraphSchema = Schema<Query, EmptyMutation, SubscriptionRoot>;
+pub type CodeGraphSchema = Schema<Query, MutationRoot, SubscriptionRoot>;
 
 pub fn create_schema(state: AppState) -> CodeGraphSchema {
     let state_arc = Arc::new(state.clone());
@@ -17,7 +18,7 @@ pub fn create_schema(state: AppState) -> CodeGraphSchema {
     let semantic_search_loader = loader_factory.create_semantic_search_loader();
     let traversal_loader = loader_factory.create_traversal_loader();
 
-    Schema::build(Query, EmptyMutation, SubscriptionRoot::default())
+    Schema::build(Query, MutationRoot, SubscriptionRoot::default())
         // Attach shared app state for resolvers/subscriptions
         .data(state)
         

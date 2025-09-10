@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::graphql::{
     CodeSearchInput, CodeSearchResult, GraphTraversalInput, GraphTraversalResult,
     SemanticSearchInput, SemanticSearchResult, SubgraphExtractionInput, SubgraphResult,
-    GraphQLCodeNode, QueryRoot,
+    GraphQLCodeNode, QueryRoot, GraphQLEdge, GraphQLEdgeType,
 };
 use crate::graphql::loaders::{NodeLoader, EdgesBySourceLoader, SemanticSearchLoader, GraphTraversalLoader};
 
@@ -63,6 +63,30 @@ impl Query {
     async fn nodes(&self, ctx: &Context<'_>, ids: Vec<ID>) -> Result<Vec<GraphQLCodeNode>> {
         let query_root = QueryRoot;
         query_root.nodes(ctx, ids).await
+    }
+
+    /// Get neighbor nodes for a given node
+    async fn get_neighbors(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+        #[graphql(default = 50)] limit: i32,
+        edge_types: Option<Vec<GraphQLEdgeType>>,
+    ) -> Result<Vec<GraphQLCodeNode>> {
+        let query_root = QueryRoot;
+        query_root.get_neighbors(ctx, id, limit, edge_types).await
+    }
+
+    /// Find shortest path between two nodes, returning edges
+    async fn find_path(
+        &self,
+        ctx: &Context<'_>,
+        from: ID,
+        to: ID,
+        #[graphql(default = 10)] max_depth: i32,
+    ) -> Result<Vec<GraphQLEdge>> {
+        let query_root = QueryRoot;
+        query_root.find_path(ctx, from, to, max_depth).await
     }
 
     /// Health check endpoint

@@ -12,8 +12,10 @@ members = [
     "crates/codegraph-zerocopy",
     "crates/codegraph-lb",
     "crates/codegraph-api",
-    "crates/core-rag-mcp-server"
-, "scripts"]
+    "crates/core-rag-mcp-server",
+    "scripts",
+    "tests/integration"
+]
 default-members = [
     "crates/codegraph-core",
     "crates/codegraph-vector",
