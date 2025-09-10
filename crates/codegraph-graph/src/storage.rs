@@ -55,7 +55,7 @@ impl From<CodeNode> for SerializableCodeNode {
     fn from(node: CodeNode) -> Self {
         Self {
             id: node.id,
-            name: node.name,
+            name: node.name.into_string(),
             node_type: node.node_type,
             language: node.language,
             location: node.location,
@@ -481,6 +481,50 @@ impl HighPerformanceRocksDbStorage {
         
         Ok(edges)
     }
+
+    /// Get edges incoming to the specified node (where `to == node_id`).
+    /// Uses the `to:` index for efficient prefix scanning.
+    pub async fn get_edges_to(&self, node_id: NodeId) -> Result<Vec<SerializableEdge>> {
+        let to_index_cf = self.get_cf_handle(INDICES_CF)?;
+        let edges_cf = self.get_cf_handle(EDGES_CF)?;
+
+        let prefix = format!("to:{}", node_id);
+        let mut read_opts = self.read_options.clone();
+        read_opts.set_prefix_same_as_start(true);
+        read_opts.set_readahead_size(2 * 1024 * 1024);
+
+        let iter = self.db.iterator_cf_opt(
+            &to_index_cf,
+            read_opts,
+            IteratorMode::From(prefix.as_bytes(), rocksdb::Direction::Forward),
+        );
+        let mut edge_ids: Vec<u64> = Vec::new();
+        for item in iter {
+            let (key, _) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            if !key.starts_with(prefix.as_bytes()) { break; }
+            if key.len() >= 8 {
+                let edge_id_bytes = &key[key.len() - 8..];
+                let edge_id = u64::from_be_bytes(edge_id_bytes.try_into().unwrap_or_default());
+                edge_ids.push(edge_id);
+            }
+        }
+
+        let mut edges = Vec::with_capacity(edge_ids.len());
+        for edge_id in edge_ids {
+            let edge_key = Self::edge_key(edge_id);
+            if let Some(edge_data) = self
+                .db
+                .get_cf(&edges_cf, edge_key)
+                .map_err(|e| CodeGraphError::Database(e.to_string()))?
+            {
+                let edge: SerializableEdge = bincode::deserialize(&edge_data)
+                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                edges.push(edge);
+            }
+        }
+
+        Ok(edges)
+    }
     
     pub async fn create_memory_mapped_view<P: AsRef<Path>>(&self, file_path: P) -> Result<()> {
         let file = File::open(&file_path)
@@ -520,7 +564,7 @@ impl HighPerformanceRocksDbStorage {
         let node_bytes = bincode::serialize(&serializable_node)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
-        let name_index_key = Self::index_key(b"name:", &node.name, node_id);
+        let name_index_key = Self::index_key(b"name:", node.name.as_str(), node_id);
 
         self.with_batch(Some(tx_id), |batch| {
             batch.put_cf(&nodes_cf, node_key, node_bytes);
@@ -546,7 +590,7 @@ impl HighPerformanceRocksDbStorage {
             let node_key = Self::node_key(node_id);
             let node_bytes = bincode::serialize(&serializable_node)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            let name_index_key = Self::index_key(b"name:", &node.name, node_id);
+            let name_index_key = Self::index_key(b"name:", node.name.as_str(), node_id);
 
             self.with_batch(None, |batch| {
                 batch.put_cf(&nodes_cf, node_key, node_bytes);
@@ -663,7 +707,7 @@ impl GraphStore for HighPerformanceRocksDbStorage {
         let node_bytes = bincode::serialize(&serializable_node)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
         
-        let name_index_key = Self::index_key(b"name:", &node.name, node_id);
+        let name_index_key = Self::index_key(b"name:", node.name.as_str(), node_id);
         
         self.with_batch(None, |batch| {
             batch.put_cf(&nodes_cf, node_key, node_bytes);

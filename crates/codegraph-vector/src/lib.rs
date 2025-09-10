@@ -1,4 +1,5 @@
 pub mod embedding;
+pub mod embeddings;
 pub mod search;
 pub mod providers;
 
@@ -34,6 +35,7 @@ pub mod consistency;
 pub mod rag;
 
 pub use embedding::*;
+pub use embeddings::generator::AdvancedEmbeddingGenerator;
 pub use search::*;
 pub use providers::*;
 

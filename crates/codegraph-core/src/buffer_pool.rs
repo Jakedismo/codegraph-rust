@@ -1,5 +1,6 @@
 use parking_lot::Mutex;
 use std::sync::{Arc, Weak};
+// Memory tracking disabled in minimal build to avoid pulling heavy deps.
 
 #[derive(Debug, Clone)]
 pub struct BufferPoolConfig {
@@ -31,6 +32,7 @@ impl BufferPool {
         let mut free = Vec::with_capacity(config.capacity);
         for _ in 0..config.capacity.min(16) { // warm a few by default
             free.push(Vec::with_capacity(config.buffer_size));
+            // tracking disabled
         }
         let inner = InnerPool { free, buffer_size: config.buffer_size, outstanding: 0 };
         Self { inner: Arc::new(Mutex::new(inner)), tracker: Arc::new(LeakTracker::new()) }
@@ -39,6 +41,7 @@ impl BufferPool {
     pub fn get(&self) -> PooledBuffer {
         let mut inner = self.inner.lock();
         let buf = inner.free.pop().unwrap_or_else(|| Vec::with_capacity(inner.buffer_size));
+        let _ = buf.capacity(); // keep branch predictable; tracking disabled
         inner.outstanding += 1;
         drop(inner);
         self.tracker.incr();
@@ -46,6 +49,7 @@ impl BufferPool {
     }
 
     fn put_back(&self, mut buf: Vec<u8>) {
+        let cap = buf.capacity();
         buf.clear();
         let mut inner = self.inner.lock();
         if buf.capacity() != inner.buffer_size {
@@ -54,6 +58,8 @@ impl BufferPool {
         }
         inner.free.push(buf);
         inner.outstanding = inner.outstanding.saturating_sub(1);
+        // track retained memory
+        let _ = cap; // tracking disabled
     }
 }
 
@@ -103,4 +109,3 @@ impl LeakTracker {
         debug_assert_eq!(*g, 0, "BufferPool leak detected: {} outstanding buffers", *g);
     }
 }
-

@@ -197,7 +197,7 @@ impl ResultRanker {
                 Ok(cosine_similarity(query_embedding, embedding))
             } else {
                 // Generate embedding for the node content
-                let content = format!("{} {}", node.name, node.content.as_deref().unwrap_or(""));
+                let content = format!("{} {}", node.name.as_str(), node.content.as_deref().unwrap_or(""));
                 let node_embedding = self.generate_text_embedding(&content).await?;
                 Ok(cosine_similarity(query_embedding, &node_embedding))
             }
@@ -219,7 +219,7 @@ impl ResultRanker {
             }
 
             let node_text = format!("{} {}", 
-                node.name.to_lowercase(),
+                node.name.as_str().to_lowercase(),
                 node.content.as_deref().unwrap_or("").to_lowercase()
             );
 
@@ -252,7 +252,7 @@ impl ResultRanker {
 
     fn calculate_popularity_score(&self, result: &RetrievalResult) -> f32 {
         if let Some(ref node) = result.node {
-            self.node_popularity.get(&node.name).cloned().unwrap_or(0.0)
+            self.node_popularity.get(node.name.as_str()).cloned().unwrap_or(0.0)
         } else {
             0.0
         }

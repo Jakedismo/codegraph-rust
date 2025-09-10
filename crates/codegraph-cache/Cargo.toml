@@ -20,6 +20,7 @@ async-trait = { workspace = true }
 tokio = { workspace = true }
 parking_lot = { workspace = true }
 uuid = { workspace = true }
+backtrace = { workspace = true }
 memmap2 = { workspace = true, optional = true }
 flate2 = { workspace = true, optional = true }
 dashmap = { workspace = true }

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::connection_pool::{ConnectionPoolConfig, HttpClientPool, load_base_urls_from_env};
+use crate::performance::{PerformanceOptimizer, PerformanceOptimizerConfig};
 use crate::http2_optimizer::{Http2Optimizer, Http2OptimizerConfig};
 use crate::service_registry::ServiceRegistry;
 use codegraph_core::{ConfigManager, Settings};
@@ -22,6 +23,7 @@ pub struct AppState {
     pub http_client_pool: Arc<HttpClientPool>,
     pub http2_optimizer: Arc<Http2Optimizer>,
     pub service_registry: Arc<ServiceRegistry>,
+    pub performance: Arc<PerformanceOptimizer>,
 }
 
 impl AppState {
@@ -43,6 +45,9 @@ impl AppState {
         // HTTP/2 optimization
         let http2_config = Http2OptimizerConfig::default();
         let http2_optimizer = Arc::new(Http2Optimizer::new(http2_config));
+
+        // API-level performance optimizer (LRU caching + complexity guardrails)
+        let perf = Arc::new(PerformanceOptimizer::new(PerformanceOptimizerConfig::default()));
         {
             // Periodically close idle connections to keep pool healthy
             let pool = http_client_pool.clone();
@@ -67,6 +72,7 @@ impl AppState {
             http_client_pool,
             http2_optimizer,
             service_registry: Arc::new(ServiceRegistry::new()),
+            performance: perf,
         })
     }
 }

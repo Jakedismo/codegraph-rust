@@ -111,7 +111,7 @@ impl OpenAiEmbeddingProvider {
             node.node_type
                 .as_ref()
                 .map_or("unknown".to_string(), |t| format!("{:?}", t).to_lowercase()),
-            node.name
+            node.name.as_str()
         );
 
         if let Some(content) = &node.content {

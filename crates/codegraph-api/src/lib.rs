@@ -22,6 +22,7 @@ pub mod http2_optimizer;
 pub mod http2_handlers;
 pub mod leak_guard;
 pub mod rest;
+pub mod performance;
 #[cfg(feature = "lb")]
 pub mod lb_proxy;
 
@@ -48,3 +49,4 @@ pub use http2_optimizer::*;
 pub use http2_handlers::*;
 #[cfg(feature = "lb")]
 pub use lb_proxy::*;
+pub use performance::*;

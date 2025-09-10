@@ -134,6 +134,25 @@ impl CodeGraph {
         self.record_query_time(start.elapsed().as_nanos() as u64);
         Ok(edges)
     }
+
+    /// Get incoming edges for a node (edges where `to == node_id`).
+    pub async fn get_edges_to(&self, node_id: NodeId) -> Result<Vec<CodeEdge>> {
+        let start = Instant::now();
+
+        let hp_edges = self.storage.get_edges_to(node_id).await?;
+        let edges = hp_edges.into_iter().map(|e| {
+            CodeEdge {
+                id: uuid::Uuid::new_v4(),
+                from: e.from,
+                to: e.to,
+                edge_type: e.edge_type.parse().unwrap_or_default(),
+                properties: e.metadata,
+            }
+        }).collect::<Vec<_>>();
+
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        Ok(edges)
+    }
     
     pub async fn get_high_performance_edges_from(&self, node_id: NodeId) -> Result<Vec<HighPerformanceEdge>> {
         let start = Instant::now();
@@ -175,6 +194,15 @@ impl CodeGraph {
             optimizer.cache().cache_neighbors(node_id, neighbors.clone());
         }
         
+        self.record_query_time(start.elapsed().as_nanos() as u64);
+        Ok(neighbors)
+    }
+
+    /// Get incoming neighbors (nodes that have edges pointing to `node_id`).
+    pub async fn get_incoming_neighbors(&self, node_id: NodeId) -> Result<Vec<NodeId>> {
+        let start = Instant::now();
+        let edges = self.get_edges_to(node_id).await?;
+        let neighbors: Vec<NodeId> = edges.into_iter().map(|e| e.from).collect();
         self.record_query_time(start.elapsed().as_nanos() as u64);
         Ok(neighbors)
     }

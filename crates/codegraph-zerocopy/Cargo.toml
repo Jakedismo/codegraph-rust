@@ -22,7 +22,7 @@ rend = { workspace = true }
 
 # Memory management
 memmap2 = { workspace = true }
-bytes = "1.6"
+bytes = { workspace = true }
 arc-swap = { workspace = true }
 
 # Concurrency

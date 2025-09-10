@@ -1,6 +1,9 @@
 use bytes::Bytes;
+use std::borrow::Cow;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::borrow::Borrow;
 use std::ops::{Deref, Index, Range, RangeFrom, RangeFull, RangeTo};
 use std::sync::Arc;
 
@@ -23,6 +26,16 @@ impl PartialEq for SharedStr {
 
 impl Eq for SharedStr {}
 
+impl Hash for SharedStr {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state)
+    }
+}
+
+impl Borrow<str> for SharedStr {
+    fn borrow(&self) -> &str { self.as_str() }
+}
+
 #[derive(Clone)]
 enum SharedStrInner {
     Bytes(Bytes),
@@ -39,6 +52,12 @@ impl Default for SharedStrInner {
 impl fmt::Debug for SharedStr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "SharedStr({:?})", &self.as_str())
+    }
+}
+
+impl fmt::Display for SharedStr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -77,6 +96,20 @@ impl From<&str> for SharedStr {
     fn from(s: &str) -> Self {
         SharedStr { inner: SharedStrInner::Owned(s.to_owned().into_boxed_str()) }
     }
+}
+
+impl From<Cow<'_, str>> for SharedStr {
+    fn from(c: Cow<'_, str>) -> Self {
+        match c {
+            Cow::Borrowed(s) => SharedStr::from(s),
+            Cow::Owned(s) => SharedStr::from(s),
+        }
+    }
+}
+
+impl SharedStr {
+    /// Convert to a `Cow<str>`. Always borrowed as SharedStr stores immutable data.
+    pub fn to_cow(&self) -> Cow<'_, str> { Cow::Borrowed(self.as_str()) }
 }
 
 impl Deref for SharedStr {
@@ -132,4 +165,3 @@ impl<'de> Deserialize<'de> for SharedStr {
         Ok(SharedStr::from(s))
     }
 }
-

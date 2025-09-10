@@ -37,6 +37,7 @@ impl MemoryDashboard {
         Router::new()
             .route("/", get(dashboard_home))
             .route("/api/metrics", get(get_metrics))
+            .route("/api/jemalloc-stats", get(get_jemalloc_stats))
             .route("/api/leaks", get(get_leaks))
             .route("/api/patterns", get(get_patterns))
             .route("/api/recommendations", get(get_recommendations))
@@ -222,6 +223,13 @@ async fn get_system_info(
     };
     
     Json(ApiResponse::success(system_info))
+}
+
+/// Get jemalloc allocator statistics (allocated, active, resident, etc.)
+async fn get_jemalloc_stats() -> Json<ApiResponse<codegraph_core::memory::JemallocStats>> {
+    let prof = codegraph_core::memory::JemallocProfiler::new();
+    let stats = prof.stats();
+    Json(ApiResponse::success(stats))
 }
 
 /// Get historical memory data

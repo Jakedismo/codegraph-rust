@@ -2,11 +2,12 @@ use crate::{node::CodeNode, types::{Language, NodeType, Location}};
 use rkyv::{Archive, Deserialize as RDeserialize, Serialize as RSerialize};
 use serde::{Deserialize, Serialize};
 use crate::shared::SharedStr;
+use bytes::Bytes;
+use rkyv::rancor::{Failure, Strategy};
 
 // A compact, rkyv-friendly representation of CodeNode for zero-copy serialization.
 // Avoids chrono/uuid complexities by storing a simplified id and omitting metadata/embedding.
 #[derive(Archive, RSerialize, RDeserialize, Debug, Clone, Serialize, Deserialize)]
-#[archive(check_bytes)]
 pub struct CompactCodeNode {
     pub id_low: u64,
     pub id_high: u64,
@@ -36,11 +37,23 @@ impl From<&CodeNode> for CompactCodeNode {
     }
 }
 
-pub fn archive_nodes(nodes: &[CodeNode]) -> Vec<u8> {
-    use rkyv::ser::{serializers::AllocSerializer, Serializer};
+pub fn archive_nodes(nodes: &[CodeNode]) -> Bytes {
     let compact: Vec<CompactCodeNode> = nodes.iter().map(CompactCodeNode::from).collect();
-    let mut serializer = AllocSerializer::<4096>::default();
-    serializer.serialize_value(&compact).expect("rkyv serialize");
-    serializer.into_serializer().into_inner()
+    serialize_to_bytes(&compact)
 }
 
+/// Access archived compact nodes from bytes without copying.
+pub fn access_archived_nodes(bytes: &[u8]) -> Result<&<Vec<CompactCodeNode> as Archive>::Archived, Failure> {
+    rkyv::access::<Vec<CompactCodeNode>, Strategy<(), Failure>>(bytes)
+}
+
+fn serialize_to_bytes<T>(value: &T) -> Bytes
+where
+    T: rkyv::Serialize<Strategy<(), Failure>>,
+{
+    use rkyv::ser::{serializers::AllocSerializer, Serializer};
+    let mut serializer = AllocSerializer::<256>::default();
+    serializer.serialize_value(value).expect("serialize");
+    let buf = serializer.into_serializer().into_inner();
+    Bytes::from(buf)
+}

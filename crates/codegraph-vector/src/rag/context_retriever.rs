@@ -272,7 +272,7 @@ impl ContextRetriever {
         }
 
         let node_text = format!("{} {} {}", 
-            node.name,
+            node.name.as_str(),
             node.content.as_deref().unwrap_or(""),
             node.node_type.as_ref().map(|t| format!("{:?}", t)).unwrap_or_default()
         ).to_lowercase();
@@ -284,7 +284,7 @@ impl ContextRetriever {
             let keyword_lower = keyword.to_lowercase();
             
             // Exact match in name gets highest weight
-            if node.name.to_lowercase().contains(&keyword_lower) {
+            if node.name.as_str().to_lowercase().contains(&keyword_lower) {
                 matches += 1;
                 total_weight += 3.0;
             }

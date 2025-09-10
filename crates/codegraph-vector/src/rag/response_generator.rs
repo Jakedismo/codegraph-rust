@@ -258,7 +258,7 @@ impl ResponseGenerator {
         // Replace placeholders with actual content
         if let Some(first_source) = sources.first() {
             if let Some(ref node) = first_source.retrieval_result.node {
-                answer = answer.replace("{node_name}", &node.name);
+                answer = answer.replace("{node_name}", node.name.as_str());
                 answer = answer.replace("{node_type}", &format!("{:?}", node.node_type.as_ref().unwrap_or(&codegraph_core::NodeType::Other("unknown".to_string()))));
                 
                 if let Some(ref content) = node.content {
@@ -304,14 +304,14 @@ impl ResponseGenerator {
                 let part = if self.config.include_code_examples && node.content.is_some() {
                     format!("{}. **{}** ({}): {}", 
                         i + 1, 
-                        node.name,
+                        node.name.as_str(),
                         format!("{:?}", node.node_type.as_ref().unwrap_or(&codegraph_core::NodeType::Other("unknown".to_string()))),
                         source.retrieval_result.context_snippet
                     )
                 } else {
                     format!("{}. **{}**: {}", 
                         i + 1, 
-                        node.name,
+                        node.name.as_str(),
                         source.retrieval_result.context_snippet
                     )
                 };
@@ -342,7 +342,7 @@ impl ResponseGenerator {
             if let Some(ref node) = source.retrieval_result.node {
                 let quote = format!("{}. From {}: \"{}\"", 
                     i + 1, 
-                    node.name, 
+                    node.name.as_str(), 
                     source.retrieval_result.context_snippet
                 );
                 quotes.push(quote);
@@ -381,7 +381,7 @@ impl ResponseGenerator {
             .filter_map(|source| {
                 source.retrieval_result.node.as_ref().map(|node| SourceReference {
                     node_id: node.id.to_string(),
-                    node_name: node.name.clone(),
+                    node_name: node.name.to_string(),
                     relevance_score: source.final_score,
                     snippet: source.retrieval_result.context_snippet.clone(),
                 })

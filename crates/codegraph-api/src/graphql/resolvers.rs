@@ -38,6 +38,11 @@ impl QueryRoot {
         info!("Executing code search: {}", input.query);
 
         let state = ctx.data::<AppState>()?;
+        // Guard complexity for pathfinding by limiting depth
+        state
+            .performance
+            .guard_traversal_complexity(Some(max_depth), None)
+            .map_err(|e| async_graphql::Error::new(format!("Path query rejected by complexity guard: {}", e)))?;
         let loader = ctx.data::<DataLoader<NodeLoader>>()?;
 
         // Validate input parameters
@@ -175,6 +180,20 @@ impl QueryRoot {
         let traversal_loader = ctx.data::<DataLoader<GraphTraversalLoader>>()?;
         let edges_loader = ctx.data::<DataLoader<EdgesBySourceLoader>>()?;
 
+        // Guard against overly complex traversals and try cache short-circuit
+        state
+            .performance
+            .guard_traversal_complexity(input.max_depth, input.limit)
+            .map_err(|e| async_graphql::Error::new(format!("Traversal rejected by complexity guard: {}", e)))?;
+
+        let edge_types_vec = input.edge_types.as_ref().map(|v| v.iter().map(|e| format!("{:?}", e)).collect::<Vec<_>>());
+        let cache_key = state
+            .performance
+            .key_for_traversal(&input.start_node_id, input.max_depth, input.limit, edge_types_vec.as_deref());
+        if let Some(cached) = state.performance.get_cached_json::<GraphTraversalResult>(&cache_key).await {
+            return Ok(cached);
+        }
+
         let start_node_id = NodeId::from_str(&start_node_str)
             .map_err(|_| async_graphql::Error::new("Invalid node ID format"))?;
 
@@ -227,7 +246,7 @@ impl QueryRoot {
         info!("Graph traversal completed: {} nodes, {} edges in {}ms", 
             traversed_nodes.len(), edges.len(), traversal_time_ms);
 
-        Ok(GraphTraversalResult {
+        let result = GraphTraversalResult {
             nodes: traversed_nodes.into_iter().take(limit as usize).collect(),
             edges: edges.into_iter().take(limit as usize).collect(),
             traversal_path,
@@ -239,7 +258,9 @@ impl QueryRoot {
                 pruning_applied: limit < node_ids.len() as i32,
                 max_depth,
             },
-        })
+        };
+        state.performance.put_cached_json(cache_key, &result).await;
+        Ok(result)
     }
 
     /// Extract a subgraph around specific nodes or from a center point
@@ -531,13 +552,18 @@ impl QueryRoot {
         let to_id = NodeId::from_str(&to.to_string())
             .map_err(|_| async_graphql::Error::new("Invalid 'to' node ID format"))?;
 
-        // Use graph's shortest_path (BFS) which internally caches paths
+        // Use optimizer to choose A* if beneficial; fallback to BFS internally
         let path_opt = {
             let graph = state.graph.read().await;
-            graph.shortest_path(from_id, to_id).await
+            state.performance.find_path_nodes(&graph, from_id, to_id, Some(max_depth)).await
         }.map_err(|e| async_graphql::Error::new(format!("Path search failed: {}", e)))?;
 
         let Some(path) = path_opt else { return Ok(vec![]); };
+
+        // Store node path in cache for identical queries
+        let path_cache_key = state.performance.key_for_path(&from, &to, Some(max_depth));
+        let path_ids: Vec<ID> = path.iter().map(|n| ID(n.to_string())).collect();
+        state.performance.put_cached_json(path_cache_key, &path_ids).await;
 
         // Build list of consecutive pairs to resolve actual edges via DataLoader
         let mut from_ids: Vec<NodeId> = Vec::new();

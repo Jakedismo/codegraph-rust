@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CodeNode {
     pub id: NodeId,
-    pub name: String,
+    pub name: SharedStr,
     pub node_type: Option<NodeType>,
     pub language: Option<Language>,
     pub location: Location,
@@ -15,8 +15,8 @@ pub struct CodeNode {
 }
 
 impl CodeNode {
-    pub fn new(
-        name: String,
+    pub fn new<T: Into<SharedStr>>(
+        name: T,
         node_type: Option<NodeType>,
         language: Option<Language>,
         location: Location,
@@ -24,7 +24,7 @@ impl CodeNode {
         let now = chrono::Utc::now();
         Self {
             id: NodeId::new_v4(),
-            name,
+            name: name.into(),
             node_type,
             language,
             location,

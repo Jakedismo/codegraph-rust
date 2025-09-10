@@ -52,7 +52,7 @@ impl EmbeddingGenerator {
         let mut text = format!("{} {} {}", 
             node.language.as_ref().map_or("unknown".to_string(), language_to_string),
             node.node_type.as_ref().map_or("unknown".to_string(), node_type_to_string),
-            node.name
+            node.name.as_str()
         );
 
         if let Some(content) = &node.content {

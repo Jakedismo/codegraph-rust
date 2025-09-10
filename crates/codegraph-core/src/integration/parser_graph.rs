@@ -46,7 +46,7 @@ where
     // Caches for incremental updates and linking
     file_mtime: Arc<RwLock<HashMap<PathBuf, std::time::SystemTime>>>,
     // map of symbol -> NodeId (both qualified and unqualified)
-    symbol_index: Arc<RwLock<HashMap<String, crate::NodeId>>>,
+    symbol_index: Arc<RwLock<HashMap<crate::SharedStr, crate::NodeId>>>,
     // map of file -> NodeIds in that file
     file_nodes: Arc<RwLock<HashMap<PathBuf, Vec<crate::NodeId>>>>,
 }
@@ -88,7 +88,7 @@ where
         // parse
         let nodes = self.parser.parse_file(file_path).await?;
         let mut added = Vec::with_capacity(nodes.len());
-        let mut names_in_file: Vec<(String, crate::NodeId, EdgeContext)> = Vec::new();
+        let mut names_in_file: Vec<(crate::SharedStr, crate::NodeId, EdgeContext)> = Vec::new();
 
         // write nodes and build symbol index
         {
@@ -102,7 +102,7 @@ where
                 added.push(id);
 
                 self.symbol_index.write().insert(name.clone(), id);
-                self.symbol_index.write().insert(fq, id);
+                self.symbol_index.write().insert(crate::SharedStr::from(fq), id);
                 names_in_file.push((name, id, edge_context_for(&node)));
             }
         }
@@ -189,7 +189,7 @@ where
     async fn derive_edges_for_file(
         &self,
         file: &Path,
-        names_in_file: &[(String, crate::NodeId, EdgeContext)],
+        names_in_file: &[(crate::SharedStr, crate::NodeId, EdgeContext)],
     ) -> Result<Vec<(crate::NodeId, crate::NodeId, EdgeType, HashMap<String, String>)>> {
         let mut edges = Vec::new();
 
@@ -215,7 +215,7 @@ where
                     // Local calls: search for other names in same file
                     for (other_name, to_id, _ctx2) in names_in_file.iter() {
                         if other_name == name { continue; }
-                        if content.as_str().contains(&format!("{}(", other_name)) {
+                        if content.as_str().contains(&format!("{}(", other_name.as_str())) {
                             let mut meta = HashMap::new();
                             meta.insert("kind".into(), "call".into());
                             meta.insert("file".into(), file.to_string_lossy().to_string());
@@ -236,7 +236,7 @@ where
         let mut seen: HashSet<(crate::NodeId, crate::NodeId, EdgeType)> = HashSet::new();
 
         // snapshot of symbol index and file map
-        let symbols: Vec<(String, crate::NodeId)> = self
+        let symbols: Vec<(crate::SharedStr, crate::NodeId)> = self
             .symbol_index
             .read()
             .iter()
@@ -276,7 +276,7 @@ where
                     // Heuristic: match `name(` for potential call
                     for name in &simple_names {
                         // Skip self calls by name equality
-                        if &node.name == name { continue; }
+                        if node.name.as_str() == name { continue; }
                         if let Some((&target_id, _)) = symbols
                             .iter()
                             .find(|(k, _)| k.ends_with(name) || k.as_str() == name)

@@ -28,12 +28,16 @@ chacha20poly1305 = { workspace = true }
 base64 = { workspace = true }
 rand = { workspace = true }
 dashmap = { workspace = true }
+once_cell = { workspace = true }
+tikv-jemalloc-ctl = { workspace = true }
+tikv-jemallocator = { workspace = true }
+hashbrown = { workspace = true }
+rustc-hash = { workspace = true }
 
-# Memory-mapped file support
 memmap2 = { workspace = true }
 
 # Zero-copy and serialization support
-bytes = "1.6"
+bytes = { workspace = true }
 
 # Optional arena allocator and zero-copy archiving
 bumpalo = "3.15"
@@ -52,3 +56,8 @@ windows-sys = { version = "0.59", features = [
 [dev-dependencies]
 tokio-test = { workspace = true }
 tempfile = { workspace = true }
+
+[features]
+# Enable jemalloc as the global allocator and expose jemalloc controls
+default = ["jemalloc"]
+jemalloc = []

@@ -7,6 +7,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::alloc::{GlobalAlloc, Layout, System};
 use parking_lot::RwLock;
+use dashmap::DashMap;
+use backtrace::Backtrace;
 use serde::{Serialize, Deserialize};
 use tracing::{debug, warn, info, error};
 use tokio::sync::mpsc;
@@ -174,6 +176,9 @@ pub struct MemoryProfiler {
     
     /// Background analysis task handle
     analysis_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+
+    /// Pointer mapping for accurate deallocation: ptr -> (allocation_id, size)
+    ptr_map: DashMap<usize, (u64, usize)>,
 }
 
 /// Profiler configuration
@@ -248,6 +253,7 @@ impl MemoryProfiler {
             allocation_count: PaddedAtomicUsize::new(0),
             event_sender: Arc::new(Mutex::new(None)),
             analysis_handle: Arc::new(Mutex::new(None)),
+            ptr_map: DashMap::new(),
         }
     }
 
@@ -304,6 +310,13 @@ impl MemoryProfiler {
             Vec::new()
         };
 
+        // Potentially infer category from captured stack if unknown
+        let final_category = if category == AllocationType::Unknown && !stack_trace.is_empty() {
+            Self::infer_category_from_stack(&stack_trace)
+        } else {
+            category.clone()
+        };
+
         let allocation_info = AllocationInfo {
             size,
             timestamp,
@@ -313,7 +326,7 @@ impl MemoryProfiler {
             is_freed: false,
             free_timestamp: None,
             alignment: layout.align(),
-            category: category.clone(),
+            category: final_category.clone(),
         };
 
         // Store allocation info
@@ -322,18 +335,23 @@ impl MemoryProfiler {
             allocations.insert(allocation_id, allocation_info);
         }
 
+        // Map ptr for deallocation tracking
+        if !ptr.is_null() {
+            self.ptr_map.insert(ptr as usize, (allocation_id, size));
+        }
+
         // Send real-time event
         if self.config.real_time_monitoring {
             self.send_event(ProfilerEvent::Allocation {
                 id: allocation_id,
                 size,
-                category: category.clone(),
+                category: final_category.clone(),
                 timestamp,
             });
         }
 
         // Update metrics
-        self.update_metrics_for_allocation(size, &category);
+        self.update_metrics_for_allocation(size, &final_category);
 
         allocation_id
     }
@@ -373,6 +391,22 @@ impl MemoryProfiler {
 
         // Update metrics
         self.update_metrics_for_deallocation(size);
+    }
+
+    /// Record a memory deallocation by pointer (for GlobalAlloc integration)
+    pub fn record_deallocation_by_ptr(&self, ptr: *mut u8, fallback_size: usize) {
+        if !self.config.enabled || ptr.is_null() {
+            return;
+        }
+
+        if let Some((alloc_id, sz)) = self.ptr_map.remove(&(ptr as usize)).map(|entry| entry.1) {
+            let size = sz.max(fallback_size);
+            self.record_deallocation(alloc_id, size);
+        } else {
+            // Unknown pointer; update freed counter conservatively to avoid false leak signals
+            self.total_freed.fetch_add(fallback_size, Ordering::Relaxed);
+            self.update_metrics_for_deallocation(fallback_size);
+        }
     }
 
     /// Get current memory usage
@@ -663,9 +697,37 @@ impl MemoryProfiler {
     }
 
     fn capture_stack_trace(&self) -> Vec<String> {
-        // Simplified stack trace capture
-        // In a real implementation, you'd use a proper backtrace library
-        vec!["backtrace capture not implemented".to_string()]
+        let bt = Backtrace::new();
+        let mut out = Vec::with_capacity(self.config.stack_trace_depth);
+        let mut taken = 0usize;
+        for frame in bt.frames() {
+            for sym in frame.symbols() {
+                let mut s = String::new();
+                if let Some(name) = sym.name() { s.push_str(&name.to_string()); } else { s.push_str("<unknown>"); }
+                if let (Some(file), Some(line)) = (sym.filename(), sym.lineno()) {
+                    s.push_str(&format!(" ({}:{})", file.display(), line));
+                }
+                out.push(s);
+                taken += 1;
+                if taken >= self.config.stack_trace_depth { break; }
+            }
+            if taken >= self.config.stack_trace_depth { break; }
+        }
+        out
+    }
+
+    fn infer_category_from_stack(stack: &[String]) -> AllocationType {
+        for line in stack {
+            let l = line.to_lowercase();
+            if l.contains("codegraph-graph") || l.contains("codegraph_graph") { return AllocationType::Graph; }
+            if l.contains("codegraph-vector") || l.contains("codegraph_vector") { return AllocationType::Vector; }
+            if l.contains("codegraph-parser") || l.contains("codegraph_parser") { return AllocationType::Parser; }
+            if l.contains("cache") { return AllocationType::Cache; }
+            if l.contains("buffer") { return AllocationType::Buffer; }
+            if l.contains("index") { return AllocationType::Index; }
+            if l.contains("string") { return AllocationType::String; }
+        }
+        AllocationType::Unknown
     }
 
     fn get_thread_id(&self) -> u64 {
@@ -773,9 +835,8 @@ unsafe impl<A: GlobalAlloc> GlobalAlloc for ProfilingAllocator<A> {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // Note: This is a simplified version. Real implementation would need
-        // to track ptr -> allocation_id mapping
-        MEMORY_PROFILER.record_deallocation(0, layout.size());
+        // Use pointer-based deallocation tracking to avoid false leak reports
+        MEMORY_PROFILER.record_deallocation_by_ptr(ptr, layout.size());
         self.inner.dealloc(ptr, layout);
     }
 }

@@ -231,7 +231,7 @@ impl RAGSystem {
     }
 
     pub async fn add_context(&mut self, node: CodeNode) -> Result<()> {
-        debug!("Adding context node: {}", node.name);
+        debug!("Adding context node: {}", node.name.as_str());
         
         {
             let mut retriever = self.context_retriever.write().await;
@@ -248,7 +248,7 @@ impl RAGSystem {
                 updated_node.embedding = Some(embedding);
                 
                 // TODO: Add to vector store
-                debug!("Generated embedding for node: {}", updated_node.name);
+                debug!("Generated embedding for node: {}", updated_node.name.as_str());
             }
         }
 

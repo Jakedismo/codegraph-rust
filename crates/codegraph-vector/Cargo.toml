@@ -29,6 +29,14 @@ chrono = { workspace = true }
 futures = { workspace = true }
 num_cpus = { workspace = true }
 
+# Local embeddings (Candle) - optional via feature
+candle-core = { version = "0.6", optional = true }
+candle-nn = { version = "0.6", optional = true }
+candle-transformers = { version = "0.6", optional = true }
+tokenizers = { version = "0.15", optional = true }
+hf-hub = { version = "0.3", optional = true, default-features = true, features = ["tokio"] }
+lru = { workspace = true }
+
 # OpenAI API client
 reqwest = { workspace = true, optional = true }
 
@@ -51,6 +59,13 @@ faiss = ["dep:faiss"]
 persistent = ["dep:memmap2", "dep:flate2"]
 gpu = ["faiss/gpu"]
 openai = ["dep:reqwest"]
+local-embeddings = [
+    "dep:candle-core",
+    "dep:candle-nn",
+    "dep:candle-transformers",
+    "dep:tokenizers",
+    "dep:hf-hub",
+]
 
 [[example]]
 name = "rag_demo"
