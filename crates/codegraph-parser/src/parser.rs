@@ -279,9 +279,27 @@ impl TreeSitterParser {
                         // Continue with partial parsing - we can still extract useful information
                     }
                     
-                    let mut visitor = AstVisitor::new(language.clone(), file_path.clone(), content.clone());
-                    visitor.visit(tree.root_node());
-                    Ok(visitor.nodes)
+                    if matches!(language, Language::Rust) {
+                        // Use advanced Rust extractor
+                        use crate::languages::rust::RustExtractor;
+                        Ok(RustExtractor::extract(&tree, &content, &file_path))
+                    } else if matches!(language, Language::Python) {
+                        // Use Python extractor (docstrings, type hints, call graph metadata)
+                        let extraction = crate::languages::python::extract_python(&file_path, &content);
+                        Ok(extraction.nodes)
+                    } else if matches!(language, Language::JavaScript | Language::TypeScript) {
+                        let nodes = crate::languages::javascript::extract_js_ts_nodes(
+                            language.clone(),
+                            &file_path,
+                            &content,
+                            tree.root_node(),
+                        );
+                        Ok(nodes)
+                    } else {
+                        let mut visitor = AstVisitor::new(language.clone(), file_path.clone(), content.clone());
+                        visitor.visit(tree.root_node());
+                        Ok(visitor.nodes)
+                    }
                 }
                 None => {
                     // Fallback: try to parse line by line for basic recovery
@@ -293,13 +311,22 @@ impl TreeSitterParser {
                     for (line_num, line) in lines.iter().enumerate() {
                         if let Some(tree) = parser.parse(line, None) {
                             if !tree.root_node().has_error() {
-                                let mut visitor = AstVisitor::new(
-                                    language.clone(),
-                                    format!("{}:{}", file_path, line_num + 1),
-                                    line.to_string()
-                                );
-                                visitor.visit(tree.root_node());
-                                recovered_nodes.extend(visitor.nodes);
+                                if matches!(language, Language::Rust) {
+                                    use crate::languages::rust::RustExtractor;
+                                    let nodes = RustExtractor::extract(&tree, line, &format!("{}:{}", file_path, line_num + 1));
+                                    recovered_nodes.extend(nodes);
+                                } else if matches!(language, Language::Python) {
+                                    let extraction = crate::languages::python::extract_python(&format!("{}:{}", file_path, line_num + 1), line);
+                                    recovered_nodes.extend(extraction.nodes);
+                                } else {
+                                    let mut visitor = AstVisitor::new(
+                                        language.clone(),
+                                        format!("{}:{}", file_path, line_num + 1),
+                                        line.to_string()
+                                    );
+                                    visitor.visit(tree.root_node());
+                                    recovered_nodes.extend(visitor.nodes);
+                                }
                             }
                         }
                     }

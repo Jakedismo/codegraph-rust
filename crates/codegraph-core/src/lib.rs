@@ -11,6 +11,7 @@ pub mod performance_monitor;
 pub mod optimization_coordinator;
 pub mod mmap;
 pub mod config;
+pub mod integration;
 
 pub use error::*;
 pub use node::*;
@@ -25,3 +26,4 @@ pub use performance_monitor::*;
 pub use optimization_coordinator::*;
 pub use mmap::*;
 pub use config::*;
+pub use integration::*;

@@ -21,6 +21,7 @@ pub mod streaming_handlers;
 pub mod http2_optimizer;
 pub mod http2_handlers;
 pub mod leak_guard;
+pub mod rest;
 #[cfg(feature = "lb")]
 pub mod lb_proxy;
 

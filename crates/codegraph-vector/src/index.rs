@@ -1,10 +1,12 @@
 #[cfg(feature = "persistent")]
 use crate::storage::PersistentStorage;
-use codegraph_core::{CodeGraphError, Result};
+use codegraph_core::{CodeGraphError, NodeId, Result};
 use faiss::{Index, MetricType};
-use faiss::index::IndexImpl;
+use faiss::index::{IndexImpl, Idx};
+use faiss::selector::IdSelector;
 use serde::{Deserialize, Serialize};
 use parking_lot::RwLock;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
@@ -39,6 +41,13 @@ pub enum IndexType {
     LSH {
         nbits: usize,      // Number of hash bits (typically 1024-4096)
     },
+    /// IVF+PQ hybrid (recommended for large datasets, memory-efficient)
+    IVFPQ {
+        nlist: usize,     // coarse centroids
+        m: usize,         // sub-quantizers
+        nbits: usize,     // bits per sub-quantizer
+        nprobe: usize,    // number of coarse lists to probe at search time
+    },
     /// Product Quantization - memory efficient for large datasets
     PQ {
         m: usize,          // Number of sub-quantizers (multiple of dimension)
@@ -54,10 +63,12 @@ pub enum IndexType {
 impl Default for IndexConfig {
     fn default() -> Self {
         Self {
-            index_type: IndexType::HNSW {
-                m: 16,
-                ef_construction: 200,
-                ef_search: 50,
+            // Default to an IVFPQ tuned for 768-dim transformer embeddings
+            index_type: IndexType::IVFPQ {
+                nlist: 4096,          // good for ~1M vectors
+                m: 96,                // 768 / 96 = 8 dims per sub-vector
+                nbits: 8,             // 8-bit codes => 1 byte per sub-vector
+                nprobe: 64,           // search 64 lists
             },
             metric_type: MetricType::InnerProduct,
             dimension: 768, // Common transformer embedding dimension
@@ -88,9 +99,11 @@ impl IndexConfig {
     /// Create configuration optimized for memory efficiency
     pub fn memory_efficient(dimension: usize) -> Self {
         Self {
-            index_type: IndexType::PQ {
-                m: dimension / 8,
+            index_type: IndexType::IVFPQ {
+                nlist: 4096,
+                m: (dimension / 8).max(1),
                 nbits: 8,
+                nprobe: 32,
             },
             metric_type: MetricType::L2,
             dimension,
@@ -103,10 +116,7 @@ impl IndexConfig {
     /// Create configuration for balanced performance
     pub fn balanced(dimension: usize) -> Self {
         Self {
-            index_type: IndexType::IVF {
-                nlist: 4096,
-                nprobe: 64,
-            },
+            index_type: IndexType::IVFPQ { nlist: 4096, m: (dimension / 8).max(1), nbits: 8, nprobe: 64 },
             metric_type: MetricType::InnerProduct,
             dimension,
             training_size_threshold: 20000,
@@ -121,6 +131,10 @@ impl IndexConfig {
             IndexType::Flat => "Flat".to_string(),
             IndexType::IVF { nlist, nprobe } => {
                 format!("IVF{},Flat", nlist)
+            },
+            IndexType::IVFPQ { nlist, m, nbits, .. } => {
+                // Build a composite factory string: IVF coarse + PQ codes
+                format!("IVF{},PQ{}x{}", nlist, m, nbits)
             },
             IndexType::HNSW { m,  .. } => {
                 format!("HNSW{}", m)
@@ -157,6 +171,10 @@ impl IndexConfig {
 pub struct FaissIndexManager {
     config: IndexConfig,
     index: RwLock<Option<IndexImpl>>,
+    // Stable ID mappings to support add_with_ids/remove/search by NodeId
+    id_mapping: RwLock<HashMap<i64, NodeId>>,            // faiss_id -> NodeId
+    reverse_mapping: RwLock<HashMap<NodeId, i64>>,       // NodeId -> faiss_id
+    next_id: RwLock<i64>,
     #[cfg(feature = "persistent")]
     storage: Option<Arc<PersistentStorage>>,
     #[cfg(feature = "gpu")]
@@ -168,6 +186,9 @@ impl FaissIndexManager {
         Self {
             config,
             index: RwLock::new(None),
+            id_mapping: RwLock::new(HashMap::new()),
+            reverse_mapping: RwLock::new(HashMap::new()),
+            next_id: RwLock::new(0),
             #[cfg(feature = "persistent")]
             storage: None,
             #[cfg(feature = "gpu")]
@@ -214,6 +235,15 @@ impl FaissIndexManager {
         #[cfg(feature = "persistent")]
         if let Some(ref storage) = self.storage {
             if let Ok(index) = storage.load_index(&self.config) {
+                // Also attempt to load ID mappings
+                if let Ok((id_map, rev_map)) = storage.load_id_mapping() {
+                    *self.id_mapping.write() = id_map;
+                    *self.reverse_mapping.write() = rev_map;
+                    // Update next_id to avoid collisions
+                    if let Some(max_id) = self.id_mapping.read().keys().max() {
+                        *self.next_id.write() = *max_id + 1;
+                    }
+                }
                 *self.index.write() = Some(index);
                 info!("Loaded existing FAISS index from disk");
                 return Ok(());
@@ -313,6 +343,74 @@ impl FaissIndexManager {
         Ok(ids)
     }
 
+    /// Add vectors with explicit NodeIds. Supports large batches (10k+) efficiently.
+    pub fn add_with_ids(&mut self, items: &[(NodeId, Vec<f32>)]) -> Result<Vec<i64>> {
+        if items.is_empty() { return Ok(Vec::new()); }
+
+        // Flatten vectors and prepare IDs in chunks to avoid huge transient allocations
+        let mut guard = self.index.write();
+        let index = guard.as_mut()
+            .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
+
+        let dim = self.config.dimension;
+        let mut assigned_ids: Vec<i64> = Vec::with_capacity(items.len());
+
+        // Chunk size tuned for 10k+ per batch
+        const CHUNK: usize = 10_000;
+        for chunk in items.chunks(CHUNK) {
+            // Prepare ids for this chunk
+            let mut ids: Vec<i64> = Vec::with_capacity(chunk.len());
+            {
+                let mut rev = self.reverse_mapping.write();
+                let mut fwd = self.id_mapping.write();
+                let mut next = self.next_id.write();
+                for (node_id, _) in chunk.iter() {
+                    // If already present, reuse id; else assign new
+                    let faiss_id = if let Some(id) = rev.get(node_id).copied() { id } else {
+                        let id = *next;
+                        *next += 1;
+                        rev.insert(*node_id, id);
+                        fwd.insert(id, *node_id);
+                        id
+                    };
+                    ids.push(faiss_id);
+                }
+            }
+
+            // Flat f32 matrix for this chunk
+            let mut flat: Vec<f32> = Vec::with_capacity(chunk.len() * dim);
+            for (_, v) in chunk.iter() {
+                if v.len() != dim {
+                    return Err(CodeGraphError::Vector(format!(
+                        "Vector dimension {} does not match index dimension {}", v.len(), dim
+                    )));
+                }
+                flat.extend_from_slice(v);
+            }
+
+            // Add with ids
+            // Convert to FAISS Idx type
+            let ids_idx: Vec<Idx> = ids.iter().map(|&i| Idx::from(i as i64)).collect();
+            index
+                .add_with_ids(&flat, &ids_idx)
+                .map_err(|e| CodeGraphError::Vector(format!("Failed to add_with_ids: {}", e)))?;
+
+            assigned_ids.extend_from_slice(&ids);
+        }
+
+        // Persist index and id mappings
+        #[cfg(feature = "persistent")]
+        if let Some(ref storage) = self.storage {
+            storage.save_index(index, &self.config)?;
+            let fwd = self.id_mapping.read();
+            let rev = self.reverse_mapping.read();
+            storage.save_id_mapping(&*fwd, &*rev)?;
+        }
+
+        info!("Successfully added {} vectors with explicit IDs", items.len());
+        Ok(assigned_ids)
+    }
+
     /// Perform optimized K-nearest neighbor search
     pub fn search(&self, query_vector: &[f32], k: usize) -> Result<(Vec<f32>, Vec<i64>)> {
         let mut guard = self.index.write();
@@ -335,6 +433,74 @@ impl FaissIndexManager {
             .map(|idx| idx.get().map(|u| u as i64).unwrap_or(-1))
             .collect();
         Ok((result.distances, labels))
+    }
+
+    /// Search returning NodeIds by using the maintained mapping
+    pub fn search_knn(&self, query_vector: &[f32], k: usize) -> Result<Vec<(NodeId, f32)>> {
+        let (distances, labels) = self.search(query_vector, k)?;
+        let map = self.id_mapping.read();
+        let mut out = Vec::with_capacity(k);
+        for (d, l) in distances.into_iter().zip(labels.into_iter()) {
+            if let Some(node_id) = map.get(&l).copied() {
+                out.push((node_id, d));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Remove vectors by NodeId using FAISS ID selector. Returns number removed.
+    pub fn remove_vectors(&mut self, node_ids: &[NodeId]) -> Result<usize> {
+        if node_ids.is_empty() { return Ok(0); }
+
+        let ids: Vec<i64> = {
+            let rev = self.reverse_mapping.read();
+            node_ids.iter().filter_map(|nid| rev.get(nid).copied()).collect()
+        };
+
+        if ids.is_empty() { return Ok(0); }
+
+        let mut guard = self.index.write();
+        let index = guard.as_mut()
+            .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
+
+        // Build selector and remove
+        let ids_idx: Vec<Idx> = ids.iter().map(|&i| Idx::from(i as i64)).collect();
+        let selector = IdSelector::batch(&ids_idx)
+            .map_err(|e| CodeGraphError::Vector(format!("Failed to build ID selector: {}", e)))?;
+        let removed = index
+            .remove_ids(&selector)
+            .map_err(|e| CodeGraphError::Vector(format!("Failed to remove ids: {}", e)))?;
+
+        // Update mappings
+        if removed > 0 {
+            // Collect to avoid aliasing of borrows
+            let to_remove: Vec<(NodeId, i64)> = {
+                let rev_read = self.reverse_mapping.read();
+                node_ids
+                    .iter()
+                    .filter_map(|nid| rev_read.get(nid).map(|id| (*nid, *id)))
+                    .collect()
+            };
+
+            let mut fwd = self.id_mapping.write();
+            let mut rev = self.reverse_mapping.write();
+            for (nid, fid) in to_remove {
+                fwd.remove(&fid);
+                rev.remove(&nid);
+            }
+        }
+
+        // Persist changes
+        #[cfg(feature = "persistent")]
+        if let Some(ref storage) = self.storage {
+            storage.save_index(index, &self.config)?;
+            let fwd = self.id_mapping.read();
+            let rev = self.reverse_mapping.read();
+            storage.save_id_mapping(&*fwd, &*rev)?;
+        }
+
+        info!("Removed {} vectors from index", removed);
+        Ok(removed)
     }
 
     /// Get index statistics for monitoring and optimization
@@ -362,6 +528,12 @@ impl FaissIndexManager {
         let overhead = match &self.config.index_type {
             IndexType::Flat => 0,
             IndexType::IVF { nlist, .. } => nlist * self.config.dimension * 4,
+            IndexType::IVFPQ { nlist, m, nbits, .. } => {
+                let codebook_size = (1 << nbits) * m * 4;
+                let codes_size = index.ntotal() as usize * m; // approximate
+                let ivf_overhead = nlist * self.config.dimension * 4;
+                ivf_overhead + codebook_size + codes_size
+            },
             IndexType::HNSW { m, .. } => index.ntotal() as usize * m * 8, // 8 bytes per link
             IndexType::LSH { nbits } => nbits / 8,
             IndexType::PQ { m, nbits } => {

@@ -5,6 +5,11 @@ use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 use std::ptr;
 
+#[inline(always)]
+fn prefetch(_p: *const u8) {
+    // No-op on stable; placeholder for potential intrinsics on nightly.
+}
+
 /// Cache line size for current architecture (typically 64 bytes)
 pub const CACHE_LINE_SIZE: usize = 64;
 
@@ -145,8 +150,8 @@ impl<V> CacheEntriesSoA<V> {
                 // Prefetch next few entries while we have this cache line loaded
                 if i + 1 < self.capacity {
                     unsafe {
-                        ptr::prefetch_read_data(&self.keys[i + 1] as *const String as *const u8, 1);
-                        ptr::prefetch_read_data(&self.valid[i + 1] as *const bool as *const u8, 1);
+                        prefetch(&self.keys[i + 1] as *const String as *const u8);
+                        prefetch(&self.valid[i + 1] as *const bool as *const u8);
                     }
                 }
                 
@@ -275,8 +280,8 @@ impl<V> CacheEntriesSoA<V> {
         let end_idx = std::cmp::min(start_idx + count, self.capacity);
         for i in start_idx..end_idx {
             unsafe {
-                ptr::prefetch_read_data(&self.keys[i] as *const String as *const u8, 1);
-                ptr::prefetch_read_data(&self.valid[i] as *const bool as *const u8, 1);
+                prefetch(&self.keys[i] as *const String as *const u8);
+                prefetch(&self.valid[i] as *const bool as *const u8);
             }
         }
     }
@@ -295,7 +300,7 @@ pub struct CacheOptimizedHashMap<K, V> {
     shard_mask: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CacheEntry<V> {
     pub value: V,
     pub created_at: SystemTime,

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId, Result};
+use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId, Result, NodeType, Language, Location};
 use rocksdb::{
     BlockBasedOptions, ColumnFamily, ColumnFamilyDescriptor, DBWithThreadMode, IteratorMode,
     MultiThreaded, Options, ReadOptions, SliceTransform, WriteBatch, WriteOptions, Cache, DBCompressionType
@@ -7,7 +7,7 @@ use rocksdb::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -26,19 +26,17 @@ type DB = DBWithThreadMode<MultiThreaded>;
 
 const NODES_CF: &str = "nodes";
 const EDGES_CF: &str = "edges";
-const NODE_NAME_INDEX_CF: &str = "node_name_idx";
-const EDGE_FROM_INDEX_CF: &str = "edge_from_idx";
-const EDGE_TO_INDEX_CF: &str = "edge_to_idx";
+const INDICES_CF: &str = "indices";
 const METADATA_CF: &str = "metadata";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SerializableCodeNode {
     pub id: NodeId,
     pub name: String,
-    pub node_type: String,
-    pub file_path: Option<String>,
-    pub start_line: Option<u32>,
-    pub end_line: Option<u32>,
+    pub node_type: Option<NodeType>,
+    pub language: Option<Language>,
+    pub location: Location,
+    pub content: Option<String>,
     pub metadata: HashMap<String, String>,
 }
 
@@ -59,9 +57,9 @@ impl From<CodeNode> for SerializableCodeNode {
             id: node.id,
             name: node.name,
             node_type: node.node_type,
-            file_path: node.file_path,
-            start_line: node.start_line,
-            end_line: node.end_line,
+            language: node.language,
+            location: node.location,
+            content: node.content.as_ref().map(|s| s.to_string()),
             metadata: node.metadata.attributes,
         }
     }
@@ -69,26 +67,29 @@ impl From<CodeNode> for SerializableCodeNode {
 
 impl From<SerializableCodeNode> for CodeNode {
     fn from(node: SerializableCodeNode) -> Self {
-        use codegraph_core::Metadata;
+        use codegraph_core::{Metadata, SharedStr};
         let now = chrono::Utc::now();
         Self {
             id: node.id,
             name: node.name,
             node_type: node.node_type,
-            file_path: node.file_path,
-            start_line: node.start_line,
-            end_line: node.end_line,
+            language: node.language,
+            location: node.location,
+            content: node.content.map(SharedStr::from),
             metadata: Metadata {
                 attributes: node.metadata,
                 created_at: now,
                 updated_at: now,
             },
+            embedding: None,
+            complexity: None,
         }
     }
 }
 
 pub struct HighPerformanceRocksDbStorage {
     db: Arc<DB>,
+    db_path: PathBuf,
     read_cache: Arc<DashMap<NodeId, Arc<CodeNode>>>,
     edge_cache: Arc<DashMap<NodeId, Arc<Vec<SerializableEdge>>>>,
     node_counter: AtomicU64,
@@ -100,6 +101,9 @@ pub struct HighPerformanceRocksDbStorage {
     batching_config: BatchingConfig,
     write_optimizer: Arc<Mutex<WriteBatchOptimizer>>,
     read_coalescer: ReadCoalescer,
+    // Transaction state
+    tx_next_id: AtomicU64,
+    tx_batches: Arc<DashMap<u64, WriteBatch>>,
 }
 
 impl HighPerformanceRocksDbStorage {
@@ -153,12 +157,11 @@ impl HighPerformanceRocksDbStorage {
         
         db_opts.set_block_based_table_factory(&block_opts);
         
+        // Exactly 4 column families: nodes, edges, indices, metadata
         let cf_descriptors = vec![
             Self::create_nodes_cf_descriptor(),
             Self::create_edges_cf_descriptor(),
-            Self::create_index_cf_descriptor(NODE_NAME_INDEX_CF),
-            Self::create_index_cf_descriptor(EDGE_FROM_INDEX_CF),
-            Self::create_index_cf_descriptor(EDGE_TO_INDEX_CF),
+            Self::create_indices_cf_descriptor(),
             Self::create_metadata_cf_descriptor(),
         ];
         
@@ -187,6 +190,7 @@ impl HighPerformanceRocksDbStorage {
 
         let storage = Self {
             db: db_arc,
+            db_path: path.as_ref().to_path_buf(),
             read_cache: read_cache,
             edge_cache: Arc::new(DashMap::with_capacity(50_000)),
             node_counter: AtomicU64::new(1),
@@ -198,6 +202,8 @@ impl HighPerformanceRocksDbStorage {
             batching_config: batching_config.clone(),
             write_optimizer: Arc::new(Mutex::new(WriteBatchOptimizer::new(&batching_config))),
             read_coalescer,
+            tx_next_id: AtomicU64::new(1),
+            tx_batches: Arc::new(DashMap::new()),
         };
         
         storage.initialize_counters()?;
@@ -235,7 +241,7 @@ impl HighPerformanceRocksDbStorage {
         ColumnFamilyDescriptor::new(EDGES_CF, opts)
     }
     
-    fn create_index_cf_descriptor(name: &str) -> ColumnFamilyDescriptor {
+    fn create_indices_cf_descriptor() -> ColumnFamilyDescriptor {
         let mut opts = Options::default();
         opts.set_write_buffer_size(32 * 1024 * 1024);
         opts.set_max_write_buffer_number(2);
@@ -250,7 +256,7 @@ impl HighPerformanceRocksDbStorage {
         block_opts.set_bloom_filter(15.0, false);
         opts.set_block_based_table_factory(&block_opts);
         
-        ColumnFamilyDescriptor::new(name, opts)
+        ColumnFamilyDescriptor::new(INDICES_CF, opts)
     }
     
     fn create_metadata_cf_descriptor() -> ColumnFamilyDescriptor {
@@ -301,6 +307,48 @@ impl HighPerformanceRocksDbStorage {
         key.extend_from_slice(&id.to_be_bytes());
         key
     }
+
+    // Transaction API (in-memory batches)
+    pub fn begin(&self) -> u64 {
+        let id = self.tx_next_id.fetch_add(1, Ordering::SeqCst);
+        self.tx_batches.insert(id, WriteBatch::default());
+        id
+    }
+
+    pub fn commit(&self, tx_id: u64) -> Result<()> {
+        if let Some((_, batch)) = self.tx_batches.remove(&tx_id) {
+            self.db
+                .write_opt(&batch, &self.write_options)
+                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            Ok(())
+        } else {
+            Err(CodeGraphError::Transaction(format!("Unknown transaction {}", tx_id)))
+        }
+    }
+
+    pub fn rollback(&self, tx_id: u64) -> Result<()> {
+        if self.tx_batches.remove(&tx_id).is_some() {
+            Ok(())
+        } else {
+            Err(CodeGraphError::Transaction(format!("Unknown transaction {}", tx_id)))
+        }
+    }
+
+    fn with_batch<F>(&self, tx_id: Option<u64>, mutator: F) -> Result<()>
+    where
+        F: FnOnce(&mut WriteBatch) -> Result<()>,
+    {
+        if let Some(id) = tx_id {
+            if let Some(mut entry) = self.tx_batches.get_mut(&id) {
+                let batch = entry.value_mut();
+                return mutator(batch);
+            } else {
+                return Err(CodeGraphError::Transaction(format!("Unknown transaction {}", id)));
+            }
+        }
+        let mut batch = self.batch_writes.lock();
+        mutator(&mut batch)
+    }
     
     pub fn flush_batch_writes(&self) -> Result<()> {
         let mut batch = self.batch_writes.lock();
@@ -344,8 +392,7 @@ impl HighPerformanceRocksDbStorage {
         edge.id = edge_id;
         
         let edges_cf = self.get_cf_handle(EDGES_CF)?;
-        let from_index_cf = self.get_cf_handle(EDGE_FROM_INDEX_CF)?;
-        let to_index_cf = self.get_cf_handle(EDGE_TO_INDEX_CF)?;
+        let indices_cf = self.get_cf_handle(INDICES_CF)?;
         
         let edge_key = Self::edge_key(edge_id);
         let edge_bytes = bincode::serialize(&edge)
@@ -354,12 +401,12 @@ impl HighPerformanceRocksDbStorage {
         let from_index_key = Self::index_key(b"from:", &edge.from.to_string(), edge_id);
         let to_index_key = Self::index_key(b"to:", &edge.to.to_string(), edge_id);
         
-        {
-            let mut batch = self.batch_writes.lock();
+        self.with_batch(None, |batch| {
             batch.put_cf(&edges_cf, edge_key, edge_bytes);
-            batch.put_cf(&from_index_cf, from_index_key, b"");
-            batch.put_cf(&to_index_cf, to_index_key, b"");
-        }
+            batch.put_cf(&indices_cf, from_index_key, b"");
+            batch.put_cf(&indices_cf, to_index_key, b"");
+            Ok(())
+        })?;
         self.maybe_flush_writes()?;
         
         self.edge_cache.remove(&edge.from);
@@ -367,12 +414,31 @@ impl HighPerformanceRocksDbStorage {
         Ok(())
     }
     
+    pub async fn add_edge_tx(&self, tx_id: u64, edge: SerializableEdge) -> Result<()> {
+        let edge_id = edge.id;
+        let edges_cf = self.get_cf_handle(EDGES_CF)?;
+        let indices_cf = self.get_cf_handle(INDICES_CF)?;
+        let edge_key = Self::edge_key(edge_id);
+        let edge_bytes = bincode::serialize(&edge)
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        let from_index_key = Self::index_key(b"from:", &edge.from.to_string(), edge_id);
+        let to_index_key = Self::index_key(b"to:", &edge.to.to_string(), edge_id);
+
+        self.with_batch(Some(tx_id), |batch| {
+            batch.put_cf(&edges_cf, edge_key, edge_bytes);
+            batch.put_cf(&indices_cf, from_index_key, b"");
+            batch.put_cf(&indices_cf, to_index_key, b"");
+            Ok(())
+        })?;
+        Ok(())
+    }
+
     pub async fn get_edges_from(&self, node_id: NodeId) -> Result<Vec<SerializableEdge>> {
         if let Some(cached) = self.edge_cache.get(&node_id) {
             return Ok(cached.as_ref().clone());
         }
         
-        let from_index_cf = self.get_cf_handle(EDGE_FROM_INDEX_CF)?;
+        let from_index_cf = self.get_cf_handle(INDICES_CF)?;
         let edges_cf = self.get_cf_handle(EDGES_CF)?;
         
         let prefix = format!("from:{}", node_id);
@@ -431,6 +497,157 @@ impl HighPerformanceRocksDbStorage {
         
         Ok(())
     }
+
+    // Convenience for tests/ops: list column families
+    pub fn list_cf_names(&self) -> Result<Vec<String>> {
+        let opts = Options::default();
+        rocksdb::DB::list_cf(&opts, &self.db_path)
+            .map_err(|e| CodeGraphError::Database(format!("List CF failed: {}", e)))
+    }
+
+    pub fn db_path(&self) -> &Path {
+        &self.db_path
+    }
+
+    pub async fn add_node_tx(&self, tx_id: u64, node: CodeNode) -> Result<()> {
+        let node_id = node.id;
+        let serializable_node = SerializableCodeNode::from(node.clone());
+
+        let nodes_cf = self.get_cf_handle(NODES_CF)?;
+        let indices_cf = self.get_cf_handle(INDICES_CF)?;
+
+        let node_key = Self::node_key(node_id);
+        let node_bytes = bincode::serialize(&serializable_node)
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+
+        let name_index_key = Self::index_key(b"name:", &node.name, node_id);
+
+        self.with_batch(Some(tx_id), |batch| {
+            batch.put_cf(&nodes_cf, node_key, node_bytes);
+            batch.put_cf(&indices_cf, name_index_key, b"");
+            Ok(())
+        })?;
+
+        self.read_cache.insert(node_id, Arc::new(node));
+        self.node_counter.fetch_max(node_id + 1, Ordering::Relaxed);
+
+        Ok(())
+    }
+
+    // Bulk operations (min 1000 ops/batch)
+    pub async fn bulk_insert_nodes(&self, nodes: Vec<CodeNode>) -> Result<BulkInsertStats> {
+        let mut ops_in_batch: usize = 0;
+        let mut batches: usize = 0;
+        let nodes_cf = self.get_cf_handle(NODES_CF)?;
+        let indices_cf = self.get_cf_handle(INDICES_CF)?;
+        for node in nodes.into_iter() {
+            let node_id = node.id;
+            let serializable_node = SerializableCodeNode::from(node.clone());
+            let node_key = Self::node_key(node_id);
+            let node_bytes = bincode::serialize(&serializable_node)
+                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            let name_index_key = Self::index_key(b"name:", &node.name, node_id);
+
+            self.with_batch(None, |batch| {
+                batch.put_cf(&nodes_cf, node_key, node_bytes);
+                batch.put_cf(&indices_cf, name_index_key, b"");
+                Ok(())
+            })?;
+            ops_in_batch += 2; // two ops per node
+            if ops_in_batch >= 1000 {
+                self.flush_batch_writes()?;
+                batches += 1;
+                ops_in_batch = 0;
+            }
+            self.read_cache.insert(node_id, Arc::new(node));
+            self.node_counter.fetch_max(node_id + 1, Ordering::Relaxed);
+        }
+        if ops_in_batch > 0 {
+            self.flush_batch_writes()?;
+            batches += 1;
+        }
+        Ok(BulkInsertStats { batches, total_ops: (batches * 1000) as u64 })
+    }
+
+    pub async fn bulk_insert_edges(&self, edges: Vec<SerializableEdge>) -> Result<BulkInsertStats> {
+        let mut ops_in_batch: usize = 0;
+        let mut batches: usize = 0;
+        let edges_cf = self.get_cf_handle(EDGES_CF)?;
+        let indices_cf = self.get_cf_handle(INDICES_CF)?;
+        for edge in edges.into_iter() {
+            let edge_key = Self::edge_key(edge.id);
+            let edge_bytes = bincode::serialize(&edge)
+                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            let from_index_key = Self::index_key(b"from:", &edge.from.to_string(), edge.id);
+            let to_index_key = Self::index_key(b"to:", &edge.to.to_string(), edge.id);
+            self.with_batch(None, |batch| {
+                batch.put_cf(&edges_cf, edge_key, edge_bytes);
+                batch.put_cf(&indices_cf, from_index_key, b"");
+                batch.put_cf(&indices_cf, to_index_key, b"");
+                Ok(())
+            })?;
+            ops_in_batch += 3;
+            if ops_in_batch >= 1000 {
+                self.flush_batch_writes()?;
+                batches += 1;
+                ops_in_batch = 0;
+            }
+        }
+        if ops_in_batch > 0 {
+            self.flush_batch_writes()?;
+            batches += 1;
+        }
+        Ok(BulkInsertStats { batches, total_ops: (batches * 1000) as u64 })
+    }
+
+    // Backup and restore using timestamped directory snapshots
+    pub fn backup_snapshot<P: AsRef<Path>>(&self, backups_root: P) -> Result<std::path::PathBuf> {
+        use std::fs;
+        use chrono::Utc;
+        self.flush_batch_writes()?;
+        self.db.flush().map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        fs::create_dir_all(&backups_root)?;
+        let ts = Utc::now().format("%Y%m%d%H%M%S");
+        let backup_dir = backups_root.as_ref().join(format!("snapshot-{}", ts));
+        fs::create_dir_all(&backup_dir)?;
+        copy_dir_all(&self.db_path, &backup_dir)
+            .map_err(|e| CodeGraphError::Database(format!("Backup copy failed: {}", e)))?;
+        Ok(backup_dir)
+    }
+
+    pub fn restore_from_snapshot<P: AsRef<Path>, Q: AsRef<Path>>(snapshot_dir: P, dest_path: Q) -> Result<()> {
+        use std::fs;
+        if dest_path.as_ref().exists() {
+            fs::remove_dir_all(&dest_path)?;
+        }
+        fs::create_dir_all(&dest_path)?;
+        copy_dir_all(&snapshot_dir, &dest_path)
+            .map_err(|e| CodeGraphError::Database(format!("Restore copy failed: {}", e)))?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BulkInsertStats {
+    pub batches: usize,
+    pub total_ops: u64,
+}
+
+fn copy_dir_all<P: AsRef<Path>, Q: AsRef<Path>>(src: P, dst: Q) -> std::io::Result<()> {
+    use std::fs;
+    fs::create_dir_all(&dst)?;
+    for entry in fs::read_dir(&src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let src_path = entry.path();
+        let dst_path = dst.as_ref().join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_all(&src_path, &dst_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }
 
 #[async_trait]
@@ -440,7 +657,7 @@ impl GraphStore for HighPerformanceRocksDbStorage {
         let serializable_node = SerializableCodeNode::from(node.clone());
         
         let nodes_cf = self.get_cf_handle(NODES_CF)?;
-        let name_index_cf = self.get_cf_handle(NODE_NAME_INDEX_CF)?;
+        let indices_cf = self.get_cf_handle(INDICES_CF)?;
         
         let node_key = Self::node_key(node_id);
         let node_bytes = bincode::serialize(&serializable_node)
@@ -448,11 +665,11 @@ impl GraphStore for HighPerformanceRocksDbStorage {
         
         let name_index_key = Self::index_key(b"name:", &node.name, node_id);
         
-        {
-            let mut batch = self.batch_writes.lock();
+        self.with_batch(None, |batch| {
             batch.put_cf(&nodes_cf, node_key, node_bytes);
-            batch.put_cf(&name_index_cf, name_index_key, b"");
-        }
+            batch.put_cf(&indices_cf, name_index_key, b"");
+            Ok(())
+        })?;
         self.maybe_flush_writes()?;
         
         let node_arc = Arc::new(node);
@@ -478,17 +695,17 @@ impl GraphStore for HighPerformanceRocksDbStorage {
     
     async fn remove_node(&mut self, id: NodeId) -> Result<()> {
         let nodes_cf = self.get_cf_handle(NODES_CF)?;
-        let name_index_cf = self.get_cf_handle(NODE_NAME_INDEX_CF)?;
+        let indices_cf = self.get_cf_handle(INDICES_CF)?;
         
         if let Some(node) = self.get_node(id).await? {
             let node_key = Self::node_key(id);
             let name_index_key = Self::index_key(b"name:", &node.name, id);
             
-            {
-                let mut batch = self.batch_writes.lock();
+            self.with_batch(None, |batch| {
                 batch.delete_cf(&nodes_cf, node_key);
-                batch.delete_cf(&name_index_cf, name_index_key);
-            }
+                batch.delete_cf(&indices_cf, name_index_key);
+                Ok(())
+            })?;
             self.maybe_flush_writes()?;
         }
         
@@ -499,7 +716,7 @@ impl GraphStore for HighPerformanceRocksDbStorage {
     }
     
     async fn find_nodes_by_name(&self, name: &str) -> Result<Vec<CodeNode>> {
-        let name_index_cf = self.get_cf_handle(NODE_NAME_INDEX_CF)?;
+        let name_index_cf = self.get_cf_handle(INDICES_CF)?;
         
         let prefix = format!("name:{}", name);
         let mut read_opts = self.read_options.clone();

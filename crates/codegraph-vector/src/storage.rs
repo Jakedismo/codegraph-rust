@@ -1,4 +1,4 @@
-use crate::faiss_manager::IndexConfig;
+use crate::index::IndexConfig;
 use codegraph_core::{CodeGraphError, NodeId, Result};
 use faiss::index::IndexImpl;
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};

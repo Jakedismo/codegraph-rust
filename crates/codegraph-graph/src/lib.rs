@@ -1,4 +1,5 @@
 pub mod edge;
+pub mod edges;
 pub mod graph;
 pub mod storage;
 pub mod traversal;
@@ -16,8 +17,10 @@ pub mod graph_updater;
 pub mod progress_tracker;
 pub mod pipeline;
 pub mod io_batcher;
+pub mod nodes;
 
 pub use edge::*;
+pub use edges::*;
 pub use graph::*;
 pub use storage::*;
 pub use traversal::*;
@@ -35,3 +38,4 @@ pub use graph_updater::*;
 pub use progress_tracker::*;
 pub use pipeline::*;
 pub use io_batcher::*;
+pub use nodes::*;

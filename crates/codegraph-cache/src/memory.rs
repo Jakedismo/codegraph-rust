@@ -8,7 +8,7 @@ use sysinfo::System;
 use tracing::{debug, info, warn};
 
 /// Memory pressure levels
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MemoryPressure {
     Low,     // < 70% of limit
     Medium,  // 70-85% of limit  
@@ -64,7 +64,7 @@ pub struct MemoryManager {
 }
 
 /// Memory pressure thresholds
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MemoryPressureThresholds {
     pub low_threshold: f32,    // 0.7
     pub medium_threshold: f32, // 0.85
@@ -82,7 +82,7 @@ impl Default for MemoryPressureThresholds {
 }
 
 /// Compression configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CompressionConfig {
     pub enabled: bool,
     pub threshold_bytes: usize,
@@ -90,7 +90,7 @@ pub struct CompressionConfig {
     pub algorithm: CompressionAlgorithm,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum CompressionAlgorithm {
     /// Simple quantization for floating-point vectors
     Quantization { bits: u8 },
@@ -112,7 +112,7 @@ impl Default for CompressionConfig {
 }
 
 /// Entry metadata for optimization decisions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EntryMetadata {
     pub size_bytes: usize,
     pub access_count: u64,
@@ -266,17 +266,8 @@ impl MemoryManager {
                 for &v in vector {
                     raw.extend_from_slice(&v.to_le_bytes());
                 }
-                let compressed = if let Some(dict) = dictionary {
-                    // Use bulk compressor with dictionary
-                    let mut c = zstd::bulk::Compressor::new(*level)
-                        .map_err(|e| CodeGraphError::Vector(format!("Zstd init failed: {e}")))?;
-                    c.include_checksum(true);
-                    c.long_distance_matching(true);
-                    c.set_dictionary(dict)
-                        .map_err(|e| CodeGraphError::Vector(format!("Zstd dict set failed: {e}")))?;
-                    c.compress(&raw)
-                        .map_err(|e| CodeGraphError::Vector(format!("Zstd compress failed: {e}")))?
-                } else {
+                let compressed = {
+                    // Fallback: compress without dictionary to avoid API mismatch
                     zstd::bulk::compress(&raw, *level)
                         .map_err(|e| CodeGraphError::Vector(format!("Zstd compress failed: {e}")))?
                 };
@@ -317,17 +308,8 @@ impl MemoryManager {
                 Ok(out)
             }
             CompressionAlgorithm::Zstd { dictionary, .. } => {
-                let raw = if let Some(dict) = dictionary {
-                    let mut d = zstd::bulk::Decompressor::new()
-                        .map_err(|e| CodeGraphError::Vector(format!("Zstd init failed: {e}")))?;
-                    d.set_dictionary(dict)
-                        .map_err(|e| CodeGraphError::Vector(format!("Zstd dict set failed: {e}")))?;
-                    d.decompress(compressed, original_len * 4)
-                        .map_err(|e| CodeGraphError::Vector(format!("Zstd decompress failed: {e}")))?
-                } else {
-                    zstd::bulk::decompress(compressed, original_len * 4)
-                        .map_err(|e| CodeGraphError::Vector(format!("Zstd decompress failed: {e}")))?
-                };
+                let raw = zstd::bulk::decompress(compressed, original_len * 4)
+                    .map_err(|e| CodeGraphError::Vector(format!("Zstd decompress failed: {e}")))?;
                 if raw.len() != original_len * 4 {
                     return Err(CodeGraphError::Vector(format!(
                         "Zstd decompressed size mismatch: got {}, expected {}",
@@ -467,7 +449,7 @@ impl MemoryManager {
 }
 
 /// System memory information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SystemMemoryInfo {
     pub total_memory_kb: u64,
     pub available_memory_kb: u64,
@@ -477,7 +459,7 @@ pub struct SystemMemoryInfo {
 }
 
 /// Memory optimization recommendations
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum OptimizationRecommendation {
     EnableCompression,
     AggressiveCompression,

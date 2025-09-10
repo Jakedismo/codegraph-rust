@@ -1,527 +1,491 @@
 # CodeGraph Component Dependencies
 
-This document provides detailed dependency analysis and component interaction diagrams for the CodeGraph system.
+## Detailed Crate Dependency Analysis
 
-## Crate Dependency Graph (Detailed)
+### Foundation Layer Dependencies
 
 ```mermaid
 graph TB
-    subgraph "Foundation Layer (Tier 0)"
-        Core[codegraph-core<br/>📦 Types, Traits, Config<br/>🔗 No dependencies]
+    subgraph "Core Foundation"
+        core["`**codegraph-core**
+        Types & Traits
+        Error Handling
+        Configuration
+        Memory Management`"]
+        
+        zerocopy["`**codegraph-zerocopy**
+        rkyv Archives
+        Zero-copy Serialization
+        Memory Layout Control
+        Performance Optimization`"]
     end
     
-    subgraph "Serialization Layer (Tier 1)"
-        ZeroCopy[codegraph-zerocopy<br/>📦 rkyv, Zero-copy<br/>🔗 → core]
+    subgraph "Platform Dependencies"
+        unix["`**Unix Platform**
+        libc 0.2
+        Memory Management
+        System Calls`"]
+        
+        windows["`**Windows Platform**
+        windows-sys 0.59
+        Win32 APIs
+        Memory Management`"]
     end
     
-    subgraph "Storage Layer (Tier 2)"
-        Graph[codegraph-graph<br/>📦 RocksDB, Storage<br/>🔗 → core, zerocopy]
-        Vector[codegraph-vector<br/>📦 FAISS, Embeddings<br/>🔗 → core, zerocopy]
-        Cache[codegraph-cache<br/>📦 Memory Cache<br/>🔗 → core, zerocopy]
-    end
+    core --> unix
+    core --> windows
+    zerocopy --> core
     
-    subgraph "Processing Layer (Tier 3)"
-        Parser[codegraph-parser<br/>📦 Tree-sitter<br/>🔗 → core]
-        Queue[codegraph-queue<br/>📦 Task Processing<br/>🔗 → core]
-        Git[codegraph-git<br/>📦 Git Integration<br/>🔗 → core]
-        Concurrent[codegraph-concurrent<br/>📦 Parallelism<br/>🔗 → core]
-    end
+    classDef foundation fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef platform fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     
-    subgraph "Integration Layer (Tier 4)"
-        MCP[codegraph-mcp<br/>📦 MCP Protocol<br/>🔗 → core, graph, vector, parser]
-        MCP_Server[core-rag-mcp-server<br/>📦 RAG MCP Server<br/>🔗 → mcp, api]
-    end
-    
-    subgraph "Service Layer (Tier 5)"
-        API[codegraph-api<br/>📦 REST + GraphQL<br/>🔗 → ALL layers]
-        LB[codegraph-lb<br/>📦 Load Balancer<br/>🔗 → core, api]
-    end
-    
-    %% Tier 0 → Tier 1
-    Core --> ZeroCopy
-    
-    %% Tier 1 → Tier 2
-    ZeroCopy --> Graph
-    ZeroCopy --> Vector
-    ZeroCopy --> Cache
-    Core --> Graph
-    Core --> Vector
-    Core --> Cache
-    
-    %% Tier 0 → Tier 3 (Direct)
-    Core --> Parser
-    Core --> Queue
-    Core --> Git
-    Core --> Concurrent
-    
-    %% Tier 2 → Tier 3 (Optional)
-    Graph -.-> Vector
-    Graph -.-> Cache
-    
-    %% Tier 3 → Parser Enhancement
-    Concurrent -.-> Parser
-    Queue -.-> Git
-    
-    %% Tier 3 → Tier 4
-    Core --> MCP
-    Graph --> MCP
-    Vector --> MCP
-    Parser --> MCP
-    MCP --> MCP_Server
-    
-    %% Tier 4 → Tier 5
-    Core --> API
-    Graph --> API
-    Vector --> API
-    Cache --> API
-    Parser --> API
-    Queue --> API
-    MCP --> API
-    MCP_Server -.-> API
-    
-    Core --> LB
-    API --> LB
-    
-    %% Styling by tier
-    classDef tier0 fill:#e8eaf6,stroke:#3f51b5,stroke-width:3px
-    classDef tier1 fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
-    classDef tier2 fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
-    classDef tier3 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    classDef tier4 fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    classDef tier5 fill:#ffebee,stroke:#c62828,stroke-width:3px
-    
-    class Core tier0
-    class ZeroCopy tier1
-    class Graph,Vector,Cache tier2
-    class Parser,Queue,Git,Concurrent tier3
-    class MCP,MCP_Server tier4
-    class API,LB tier5
+    class core,zerocopy foundation
+    class unix,windows platform
 ```
 
-## API Layer Dependencies
+### Storage Layer Dependencies
 
 ```mermaid
-graph LR
-    subgraph "API Service (codegraph-api)"
-        REST[REST Endpoints<br/>Axum Routes]
-        GraphQL[GraphQL Schema<br/>async-graphql]
-        WS[WebSocket<br/>Real-time Events]
-        Stream[Streaming<br/>Large Datasets]
+graph TB
+    subgraph "Storage Implementation"
+        graph_db["`**codegraph-graph**
+        RocksDB Integration
+        Column Families
+        Batch Operations
+        Graph Persistence`"]
+        
+        vector["`**codegraph-vector**
+        FAISS Integration
+        Vector Embeddings
+        Similarity Search
+        OpenAI Client`"]
+        
+        cache["`**codegraph-cache**
+        Memory Cache
+        Dashboard
+        Profiler
+        Optimization`"]
     end
     
     subgraph "Core Dependencies"
-        CoreTypes[Core Types<br/>Error Handling]
-        Config[Configuration<br/>Settings]
-        Auth[Authentication<br/>JWT, Security]
+        core[codegraph-core]
+        zerocopy[codegraph-zerocopy]
     end
     
-    subgraph "Storage Dependencies"
-        GraphStore[Graph Storage<br/>RocksDB Access]
-        VectorStore[Vector Store<br/>FAISS Queries]
-        CacheStore[Cache Store<br/>Memory Cache]
+    subgraph "External Libraries"
+        rocksdb[RocksDB 0.22]
+        faiss[FAISS 0.12]
+        openai[OpenAI Client]
+        memmap[memmap2]
+        dashmap[DashMap 6.0]
     end
-    
-    subgraph "Processing Dependencies"
-        ParseService[Parser Service<br/>Code Analysis]
-        QueueService[Queue Service<br/>Async Tasks]
-        GitService[Git Service<br/>Repository Ops]
-    end
-    
-    subgraph "External Systems"
-        Prometheus[Prometheus<br/>Metrics]
-        Tracing[Tracing<br/>Observability]
-        HealthCheck[Health Checks<br/>Monitoring]
-    end
-    
-    %% API internal connections
-    REST --> GraphQL
-    GraphQL --> WS
-    WS --> Stream
     
     %% Core dependencies
-    REST --> CoreTypes
-    GraphQL --> CoreTypes
-    REST --> Config
-    GraphQL --> Config
-    REST --> Auth
-    GraphQL --> Auth
+    graph_db --> core
+    vector --> core
+    cache --> core
     
-    %% Storage access
-    REST --> GraphStore
-    GraphQL --> GraphStore
-    REST --> VectorStore
-    GraphQL --> VectorStore
-    REST --> CacheStore
-    GraphQL --> CacheStore
+    %% Zero-copy dependencies
+    graph_db --> zerocopy
+    vector --> zerocopy
+    cache --> zerocopy
     
-    %% Processing integration
-    REST --> ParseService
-    GraphQL --> ParseService
-    REST --> QueueService
-    GraphQL --> QueueService
-    WS --> QueueService
-    REST --> GitService
+    %% External dependencies
+    graph_db --> rocksdb
+    vector --> faiss
+    vector --> openai
+    cache --> memmap
+    cache --> dashmap
     
-    %% External systems
-    REST --> Prometheus
-    GraphQL --> Prometheus
-    REST --> Tracing
-    GraphQL --> Tracing
-    REST --> HealthCheck
+    %% Cross-storage dependencies
+    vector -.-> graph_db
+    cache -.-> graph_db
     
-    %% Styling
-    classDef api fill:#e3f2fd
-    classDef core fill:#e8f5e8
-    classDef storage fill:#fff3e0
-    classDef processing fill:#f3e5f5
-    classDef external fill:#fce4ec
+    classDef storage fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef core_dep fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef external fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     
-    class REST,GraphQL,WS,Stream api
-    class CoreTypes,Config,Auth core
-    class GraphStore,VectorStore,CacheStore storage
-    class ParseService,QueueService,GitService processing
-    class Prometheus,Tracing,HealthCheck external
+    class graph_db,vector,cache storage
+    class core,zerocopy core_dep
+    class rocksdb,faiss,openai,memmap,dashmap external
 ```
 
-## Parser Dependencies & Language Support
+### Processing Layer Dependencies
 
 ```mermaid
 graph TB
-    subgraph "Parser Core (codegraph-parser)"
-        ParseEngine[Parse Engine<br/>AST Generation]
-        Visitor[Visitor Pattern<br/>Tree Traversal]
-        NodeFactory[Node Factory<br/>Type Creation]
+    subgraph "Code Processing"
+        parser["`**codegraph-parser**
+        Tree-sitter AST
+        Language Support
+        Code Analysis
+        Multi-language`"]
+        
+        git["`**codegraph-git**
+        Repository Handling
+        Git Integration
+        Change Detection
+        Branch Management`"]
     end
     
-    subgraph "Tree-sitter Languages"
-        Rust_TS[tree-sitter-rust<br/>v0.24]
-        Python_TS[tree-sitter-python<br/>v0.23]
-        JS_TS[tree-sitter-javascript<br/>v0.25]
-        TS_TS[tree-sitter-typescript<br/>v0.23]
-        Go_TS[tree-sitter-go<br/>v0.23]
-        Java_TS[tree-sitter-java<br/>v0.23]
-        CPP_TS[tree-sitter-cpp<br/>v0.23]
+    subgraph "Concurrent Processing"
+        concurrent["`**codegraph-concurrent**
+        Parallel Processing
+        Thread Management
+        Work Distribution
+        Performance`"]
+        
+        queue["`**codegraph-queue**
+        Task Queue
+        Async Processing
+        Job Scheduling
+        Backpressure`"]
     end
     
-    subgraph "AST Node Types (from core)"
-        Function[Function Node]
-        Class[Class Node]
-        Variable[Variable Node]
-        Import[Import Node]
-        Comment[Comment Node]
-        Generic[Generic Node]
+    subgraph "Language Parsers"
+        rust_parser[tree-sitter-rust 0.24]
+        python_parser[tree-sitter-python 0.23]
+        js_parser[tree-sitter-javascript 0.25]
+        ts_parser[tree-sitter-typescript 0.23]
+        go_parser[tree-sitter-go 0.23]
+        java_parser[tree-sitter-java 0.23]
+        cpp_parser[tree-sitter-cpp 0.23]
     end
     
-    subgraph "Output Targets"
-        GraphNodes[Graph Nodes<br/>→ codegraph-graph]
-        VectorEmbed[Vector Embeddings<br/>→ codegraph-vector]
-        CacheData[Cache Data<br/>→ codegraph-cache]
+    subgraph "Core Dependencies"
+        core[codegraph-core]
     end
     
-    subgraph "Parallel Processing"
-        WorkerPool[Worker Pool<br/>→ codegraph-concurrent]
-        TaskQueue[Task Queue<br/>Async Processing]
-    end
+    %% Core dependencies
+    parser --> core
+    git --> core
+    concurrent --> core
+    queue --> core
     
-    %% Language to parser engine
-    Rust_TS --> ParseEngine
-    Python_TS --> ParseEngine
-    JS_TS --> ParseEngine
-    TS_TS --> ParseEngine
-    Go_TS --> ParseEngine
-    Java_TS --> ParseEngine
-    CPP_TS --> ParseEngine
+    %% Language parser dependencies
+    parser --> rust_parser
+    parser --> python_parser
+    parser --> js_parser
+    parser --> ts_parser
+    parser --> go_parser
+    parser --> java_parser
+    parser --> cpp_parser
     
-    %% Parser engine to components
-    ParseEngine --> Visitor
-    ParseEngine --> NodeFactory
-    Visitor --> NodeFactory
+    %% Processing dependencies
+    parser -.-> concurrent
+    queue --> concurrent
+    git -.-> parser
     
-    %% Node factory to AST types
-    NodeFactory --> Function
-    NodeFactory --> Class
-    NodeFactory --> Variable
-    NodeFactory --> Import
-    NodeFactory --> Comment
-    NodeFactory --> Generic
+    classDef processing fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef concurrent_proc fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef language fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef core_dep fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     
-    %% AST to outputs
-    Function --> GraphNodes
-    Class --> GraphNodes
-    Variable --> GraphNodes
-    Import --> GraphNodes
-    Function --> VectorEmbed
-    Class --> VectorEmbed
-    Comment --> VectorEmbed
-    
-    %% Caching
-    ParseEngine --> CacheData
-    NodeFactory --> CacheData
-    
-    %% Parallel processing
-    ParseEngine --> WorkerPool
-    ParseEngine --> TaskQueue
-    WorkerPool --> TaskQueue
-    
-    %% Styling
-    classDef parser fill:#e3f2fd
-    classDef language fill:#e8f5e8
-    classDef ast fill:#fff3e0
-    classDef output fill:#f3e5f5
-    classDef parallel fill:#fce4ec
-    
-    class ParseEngine,Visitor,NodeFactory parser
-    class Rust_TS,Python_TS,JS_TS,TS_TS,Go_TS,Java_TS,CPP_TS language
-    class Function,Class,Variable,Import,Comment,Generic ast
-    class GraphNodes,VectorEmbed,CacheData output
-    class WorkerPool,TaskQueue parallel
+    class parser,git processing
+    class concurrent,queue concurrent_proc
+    class rust_parser,python_parser,js_parser,ts_parser,go_parser,java_parser,cpp_parser language
+    class core core_dep
 ```
 
-## Vector Search Dependencies
+### API Layer Dependencies
 
 ```mermaid
 graph TB
-    subgraph "Vector Engine (codegraph-vector)"
-        Embedder[Embedding Generator<br/>OpenAI/Local Models]
-        IndexManager[Index Manager<br/>FAISS Operations]
-        SearchEngine[Search Engine<br/>Similarity Queries]
-        Serializer[Serializer<br/>rkyv Zero-copy]
+    subgraph "API Services"
+        api["`**codegraph-api**
+        Axum Framework
+        REST + GraphQL
+        WebSocket Support
+        Authentication`"]
+        
+        mcp["`**codegraph-mcp**
+        MCP Protocol
+        Server Implementation
+        Client Integration
+        Transport Layer`"]
+        
+        lb["`**codegraph-lb**
+        Load Balancer
+        Health Checks
+        Traffic Distribution
+        Failover`"]
     end
     
-    subgraph "FAISS Index Types"
-        IndexFlat[IndexFlatL2<br/>Exact Search]
-        IndexIVF[IndexIVFFlat<br/>Inverted File]
-        IndexPQ[IndexPQ<br/>Product Quantization]
-        IndexHNSW[IndexHNSW<br/>Hierarchical NSW]
+    subgraph "RAG Server"
+        rag_server["`**core-rag-mcp-server**
+        RAG Implementation
+        MCP Integration
+        Document Processing
+        Query Engine`"]
     end
     
-    subgraph "Vector Data Sources"
-        CodeBlocks[Code Blocks<br/>Functions, Classes]
-        Comments[Comments<br/>Documentation]
-        Identifiers[Identifiers<br/>Variables, Types]
-        Strings[String Literals<br/>Text Content]
+    subgraph "All Lower Layers"
+        core[codegraph-core]
+        graph_db[codegraph-graph]
+        vector[codegraph-vector]
+        cache[codegraph-cache]
+        parser[codegraph-parser]
+        queue[codegraph-queue]
+        git[codegraph-git]
     end
     
-    subgraph "Storage Integration"
-        GraphLink[Graph Linkage<br/>→ codegraph-graph]
-        CacheLayer[Cache Layer<br/>→ codegraph-cache]
-        ZeroCopyStore[Zero-copy Store<br/>→ codegraph-zerocopy]
+    subgraph "Web Framework Stack"
+        axum[Axum 0.7]
+        tower[Tower 0.4]
+        hyper[Hyper 1.0]
+        graphql[async-graphql 7.0]
+        websocket[tokio-tungstenite]
     end
     
-    subgraph "External APIs"
-        OpenAI[OpenAI API<br/>text-embedding-ada-002]
-        LocalModel[Local Models<br/>sentence-transformers]
-        CustomModel[Custom Models<br/>Domain-specific]
-    end
+    %% Core dependencies
+    api --> core
+    mcp --> core
+    lb --> core
+    rag_server --> core
     
-    %% Vector engine components
-    Embedder --> IndexManager
-    IndexManager --> SearchEngine
-    SearchEngine --> Serializer
+    %% Service layer dependencies
+    api --> graph_db
+    api --> vector
+    api --> cache
+    api --> parser
+    api --> queue
     
-    %% FAISS index selection
-    IndexManager --> IndexFlat
-    IndexManager --> IndexIVF
-    IndexManager --> IndexPQ
-    IndexManager --> IndexHNSW
+    mcp --> graph_db
+    mcp --> vector
+    mcp --> parser
     
-    %% Data source processing
-    CodeBlocks --> Embedder
-    Comments --> Embedder
-    Identifiers --> Embedder
-    Strings --> Embedder
+    lb --> api
     
-    %% Storage integration
-    IndexManager --> GraphLink
-    SearchEngine --> GraphLink
-    Embedder --> CacheLayer
-    SearchEngine --> CacheLayer
-    Serializer --> ZeroCopyStore
-    IndexManager --> ZeroCopyStore
+    rag_server --> mcp
+    rag_server --> parser
+    rag_server --> vector
     
-    %% External API integration
-    Embedder --> OpenAI
-    Embedder --> LocalModel
-    Embedder --> CustomModel
+    %% Framework dependencies
+    api --> axum
+    api --> tower
+    api --> hyper
+    api --> graphql
+    api --> websocket
     
-    %% Performance annotations
-    IndexFlat -.->|"O(n) exact"| SearchEngine
-    IndexIVF -.->|"O(nprobe)"| SearchEngine
-    IndexPQ -.->|"O(1) approx"| SearchEngine
-    IndexHNSW -.->|"O(log n)"| SearchEngine
+    mcp --> axum
     
-    %% Styling
-    classDef vector fill:#e3f2fd
-    classDef index fill:#e8f5e8
-    classDef source fill:#fff3e0
-    classDef storage fill:#f3e5f5
-    classDef external fill:#fce4ec
+    classDef api_service fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef rag fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef lower fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef framework fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     
-    class Embedder,IndexManager,SearchEngine,Serializer vector
-    class IndexFlat,IndexIVF,IndexPQ,IndexHNSW index
-    class CodeBlocks,Comments,Identifiers,Strings source
-    class GraphLink,CacheLayer,ZeroCopyStore storage
-    class OpenAI,LocalModel,CustomModel external
+    class api,mcp,lb api_service
+    class rag_server rag
+    class core,graph_db,vector,cache,parser,queue,git lower
+    class axum,tower,hyper,graphql,websocket framework
 ```
 
-## MCP Integration Architecture
+## Dependency Depth Analysis
+
+```mermaid
+flowchart TD
+    subgraph "Depth 0 - Foundation"
+        D0["`**Level 0**
+        codegraph-core
+        (No dependencies)`"]
+    end
+    
+    subgraph "Depth 1 - Core Extensions"
+        D1A["`**Level 1A**
+        codegraph-zerocopy`"]
+        D1B["`**Level 1B**
+        codegraph-concurrent`"]
+        D1C["`**Level 1C**
+        codegraph-git`"]
+    end
+    
+    subgraph "Depth 2 - Storage & Processing"
+        D2A["`**Level 2A**
+        codegraph-graph
+        codegraph-vector
+        codegraph-cache`"]
+        D2B["`**Level 2B**
+        codegraph-parser
+        codegraph-queue`"]
+    end
+    
+    subgraph "Depth 3 - Services"
+        D3A["`**Level 3A**
+        codegraph-mcp`"]
+        D3B["`**Level 3B**
+        codegraph-api`"]
+        D3C["`**Level 3C**
+        codegraph-lb`"]
+    end
+    
+    subgraph "Depth 4 - Applications"
+        D4["`**Level 4**
+        core-rag-mcp-server`"]
+    end
+    
+    %% Dependencies flow
+    D0 --> D1A
+    D0 --> D1B
+    D0 --> D1C
+    
+    D1A --> D2A
+    D1B --> D2B
+    D0 --> D2A
+    D0 --> D2B
+    
+    D2A --> D3A
+    D2A --> D3B
+    D2B --> D3A
+    D2B --> D3B
+    D3B --> D3C
+    D0 --> D3A
+    D0 --> D3B
+    D0 --> D3C
+    
+    D3A --> D4
+    D2B --> D4
+    D2A --> D4
+    D0 --> D4
+    
+    classDef depth0 fill:#e3f2fd,stroke:#1976d2,stroke-width:3px
+    classDef depth1 fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef depth2 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef depth3 fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef depth4 fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    
+    class D0 depth0
+    class D1A,D1B,D1C depth1
+    class D2A,D2B depth2
+    class D3A,D3B,D3C depth3
+    class D4 depth4
+```
+
+## Feature Dependency Matrix
+
+```mermaid
+flowchart LR
+    subgraph "Optional Features"
+        F1["`**FAISS Support**
+        Feature: faiss
+        Vector search capabilities`"]
+        
+        F2["`**GPU Acceleration**
+        Feature: gpu
+        CUDA/OpenCL support`"]
+        
+        F3["`**Persistent Storage**
+        Feature: persistent
+        Memory mapping`"]
+        
+        F4["`**OpenAI Integration**
+        Feature: openai
+        External embeddings`"]
+        
+        F5["`**Memory Leak Detection**
+        Feature: leak-detect
+        Development profiling`"]
+    end
+    
+    subgraph "Crates"
+        vector[codegraph-vector]
+        api[codegraph-api]
+        cache[codegraph-cache]
+    end
+    
+    %% Feature dependencies
+    vector --> F1
+    F1 --> F2
+    vector --> F3
+    vector --> F4
+    api --> F5
+    
+    classDef feature fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef crate fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    
+    class F1,F2,F3,F4,F5 feature
+    class vector,api,cache crate
+```
+
+## Cross-Cutting Concerns
 
 ```mermaid
 graph TB
-    subgraph "MCP Server (codegraph-mcp)"
-        MCPCore[MCP Core<br/>Protocol Handler]
-        Tools[Tool Registry<br/>Available Operations]
-        Resources[Resource Manager<br/>Code Access]
-        Prompts[Prompt Templates<br/>AI Interactions]
+    subgraph "Observability"
+        O1["`**Tracing**
+        All crates use tracing
+        Structured logging
+        Performance monitoring`"]
+        
+        O2["`**Metrics**
+        Prometheus integration
+        API performance
+        Resource usage`"]
+        
+        O3["`**Error Handling**
+        thiserror + anyhow
+        Consistent errors
+        Context propagation`"]
     end
     
-    subgraph "RAG MCP Server (core-rag-mcp-server)"
-        RAGCore[RAG Core<br/>Retrieval Logic]
-        VectorRAG[Vector Retrieval<br/>Semantic Search]
-        GraphRAG[Graph Retrieval<br/>Structural Search]
-        HybridRAG[Hybrid Retrieval<br/>Combined Approach]
+    subgraph "Async Runtime"
+        A1["`**Tokio Runtime**
+        Async/await support
+        Task scheduling
+        I/O operations`"]
+        
+        A2["`**Futures**
+        Stream processing
+        Combinators
+        Async traits`"]
     end
     
-    subgraph "MCP Protocol Stack"
-        Transport[Transport Layer<br/>STDIO/HTTP]
-        Serialization[Message Serialization<br/>JSON-RPC]
-        Authentication[Authentication<br/>Capability-based]
-        Streaming[Streaming Support<br/>Large Responses]
+    subgraph "Serialization"
+        S1["`**Serde**
+        JSON serialization
+        API communication
+        Configuration`"]
+        
+        S2["`**rkyv**
+        Zero-copy archives
+        High performance
+        Memory efficiency`"]
     end
     
-    subgraph "CodeGraph Integration"
-        GraphAccess[Graph Access<br/>→ codegraph-graph]
-        VectorAccess[Vector Access<br/>→ codegraph-vector]
-        ParserAccess[Parser Access<br/>→ codegraph-parser]
-        APIAccess[API Access<br/>→ codegraph-api]
+    subgraph "Concurrency"
+        C1["`**Parking Lot**
+        Efficient mutexes
+        Reader-writer locks
+        Lower overhead`"]
+        
+        C2["`**Crossbeam**
+        Channels
+        Atomic operations
+        Lock-free structures`"]
+        
+        C3["`**Rayon**
+        Data parallelism
+        Work stealing
+        Parallel iterators`"]
     end
     
-    subgraph "Client Integration"
-        Claude[Claude Desktop<br/>AI Assistant]
-        VSCode[VS Code Extension<br/>IDE Integration]
-        CLI[CLI Tools<br/>Command Line]
-        WebApps[Web Applications<br/>Browser-based]
-    end
+    %% All crates depend on these concerns
+    O1 -.-> A1
+    O1 -.-> S1
+    A1 -.-> C1
+    S2 -.-> C1
+    C3 -.-> C2
     
-    %% MCP Server internal
-    MCPCore --> Tools
-    MCPCore --> Resources
-    MCPCore --> Prompts
+    classDef observability fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef async fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef serialization fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef concurrency fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     
-    %% RAG Server components
-    RAGCore --> VectorRAG
-    RAGCore --> GraphRAG
-    RAGCore --> HybridRAG
-    MCPCore --> RAGCore
-    
-    %% Protocol stack
-    MCPCore --> Transport
-    MCPCore --> Serialization
-    MCPCore --> Authentication
-    MCPCore --> Streaming
-    
-    %% CodeGraph integration
-    Tools --> GraphAccess
-    Tools --> VectorAccess
-    Tools --> ParserAccess
-    Resources --> GraphAccess
-    Resources --> VectorAccess
-    VectorRAG --> VectorAccess
-    GraphRAG --> GraphAccess
-    HybridRAG --> VectorAccess
-    HybridRAG --> GraphAccess
-    
-    %% API integration
-    MCPCore --> APIAccess
-    RAGCore --> APIAccess
-    
-    %% Client connections
-    Transport --> Claude
-    Transport --> VSCode
-    Transport --> CLI
-    Transport --> WebApps
-    
-    %% Data flow annotations
-    VectorRAG -.->|"Semantic similarity"| VectorAccess
-    GraphRAG -.->|"Structural relationships"| GraphAccess
-    HybridRAG -.->|"Combined ranking"| VectorAccess
-    HybridRAG -.->|"Graph context"| GraphAccess
-    
-    %% Styling
-    classDef mcp fill:#e3f2fd
-    classDef rag fill:#e8f5e8
-    classDef protocol fill:#fff3e0
-    classDef integration fill:#f3e5f5
-    classDef client fill:#fce4ec
-    
-    class MCPCore,Tools,Resources,Prompts mcp
-    class RAGCore,VectorRAG,GraphRAG,HybridRAG rag
-    class Transport,Serialization,Authentication,Streaming protocol
-    class GraphAccess,VectorAccess,ParserAccess,APIAccess integration
-    class Claude,VSCode,CLI,WebApps client
-```
-
-## Dependency Complexity Matrix
-
-```ascii
-╔═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
-║                                    CodeGraph Dependency Complexity Analysis                                          ║
-╠═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
-║                                                                                                                       ║
-║  Complexity Levels:                                    Dependency Types:                                             ║
-║  🟢 Simple (0-2 deps)     🟡 Moderate (3-5 deps)       ● Required (runtime)                                         ║
-║  🟠 Complex (6-8 deps)    🔴 High (9+ deps)            ○ Optional (feature-gated)                                    ║
-║                                                         ◐ Weak (no strong coupling)                                  ║
-║                                                                                                                       ║
-║  ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐   ║
-║  │                                        Crate Complexity Map                                                   │   ║
-║  └─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘   ║
-║                                                                                                                       ║
-║           🟢 core                        🟡 parser ────────○ concurrent                                              ║
-║              │                              │                                                                        ║
-║              ↓                              ↓                                                                        ║
-║           🟢 zerocopy                    🟡 queue ─────────◐ git                                                      ║
-║              │                              │                                                                        ║
-║              ↓                              ↓                                                                        ║
-║     ┌────────┴────────┐                     │                                                                        ║
-║     ↓                 ↓                     ↓                                                                        ║
-║  🟡 graph          🟡 vector            🟠 mcp ─────────● graph, vector, parser                                      ║
-║     │                 │                     │                                                                        ║
-║     ↓                 ↓                     ↓                                                                        ║
-║  🟡 cache ────────○ graph               🔴 api ─────────● ALL previous layers                                        ║
-║                                             │                                                                        ║
-║                                             ↓                                                                        ║
-║                                         🟡 lb ──────────● api                                                        ║
-║                                                                                                                       ║
-║  ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐   ║
-║  │                                      Complexity Metrics                                                        │   ║
-║  ├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤   ║
-║  │  Crate               │ Direct Deps │ Transitive │ Complexity │ Risk Level │ Refactoring Priority              │   ║
-║  ├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤   ║
-║  │  codegraph-core      │      0      │      0     │    🟢      │    Low     │ Stable (foundation)               │   ║
-║  │  codegraph-zerocopy  │      1      │      0     │    🟢      │    Low     │ Low (serialization)               │   ║
-║  │  codegraph-graph     │      2      │      0     │    🟡      │   Medium   │ Medium (storage evolution)        │   ║
-║  │  codegraph-vector    │      2      │      0     │    🟡      │   Medium   │ Medium (ML integration)           │   ║
-║  │  codegraph-cache     │      3      │      1     │    🟡      │   Medium   │ Low (isolated optimization)       │   ║
-║  │  codegraph-parser    │      1      │      1     │    🟡      │   Medium   │ High (language support)           │   ║
-║  │  codegraph-queue     │      1      │      1     │    🟡      │   Medium   │ Medium (async architecture)       │   ║
-║  │  codegraph-git       │      1      │      0     │    🟢      │    Low     │ Low (stable integration)          │   ║
-║  │  codegraph-concurrent│      1      │      0     │    🟢      │    Low     │ Low (performance utility)         │   ║
-║  │  codegraph-mcp       │      4      │      6     │    🟠      │    High    │ High (protocol evolution)         │   ║
-║  │  core-rag-mcp-server │      2      │      8     │    🟠      │    High    │ High (RAG architecture)           │   ║
-║  │  codegraph-api       │      7      │     12     │    🔴      │  Very High │ Very High (API stability)         │   ║
-║  │  codegraph-lb        │      2      │     14     │    🟡      │    High    │ Medium (infrastructure)           │   ║
-║  └─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘   ║
-║                                                                                                                       ║
-║  Critical Dependency Paths (for failure analysis):                                                                   ║
-║  1. core → ALL (foundation failure affects everything)                                                               ║
-║  2. api → graph|vector|cache|parser (service failure affects core functionality)                                     ║
-║  3. mcp → graph|vector|parser (protocol failure affects integration)                                                 ║
-║  4. graph → vector (storage failure affects search)                                                                  ║
-║                                                                                                                       ║
-╚═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+    class O1,O2,O3 observability
+    class A1,A2 async
+    class S1,S2 serialization
+    class C1,C2,C3 concurrency
 ```
 
 ---
 
-*Generated by CodeGraph Documentation Specialist - Component Dependency Analysis*
+*Generated by CodeGraph Documentation Specialist - Component Dependencies Analysis*

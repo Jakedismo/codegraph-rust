@@ -126,6 +126,10 @@ hyper = "1.0"
 http = "1.1"
 prometheus = { version = "0.13", features = ["process"] }
 
+# OpenAPI / Swagger documentation for Axum
+utoipa = { version = "4", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-swagger-ui = { version = "7", features = ["axum"] }
+
 # Memory leak detection and tracking (optional, feature-gated in binaries)
 memscope-rs = "0.1.4"
 

@@ -300,9 +300,9 @@ impl OptimizedSearchEngine {
         };
 
         // Perform the search
-        let (distances, labels) = {
+        let results: Vec<(NodeId, f32)> = {
             let index_manager = self.index_manager.read();
-            index_manager.search(&query_vec, k)?
+            index_manager.search_knn(&query_vec, k)?
         };
 
         // Return vector to pool
@@ -313,42 +313,7 @@ impl OptimizedSearchEngine {
             }
         }
 
-        // Get result buffer from pool
-        let mut results = {
-            let mut pool = self.result_pool.write();
-            pool.pop().unwrap_or_else(|| Vec::with_capacity(k))
-        };
-
-        results.clear();
-
-        // Convert FAISS results to NodeId results
-        // Note: This requires proper ID mapping, which should be maintained by the caller
-        for (distance, label) in distances.into_iter().zip(labels.into_iter()) {
-            // For now, we'll use label as NodeId directly
-            // In a real implementation, this would use the ID mapping
-            let node_id = NodeId::from_bytes([
-                (label as u32) as u8,
-                ((label as u32) >> 8) as u8,
-                ((label as u32) >> 16) as u8,
-                ((label as u32) >> 24) as u8,
-                0, 0, 0, 0,
-                0, 0, 0, 0,
-                0, 0, 0, 0,
-            ]);
-            results.push((node_id, distance));
-        }
-
-        let final_results = results.clone();
-
-        // Return result buffer to pool
-        {
-            let mut pool = self.result_pool.write();
-            if pool.len() < 100 { // Keep reasonable number of result buffers
-                pool.push(results);
-            }
-        }
-
-        Ok(final_results)
+        Ok(results)
     }
 
     /// Record search time for performance monitoring

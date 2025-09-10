@@ -11,6 +11,7 @@ pub mod diff;
 pub mod semantic;
 pub mod text_processor;
 pub mod edge;
+pub mod languages;
 
 #[cfg(test)]
 pub mod integration_tests;
@@ -29,3 +30,4 @@ pub use diff::*;
 pub use semantic::*;
 pub use text_processor::*;
 pub use edge::*;
+pub use languages::*;

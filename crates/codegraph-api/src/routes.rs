@@ -1,4 +1,4 @@
-use crate::{handlers, health, service_registry, vector_handlers, versioning_handlers, streaming_handlers, http2_handlers, AppState, auth_middleware, create_schema, RateLimitManager};
+use crate::{handlers, health, service_registry, vector_handlers, versioning_handlers, streaming_handlers, http2_handlers, AppState, auth_middleware, create_schema, RateLimitManager, rest};
 use axum::{
     routing::{get, post},
     Router,
@@ -16,7 +16,8 @@ use tower::{
     timeout::TimeoutLayer,
     load_shed::LoadShedLayer,
 };
-use http::header::{HeaderName, HeaderValue, CONNECTION};
+use http::header::{HeaderName, HeaderValue, CONNECTION, CACHE_CONTROL};
+use utoipa_swagger_ui::SwaggerUi;
 use std::time::Duration;
 use async_graphql_axum::{GraphQL, GraphQLSubscription};
 use async_graphql::http::GraphiQLSource;
@@ -128,7 +129,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/services/heartbeat", post(service_registry::heartbeat_handler))
         
         // Add state
-        .with_state(state)
+        .with_state(state.clone())
         
         // Add middleware (order matters)
         .layer(middleware::from_fn(crate::metrics::http_metrics_middleware))
@@ -156,6 +157,30 @@ pub fn create_router(state: AppState) -> Router {
         .layer(LoadShedLayer::new())
         .layer(TimeoutLayer::new(Duration::from_secs(30)))
         .layer(TraceLayer::new_for_http());
+
+    // Versioned REST API (v1)
+    let v1_get = Router::new()
+        .route("/search", get(rest::handlers::get_search))
+        .route("/node/:id", get(rest::handlers::get_node))
+        .route("/graph/neighbors", get(rest::handlers::get_neighbors))
+        // Add caching headers for GET endpoints
+        .layer({
+            let value = HeaderValue::from_static("public, max-age=60");
+            SetResponseHeaderLayer::if_not_present(CACHE_CONTROL, value)
+        })
+        .with_state(state.clone());
+
+    let v1_post = Router::new()
+        .route("/index", post(rest::handlers::post_index))
+        .with_state(state.clone());
+
+    let v1_router = Router::new()
+        .merge(v1_get)
+        .merge(v1_post);
+
+    app = app
+        .nest("/v1", v1_router)
+        .merge(SwaggerUi::new("/v1/docs").url("/v1/openapi.json", crate::rest::ApiDoc::openapi()));
 
     // Memory leak detection routes (only when feature enabled)
     #[cfg(feature = "leak-detect")]

@@ -5,6 +5,7 @@ pub mod providers;
 pub mod optimization;
 pub mod gpu;
 pub mod memory;
+pub mod cache;
 
 #[cfg(feature = "openai")]
 pub mod openai_provider;
@@ -39,6 +40,7 @@ pub use providers::*;
 pub use optimization::*;
 pub use gpu::*;
 pub use memory::*;
+pub use cache::*;
 
 #[cfg(feature = "openai")]
 pub use openai_provider::*;

@@ -1,0 +1,2791 @@
+{
+  "timestamp": "2025-09-10T06:19:38.413533Z",
+  "subject_id": "codegraph_repo",
+  "reference_document": "/Users/jokkeruokolainen/Documents/Solita/GenAI/IDE/ouroboros-demo/docs/specifications/FEATURE_INVENTORY.md",
+  "totals": {
+    "features": 184,
+    "score_sum": 551,
+    "score_pct": 59.89,
+    "weighted_sum": 1213,
+    "weighted_pct": 58.88
+  },
+  "by_phase": {
+    "Phase 0: Project Foundation & Setup": {
+      "features": 15,
+      "score": 64,
+      "weighted_score": 104,
+      "max_score": 75,
+      "max_weighted": 120,
+      "completion_pct": 85.33,
+      "completion_weighted_pct": 86.67
+    },
+    "Phase 1: Core Infrastructure (3 Parallel Tracks)": {
+      "features": 60,
+      "score": 155,
+      "weighted_score": 370,
+      "max_score": 300,
+      "max_weighted": 735,
+      "completion_pct": 51.67,
+      "completion_weighted_pct": 50.34
+    },
+    "Phase 2: AI Integration (2.1 - 2.4)": {
+      "features": 19,
+      "score": 39,
+      "weighted_score": 85,
+      "max_score": 95,
+      "max_weighted": 220,
+      "completion_pct": 41.05,
+      "completion_weighted_pct": 38.64
+    },
+    "Phase 3: API Layer (2 Parallel Tracks)": {
+      "features": 40,
+      "score": 98,
+      "weighted_score": 225,
+      "max_score": 200,
+      "max_weighted": 435,
+      "completion_pct": 49.0,
+      "completion_weighted_pct": 51.72
+    },
+    "Phase 4: Incremental Updates (4.1 - 4.3)": {
+      "features": 15,
+      "score": 55,
+      "weighted_score": 113,
+      "max_score": 75,
+      "max_weighted": 155,
+      "completion_pct": 73.33,
+      "completion_weighted_pct": 72.9
+    },
+    "Phase 5: Optimization & Performance (5.1 - 5.4)": {
+      "features": 20,
+      "score": 80,
+      "weighted_score": 216,
+      "max_score": 100,
+      "max_weighted": 270,
+      "completion_pct": 80.0,
+      "completion_weighted_pct": 80.0
+    },
+    "Phase 6: Deployment & Packaging (6.1 - 6.3)": {
+      "features": 15,
+      "score": 60,
+      "weighted_score": 100,
+      "max_score": 75,
+      "max_weighted": 125,
+      "completion_pct": 80.0,
+      "completion_weighted_pct": 80.0
+    }
+  },
+  "features": [
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.1 Workspace Structure & Configuration",
+      "feature": "Cargo workspace setup",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Multi-crate workspace configuration",
+      "estimated_hours": "4",
+      "score_0_5": 5,
+      "weight": 1,
+      "weighted_score": 5,
+      "evidence": [
+        "Cargo.toml [workspace] present"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.1 Workspace Structure & Configuration",
+      "feature": "CI/CD pipeline",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "GitHub Actions for testing and builds",
+      "estimated_hours": "8",
+      "score_0_5": 5,
+      "weight": 2,
+      "weighted_score": 10,
+      "evidence": [
+        "GitHub Actions CI present"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.1 Workspace Structure & Configuration",
+      "feature": "Development tooling",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Rustfmt, Clippy, pre-commit hooks",
+      "estimated_hours": "4",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "Clippy config present",
+        "Rustfmt usage referenced"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.1 Workspace Structure & Configuration",
+      "feature": "Build optimization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Release profile tuning, binary size optimization",
+      "estimated_hours": "6",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Profiles and LTO configured"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.1 Workspace Structure & Configuration",
+      "feature": "Documentation structure",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "README, CHANGELOG, API docs framework",
+      "estimated_hours": "4",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "Docs hub and README present"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.2 Core Traits & Abstractions",
+      "feature": "GraphStore trait",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Core graph operations interface",
+      "estimated_hours": "8",
+      "score_0_5": 5,
+      "weight": 2,
+      "weighted_score": 10,
+      "evidence": [
+        "GraphStore trait defined"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.2 Core Traits & Abstractions",
+      "feature": "VectorIndex trait",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Vector search operations interface",
+      "estimated_hours": "6",
+      "score_0_5": 5,
+      "weight": 2,
+      "weighted_score": 10,
+      "evidence": [
+        "VectorStore trait defined"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.2 Core Traits & Abstractions",
+      "feature": "CodeAnalyzer trait",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Code parsing and analysis interface",
+      "estimated_hours": "8",
+      "score_0_5": 5,
+      "weight": 2,
+      "weighted_score": 10,
+      "evidence": [
+        "CodeParser trait defined"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.2 Core Traits & Abstractions",
+      "feature": "EmbeddingProvider trait",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Embedding generation interface",
+      "estimated_hours": "6",
+      "score_0_5": 5,
+      "weight": 2,
+      "weighted_score": 10,
+      "evidence": [
+        "EmbeddingProvider trait defined"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.2 Core Traits & Abstractions",
+      "feature": "Error handling types",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Custom error types with context",
+      "estimated_hours": "4",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "Custom error type present"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.3 Data Models",
+      "feature": "Node/Edge structures",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Core graph data structures",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Node/Edge types exist"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.3 Data Models",
+      "feature": "Entity types (AST nodes)",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Language-agnostic code entities",
+      "estimated_hours": "10",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Entity representation exists"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.3 Data Models",
+      "feature": "Embedding metadata",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Vector storage metadata",
+      "estimated_hours": "4",
+      "score_0_5": 3,
+      "weight": 1,
+      "weighted_score": 3,
+      "evidence": [
+        "Embedding types present"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.3 Data Models",
+      "feature": "Serialization formats",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Zero-copy serialization with rkyv",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Zero-copy/serialization present"
+      ]
+    },
+    {
+      "phase": "Phase 0: Project Foundation & Setup",
+      "section": "0.3 Data Models",
+      "feature": "Configuration structures",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Application configuration models",
+      "estimated_hours": "4",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "Config models implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.1 RocksDB Integration",
+      "feature": "Database initialization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "RocksDB setup with column families",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "RocksDB integration present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.1 RocksDB Integration",
+      "feature": "Transaction support",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "ACID transactions for graph operations",
+      "estimated_hours": "16",
+      "score_0_5": 3,
+      "weight": 3,
+      "weighted_score": 9,
+      "evidence": [
+        "Transactional graph skeleton"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.1 RocksDB Integration",
+      "feature": "Batch operations",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Efficient bulk read/write operations",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "I/O batcher implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.1 RocksDB Integration",
+      "feature": "Backup/restore",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Database backup and point-in-time recovery",
+      "estimated_hours": "10",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Recovery module present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.1 RocksDB Integration",
+      "feature": "Compaction tuning",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "LSM-tree optimization for workload",
+      "estimated_hours": "8",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Compaction options configured"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.2 Graph Operations",
+      "feature": "Node CRUD operations",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Create, read, update, delete nodes",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Graph CRUD implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.2 Graph Operations",
+      "feature": "Edge CRUD operations",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Create, read, update, delete edges",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Graph CRUD implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.2 Graph Operations",
+      "feature": "Graph traversal",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "BFS/DFS traversal with filters",
+      "estimated_hours": "20",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Traversal algorithms present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.2 Graph Operations",
+      "feature": "Subgraph extraction",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Efficient subgraph queries",
+      "estimated_hours": "16",
+      "score_0_5": 2,
+      "weight": 3,
+      "weighted_score": 6,
+      "evidence": [
+        "Heuristic default for related module present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.2 Graph Operations",
+      "feature": "Path finding",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Shortest path algorithms",
+      "estimated_hours": "16",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.3 Indexing & Search",
+      "feature": "Secondary indices",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Property-based indexing",
+      "estimated_hours": "12",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.3 Indexing & Search",
+      "feature": "Full-text search",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Text search within nodes",
+      "estimated_hours": "16",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.3 Indexing & Search",
+      "feature": "Composite queries",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Multi-criteria search",
+      "estimated_hours": "20",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.3 Indexing & Search",
+      "feature": "Query optimization",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "Query plan optimization",
+      "estimated_hours": "24",
+      "score_0_5": 4,
+      "weight": 4,
+      "weighted_score": 16,
+      "evidence": [
+        "Optimized search / SIMD present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.3 Indexing & Search",
+      "feature": "Caching layer",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Result caching with invalidation",
+      "estimated_hours": "12",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.4 Versioning & Snapshots",
+      "feature": "Version tracking",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Node/edge versioning",
+      "estimated_hours": "20",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.4 Versioning & Snapshots",
+      "feature": "Snapshot creation",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Point-in-time snapshots",
+      "estimated_hours": "16",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.4 Versioning & Snapshots",
+      "feature": "Diff computation",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Change detection between versions",
+      "estimated_hours": "18",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.4 Versioning & Snapshots",
+      "feature": "Rollback operations",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Restore to previous versions",
+      "estimated_hours": "12",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Update pipeline components present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.4 Versioning & Snapshots",
+      "feature": "Cleanup strategies",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Old version garbage collection",
+      "estimated_hours": "8",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.5 Tree-sitter Integration",
+      "feature": "Parser initialization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Tree-sitter setup for languages",
+      "estimated_hours": "8",
+      "score_0_5": 2,
+      "weight": 2,
+      "weighted_score": 4,
+      "evidence": [
+        "Heuristic default for related module present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.5 Tree-sitter Integration",
+      "feature": "Language detection",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "File extension to language mapping",
+      "estimated_hours": "4",
+      "score_0_5": 0,
+      "weight": 1,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.5 Tree-sitter Integration",
+      "feature": "AST parsing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Parse files to syntax trees",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Parser implemented with tree-sitter"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.5 Tree-sitter Integration",
+      "feature": "Error handling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Graceful parsing error recovery",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Custom error type present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.5 Tree-sitter Integration",
+      "feature": "Memory optimization",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Efficient AST memory usage",
+      "estimated_hours": "16",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.6 Entity Extraction",
+      "feature": "Python extractor",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Classes, functions, variables, imports",
+      "estimated_hours": "16",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Multi-language entity extraction present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.6 Entity Extraction",
+      "feature": "JavaScript extractor",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Functions, classes, modules, exports",
+      "estimated_hours": "16",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Multi-language entity extraction present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.6 Entity Extraction",
+      "feature": "TypeScript extractor",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Types, interfaces, decorators",
+      "estimated_hours": "18",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Multi-language entity extraction present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.6 Entity Extraction",
+      "feature": "Rust extractor",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83e\udd1d",
+      "description": "Structs, traits, impls, macros",
+      "estimated_hours": "20",
+      "score_0_5": 3,
+      "weight": 3,
+      "weighted_score": 9,
+      "evidence": [
+        "Multi-language entity extraction present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.6 Entity Extraction",
+      "feature": "Generic extractor",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Language-agnostic entity patterns",
+      "estimated_hours": "24",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.7 Dependency Analysis",
+      "feature": "Import resolution",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Resolve import statements to files",
+      "estimated_hours": "20",
+      "score_0_5": 2,
+      "weight": 3,
+      "weighted_score": 6,
+      "evidence": [
+        "Partial analysis hooks"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.7 Dependency Analysis",
+      "feature": "Call graph building",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Function/method call relationships",
+      "estimated_hours": "24",
+      "score_0_5": 2,
+      "weight": 3,
+      "weighted_score": 6,
+      "evidence": [
+        "Partial analysis hooks"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.7 Dependency Analysis",
+      "feature": "Type inference",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "Basic type inference for variables",
+      "estimated_hours": "32",
+      "score_0_5": 2,
+      "weight": 4,
+      "weighted_score": 8,
+      "evidence": [
+        "Partial analysis hooks"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.7 Dependency Analysis",
+      "feature": "Data flow analysis",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "Variable usage and dependencies",
+      "estimated_hours": "28",
+      "score_0_5": 2,
+      "weight": 4,
+      "weighted_score": 8,
+      "evidence": [
+        "Partial analysis hooks"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.7 Dependency Analysis",
+      "feature": "Circular dependency detection",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Detect and report cycles",
+      "estimated_hours": "12",
+      "score_0_5": 2,
+      "weight": 2,
+      "weighted_score": 4,
+      "evidence": [
+        "Partial analysis hooks"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.8 Incremental Parsing",
+      "feature": "Change detection",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "File modification tracking",
+      "estimated_hours": "10",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Incremental foundations implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.8 Incremental Parsing",
+      "feature": "Delta parsing",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Parse only changed portions",
+      "estimated_hours": "20",
+      "score_0_5": 3,
+      "weight": 3,
+      "weighted_score": 9,
+      "evidence": [
+        "Incremental foundations implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.8 Incremental Parsing",
+      "feature": "Graph updates",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Incrementally update graph structure",
+      "estimated_hours": "18",
+      "score_0_5": 3,
+      "weight": 3,
+      "weighted_score": 9,
+      "evidence": [
+        "Incremental foundations implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.8 Incremental Parsing",
+      "feature": "Invalidation cascade",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Update dependent nodes efficiently",
+      "estimated_hours": "16",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Incremental foundations implemented",
+        "Config mgmt implemented (incl. watcher)"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.8 Incremental Parsing",
+      "feature": "Conflict resolution",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle concurrent modifications",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Incremental foundations implemented",
+        "Git integration implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.9 FAISS Integration",
+      "feature": "Index initialization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "FAISS index setup and configuration",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "FAISS manager implemented (feature-gated)"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.9 FAISS Integration",
+      "feature": "Index types",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "IVF, HNSW, Flat index implementations",
+      "estimated_hours": "20",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "FAISS manager implemented (feature-gated)"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.9 FAISS Integration",
+      "feature": "GPU support",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "GPU-accelerated indexing (optional)",
+      "estimated_hours": "24",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "FAISS manager implemented (feature-gated)",
+        "GPU hooks present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.9 FAISS Integration",
+      "feature": "Memory mapping",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Memory-mapped index files",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "FAISS manager implemented (feature-gated)",
+        "MMAP support present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.9 FAISS Integration",
+      "feature": "Index persistence",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Save/load index to/from disk",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "FAISS manager implemented (feature-gated)",
+        "Index persistence module present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.10 Vector Operations",
+      "feature": "Vector addition",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Add vectors to index",
+      "estimated_hours": "6",
+      "score_0_5": 2,
+      "weight": 1,
+      "weighted_score": 2,
+      "evidence": [
+        "Heuristic default for related module present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.10 Vector Operations",
+      "feature": "Batch operations",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Bulk vector operations",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "I/O batcher implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.10 Vector Operations",
+      "feature": "KNN search",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "K-nearest neighbor search",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "KNN search implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.10 Vector Operations",
+      "feature": "Range queries",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Distance-based range searches",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "KNN search implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.10 Vector Operations",
+      "feature": "Vector updates",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Update existing vectors",
+      "estimated_hours": "8",
+      "score_0_5": 2,
+      "weight": 2,
+      "weighted_score": 4,
+      "evidence": [
+        "Heuristic default for related module present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.11 Search Optimization",
+      "feature": "Query optimization",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Optimize search parameters",
+      "estimated_hours": "16",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Optimized search / SIMD present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.11 Search Optimization",
+      "feature": "Result ranking",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Score-based result ordering",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "RAG pipeline modules present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.11 Search Optimization",
+      "feature": "Search caching",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Cache frequent queries",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Optimized search / SIMD present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.11 Search Optimization",
+      "feature": "Parallel search",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Multi-threaded search execution",
+      "estimated_hours": "18",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Optimized search / SIMD present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.11 Search Optimization",
+      "feature": "SIMD optimization",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "SIMD vector operations",
+      "estimated_hours": "24",
+      "score_0_5": 4,
+      "weight": 4,
+      "weighted_score": 16,
+      "evidence": [
+        "Optimized search / SIMD present",
+        "CPU optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.12 Index Management",
+      "feature": "Index rebuilding",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Full index reconstruction",
+      "estimated_hours": "12",
+      "score_0_5": 2,
+      "weight": 2,
+      "weighted_score": 4,
+      "evidence": [
+        "Heuristic default for related module present"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.12 Index Management",
+      "feature": "Incremental updates",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Add/remove vectors without rebuild",
+      "estimated_hours": "16",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.12 Index Management",
+      "feature": "Index compaction",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Optimize index structure",
+      "estimated_hours": "10",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Compaction options configured"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.12 Index Management",
+      "feature": "Health monitoring",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Index health and performance metrics",
+      "estimated_hours": "6",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "File system watcher implemented"
+      ]
+    },
+    {
+      "phase": "Phase 1: Core Infrastructure (3 Parallel Tracks)",
+      "section": "1.12 Index Management",
+      "feature": "Backup/restore",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Index backup and recovery",
+      "estimated_hours": "8",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Recovery module present"
+      ]
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.1 Embedding Generation",
+      "feature": "Local embeddings (Candle)",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "BERT-like models with Candle",
+      "estimated_hours": "24",
+      "score_0_5": 3,
+      "weight": 3,
+      "weighted_score": 9,
+      "evidence": [
+        "Local embeddings via Candle (feature-gated)"
+      ]
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.1 Embedding Generation",
+      "feature": "OpenAI API integration",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "External embedding service",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "OpenAI embeddings implemented"
+      ]
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.1 Embedding Generation",
+      "feature": "Batch processing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Efficient batch embedding generation",
+      "estimated_hours": "10",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.1 Embedding Generation",
+      "feature": "Model management",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Model loading and caching",
+      "estimated_hours": "12",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.1 Embedding Generation",
+      "feature": "Fallback strategies",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle model failures gracefully",
+      "estimated_hours": "8",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.2 Text Processing",
+      "feature": "Code tokenization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Language-aware tokenization",
+      "estimated_hours": "12",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.2 Text Processing",
+      "feature": "Text chunking",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Semantic text segmentation",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Text processing implemented"
+      ]
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.2 Text Processing",
+      "feature": "Context extraction",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Relevant context for embeddings",
+      "estimated_hours": "16",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.2 Text Processing",
+      "feature": "Deduplication",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Remove duplicate text segments",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Text processing implemented"
+      ]
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.2 Text Processing",
+      "feature": "Normalization",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Text preprocessing and cleanup",
+      "estimated_hours": "6",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "Text processing implemented"
+      ]
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.3 RAG Implementation",
+      "feature": "Query processing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Natural language query analysis",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "RAG pipeline modules present"
+      ]
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.3 RAG Implementation",
+      "feature": "Context retrieval",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Relevant context fetching",
+      "estimated_hours": "16",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "RAG pipeline modules present"
+      ]
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.3 RAG Implementation",
+      "feature": "Result ranking",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Relevance-based ranking",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "RAG pipeline modules present"
+      ]
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.3 RAG Implementation",
+      "feature": "Response generation",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Generate responses from context",
+      "estimated_hours": "18",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "RAG pipeline modules present"
+      ]
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.3 RAG Implementation",
+      "feature": "Answer validation",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Validate response quality",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "RAG pipeline modules present",
+        "Config mgmt implemented (incl. watcher)"
+      ]
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.4 ML Pipeline",
+      "feature": "Model training",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "Train domain-specific models",
+      "estimated_hours": "40",
+      "score_0_5": 0,
+      "weight": 4,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.4 ML Pipeline",
+      "feature": "Inference pipeline",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Real-time model inference",
+      "estimated_hours": "16",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.4 ML Pipeline",
+      "feature": "Model evaluation",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Performance metrics and validation",
+      "estimated_hours": "12",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 2: AI Integration (2.1 - 2.4)",
+      "section": "2.4 ML Pipeline",
+      "feature": "A/B testing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Compare model versions",
+      "estimated_hours": "10",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.1 Schema Definition",
+      "feature": "Query types",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Define GraphQL query schema",
+      "estimated_hours": "12",
+      "score_0_5": 2,
+      "weight": 2,
+      "weighted_score": 4,
+      "evidence": [
+        "Heuristic default for related module present"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.1 Schema Definition",
+      "feature": "Mutation types",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Define GraphQL mutation schema",
+      "estimated_hours": "10",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.1 Schema Definition",
+      "feature": "Subscription types",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Define GraphQL subscription schema",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Real-time features implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.1 Schema Definition",
+      "feature": "Custom scalars",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "UUID, DateTime, JSON scalars",
+      "estimated_hours": "4",
+      "score_0_5": 0,
+      "weight": 1,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.1 Schema Definition",
+      "feature": "Input validation",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Request validation and sanitization",
+      "estimated_hours": "8",
+      "score_0_5": 5,
+      "weight": 2,
+      "weighted_score": 10,
+      "evidence": [
+        "Config mgmt implemented (incl. watcher)",
+        "Security middleware implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.2 Resolvers Implementation",
+      "feature": "Query resolvers",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Implement query logic",
+      "estimated_hours": "24",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "GraphQL schema/resolvers implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.2 Resolvers Implementation",
+      "feature": "Mutation resolvers",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Implement mutation logic",
+      "estimated_hours": "20",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "GraphQL schema/resolvers implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.2 Resolvers Implementation",
+      "feature": "Subscription resolvers",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Real-time subscription handling",
+      "estimated_hours": "16",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "GraphQL schema/resolvers implemented",
+        "Real-time features implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.2 Resolvers Implementation",
+      "feature": "DataLoader integration",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Batch and cache database queries",
+      "estimated_hours": "12",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.2 Resolvers Implementation",
+      "feature": "Error handling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "GraphQL error formatting",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Custom error type present"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.3 Real-time Features",
+      "feature": "WebSocket support",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "WebSocket connection handling",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Real-time features implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.3 Real-time Features",
+      "feature": "Subscription management",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Manage active subscriptions",
+      "estimated_hours": "16",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Real-time features implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.3 Real-time Features",
+      "feature": "Event broadcasting",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Broadcast updates to subscribers",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Real-time features implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.3 Real-time Features",
+      "feature": "Connection lifecycle",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle connection drops and reconnects",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Real-time features implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.3 Real-time Features",
+      "feature": "Rate limiting",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Prevent subscription abuse",
+      "estimated_hours": "8",
+      "score_0_5": 5,
+      "weight": 2,
+      "weighted_score": 10,
+      "evidence": [
+        "Real-time features implemented",
+        "Rate limiting implemented",
+        "Security middleware implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.4 Performance Optimization",
+      "feature": "Query complexity analysis",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Analyze and limit complex queries",
+      "estimated_hours": "16",
+      "score_0_5": 2,
+      "weight": 3,
+      "weighted_score": 6,
+      "evidence": [
+        "Heuristic default for related module present"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.4 Performance Optimization",
+      "feature": "Response caching",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Cache frequent queries",
+      "estimated_hours": "12",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.4 Performance Optimization",
+      "feature": "Connection pooling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Database connection management",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Connection pooling implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.4 Performance Optimization",
+      "feature": "Pagination",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Efficient result pagination",
+      "estimated_hours": "8",
+      "score_0_5": 2,
+      "weight": 2,
+      "weighted_score": 4,
+      "evidence": [
+        "Pagination references present"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.4 Performance Optimization",
+      "feature": "Compression",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Response compression",
+      "estimated_hours": "4",
+      "score_0_5": 2,
+      "weight": 1,
+      "weighted_score": 2,
+      "evidence": [
+        "Compression references present"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.5 Protocol Implementation",
+      "feature": "Message parsing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "MCP message serialization/deserialization",
+      "estimated_hours": "10",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.5 Protocol Implementation",
+      "feature": "Protocol validation",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Validate MCP protocol compliance",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Config mgmt implemented (incl. watcher)"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.5 Protocol Implementation",
+      "feature": "Connection handling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "WebSocket connection management",
+      "estimated_hours": "12",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.5 Protocol Implementation",
+      "feature": "Heartbeat mechanism",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Keep-alive and connection monitoring",
+      "estimated_hours": "6",
+      "score_0_5": 0,
+      "weight": 1,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.5 Protocol Implementation",
+      "feature": "Protocol versioning",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle multiple protocol versions",
+      "estimated_hours": "8",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.6 Agent Communication",
+      "feature": "Request/response handling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle agent requests and responses",
+      "estimated_hours": "12",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.6 Agent Communication",
+      "feature": "Publish/subscribe",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Event-driven communication",
+      "estimated_hours": "16",
+      "score_0_5": 0,
+      "weight": 3,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.6 Agent Communication",
+      "feature": "Message routing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Route messages to appropriate handlers",
+      "estimated_hours": "10",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.6 Agent Communication",
+      "feature": "Session management",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Manage agent sessions",
+      "estimated_hours": "10",
+      "score_0_5": 0,
+      "weight": 2,
+      "weighted_score": 0,
+      "evidence": []
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.6 Agent Communication",
+      "feature": "Authentication",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Agent authentication and authorization",
+      "estimated_hours": "12",
+      "score_0_5": 5,
+      "weight": 2,
+      "weighted_score": 10,
+      "evidence": [
+        "Security middleware implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.7 Multi-Agent Coordination",
+      "feature": "Agent registry",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Track active agents and capabilities",
+      "estimated_hours": "12",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Coordination primitives present"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.7 Multi-Agent Coordination",
+      "feature": "Task distribution",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Distribute tasks among agents",
+      "estimated_hours": "18",
+      "score_0_5": 3,
+      "weight": 3,
+      "weighted_score": 9,
+      "evidence": [
+        "Coordination primitives present"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.7 Multi-Agent Coordination",
+      "feature": "Result aggregation",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Combine results from multiple agents",
+      "estimated_hours": "16",
+      "score_0_5": 3,
+      "weight": 3,
+      "weighted_score": 9,
+      "evidence": [
+        "Coordination primitives present"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.7 Multi-Agent Coordination",
+      "feature": "Conflict resolution",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle conflicting agent actions",
+      "estimated_hours": "20",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Coordination primitives present",
+        "Git integration implemented"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.7 Multi-Agent Coordination",
+      "feature": "Coordination protocols",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd17",
+      "description": "Advanced coordination strategies",
+      "estimated_hours": "24",
+      "score_0_5": 3,
+      "weight": 4,
+      "weighted_score": 12,
+      "evidence": [
+        "Coordination primitives present"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.8 SDK Development",
+      "feature": "Rust SDK",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Native Rust client library",
+      "estimated_hours": "16",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Core RAG MCP server as SDK-like component"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.8 SDK Development",
+      "feature": "Python SDK",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "Python client library",
+      "estimated_hours": "16",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Core RAG MCP server as SDK-like component"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.8 SDK Development",
+      "feature": "JavaScript SDK",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83e\udd1d",
+      "description": "JavaScript/TypeScript client library",
+      "estimated_hours": "16",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Core RAG MCP server as SDK-like component"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.8 SDK Development",
+      "feature": "Examples and docs",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83e\udd1d",
+      "description": "Usage examples and documentation",
+      "estimated_hours": "12",
+      "score_0_5": 3,
+      "weight": 1,
+      "weighted_score": 3,
+      "evidence": [
+        "Core RAG MCP server as SDK-like component"
+      ]
+    },
+    {
+      "phase": "Phase 3: API Layer (2 Parallel Tracks)",
+      "section": "3.8 SDK Development",
+      "feature": "Testing utilities",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "SDK testing and validation tools",
+      "estimated_hours": "10",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Core RAG MCP server as SDK-like component"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.1 File System Monitoring",
+      "feature": "File watcher",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Monitor file system changes",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "File system watcher implemented"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.1 File System Monitoring",
+      "feature": "Event filtering",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Filter relevant file changes",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "File system watcher implemented"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.1 File System Monitoring",
+      "feature": "Batch processing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Batch multiple changes efficiently",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "File system watcher implemented"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.1 File System Monitoring",
+      "feature": "Recursive watching",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Monitor directory trees",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "File system watcher implemented"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.1 File System Monitoring",
+      "feature": "Ignore patterns",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd17",
+      "description": "Skip irrelevant files and directories",
+      "estimated_hours": "6",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "File system watcher implemented"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.2 Git Integration",
+      "feature": "Git repository detection",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Detect Git repositories",
+      "estimated_hours": "4",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "Git integration implemented"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.2 Git Integration",
+      "feature": "Commit hook integration",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Pre/post-commit hooks",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Git integration implemented"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.2 Git Integration",
+      "feature": "Branch tracking",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Track changes across branches",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Git integration implemented"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.2 Git Integration",
+      "feature": "Merge conflict handling",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Handle merge conflicts gracefully",
+      "estimated_hours": "16",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Git integration implemented"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.2 Git Integration",
+      "feature": "History analysis",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Analyze commit history for insights",
+      "estimated_hours": "18",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Git integration implemented"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.3 Update Pipeline",
+      "feature": "Change queue",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Queue file changes for processing",
+      "estimated_hours": "10",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Update pipeline components present"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.3 Update Pipeline",
+      "feature": "Priority scheduling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Prioritize critical changes",
+      "estimated_hours": "8",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Update pipeline components present"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.3 Update Pipeline",
+      "feature": "Parallel processing",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Process changes in parallel",
+      "estimated_hours": "16",
+      "score_0_5": 3,
+      "weight": 3,
+      "weighted_score": 9,
+      "evidence": [
+        "Update pipeline components present"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.3 Update Pipeline",
+      "feature": "Progress tracking",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Track update progress",
+      "estimated_hours": "8",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Update pipeline components present"
+      ]
+    },
+    {
+      "phase": "Phase 4: Incremental Updates (4.1 - 4.3)",
+      "section": "4.3 Update Pipeline",
+      "feature": "Rollback mechanism",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Rollback failed updates",
+      "estimated_hours": "12",
+      "score_0_5": 3,
+      "weight": 2,
+      "weighted_score": 6,
+      "evidence": [
+        "Update pipeline components present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.1 Memory Optimization",
+      "feature": "Arena allocators",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Custom memory allocation strategies",
+      "estimated_hours": "20",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Memory optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.1 Memory Optimization",
+      "feature": "Zero-copy operations",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd04",
+      "description": "Eliminate unnecessary copying",
+      "estimated_hours": "24",
+      "score_0_5": 4,
+      "weight": 4,
+      "weighted_score": 16,
+      "evidence": [
+        "Zero-copy/serialization present",
+        "Memory optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.1 Memory Optimization",
+      "feature": "Memory pools",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Reusable memory pools",
+      "estimated_hours": "16",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Memory optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.1 Memory Optimization",
+      "feature": "Leak detection",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Memory leak detection and prevention",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Memory optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.1 Memory Optimization",
+      "feature": "Profiling tools",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Memory usage profiling",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Memory optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.2 CPU Optimization",
+      "feature": "SIMD operations",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd04",
+      "description": "Use SIMD for vector operations",
+      "estimated_hours": "24",
+      "score_0_5": 4,
+      "weight": 4,
+      "weighted_score": 16,
+      "evidence": [
+        "Optimized search / SIMD present",
+        "CPU optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.2 CPU Optimization",
+      "feature": "Lock-free data structures",
+      "complexity": "\ud83d\udfe3 C",
+      "parallel": "\ud83d\udd04",
+      "description": "Eliminate locking overhead",
+      "estimated_hours": "28",
+      "score_0_5": 4,
+      "weight": 4,
+      "weighted_score": 16,
+      "evidence": [
+        "CPU optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.2 CPU Optimization",
+      "feature": "CPU cache optimization",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Optimize for CPU cache efficiency",
+      "estimated_hours": "20",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "CPU optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.2 CPU Optimization",
+      "feature": "Branch prediction",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Optimize conditional logic",
+      "estimated_hours": "16",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Git integration implemented",
+        "CPU optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.2 CPU Optimization",
+      "feature": "Hot path optimization",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd17",
+      "description": "Optimize frequently executed code",
+      "estimated_hours": "18",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "CPU optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.3 I/O Optimization",
+      "feature": "Async I/O",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Fully asynchronous I/O operations",
+      "estimated_hours": "20",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "I/O optimization present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.3 I/O Optimization",
+      "feature": "Memory-mapped files",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Use mmap for large files",
+      "estimated_hours": "16",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "MMAP support present",
+        "I/O optimization present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.3 I/O Optimization",
+      "feature": "I/O batching",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Batch I/O operations",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "I/O optimization present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.3 I/O Optimization",
+      "feature": "Read-ahead strategies",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Predictive data loading",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "I/O optimization present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.3 I/O Optimization",
+      "feature": "Write coalescing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd17",
+      "description": "Combine multiple writes",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "I/O optimization present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.4 Network Optimization",
+      "feature": "Connection pooling",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Reuse network connections",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Connection pooling implemented",
+        "Network optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.4 Network Optimization",
+      "feature": "Response streaming",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Stream large responses",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Network optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.4 Network Optimization",
+      "feature": "Compression",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Compress network traffic",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Compression references present",
+        "Network optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.4 Network Optimization",
+      "feature": "HTTP/2 support",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Use HTTP/2 features",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Network optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 5: Optimization & Performance (5.1 - 5.4)",
+      "section": "5.4 Network Optimization",
+      "feature": "Load balancing",
+      "complexity": "\ud83d\udd34 H",
+      "parallel": "\ud83d\udd04",
+      "description": "Distribute load across instances",
+      "estimated_hours": "16",
+      "score_0_5": 4,
+      "weight": 3,
+      "weighted_score": 12,
+      "evidence": [
+        "Network optimization features present"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.1 Binary Optimization",
+      "feature": "Link-time optimization",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "LTO for smaller binaries",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Binary optimization configured"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.1 Binary Optimization",
+      "feature": "Dead code elimination",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Remove unused code",
+      "estimated_hours": "6",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Binary optimization configured"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.1 Binary Optimization",
+      "feature": "Asset embedding",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Embed resources in binary",
+      "estimated_hours": "4",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "Binary optimization configured"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.1 Binary Optimization",
+      "feature": "Strip symbols",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Remove debug symbols",
+      "estimated_hours": "2",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "Binary optimization configured"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.1 Binary Optimization",
+      "feature": "Compression",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Compress final binary",
+      "estimated_hours": "6",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Compression references present",
+        "Binary optimization configured"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.2 Configuration Management",
+      "feature": "Config file parsing",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "TOML/JSON/YAML configuration",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Config mgmt implemented (incl. watcher)"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.2 Configuration Management",
+      "feature": "Environment variables",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Environment-based configuration",
+      "estimated_hours": "4",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "Config mgmt implemented (incl. watcher)"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.2 Configuration Management",
+      "feature": "Command-line arguments",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "CLI argument parsing",
+      "estimated_hours": "6",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "Config mgmt implemented (incl. watcher)"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.2 Configuration Management",
+      "feature": "Config validation",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Validate configuration values",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Config mgmt implemented (incl. watcher)"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.2 Configuration Management",
+      "feature": "Dynamic reloading",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Reload configuration without restart",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Config mgmt implemented (incl. watcher)"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.3 Deployment Tooling",
+      "feature": "Docker images",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Containerization support",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Docker/K8s tooling present"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.3 Deployment Tooling",
+      "feature": "Kubernetes manifests",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "K8s deployment configurations",
+      "estimated_hours": "10",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Docker/K8s tooling present"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.3 Deployment Tooling",
+      "feature": "Service discovery",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Automatic service discovery",
+      "estimated_hours": "12",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Docker/K8s tooling present"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.3 Deployment Tooling",
+      "feature": "Health checks",
+      "complexity": "\ud83d\udfe2 L",
+      "parallel": "\ud83d\udd04",
+      "description": "Health check endpoints",
+      "estimated_hours": "6",
+      "score_0_5": 4,
+      "weight": 1,
+      "weighted_score": 4,
+      "evidence": [
+        "Docker/K8s tooling present"
+      ]
+    },
+    {
+      "phase": "Phase 6: Deployment & Packaging (6.1 - 6.3)",
+      "section": "6.3 Deployment Tooling",
+      "feature": "Graceful shutdown",
+      "complexity": "\ud83d\udfe1 M",
+      "parallel": "\ud83d\udd04",
+      "description": "Clean shutdown procedures",
+      "estimated_hours": "8",
+      "score_0_5": 4,
+      "weight": 2,
+      "weighted_score": 8,
+      "evidence": [
+        "Docker/K8s tooling present"
+      ]
+    }
+  ]
+}

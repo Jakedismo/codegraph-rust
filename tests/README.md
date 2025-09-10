@@ -1,3 +1,17 @@
+---
+pdf-engine: lualatex
+mainfont: "DejaVu Serif"
+monofont: "DejaVu Sans Mono"
+header-includes: |
+  \usepackage{fontspec}
+  \directlua{
+    luaotfload.add_fallback("emojifallback", {"NotoColorEmoji:mode=harf;"})
+  }
+  \setmainfont[
+    RawFeature={fallback=emojifallback}
+  ]{DejaVu Serif}
+---
+
 # CodeGraph Test Suite Documentation
 
 This document provides comprehensive documentation for the CodeGraph project's test infrastructure, covering how to run tests, what's tested across all components, test coverage analysis, and guidelines for contributing new tests.
@@ -82,6 +96,12 @@ cargo test -p codegraph-git
 
 # Load balancing functionality
 cargo test -p codegraph-lb
+
+# Concurrent processing functionality
+cargo test -p codegraph-concurrent
+
+# Zero-copy serialization utilities
+cargo test -p codegraph-zerocopy
 ```
 
 **Run Specific Test Types:**
@@ -176,7 +196,7 @@ cargo tarpaulin -p codegraph-vector --out html
   - Search accuracy and performance
   - RAG (Retrieval-Augmented Generation) system
 - **Test Files:**
-  - `tests/integration_tests.rs` - FAISS integration testing
+  - `tests/integration_tests.rs` - Comprehensive FAISS integration testing
   - `tests/knn_tests.rs` - K-nearest neighbor search
   - `tests/persistent_integration_tests.rs` - Storage persistence
   - `tests/rag_tests.rs` - RAG system functionality
@@ -195,6 +215,7 @@ cargo tarpaulin -p codegraph-vector --out html
   - `tests/api_integration.rs` - End-to-end API testing
   - `tests/health_monitoring_test.rs` - Health check functionality
   - `src/graphql/tests.rs` - GraphQL functionality
+  - `src/streaming_handlers/tests.rs` - Streaming functionality
 - **Integration Points:** Database connections, external service calls
 
 #### codegraph-graph (60% coverage)
@@ -203,9 +224,11 @@ cargo tarpaulin -p codegraph-vector --out html
   - RocksDB storage backend
   - Node and edge management
   - Graph traversal algorithms
+  - Version control integration
 - **Test Files:**
   - `tests/versioning_tests.rs` - Version control integration
 - **Coverage Gaps:** Complex traversal scenarios, concurrent access patterns
+- **Note:** Current compilation issues preventing full test execution
 
 #### codegraph-cache (20% coverage - Major Gap!)
 - **What's Tested:** Currently minimal - mostly placeholder tests
@@ -217,11 +240,13 @@ cargo tarpaulin -p codegraph-vector --out html
   - Memory optimization
   - Concurrent access patterns
   - Persistence integration
+  - Semantic similarity caching
+  - RAG system integration
 
 #### codegraph-parser (70% coverage)
 - **What's Tested:**
   - Tree-sitter parser integration
-  - Multi-language support (Rust, Python, JavaScript, TypeScript, Go)
+  - Multi-language support (Rust, Python, JavaScript, TypeScript, Go, Java, C++)
   - AST conversion and processing
 - **Test Files:**
   - `src/tests.rs` and `src/tests/mod.rs` - Parser unit tests
@@ -236,6 +261,29 @@ cargo tarpaulin -p codegraph-vector --out html
   - `tests/integration_tests.rs` - MCP protocol testing
   - `tests/unit_tests.rs` - Individual component tests
   - `tests/benchmark_tests.rs` - Performance validation
+
+#### codegraph-queue (NEW - Coverage TBD)
+- **What's Tested:** Queue operations and batch processing
+- **Test Files:**
+  - `tests/queue_test.rs` - Queue functionality tests
+
+#### codegraph-git (NEW - Coverage TBD)
+- **What's Tested:** Git integration functionality
+- **Test Files:**
+  - `tests/basic.rs` - Basic git operations
+
+#### codegraph-lb (NEW - Coverage TBD)
+- **What's Tested:** Load balancing functionality
+- **Test Files:**
+  - `tests/balancers.rs` - Load balancer tests
+
+#### codegraph-concurrent (NEW - Coverage TBD)
+- **What's Tested:** Concurrent processing operations
+- **Test Files:** Not yet analyzed
+
+#### codegraph-zerocopy (NEW - Coverage TBD)
+- **What's Tested:** Zero-copy serialization utilities
+- **Test Files:** Not yet analyzed
 
 ### Test Infrastructure Components
 
@@ -371,6 +419,7 @@ THRESHOLD=0.15 make perf-regression
 3. **Graph Operations (codegraph-graph)** - 60%
    - Basic operations covered
    - Complex traversal scenarios missing
+   - **Note:** Currently blocked by compilation issues
 
 ### Critical Coverage Gaps ❌
 
@@ -379,17 +428,24 @@ THRESHOLD=0.15 make perf-regression
    - **Missing:** LRU operations, TTL handling, memory optimization
    - **Impact:** High - caching is performance-critical
 
-2. **Concurrent Access Patterns** - Across multiple components
+2. **New Crates (Analysis Pending)**
+   - **codegraph-queue:** Queue operations need full analysis
+   - **codegraph-git:** Git integration coverage unknown
+   - **codegraph-lb:** Load balancing functionality needs assessment
+   - **codegraph-concurrent:** Concurrent processing tests needed
+   - **codegraph-zerocopy:** Serialization utilities testing incomplete
+
+3. **Concurrent Access Patterns** - Across multiple components
    - **Missing:** Race condition testing
    - **Missing:** Deadlock detection
    - **Missing:** Performance under concurrent load
 
-3. **Error Recovery and Resilience**
+4. **Error Recovery and Resilience**
    - **Missing:** Network failure simulation
    - **Missing:** Disk space exhaustion handling
    - **Missing:** Memory pressure scenarios
 
-4. **Integration Testing**
+5. **Integration Testing**
    - **Missing:** End-to-end workflows across multiple crates
    - **Missing:** Real-world data scenarios
    - **Missing:** Performance under realistic loads
@@ -615,6 +671,17 @@ async fn test_with_cleanup() {
 cargo test test_database -- --test-threads=1
 ```
 
+#### 5. Compilation Issues
+
+**Symptom:** Tests fail to compile due to missing dependencies or type errors
+```bash
+# Solution: Fix compilation errors first
+cargo check --workspace --tests
+
+# Apply automated fixes where possible
+cargo fix --workspace --tests --allow-dirty
+```
+
 ### Performance Test Issues
 
 #### Benchmark Inconsistency
@@ -647,7 +714,7 @@ make leak-report
 make install-deps
 
 # Verify test environment
-cargo test --workspace --dry-run
+cargo check --workspace --tests
 
 # Check for missing test dependencies
 cargo check --workspace --tests
@@ -677,12 +744,17 @@ RUST_BACKTRACE=1 cargo test
    - Add TTL and invalidation testing
    - Test memory pressure scenarios
 
-2. **Concurrent Access Testing** (High Priority)
+2. **New Crate Testing** (High Priority)
+   - Complete test analysis for codegraph-queue, codegraph-git, codegraph-lb
+   - Implement comprehensive test suites for codegraph-concurrent, codegraph-zerocopy
+   - Add integration testing across new components
+
+3. **Concurrent Access Testing** (High Priority)
    - Add race condition detection
    - Test deadlock prevention
    - Validate performance under load
 
-3. **Error Recovery Testing** (Medium Priority)
+4. **Error Recovery Testing** (Medium Priority)
    - Simulate network failures
    - Test disk space exhaustion
    - Validate graceful degradation
@@ -710,5 +782,22 @@ RUST_BACKTRACE=1 cargo test
    - Include before/after coverage metrics
    - Document test scenarios covered
    - Validate CI pipeline success
+
+### Current Test Status Summary
+
+| Crate | Coverage | Status | Priority |
+|-------|----------|---------|----------|
+| codegraph-core | 100% | ✅ Complete | Maintain |
+| codegraph-vector | 85% | ✅ Good | Enhance edge cases |
+| codegraph-api | 75% | ⚠️ Medium | Add error scenarios |
+| codegraph-parser | 70% | ⚠️ Medium | Complete language support |
+| codegraph-mcp | 80% | ✅ Good | Maintain |
+| codegraph-graph | 60% | ⚠️ Medium | **Fix compilation first** |
+| codegraph-cache | 20% | ❌ Critical | **Urgent implementation needed** |
+| codegraph-queue | TBD | ❌ Unknown | Assess and implement |
+| codegraph-git | TBD | ❌ Unknown | Assess and implement |
+| codegraph-lb | TBD | ❌ Unknown | Assess and implement |
+| codegraph-concurrent | TBD | ❌ Unknown | Assess and implement |
+| codegraph-zerocopy | TBD | ❌ Unknown | Assess and implement |
 
 This documentation serves as the authoritative guide for testing in the CodeGraph project. Regular updates ensure it stays current with project evolution and testing best practices.

@@ -195,7 +195,7 @@ impl Default for ProfilerConfig {
             enabled: true,
             stack_trace_depth: 32,
             leak_detection_interval: Duration::from_secs(30),
-            history_retention: Duration::from_hours(24),
+            history_retention: Duration::from_secs(24 * 3600),
             memory_limit_bytes: 250 * 1024 * 1024, // 250MB target
             sampling_rate: 1.0, // Profile all allocations by default
             real_time_monitoring: true,
@@ -327,7 +327,7 @@ impl MemoryProfiler {
             self.send_event(ProfilerEvent::Allocation {
                 id: allocation_id,
                 size,
-                category,
+                category: category.clone(),
                 timestamp,
             });
         }
@@ -477,8 +477,8 @@ impl MemoryProfiler {
                 0.0
             };
 
-            patterns.insert(category, UsagePattern {
-                category: category.clone(),
+            patterns.insert(category.clone(), UsagePattern {
+                category,
                 peak_usage,
                 average_usage,
                 allocation_rate,
@@ -669,8 +669,13 @@ impl MemoryProfiler {
     }
 
     fn get_thread_id(&self) -> u64 {
-        // Get current thread ID
-        std::thread::current().id().as_u64().get()
+        // Portable thread id hashing
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        let tid_str = format!("{:?}", std::thread::current().id());
+        let mut h = DefaultHasher::new();
+        tid_str.hash(&mut h);
+        h.finish()
     }
 
     fn update_metrics_for_allocation(&self, size: usize, category: &AllocationType) {
