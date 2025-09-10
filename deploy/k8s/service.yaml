@@ -9,8 +9,12 @@ spec:
     app: codegraph-api
   ports:
     - name: http
-      port: 3000
-      targetPort: 3000
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: 9090
       protocol: TCP
   type: ClusterIP
 

@@ -10,7 +10,7 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0
-      maxSurge: 25%
+      maxSurge: 1
   selector:
     matchLabels:
       app: codegraph-api
@@ -19,32 +19,46 @@ spec:
       labels:
         app: codegraph-api
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: codegraph-api
           image: ghcr.io/OWNER/REPO:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
-            - containerPort: 3000
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+            - containerPort: 9090
+              name: metrics
+              protocol: TCP
           env:
             - name: RUST_LOG
               value: info
-            - name: DATABASE_PATH
-              value: /app/data/codegraph.db
+            - name: ROCKSDB_PATH
+              value: /data/rocksdb
+            - name: VECTOR_STORE_PATH
+              value: /data/vectors
+            - name: BIND_ADDRESS
+              value: 0.0.0.0:8080
           readinessProbe:
             httpGet:
-              path: /health
-              port: 3000
+              path: /ready
+              port: 8080
             initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 6
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /health
-              port: 3000
-            initialDelaySeconds: 10
-            periodSeconds: 20
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
             timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             requests:
               cpu: "100m"
@@ -54,8 +68,10 @@ spec:
               memory: "512Mi"
           volumeMounts:
             - name: data
-              mountPath: /app/data
+              mountPath: /data
       volumes:
         - name: data
           emptyDir: {}
+      nodeSelector:
+        kubernetes.io/arch: amd64
 

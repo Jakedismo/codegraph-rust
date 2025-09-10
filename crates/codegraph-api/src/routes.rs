@@ -1,4 +1,4 @@
-use crate::{handlers, health, service_registry, vector_handlers, versioning_handlers, streaming_handlers, http2_handlers, AppState, auth_middleware, create_schema, RateLimitManager, rest};
+use crate::{handlers, health, enhanced_health, service_registry, vector_handlers, versioning_handlers, streaming_handlers, http2_handlers, AppState, auth_middleware, create_schema, RateLimitManager, rest};
 use axum::{
     routing::{get, post},
     Router,
@@ -29,6 +29,7 @@ pub fn create_router(state: AppState) -> Router {
     let mut app = Router::new()
         // Health and readiness checks
         .route("/health", get(health::comprehensive_health_check))
+        .route("/health/enhanced", get(enhanced_health::enhanced_health_check))
         .route("/health/live", get(health::liveness_check))
         .route("/health/ready", get(health::readiness_check))
         .route("/metrics", get(handlers::metrics_handler))

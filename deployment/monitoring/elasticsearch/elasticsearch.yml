@@ -1,0 +1,168 @@
+# Elasticsearch configuration for high-throughput logging
+# Optimized for 1000+ log entries per second
+
+cluster:
+  name: codegraph-logs
+  initial_master_nodes: ["elasticsearch"]
+
+node:
+  name: elasticsearch
+  roles: ["master", "data", "ingest", "ml"]
+
+path:
+  data: /usr/share/elasticsearch/data
+  logs: /usr/share/elasticsearch/logs
+
+network:
+  host: 0.0.0.0
+  publish_host: elasticsearch
+
+http:
+  port: 9200
+  cors:
+    enabled: true
+    allow-origin: "*"
+
+transport:
+  port: 9300
+
+# Performance tuning for high throughput
+indices:
+  # Index lifecycle management
+  lifecycle:
+    history_index_enabled: true
+  
+  # Query settings
+  query:
+    bool:
+      max_clause_count: 10000
+  
+  # Memory settings
+  memory:
+    index_buffer_size: "20%"
+    min_index_buffer_size: "96mb"
+  
+  # Fielddata cache
+  fielddata:
+    cache:
+      size: "20%"
+  
+  # Request cache
+  requests:
+    cache:
+      size: "5%"
+  
+  # Recovery settings for high throughput
+  recovery:
+    max_bytes_per_sec: "100mb"
+
+# Thread pool settings for high concurrency
+thread_pool:
+  index:
+    size: 8
+    queue_size: 1000
+  search:
+    size: 16
+    queue_size: 1000
+  bulk:
+    size: 8
+    queue_size: 1000
+  write:
+    size: 8
+    queue_size: 1000
+
+# Bulk request settings
+bulk:
+  thread_pool:
+    size: 8
+    queue_size: 1000
+
+# Bootstrap checks
+bootstrap:
+  memory_lock: true
+  system_call_filter: false
+
+# Discovery settings
+discovery:
+  type: single-node
+  seed_hosts: []
+
+# Security settings (disabled for development)
+xpack:
+  security:
+    enabled: false
+    enrollment:
+      enabled: false
+    http:
+      ssl:
+        enabled: false
+    transport:
+      ssl:
+        enabled: false
+  
+  # Monitoring
+  monitoring:
+    collection:
+      enabled: true
+    history:
+      duration: "7d"
+  
+  # Machine learning
+  ml:
+    enabled: true
+
+# Logging configuration
+logger:
+  org.elasticsearch.deprecation: warn
+  org.elasticsearch.index.search.slowlog: warn
+  org.elasticsearch.index.indexing.slowlog: warn
+  org.elasticsearch.cluster.service: info
+  org.elasticsearch.node: info
+
+# Action settings
+action:
+  auto_create_index: true
+  destructive_requires_name: false
+
+# Gateway settings
+gateway:
+  expected_nodes: 1
+  recover_after_nodes: 1
+
+# HTTP settings
+http:
+  max_content_length: "200mb"
+  max_initial_line_length: "8kb"
+  max_header_size: "16kb"
+  compression: true
+  compression_level: 6
+
+# Index templates for log data
+# These will be applied automatically to matching indices
+# Template for application logs
+index:
+  codec: best_compression
+  
+# Slow log settings
+index:
+  search:
+    slowlog:
+      threshold:
+        query:
+          warn: 2s
+          info: 1s
+          debug: 500ms
+          trace: 100ms
+        fetch:
+          warn: 1s
+          info: 500ms
+          debug: 200ms
+          trace: 50ms
+  indexing:
+    slowlog:
+      threshold:
+        index:
+          warn: 2s
+          info: 1s
+          debug: 500ms
+          trace: 100ms

@@ -1,0 +1,107 @@
+# Kibana configuration for CodeGraph log visualization
+# Optimized for high-throughput log analysis
+
+# Server configuration
+server.name: "kibana"
+server.host: "0.0.0.0"
+server.port: 5601
+server.basePath: ""
+server.rewriteBasePath: false
+server.publicBaseUrl: "http://localhost:5601"
+
+# Elasticsearch connection
+elasticsearch.hosts: ["http://elasticsearch:9200"]
+elasticsearch.username: ""
+elasticsearch.password: ""
+elasticsearch.ssl.verificationMode: none
+
+# Data paths
+path.data: "/usr/share/kibana/data"
+path.logs: "/usr/share/kibana/logs"
+
+# Logging configuration
+logging:
+  appenders:
+    file:
+      type: file
+      fileName: /usr/share/kibana/logs/kibana.log
+      layout:
+        type: json
+  root:
+    appenders:
+      - default
+      - file
+    level: warn
+
+# Performance settings for high-volume logs
+elasticsearch.requestTimeout: 30000
+elasticsearch.shardTimeout: 30000
+elasticsearch.pingTimeout: 3000
+elasticsearch.startupTimeout: 5000
+
+# Index pattern settings
+kibana.index: ".kibana"
+kibana.autocompleteTimeout: 1000
+kibana.autocompleteTerminateAfter: 100000
+
+# Security settings (disabled for development)
+xpack.security.enabled: false
+xpack.security.encryptionKey: "something_at_least_32_characters"
+
+# Monitoring
+xpack.monitoring.enabled: true
+xpack.monitoring.kibana.collection.enabled: true
+xpack.monitoring.ui.container.elasticsearch.enabled: true
+
+# Alerting and actions
+xpack.actions.enabled: true
+xpack.alerting.enabled: true
+xpack.alerting.healthCheck.interval: "60s"
+
+# Machine learning features
+xpack.ml.enabled: true
+
+# Reporting
+xpack.reporting.enabled: true
+xpack.reporting.kibanaServer.hostname: "kibana"
+xpack.reporting.kibanaServer.port: 5601
+
+# Advanced settings for performance
+# Increase field caps timeout for high-cardinality data
+elasticsearch.fieldCapsTimeout: 30000
+
+# Map settings
+map.includeElasticMapsService: true
+map.tilemap.url: ""
+
+# CSV export settings
+xpack.reporting.csv.maxSizeBytes: 104857600  # 100MB
+xpack.reporting.csv.scroll.size: 500
+
+# Dashboard refresh intervals
+kibana.defaultAppId: "dashboard"
+kibana.autocompleteTimeout: 1000
+
+# Sample data
+xpack.sampleData.defaultDataSet: "none"
+
+# Saved objects encryption
+xpack.encryptedSavedObjects.encryptionKey: "fhjskloppd678ehkdfdlliverpoolfcr"
+
+# Telemetry (disabled for privacy)
+telemetry.enabled: false
+telemetry.optIn: false
+
+# Newsfeed (disabled)
+newsfeed.enabled: false
+
+# Console settings
+console.enabled: true
+
+# Advanced settings for CodeGraph specific needs
+# Set default time range for logs
+timelion.default_columns: 40
+timelion.default_rows: 10
+
+# Increase max buckets for aggregations
+data.search.aggs.shards.request.enabled: true

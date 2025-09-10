@@ -4,6 +4,7 @@ pub mod event_bus;
 pub mod graphql;
 pub mod handlers;
 pub mod health;
+pub mod enhanced_health;
 pub mod mutations;
 pub mod service_registry;
 pub mod queries;

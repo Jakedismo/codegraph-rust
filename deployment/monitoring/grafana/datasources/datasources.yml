@@ -1,0 +1,62 @@
+apiVersion: 1
+
+datasources:
+  # Prometheus datasource for metrics
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: "15s"
+      queryTimeout: "60s"
+      httpMethod: "POST"
+      manageAlerts: true
+      alertmanagerUid: "alertmanager"
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: jaeger
+    uid: prometheus
+
+  # Elasticsearch datasource for logs
+  - name: Elasticsearch-Logs
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    database: "codegraph-logs-*"
+    editable: true
+    jsonData:
+      esVersion: "8.0.0"
+      timeField: "@timestamp"
+      interval: "Daily"
+      maxConcurrentShardRequests: 5
+      logMessageField: "message"
+      logLevelField: "level"
+    uid: elasticsearch-logs
+
+  # Alertmanager datasource
+  - name: Alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    editable: true
+    jsonData:
+      implementation: "prometheus"
+      handleGrafanaManagedAlerts: false
+    uid: alertmanager
+
+  # Loki datasource for log aggregation (if using Loki instead of ELK)
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: true
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - matcherRegex: "trace_id=(\\w+)"
+          name: "TraceID"
+          url: "$${__value.raw}"
+          datasourceUid: jaeger
+    uid: loki

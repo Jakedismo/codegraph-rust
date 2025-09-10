@@ -1,0 +1,214 @@
+global:
+  smtp_smarthost: 'localhost:587'
+  smtp_from: 'alerts@codegraph.local'
+  smtp_auth_username: ''
+  smtp_auth_password: ''
+  resolve_timeout: 5m
+
+# Template files
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Route configuration
+route:
+  group_by: ['alertname', 'severity', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'default-receiver'
+  
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 5s
+      group_interval: 5s
+      repeat_interval: 1h
+      
+    # Warning alerts - grouped notifications
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      
+    # Infrastructure alerts - separate channel
+    - match:
+        category: monitoring
+      receiver: 'infrastructure-alerts'
+      group_wait: 15s
+      group_interval: 2m
+      repeat_interval: 2h
+      
+    # Memory leak alerts - special handling
+    - match:
+        category: memory
+      receiver: 'memory-alerts'
+      group_wait: 1m
+      group_interval: 10m
+      repeat_interval: 6h
+      
+    # Business metric alerts - less urgent
+    - match:
+        category: business
+      receiver: 'business-alerts'
+      group_wait: 5m
+      group_interval: 1h
+      repeat_interval: 24h
+
+# Inhibition rules to reduce noise
+inhibit_rules:
+  # Inhibit warning alerts when critical alerts are firing for the same service
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['service', 'instance']
+    
+  # If application is down, don't alert on high error rates
+  - source_match:
+      alertname: 'ApplicationDown'
+    target_match_re:
+      alertname: '(HighErrorRate|CriticalErrorRate|HighRequestLatency)'
+    equal: ['service']
+    
+  # If Elasticsearch is down, don't alert on logging issues
+  - source_match:
+      alertname: 'ElasticsearchDown'
+    target_match_re:
+      category: 'logging'
+    equal: ['service']
+
+# Receivers configuration
+receivers:
+  # Default receiver - webhook for general alerts
+  - name: 'default-receiver'
+    webhook_configs:
+      - url: 'http://localhost:9999/webhook/alerts'
+        send_resolved: true
+        max_alerts: 0
+        http_config:
+          timeout: 10s
+        title: 'CodeGraph Alert - {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          **Alert:** {{ .Annotations.summary }}
+          **Description:** {{ .Annotations.description }}
+          **Severity:** {{ .Labels.severity }}
+          **Service:** {{ .Labels.service }}
+          **Started:** {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+          {{ if .Annotations.current_value }}**Current Value:** {{ .Annotations.current_value }}{{ end }}
+          {{ if .Annotations.remediation }}**Remediation:** {{ .Annotations.remediation }}{{ end }}
+          {{ end }}
+
+  # Critical alerts - immediate notification via multiple channels
+  - name: 'critical-alerts'
+    webhook_configs:
+      - url: 'http://localhost:9999/webhook/critical'
+        send_resolved: true
+        title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        text: |
+          **CRITICAL ALERT FIRED**
+          
+          {{ range .Alerts }}
+          **Alert:** {{ .Annotations.summary }}
+          **Description:** {{ .Annotations.description }}
+          **Service:** {{ .Labels.service | default "Unknown" }}
+          **Impact:** {{ .Annotations.impact | default "System impact unknown" }}
+          **Started:** {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+          {{ if .Annotations.current_value }}**Current Value:** {{ .Annotations.current_value }}{{ end }}
+          {{ if .Annotations.remediation }}**Immediate Action:** {{ .Annotations.remediation }}{{ end }}
+          **View in Grafana:** http://localhost:3001
+          **View Metrics:** http://localhost:9090
+          {{ end }}
+    
+    # Slack integration (configure with your Slack webhook)
+    slack_configs:
+      - api_url: 'YOUR_SLACK_WEBHOOK_URL_HERE'
+        channel: '#alerts-critical'
+        title: '🚨 Critical Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          Service: {{ .Labels.service | default "Unknown" }}
+          {{ if .Annotations.current_value }}Current: {{ .Annotations.current_value }}{{ end }}
+          {{ end }}
+        send_resolved: true
+        
+  # Warning alerts
+  - name: 'warning-alerts'
+    webhook_configs:
+      - url: 'http://localhost:9999/webhook/warning'
+        send_resolved: true
+        title: '⚠️ Warning: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          **Warning Alert:** {{ .Annotations.summary }}
+          **Description:** {{ .Annotations.description }}
+          **Service:** {{ .Labels.service | default "Unknown" }}
+          **Started:** {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+          {{ if .Annotations.current_value }}**Current Value:** {{ .Annotations.current_value }}{{ end }}
+          {{ end }}
+
+  # Infrastructure monitoring alerts
+  - name: 'infrastructure-alerts'
+    webhook_configs:
+      - url: 'http://localhost:9999/webhook/infrastructure'
+        send_resolved: true
+        title: '🔧 Infrastructure: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          **Infrastructure Alert:** {{ .Annotations.summary }}
+          **Component:** {{ .Labels.service }}
+          **Description:** {{ .Annotations.description }}
+          **Category:** {{ .Labels.category }}
+          **Started:** {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+          {{ end }}
+
+  # Memory leak specific alerts
+  - name: 'memory-alerts'
+    webhook_configs:
+      - url: 'http://localhost:9999/webhook/memory'
+        send_resolved: true
+        title: '🧠 Memory Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          **Memory Alert:** {{ .Annotations.summary }}
+          **Description:** {{ .Annotations.description }}
+          {{ if .Annotations.current_value }}**Current Value:** {{ .Annotations.current_value }}{{ end }}
+          **Started:** {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+          **Recommendation:** Monitor memory usage patterns and consider memory profiling
+          {{ end }}
+
+  # Business metrics alerts
+  - name: 'business-alerts'
+    webhook_configs:
+      - url: 'http://localhost:9999/webhook/business'
+        send_resolved: true
+        title: '📊 Business Metric: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          **Business Alert:** {{ .Annotations.summary }}
+          **Description:** {{ .Annotations.description }}
+          {{ if .Annotations.current_value }}**Current Value:** {{ .Annotations.current_value }}{{ end }}
+          **Started:** {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+          {{ end }}
+
+# Time intervals for muting alerts
+time_intervals:
+  - name: 'maintenance-window'
+    time_intervals:
+      - times:
+          - start_time: '02:00'
+            end_time: '04:00'
+        weekdays: ['sunday']
+        
+  - name: 'business-hours'
+    time_intervals:
+      - times:
+          - start_time: '09:00'
+            end_time: '17:00'
+        weekdays: ['monday:friday']
