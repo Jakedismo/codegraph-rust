@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use tokio::signal;
 use tower::ServiceBuilder;
 use tracing::{info, warn};
+use std::time::Duration;
 
 pub struct Server {
     state: AppState,
@@ -22,9 +23,25 @@ impl Server {
 
         info!("Starting CodeGraph API server on {}", self.addr);
 
-        let listener = tokio::net::TcpListener::bind(self.addr)
-            .await
-            .map_err(|e| codegraph_core::CodeGraphError::Io(e))?;
+        // Bind with tuned socket options for better keep-alive behavior
+        let listener = {
+            let socket = if self.addr.is_ipv6() {
+                tokio::net::TcpSocket::new_v6()
+            } else {
+                tokio::net::TcpSocket::new_v4()
+            }.map_err(|e| codegraph_core::CodeGraphError::Io(e))?;
+
+            // Reuse addr/port to improve rebind under restarts
+            let _ = socket.set_reuseaddr(true);
+            #[cfg(unix)]
+            let _ = socket.set_reuseport(true);
+
+            // Enable OS-level TCP keepalive (interval platform dependent)
+            let _ = socket.set_keepalive(Some(Duration::from_secs(60)));
+
+            socket.bind(self.addr).map_err(|e| codegraph_core::CodeGraphError::Io(e))?;
+            socket.listen(1024)?
+        };
 
         info!("Server listening on http://{}", self.addr);
         info!("Health check available at http://{}/health", self.addr);

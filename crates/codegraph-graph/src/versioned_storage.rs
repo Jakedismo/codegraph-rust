@@ -897,7 +897,7 @@ impl WriteAheadLog for VersionedRocksDbStorage {
     
     async fn get_last_checkpoint(&self) -> Result<Option<Checkpoint>> {
         let checkpoints_cf = self.get_cf_handle(CHECKPOINTS_CF)?;
-        let iter = self.db.iterator_cf(&checkpoints_cf, IteratorMode::End);
+        let mut iter = self.db.iterator_cf(&checkpoints_cf, IteratorMode::End);
         
         if let Some(Ok((_, value))) = iter.next() {
             let checkpoint: Checkpoint = bincode::deserialize(&value)

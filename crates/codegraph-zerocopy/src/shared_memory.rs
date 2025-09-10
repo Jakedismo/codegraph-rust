@@ -235,10 +235,10 @@ impl<'a> SharedMemoryReader<'a> {
     pub fn access_archived<T>(&self) -> ZeroCopyResult<&T::Archived>
     where
         T: Archive,
-        T::Archived: for<'b> bytecheck::CheckBytes<bytecheck::rancor::Strategy>,
+        T::Archived: for<'b> bytecheck::CheckBytes<bytecheck::rancor::Strategy<(), rkyv::rancor::Failure>>,
     {
         let data = self.segment.data_section();
-        access::<T, rkyv::rancor::Error>(data)
+        access::<T, rkyv::rancor::Strategy<(), rkyv::rancor::Failure>>(data)
             .map_err(|e| ZeroCopyError::ArchiveAccess(format!("Failed to access archived data: {:?}", e)))
     }
     

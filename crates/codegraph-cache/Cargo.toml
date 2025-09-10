@@ -31,6 +31,15 @@ rocksdb = { workspace = true }
 sha2 = { workspace = true }
 sysinfo = { workspace = true }
 num_cpus = { workspace = true }
+once_cell = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+http = { workspace = true }
+tower = { workspace = true }
+tokio-tungstenite = { workspace = true }
+url = { workspace = true }
+zstd = { workspace = true }
+lz4_flex = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }

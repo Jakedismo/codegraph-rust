@@ -305,22 +305,30 @@ impl StreamingAstProcessor {
         file_path: &str,
         language: Language,
     ) -> Result<Vec<CodeNode>, Box<dyn std::error::Error>> {
-        use std::fs::File;
-        use memmap2::MmapOptions;
+        use codegraph_core::MappedFile;
 
-        let file = File::open(file_path)?;
-        let mmap = unsafe { MmapOptions::new().map(&file)? };
+        let mmap = MappedFile::open_readonly(file_path)?;
+        // Optimize for sequential scanning of large files
+        mmap.advise_sequential();
+        mmap.prefetch_range(0, (mmap.len()).min(4 * 1024 * 1024));
         
         let mut nodes = Vec::new();
         let mut offset = 0;
         
         while offset < mmap.len() {
             let end = std::cmp::min(offset + self.buffer_size, mmap.len());
-            let chunk = &mmap[offset..end];
+            // Best-effort prefetch of next chunk
+            let next_end = (end + self.buffer_size).min(mmap.len());
+            if next_end > end {
+                mmap.prefetch_range(end, next_end - end);
+            }
+            let chunk = &mmap.as_bytes()[offset..end];
             
             let chunk_nodes = self.process_chunk(chunk, language.clone(), offset)?;
             nodes.extend(chunk_nodes);
-            
+
+            // Drop pages we no longer need to reduce RSS
+            mmap.dont_need_range(offset, end - offset);
             offset = end;
         }
 

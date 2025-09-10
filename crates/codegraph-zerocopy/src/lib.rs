@@ -31,7 +31,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum ZeroCopyError {
     #[error("Serialization failed: {0}")]
-    Serialization(#[from] rkyv::rancor::Error),
+    Serialization(#[from] rkyv::rancor::Failure),
     
     #[error("Validation failed: {0}")]
     Validation(String),
@@ -87,8 +87,8 @@ mod tests {
             values: vec![1, 2, 3, 4, 5],
         };
         
-        let bytes = to_bytes::<rkyv::rancor::Error>(&data).unwrap();
-        let archived = from_bytes::<TestData, rkyv::rancor::Error>(&bytes).unwrap();
+        let bytes = to_bytes::<rkyv::rancor::Strategy<(), rkyv::rancor::Failure>>(&data).unwrap();
+        let archived = from_bytes::<TestData, rkyv::rancor::Strategy<(), rkyv::rancor::Failure>>(&bytes).unwrap();
         
         assert_eq!(archived.id, 42);
         assert_eq!(archived.name, "test");

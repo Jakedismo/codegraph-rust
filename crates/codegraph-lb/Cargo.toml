@@ -1,0 +1,37 @@
+[package]
+name = "codegraph-lb"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Intelligent load balancing for CodeGraph: algorithms, health checks, failover, traffic shaping"
+
+[dependencies]
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+prometheus = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+uuid = { workspace = true }
+governor = { workspace = true }
+hyper = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+reqwest = { workspace = true }
+http = { workspace = true }
+once_cell = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+criterion = { workspace = true }
+
+[features]
+default = []

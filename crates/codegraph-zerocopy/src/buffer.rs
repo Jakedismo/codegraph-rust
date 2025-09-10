@@ -92,7 +92,7 @@ impl BufferPool {
 }
 
 /// Statistics for buffer pool performance monitoring
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BufferPoolStats {
     pub buffer_size: usize,
     pub max_buffers: usize,
@@ -427,7 +427,7 @@ impl MPMCBufferQueue {
 }
 
 /// Statistics for MPMC buffer queue
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MPMCBufferQueueStats {
     pub capacity: usize,
     pub length: usize,

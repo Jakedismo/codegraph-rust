@@ -6,6 +6,10 @@ pub mod invalidation;
 pub mod memory;
 pub mod storage;
 pub mod metrics;
+pub mod readahead_optimizer;
+pub mod readahead_integration;
+pub mod profiler;
+pub mod dashboard;
 
 // Temporarily disabled due to FAISS Send/Sync issues
 // #[cfg(feature = "faiss")]
@@ -19,6 +23,10 @@ pub use invalidation::*;
 pub use memory::*;
 pub use storage::*;
 pub use metrics::*;
+pub use readahead_optimizer::*;
+pub use readahead_integration::*;
+pub use profiler::*;
+pub use dashboard::*;
 
 // #[cfg(feature = "faiss")]
 // pub use faiss_cache::*;

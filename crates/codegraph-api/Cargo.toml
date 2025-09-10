@@ -14,10 +14,13 @@ codegraph-vector = { workspace = true }
 
 axum = { workspace = true }
 tower = { workspace = true }
-tower-http = { workspace = true }
+# Enable compression features for response compression
+tower-http = { workspace = true, features = ["compression-br", "compression-gzip", "compression-deflate", "compression-zstd", "trace", "cors"] }
 hyper = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
+reqwest = { workspace = true }
+url = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -34,10 +37,13 @@ thiserror = { workspace = true }
 async-graphql = { workspace = true }
 async-graphql-axum = { workspace = true }
 async-stream = "0.3"
+# Streaming responses for large datasets
+axum-streams = { version = "0.23", features = ["json", "csv", "text"] }
+futures = { workspace = true }
 
 # Auth
 jsonwebtoken = "9.3.0"
-governor = { workspace = true, features = ["serde"] }
+governor = { workspace = true, features = ["std"] }
 prometheus = { workspace = true }
 
 
@@ -45,8 +51,12 @@ prometheus = { workspace = true }
 tokio-test = { workspace = true }
 hyper = { workspace = true }
 criterion = { workspace = true }
+axum-test = "18.1"
+async-trait = { workspace = true }
 
 [[bench]]
 name = "api_benchmarks"
 harness = false
 path = "src/graphql/benchmarks.rs"
+
+ 

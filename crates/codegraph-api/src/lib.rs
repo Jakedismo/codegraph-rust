@@ -14,6 +14,12 @@ pub mod subscriptions;
 pub mod vector_handlers;
 pub mod versioning_handlers;
 pub mod metrics;
+pub mod connection_pool;
+pub mod streaming_handlers;
+pub mod http2_optimizer;
+pub mod http2_handlers;
+#[cfg(feature = "lb")]
+pub mod lb_proxy;
 
 pub use handlers::*;
 pub use vector_handlers::*;
@@ -30,3 +36,9 @@ pub use subscriptions::*;
 pub use event_bus::*;
 pub use rate_limit::RateLimitManager;
 pub use metrics::*;
+pub use connection_pool::*;
+pub use streaming_handlers::*;
+pub use http2_optimizer::*;
+pub use http2_handlers::*;
+#[cfg(feature = "lb")]
+pub use lb_proxy::*;

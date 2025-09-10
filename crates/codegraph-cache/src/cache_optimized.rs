@@ -505,4 +505,100 @@ mod tests {
         let ptr = &counter as *const PaddedAtomicUsize;
         assert_eq!(ptr.align_offset(CACHE_LINE_SIZE), 0);
     }
+
+    #[test]
+    fn test_latency_target() {
+        use std::time::Instant;
+        
+        // Create optimized cache with realistic sharding
+        let cache = CacheOptimizedHashMap::<String, String>::new(Some(16));
+        
+        // Populate with test data
+        for i in 0..1000 {
+            cache.insert(
+                format!("key_{}", i), 
+                format!("value_data_{}", i), 
+                32
+            );
+        }
+        
+        // Measure query latency over many operations
+        let start = Instant::now();
+        const QUERY_COUNT: usize = 10_000;
+        
+        for i in 0..QUERY_COUNT {
+            let key = format!("key_{}", i % 1000);
+            let _ = cache.get(&key);
+        }
+        
+        let elapsed = start.elapsed();
+        let avg_latency_ns = elapsed.as_nanos() / QUERY_COUNT as u128;
+        let avg_latency_ms = avg_latency_ns as f64 / 1_000_000.0;
+        
+        println!("Average query latency: {:.3}ms", avg_latency_ms);
+        println!("Total queries: {}", QUERY_COUNT);
+        println!("Total time: {:?}", elapsed);
+        
+        // Validate latency target - should be well under 25ms per query
+        // This test shows the optimizations work for single-threaded access
+        assert!(avg_latency_ms < 1.0, 
+                "Query latency {:.3}ms should be well under 25ms target", 
+                avg_latency_ms);
+        
+        let (hits, misses, _, _) = cache.get_stats();
+        assert_eq!(hits, QUERY_COUNT);
+        assert_eq!(misses, 0);
+    }
+
+    #[test] 
+    fn test_concurrent_latency() {
+        use std::thread;
+        use std::time::Instant;
+        
+        let cache = Arc::new(CacheOptimizedHashMap::<String, i64>::new(Some(8)));
+        
+        // Populate cache
+        for i in 0..1000 {
+            cache.insert(format!("key_{}", i), i as i64, 8);
+        }
+        
+        let start = Instant::now();
+        let mut handles = Vec::new();
+        const THREADS: usize = 4;
+        const QUERIES_PER_THREAD: usize = 2500; // Total: 10,000 queries
+        
+        for thread_id in 0..THREADS {
+            let cache_clone = Arc::clone(&cache);
+            let handle = thread::spawn(move || {
+                let mut local_hits = 0;
+                for i in 0..QUERIES_PER_THREAD {
+                    let key = format!("key_{}", (thread_id * QUERIES_PER_THREAD + i) % 1000);
+                    if cache_clone.get(&key).is_some() {
+                        local_hits += 1;
+                    }
+                }
+                local_hits
+            });
+            handles.push(handle);
+        }
+        
+        let mut total_hits = 0;
+        for handle in handles {
+            total_hits += handle.join().unwrap();
+        }
+        
+        let elapsed = start.elapsed();
+        let total_queries = THREADS * QUERIES_PER_THREAD;
+        let avg_latency_ms = elapsed.as_millis() as f64 / total_queries as f64;
+        
+        println!("Concurrent test - {} threads, {} queries", THREADS, total_queries);
+        println!("Average query latency: {:.6}ms", avg_latency_ms);
+        println!("Total hits: {}", total_hits);
+        
+        // Validate concurrent performance target
+        assert_eq!(total_hits, total_queries);
+        assert!(avg_latency_ms < 5.0, 
+                "Concurrent query latency {:.3}ms should be well under 25ms target", 
+                avg_latency_ms);
+    }
 }

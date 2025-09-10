@@ -15,6 +15,7 @@ pub mod delta_processor;
 pub mod graph_updater;
 pub mod progress_tracker;
 pub mod pipeline;
+pub mod io_batcher;
 
 pub use edge::*;
 pub use graph::*;
@@ -33,3 +34,4 @@ pub use delta_processor::*;
 pub use graph_updater::*;
 pub use progress_tracker::*;
 pub use pipeline::*;
+pub use io_batcher::*;

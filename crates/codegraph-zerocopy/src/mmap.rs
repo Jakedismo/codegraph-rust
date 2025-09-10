@@ -57,9 +57,9 @@ impl MmapReader {
     pub fn access_archived<T>(&self) -> ZeroCopyResult<&T::Archived>
     where
         T: Archive,
-        T::Archived: for<'a> bytecheck::CheckBytes<bytecheck::rancor::Strategy>,
+        T::Archived: for<'a> bytecheck::CheckBytes<bytecheck::rancor::Strategy<(), rkyv::rancor::Failure>>,
     {
-        access::<T, rkyv::rancor::Error>(&self.mmap)
+        access::<T, rkyv::rancor::Strategy<(), rkyv::rancor::Failure>>(&self.mmap)
             .map_err(|e| ZeroCopyError::ArchiveAccess(format!("Failed to access archived data: {:?}", e)))
     }
     
@@ -202,13 +202,10 @@ impl MmapWriter {
     /// Resize the mapped file
     #[instrument(skip(self))]
     pub fn resize(&mut self, new_size: usize) -> ZeroCopyResult<()> {
-        // Drop the current mapping
-        drop(std::mem::take(&mut self.mmap));
-        
         // Resize the underlying file
         self.file.set_len(new_size as u64)?;
         
-        // Create a new mapping
+        // Create a new mapping (old mapping will be dropped automatically)
         self.mmap = unsafe { MmapOptions::new().map_mut(&self.file)? };
         
         debug!("Resized memory-mapped file: {:?}, new size: {} bytes", self.path, new_size);
@@ -279,9 +276,9 @@ impl<'a> ThreadSafeMmapReadGuard<'a> {
     pub fn access_archived<T>(&self) -> ZeroCopyResult<&T::Archived>
     where
         T: Archive,
-        T::Archived: for<'b> bytecheck::CheckBytes<bytecheck::rancor::Strategy>,
+        T::Archived: for<'b> bytecheck::CheckBytes<bytecheck::rancor::Strategy<(), rkyv::rancor::Failure>>,
     {
-        access::<T, rkyv::rancor::Error>(&self.guard)
+        access::<T, rkyv::rancor::Strategy<(), rkyv::rancor::Failure>>(&self.guard)
             .map_err(|e| ZeroCopyError::ArchiveAccess(format!("Failed to access archived data: {:?}", e)))
     }
 }

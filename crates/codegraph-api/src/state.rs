@@ -4,6 +4,8 @@ use codegraph_vector::{EmbeddingGenerator, FaissVectorStore, SemanticSearch};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use crate::connection_pool::{ConnectionPoolConfig, HttpClientPool, load_base_urls_from_env};
+use crate::http2_optimizer::{Http2Optimizer, Http2OptimizerConfig};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -13,6 +15,8 @@ pub struct AppState {
     pub embedding_generator: Arc<EmbeddingGenerator>,
     pub semantic_search: Arc<SemanticSearch>,
     pub ws_metrics: Arc<WebSocketMetrics>,
+    pub http_client_pool: Arc<HttpClientPool>,
+    pub http2_optimizer: Arc<Http2Optimizer>,
 }
 
 impl AppState {
@@ -26,6 +30,26 @@ impl AppState {
             embedding_generator.clone(),
         ));
 
+        // Network connection pool with keep-alive and load balancing
+        let pool_cfg = ConnectionPoolConfig::from_env();
+        let base_urls = load_base_urls_from_env();
+        let http_client_pool = Arc::new(HttpClientPool::new(pool_cfg, base_urls).expect("Failed to init HttpClientPool"));
+
+        // HTTP/2 optimization
+        let http2_config = Http2OptimizerConfig::default();
+        let http2_optimizer = Arc::new(Http2Optimizer::new(http2_config));
+        {
+            // Periodically close idle connections to keep pool healthy
+            let pool = http_client_pool.clone();
+            tokio::spawn(async move {
+                let interval = std::time::Duration::from_secs(300);
+                loop {
+                    tokio::time::sleep(interval).await;
+                    pool.close_idle();
+                }
+            });
+        }
+
         Ok(Self {
             graph,
             parser,
@@ -33,6 +57,8 @@ impl AppState {
             embedding_generator,
             semantic_search,
             ws_metrics: Arc::new(WebSocketMetrics::default()),
+            http_client_pool,
+            http2_optimizer,
         })
     }
 }

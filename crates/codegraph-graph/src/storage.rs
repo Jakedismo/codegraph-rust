@@ -18,6 +18,9 @@ use dashmap::DashMap;
 use memmap2::{Mmap, MmapOptions};
 use std::fs::File;
 use chrono;
+use std::time::{Duration, Instant};
+
+use crate::io_batcher::{BatchingConfig, ReadCoalescer, WriteBatchOptimizer};
 
 type DB = DBWithThreadMode<MultiThreaded>;
 
@@ -94,6 +97,9 @@ pub struct HighPerformanceRocksDbStorage {
     read_options: ReadOptions,
     memory_tables: Arc<RwLock<HashMap<String, Mmap>>>,
     batch_writes: Arc<Mutex<WriteBatch>>,
+    batching_config: BatchingConfig,
+    write_optimizer: Arc<Mutex<WriteBatchOptimizer>>,
+    read_coalescer: ReadCoalescer,
 }
 
 impl HighPerformanceRocksDbStorage {
@@ -125,6 +131,9 @@ impl HighPerformanceRocksDbStorage {
         
         db_opts.set_compression_type(DBCompressionType::Lz4);
         db_opts.set_bottommost_compression_type(DBCompressionType::Zstd);
+        // Reduce syscall overhead where available
+        db_opts.set_use_direct_reads(true);
+        db_opts.set_use_direct_io_for_flush_and_compaction(true);
         
         db_opts.set_allow_mmap_reads(true);
         db_opts.set_allow_mmap_writes(true);
@@ -164,10 +173,21 @@ impl HighPerformanceRocksDbStorage {
         read_options.set_verify_checksums(false);
         read_options.set_fill_cache(true);
         read_options.set_prefix_same_as_start(true);
-        
+        read_options.set_readahead_size(2 * 1024 * 1024);
+
+        let batching_config = BatchingConfig::default();
+        let db_arc = Arc::new(db);
+        let read_cache = Arc::new(DashMap::with_capacity(100_000));
+        let read_coalescer = ReadCoalescer::new(
+            db_arc.clone(),
+            NODES_CF,
+            read_cache.clone(),
+            batching_config.clone(),
+        );
+
         let storage = Self {
-            db: Arc::new(db),
-            read_cache: Arc::new(DashMap::with_capacity(100_000)),
+            db: db_arc,
+            read_cache: read_cache,
             edge_cache: Arc::new(DashMap::with_capacity(50_000)),
             node_counter: AtomicU64::new(1),
             edge_counter: AtomicU64::new(1),
@@ -175,6 +195,9 @@ impl HighPerformanceRocksDbStorage {
             read_options,
             memory_tables: Arc::new(RwLock::new(HashMap::new())),
             batch_writes: Arc::new(Mutex::new(WriteBatch::default())),
+            batching_config: batching_config.clone(),
+            write_optimizer: Arc::new(Mutex::new(WriteBatchOptimizer::new(&batching_config))),
+            read_coalescer,
         };
         
         storage.initialize_counters()?;
@@ -282,11 +305,37 @@ impl HighPerformanceRocksDbStorage {
     pub fn flush_batch_writes(&self) -> Result<()> {
         let mut batch = self.batch_writes.lock();
         if !batch.is_empty() {
-            self.db.write_opt(&*batch, &self.write_options)
+            let start = Instant::now();
+            let ops = batch.len();
+            self.db
+                .write_opt(&*batch, &self.write_options)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?;
             batch.clear();
+            let mut opt = self.write_optimizer.lock();
+            opt.on_flushed(ops, start.elapsed());
         }
         Ok(())
+    }
+
+    fn maybe_flush_writes(&self) -> Result<()> {
+        let threshold = { self.write_optimizer.lock().ops_threshold };
+        let interval = self.batching_config.write_flush_interval;
+        let mut do_flush = false;
+        {
+            let batch = self.batch_writes.lock();
+            if !batch.is_empty() && batch.len() >= threshold {
+                do_flush = true;
+            }
+        }
+        if !do_flush {
+            let mut opt = self.write_optimizer.lock();
+            if opt.should_time_flush(interval) {
+                drop(opt);
+                return self.flush_batch_writes();
+            }
+            return Ok(());
+        }
+        self.flush_batch_writes()
     }
     
     pub async fn add_edge(&self, edge: SerializableEdge) -> Result<()> {
@@ -305,16 +354,13 @@ impl HighPerformanceRocksDbStorage {
         let from_index_key = Self::index_key(b"from:", &edge.from.to_string(), edge_id);
         let to_index_key = Self::index_key(b"to:", &edge.to.to_string(), edge_id);
         
-        let mut batch = self.batch_writes.lock();
-        batch.put_cf(&edges_cf, edge_key, edge_bytes);
-        batch.put_cf(&from_index_cf, from_index_key, b"");
-        batch.put_cf(&to_index_cf, to_index_key, b"");
-        
-        if batch.len() > 1000 {
-            self.db.write_opt(&*batch, &self.write_options)
-                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            batch.clear();
+        {
+            let mut batch = self.batch_writes.lock();
+            batch.put_cf(&edges_cf, edge_key, edge_bytes);
+            batch.put_cf(&from_index_cf, from_index_key, b"");
+            batch.put_cf(&to_index_cf, to_index_key, b"");
         }
+        self.maybe_flush_writes()?;
         
         self.edge_cache.remove(&edge.from);
         

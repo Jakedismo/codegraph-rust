@@ -97,7 +97,7 @@ pub enum CompressionAlgorithm {
     /// LZ4 compression for general data
     Lz4,
     /// Zstd compression for better ratios
-    Zstd { level: i32 },
+    Zstd { level: i32, dictionary: Option<Vec<u8>> },
 }
 
 impl Default for CompressionConfig {
@@ -251,9 +251,36 @@ impl MemoryManager {
                     .collect();
                 Ok(quantized)
             }
-            _ => {
-                // For other algorithms, we'd use external compression libraries
-                Err(CodeGraphError::Vector("Unsupported compression algorithm".to_string()))
+            CompressionAlgorithm::Lz4 => {
+                // Lossless compression of raw f32 bytes using LZ4
+                let mut raw: Vec<u8> = Vec::with_capacity(vector.len() * 4);
+                for &v in vector {
+                    raw.extend_from_slice(&v.to_le_bytes());
+                }
+                let compressed = lz4_flex::compress_prepend_size(&raw);
+                Ok(compressed)
+            }
+            CompressionAlgorithm::Zstd { level, dictionary } => {
+                // Lossless compression of raw f32 bytes using Zstd (optionally with dictionary)
+                let mut raw: Vec<u8> = Vec::with_capacity(vector.len() * 4);
+                for &v in vector {
+                    raw.extend_from_slice(&v.to_le_bytes());
+                }
+                let compressed = if let Some(dict) = dictionary {
+                    // Use bulk compressor with dictionary
+                    let mut c = zstd::bulk::Compressor::new(*level)
+                        .map_err(|e| CodeGraphError::Vector(format!("Zstd init failed: {e}")))?;
+                    c.include_checksum(true);
+                    c.long_distance_matching(true);
+                    c.set_dictionary(dict)
+                        .map_err(|e| CodeGraphError::Vector(format!("Zstd dict set failed: {e}")))?;
+                    c.compress(&raw)
+                        .map_err(|e| CodeGraphError::Vector(format!("Zstd compress failed: {e}")))?
+                } else {
+                    zstd::bulk::compress(&raw, *level)
+                        .map_err(|e| CodeGraphError::Vector(format!("Zstd compress failed: {e}")))?
+                };
+                Ok(compressed)
             }
         }
     }
@@ -271,10 +298,70 @@ impl MemoryManager {
                     .collect();
                 Ok(decompressed)
             }
-            _ => {
-                Err(CodeGraphError::Vector("Unsupported compression algorithm".to_string()))
+            CompressionAlgorithm::Lz4 => {
+                let raw = lz4_flex::decompress_size_prepended(compressed)
+                    .map_err(|e| CodeGraphError::Vector(format!("LZ4 decompress failed: {e}")))?;
+                if raw.len() != original_len * 4 {
+                    return Err(CodeGraphError::Vector(format!(
+                        "LZ4 decompressed size mismatch: got {}, expected {}",
+                        raw.len(),
+                        original_len * 4
+                    )));
+                }
+                let mut out = Vec::with_capacity(original_len);
+                for chunk in raw.chunks_exact(4) {
+                    let mut arr = [0u8; 4];
+                    arr.copy_from_slice(chunk);
+                    out.push(f32::from_le_bytes(arr));
+                }
+                Ok(out)
+            }
+            CompressionAlgorithm::Zstd { dictionary, .. } => {
+                let raw = if let Some(dict) = dictionary {
+                    let mut d = zstd::bulk::Decompressor::new()
+                        .map_err(|e| CodeGraphError::Vector(format!("Zstd init failed: {e}")))?;
+                    d.set_dictionary(dict)
+                        .map_err(|e| CodeGraphError::Vector(format!("Zstd dict set failed: {e}")))?;
+                    d.decompress(compressed, original_len * 4)
+                        .map_err(|e| CodeGraphError::Vector(format!("Zstd decompress failed: {e}")))?
+                } else {
+                    zstd::bulk::decompress(compressed, original_len * 4)
+                        .map_err(|e| CodeGraphError::Vector(format!("Zstd decompress failed: {e}")))?
+                };
+                if raw.len() != original_len * 4 {
+                    return Err(CodeGraphError::Vector(format!(
+                        "Zstd decompressed size mismatch: got {}, expected {}",
+                        raw.len(),
+                        original_len * 4
+                    )));
+                }
+                let mut out = Vec::with_capacity(original_len);
+                for chunk in raw.chunks_exact(4) {
+                    let mut arr = [0u8; 4];
+                    arr.copy_from_slice(chunk);
+                    out.push(f32::from_le_bytes(arr));
+                }
+                Ok(out)
             }
         }
+    }
+
+    /// Train and set a Zstd dictionary from samples
+    pub fn train_zstd_dictionary(
+        &mut self,
+        samples: &[&[u8]],
+        dict_size: usize,
+        level: i32,
+    ) -> Result<()> {
+        use zstd::dict::from_samples;
+        let dict = from_samples(samples, dict_size)
+            .map_err(|e| CodeGraphError::Vector(format!("Zstd dict training failed: {e}")))?;
+        // Update compression algorithm to use dictionary
+        self.compression_config.algorithm = CompressionAlgorithm::Zstd {
+            level,
+            dictionary: Some(dict),
+        };
+        Ok(())
     }
 
     /// Get system memory information
@@ -311,6 +398,40 @@ impl MemoryManager {
     /// Update compression configuration
     pub fn update_compression_config(&mut self, config: CompressionConfig) {
         self.compression_config = config;
+    }
+
+    /// Select an adaptive compression algorithm based on CPU load and data size
+    pub fn select_adaptive_algorithm(&mut self, size_bytes: usize) -> CompressionAlgorithm {
+        // Refresh CPU metrics
+        self.system.refresh_cpu();
+        let cpu_usage = self.system.global_cpu_info().cpu_usage(); // 0..=100
+
+        // Heuristics:
+        // - Small payloads: avoid heavy compression; prefer LZ4 to reduce CPU
+        // - High CPU usage: prefer LZ4 (faster)
+        // - Large payloads and moderate CPU: prefer Zstd (better ratio)
+        if size_bytes < 4 * 1024 {
+            CompressionAlgorithm::Lz4
+        } else if cpu_usage > 75.0 {
+            CompressionAlgorithm::Lz4
+        } else if size_bytes > 64 * 1024 {
+            CompressionAlgorithm::Zstd { level: 6, dictionary: None }
+        } else {
+            CompressionAlgorithm::Zstd { level: 3, dictionary: None }
+        }
+    }
+
+    /// Compress vector using an adaptively selected algorithm
+    pub fn compress_vector_adaptive(&mut self, vector: &[f32]) -> Result<(CompressionAlgorithm, Vec<u8>)> {
+        let size_bytes = vector.len() * 4;
+        let algo = self.select_adaptive_algorithm(size_bytes);
+        let old = self.compression_config.algorithm.clone();
+        // Temporarily apply algorithm
+        self.compression_config.algorithm = algo.clone();
+        let res = self.compress_vector(vector);
+        // Restore
+        self.compression_config.algorithm = old;
+        res.map(|data| (algo, data))
     }
 
     /// Get memory optimization recommendations
@@ -499,6 +620,46 @@ mod tests {
         // Check that decompressed values are approximately equal (quantization loses precision)
         for (orig, decomp) in vector.iter().zip(decompressed.iter()) {
             assert!((orig - decomp).abs() < 0.1);
+        }
+    }
+
+    #[test]
+    fn test_vector_compression_lz4() {
+        let mut config = CacheConfig::default();
+        let mut manager = MemoryManager::new(&config);
+        manager.update_compression_config(CompressionConfig {
+            enabled: true,
+            threshold_bytes: 0,
+            compression_ratio: 0.5,
+            algorithm: CompressionAlgorithm::Lz4,
+        });
+
+        let vector = vec![0.5f32, -0.3, 0.8, -1.0, 1.0, 0.0, 3.14159];
+        let compressed = manager.compress_vector(&vector).unwrap();
+        let decompressed = manager.decompress_vector(&compressed, vector.len()).unwrap();
+        assert_eq!(decompressed.len(), vector.len());
+        for (orig, decomp) in vector.iter().zip(decompressed.iter()) {
+            assert!((orig - decomp).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_vector_compression_zstd() {
+        let mut config = CacheConfig::default();
+        let mut manager = MemoryManager::new(&config);
+        manager.update_compression_config(CompressionConfig {
+            enabled: true,
+            threshold_bytes: 0,
+            compression_ratio: 0.4,
+            algorithm: CompressionAlgorithm::Zstd { level: 3, dictionary: None },
+        });
+
+        let vector = vec![0.5f32, -0.3, 0.8, -1.0, 1.0, 0.0, 3.14159];
+        let compressed = manager.compress_vector(&vector).unwrap();
+        let decompressed = manager.decompress_vector(&compressed, vector.len()).unwrap();
+        assert_eq!(decompressed.len(), vector.len());
+        for (orig, decomp) in vector.iter().zip(decompressed.iter()) {
+            assert!((orig - decomp).abs() < 1e-6);
         }
     }
 

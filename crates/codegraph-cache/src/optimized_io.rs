@@ -472,16 +472,12 @@ impl PrefetchEngine {
 /// Compression layer for reducing I/O bandwidth requirements
 pub struct CompressionLayer {
     compression_threshold: usize,
-    compressor: Arc<Mutex<lz4_flex::frame::FrameEncoder<Vec<u8>>>>,
 }
 
 impl CompressionLayer {
     pub fn new(compression_threshold: usize) -> Self {
-        let encoder = lz4_flex::frame::FrameEncoder::new(Vec::new());
-        
         Self {
             compression_threshold,
-            compressor: Arc::new(Mutex::new(encoder)),
         }
     }
 
@@ -508,23 +504,39 @@ impl CompressionLayer {
     }
 
     async fn compress_data(&self, data: &[u8]) -> Result<Vec<u8>> {
-        // Use async compression to avoid blocking
+        // Simplified compression using flate2 (gzip)
+        use flate2::{Compression, write::GzEncoder};
+        use std::io::Write;
+        
         let compressed = tokio::task::spawn_blocking({
             let data = data.to_vec();
-            move || lz4_flex::compress_prepend_size(&data)
+            move || {
+                let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+                encoder.write_all(&data)?;
+                encoder.finish()
+            }
         }).await
+        .map_err(|e| CodeGraphError::Compression(e.to_string()))?
         .map_err(|e| CodeGraphError::Compression(e.to_string()))?;
 
         Ok(compressed)
     }
 
     pub async fn decompress_data(&self, compressed: &[u8]) -> Result<Vec<u8>> {
+        use flate2::read::GzDecoder;
+        use std::io::Read;
+        
         let decompressed = tokio::task::spawn_blocking({
             let compressed = compressed.to_vec();
-            move || lz4_flex::decompress_size_prepended(&compressed)
+            move || {
+                let mut decoder = GzDecoder::new(&compressed[..]);
+                let mut decompressed = Vec::new();
+                decoder.read_to_end(&mut decompressed)?;
+                Ok::<Vec<u8>, std::io::Error>(decompressed)
+            }
         }).await
         .map_err(|e| CodeGraphError::Compression(e.to_string()))?
-        .map_err(|e| CodeGraphError::Compression(format!("Decompression failed: {:?}", e)))?;
+        .map_err(|e| CodeGraphError::Compression(e.to_string()))?;
 
         Ok(decompressed)
     }

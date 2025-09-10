@@ -137,7 +137,7 @@ impl GraphDeltaProcessor {
         })
     }
 
-    fn build_node_map(&self, nodes: &[CodeNode]) -> HashMap<NodeId, &CodeNode> {
+    fn build_node_map<'a>(&self, nodes: &'a [CodeNode]) -> HashMap<NodeId, &'a CodeNode> {
         nodes.iter()
             .map(|node| (node.id.clone(), node))
             .collect()

@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::io;
+use codegraph_core::MappedFile;
 
 /// High-performance file reading helpers with optional io_uring acceleration on Linux.
 ///
@@ -58,9 +59,12 @@ pub async fn read_file_to_string(path: &str) -> io::Result<String> {
     if file_len >= LARGE_THRESHOLD {
         let path_owned = p.to_path_buf();
         if let Ok(mapped) = tokio::task::spawn_blocking(move || -> io::Result<String> {
-            let f = std::fs::File::open(&path_owned)?;
-            let mmap = unsafe { memmap2::Mmap::map(&f)? };
-            Ok(String::from_utf8_lossy(&mmap).into_owned())
+            let mm = MappedFile::open_readonly(&path_owned)?;
+            // Hint OS for sequential read; prefetch first window
+            mm.advise_sequential();
+            let prefetch = (mm.len()).min(2 * 1024 * 1024);
+            mm.prefetch_range(0, prefetch);
+            Ok(String::from_utf8_lossy(mm.as_bytes()).into_owned())
         })
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("join error: {e}")))

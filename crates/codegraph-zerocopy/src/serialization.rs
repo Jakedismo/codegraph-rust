@@ -7,11 +7,13 @@ use bytes::{Bytes, BytesMut};
 use rkyv::{
     api::{access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, to_bytes}, 
     Archive, Deserialize, Serialize,
+    rancor::{Strategy, Failure},
 };
 use std::sync::Arc;
 use tracing::{debug, instrument, trace};
 
 /// A zero-copy serializer that reuses buffers
+#[derive(Debug)]
 pub struct ZeroCopySerializer {
     buffer: BytesMut,
     alignment: usize,
@@ -35,11 +37,11 @@ impl ZeroCopySerializer {
     #[instrument(skip(self, data))]
     pub fn serialize<T>(&mut self, data: &T) -> ZeroCopyResult<Bytes>
     where
-        T: for<'a> Serialize<rkyv::rancor::Strategy<rkyv::ser::Serializer<rkyv::util::AlignedVec, rkyv::ser::allocator::ArenaHandle<'a>, rkyv::ser::sharing::Share>, rkyv::rancor::Error>>,
+        T: Serialize<Strategy<(), Failure>>,
     {
         self.buffer.clear();
         
-        let bytes = to_bytes::<rkyv::rancor::Error>(data)
+        let bytes = to_bytes::<Strategy<(), Failure>>(data)
             .map_err(ZeroCopyError::Serialization)?;
         
         // Ensure proper alignment
@@ -54,13 +56,13 @@ impl ZeroCopySerializer {
     #[instrument(skip(self, data))]
     pub fn serialize_validated<T>(&mut self, data: &T) -> ZeroCopyResult<Bytes>
     where
-        T: Serialize<rkyv::rancor::Error> + Archive,
-        T::Archived: for<'a> bytecheck::CheckBytes<bytecheck::rancor::Strategy>,
+        T: Serialize<Strategy<(), Failure>> + Archive,
+        T::Archived: for<'a> bytecheck::CheckBytes<bytecheck::rancor::Strategy<(), Failure>>,
     {
         let bytes = self.serialize(data)?;
         
         // Validate the serialized data
-        let _archived = access::<T, rkyv::rancor::Error>(&bytes)
+        let _archived = access::<T, Strategy<(), Failure>>(&bytes)
             .map_err(|e| ZeroCopyError::Validation(format!("Validation failed: {:?}", e)))?;
         
         Ok(bytes)
@@ -74,6 +76,7 @@ impl Default for ZeroCopySerializer {
 }
 
 /// Zero-copy deserializer that provides direct access to archived data
+#[derive(Debug)]
 pub struct ZeroCopyDeserializer {
     // Buffer to hold shared references
     _buffers: Vec<Arc<Bytes>>,
@@ -91,19 +94,20 @@ impl ZeroCopyDeserializer {
     pub fn access<T>(&self, data: &[u8]) -> ZeroCopyResult<&T::Archived>
     where
         T: Archive,
-        T::Archived: for<'a> bytecheck::CheckBytes<bytecheck::rancor::Strategy>,
+        T::Archived: for<'a> bytecheck::CheckBytes<bytecheck::rancor::Strategy<(), Failure>>,
     {
-        access::<T, rkyv::rancor::Error>(data)
+        access::<T, Strategy<(), Failure>>(data)
             .map_err(|e| ZeroCopyError::ArchiveAccess(format!("Access failed: {:?}", e)))
     }
     
     /// Access archived data without validation (unsafe but fast)
     #[instrument(skip(data))]
-    pub fn access_unchecked<T>(&self, data: &[u8]) -> &T::Archived
+    pub fn access_unchecked<'a, T>(&self, data: &'a [u8]) -> &'a T::Archived
     where
         T: Archive,
+        T::Archived: rkyv::Portable,
     {
-        unsafe { access_unchecked::<T>(data) }
+        unsafe { access_unchecked::<T::Archived>(data) }
     }
     
     /// Deserialize to owned data when necessary
@@ -111,11 +115,11 @@ impl ZeroCopyDeserializer {
     pub fn deserialize<T>(&self, data: &[u8]) -> ZeroCopyResult<T>
     where
         T: Archive,
-        T::Archived: Deserialize<T, rkyv::rancor::Error> 
-            + for<'a> bytecheck::CheckBytes<bytecheck::rancor::Strategy>,
+        T::Archived: Deserialize<T, Strategy<(), Failure>> 
+            + for<'a> bytecheck::CheckBytes<bytecheck::rancor::Strategy<(), Failure>>,
     {
         let archived = self.access::<T>(data)?;
-        deserialize::<T, rkyv::rancor::Error>(archived)
+        deserialize::<T, Strategy<(), Failure>>(archived)
             .map_err(ZeroCopyError::Serialization)
     }
 }
@@ -127,6 +131,7 @@ impl Default for ZeroCopyDeserializer {
 }
 
 /// Shared buffer pool for zero-copy operations
+#[derive(Debug)]
 pub struct BufferPool {
     buffers: crossbeam_queue::SegQueue<BytesMut>,
     default_capacity: usize,
@@ -180,12 +185,12 @@ where
     /// Access the data (either owned or archived)
     pub fn access(&self) -> ZeroCopyResult<ZeroCopyDataRef<'_, T>>
     where
-        T::Archived: for<'a> bytecheck::CheckBytes<bytecheck::rancor::Strategy>,
+        T::Archived: for<'a> bytecheck::CheckBytes<bytecheck::rancor::Strategy<(), Failure>>,
     {
         match self {
             Self::Owned(data) => Ok(ZeroCopyDataRef::Owned(data)),
             Self::Archived(bytes, _) => {
-                let archived = access::<T, rkyv::rancor::Error>(bytes)
+                let archived = access::<T, Strategy<(), Failure>>(bytes)
                     .map_err(|e| ZeroCopyError::ArchiveAccess(format!("Access failed: {:?}", e)))?;
                 Ok(ZeroCopyDataRef::Archived(archived))
             }
@@ -205,6 +210,7 @@ fn align_up(size: usize, alignment: usize) -> usize {
 }
 
 /// Streaming serializer for large datasets
+#[derive(Debug)]
 pub struct StreamingSerializer {
     serializer: ZeroCopySerializer,
     chunk_size: usize,
@@ -221,7 +227,8 @@ impl StreamingSerializer {
     /// Serialize items in chunks
     pub fn serialize_chunks<T, I>(&mut self, items: I) -> ZeroCopyResult<Vec<Bytes>>
     where
-        T: Serialize<rkyv::rancor::Error>,
+        T: Serialize<Strategy<(), Failure>>,
+        Vec<T>: Serialize<Strategy<(), Failure>>,
         I: IntoIterator<Item = T>,
     {
         let mut chunks = Vec::new();
@@ -229,7 +236,7 @@ impl StreamingSerializer {
         let mut current_size = 0;
         
         for item in items {
-            let item_bytes = to_bytes::<rkyv::rancor::Error>(&item)
+            let item_bytes = to_bytes::<Strategy<(), Failure>>(&item)
                 .map_err(ZeroCopyError::Serialization)?;
             
             if current_size + item_bytes.len() > self.chunk_size && !chunk.is_empty() {
@@ -318,7 +325,7 @@ mod tests {
         }
         
         // Test archived data
-        let bytes = to_bytes::<rkyv::rancor::Error>(&data).unwrap();
+        let bytes = to_bytes::<Strategy<(), Failure>>(&data).unwrap();
         let archived = ZeroCopyData::<TestData>::archived(Bytes::from(bytes));
         let archived_ref = archived.access().unwrap();
         match archived_ref {

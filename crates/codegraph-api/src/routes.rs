@@ -1,4 +1,4 @@
-use crate::{handlers, vector_handlers, versioning_handlers, AppState, auth_middleware, create_schema, RateLimitManager};
+use crate::{handlers, vector_handlers, versioning_handlers, streaming_handlers, http2_handlers, AppState, auth_middleware, create_schema, RateLimitManager, http2_optimization_middleware};
 use axum::{
     routing::{get, post},
     Router,
@@ -7,7 +7,17 @@ use axum::{
 use tower_http::{
     cors::CorsLayer,
     trace::TraceLayer,
+    set_header::SetResponseHeaderLayer,
+    compression::CompressionLayer,
 };
+use tower::{
+    buffer::BufferLayer,
+    limit::ConcurrencyLimitLayer,
+    timeout::TimeoutLayer,
+    load_shed::LoadShedLayer,
+};
+use http::header::{HeaderName, HeaderValue, CONNECTION};
+use std::time::Duration;
 use async_graphql_axum::{GraphQL, GraphQLSubscription};
 use async_graphql::http::GraphiQLSource;
 use axum::response::Html;
@@ -15,7 +25,7 @@ use axum::response::Html;
 pub fn create_router(state: AppState) -> Router {
     let schema = create_schema(state.clone());
 
-    Router::new()
+    let app = Router::new()
         // Health check
         .route("/health", get(handlers::health))
         .route("/metrics", get(handlers::metrics_handler))
@@ -42,6 +52,13 @@ pub fn create_router(state: AppState) -> Router {
         
         // Search
         .route("/search", get(handlers::search_nodes))
+        
+        // Streaming endpoints for large datasets
+        .route("/stream/search", get(streaming_handlers::stream_search_results))
+        .route("/stream/dataset", get(streaming_handlers::stream_large_dataset))
+        .route("/stream/csv", get(streaming_handlers::stream_csv_results))
+        .route("/stream/:id/metadata", get(streaming_handlers::get_stream_metadata))
+        .route("/stream/stats", get(streaming_handlers::get_flow_control_stats))
         
         // Advanced vector search
         .route("/vector/search", post(vector_handlers::vector_search))
@@ -90,15 +107,42 @@ pub fn create_router(state: AppState) -> Router {
         .route("/backup", post(versioning_handlers::create_backup))
         .route("/backup/:id/restore", post(versioning_handlers::restore_from_backup))
         
+        // HTTP/2 Optimization and Metrics
+        .route("/http2/metrics", get(http2_handlers::get_http2_metrics))
+        .route("/http2/config", get(http2_handlers::get_http2_config))
+        .route("/http2/config", post(http2_handlers::update_http2_config))
+        .route("/http2/push/register", post(http2_handlers::register_push_resources))
+        .route("/http2/health", get(http2_handlers::get_http2_health))
+        .route("/http2/analytics", get(http2_handlers::get_stream_analytics))
+        .route("/http2/performance", get(http2_handlers::get_performance_metrics))
+        .route("/http2/tune", post(http2_handlers::tune_http2_optimization))
+        
         // Add state
         .with_state(state)
         
-        // Add middleware
+        // Add middleware (order matters)
         .layer(
             CorsLayer::new()
                 .allow_origin(tower_http::cors::Any)
                 .allow_methods(tower_http::cors::Any)
                 .allow_headers(tower_http::cors::Any)
         )
+        // Adaptive response compression (gzip, deflate, brotli, zstd)
+        .layer(CompressionLayer::new())
+        // Set keep-alive headers to encourage connection reuse by clients
+        .layer({
+            let connection_value = HeaderValue::from_static("keep-alive");
+            SetResponseHeaderLayer::if_not_present(CONNECTION, connection_value)
+        })
+        .layer({
+            let keep_alive = HeaderName::from_static("keep-alive");
+            let keep_alive_value = HeaderValue::from_static("timeout=60, max=1000");
+            SetResponseHeaderLayer::if_not_present(keep_alive, keep_alive_value)
+        })
+        // Apply backpressure and timeouts
+        .layer(BufferLayer::new(1024))
+        .layer(ConcurrencyLimitLayer::new(512))
+        .layer(LoadShedLayer::new())
+        .layer(TimeoutLayer::new(Duration::from_secs(30)))
         .layer(TraceLayer::new_for_http())
 }
