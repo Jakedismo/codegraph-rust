@@ -3,8 +3,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, Semaphore};
 use tracing::{info, warn, error, instrument};
 use crate::{
-    PerformanceMonitor, PerformanceTargets, PerformanceEvent,
-    OptimizedCodeNode, CompactCacheKey, EmbeddingPool,
+    PerformanceMonitor, PerformanceTargets, PerformanceEvent, EmbeddingPool,
     Result, CodeGraphError
 };
 

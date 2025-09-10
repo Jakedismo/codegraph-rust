@@ -2,7 +2,6 @@ use crate::{NodeId, Result, CodeGraphError};
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use std::mem;
-use std::ptr::NonNull;
 
 /// Optimized string representation that uses stack storage for small strings
 /// and reduces heap allocations by 60% for typical code identifiers
@@ -216,7 +215,7 @@ pub struct AlignedVec<T> {
 
 impl<T> AlignedVec<T> {
     pub fn new_aligned(capacity: usize, alignment: usize) -> Self {
-        let mut data = Vec::with_capacity(capacity);
+        let data = Vec::with_capacity(capacity);
         // Ensure proper alignment for SIMD operations
         assert_eq!(data.as_ptr() as usize % alignment, 0);
         

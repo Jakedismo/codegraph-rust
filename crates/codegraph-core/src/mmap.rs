@@ -1,5 +1,4 @@
 use std::fs::File;
-use std::io;
 use std::io::Result as IoResult;
 use std::path::{Path, PathBuf};
 
