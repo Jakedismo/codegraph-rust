@@ -15,6 +15,16 @@ tracing = { workspace = true }
 async-trait = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+crossbeam-channel = { workspace = true }
+parking_lot = { workspace = true }
+
+# Zero-copy and serialization support
+bytes = "1.6"
+
+# Optional arena allocator and zero-copy archiving
+bumpalo = "3.15"
+rkyv = { version = "0.7", features = ["validation"] }
+bytecheck = "0.6"
 
 [dev-dependencies]
 tokio-test = { workspace = true }

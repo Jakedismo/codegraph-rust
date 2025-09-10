@@ -22,6 +22,7 @@ tokio-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
+chrono = { workspace = true }
 
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -29,6 +30,23 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 
+# GraphQL
+async-graphql = { workspace = true }
+async-graphql-axum = { workspace = true }
+async-stream = "0.3"
+
+# Auth
+jsonwebtoken = "9.3.0"
+governor = { workspace = true, features = ["serde"] }
+prometheus = { workspace = true }
+
+
 [dev-dependencies]
 tokio-test = { workspace = true }
 hyper = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "api_benchmarks"
+harness = false
+path = "src/graphql/benchmarks.rs"

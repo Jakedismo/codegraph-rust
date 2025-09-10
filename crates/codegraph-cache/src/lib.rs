@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod cache_optimized;
 pub mod embedding_cache;
 pub mod query_cache;
 pub mod invalidation;
@@ -11,6 +12,7 @@ pub mod metrics;
 // pub mod faiss_cache;
 
 pub use cache::*;
+pub use cache_optimized::*;
 pub use embedding_cache::*;
 pub use query_cache::*;
 pub use invalidation::*;

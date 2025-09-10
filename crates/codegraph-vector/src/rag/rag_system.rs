@@ -1,5 +1,7 @@
 use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result, Location, Metadata};
-use crate::{EmbeddingGenerator, SemanticSearch, FaissVectorStore};
+use crate::EmbeddingGenerator;
+#[cfg(feature = "faiss")]
+use crate::{SemanticSearch, FaissVectorStore};
 use crate::rag::{
     QueryProcessor, ProcessedQuery, ContextRetriever, RetrievalConfig, 
     ResultRanker, RankingConfig, ResponseGenerator, GenerationConfig,
@@ -66,6 +68,7 @@ pub struct RAGSystem {
     context_retriever: Arc<RwLock<ContextRetriever>>,
     result_ranker: Arc<RwLock<ResultRanker>>,
     response_generator: ResponseGenerator,
+    #[cfg(feature = "faiss")]
     semantic_search: Option<Arc<SemanticSearch>>,
     embedding_generator: Arc<EmbeddingGenerator>,
     query_cache: Arc<RwLock<HashMap<String, QueryResult>>>,
@@ -97,6 +100,7 @@ impl RAGSystem {
             context_retriever,
             result_ranker,
             response_generator,
+            #[cfg(feature = "faiss")]
             semantic_search: None,
             embedding_generator,
             query_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -235,6 +239,7 @@ impl RAGSystem {
         }
 
         // Add to semantic search if available
+        #[cfg(feature = "faiss")]
         if let Some(ref semantic_search) = self.semantic_search {
             if node.embedding.is_none() {
                 // Generate embedding if not present
@@ -358,7 +363,7 @@ impl RAGSystem {
 
     pub async fn update_popularity_scores(&self, node_access_counts: HashMap<String, u32>) {
         let mut ranker = self.result_ranker.write().await;
-        ranker.update_popularity_scores(node_access_counts);
+        ranker.update_popularity_scores(&node_access_counts);
         debug!("Updated popularity scores for {} nodes", node_access_counts.len());
     }
 }

@@ -29,6 +29,8 @@ chrono = { workspace = true }
 futures = { workspace = true }
 rocksdb = { workspace = true }
 sha2 = { workspace = true }
+sysinfo = { workspace = true }
+num_cpus = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }

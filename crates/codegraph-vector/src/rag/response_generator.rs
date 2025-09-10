@@ -30,7 +30,7 @@ pub enum GenerationMethod {
     DirectQuoting,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerationConfig {
     pub max_sources: usize,
     pub min_confidence_threshold: f32,
@@ -114,7 +114,11 @@ impl ResponseGenerator {
         
         // Validate the response if enabled
         let validation_passed = if self.config.enable_answer_validation {
-            self.validate_answer(&answer, query, &selected_sources).await?
+            let context_texts: Vec<&str> = selected_sources
+                .iter()
+                .filter_map(|s| Some(s.retrieval_result.context_snippet.as_str()))
+                .collect();
+            self.validate_answer(&answer, query, &context_texts).await?
         } else {
             true
         };
@@ -148,9 +152,9 @@ impl ResponseGenerator {
         let relevance_scores = self.calculate_context_relevance(query, contexts).await?;
         
         // Filter contexts by relevance threshold
-        let relevant_contexts: Vec<_> = contexts.iter()
-            .zip(relevance_scores.iter())
-            .filter(|(_, &score)| score >= self.config.min_confidence_threshold)
+        let relevant_contexts: Vec<(&String, f32)> = contexts.iter()
+            .zip(relevance_scores.iter().copied())
+            .filter(|(_, score)| *score >= self.config.min_confidence_threshold)
             .collect();
 
         if relevant_contexts.is_empty() {
@@ -159,7 +163,7 @@ impl ResponseGenerator {
 
         // Calculate overall confidence
         let confidence = relevant_contexts.iter()
-            .map(|(_, &score)| score)
+            .map(|(_, score)| *score)
             .sum::<f32>() / relevant_contexts.len() as f32;
 
         // Generate response based on relevant contexts
@@ -168,16 +172,17 @@ impl ResponseGenerator {
         // Create mock source references from contexts
         let sources = relevant_contexts.iter()
             .enumerate()
-            .map(|(i, (context, &score))| SourceReference {
+            .map(|(i, (context, score))| SourceReference {
                 node_id: format!("context_{}", i),
                 node_name: format!("Context {}", i + 1),
-                relevance_score: score,
+                relevance_score: *score,
                 snippet: context.chars().take(200).collect(),
             })
             .collect();
 
         // Validate the response
-        let validation_passed = self.validate_answer(&answer, query, &relevant_contexts.iter().map(|(c, _)| c).collect::<Vec<_>>()).await?;
+        let contexts_as_str: Vec<&str> = relevant_contexts.iter().map(|(c, _)| c.as_str()).collect();
+        let validation_passed = self.validate_answer(&answer, query, &contexts_as_str).await?;
 
         let processing_time = start_time.elapsed();
 
@@ -191,7 +196,7 @@ impl ResponseGenerator {
         })
     }
 
-    fn select_sources(&self, ranked_results: &[RankedResult]) -> Vec<&RankedResult> {
+    fn select_sources<'a>(&self, ranked_results: &'a [RankedResult]) -> Vec<&'a RankedResult> {
         ranked_results.iter()
             .take(self.config.max_sources)
             .filter(|result| result.final_score >= self.config.min_confidence_threshold)
@@ -729,17 +734,15 @@ mod tests {
     fn test_confidence_calculation() {
         let generator = ResponseGenerator::new();
         
-        let high_score_sources = vec![
-            &create_test_ranked_result("test1", "content1", 0.9),
-            &create_test_ranked_result("test2", "content2", 0.8),
-        ];
+        let r1 = create_test_ranked_result("test1", "content1", 0.9);
+        let r2 = create_test_ranked_result("test2", "content2", 0.8);
+        let high_score_sources = vec![&r1, &r2];
         
         let confidence = generator.calculate_confidence(&high_score_sources);
         assert!(confidence > 0.8);
         
-        let low_score_sources = vec![
-            &create_test_ranked_result("test1", "content1", 0.2),
-        ];
+        let r3 = create_test_ranked_result("test1", "content1", 0.2);
+        let low_score_sources = vec![&r3];
         
         let low_confidence = generator.calculate_confidence(&low_score_sources);
         assert!(low_confidence < 0.5);

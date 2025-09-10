@@ -1,5 +1,6 @@
-use crate::{CodeNode, NodeId, Result};
+use crate::{CodeNode, NodeId, Result, ChangeEvent, UpdatePayload, Delta};
 use async_trait::async_trait;
+use crossbeam_channel::{Receiver, Sender};
 
 #[async_trait]
 pub trait CodeParser {
@@ -21,4 +22,28 @@ pub trait GraphStore {
     async fn update_node(&mut self, node: CodeNode) -> Result<()>;
     async fn remove_node(&mut self, id: NodeId) -> Result<()>;
     async fn find_nodes_by_name(&self, name: &str) -> Result<Vec<CodeNode>>;
+}
+
+pub trait FileWatcher {
+    fn watch(&self, tx: Sender<ChangeEvent>) -> Result<()>;
+}
+
+#[async_trait]
+pub trait UpdateScheduler {
+    async fn schedule(&self, rx: Receiver<ChangeEvent>, tx: Sender<UpdatePayload>) -> Result<()>;
+}
+
+#[async_trait]
+pub trait DeltaProcessor {
+    async fn process(&self, rx: Receiver<UpdatePayload>, tx: Sender<Delta>) -> Result<()>;
+}
+
+#[async_trait]
+pub trait GraphUpdater {
+    async fn update(&self, rx: Receiver<Delta>) -> Result<()>;
+}
+
+#[async_trait]
+pub trait ProgressTracker {
+    async fn track(&self) -> Result<()>;
 }

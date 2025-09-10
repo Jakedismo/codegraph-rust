@@ -1,6 +1,6 @@
 use crate::visitor::{AstToGraphConverter, CodeEntity, SemanticRelationship};
+use crate::edge::CodeEdge;
 use codegraph_core::{CodeNode, Language, NodeId, EdgeType};
-use codegraph_graph::CodeEdge;
 use tree_sitter::{Parser, Tree};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -151,7 +151,8 @@ impl ConversionPipeline {
         current_file: &PathBuf,
     ) -> Result<Vec<(String, NodeId, PathBuf)>> {
         let mut potential_refs = Vec::new();
-        let content = entity.node.content.as_ref().unwrap_or(&String::new());
+        let empty = String::new();
+        let content = entity.node.content.as_ref().unwrap_or(&empty);
 
         for (symbol, (node_id, file_path)) in self.global_symbol_table.iter() {
             if file_path != current_file && content.contains(symbol) {
@@ -163,7 +164,8 @@ impl ConversionPipeline {
     }
 
     fn infer_cross_file_edge_type(&self, content: &Option<String>, symbol: &str) -> EdgeType {
-        let content = content.as_ref().unwrap_or(&String::new());
+        let empty2 = String::new();
+        let content = content.as_ref().unwrap_or(&empty2);
         
         if content.contains("use ") || content.contains("import ") {
             EdgeType::Imports

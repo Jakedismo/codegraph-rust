@@ -1,5 +1,7 @@
 use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result, Location, Metadata};
-use crate::{EmbeddingGenerator, SearchResult, SemanticSearch};
+use crate::{EmbeddingGenerator, SearchResult};
+#[cfg(feature = "faiss")]
+use crate::SemanticSearch;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -22,7 +24,7 @@ pub enum RetrievalMethod {
     GraphTraversal,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalConfig {
     pub max_results: usize,
     pub relevance_threshold: f32,
@@ -46,6 +48,7 @@ impl Default for RetrievalConfig {
 }
 
 pub struct ContextRetriever {
+    #[cfg(feature = "faiss")]
     semantic_search: Option<Arc<SemanticSearch>>,
     embedding_generator: Arc<EmbeddingGenerator>,
     config: RetrievalConfig,
@@ -55,6 +58,7 @@ pub struct ContextRetriever {
 impl ContextRetriever {
     pub fn new() -> Self {
         Self {
+            #[cfg(feature = "faiss")]
             semantic_search: None,
             embedding_generator: Arc::new(EmbeddingGenerator::default()),
             config: RetrievalConfig::default(),
@@ -64,6 +68,7 @@ impl ContextRetriever {
 
     pub fn with_config(config: RetrievalConfig) -> Self {
         Self {
+            #[cfg(feature = "faiss")]
             semantic_search: None,
             embedding_generator: Arc::new(EmbeddingGenerator::default()),
             config,
@@ -71,6 +76,7 @@ impl ContextRetriever {
         }
     }
 
+    #[cfg(feature = "faiss")]
     pub fn set_semantic_search(&mut self, semantic_search: Arc<SemanticSearch>) {
         self.semantic_search = Some(semantic_search);
     }
@@ -90,7 +96,8 @@ impl ContextRetriever {
         
         let mut all_results = Vec::new();
 
-        // Semantic similarity search
+        // Semantic similarity search (requires `faiss` feature)
+        #[cfg(feature = "faiss")]
         if self.config.use_semantic_search && self.semantic_search.is_some() {
             let semantic_results = self.semantic_similarity_search(query_embedding).await?;
             all_results.extend(semantic_results);
@@ -117,6 +124,7 @@ impl ContextRetriever {
         Ok(unique_results)
     }
 
+    #[cfg(feature = "faiss")]
     async fn semantic_similarity_search(&self, query_embedding: &[f32]) -> Result<Vec<RetrievalResult>> {
         let semantic_search = self.semantic_search.as_ref()
             .ok_or_else(|| CodeGraphError::InvalidOperation("SemanticSearch not configured".to_string()))?;
@@ -138,6 +146,11 @@ impl ContextRetriever {
         }
 
         Ok(results)
+    }
+
+    #[cfg(not(feature = "faiss"))]
+    async fn semantic_similarity_search(&self, _query_embedding: &[f32]) -> Result<Vec<RetrievalResult>> {
+        Ok(Vec::new())
     }
 
     async fn keyword_matching_search(&self, keywords: &[String]) -> Result<Vec<RetrievalResult>> {
@@ -167,12 +180,15 @@ impl ContextRetriever {
         let mut results = Vec::new();
 
         // Get semantic similarity scores
+        #[cfg(feature = "faiss")]
         let semantic_scores = if let Some(semantic_search) = &self.semantic_search {
             let search_results = semantic_search.search_by_embedding(query_embedding, self.config.max_results * 3).await?;
             search_results.into_iter().map(|r| (r.node_id, r.score)).collect::<HashMap<_, _>>()
         } else {
             HashMap::new()
         };
+        #[cfg(not(feature = "faiss"))]
+        let semantic_scores: HashMap<NodeId, f32> = HashMap::new();
 
         // Combine semantic and keyword scores
         for (node_id, node) in &self.node_cache {

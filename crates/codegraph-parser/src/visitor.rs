@@ -1,5 +1,5 @@
+use crate::edge::CodeEdge;
 use codegraph_core::{CodeNode, Language, Location, NodeType, EdgeType, NodeId};
-use codegraph_graph::CodeEdge;
 use tree_sitter::{Node, TreeCursor};
 use std::collections::{HashMap, HashSet};
 
@@ -129,17 +129,18 @@ impl AstToGraphConverter {
 
     fn find_relationships_for_entity(&mut self, entity: &CodeEntity) -> Result<(), Box<dyn std::error::Error>> {
         match entity.node.node_type {
-            NodeType::Function => self.analyze_function_relationships(entity)?,
-            NodeType::Class | NodeType::Struct => self.analyze_class_relationships(entity)?,
-            NodeType::Import => self.analyze_import_relationships(entity)?,
-            NodeType::Variable => self.analyze_variable_relationships(entity)?,
+            Some(NodeType::Function) => self.analyze_function_relationships(entity)?,
+            Some(NodeType::Class) | Some(NodeType::Struct) => self.analyze_class_relationships(entity)?,
+            Some(NodeType::Import) => self.analyze_import_relationships(entity)?,
+            Some(NodeType::Variable) => self.analyze_variable_relationships(entity)?,
             _ => {}
         }
         Ok(())
     }
 
     fn analyze_function_relationships(&mut self, entity: &CodeEntity) -> Result<(), Box<dyn std::error::Error>> {
-        let content = entity.node.content.as_ref().unwrap_or(&String::new());
+        let empty = String::new();
+        let content = entity.node.content.as_ref().unwrap_or(&empty);
         
         for other_entity in &self.entities {
             if other_entity.node.id == entity.node.id {
@@ -158,7 +159,7 @@ impl AstToGraphConverter {
             }
 
             if content.contains(&format!("{}", other_name)) && 
-               matches!(other_entity.node.node_type, NodeType::Variable | NodeType::Struct | NodeType::Class) {
+               matches!(other_entity.node.node_type, Some(NodeType::Variable) | Some(NodeType::Struct) | Some(NodeType::Class)) {
                 self.relationships.push(SemanticRelationship {
                     from: entity.node.id,
                     to: other_entity.node.id,
@@ -171,12 +172,13 @@ impl AstToGraphConverter {
     }
 
     fn analyze_class_relationships(&mut self, entity: &CodeEntity) -> Result<(), Box<dyn std::error::Error>> {
-        let content = entity.node.content.as_ref().unwrap_or(&String::new());
+        let empty2 = String::new();
+        let content = entity.node.content.as_ref().unwrap_or(&empty2);
         
         if self.language == Language::Rust {
             if content.contains("impl ") {
                 for other_entity in &self.entities {
-                    if matches!(other_entity.node.node_type, NodeType::Trait) &&
+                    if matches!(other_entity.node.node_type, Some(NodeType::Trait)) &&
                        content.contains(&format!("impl {} for", other_entity.symbol_name)) {
                         self.relationships.push(SemanticRelationship {
                             from: entity.node.id,
@@ -213,7 +215,8 @@ impl AstToGraphConverter {
     }
 
     fn analyze_import_relationships(&mut self, entity: &CodeEntity) -> Result<(), Box<dyn std::error::Error>> {
-        let content = entity.node.content.as_ref().unwrap_or(&String::new());
+        let empty3 = String::new();
+        let content = entity.node.content.as_ref().unwrap_or(&empty3);
         
         for other_entity in &self.entities {
             if other_entity.node.id == entity.node.id {
@@ -240,7 +243,8 @@ impl AstToGraphConverter {
         let mut unresolved_references: Vec<(String, NodeId, String)> = Vec::new();
         
         for entity in &self.entities {
-            let content = entity.node.content.as_ref().unwrap_or(&String::new());
+            let empty4 = String::new();
+            let content = entity.node.content.as_ref().unwrap_or(&empty4);
             
             for (symbol, node_id) in &self.symbol_table {
                 if entity.node.id != *node_id && content.contains(symbol) {

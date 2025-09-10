@@ -4,7 +4,7 @@ use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use sysinfo::{System, SystemExt};
+use sysinfo::System;
 use tracing::{debug, info, warn};
 
 /// Memory pressure levels
@@ -368,7 +368,7 @@ pub enum OptimizationRecommendation {
 }
 
 /// LRU (Least Recently Used) implementation
-pub struct LruManager<K, V> {
+pub struct LruManager<K> {
     /// Maximum capacity
     capacity: usize,
     /// Access order queue (front = least recent, back = most recent)
@@ -377,7 +377,7 @@ pub struct LruManager<K, V> {
     key_positions: HashMap<K, usize>,
 }
 
-impl<K, V> LruManager<K, V>
+impl<K> LruManager<K>
 where
     K: Clone + Eq + std::hash::Hash,
 {

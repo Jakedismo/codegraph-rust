@@ -208,7 +208,8 @@ impl ResultRanker {
 
     fn calculate_keyword_score(&self, result: &RetrievalResult, query: &str) -> f32 {
         if let Some(ref node) = result.node {
-            let query_keywords: Vec<&str> = query.to_lowercase()
+            let query_lower = query.to_lowercase();
+            let query_keywords: Vec<&str> = query_lower
                 .split_whitespace()
                 .filter(|w| w.len() > 2)
                 .collect();
@@ -237,17 +238,13 @@ impl ResultRanker {
 
     fn calculate_recency_score(&self, result: &RetrievalResult) -> f32 {
         if let Some(ref node) = result.node {
-            if let Some(ref metadata) = node.metadata {
-                let now = chrono::Utc::now();
-                let age_days = now.signed_duration_since(metadata.updated_at).num_days();
-                
-                // Score decreases with age, but levels off after 30 days
-                let max_age = 30.0;
-                let normalized_age = (age_days as f32).min(max_age) / max_age;
-                1.0 - normalized_age
-            } else {
-                0.5 // Default score for nodes without metadata
-            }
+            let now = chrono::Utc::now();
+            let age_days = now.signed_duration_since(node.metadata.updated_at).num_days();
+
+            // Score decreases with age, but levels off after 30 days
+            let max_age = 30.0;
+            let normalized_age = (age_days as f32).min(max_age) / max_age;
+            1.0 - normalized_age
         } else {
             0.0
         }
@@ -276,7 +273,7 @@ impl ResultRanker {
 
     async fn apply_diversity_scoring(&mut self, results: &mut [RankedResult]) -> Result<()> {
         // Group results by similarity to avoid redundant results
-        let mut groups = Vec::new();
+        let mut groups: Vec<Vec<usize>> = Vec::new();
         
         for (i, result) in results.iter().enumerate() {
             let mut assigned = false;
@@ -370,13 +367,13 @@ impl ResultRanker {
         self.generate_query_embedding(text).await
     }
 
-    pub fn update_popularity_scores(&mut self, node_access_counts: HashMap<String, u32>) {
+    pub fn update_popularity_scores(&mut self, node_access_counts: &HashMap<String, u32>) {
         // Convert access counts to normalized popularity scores
-        let max_count = node_access_counts.values().max().cloned().unwrap_or(1);
+        let max_count = node_access_counts.values().copied().max().unwrap_or(1);
         
-        for (node_name, count) in node_access_counts {
-            let popularity = count as f32 / max_count as f32;
-            self.node_popularity.insert(node_name, popularity);
+        for (node_name, count) in node_access_counts.iter() {
+            let popularity = *count as f32 / max_count as f32;
+            self.node_popularity.insert(node_name.clone(), popularity);
         }
     }
 }

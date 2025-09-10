@@ -388,6 +388,7 @@ impl MetricsCollector {
         let metrics = self.get_metrics().await;
         let throughput = self.get_throughput_metrics();
         let operation_metrics = self.get_operation_metrics().await;
+        let recommendations = self.generate_recommendations(&metrics).await;
 
         PerformanceReport {
             timestamp: SystemTime::now(),
@@ -395,7 +396,7 @@ impl MetricsCollector {
             throughput_metrics: throughput,
             operation_metrics,
             uptime: self.start_time.elapsed(),
-            recommendations: self.generate_recommendations(&metrics).await,
+            recommendations,
         }
     }
 

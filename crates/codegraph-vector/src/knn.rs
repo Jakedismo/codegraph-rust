@@ -234,8 +234,9 @@ impl OptimizedKnnEngine {
     }
 
     fn prepare_vectors_and_mappings(&self, nodes: &[&CodeNode]) -> Result<(Vec<f32>, Vec<(NodeId, Vec<f32>)>)> {
-        let mut vectors = Vec::new();
-        let mut mappings = Vec::new();
+        let estimated = nodes.len();
+        let mut vectors = Vec::with_capacity(estimated.saturating_mul(self.dimension));
+        let mut mappings = Vec::with_capacity(estimated);
         
         for node in nodes {
             if let Some(embedding) = &node.embedding {
@@ -414,7 +415,7 @@ impl OptimizedKnnEngine {
         .map_err(|e| CodeGraphError::Vector(e.to_string()))?
         .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
 
-        let mut node_results = Vec::new();
+        let mut node_results = Vec::with_capacity(k);
         for (i, &faiss_id) in results.labels.iter().enumerate() {
             if let Some(node_id) = self.id_mapping.get(&faiss_id) {
                 let score = results.distances[i];
@@ -433,34 +434,64 @@ impl OptimizedKnnEngine {
     ) -> Result<Vec<ContextualSearchResult>> {
         let query_context = self.extract_query_context(query_embedding).await?;
         
-        let contextual_results: Vec<_> = raw_results
-            .par_iter()
-            .filter_map(|&(node_id, similarity_score)| {
-                let node = self.node_metadata.get(&node_id)?;
-                let context_score = self.calculate_context_score(&node, &query_context, config);
-                
-                let final_score = similarity_score * (1.0 - config.context_weight) 
-                    + context_score * config.context_weight;
+        let contextual_results: Vec<_> = if raw_results.len() <= 64 {
+            raw_results
+                .iter()
+                .filter_map(|&(node_id, similarity_score)| {
+                    let node = self.node_metadata.get(&node_id)?;
+                    let context_score = self.calculate_context_score(&node, &query_context, config);
+                    let final_score = similarity_score * (1.0 - config.context_weight)
+                        + context_score * config.context_weight;
 
-                let explanation = format!(
-                    "Similarity: {:.3}, Context: {:.3}, Language boost: {}, Type boost: {}",
-                    similarity_score,
-                    context_score,
-                    node.language.as_ref().map_or("none", |_| "applied"),
-                    node.node_type.as_ref().map_or("none", |_| "applied")
-                );
+                    let explanation = format!(
+                        "Similarity: {:.3}, Context: {:.3}, Language boost: {}, Type boost: {}",
+                        similarity_score,
+                        context_score,
+                        node.language.as_ref().map_or("none", |_| "applied"),
+                        node.node_type.as_ref().map_or("none", |_| "applied")
+                    );
 
-                Some(ContextualSearchResult {
-                    node_id,
-                    similarity_score,
-                    context_score,
-                    final_score,
-                    node: Some(node.clone()),
-                    cluster_id: self.node_to_cluster.get(&node_id).map(|v| *v),
-                    explanation,
+                    Some(ContextualSearchResult {
+                        node_id,
+                        similarity_score,
+                        context_score,
+                        final_score,
+                        node: Some(node.clone()),
+                        cluster_id: self.node_to_cluster.get(&node_id).map(|v| *v),
+                        explanation,
+                    })
                 })
-            })
-            .collect();
+                .collect()
+        } else {
+            raw_results
+                .par_iter()
+                .filter_map(|&(node_id, similarity_score)| {
+                    let node = self.node_metadata.get(&node_id)?;
+                    let context_score = self.calculate_context_score(&node, &query_context, config);
+
+                    let final_score = similarity_score * (1.0 - config.context_weight)
+                        + context_score * config.context_weight;
+
+                    let explanation = format!(
+                        "Similarity: {:.3}, Context: {:.3}, Language boost: {}, Type boost: {}",
+                        similarity_score,
+                        context_score,
+                        node.language.as_ref().map_or("none", |_| "applied"),
+                        node.node_type.as_ref().map_or("none", |_| "applied")
+                    );
+
+                    Some(ContextualSearchResult {
+                        node_id,
+                        similarity_score,
+                        context_score,
+                        final_score,
+                        node: Some(node.clone()),
+                        cluster_id: self.node_to_cluster.get(&node_id).map(|v| *v),
+                        explanation,
+                    })
+                })
+                .collect()
+        };
 
         Ok(contextual_results)
     }
@@ -475,6 +506,7 @@ impl OptimizedKnnEngine {
         })
     }
 
+    #[inline]
     fn calculate_context_score(
         &self,
         node: &CodeNode,
@@ -603,7 +635,7 @@ impl OptimizedKnnEngine {
                 let mut best_distance = f32::MAX;
                 
                 for (cluster_idx, cluster) in clusters.iter().enumerate() {
-                    let distance = self.euclidean_distance(embedding, &cluster.centroid);
+                    let distance = self.squared_distance(embedding, &cluster.centroid);
                     if distance < best_distance {
                         best_distance = distance;
                         best_cluster = cluster_idx;
@@ -654,12 +686,52 @@ impl OptimizedKnnEngine {
         Ok(clusters)
     }
 
+    #[inline(always)]
     fn euclidean_distance(&self, a: &[f32], b: &[f32]) -> f32 {
-        a.iter()
-            .zip(b.iter())
-            .map(|(x, y)| (x - y).powi(2))
-            .sum::<f32>()
-            .sqrt()
+        let len = a.len().min(b.len());
+        let mut acc = 0.0f32;
+        let mut i = 0;
+        while i + 4 <= len {
+            let d0 = a[i] - b[i];
+            let d1 = a[i + 1] - b[i + 1];
+            let d2 = a[i + 2] - b[i + 2];
+            let d3 = a[i + 3] - b[i + 3];
+            acc = d0.mul_add(d0, acc);
+            acc = d1.mul_add(d1, acc);
+            acc = d2.mul_add(d2, acc);
+            acc = d3.mul_add(d3, acc);
+            i += 4;
+        }
+        while i < len {
+            let d = a[i] - b[i];
+            acc = d.mul_add(d, acc);
+            i += 1;
+        }
+        acc.sqrt()
+    }
+
+    #[inline(always)]
+    fn squared_distance(&self, a: &[f32], b: &[f32]) -> f32 {
+        let len = a.len().min(b.len());
+        let mut acc = 0.0f32;
+        let mut i = 0;
+        while i + 4 <= len {
+            let d0 = a[i] - b[i];
+            let d1 = a[i + 1] - b[i + 1];
+            let d2 = a[i + 2] - b[i + 2];
+            let d3 = a[i + 3] - b[i + 3];
+            acc = d0.mul_add(d0, acc);
+            acc = d1.mul_add(d1, acc);
+            acc = d2.mul_add(d2, acc);
+            acc = d3.mul_add(d3, acc);
+            i += 4;
+        }
+        while i < len {
+            let d = a[i] - b[i];
+            acc = d.mul_add(d, acc);
+            i += 1;
+        }
+        acc
     }
 
     pub async fn get_cluster_info(&self) -> Vec<ClusterInfo> {

@@ -1,18 +1,38 @@
-use crate::{handlers, vector_handlers, versioning_handlers, AppState};
+use crate::{handlers, vector_handlers, versioning_handlers, AppState, auth_middleware, create_schema, RateLimitManager};
 use axum::{
     routing::{get, post},
     Router,
+    middleware,
 };
 use tower_http::{
     cors::CorsLayer,
     trace::TraceLayer,
 };
+use async_graphql_axum::{GraphQL, GraphQLSubscription};
+use async_graphql::http::GraphiQLSource;
+use axum::response::Html;
 
 pub fn create_router(state: AppState) -> Router {
+    let schema = create_schema(state.clone());
+
     Router::new()
         // Health check
         .route("/health", get(handlers::health))
+        .route("/metrics", get(handlers::metrics_handler))
         
+        // GraphQL HTTP endpoint and GraphiQL IDE
+        .route("/graphql", post(GraphQL::new(schema.clone())))
+        .route("/graphiql", get(|| async {
+            Html(GraphiQLSource::build()
+                .endpoint("/graphql")
+                .subscription_endpoint("/graphql/ws")
+                .finish())
+        }))
+        // GraphQL WebSocket subscriptions (graphql-transport-ws)
+        .route("/graphql/ws", get(GraphQLSubscription::new(schema.clone())))
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .layer(RateLimitManager::new())
+
         // Node operations
         .route("/nodes/:id", get(handlers::get_node))
         .route("/nodes/:id/similar", get(handlers::find_similar))

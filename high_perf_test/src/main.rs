@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio;
+mod sync_validation;
 
 // Define core types for the test
 pub type NodeId = u64;
@@ -551,6 +552,18 @@ async fn main() {
     println!("\n🔄 Test 5: Concurrent Access Performance");
     test_concurrent_access().await;
     
+    println!("\n🧪 Sync Validation: Concurrency Stress (incremental updates)");
+    sync_validation::run_concurrency_stress(100, 16).await;
+
+    println!("\n📡 Sync Validation: Propagation (<1s target) under load");
+    sync_validation::run_propagation_benchmark(200, 8, 1).await;
+
+    println!("\n🔏 Sync Validation: Consistency checks (Serializable)");
+    sync_validation::run_consistency_checks(12, 32).await;
+
+    println!("\n🧩 Sync Validation: Edge case scenarios");
+    sync_validation::run_edge_case_scenarios().await;
+
     println!("\n🎉 All high-performance tests completed successfully!");
     println!("✅ Sub-50ms query latency targets achieved for 100k+ node graphs");
 }

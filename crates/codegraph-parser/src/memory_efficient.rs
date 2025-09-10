@@ -1,5 +1,5 @@
+use crate::edge::CodeEdge;
 use codegraph_core::{CodeNode, Language, Location, NodeType, EdgeType, NodeId};
-use codegraph_graph::CodeEdge;
 use tree_sitter::{Node, TreeCursor, Range};
 use std::collections::HashMap;
 use std::sync::Arc;

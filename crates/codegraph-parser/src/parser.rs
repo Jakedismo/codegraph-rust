@@ -10,6 +10,11 @@ use tokio::fs;
 use tokio::sync::Semaphore;
 use tree_sitter::{InputEdit, Parser, Point, Tree};
 use tracing::{debug, error, info, warn};
+use sha2::Digest;
+use futures::stream::{self, StreamExt};
+
+use crate::fast_io::read_file_to_string;
+use crate::file_collect::collect_source_files;
 
 #[derive(Clone)]
 pub struct ParsedFile {
@@ -87,34 +92,28 @@ impl TreeSitterParser {
     }
 
     async fn collect_files_recursive(&self, dir_path: &Path) -> Result<Vec<std::path::PathBuf>> {
-        let mut files = Vec::new();
-        let mut dirs_to_process = vec![dir_path.to_path_buf()];
-        
-        while let Some(current_dir) = dirs_to_process.pop() {
-            let mut entries = fs::read_dir(&current_dir).await
-                .map_err(|e| CodeGraphError::Io(e))?;
-            
-            while let Some(entry) = entries.next_entry().await
-                .map_err(|e| CodeGraphError::Io(e))? {
-                let path = entry.path();
-                
-                if path.is_dir() {
-                    // Skip common directories that don't contain source code
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if !matches!(name, "target" | "node_modules" | ".git" | "build" | "dist" | ".vscode" | ".idea") {
-                            dirs_to_process.push(path);
-                        }
-                    }
-                } else if path.is_file() {
-                    if let Some(file_path_str) = path.to_str() {
-                        if self.registry.detect_language(file_path_str).is_some() {
-                            files.push(path);
+        // Use ignore's fast walker (in blocking context) to honor gitignore and be faster
+        let dir = dir_path.to_path_buf();
+        let registry = self.registry.clone();
+        let files: Vec<std::path::PathBuf> = tokio::task::spawn_blocking(move || {
+            let mut out = Vec::new();
+            match collect_source_files(&dir) {
+                Ok(paths) => {
+                    for (p, _size) in paths {
+                        if let Some(s) = p.to_str() {
+                            if registry.detect_language(s).is_some() {
+                                out.push(p);
+                            }
                         }
                     }
                 }
+                Err(_) => {}
             }
-        }
-        
+            out
+        })
+        .await
+        .unwrap_or_default();
+
         Ok(files)
     }
 
@@ -124,8 +123,26 @@ impl TreeSitterParser {
         
         info!("Starting parallel parsing of directory: {}", dir_path.display());
         
-        // Collect all files to parse
-        let files = self.collect_files_recursive(dir_path).await?;
+        // Collect and size files
+        let sized_files = tokio::task::spawn_blocking({
+            let dir = dir_path.to_path_buf();
+            let registry = self.registry.clone();
+            move || {
+                collect_source_files(&dir)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|(p, _)| p.to_str().map(|s| registry.detect_language(s).is_some()).unwrap_or(false))
+                    .collect::<Vec<(std::path::PathBuf, u64)>>()
+            }
+        })
+        .await
+        .unwrap_or_default();
+
+        // Sort by size desc to reduce tail latency (schedule big files first)
+        let mut sized_files = sized_files;
+        sized_files.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let files: Vec<std::path::PathBuf> = sized_files.into_iter().map(|(p, _)| p).collect();
         let total_files = files.len();
         
         info!("Found {} files to parse", total_files);
@@ -139,29 +156,25 @@ impl TreeSitterParser {
         let mut parsed_files = 0;
         let mut failed_files = 0;
         
-        for chunk in files.chunks(self.chunk_size) {
-            let chunk_results: Vec<_> = futures::future::join_all(
-                chunk.iter().map(|file_path| {
-                    let semaphore = semaphore.clone();
-                    let file_path = file_path.clone();
-                    async move {
-                        let _permit = semaphore.acquire().await.unwrap();
-                        self.parse_file_with_caching(&file_path.to_string_lossy()).await
-                    }
-                })
-            ).await;
-            
-            for result in chunk_results {
-                match result {
-                    Ok((nodes, lines)) => {
-                        all_nodes.extend(nodes);
-                        total_lines += lines;
-                        parsed_files += 1;
-                    }
-                    Err(e) => {
-                        failed_files += 1;
-                        warn!("Failed to parse file: {}", e);
-                    }
+        let mut stream = stream::iter(files.into_iter().map(|file_path| {
+            let semaphore = semaphore.clone();
+            async move {
+                let _permit = semaphore.acquire().await.unwrap();
+                self.parse_file_with_caching(&file_path.to_string_lossy()).await
+            }
+        }))
+        .buffer_unordered(self.max_concurrent_files);
+
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok((nodes, lines)) => {
+                    all_nodes.extend(nodes);
+                    total_lines += lines;
+                    parsed_files += 1;
+                }
+                Err(e) => {
+                    failed_files += 1;
+                    warn!("Failed to parse file: {}", e);
                 }
             }
         }
@@ -212,9 +225,8 @@ impl TreeSitterParser {
         let result = self.parse_file_internal(file_path).await;
         
         match &result {
-            Ok((nodes, _)) => {
+            Ok((nodes, _, content)) => {
                 // Cache successful parse
-                let content = fs::read_to_string(file_path).await.unwrap_or_default();
                 let language = self.registry.detect_language(file_path).unwrap_or(Language::Other("unknown".to_string()));
                 let content_hash = format!("{:x}", sha2::Sha256::digest(&content));
                 
@@ -234,20 +246,20 @@ impl TreeSitterParser {
             }
         }
         
-        result
+        result.map(|(nodes, lines, _)| (nodes, lines))
     }
 
-    async fn parse_file_internal(&self, file_path: &str) -> Result<(Vec<CodeNode>, usize)> {
+    async fn parse_file_internal(&self, file_path: &str) -> Result<(Vec<CodeNode>, usize, String)> {
         let language = self.registry.detect_language(file_path)
             .ok_or_else(|| CodeGraphError::Parse(format!("Unknown file type: {}", file_path)))?;
 
-        let content = fs::read_to_string(file_path).await
+        let content = read_file_to_string(file_path).await
             .map_err(|e| CodeGraphError::Io(e))?;
         
         let line_count = content.lines().count();
         let nodes = self.parse_content_with_recovery(&content, file_path, language).await?;
         
-        Ok((nodes, line_count))
+        Ok((nodes, line_count, content))
     }
 
     async fn parse_content_with_recovery(&self, content: &str, file_path: &str, language: Language) -> Result<Vec<CodeNode>> {

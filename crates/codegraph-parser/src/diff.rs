@@ -223,9 +223,11 @@ impl DiffBasedParser {
 
         regions.sort_by_key(|r| r.range.start_byte);
         let mut merged = Vec::new();
-        let mut current = regions.into_iter().next().unwrap();
 
-        for region in regions.into_iter().skip(1) {
+        let (first, rest) = regions.split_first().unwrap();
+        let mut current = first.clone();
+
+        for region in rest.iter().cloned() {
             // Check if regions are adjacent and of the same type
             if current.range.end_byte == region.range.start_byte 
                 && current.change_type == region.change_type {

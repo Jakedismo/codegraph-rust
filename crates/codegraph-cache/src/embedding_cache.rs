@@ -239,10 +239,6 @@ impl AiCache<String, Vec<f32>> for EmbeddingCache {
             if self.config.enable_metrics {
                 let mut stats = self.stats.write().await;
                 stats.hits += 1;
-                if let Ok(elapsed) = start_time.elapsed() {
-                    stats.average_access_time_ns = 
-                        (stats.average_access_time_ns + elapsed.as_nanos() as u64) / 2;
-                }
             }
 
             Ok(Some(result))

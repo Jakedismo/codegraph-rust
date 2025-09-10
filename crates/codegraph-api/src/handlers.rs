@@ -95,11 +95,22 @@ pub async fn parse_file(
         .map_err(ApiError::CodeGraph)?;
 
     let nodes_count = nodes.len();
-
+    let mut affected_nodes: Vec<String> = Vec::with_capacity(nodes_count);
     let mut graph = state.graph.write().await;
     for node in nodes {
+        let id_str = node.id.to_string();
         graph.add_node(node).await.map_err(ApiError::CodeGraph)?;
+        affected_nodes.push(id_str);
     }
+
+    // Broadcast graph update event for subscribers
+    crate::event_bus::publish_graph_update(
+        crate::subscriptions::GraphUpdateType::NodesAdded,
+        affected_nodes,
+        Vec::new(),
+        nodes_count as i32,
+        Some(format!("Parsed nodes from {}", request.file_path)),
+    );
 
     Ok(Json(ParseResponse {
         nodes_created: nodes_count,
@@ -614,4 +625,21 @@ pub async fn flush_incremental(
         "status": "success",
         "message": "All pending incremental operations have been flushed"
     })))
+}
+
+pub async fn metrics_handler() -> (StatusCode, String) {
+    use prometheus::Encoder;
+    let encoder = prometheus::TextEncoder::new();
+    let mut buffer = Vec::new();
+    if let Err(e) = encoder.encode(&crate::metrics::REGISTRY.gather(), &mut buffer) {
+        eprintln!("could not encode metrics: {}", e);
+    };
+    let res = match String::from_utf8(buffer.clone()) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("metrics could not be from_utf8'd: {}", e);
+            String::default()
+        }
+    };
+    (StatusCode::OK, res)
 }

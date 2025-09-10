@@ -100,7 +100,7 @@ impl PersistentStorage {
         db_opts.create_missing_column_families(true);
         db_opts.set_max_open_files(config.max_open_files);
         db_opts.set_write_buffer_size(config.write_buffer_size);
-        db_opts.set_max_write_buffer_number(config.max_write_buffer_number);
+        db_opts.set_max_write_buffer_number(config.max_write_buffer_number.try_into().unwrap());
         db_opts.set_target_file_size_base(config.target_file_size_base);
         
         if config.enable_compression {
@@ -120,7 +120,7 @@ impl PersistentStorage {
         ];
 
         let db = DB::open_cf_descriptors(&db_opts, &config.db_path, cf_descriptors)
-            .map_err(|e| CodeGraphError::Storage(format!("Failed to open database: {}", e)))?;
+            .map_err(|e| CodeGraphError::Database(format!("Failed to open database: {}", e)))?;
 
         info!("Opened persistent storage at: {}", config.db_path);
         
@@ -136,7 +136,7 @@ impl PersistentStorage {
     {
         let stored_entry: StoredCacheEntry<T> = entry.into();
         let serialized = bincode::serialize(&stored_entry)
-            .map_err(|e| CodeGraphError::Storage(format!("Serialization failed: {}", e)))?;
+            .map_err(|e| CodeGraphError::Database(format!("Serialization failed: {}", e)))?;
 
         let db = self.db.clone();
         let cf_name = cf_name.to_string();
@@ -144,12 +144,12 @@ impl PersistentStorage {
 
         task::spawn_blocking(move || {
             let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Storage(format!("Column family '{}' not found", cf_name)))?;
+                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
             
             db.put_cf(cf, key.as_bytes(), &serialized)
-                .map_err(|e| CodeGraphError::Storage(format!("Write failed: {}", e)))
+                .map_err(|e| CodeGraphError::Database(format!("Write failed: {}", e)))
         }).await
-        .map_err(|e| CodeGraphError::Storage(format!("Task failed: {}", e)))??;
+        .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))??;
 
         Ok(())
     }
@@ -165,16 +165,16 @@ impl PersistentStorage {
 
         let data = task::spawn_blocking(move || {
             let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Storage(format!("Column family '{}' not found", cf_name)))?;
+                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
             
             db.get_cf(cf, key.as_bytes())
-                .map_err(|e| CodeGraphError::Storage(format!("Read failed: {}", e)))
+                .map_err(|e| CodeGraphError::Database(format!("Read failed: {}", e)))
         }).await
-        .map_err(|e| CodeGraphError::Storage(format!("Task failed: {}", e)))??;
+        .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))??;
 
         if let Some(bytes) = data {
             let stored_entry: StoredCacheEntry<T> = bincode::deserialize(&bytes)
-                .map_err(|e| CodeGraphError::Storage(format!("Deserialization failed: {}", e)))?;
+                .map_err(|e| CodeGraphError::Database(format!("Deserialization failed: {}", e)))?;
             
             Ok(Some(stored_entry.into()))
         } else {
@@ -190,21 +190,21 @@ impl PersistentStorage {
 
         task::spawn_blocking(move || {
             let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Storage(format!("Column family '{}' not found", cf_name)))?;
+                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
             
             // Check if key exists first
             let exists = db.get_cf(cf, key.as_bytes())
-                .map_err(|e| CodeGraphError::Storage(format!("Read failed: {}", e)))?
+                .map_err(|e| CodeGraphError::Database(format!("Read failed: {}", e)))?
                 .is_some();
 
             if exists {
                 db.delete_cf(cf, key.as_bytes())
-                    .map_err(|e| CodeGraphError::Storage(format!("Delete failed: {}", e)))?;
+                    .map_err(|e| CodeGraphError::Database(format!("Delete failed: {}", e)))?;
             }
 
             Ok(exists)
         }).await
-        .map_err(|e| CodeGraphError::Storage(format!("Task failed: {}", e)))?
+        .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
     /// Batch store multiple entries
@@ -217,22 +217,22 @@ impl PersistentStorage {
 
         task::spawn_blocking(move || {
             let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Storage(format!("Column family '{}' not found", cf_name)))?;
+                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
             
             let mut batch = WriteBatch::default();
             
             for (key, entry) in entries {
                 let stored_entry: StoredCacheEntry<T> = entry.into();
                 let serialized = bincode::serialize(&stored_entry)
-                    .map_err(|e| CodeGraphError::Storage(format!("Serialization failed: {}", e)))?;
+                    .map_err(|e| CodeGraphError::Database(format!("Serialization failed: {}", e)))?;
                 
                 batch.put_cf(cf, key.as_bytes(), &serialized);
             }
 
             db.write(batch)
-                .map_err(|e| CodeGraphError::Storage(format!("Batch write failed: {}", e)))
+                .map_err(|e| CodeGraphError::Database(format!("Batch write failed: {}", e)))
         }).await
-        .map_err(|e| CodeGraphError::Storage(format!("Task failed: {}", e)))?
+        .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
     /// Iterate over all keys in a column family
@@ -242,14 +242,14 @@ impl PersistentStorage {
 
         task::spawn_blocking(move || {
             let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Storage(format!("Column family '{}' not found", cf_name)))?;
+                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
             
             let iter = db.iterator_cf(cf, rocksdb::IteratorMode::Start);
             let mut keys = Vec::new();
 
             for item in iter {
                 let (key, _) = item
-                    .map_err(|e| CodeGraphError::Storage(format!("Iterator failed: {}", e)))?;
+                    .map_err(|e| CodeGraphError::Database(format!("Iterator failed: {}", e)))?;
                 
                 let key_str = String::from_utf8_lossy(&key).to_string();
                 keys.push(key_str);
@@ -257,7 +257,7 @@ impl PersistentStorage {
 
             Ok(keys)
         }).await
-        .map_err(|e| CodeGraphError::Storage(format!("Task failed: {}", e)))?
+        .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
     /// Get approximate number of entries in a column family
@@ -267,17 +267,17 @@ impl PersistentStorage {
 
         task::spawn_blocking(move || {
             let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Storage(format!("Column family '{}' not found", cf_name)))?;
+                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
             
             let property = format!("rocksdb.estimate-num-keys");
             let count_str = db.property_value_cf(cf, &property)
-                .map_err(|e| CodeGraphError::Storage(format!("Property read failed: {}", e)))?
+                .map_err(|e| CodeGraphError::Database(format!("Property read failed: {}", e)))?
                 .unwrap_or_else(|| "0".to_string());
 
             count_str.parse::<u64>()
-                .map_err(|e| CodeGraphError::Storage(format!("Failed to parse count: {}", e)))
+                .map_err(|e| CodeGraphError::Database(format!("Failed to parse count: {}", e)))
         }).await
-        .map_err(|e| CodeGraphError::Storage(format!("Task failed: {}", e)))?
+        .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
     /// Cleanup expired entries from a column family
@@ -290,7 +290,7 @@ impl PersistentStorage {
 
         task::spawn_blocking(move || {
             let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Storage(format!("Column family '{}' not found", cf_name)))?;
+                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
             
             let iter = db.iterator_cf(cf, rocksdb::IteratorMode::Start);
             let mut expired_keys = Vec::new();
@@ -301,7 +301,7 @@ impl PersistentStorage {
 
             for item in iter {
                 let (key, value) = item
-                    .map_err(|e| CodeGraphError::Storage(format!("Iterator failed: {}", e)))?;
+                    .map_err(|e| CodeGraphError::Database(format!("Iterator failed: {}", e)))?;
                 
                 // Try to deserialize and check expiration
                 if let Ok(stored_entry) = bincode::deserialize::<StoredCacheEntry<T>>(&value) {
@@ -321,12 +321,12 @@ impl PersistentStorage {
 
             if !expired_keys.is_empty() {
                 db.write(batch)
-                    .map_err(|e| CodeGraphError::Storage(format!("Cleanup batch write failed: {}", e)))?;
+                    .map_err(|e| CodeGraphError::Database(format!("Cleanup batch write failed: {}", e)))?;
             }
 
             Ok(expired_keys.len())
         }).await
-        .map_err(|e| CodeGraphError::Storage(format!("Task failed: {}", e)))?
+        .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
     /// Compact the database to reclaim space
@@ -337,7 +337,7 @@ impl PersistentStorage {
             db.compact_range::<&[u8], &[u8]>(None, None);
             Ok(())
         }).await
-        .map_err(|e| CodeGraphError::Storage(format!("Task failed: {}", e)))?
+        .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
     /// Get database statistics
@@ -371,7 +371,7 @@ impl PersistentStorage {
 
             Ok(stats)
         }).await
-        .map_err(|e| CodeGraphError::Storage(format!("Task failed: {}", e)))?
+        .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
     /// Store cache statistics

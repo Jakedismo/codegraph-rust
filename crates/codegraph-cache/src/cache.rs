@@ -85,7 +85,7 @@ pub trait AiCache<K, V>: Send + Sync {
 }
 
 /// Cache performance statistics
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct CacheStats {
     pub hits: u64,
     pub misses: u64,

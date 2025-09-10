@@ -60,3 +60,22 @@ pub struct Metadata {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ChangeEvent {
+    Created(String), // file path
+    Modified(String), // file path
+    Deleted(String), // file path
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdatePayload {
+    pub event: ChangeEvent,
+    pub content: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Delta {
+    pub file_path: String,
+    pub changes: Vec<String>,
+}

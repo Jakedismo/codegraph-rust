@@ -3,9 +3,17 @@ pub mod node;
 pub mod types;
 pub mod traits;
 pub mod versioning;
+pub mod shared;
+pub mod arena;
+pub mod buffer_pool;
+pub mod optimized_types;
 
 pub use error::*;
 pub use node::*;
 pub use types::*;
 pub use traits::*;
 pub use versioning::*;
+pub use shared::*;
+pub use arena::*;
+pub use buffer_pool::*;
+pub use optimized_types::*;

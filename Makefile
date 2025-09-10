@@ -36,7 +36,16 @@ check: fmt lint test
 
 # Run benchmarks
 bench:
-	cargo bench
+	@echo "Running benchmarks and saving baseline: $${BASELINE_NAME:-baseline} (ENABLE_FAISS_BENCH=$${ENABLE_FAISS_BENCH:-0})"
+	BASELINE_NAME=$${BASELINE_NAME:-baseline} ENABLE_FAISS_BENCH=$${ENABLE_FAISS_BENCH:-0} scripts/run_benchmarks.sh
+
+bench-report:
+	@echo "Generating benchmark report from latest results"
+	python3 scripts/generate_bench_report.py --output benchmarks/reports/benchmark_report_latest.md
+
+bench-compare:
+	@echo "Comparing current benchmark results to baseline: $${BASELINE_NAME:-baseline}"
+	python3 scripts/compare_bench.py --baseline $${BASELINE_NAME:-baseline} --threshold $${THRESHOLD:-0.10}
 
 # Clean build artifacts
 clean:
@@ -63,6 +72,10 @@ outdated:
 # Run the API server
 run-api:
 	RUST_LOG=debug cargo run --bin codegraph-api
+
+# Sync validation stress tests (standalone harness)
+sync-validate:
+	cargo run --manifest-path high_perf_test/Cargo.toml
 
 # Development workflow
 dev: fmt lint test

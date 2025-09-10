@@ -705,7 +705,7 @@ impl RustSemanticAnalyzer {
         }
     }
 
-    fn find_child_by_kind(&self, node: Node, kind: &str) -> Option<Node> {
+    fn find_child_by_kind<'a>(&self, node: Node<'a>, kind: &str) -> Option<Node<'a>> {
         let mut cursor = node.walk();
         if cursor.goto_first_child() {
             loop {

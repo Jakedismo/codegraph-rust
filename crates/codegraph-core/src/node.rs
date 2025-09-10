@@ -1,4 +1,4 @@
-use crate::{Location, Metadata, NodeId, NodeType, Language};
+use crate::{Location, Metadata, NodeId, NodeType, Language, SharedStr};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -8,7 +8,7 @@ pub struct CodeNode {
     pub node_type: Option<NodeType>,
     pub language: Option<Language>,
     pub location: Location,
-    pub content: Option<String>,
+    pub content: Option<SharedStr>,
     pub metadata: Metadata,
     pub embedding: Option<Vec<f32>>,
     pub complexity: Option<f32>,
@@ -39,8 +39,8 @@ impl CodeNode {
         }
     }
 
-    pub fn with_content(mut self, content: String) -> Self {
-        self.content = Some(content);
+    pub fn with_content<T: Into<SharedStr>>(mut self, content: T) -> Self {
+        self.content = Some(content.into());
         self
     }
 

@@ -8,7 +8,6 @@ description = "Source code parsing using tree-sitter for CodeGraph"
 
 [dependencies]
 codegraph-core = { workspace = true }
-codegraph-graph = { workspace = true }
 tree-sitter = { workspace = true }
 tree-sitter-rust = { workspace = true }
 tree-sitter-typescript = { workspace = true }
@@ -35,6 +34,18 @@ crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true }
 dashmap = { workspace = true }
 uuid = { workspace = true }
+num_cpus = { workspace = true }
+regex = { workspace = true }
+globset = { workspace = true }
+ignore = { workspace = true }
+tokio-uring = { workspace = true, optional = true }
+
+[features]
+default = []
+experimental = []
+# Enable Linux-specific io_uring accelerated file reads.
+# This requires a Linux kernel with io_uring support. Falls back automatically otherwise.
+io-uring = ["tokio-uring"]
 
 [dev-dependencies]
 tokio-test = { workspace = true }

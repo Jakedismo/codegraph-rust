@@ -342,7 +342,7 @@ pub async fn get_index_config(
 }
 
 pub async fn rebuild_index(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Json(_request): Json<RebuildIndexRequest>,
 ) -> ApiResult<Json<RebuildIndexResponse>> {
     let start_time = Instant::now();
@@ -354,8 +354,27 @@ pub async fn rebuild_index(
     // 3. Training the index if necessary
     // 4. Replacing the old index atomically
     
+    // Broadcast indexing progress start
+    let job_id = uuid::Uuid::new_v4().to_string();
+    crate::event_bus::publish_indexing_progress(
+        job_id.clone(),
+        0.0,
+        "initializing".to_string(),
+        None,
+        Some("Index rebuild started".to_string()),
+    );
+    
     let rebuild_time_ms = start_time.elapsed().as_millis() as u64;
     
+    // Broadcast indexing progress completion
+    crate::event_bus::publish_indexing_progress(
+        job_id.clone(),
+        1.0,
+        "completed".to_string(),
+        Some(0.0),
+        Some("Index rebuild completed".to_string()),
+    );
+
     Ok(Json(RebuildIndexResponse {
         status: "completed".to_string(),
         message: "Index rebuild completed successfully".to_string(),

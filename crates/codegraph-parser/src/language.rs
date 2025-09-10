@@ -18,7 +18,7 @@ impl LanguageRegistry {
         configs.insert(
             Language::Rust,
             LanguageConfig {
-                language: tree_sitter_rust::language(),
+                language: tree_sitter_rust::LANGUAGE.into(),
                 file_extensions: vec!["rs"],
             },
         );
@@ -26,7 +26,7 @@ impl LanguageRegistry {
         configs.insert(
             Language::TypeScript,
             LanguageConfig {
-                language: tree_sitter_typescript::language_typescript(),
+                language: tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
                 file_extensions: vec!["ts", "tsx"],
             },
         );
@@ -34,7 +34,7 @@ impl LanguageRegistry {
         configs.insert(
             Language::JavaScript,
             LanguageConfig {
-                language: tree_sitter_javascript::language(),
+                language: tree_sitter_javascript::LANGUAGE.into(),
                 file_extensions: vec!["js", "jsx"],
             },
         );
@@ -42,7 +42,7 @@ impl LanguageRegistry {
         configs.insert(
             Language::Python,
             LanguageConfig {
-                language: tree_sitter_python::language(),
+                language: tree_sitter_python::LANGUAGE.into(),
                 file_extensions: vec!["py", "pyi"],
             },
         );
@@ -50,7 +50,7 @@ impl LanguageRegistry {
         configs.insert(
             Language::Go,
             LanguageConfig {
-                language: tree_sitter_go::language(),
+                language: tree_sitter_go::LANGUAGE.into(),
                 file_extensions: vec!["go"],
             },
         );
@@ -58,7 +58,7 @@ impl LanguageRegistry {
         configs.insert(
             Language::Java,
             LanguageConfig {
-                language: tree_sitter_java::language(),
+                language: tree_sitter_java::LANGUAGE.into(),
                 file_extensions: vec!["java"],
             },
         );
@@ -66,7 +66,7 @@ impl LanguageRegistry {
         configs.insert(
             Language::Cpp,
             LanguageConfig {
-                language: tree_sitter_cpp::language(),
+                language: tree_sitter_cpp::LANGUAGE.into(),
                 file_extensions: vec!["cpp", "cxx", "cc", "c", "hpp", "hxx", "h"],
             },
         );
@@ -95,7 +95,7 @@ impl LanguageRegistry {
     pub fn create_parser(&self, language: &Language) -> Option<Parser> {
         let config = self.get_config(language)?;
         let mut parser = Parser::new();
-        parser.set_language(config.language).ok()?;
+        parser.set_language(&config.language).ok()?;
         Some(parser)
     }
 }

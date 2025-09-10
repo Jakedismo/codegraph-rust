@@ -1,5 +1,5 @@
-use crate::{Language, LanguageRegistry};
-use codegraph_core::{CodeGraphError, CodeNode, Location, NodeType, Result};
+use crate::LanguageRegistry;
+use codegraph_core::{CodeGraphError, CodeNode, Location, NodeType, Language, Result};
 use rayon::prelude::*;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
@@ -338,7 +338,7 @@ impl TextProcessor {
                 let re = Regex::new(pattern).unwrap();
                 for mat in re.find_iter(line) {
                     let token_content = mat.as_str();
-                    let mut token_type = *default_type;
+                    let mut token_type = default_type.clone();
                     
                     // Check if identifier is actually a keyword
                     if token_type == TokenType::Identifier && keywords.contains(token_content) {
@@ -398,7 +398,7 @@ impl TextProcessor {
                 
                 for mat in regex.find_iter(line) {
                     let token_content = mat.as_str();
-                    let mut token_type = *default_type;
+                    let mut token_type = default_type.clone();
                     
                     // Check if identifier is actually a keyword
                     if token_type == TokenType::Identifier && keywords.contains(token_content) {
@@ -984,7 +984,7 @@ impl TextProcessor {
         }
     }
 
-    fn find_node_at_range(node: &Node, start: usize, end: usize) -> Option<Node> {
+    fn find_node_at_range<'a>(node: &Node<'a>, start: usize, end: usize) -> Option<Node<'a>> {
         let node_start = node.start_byte();
         let node_end = node.end_byte();
         
@@ -1345,8 +1345,7 @@ impl TextProcessor {
 
     /// Clear deduplication cache
     pub async fn clear_cache(&self) {
-        let mut cache = self.deduplication_cache.write().await;
-        cache.clear();
+        self.deduplication_cache.clear();
     }
 
     fn initialize_normalization_patterns(&self) {

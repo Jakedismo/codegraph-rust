@@ -12,6 +12,7 @@ pub struct Server {
 
 impl Server {
     pub async fn new(addr: SocketAddr) -> Result<Self> {
+        crate::metrics::register_metrics();
         let state = AppState::new().await?;
         Ok(Self { state, addr })
     }
@@ -27,6 +28,9 @@ impl Server {
 
         info!("Server listening on http://{}", self.addr);
         info!("Health check available at http://{}/health", self.addr);
+        info!("GraphQL endpoint available at http://{}/graphql", self.addr);
+        info!("GraphiQL UI available at http://{}/graphiql", self.addr);
+        info!("GraphQL subscriptions over WebSocket at ws://{}/graphql/ws", self.addr);
         info!("API documentation:");
         info!("  GET /health - Health check");
         info!("  POST /parse - Parse source file");

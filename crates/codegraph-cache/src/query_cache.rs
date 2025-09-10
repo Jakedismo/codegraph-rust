@@ -1,6 +1,6 @@
 use crate::{AiCache, CacheConfig, CacheEntry, CacheStats, CacheSizeEstimator};
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, NodeId, Result};
+use codegraph_core::{NodeId, Result};
 use dashmap::DashMap;
 use ndarray::{Array1, Array2};
 use parking_lot::RwLock;
@@ -288,8 +288,8 @@ impl AiCache<String, CachedQuery> for QueryCache {
         // Update metrics
         if self.config.base_config.enable_metrics {
             let mut stats = self.stats.write().await;
-            stats.total_entries = self.cache.len();
-            stats.memory_usage_bytes = *self.memory_usage.lock();
+            stats.entries = self.cache.len();
+            stats.memory_usage = *self.memory_usage.lock() as u64;
         }
 
         Ok(())
@@ -323,10 +323,6 @@ impl AiCache<String, CachedQuery> for QueryCache {
             if self.config.base_config.enable_metrics {
                 let mut stats = self.stats.write().await;
                 stats.hits += 1;
-                if let Ok(elapsed) = start_time.elapsed() {
-                    stats.average_access_time_ns = 
-                        (stats.average_access_time_ns + elapsed.as_nanos() as u64) / 2;
-                }
             }
 
             Ok(Some(result))
@@ -339,7 +335,7 @@ impl AiCache<String, CachedQuery> for QueryCache {
         }
     }
 
-    async fn remove(&mut self, key: &String) -> Result<Option<CachedQuery>> {
+    async fn remove(&mut self, key: &String) -> Result<()> {
         if let Some((_, entry)) = self.cache.remove(key) {
             // Update memory usage
             {
@@ -354,13 +350,13 @@ impl AiCache<String, CachedQuery> for QueryCache {
             // Update metrics
             if self.config.base_config.enable_metrics {
                 let mut stats = self.stats.write().await;
-                stats.total_entries = self.cache.len();
-                stats.memory_usage_bytes = *self.memory_usage.lock();
+                stats.entries = self.cache.len();
+                stats.memory_usage = *self.memory_usage.lock() as u64;
             }
 
-            Ok(Some(entry.value))
+            Ok(())
         } else {
-            Ok(None)
+            Ok(())
         }
     }
 
@@ -371,22 +367,22 @@ impl AiCache<String, CachedQuery> for QueryCache {
 
         if self.config.base_config.enable_metrics {
             let mut stats = self.stats.write().await;
-            stats.total_entries = 0;
-            stats.memory_usage_bytes = 0;
+            stats.entries = 0;
+            stats.memory_usage = 0;
         }
 
         Ok(())
     }
 
-    async fn stats(&self) -> CacheStats {
+    async fn stats(&self) -> Result<CacheStats> {
         if self.config.base_config.enable_metrics {
             let mut stats = self.stats.read().await.clone();
             stats.hit_rate = stats.hit_rate();
-            stats.total_entries = self.cache.len();
-            stats.memory_usage_bytes = *self.memory_usage.lock();
-            stats
+            stats.entries = self.cache.len();
+            stats.memory_usage = *self.memory_usage.lock() as u64;
+            Ok(stats)
         } else {
-            CacheStats::default()
+            Ok(CacheStats::default())
         }
     }
 
@@ -394,8 +390,8 @@ impl AiCache<String, CachedQuery> for QueryCache {
         self.cache.contains_key(key)
     }
 
-    async fn len(&self) -> usize {
-        self.cache.len()
+    async fn size(&self) -> Result<usize> {
+        Ok(self.cache.len())
     }
 }
 
