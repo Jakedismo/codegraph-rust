@@ -1,5 +1,5 @@
-use cg_integration_test_support::{setup_test_server, write_sample_repo};
 use axum_test::TestServer;
+use cg_integration_test_support::{setup_test_server, write_sample_repo};
 use serde_json::json;
 use serial_test::serial;
 
@@ -8,7 +8,11 @@ async fn index_path(server: &TestServer, path: &str, parallel: bool) -> serde_js
         .post("/v1/index")
         .json(&json!({"path": path, "parallel": parallel}))
         .await;
-    assert!(res.status().is_success(), "index request failed: {}", res.text());
+    assert!(
+        res.status().is_success(),
+        "index request failed: {}",
+        res.text()
+    );
     res.json()
 }
 
@@ -58,7 +62,11 @@ async fn index_twice_accumulates_nodes() {
 #[serial]
 async fn index_empty_path_validation_error() {
     let ctx = setup_test_server().await.unwrap();
-    let res = ctx.server.post("/v1/index").json(&json!({"path": ""})).await;
+    let res = ctx
+        .server
+        .post("/v1/index")
+        .json(&json!({"path": ""}))
+        .await;
     assert_eq!(res.status().as_u16(), 400);
 }
 

@@ -950,103 +950,100 @@ CodeGraph builds upon these amazing open-source projects:
 
 ### 📖 Complete Documentation Hub
 
-Our comprehensive documentation is organized into focused sections:
+Production-ready documentation organized by user journey and use case:
 
 <details>
-<summary><b>🚀 Getting Started</b></summary>
+<summary><b>🚀 API Documentation</b></summary>
 
 | Resource | Description |
 |----------|-------------|
-| [📋 Getting Started Guide](./docs/guides/getting-started.md) | Complete setup and first steps |
-| [⚡ Quick Start Tutorial](./docs/guides/startup.md) | 5-minute introduction |
-| [🎯 Examples Collection](./docs/examples/) | Real-world usage examples |
-| [❓ FAQ](./docs/troubleshooting/) | Frequently asked questions |
+| [📋 API Overview](./docs/api/README.md) | Complete API reference guide |
+| [🌐 REST API](./docs/api/rest.md) | HTTP endpoints with OpenAPI specs |
+| [📊 GraphQL API](./docs/api/graphql.md) | Schema, queries, mutations & subscriptions |
+| [🔗 WebSocket API](./docs/api/websocket.md) | Real-time subscriptions |
+| [🔐 Authentication](./docs/api/authentication.md) | JWT, API keys & authorization |
+| [⚡ Rate Limiting](./docs/api/rate-limiting.md) | Throttling & caching policies |
 
 </details>
 
 <details>
-<summary><b>🏗️ Architecture & Design</b></summary>
+<summary><b>🐳 Deployment & Operations</b></summary>
 
 | Resource | Description |
 |----------|-------------|
-| [🏛️ System Architecture](./docs/architecture/UNIFIED_ARCHITECTURE_SPECIFICATION.md) | Complete system design |
-| [📊 Component Dependencies](./docs/diagrams/architecture/component-dependencies.md) | Module relationships |
-| [🔄 Data Flow](./docs/diagrams/architecture/data-flow-performance.md) | Information processing |
-| [🛠️ RAG Integration](./docs/architecture/CODEGRAPH_RAG_ARCHITECTURE.md) | AI/ML pipeline design |
+| [🚀 Deployment Guide](./docs/deployment/README.md) | Docker, Kubernetes & production setup |
+| [⚙️ Operations Manual](./docs/operations/README.md) | Installation, configuration & troubleshooting |
+| [📋 Environment Config](./docs/deployment/README.md#environment-configuration) | Complete configuration reference |
+| [🗂️ Database Setup](./docs/deployment/README.md#database-setup) | RocksDB optimization & persistence |
+| [🔒 SSL/TLS Setup](./docs/deployment/README.md#ssltls-configuration) | Security configuration |
+| [📊 Monitoring Setup](./docs/deployment/README.md#monitoring-and-alerting) | Prometheus, Grafana & alerts |
 
 </details>
 
 <details>
-<summary><b>🔌 API & Integration</b></summary>
+<summary><b>👩‍💻 Developer Guide</b></summary>
 
 | Resource | Description |
 |----------|-------------|
-| [🌐 REST API](./docs/architecture/REST_API_ARCHITECTURE.md) | HTTP endpoints documentation |
+| [🏗️ Developer Guide](./docs/developer/README.md) | Architecture, setup & workflows |
+| [⚡ Quick Start](./docs/developer/README.md#quick-start) | 30-second setup guide |
+| [🏛️ Architecture](./docs/developer/README.md#architecture-overview) | System design & components |
+| [🔧 Dev Environment](./docs/developer/README.md#development-environment-setup) | Local setup & tooling |
+| [🧪 Testing Guide](./docs/developer/README.md#testing-guide) | Unit, integration & performance tests |
+| [🤝 Contributing](./docs/developer/README.md#contributing-guidelines) | Code standards & workflows |
+
+</details>
+
+<details>
+<summary><b>📋 System Operations</b></summary>
+
+| Resource | Description |
+|----------|-------------|
+| [⚙️ Installation](./docs/operations/README.md#installation-guide) | Binary, Docker & source installs |
+| [📝 Configuration](./docs/operations/README.md#configuration-reference) | Complete config file reference |
+| [🔧 Troubleshooting](./docs/operations/README.md#troubleshooting-guide) | Common issues & solutions |
+| [📈 Scaling](./docs/operations/README.md#scaling-strategies) | Horizontal & vertical scaling |
+| [🛠️ Maintenance](./docs/operations/README.md#maintenance-procedures) | Backup, restore & updates |
+| [📊 Monitoring](./docs/operations/README.md#monitoring-and-alerting) | Operational visibility |
+
+</details>
+
+<details>
+<summary><b>🏛️ Legacy Documentation</b></summary>
+
+| Resource | Description |
+|----------|-------------|
+| [🏛️ System Architecture](./docs/architecture/UNIFIED_ARCHITECTURE_SPECIFICATION.md) | Detailed system design |
 | [🤖 MCP Protocol](./docs/api/codegraph-mcp-spec.md) | Model Context Protocol spec |
-| [⚙️ Configuration](./docs/configuration.md) | Setup and tuning guide |
-| [📡 Production API](./docs/production/API_DOCUMENTATION.md) | Production-ready endpoints |
-
-</details>
-
-<details>
-<summary><b>🚀 Deployment & Operations</b></summary>
-
-| Resource | Description |
-|----------|-------------|
-| [🛠️ Installation Guide](./docs/production/INSTALLATION_GUIDE.md) | Complete setup instructions |
-| [📋 Operations Runbook](./docs/production/OPERATIONS_RUNBOOK.md) | Day-to-day operations |
-| [🔍 Troubleshooting](./docs/production/TROUBLESHOOTING_GUIDE.md) | Common issues and solutions |
-| [🏭 CI/CD Setup](./docs/guides/CI_CD_README.md) | Automated deployment |
-
-</details>
-
-<details>
-<summary><b>🧪 Development & Testing</b></summary>
-
-| Resource | Description |
-|----------|-------------|
-| [🔧 Development Setup](./docs/testing/TESTING_CONTEXT.md) | Local development environment |
-| [🧪 Testing Guide](./docs/testing/INTEGRATION_TEST_PLAN.md) | Comprehensive testing strategy |
-| [📊 Performance](./docs/specifications/performance_benchmarks.md) | Benchmarking and optimization |
-| [🔍 Code Analysis](./docs/specifications/CodeGraphEmbeddingSystem.md) | Technical implementation |
-
-</details>
-
-<details>
-<summary><b>📋 Specifications & Research</b></summary>
-
-| Resource | Description |
-|----------|-------------|
 | [📄 Feature Inventory](./docs/specifications/FEATURE_INVENTORY.md) | Complete feature catalog |
-| [🗺️ Implementation Plan](./docs/specifications/IMPLEMENTATION_PLAN.md) | Development roadmap |
-| [💾 Storage Systems](./docs/specifications/rocksdb_graph_storage_optimization.md) | Database optimization |
-| [🔍 FAISS Integration](./docs/specifications/FAISS_IMPLEMENTATION.md) | Vector search implementation |
+| [💾 Storage Optimization](./docs/specifications/rocksdb_graph_storage_optimization.md) | Database tuning |
 
 </details>
 
-### 🎓 Learning Path
+### 🎯 Quick Navigation
 
-**For New Users:**
-1. Start with [Getting Started Guide](./docs/guides/getting-started.md)
-2. Try the [Quick Start Tutorial](./docs/guides/startup.md)
-3. Explore [Examples](./docs/examples/)
+**👋 New to CodeGraph?**
+1. [📖 API Overview](./docs/api/README.md) - Understand the APIs
+2. [🚀 Quick Start](./docs/developer/README.md#quick-start) - Run in 30 seconds  
+3. [💡 Examples](#-usage-examples) - See it in action
 
-**For Developers:**
-1. Review [System Architecture](./docs/architecture/UNIFIED_ARCHITECTURE_SPECIFICATION.md)
-2. Set up [Development Environment](./docs/testing/TESTING_CONTEXT.md)
-3. Check [API Documentation](./docs/architecture/REST_API_ARCHITECTURE.md)
+**🔧 Ready to Deploy?**
+1. [🐳 Deployment Guide](./docs/deployment/README.md) - Production deployment
+2. [📋 Operations Manual](./docs/operations/README.md) - Day-to-day operations
+3. [📊 Monitoring Setup](./docs/deployment/README.md#monitoring-and-alerting) - Observability
 
-**For Operations:**
-1. Follow [Installation Guide](./docs/production/INSTALLATION_GUIDE.md)
-2. Configure using [Operations Runbook](./docs/production/OPERATIONS_RUNBOOK.md)
-3. Monitor with [Troubleshooting Guide](./docs/production/TROUBLESHOOTING_GUIDE.md)
+**👩‍💻 Want to Contribute?**
+1. [🏗️ Developer Guide](./docs/developer/README.md) - Development setup
+2. [🧪 Testing Guide](./docs/developer/README.md#testing-guide) - Testing strategy
+3. [🤝 Contributing](./docs/developer/README.md#contributing-guidelines) - Code standards
 
-### 📝 Documentation Standards
+### 📄 Documentation Features
 
-- **📊 Always Current**: Documentation is updated with every release
-- **🧪 Tested Examples**: All code examples are automatically tested
-- **🔄 Versioned**: Historical versions available for reference
-- **🌐 Accessible**: Screen reader friendly and mobile responsive
+- **🔍 Complete API Coverage**: 50+ endpoints with examples
+- **🧪 Tested Examples**: All code examples are verified  
+- **🐳 Production Ready**: Deployment guides tested and verified
+- **📊 Multi-Language**: Examples in Rust, Python, TypeScript, cURL
+- **🔄 Always Updated**: Documentation versioned with releases
 
 ---
 

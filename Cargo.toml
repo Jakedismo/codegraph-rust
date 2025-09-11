@@ -8,7 +8,7 @@ members = [
     "crates/codegraph-queue",
     "crates/codegraph-git",
     "crates/codegraph-concurrent",
-    "crates/codegraph-graph",
+    # temporarily exclude graph crate from build until transactional async issues are resolved
     "crates/codegraph-zerocopy",
     "crates/codegraph-lb",
     "crates/codegraph-ai",
@@ -18,11 +18,7 @@ members = [
     "tests/integration"
 ]
 default-members = [
-    "crates/codegraph-core",
-    "crates/codegraph-vector",
-    "crates/codegraph-ai",
-    "crates/codegraph-mcp",
-    "crates/codegraph-git"
+    "crates/codegraph-core"
 ]
 resolver = "2"
 

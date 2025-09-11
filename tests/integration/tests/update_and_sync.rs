@@ -1,5 +1,5 @@
-use cg_integration_test_support::{setup_test_server, write_sample_repo};
 use axum_test::TestServer;
+use cg_integration_test_support::{setup_test_server, write_sample_repo};
 use serde_json::json;
 use serial_test::serial;
 use std::fs;
@@ -18,7 +18,11 @@ async fn adding_new_file_and_reindex_updates_counts() {
     let b1 = res1.json::<serde_json::Value>();
 
     // Add a new source file
-    fs::write(repo.join("new.rs"), "pub fn sub(a: i32, b: i32) -> i32 { a - b }\n").unwrap();
+    fs::write(
+        repo.join("new.rs"),
+        "pub fn sub(a: i32, b: i32) -> i32 { a - b }\n",
+    )
+    .unwrap();
 
     let res2 = ctx
         .server
@@ -58,10 +62,28 @@ async fn modifying_file_then_reindex_still_succeeds() {
 #[serial]
 async fn etag_is_consistent_for_same_query_and_changes_with_query() {
     let ctx = setup_test_server().await.unwrap();
-    let e1 = ctx.server.get("/v1/search?q=a").await.headers().get("etag").cloned();
-    let e2 = ctx.server.get("/v1/search?q=a").await.headers().get("etag").cloned();
+    let e1 = ctx
+        .server
+        .get("/v1/search?q=a")
+        .await
+        .headers()
+        .get("etag")
+        .cloned();
+    let e2 = ctx
+        .server
+        .get("/v1/search?q=a")
+        .await
+        .headers()
+        .get("etag")
+        .cloned();
     assert_eq!(e1, e2);
-    let e3 = ctx.server.get("/v1/search?q=b").await.headers().get("etag").cloned();
+    let e3 = ctx
+        .server
+        .get("/v1/search?q=b")
+        .await
+        .headers()
+        .get("etag")
+        .cloned();
     assert_ne!(e1, e3);
 }
 
@@ -92,10 +114,16 @@ async fn versioning_endpoints_basic_flow() {
         .json(&json!({"isolation_level": "read_committed"}))
         .await;
     assert!(tx.status().is_success());
-    let tx_id = tx.json::<serde_json::Value>()["transaction_id"].as_str().unwrap().to_string();
+    let tx_id = tx.json::<serde_json::Value>()["transaction_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Commit transaction
-    let commit = ctx.server.post(&format!("/transactions/{}/commit", tx_id)).await;
+    let commit = ctx
+        .server
+        .post(&format!("/transactions/{}/commit", tx_id))
+        .await;
     assert!(commit.status().is_success());
 
     // Create version

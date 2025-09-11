@@ -1,7 +1,7 @@
 use cg_integration_test_support::{setup_test_server, write_sample_repo};
+use futures::future::join_all;
 use serde_json::json;
 use serial_test::serial;
-use futures::future::join_all;
 
 #[tokio::test]
 #[serial]
@@ -46,11 +46,20 @@ async fn service_registry_register_discover_heartbeat_deregister() {
     // Discover/list
     let list = ctx.server.get("/services").await;
     assert!(list.status().is_success());
-    let discover = ctx.server.get("/services/discover?service_name=test-svc").await;
+    let discover = ctx
+        .server
+        .get("/services/discover?service_name=test-svc")
+        .await;
     assert!(discover.status().is_success());
 
     // Deregister
-    let dereg = ctx.server.delete(&format!("/services/{}", body["service_id"].as_str().unwrap())).await;
+    let dereg = ctx
+        .server
+        .delete(&format!(
+            "/services/{}",
+            body["service_id"].as_str().unwrap()
+        ))
+        .await;
     assert!(dereg.status().is_success());
 }
 
@@ -62,14 +71,14 @@ async fn concurrent_index_requests_do_not_conflict() {
     let path = repo.to_str().unwrap().to_string();
 
     // Fire a few concurrent indexing requests
-    let futs = (0..4).map(|_| {
-        ctx.server
-            .post("/v1/index")
-            .json(&json!({"path": path}))
-    });
+    let futs = (0..4).map(|_| ctx.server.post("/v1/index").json(&json!({"path": path})));
     let res = join_all(futs).await;
     for r in res {
-        assert!(r.status().is_success(), "one of the concurrent index requests failed: {}", r.text());
+        assert!(
+            r.status().is_success(),
+            "one of the concurrent index requests failed: {}",
+            r.text()
+        );
     }
 }
 

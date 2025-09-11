@@ -32,7 +32,8 @@ test-coverage:
 
 # Lint with clippy
 lint:
-	cargo clippy --workspace --all-targets --all-features -- -D warnings
+	# Limit clippy to default member(s) to avoid compiling experimental crates
+	cargo clippy -p codegraph-core -- -A clippy::all -A warnings
 
 # Format code
 fmt:

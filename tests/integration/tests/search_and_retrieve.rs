@@ -1,5 +1,5 @@
-use cg_integration_test_support::{setup_test_server, write_sample_repo};
 use axum_test::TestServer;
+use cg_integration_test_support::{setup_test_server, write_sample_repo};
 use serde_json::json;
 use serial_test::serial;
 use uuid::Uuid;
@@ -118,5 +118,7 @@ async fn concurrent_search_requests_succeed() {
     let ctx = setup_test_server().await.unwrap();
     let futs = (0..8).map(|i| ctx.server.get(&format!("/v1/search?q=item{}", i)));
     let results = futures::future::join_all(futs).await;
-    for r in results { assert!(r.status().is_success()); }
+    for r in results {
+        assert!(r.status().is_success());
+    }
 }

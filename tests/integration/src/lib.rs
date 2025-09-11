@@ -1,11 +1,11 @@
-use std::{sync::Arc, path::PathBuf};
+use anyhow::Result;
 use axum::Router;
 use axum_test::TestServer;
 use codegraph_api::{create_router, AppState};
 use codegraph_core::ConfigManager;
-use tempfile::TempDir;
-use anyhow::Result;
 use serial_test::serial;
+use std::{path::PathBuf, sync::Arc};
+use tempfile::TempDir;
 
 pub struct TestContext {
     pub server: TestServer,
@@ -13,7 +13,9 @@ pub struct TestContext {
 }
 
 impl TestContext {
-    pub fn base_url(&self) -> &str { self.server.base_url() }
+    pub fn base_url(&self) -> &str {
+        self.server.base_url()
+    }
 }
 
 /// Create an axum TestServer with isolated working directory and clean RocksDB path.
@@ -34,7 +36,9 @@ pub async fn setup_test_server() -> Result<TestContext> {
     // Minimal config
     let config = ConfigManager::new_watching(Some("test".to_string()))
         .expect("Failed to init ConfigManager");
-    let state = AppState::new(config).await.expect("Failed to create AppState");
+    let state = AppState::new(config)
+        .await
+        .expect("Failed to create AppState");
     let app: Router = create_router(state);
     let server = TestServer::new(app).expect("Failed to create TestServer");
 
@@ -83,4 +87,3 @@ export const NAME = 'cg';
 
     root
 }
-
