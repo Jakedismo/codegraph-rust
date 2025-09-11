@@ -59,25 +59,25 @@ impl<T> CacheEntry<T> {
 pub trait AiCache<K, V>: Send + Sync {
     /// Insert a value into the cache
     async fn insert(&mut self, key: K, value: V, ttl: Option<Duration>) -> Result<()>;
-    
+
     /// Get a value from the cache
     async fn get(&mut self, key: &K) -> Result<Option<V>>;
-    
+
     /// Remove a value from the cache
     async fn remove(&mut self, key: &K) -> Result<()>;
-    
+
     /// Clear all cache entries
     async fn clear(&mut self) -> Result<()>;
-    
+
     /// Get cache statistics
     async fn stats(&self) -> Result<CacheStats>;
-    
+
     /// Check if cache contains key
     async fn contains_key(&self, key: &K) -> bool;
-    
+
     /// Get cache size (number of entries)
     async fn size(&self) -> Result<usize>;
-    
+
     /// Check if cache is empty
     async fn is_empty(&self) -> bool {
         self.size().await.unwrap_or(0) == 0
@@ -103,7 +103,7 @@ impl CacheStats {
             self.hits as f64 / (self.hits + self.misses) as f64
         }
     }
-    
+
     pub fn miss_rate(&self) -> f64 {
         1.0 - self.hit_rate()
     }
@@ -126,8 +126,8 @@ impl Default for CacheConfig {
         Self {
             max_size: 10_000,
             max_memory_bytes: 512 * 1024 * 1024, // 512MB
-            default_ttl: Some(Duration::from_hours(24)),
-            cleanup_interval: Duration::from_minutes(5),
+            default_ttl: Some(Duration::from_secs(24 * 3600)), // 24 hours
+            cleanup_interval: Duration::from_secs(5 * 60), // 5 minutes
             enable_metrics: true,
             enable_compression: true,
             compression_threshold_bytes: 1024, // 1KB
@@ -148,10 +148,10 @@ impl CacheSizeEstimator for Vec<f32> {
 
 impl CacheSizeEstimator for CodeNode {
     fn estimate_size(&self) -> usize {
-        std::mem::size_of::<Self>() +
-            self.name.len() +
-            self.content.as_ref().map_or(0, |c| c.len()) +
-            self.embedding.as_ref().map_or(0, |e| e.estimate_size())
+        std::mem::size_of::<Self>()
+            + self.name.len()
+            + self.content.as_ref().map_or(0, |c| c.len())
+            + self.embedding.as_ref().map_or(0, |e| e.estimate_size())
     }
 }
 
@@ -177,7 +177,7 @@ impl DurationExt for Duration {
     fn from_hours(hours: u64) -> Duration {
         Duration::from_secs(hours * 3600)
     }
-    
+
     fn from_minutes(minutes: u64) -> Duration {
         Duration::from_secs(minutes * 60)
     }

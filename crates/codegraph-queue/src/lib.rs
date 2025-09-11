@@ -14,8 +14,10 @@ use uuid::Uuid;
 
 // Re-export lock-free queue implementations for high-throughput paths
 pub mod lockfree {
-    pub use codegraph_concurrent::spsc::{WaitFreeSpscQueue, Producer as SpscProducer, Consumer as SpscConsumer, SpscError};
     pub use codegraph_concurrent::mpmc::{LockFreeMpmcQueue, MpmcError};
+    pub use codegraph_concurrent::spsc::{
+        Consumer as SpscConsumer, Producer as SpscProducer, SpscError, WaitFreeSpscQueue,
+    };
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -50,10 +52,13 @@ pub struct Queue {
 impl Queue {
     pub fn new(buffer_size: usize) -> (Self, Receiver<Task>) {
         let (sender, receiver) = mpsc::channel(buffer_size);
-        (Self {
-            pq: Arc::new(RwLock::new(PriorityQueue::new())),
-            sender,
-        }, receiver)
+        (
+            Self {
+                pq: Arc::new(RwLock::new(PriorityQueue::new())),
+                sender,
+            },
+            receiver,
+        )
     }
 
     pub async fn add_task(&self, task: Task, priority: Priority) -> Result<(), QueueError> {
@@ -65,9 +70,16 @@ impl Queue {
         Ok(())
     }
 
-    pub async fn update_priority(&self, task_id: Uuid, new_priority: Priority) -> Result<(), QueueError> {
+    pub async fn update_priority(
+        &self,
+        task_id: Uuid,
+        new_priority: Priority,
+    ) -> Result<(), QueueError> {
         let mut pq = self.pq.write().await;
-        let task_to_update = pq.iter().find(|(task, _)| task.id == task_id).map(|(task, _)| task.clone());
+        let task_to_update = pq
+            .iter()
+            .find(|(task, _)| task.id == task_id)
+            .map(|(task, _)| task.clone());
 
         if let Some(task) = task_to_update {
             pq.change_priority(&task, new_priority);
@@ -116,17 +128,18 @@ pub struct QueueProcessor {
 
 impl QueueProcessor {
     pub fn new(receiver: Receiver<Task>, batch_size: usize, timeout: Duration) -> Self {
-        Self { 
+        Self {
             receiver: Some(receiver),
-            batch_size, 
-            timeout
+            batch_size,
+            timeout,
         }
     }
 
     pub async fn run(&mut self) {
         if let Some(receiver) = self.receiver.take() {
             let stream = ReceiverStream::new(receiver);
-            let mut batch_stream = stream.chunks_timeout(self.batch_size, self.timeout);
+            let batch_stream = stream.chunks_timeout(self.batch_size, self.timeout);
+            tokio::pin!(batch_stream);
 
             while let Some(batch) = batch_stream.next().await {
                 let start_time = Instant::now();

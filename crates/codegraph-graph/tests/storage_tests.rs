@@ -1,5 +1,5 @@
-use codegraph_graph::{HighPerformanceRocksDbStorage, SerializableEdge, BulkInsertStats};
-use codegraph_core::{CodeNode, Language, NodeType, Location, GraphStore, Result};
+use codegraph_core::{CodeNode, GraphStore, Language, Location, NodeType, Result};
+use codegraph_graph::{BulkInsertStats, HighPerformanceRocksDbStorage, SerializableEdge};
 use tempfile::TempDir;
 use uuid::Uuid;
 
@@ -8,13 +8,26 @@ fn make_node_named(name: &str) -> CodeNode {
         name.to_string(),
         Some(NodeType::Function),
         Some(Language::Rust),
-        Location { file_path: "dummy.rs".to_string(), line: 1, column: 1, end_line: Some(1), end_column: Some(10) }
+        Location {
+            file_path: "dummy.rs".to_string(),
+            line: 1,
+            column: 1,
+            end_line: Some(1),
+            end_column: Some(10),
+        },
     )
 }
 
 fn make_edge(from: Uuid, to: Uuid, id: u64) -> SerializableEdge {
     use std::collections::HashMap;
-    SerializableEdge { id, from, to, edge_type: "ref".to_string(), weight: 1.0, metadata: HashMap::new() }
+    SerializableEdge {
+        id,
+        from,
+        to,
+        edge_type: "ref".to_string(),
+        weight: 1.0,
+        metadata: HashMap::new(),
+    }
 }
 
 #[tokio::test]
@@ -27,7 +40,12 @@ async fn test_cf_initialization_four_families() {
     assert!(cfs.contains(&"edges".to_string()));
     assert!(cfs.contains(&"metadata".to_string()));
     assert!(cfs.contains(&"indices".to_string()));
-    assert_eq!(cfs.iter().filter(|n| *n == "nodes" || *n == "edges" || *n == "metadata" || *n == "indices").count(), 4);
+    assert_eq!(
+        cfs.iter()
+            .filter(|n| *n == "nodes" || *n == "edges" || *n == "metadata" || *n == "indices")
+            .count(),
+        4
+    );
 }
 
 #[tokio::test]
@@ -112,7 +130,10 @@ async fn test_transaction_commit_edge() {
     let from = Uuid::new_v4();
     let to = Uuid::new_v4();
     let tx = storage.begin();
-    storage.add_edge_tx(tx, make_edge(from, to, 42)).await.unwrap();
+    storage
+        .add_edge_tx(tx, make_edge(from, to, 42))
+        .await
+        .unwrap();
     // before commit, should not be visible
     assert!(storage.get_edges_from(from).await.unwrap().is_empty());
     storage.commit(tx).unwrap();
@@ -125,7 +146,9 @@ async fn test_bulk_insert_nodes_chunksize() {
     let tmp = TempDir::new().unwrap();
     let storage = HighPerformanceRocksDbStorage::new(tmp.path()).unwrap();
     let mut nodes = Vec::new();
-    for i in 0..1500 { nodes.push(make_node_named(&format!("n{}", i))); }
+    for i in 0..1500 {
+        nodes.push(make_node_named(&format!("n{}", i)));
+    }
     let stats = storage.bulk_insert_nodes(nodes).await.unwrap();
     assert!(stats.batches >= 2);
 }
@@ -136,7 +159,9 @@ async fn test_bulk_insert_edges_chunksize() {
     let storage = HighPerformanceRocksDbStorage::new(tmp.path()).unwrap();
     let from = Uuid::new_v4();
     let mut edges = Vec::new();
-    for i in 0..1200u64 { edges.push(make_edge(from, Uuid::new_v4(), i+1)); }
+    for i in 0..1200u64 {
+        edges.push(make_edge(from, Uuid::new_v4(), i + 1));
+    }
     let stats = storage.bulk_insert_edges(edges).await.unwrap();
     assert!(stats.batches >= 2);
 }
@@ -172,10 +197,12 @@ async fn test_db_path_exposed() {
 
 #[tokio::test]
 async fn test_persist_in_target_dir() {
-    use std::path::PathBuf;
     use std::fs;
+    use std::path::PathBuf;
     let base = PathBuf::from("target/rocksdb/persist_test");
-    if base.exists() { let _ = fs::remove_dir_all(&base); }
+    if base.exists() {
+        let _ = fs::remove_dir_all(&base);
+    }
     fs::create_dir_all(&base).unwrap();
     let mut storage = HighPerformanceRocksDbStorage::new(&base).unwrap();
     let node = make_node_named("persist");
@@ -220,7 +247,10 @@ async fn test_add_edge_tx_commit_visibility() {
     let from = Uuid::new_v4();
     let to = Uuid::new_v4();
     let tx = storage.begin();
-    storage.add_edge_tx(tx, make_edge(from, to, 7)).await.unwrap();
+    storage
+        .add_edge_tx(tx, make_edge(from, to, 7))
+        .await
+        .unwrap();
     storage.commit(tx).unwrap();
     let edges = storage.get_edges_from(from).await.unwrap();
     assert!(edges.iter().any(|e| e.id == 7));
@@ -240,8 +270,14 @@ async fn test_indices_prefix_scan_limits() {
     let tmp = TempDir::new().unwrap();
     let storage = HighPerformanceRocksDbStorage::new(tmp.path()).unwrap();
     let from = Uuid::new_v4();
-    storage.add_edge(make_edge(from, Uuid::new_v4(), 100)).await.unwrap();
-    storage.add_edge(make_edge(Uuid::new_v4(), Uuid::new_v4(), 101)).await.unwrap();
+    storage
+        .add_edge(make_edge(from, Uuid::new_v4(), 100))
+        .await
+        .unwrap();
+    storage
+        .add_edge(make_edge(Uuid::new_v4(), Uuid::new_v4(), 101))
+        .await
+        .unwrap();
     storage.flush_batch_writes().unwrap();
     let edges = storage.get_edges_from(from).await.unwrap();
     assert!(edges.iter().any(|e| e.id == 100));
@@ -253,7 +289,9 @@ async fn test_large_batch_2500_nodes() {
     let tmp = TempDir::new().unwrap();
     let storage = HighPerformanceRocksDbStorage::new(tmp.path()).unwrap();
     let mut nodes = Vec::new();
-    for i in 0..2500 { nodes.push(make_node_named(&format!("x{}", i))); }
+    for i in 0..2500 {
+        nodes.push(make_node_named(&format!("x{}", i)));
+    }
     let stats = storage.bulk_insert_nodes(nodes).await.unwrap();
     assert!(stats.batches >= 3);
 }

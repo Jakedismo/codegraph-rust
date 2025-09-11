@@ -84,7 +84,7 @@ impl InMemoryEdgeStore {
     ) {
         if let Some(mut entry) = map.get_mut(&key) {
             // Copy-on-write small vector rebuild to keep readers lock-free
-            let mut v: Vec<EdgeId> = entry.as_ref().as_ref().clone();
+            let mut v: Vec<EdgeId> = entry.value().as_ref().clone();
             v.push(edge_id);
             *entry = Arc::new(v);
             return;
@@ -98,7 +98,7 @@ impl InMemoryEdgeStore {
         edge_id: EdgeId,
     ) {
         if let Some(mut entry) = map.get_mut(key) {
-            let v = entry.as_ref();
+            let v = entry.value();
             if v.len() == 1 && v[0] == edge_id {
                 drop(entry);
                 map.remove(key);
@@ -133,12 +133,12 @@ impl EdgeStore for InMemoryEdgeStore {
         let edge_id = edge.id;
         let edge_arc = Arc::new(edge);
         let old = self.edges.insert(edge_id, edge_arc.clone());
-        self.reindex_edge(old.map(|e| e.1), &edge_arc);
+        self.reindex_edge(old, &edge_arc);
         Ok(edge_id)
     }
 
     async fn read(&self, id: EdgeId) -> Result<Option<Edge>> {
-        Ok(self.edges.get(&id).map(|e| e.as_ref().as_ref().clone()))
+        Ok(self.edges.get(&id).map(|e| e.value().as_ref().clone()))
     }
 
     async fn update(&self, edge: Edge) -> Result<()> {
@@ -151,20 +151,23 @@ impl EdgeStore for InMemoryEdgeStore {
         }
         let edge_arc = Arc::new(edge);
         let old = self.edges.insert(id, edge_arc.clone());
-        self.reindex_edge(old.map(|e| e.1), &edge_arc);
+        self.reindex_edge(old, &edge_arc);
         Ok(())
     }
 
     async fn delete(&self, id: EdgeId) -> Result<bool> {
         if let Some((_, old)) = self.edges.remove(&id) {
-            self.reindex_edge(Some(old), &Arc::new(Edge {
-                id,
-                source: Uuid::nil(),
-                target: Uuid::nil(),
-                label: String::new(),
-                weight: 0.0,
-                properties: HashMap::new(),
-            }));
+            self.reindex_edge(
+                Some(old),
+                &Arc::new(Edge {
+                    id,
+                    source: Uuid::nil(),
+                    target: Uuid::nil(),
+                    label: String::new(),
+                    weight: 0.0,
+                    properties: HashMap::new(),
+                }),
+            );
             return Ok(true);
         }
         Ok(false)
@@ -176,7 +179,7 @@ impl EdgeStore for InMemoryEdgeStore {
             let mut result = Vec::with_capacity(ids.len());
             for id in ids.iter() {
                 if let Some(edge) = self.edges.get(id) {
-                    result.push(edge.as_ref().as_ref().clone());
+                    result.push(edge.value().as_ref().clone());
                 }
             }
             return Ok(result);
@@ -190,7 +193,7 @@ impl EdgeStore for InMemoryEdgeStore {
             let mut result = Vec::with_capacity(ids.len());
             for id in ids.iter() {
                 if let Some(edge) = self.edges.get(id) {
-                    result.push(edge.as_ref().as_ref().clone());
+                    result.push(edge.value().as_ref().clone());
                 }
             }
             return Ok(result);
@@ -206,7 +209,7 @@ impl EdgeStore for InMemoryEdgeStore {
             for id in out.iter() {
                 if let Some(edge) = self.edges.get(id) {
                     if seen.insert(*id) {
-                        res.push(edge.as_ref().as_ref().clone());
+                        res.push(edge.value().as_ref().clone());
                     }
                 }
             }
@@ -215,7 +218,7 @@ impl EdgeStore for InMemoryEdgeStore {
             for id in inc.iter() {
                 if let Some(edge) = self.edges.get(id) {
                     if seen.insert(*id) {
-                        res.push(edge.as_ref().as_ref().clone());
+                        res.push(edge.value().as_ref().clone());
                     }
                 }
             }
@@ -230,7 +233,7 @@ impl EdgeStore for InMemoryEdgeStore {
             let id = edge.id;
             let arc = Arc::new(edge);
             let old = self.edges.insert(id, arc.clone());
-            self.reindex_edge(old.map(|e| e.1), &arc);
+            self.reindex_edge(old, &arc);
             ids.push(id);
         }
         Ok(ids)
@@ -241,7 +244,9 @@ impl EdgeStore for InMemoryEdgeStore {
 mod tests {
     use super::*;
 
-    fn uuid() -> Uuid { Uuid::new_v4() }
+    fn uuid() -> Uuid {
+        Uuid::new_v4()
+    }
 
     #[tokio::test]
     async fn create_and_read_edge() {
@@ -341,7 +346,13 @@ mod tests {
         store.create(Edge::new(b, c, "uses")).await.unwrap();
 
         // Indirect verification via update reindex on label
-        let mut e = store.get_outgoing(a).await.unwrap().into_iter().find(|e| e.target == c).unwrap();
+        let mut e = store
+            .get_outgoing(a)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|e| e.target == c)
+            .unwrap();
         e.label = "imports".to_string();
         store.update(e.clone()).await.unwrap();
 
@@ -371,8 +382,14 @@ mod tests {
         let a = uuid();
         let b = uuid();
         let c = uuid();
-        store.create(Edge::new(a, b, "calls").with_weight(0.5)).await.unwrap();
-        store.create(Edge::new(a, c, "calls").with_weight(2.0)).await.unwrap();
+        store
+            .create(Edge::new(a, b, "calls").with_weight(0.5))
+            .await
+            .unwrap();
+        store
+            .create(Edge::new(a, c, "calls").with_weight(2.0))
+            .await
+            .unwrap();
         let mut out = store.get_outgoing(a).await.unwrap();
         out.sort_by(|x, y| y.weight.partial_cmp(&x.weight).unwrap());
         assert_eq!(out[0].weight, 2.0);
@@ -452,8 +469,14 @@ mod tests {
             .with_property("note", JsonValue::from("auto"));
         let id = store.create(e.clone()).await.unwrap();
         let got = store.read(id).await.unwrap().unwrap();
-        assert_eq!(got.properties.get("confidence").unwrap(), &JsonValue::from(0.87));
-        assert_eq!(got.properties.get("note").unwrap(), &JsonValue::from("auto"));
+        assert_eq!(
+            got.properties.get("confidence").unwrap(),
+            &JsonValue::from(0.87)
+        );
+        assert_eq!(
+            got.properties.get("note").unwrap(),
+            &JsonValue::from("auto")
+        );
     }
 
     #[tokio::test]
@@ -464,11 +487,13 @@ mod tests {
         let tasks = (0..1000).map(|_| {
             let store = store.clone();
             let s = s;
-            tokio::spawn(async move {
-                store.create(Edge::new(s, uuid(), "calls")).await.unwrap()
-            })
+            tokio::spawn(async move { store.create(Edge::new(s, uuid(), "calls")).await.unwrap() })
         });
-        let ids = join_all(tasks).await.into_iter().map(|r| r.unwrap()).collect::<Vec<_>>();
+        let ids = join_all(tasks)
+            .await
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect::<Vec<_>>();
         assert_eq!(ids.len(), 1000);
         assert_eq!(store.get_outgoing(s).await.unwrap().len(), 1000);
     }
@@ -486,4 +511,3 @@ mod tests {
         assert_eq!(both.len(), 2);
     }
 }
-

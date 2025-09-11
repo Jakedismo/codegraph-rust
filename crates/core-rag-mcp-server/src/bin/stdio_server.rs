@@ -1,15 +1,13 @@
 use core_rag_mcp_server::{CoreRagMcpServer, CoreRagServerConfig};
 use rmcp::{transport::stdio, ServiceExt};
-use tracing::{info, error};
 use std::env;
+use tracing::{error, info};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     tracing_subscriber::fmt()
-        .with_env_filter(
-            env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string())
-        )
+        .with_env_filter(env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()))
         .init();
 
     info!("Starting Core RAG MCP Server (STDIO)...");
@@ -57,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Wait for shutdown
     let result = service.waiting().await;
-    
+
     match result {
         Ok(_) => info!("Server shut down gracefully"),
         Err(e) => error!("Server error: {}", e),

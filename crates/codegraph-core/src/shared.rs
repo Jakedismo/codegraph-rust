@@ -1,9 +1,9 @@
 use bytes::Bytes;
-use std::borrow::Cow;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::borrow::Borrow;
+use std::borrow::Cow;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::borrow::Borrow;
 use std::ops::{Deref, Index, Range, RangeFrom, RangeFull, RangeTo};
 use std::sync::Arc;
 
@@ -33,19 +33,25 @@ impl Hash for SharedStr {
 }
 
 impl Borrow<str> for SharedStr {
-    fn borrow(&self) -> &str { self.as_str() }
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
 }
 
 #[derive(Clone)]
 enum SharedStrInner {
     Bytes(Bytes),
-    Slice { data: Arc<[u8]>, start: usize, len: usize },
+    Slice {
+        data: Arc<[u8]>,
+        start: usize,
+        len: usize,
+    },
     Owned(Box<str>),
 }
 
 impl Default for SharedStrInner {
     fn default() -> Self {
-        SharedStrInner::Owned(Box::<str>::from("") )
+        SharedStrInner::Owned(Box::<str>::from(""))
     }
 }
 
@@ -64,7 +70,7 @@ impl fmt::Display for SharedStr {
 impl SharedStr {
     pub fn as_str(&self) -> &str {
         match &self.inner {
-            SharedStrInner::Bytes(b) => std::str::from_utf8(b).unwrap_or("") ,
+            SharedStrInner::Bytes(b) => std::str::from_utf8(b).unwrap_or(""),
             SharedStrInner::Slice { data, start, len } => {
                 let bytes = &data[*start..(*start + *len)];
                 std::str::from_utf8(bytes).unwrap_or("")
@@ -74,11 +80,19 @@ impl SharedStr {
     }
 
     pub fn from_bytes(bytes: Bytes) -> Self {
-        SharedStr { inner: SharedStrInner::Bytes(bytes) }
+        SharedStr {
+            inner: SharedStrInner::Bytes(bytes),
+        }
     }
 
     pub fn from_arc_slice(data: Arc<[u8]>, start: usize, end: usize) -> Self {
-        SharedStr { inner: SharedStrInner::Slice { data, start, len: end.saturating_sub(start) } }
+        SharedStr {
+            inner: SharedStrInner::Slice {
+                data,
+                start,
+                len: end.saturating_sub(start),
+            },
+        }
     }
 
     pub fn into_string(self) -> String {
@@ -88,13 +102,17 @@ impl SharedStr {
 
 impl From<String> for SharedStr {
     fn from(s: String) -> Self {
-        SharedStr { inner: SharedStrInner::Owned(s.into_boxed_str()) }
+        SharedStr {
+            inner: SharedStrInner::Owned(s.into_boxed_str()),
+        }
     }
 }
 
 impl From<&str> for SharedStr {
     fn from(s: &str) -> Self {
-        SharedStr { inner: SharedStrInner::Owned(s.to_owned().into_boxed_str()) }
+        SharedStr {
+            inner: SharedStrInner::Owned(s.to_owned().into_boxed_str()),
+        }
     }
 }
 
@@ -109,7 +127,9 @@ impl From<Cow<'_, str>> for SharedStr {
 
 impl SharedStr {
     /// Convert to a `Cow<str>`. Always borrowed as SharedStr stores immutable data.
-    pub fn to_cow(&self) -> Cow<'_, str> { Cow::Borrowed(self.as_str()) }
+    pub fn to_cow(&self) -> Cow<'_, str> {
+        Cow::Borrowed(self.as_str())
+    }
 }
 
 impl Deref for SharedStr {

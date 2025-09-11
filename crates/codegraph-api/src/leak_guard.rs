@@ -33,6 +33,7 @@ pub struct LeakGuard;
 
 #[cfg(not(feature = "leak-detect"))]
 impl LeakGuard {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
-

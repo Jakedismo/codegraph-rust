@@ -38,6 +38,8 @@ num_cpus = { workspace = true }
 regex = { workspace = true }
 globset = { workspace = true }
 ignore = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
 tokio-uring = { workspace = true, optional = true }
 
 [features]

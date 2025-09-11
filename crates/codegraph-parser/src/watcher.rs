@@ -8,7 +8,10 @@ use chrono::{DateTime, Utc};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use dashmap::DashMap;
 use futures::stream::StreamExt;
-use notify::{event::{CreateKind, ModifyKind, RemoveKind, RenameMode}, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{
+    event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
+    Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+};
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -18,8 +21,8 @@ use tracing::{debug, error, info, warn};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 
-use codegraph_core::{CodeGraphError, Language};
 use crate::{LanguageRegistry, TreeSitterParser};
+use codegraph_core::{CodeGraphError, Language};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FileId(pub String);
@@ -71,7 +74,7 @@ pub struct FileSystemWatcher {
 impl FileSystemWatcher {
     pub fn new() -> Result<Self> {
         let (event_sender, event_receiver) = unbounded();
-        
+
         Ok(Self {
             watcher: None,
             file_registry: Arc::new(DashMap::new()),
@@ -89,8 +92,11 @@ impl FileSystemWatcher {
 
     fn default_file_filters() -> HashSet<String> {
         [
-            "rs", "py", "js", "ts", "tsx", "jsx", "go", "java", "cpp", "hpp", "c", "h"
-        ].iter().map(|s| s.to_string()).collect()
+            "rs", "py", "js", "ts", "tsx", "jsx", "go", "java", "cpp", "hpp", "c", "h",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
     }
 
     pub async fn add_watch_directory<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
@@ -123,21 +129,19 @@ impl FileSystemWatcher {
             let include_globs = self.include_globs.clone();
             let ignore_matchers = self.ignore_matchers.clone();
 
-            let mut watcher = notify::recommended_watcher(move |result| {
-                match result {
-                    Ok(event) => {
-                        Self::handle_fs_event(
-                            event,
-                            &event_sender,
-                            &file_registry,
-                            &language_registry,
-                            &file_filters,
-                            &include_globs,
-                            &ignore_matchers,
-                        );
-                    }
-                    Err(e) => error!("File watcher error: {:?}", e),
+            let mut watcher = notify::recommended_watcher(move |result| match result {
+                Ok(event) => {
+                    Self::handle_fs_event(
+                        event,
+                        &event_sender,
+                        &file_registry,
+                        &language_registry,
+                        &file_filters,
+                        &include_globs,
+                        &ignore_matchers,
+                    );
                 }
+                Err(e) => error!("File watcher error: {:?}", e),
             })?;
 
             watcher.watch(&path, RecursiveMode::Recursive)?;
@@ -152,15 +156,16 @@ impl FileSystemWatcher {
 
     pub fn remove_watch_directory<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         let path = path.as_ref().to_path_buf();
-        
+
         if let Some(ref mut watcher) = self.watcher {
             watcher.unwatch(&path)?;
         }
 
         self.watched_directories.write().remove(&path);
-        
+
         // Remove files from registry
-        let to_remove: Vec<FileId> = self.file_registry
+        let to_remove: Vec<FileId> = self
+            .file_registry
             .iter()
             .filter_map(|entry| {
                 if entry.value().path.starts_with(&path) {
@@ -187,7 +192,7 @@ impl FileSystemWatcher {
 
             while let Some(entry) = entries.next_entry().await? {
                 let path = entry.path();
-                
+
                 if path.is_dir() {
                     stack.push(path);
                 } else if self.should_track_file(&path) {
@@ -225,8 +230,10 @@ impl FileSystemWatcher {
             if path.starts_with(root) {
                 match &best_root {
                     None => best_root = Some(root.clone()),
-                    Some(br) => if root.components().count() > br.components().count() {
-                        best_root = Some(root.clone())
+                    Some(br) => {
+                        if root.components().count() > br.components().count() {
+                            best_root = Some(root.clone())
+                        }
                     }
                 }
             }
@@ -235,7 +242,9 @@ impl FileSystemWatcher {
             if let Some(matcher) = self.ignore_matchers.get(&root) {
                 let is_dir = false; // we only call on files here
                 let m = matcher.matched_path_or_any_parents(path, is_dir);
-                if m.is_ignore() { return true; }
+                if m.is_ignore() {
+                    return true;
+                }
             }
         }
         false
@@ -244,12 +253,14 @@ impl FileSystemWatcher {
     async fn create_file_metadata(&self, path: &Path) -> Result<FileMetadata> {
         let file_metadata = fs::metadata(path).await?;
         let content = fs::read(path).await?;
-        
+
         let mut hasher = Sha256::new();
         hasher.update(&content);
         let content_hash = format!("{:x}", hasher.finalize());
 
-        let language = self.language_registry.detect_language(&path.to_string_lossy());
+        let language = self
+            .language_registry
+            .detect_language(&path.to_string_lossy());
 
         Ok(FileMetadata {
             path: path.to_path_buf(),
@@ -278,7 +289,9 @@ impl FileSystemWatcher {
                 file_filters,
                 include_globs,
                 ignore_matchers,
-            ).await {
+            )
+            .await
+            {
                 error!("Error processing file system event: {:?}", e);
             }
         });
@@ -297,21 +310,36 @@ impl FileSystemWatcher {
 
         // Handle rename events which usually include two paths
         match &event.kind {
-            EventKind::Modify(ModifyKind::Name(RenameMode::Both)) | EventKind::Modify(ModifyKind::Name(RenameMode::From)) | EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
+            EventKind::Modify(ModifyKind::Name(RenameMode::Both))
+            | EventKind::Modify(ModifyKind::Name(RenameMode::From))
+            | EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
                 if event.paths.len() == 2 {
                     let from = &event.paths[0];
                     let to = &event.paths[1];
-                    if Self::should_track_file_static(from, file_filters, include_globs, ignore_matchers)
-                        || Self::should_track_file_static(to, file_filters, include_globs, ignore_matchers) {
+                    if Self::should_track_file_static(
+                        from,
+                        file_filters,
+                        include_globs,
+                        ignore_matchers,
+                    ) || Self::should_track_file_static(
+                        to,
+                        file_filters,
+                        include_globs,
+                        ignore_matchers,
+                    ) {
                         let from_id = FileId::from(from.as_path());
                         let to_id = FileId::from(to.as_path());
                         // Remove old, add new
                         if let Some((_, old_meta)) = file_registry.remove(&from_id) {
-                            if let Ok(new_meta) = Self::create_file_metadata_static(to, language_registry).await {
+                            if let Ok(new_meta) =
+                                Self::create_file_metadata_static(to, language_registry).await
+                            {
                                 file_registry.insert(to_id.clone(), new_meta.clone());
-                                let _ = event_sender.send(FileChangeEvent::Renamed(from_id, to_id, new_meta));
+                                let _ = event_sender
+                                    .send(FileChangeEvent::Renamed(from_id, to_id, new_meta));
                             } else {
-                                let _ = event_sender.send(FileChangeEvent::Deleted(from_id, old_meta));
+                                let _ =
+                                    event_sender.send(FileChangeEvent::Deleted(from_id, old_meta));
                             }
                         }
                     }
@@ -319,37 +347,59 @@ impl FileSystemWatcher {
             }
             _ => {
                 for path in event.paths {
-                    if !Self::should_track_file_static(&path, file_filters, include_globs, ignore_matchers) {
+                    if !Self::should_track_file_static(
+                        &path,
+                        file_filters,
+                        include_globs,
+                        ignore_matchers,
+                    ) {
                         continue;
                     }
 
                     let file_id = FileId::from(path.as_path());
 
                     match event.kind {
-                        EventKind::Create(CreateKind::Any) | EventKind::Create(CreateKind::File) | EventKind::Create(CreateKind::Folder) => {
-                            if let Ok(metadata) = Self::create_file_metadata_static(&path, language_registry).await {
+                        EventKind::Create(CreateKind::Any)
+                        | EventKind::Create(CreateKind::File)
+                        | EventKind::Create(CreateKind::Folder) => {
+                            if let Ok(metadata) =
+                                Self::create_file_metadata_static(&path, language_registry).await
+                            {
                                 file_registry.insert(file_id.clone(), metadata.clone());
-                                let _ = event_sender.send(FileChangeEvent::Created(file_id, metadata));
+                                let _ =
+                                    event_sender.send(FileChangeEvent::Created(file_id, metadata));
                             }
                         }
-                        EventKind::Modify(ModifyKind::Data(_)) | EventKind::Modify(ModifyKind::Any) | EventKind::Modify(ModifyKind::Metadata(_)) => {
-                            if let Ok(new_metadata) = Self::create_file_metadata_static(&path, language_registry).await {
+                        EventKind::Modify(ModifyKind::Data(_))
+                        | EventKind::Modify(ModifyKind::Any)
+                        | EventKind::Modify(ModifyKind::Metadata(_)) => {
+                            if let Ok(new_metadata) =
+                                Self::create_file_metadata_static(&path, language_registry).await
+                            {
                                 if let Some(old_metadata) = file_registry.get(&file_id) {
                                     let old_metadata = old_metadata.value().clone();
                                     if old_metadata.content_hash != new_metadata.content_hash {
                                         file_registry.insert(file_id.clone(), new_metadata.clone());
-                                        let _ = event_sender.send(FileChangeEvent::Modified(file_id, new_metadata, old_metadata));
+                                        let _ = event_sender.send(FileChangeEvent::Modified(
+                                            file_id,
+                                            new_metadata,
+                                            old_metadata,
+                                        ));
                                     }
                                 } else {
                                     // File wasn't tracked before, treat as creation
                                     file_registry.insert(file_id.clone(), new_metadata.clone());
-                                    let _ = event_sender.send(FileChangeEvent::Created(file_id, new_metadata));
+                                    let _ = event_sender
+                                        .send(FileChangeEvent::Created(file_id, new_metadata));
                                 }
                             }
                         }
-                        EventKind::Remove(RemoveKind::Any) | EventKind::Remove(RemoveKind::File) | EventKind::Remove(RemoveKind::Folder) => {
+                        EventKind::Remove(RemoveKind::Any)
+                        | EventKind::Remove(RemoveKind::File)
+                        | EventKind::Remove(RemoveKind::Folder) => {
                             if let Some((_, old_metadata)) = file_registry.remove(&file_id) {
-                                let _ = event_sender.send(FileChangeEvent::Deleted(file_id, old_metadata));
+                                let _ = event_sender
+                                    .send(FileChangeEvent::Deleted(file_id, old_metadata));
                             }
                         }
                         _ => {}
@@ -370,7 +420,9 @@ impl FileSystemWatcher {
         // ignore via any matcher registered (check all roots)
         for kv in ignore_matchers.iter() {
             let m = kv.value();
-            if m.matched_path_or_any_parents(path, false).is_ignore() { return false; }
+            if m.matched_path_or_any_parents(path, false).is_ignore() {
+                return false;
+            }
         }
         if let Some(globs) = &*include_globs.read() {
             return globs.is_match(path);
@@ -383,10 +435,13 @@ impl FileSystemWatcher {
         false
     }
 
-    async fn create_file_metadata_static(path: &Path, language_registry: &LanguageRegistry) -> Result<FileMetadata> {
+    async fn create_file_metadata_static(
+        path: &Path,
+        language_registry: &LanguageRegistry,
+    ) -> Result<FileMetadata> {
         let file_metadata = fs::metadata(path).await?;
         let content = fs::read(path).await?;
-        
+
         let mut hasher = Sha256::new();
         hasher.update(&content);
         let content_hash = format!("{:x}", hasher.finalize());
@@ -412,8 +467,9 @@ impl FileSystemWatcher {
                 Ok(Some(change)) => {
                     changes.push(change);
                     // Continue collecting if we have more changes coming quickly
-                    while let Ok(Ok(Some(additional_change))) = 
-                        tokio::time::timeout(Duration::from_millis(10), self.receive_change()).await {
+                    while let Ok(Ok(Some(additional_change))) =
+                        tokio::time::timeout(Duration::from_millis(10), self.receive_change()).await
+                    {
                         changes.push(additional_change);
                     }
                 }
@@ -456,7 +512,9 @@ impl FileSystemWatcher {
     }
 
     pub fn get_file_metadata(&self, file_id: &FileId) -> Option<FileMetadata> {
-        self.file_registry.get(file_id).map(|entry| entry.value().clone())
+        self.file_registry
+            .get(file_id)
+            .map(|entry| entry.value().clone())
     }
 
     pub fn get_tracked_files(&self) -> Vec<(FileId, FileMetadata)> {
@@ -517,7 +575,9 @@ impl FileSystemWatcher {
                 FileChangeEvent::Created(fid, meta) => {
                     let key = fid.0.clone();
                     match map.remove(&key) {
-                        None => { map.insert(key, Agg::Created(fid, meta)); },
+                        None => {
+                            map.insert(key, Agg::Created(fid, meta));
+                        }
                         Some(Agg::Deleted(_, old)) => {
                             // Delete followed by Create ⇒ Modified
                             map.insert(key, Agg::Modified(fid, meta, old));
@@ -534,7 +594,9 @@ impl FileSystemWatcher {
                 FileChangeEvent::Modified(fid, newm, oldm) => {
                     let key = fid.0.clone();
                     match map.remove(&key) {
-                        None => { map.insert(key, Agg::Modified(fid, newm, oldm)); },
+                        None => {
+                            map.insert(key, Agg::Modified(fid, newm, oldm));
+                        }
                         Some(Agg::Created(_, cm)) => {
                             // Created then Modified ⇒ still Created with latest meta
                             map.insert(key, Agg::Created(fid, newm));
@@ -555,7 +617,9 @@ impl FileSystemWatcher {
                 FileChangeEvent::Deleted(fid, oldm) => {
                     let key = fid.0.clone();
                     match map.remove(&key) {
-                        None => { map.insert(key, Agg::Deleted(fid, oldm)); },
+                        None => {
+                            map.insert(key, Agg::Deleted(fid, oldm));
+                        }
                         Some(Agg::Created(_, _)) => {
                             // Created then Deleted ⇒ drop entirely (no-op)
                             // do not reinsert
@@ -581,12 +645,14 @@ impl FileSystemWatcher {
             }
         }
 
-        map.into_values().map(|agg| match agg {
-            Agg::Created(fid, m) => FileChangeEvent::Created(fid, m),
-            Agg::Modified(fid, n, o) => FileChangeEvent::Modified(fid, n, o),
-            Agg::Deleted(fid, o) => FileChangeEvent::Deleted(fid, o),
-            Agg::Renamed(f, t, m) => FileChangeEvent::Renamed(f, t, m),
-        }).collect()
+        map.into_values()
+            .map(|agg| match agg {
+                Agg::Created(fid, m) => FileChangeEvent::Created(fid, m),
+                Agg::Modified(fid, n, o) => FileChangeEvent::Modified(fid, n, o),
+                Agg::Deleted(fid, o) => FileChangeEvent::Deleted(fid, o),
+                Agg::Renamed(f, t, m) => FileChangeEvent::Renamed(f, t, m),
+            })
+            .collect()
     }
 }
 
@@ -617,7 +683,7 @@ mod tests {
     async fn test_add_watch_directory() {
         let temp_dir = TempDir::new().unwrap();
         let mut watcher = FileSystemWatcher::new().unwrap();
-        
+
         let result = watcher.add_watch_directory(temp_dir.path()).await;
         assert!(result.is_ok());
     }
@@ -626,14 +692,14 @@ mod tests {
     async fn test_file_tracking() {
         let temp_dir = TempDir::new().unwrap();
         let mut watcher = FileSystemWatcher::new().unwrap();
-        
+
         // Create a test file
         let test_file = temp_dir.path().join("test.rs");
         fs::write(&test_file, "fn main() {}").await.unwrap();
-        
+
         // Add watch directory
         watcher.add_watch_directory(temp_dir.path()).await.unwrap();
-        
+
         // Check if file is tracked
         let file_id = FileId::from(test_file.as_path());
         let metadata = watcher.get_file_metadata(&file_id);
@@ -645,27 +711,29 @@ mod tests {
     async fn test_file_change_detection() {
         let temp_dir = TempDir::new().unwrap();
         let mut watcher = FileSystemWatcher::new().unwrap();
-        
+
         // Create a test file
         let test_file = temp_dir.path().join("test.rs");
         fs::write(&test_file, "fn main() {}").await.unwrap();
-        
+
         // Add watch directory
         watcher.add_watch_directory(temp_dir.path()).await.unwrap();
-        
+
         // Get initial hash
         let file_id = FileId::from(test_file.as_path());
         let initial_metadata = watcher.get_file_metadata(&file_id).unwrap();
-        
+
         // Wait a bit to ensure different modification time
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         // Modify the file
-        fs::write(&test_file, "fn main() { println!(\"Hello\"); }").await.unwrap();
-        
+        fs::write(&test_file, "fn main() { println!(\"Hello\"); }")
+            .await
+            .unwrap();
+
         // Give the watcher time to detect the change
         tokio::time::sleep(Duration::from_millis(200)).await;
-        
+
         // Check for changes
         if let Some(batch) = watcher.next_batch().await {
             assert!(!batch.changes.is_empty());
@@ -690,14 +758,20 @@ mod tests {
 
         // Create a matching file
         let rs_file = temp_dir.path().join("lib.rs");
-        fs::write(&rs_file, "fn a(){}" ).await.unwrap();
+        fs::write(&rs_file, "fn a(){}").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(150)).await;
 
         if let Some(batch) = watcher.next_batch().await {
             // Ensure no events for txt, at least one for rs
-            let has_rs = batch.changes.iter().any(|e| match e { FileChangeEvent::Created(fid, _) => fid.0.ends_with("lib.rs"), _ => false });
-            let has_txt = batch.changes.iter().any(|e| match e { FileChangeEvent::Created(fid, _) => fid.0.ends_with("note.txt"), _ => false });
+            let has_rs = batch.changes.iter().any(|e| match e {
+                FileChangeEvent::Created(fid, _) => fid.0.ends_with("lib.rs"),
+                _ => false,
+            });
+            let has_txt = batch.changes.iter().any(|e| match e {
+                FileChangeEvent::Created(fid, _) => fid.0.ends_with("note.txt"),
+                _ => false,
+            });
             assert!(has_rs);
             assert!(!has_txt);
         } else {
@@ -719,13 +793,19 @@ mod tests {
         let log_file = temp_dir.path().join("debug.log");
         fs::write(&log_file, "a").await.unwrap();
         let code_file = temp_dir.path().join("main.rs");
-        fs::write(&code_file, "fn main(){}" ).await.unwrap();
+        fs::write(&code_file, "fn main(){}").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(150)).await;
 
         if let Some(batch) = watcher.next_batch().await {
-            let has_log = batch.changes.iter().any(|e| match e { FileChangeEvent::Created(fid, _) => fid.0.ends_with("debug.log"), _ => false });
-            let has_rs = batch.changes.iter().any(|e| match e { FileChangeEvent::Created(fid, _) => fid.0.ends_with("main.rs"), _ => false });
+            let has_log = batch.changes.iter().any(|e| match e {
+                FileChangeEvent::Created(fid, _) => fid.0.ends_with("debug.log"),
+                _ => false,
+            });
+            let has_rs = batch.changes.iter().any(|e| match e {
+                FileChangeEvent::Created(fid, _) => fid.0.ends_with("main.rs"),
+                _ => false,
+            });
             assert!(has_rs);
             assert!(!has_log);
         } else {
@@ -741,19 +821,25 @@ mod tests {
         watcher.set_debounce_duration(Duration::from_millis(20));
 
         let file = temp_dir.path().join("coalesce.rs");
-        fs::write(&file, "fn a(){}" ).await.unwrap();
+        fs::write(&file, "fn a(){}").await.unwrap();
         watcher.add_watch_directory(temp_dir.path()).await.unwrap();
 
         // Multiple rapid modifications
         for i in 0..5u8 {
-            fs::write(&file, format!("fn a(){{ /*{}*/ }}", i)).await.unwrap();
+            fs::write(&file, format!("fn a(){{ /*{}*/ }}", i))
+                .await
+                .unwrap();
         }
 
         tokio::time::sleep(Duration::from_millis(200)).await;
         if let Some(batch) = watcher.next_batch().await {
             // Expect at most one Modified event for this path
             let mods: Vec<_> = batch.changes.iter().filter(|e| matches!(e, FileChangeEvent::Modified(fid, _, _) if fid.0.ends_with("coalesce.rs"))).collect();
-            assert!(mods.len() <= 1, "Expected <=1 modified event, got {}", mods.len());
+            assert!(
+                mods.len() <= 1,
+                "Expected <=1 modified event, got {}",
+                mods.len()
+            );
         } else {
             panic!("No batch received");
         }

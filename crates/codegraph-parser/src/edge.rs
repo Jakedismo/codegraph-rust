@@ -1,4 +1,4 @@
-use codegraph_core::{NodeId, EdgeType};
+use codegraph_core::{EdgeType, NodeId};
 
 #[derive(Debug, Clone)]
 pub struct CodeEdge {

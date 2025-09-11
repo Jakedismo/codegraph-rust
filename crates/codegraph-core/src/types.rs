@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
 use uuid::Uuid;
 
 pub type NodeId = Uuid;
@@ -45,6 +47,47 @@ pub enum EdgeType {
     Other(String),
 }
 
+impl Default for EdgeType {
+    fn default() -> Self {
+        EdgeType::References
+    }
+}
+
+impl fmt::Display for EdgeType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            EdgeType::Calls => "calls",
+            EdgeType::Defines => "defines",
+            EdgeType::Uses => "uses",
+            EdgeType::Imports => "imports",
+            EdgeType::Extends => "extends",
+            EdgeType::Implements => "implements",
+            EdgeType::Contains => "contains",
+            EdgeType::References => "references",
+            EdgeType::Other(s) => s.as_str(),
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl FromStr for EdgeType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "calls" => Ok(EdgeType::Calls),
+            "defines" => Ok(EdgeType::Defines),
+            "uses" => Ok(EdgeType::Uses),
+            "imports" => Ok(EdgeType::Imports),
+            "extends" => Ok(EdgeType::Extends),
+            "implements" => Ok(EdgeType::Implements),
+            "contains" => Ok(EdgeType::Contains),
+            "references" => Ok(EdgeType::References),
+            other => Ok(EdgeType::Other(other.to_string())),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Location {
     pub file_path: String,
@@ -63,9 +106,9 @@ pub struct Metadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChangeEvent {
-    Created(String), // file path
+    Created(String),  // file path
     Modified(String), // file path
-    Deleted(String), // file path
+    Deleted(String),  // file path
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

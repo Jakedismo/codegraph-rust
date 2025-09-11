@@ -5,14 +5,14 @@ use axum::{
     Json,
 };
 use codegraph_core::{CodeParser, GraphStore, NodeId};
+use codegraph_vector::{
+    BatchOperation, BatchStats, IndexConfig, IndexStats, IndexType, SearchConfig,
+    SearchPerformanceStats,
+};
 #[cfg(feature = "persistent")]
 use codegraph_vector::{
-    StorageStats, IncrementalStats, TransactionStats, IsolationLevel,
-    VectorOperation, CompressionType,
-};
-use codegraph_vector::{
-    BatchOperation, BatchStats, IndexStats, SearchPerformanceStats,
-    IndexConfig, IndexType, SearchConfig,
+    CompressionType, IncrementalStats, IsolationLevel, StorageStats, TransactionStats,
+    VectorOperation,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -80,7 +80,9 @@ pub struct LocationDto {
 pub async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "healthy".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: option_env!("CARGO_PKG_VERSION")
+            .unwrap_or("0.1.0")
+            .to_string(),
     })
 }
 
@@ -114,7 +116,10 @@ pub async fn parse_file(
 
     Ok(Json(ParseResponse {
         nodes_created: nodes_count,
-        message: format!("Successfully parsed {} nodes from {}", nodes_count, request.file_path),
+        message: format!(
+            "Successfully parsed {} nodes from {}",
+            nodes_count, request.file_path
+        ),
     }))
 }
 
@@ -154,7 +159,7 @@ pub async fn search_nodes(
     Query(params): Query<SearchQuery>,
 ) -> ApiResult<Json<SearchResponse>> {
     let limit = params.limit.unwrap_or(10);
-    
+
     let results = state
         .semantic_search
         .search_by_text(&params.query, limit)
@@ -307,7 +312,8 @@ pub struct TransactionStatsResponse {
 #[cfg(feature = "persistent")]
 impl From<TransactionStats> for TransactionStatsResponse {
     fn from(stats: TransactionStats) -> Self {
-        let isolation_level_counts = stats.isolation_level_counts
+        let isolation_level_counts = stats
+            .isolation_level_counts
             .into_iter()
             .map(|(level, count)| (format!("{:?}", level), count))
             .collect();
@@ -325,9 +331,9 @@ impl From<TransactionStats> for TransactionStatsResponse {
 #[derive(Deserialize)]
 pub struct CompressionRequest {
     pub compression_type: String,
-    pub m: Option<usize>,        // For PQ
-    pub nbits: Option<u32>,      // For PQ and SQ
-    pub uniform: Option<bool>,   // For SQ
+    pub m: Option<usize>,      // For PQ
+    pub nbits: Option<u32>,    // For PQ and SQ
+    pub uniform: Option<bool>, // For SQ
 }
 
 #[cfg(feature = "persistent")]
@@ -376,7 +382,7 @@ pub struct TransactionRequest {
 #[cfg(feature = "persistent")]
 #[derive(Deserialize)]
 pub struct TransactionOperation {
-    pub operation_type: String,  // "insert", "update", "delete"
+    pub operation_type: String, // "insert", "update", "delete"
     pub node_id: String,
     pub vector: Option<Vec<f32>>,
     pub old_vector: Option<Vec<f32>>,
@@ -475,12 +481,12 @@ pub async fn enable_compression(
         "pq" | "product_quantization" => {
             let m = request.m.unwrap_or(16);
             let nbits = request.nbits.unwrap_or(8);
-            
+
             parameters.insert("m".to_string(), m.to_string());
             parameters.insert("nbits".to_string(), nbits.to_string());
 
             // In real implementation: state.persistent_store.enable_product_quantization(m, nbits)
-            
+
             Ok(Json(CompressionResponse {
                 enabled: true,
                 compression_type: "ProductQuantization".to_string(),
@@ -491,12 +497,12 @@ pub async fn enable_compression(
         "sq" | "scalar_quantization" => {
             let nbits = request.nbits.unwrap_or(8);
             let uniform = request.uniform.unwrap_or(false);
-            
+
             parameters.insert("nbits".to_string(), nbits.to_string());
             parameters.insert("uniform".to_string(), uniform.to_string());
 
             // In real implementation: state.persistent_store.enable_scalar_quantization(nbits, uniform)
-            
+
             Ok(Json(CompressionResponse {
                 enabled: true,
                 compression_type: "ScalarQuantization".to_string(),
@@ -517,21 +523,23 @@ pub async fn create_backup(
     Json(request): Json<BackupRequest>,
 ) -> ApiResult<Json<BackupResponse>> {
     // In real implementation: state.persistent_store.create_backup().await
-    
+
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    
+
     let backup_path = format!("/backups/vector_storage_backup_{}.db", timestamp);
-    
+
     Ok(Json(BackupResponse {
         backup_path: backup_path.clone(),
         created_at: timestamp,
         message: format!(
             "Backup created successfully at {}{}",
             backup_path,
-            request.description.map_or(String::new(), |desc| format!(" ({})", desc))
+            request
+                .description
+                .map_or(String::new(), |desc| format!(" ({})", desc))
         ),
     }))
 }
@@ -543,7 +551,7 @@ pub async fn restore_backup(
     Json(request): Json<RestoreRequest>,
 ) -> ApiResult<Json<RestoreResponse>> {
     // In real implementation: state.persistent_store.restore_from_backup(&request.backup_path).await
-    
+
     Ok(Json(RestoreResponse {
         restored_from: request.backup_path.clone(),
         message: format!("Successfully restored from backup: {}", request.backup_path),
@@ -563,9 +571,12 @@ pub async fn execute_transaction(
         Some("repeatable_read") => IsolationLevel::RepeatableRead,
         Some("serializable") => IsolationLevel::Serializable,
         None => IsolationLevel::ReadCommitted, // Default
-        Some(level) => return Err(ApiError::BadRequest(
-            format!("Invalid isolation level: {}", level)
-        )),
+        Some(level) => {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid isolation level: {}",
+                level
+            )));
+        }
     };
 
     // Mock transaction ID
@@ -604,9 +615,9 @@ pub async fn merge_segments(
         .unwrap_or(10);
 
     // In real implementation: state.incremental_manager.merge_segments(max_segments).await
-    
+
     let merged_count = 3; // Mock value
-    
+
     Ok(Json(serde_json::json!({
         "merged_segments": merged_count,
         "max_segments_requested": max_segments,
@@ -620,7 +631,7 @@ pub async fn flush_incremental(
     State(state): State<AppState>,
 ) -> ApiResult<Json<serde_json::Value>> {
     // In real implementation: state.incremental_manager.flush().await
-    
+
     Ok(Json(serde_json::json!({
         "status": "success",
         "message": "All pending incremental operations have been flushed"
@@ -661,7 +672,9 @@ pub struct MemoryStatsResponse {
 #[cfg(feature = "leak-detect")]
 pub async fn memory_stats() -> ApiResult<Json<MemoryStatsResponse>> {
     let tracker = memscope_rs::get_global_tracker();
-    let stats = tracker.get_stats().map_err(|e| ApiError::Internal(e.to_string()))?;
+    let stats = tracker
+        .get_stats()
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
     Ok(Json(MemoryStatsResponse {
         total_allocations: stats.total_allocations,
         total_deallocations: stats.total_deallocations,
@@ -689,15 +702,25 @@ pub async fn export_leak_report() -> ApiResult<Json<LeakExportResponse>> {
     use std::path::PathBuf;
 
     let tracker = memscope_rs::get_global_tracker();
-    let stats = tracker.get_stats().map_err(|e| ApiError::Internal(e.to_string()))?;
+    let stats = tracker
+        .get_stats()
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     // Prepare output directory under target/memory_reports by default
-    let mut out_dir = PathBuf::from(std::env::var("MEMREPORT_DIR").unwrap_or_else(|_| "target/memory_reports".into()));
+    let mut out_dir = PathBuf::from(
+        std::env::var("MEMREPORT_DIR").unwrap_or_else(|_| "target/memory_reports".into()),
+    );
     if let Err(e) = fs::create_dir_all(&out_dir) {
-        return Err(ApiError::Internal(format!("Failed to create report dir: {}", e)));
+        return Err(ApiError::Internal(format!(
+            "Failed to create report dir: {}",
+            e
+        )));
     }
 
-    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     out_dir.push(format!("leak_report_{}.json", ts));
     let out_path = out_dir;
 

@@ -33,6 +33,7 @@ tikv-jemalloc-ctl = { workspace = true }
 tikv-jemallocator = { workspace = true }
 hashbrown = { workspace = true }
 rustc-hash = { workspace = true }
+sha2 = { workspace = true }
 
 memmap2 = { workspace = true }
 

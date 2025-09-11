@@ -75,7 +75,7 @@ impl ServiceRegistry {
         let registry = Self {
             services: Arc::new(RwLock::new(HashMap::new())),
         };
-        
+
         // Start background cleanup task
         let services_clone = registry.services.clone();
         tokio::spawn(async move {
@@ -85,14 +85,16 @@ impl ServiceRegistry {
                 Self::cleanup_expired_services(&services_clone).await;
             }
         });
-        
+
         registry
     }
 
-    async fn cleanup_expired_services(services: &Arc<RwLock<HashMap<String, ServiceRegistration>>>) {
+    async fn cleanup_expired_services(
+        services: &Arc<RwLock<HashMap<String, ServiceRegistration>>>,
+    ) {
         let now = current_timestamp();
         let mut services_guard = services.write().await;
-        
+
         let expired_services: Vec<String> = services_guard
             .iter()
             .filter_map(|(id, service)| {
@@ -107,7 +109,7 @@ impl ServiceRegistry {
                 }
             })
             .collect();
-        
+
         for service_id in expired_services {
             services_guard.remove(&service_id);
             tracing::info!("Removed expired service: {}", service_id);
@@ -120,14 +122,12 @@ impl ServiceRegistry {
     ) -> ApiResult<ServiceRegistrationResponse> {
         let service_id = format!(
             "{}-{}-{}",
-            request.service_name,
-            request.address,
-            request.port
+            request.service_name, request.address, request.port
         );
-        
+
         let now = current_timestamp();
         let expires_at = request.ttl_seconds.map(|ttl| now + ttl);
-        
+
         let registration = ServiceRegistration {
             service_id: service_id.clone(),
             service_name: request.service_name,
@@ -141,17 +141,17 @@ impl ServiceRegistry {
             registered_at: now,
             last_heartbeat: now,
         };
-        
+
         let mut services = self.services.write().await;
         services.insert(service_id.clone(), registration);
-        
+
         tracing::info!(
             "Registered service: {} ({}:{})",
             service_id,
             registration.address,
             registration.port
         );
-        
+
         Ok(ServiceRegistrationResponse {
             service_id,
             message: "Service registered successfully".to_string(),
@@ -161,36 +161,45 @@ impl ServiceRegistry {
 
     pub async fn heartbeat(&self, service_id: &str) -> ApiResult<HeartbeatResponse> {
         let mut services = self.services.write().await;
-        
+
         if let Some(service) = services.get_mut(service_id) {
             service.last_heartbeat = current_timestamp();
-            
+
             let next_heartbeat_in = service.ttl_seconds.map(|ttl| ttl / 2);
-            
+
             Ok(HeartbeatResponse {
                 success: true,
                 message: "Heartbeat recorded".to_string(),
                 next_heartbeat_in,
             })
         } else {
-            Err(ApiError::NotFound(format!("Service {} not found", service_id)))
+            Err(ApiError::NotFound(format!(
+                "Service {} not found",
+                service_id
+            )))
         }
     }
 
     pub async fn deregister_service(&self, service_id: &str) -> ApiResult<()> {
         let mut services = self.services.write().await;
-        
+
         if services.remove(service_id).is_some() {
             tracing::info!("Deregistered service: {}", service_id);
             Ok(())
         } else {
-            Err(ApiError::NotFound(format!("Service {} not found", service_id)))
+            Err(ApiError::NotFound(format!(
+                "Service {} not found",
+                service_id
+            )))
         }
     }
 
-    pub async fn discover_services(&self, query: ServiceQuery) -> ApiResult<ServiceDiscoveryResponse> {
+    pub async fn discover_services(
+        &self,
+        query: ServiceQuery,
+    ) -> ApiResult<ServiceDiscoveryResponse> {
         let services = self.services.read().await;
-        
+
         let mut filtered_services: Vec<ServiceRegistration> = services
             .values()
             .filter(|service| {
@@ -200,36 +209,36 @@ impl ServiceRegistry {
                         return false;
                     }
                 }
-                
+
                 // Filter by tag
                 if let Some(ref tag) = query.tag {
                     if !service.tags.contains(tag) {
                         return false;
                     }
                 }
-                
+
                 // Filter by health (simplified - would need actual health checks)
                 if let Some(healthy) = query.healthy {
                     if healthy && service.health_check_url.is_none() {
                         return false;
                     }
                 }
-                
+
                 true
             })
             .cloned()
             .collect();
-        
+
         // Sort by registration time (newest first)
         filtered_services.sort_by(|a, b| b.registered_at.cmp(&a.registered_at));
-        
+
         // Apply limit
         if let Some(limit) = query.limit {
             filtered_services.truncate(limit);
         }
-        
+
         let total = filtered_services.len();
-        
+
         Ok(ServiceDiscoveryResponse {
             services: filtered_services,
             total,
@@ -238,7 +247,7 @@ impl ServiceRegistry {
 
     pub async fn get_service(&self, service_id: &str) -> ApiResult<ServiceRegistration> {
         let services = self.services.read().await;
-        
+
         services
             .get(service_id)
             .cloned()
@@ -258,7 +267,7 @@ impl Default for ServiceRegistry {
 }
 
 // HTTP Handlers that work with AppState
-use crate::{AppState};
+use crate::AppState;
 use axum::extract::{Path, State};
 
 pub async fn register_service_handler(
@@ -273,7 +282,10 @@ pub async fn heartbeat_handler(
     State(state): State<AppState>,
     Json(request): Json<HeartbeatRequest>,
 ) -> ApiResult<Json<HeartbeatResponse>> {
-    let response = state.service_registry.heartbeat(&request.service_id).await?;
+    let response = state
+        .service_registry
+        .heartbeat(&request.service_id)
+        .await?;
     Ok(Json(response))
 }
 
@@ -281,7 +293,10 @@ pub async fn deregister_service_handler(
     State(state): State<AppState>,
     Path(service_id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    state.service_registry.deregister_service(&service_id).await?;
+    state
+        .service_registry
+        .deregister_service(&service_id)
+        .await?;
     Ok(Json(serde_json::json!({
         "message": format!("Service {} deregistered successfully", service_id)
     })))
@@ -308,11 +323,8 @@ pub async fn list_services_handler(
 ) -> Json<ServiceDiscoveryResponse> {
     let services = state.service_registry.list_all_services().await;
     let total = services.len();
-    
-    Json(ServiceDiscoveryResponse {
-        services,
-        total,
-    })
+
+    Json(ServiceDiscoveryResponse { services, total })
 }
 
 fn current_timestamp() -> u64 {
@@ -329,7 +341,7 @@ mod tests {
     #[tokio::test]
     async fn test_service_registration() {
         let registry = ServiceRegistry::new();
-        
+
         let request = ServiceRegistrationRequest {
             service_name: "test-service".to_string(),
             version: "1.0.0".to_string(),
@@ -340,7 +352,7 @@ mod tests {
             health_check_url: Some("http://127.0.0.1:8080/health".to_string()),
             ttl_seconds: Some(60),
         };
-        
+
         let response = registry.register_service(request).await.unwrap();
         assert!(!response.service_id.is_empty());
         assert!(response.expires_at.is_some());
@@ -349,7 +361,7 @@ mod tests {
     #[tokio::test]
     async fn test_service_discovery() {
         let registry = ServiceRegistry::new();
-        
+
         // Register a test service
         let request = ServiceRegistrationRequest {
             service_name: "test-service".to_string(),
@@ -361,9 +373,9 @@ mod tests {
             health_check_url: None,
             ttl_seconds: None,
         };
-        
+
         registry.register_service(request).await.unwrap();
-        
+
         // Discover services
         let query = ServiceQuery {
             service_name: Some("test-service".to_string()),
@@ -371,7 +383,7 @@ mod tests {
             healthy: None,
             limit: None,
         };
-        
+
         let response = registry.discover_services(query).await.unwrap();
         assert_eq!(response.services.len(), 1);
         assert_eq!(response.services[0].service_name, "test-service");
@@ -380,7 +392,7 @@ mod tests {
     #[tokio::test]
     async fn test_heartbeat() {
         let registry = ServiceRegistry::new();
-        
+
         // Register a service with TTL
         let request = ServiceRegistrationRequest {
             service_name: "test-service".to_string(),
@@ -392,9 +404,9 @@ mod tests {
             health_check_url: None,
             ttl_seconds: Some(60),
         };
-        
+
         let reg_response = registry.register_service(request).await.unwrap();
-        
+
         // Send heartbeat
         let heartbeat_response = registry.heartbeat(&reg_response.service_id).await.unwrap();
         assert!(heartbeat_response.success);

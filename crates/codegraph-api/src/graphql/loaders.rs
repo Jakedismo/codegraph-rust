@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
-use tracing::{debug, warn, instrument};
+use tracing::{debug, instrument, warn};
 use uuid::Uuid;
 
 use crate::graphql::types::{GraphQLCodeNode, GraphQLEdge};
@@ -34,7 +34,7 @@ impl Loader<NodeId> for NodeLoader {
         // In a real implementation, this would be a batch query to RocksDB
         // For now, we'll simulate batch loading
         let graph = self.state.graph.read().await;
-        
+
         for &node_id in &unique_keys {
             // Simulate database batch query - in real implementation this would be optimized
             // to fetch multiple nodes in a single RocksDB batch operation
@@ -44,11 +44,18 @@ impl Loader<NodeId> for NodeLoader {
         }
 
         let elapsed = start_time.elapsed();
-        debug!("Loaded {} nodes in {}ms", result_map.len(), elapsed.as_millis());
+        debug!(
+            "Loaded {} nodes in {}ms",
+            result_map.len(),
+            elapsed.as_millis()
+        );
 
         // Log performance warning if batch takes too long
         if elapsed.as_millis() > 50 {
-            warn!("Node batch loading took {}ms (>50ms threshold)", elapsed.as_millis());
+            warn!(
+                "Node batch loading took {}ms (>50ms threshold)",
+                elapsed.as_millis()
+            );
         }
 
         Ok(result_map)
@@ -60,7 +67,10 @@ impl NodeLoader {
         Self { state }
     }
 
-    async fn simulate_node_fetch(&self, node_id: NodeId) -> Result<Option<CodeNode>, CodeGraphError> {
+    async fn simulate_node_fetch(
+        &self,
+        node_id: NodeId,
+    ) -> Result<Option<CodeNode>, CodeGraphError> {
         // Simulate fetching from database
         // In real implementation, this would be a RocksDB get operation
         // For demonstration, we create mock nodes
@@ -115,10 +125,17 @@ impl Loader<NodeId> for EdgesBySourceLoader {
         }
 
         let elapsed = start_time.elapsed();
-        debug!("Loaded edges for {} sources in {}ms", result_map.len(), elapsed.as_millis());
+        debug!(
+            "Loaded edges for {} sources in {}ms",
+            result_map.len(),
+            elapsed.as_millis()
+        );
 
         if elapsed.as_millis() > 50 {
-            warn!("Edge batch loading took {}ms (>50ms threshold)", elapsed.as_millis());
+            warn!(
+                "Edge batch loading took {}ms (>50ms threshold)",
+                elapsed.as_millis()
+            );
         }
 
         Ok(result_map)
@@ -130,20 +147,21 @@ impl EdgesBySourceLoader {
         Self { state }
     }
 
-    async fn simulate_edge_fetch(&self, source_id: NodeId) -> Result<Vec<GraphQLEdge>, CodeGraphError> {
+    async fn simulate_edge_fetch(
+        &self,
+        source_id: NodeId,
+    ) -> Result<Vec<GraphQLEdge>, CodeGraphError> {
         // Simulate fetching edges from database
         let now = chrono::Utc::now();
-        let edges = vec![
-            GraphQLEdge {
-                id: async_graphql::ID(Uuid::new_v4().to_string()),
-                source_id: async_graphql::ID(source_id.to_string()),
-                target_id: async_graphql::ID(Uuid::new_v4().to_string()),
-                edge_type: crate::graphql::types::GraphQLEdgeType::Calls,
-                weight: Some(1.0),
-                attributes: HashMap::new(),
-                created_at: now,
-            }
-        ];
+        let edges = vec![GraphQLEdge {
+            id: async_graphql::ID(Uuid::new_v4().to_string()),
+            source_id: async_graphql::ID(source_id.to_string()),
+            target_id: async_graphql::ID(Uuid::new_v4().to_string()),
+            edge_type: crate::graphql::types::GraphQLEdgeType::Calls,
+            weight: Some(1.0),
+            attributes: HashMap::new(),
+            created_at: now,
+        }];
         Ok(edges)
     }
 }
@@ -167,30 +185,43 @@ impl Loader<String> for SemanticSearchLoader {
 
         // Batch semantic search - leverage the RAG system's context retriever
         for query in keys {
-            let results = self.state.semantic_search
+            let results = self
+                .state
+                .semantic_search
                 .search(query, 10)
                 .await
                 .map_err(|_| CodeGraphError::SearchError("Semantic search failed".to_string()))?;
-                
+
             // Convert semantic search results to retrieval results
-            let retrieval_results: Vec<RetrievalResult> = results.into_iter().map(|node| {
-                RetrievalResult {
-                    node: node.clone(),
-                    similarity_score: 0.8, // Mock score
-                    source_type: "semantic".to_string(),
-                    context_snippet: node.content.clone().unwrap_or_default()[..100.min(node.content.as_ref().map_or(0, |c| c.len()))].to_string(),
-                    metadata: HashMap::new(),
-                }
-            }).collect();
+            let retrieval_results: Vec<RetrievalResult> = results
+                .into_iter()
+                .map(|node| {
+                    RetrievalResult {
+                        node: node.clone(),
+                        similarity_score: 0.8, // Mock score
+                        source_type: "semantic".to_string(),
+                        context_snippet: node.content.clone().unwrap_or_default()
+                            [..100.min(node.content.as_ref().map_or(0, |c| c.len()))]
+                            .to_string(),
+                        metadata: HashMap::new(),
+                    }
+                })
+                .collect();
 
             result_map.insert(query.clone(), retrieval_results);
         }
 
         let elapsed = start_time.elapsed();
-        debug!("Semantic search batch completed in {}ms", elapsed.as_millis());
+        debug!(
+            "Semantic search batch completed in {}ms",
+            elapsed.as_millis()
+        );
 
         if elapsed.as_millis() > 100 {
-            warn!("Semantic search batch took {}ms (>100ms threshold)", elapsed.as_millis());
+            warn!(
+                "Semantic search batch took {}ms (>100ms threshold)",
+                elapsed.as_millis()
+            );
         }
 
         Ok(result_map)
@@ -222,7 +253,10 @@ impl Loader<TraversalKey> for GraphTraversalLoader {
     type Error = CodeGraphError;
 
     #[instrument(skip(self, keys), fields(batch_size = keys.len()))]
-    async fn load(&self, keys: &[TraversalKey]) -> Result<HashMap<TraversalKey, Self::Value>, Self::Error> {
+    async fn load(
+        &self,
+        keys: &[TraversalKey],
+    ) -> Result<HashMap<TraversalKey, Self::Value>, Self::Error> {
         let start_time = Instant::now();
         debug!("Graph traversal batch for {} queries", keys.len());
 
@@ -236,10 +270,16 @@ impl Loader<TraversalKey> for GraphTraversalLoader {
         }
 
         let elapsed = start_time.elapsed();
-        debug!("Graph traversal batch completed in {}ms", elapsed.as_millis());
+        debug!(
+            "Graph traversal batch completed in {}ms",
+            elapsed.as_millis()
+        );
 
         if elapsed.as_millis() > 200 {
-            warn!("Graph traversal batch took {}ms (>200ms threshold)", elapsed.as_millis());
+            warn!(
+                "Graph traversal batch took {}ms (>200ms threshold)",
+                elapsed.as_millis()
+            );
         }
 
         Ok(result_map)
@@ -251,7 +291,10 @@ impl GraphTraversalLoader {
         Self { state }
     }
 
-    async fn simulate_traversal(&self, key: &TraversalKey) -> Result<Vec<GraphQLCodeNode>, CodeGraphError> {
+    async fn simulate_traversal(
+        &self,
+        key: &TraversalKey,
+    ) -> Result<Vec<GraphQLCodeNode>, CodeGraphError> {
         // Simulate graph traversal with mock data
         let now = chrono::Utc::now();
         let mut nodes = vec![];
@@ -293,39 +336,27 @@ impl LoaderFactory {
     }
 
     pub fn create_node_loader(&self) -> DataLoader<NodeLoader> {
-        DataLoader::new(
-            NodeLoader::new(self.state.clone()),
-            tokio::spawn,
-        )
-        .max_batch_size(100) // Batch up to 100 nodes at once
-        .delay(std::time::Duration::from_millis(1)) // 1ms delay for batching
+        DataLoader::new(NodeLoader::new(self.state.clone()), tokio::spawn)
+            .max_batch_size(100) // Batch up to 100 nodes at once
+            .delay(std::time::Duration::from_millis(1)) // 1ms delay for batching
     }
 
     pub fn create_edges_loader(&self) -> DataLoader<EdgesBySourceLoader> {
-        DataLoader::new(
-            EdgesBySourceLoader::new(self.state.clone()),
-            tokio::spawn,
-        )
-        .max_batch_size(50)
-        .delay(std::time::Duration::from_millis(1))
+        DataLoader::new(EdgesBySourceLoader::new(self.state.clone()), tokio::spawn)
+            .max_batch_size(50)
+            .delay(std::time::Duration::from_millis(1))
     }
 
     pub fn create_semantic_search_loader(&self) -> DataLoader<SemanticSearchLoader> {
-        DataLoader::new(
-            SemanticSearchLoader::new(self.state.clone()),
-            tokio::spawn,
-        )
-        .max_batch_size(20) // Semantic search is more expensive
-        .delay(std::time::Duration::from_millis(5)) // Slightly longer delay for batching
+        DataLoader::new(SemanticSearchLoader::new(self.state.clone()), tokio::spawn)
+            .max_batch_size(20) // Semantic search is more expensive
+            .delay(std::time::Duration::from_millis(5)) // Slightly longer delay for batching
     }
 
     pub fn create_traversal_loader(&self) -> DataLoader<GraphTraversalLoader> {
-        DataLoader::new(
-            GraphTraversalLoader::new(self.state.clone()),
-            tokio::spawn,
-        )
-        .max_batch_size(10) // Traversals are expensive
-        .delay(std::time::Duration::from_millis(2))
+        DataLoader::new(GraphTraversalLoader::new(self.state.clone()), tokio::spawn)
+            .max_batch_size(10) // Traversals are expensive
+            .delay(std::time::Duration::from_millis(2))
     }
 }
 
@@ -339,11 +370,7 @@ mod tests {
         let state = Arc::new(AppState::new().await.unwrap());
         let loader = NodeLoader::new(state);
 
-        let node_ids = vec![
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-        ];
+        let node_ids = vec![Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
 
         let result = loader.load(&node_ids).await;
         assert!(result.is_ok());

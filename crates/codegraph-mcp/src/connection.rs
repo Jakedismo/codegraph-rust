@@ -46,6 +46,7 @@ impl McpClientConfig {
 
 /// Core MCP connection supporting JSON-RPC 2.0 and MCP handshake
 pub struct McpConnection {
+    #[allow(dead_code)]
     url: Url,
     writer: Arc<dyn Transport>,
     incoming: broadcast::Receiver<IncomingFrame>,
@@ -65,7 +66,8 @@ impl McpConnection {
                 Ok((t, rx)) => {
                     let conn = Arc::new(Self::new_inner(cfg.url.clone(), t, rx));
                     conn.spawn_reader();
-                    conn.initialize(&cfg.client_name, &cfg.client_version).await?;
+                    conn.initialize(&cfg.client_name, &cfg.client_version)
+                        .await?;
                     return Ok(conn);
                 }
                 Err(e) => {
@@ -78,7 +80,11 @@ impl McpConnection {
         Err(last_err.unwrap_or(McpError::Transport("connect failed".into())))
     }
 
-    fn new_inner(url: Url, writer: Arc<dyn Transport>, incoming: broadcast::Receiver<IncomingFrame>) -> Self {
+    fn new_inner(
+        url: Url,
+        writer: Arc<dyn Transport>,
+        incoming: broadcast::Receiver<IncomingFrame>,
+    ) -> Self {
         Self {
             url,
             writer,
@@ -146,8 +152,17 @@ impl McpConnection {
     }
 
     async fn initialize(&self, client_name: &str, client_version: &str) -> Result<()> {
-        let req = handshake::build_initialize_request(&self.negotiator, Some(DEFAULT_VERSION), client_name, client_version, None).await?;
-        let resp: McpInitializeResult = self.send_request_typed("initialize", &req.params.unwrap_or(json!({}))).await?;
+        let req = handshake::build_initialize_request(
+            &self.negotiator,
+            Some(DEFAULT_VERSION),
+            client_name,
+            client_version,
+            None,
+        )
+        .await?;
+        let resp: McpInitializeResult = self
+            .send_request_typed("initialize", &req.params.unwrap_or(json!({})))
+            .await?;
         let negotiated = ProtocolVersion::new(resp.protocol_version)?;
         *self.protocol.write().await = McpProtocol::new(negotiated);
         Ok(())
@@ -165,7 +180,12 @@ impl McpConnection {
         self.writer.send_text(&text).await
     }
 
-    pub async fn send_request_raw(&self, method: &str, params: Value, timeout_dur: Duration) -> Result<JsonRpcMessage> {
+    pub async fn send_request_raw(
+        &self,
+        method: &str,
+        params: Value,
+        timeout_dur: Duration,
+    ) -> Result<JsonRpcMessage> {
         let id = uuid::Uuid::new_v4().to_string();
         let req = JsonRpcRequest::new(json!(id.clone()), method.to_string(), Some(params));
         let msg = JsonRpcMessage::V2(JsonRpcV2Message::Request(req));
@@ -239,4 +259,3 @@ impl McpClientPool {
         best.expect("pool should contain at least one client")
     }
 }
-

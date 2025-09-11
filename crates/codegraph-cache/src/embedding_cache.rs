@@ -1,4 +1,4 @@
-use crate::{AiCache, CacheConfig, CacheEntry, CacheKey, CacheStats, CacheSizeEstimator};
+use crate::{AiCache, CacheConfig, CacheEntry, CacheKey, CacheSizeEstimator, CacheStats};
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
 use dashmap::DashMap;
@@ -61,7 +61,11 @@ impl EmbeddingCache {
     }
 
     /// Store embedding with node ID as key
-    pub async fn store_node_embedding(&mut self, node_id: NodeId, embedding: Vec<f32>) -> Result<()> {
+    pub async fn store_node_embedding(
+        &mut self,
+        node_id: NodeId,
+        embedding: Vec<f32>,
+    ) -> Result<()> {
         let key = node_id.to_string();
         self.insert(key, embedding, self.config.default_ttl).await
     }
@@ -73,7 +77,11 @@ impl EmbeddingCache {
     }
 
     /// Store embedding by content hash
-    pub async fn store_content_embedding(&mut self, node: &CodeNode, embedding: Vec<f32>) -> Result<()> {
+    pub async fn store_content_embedding(
+        &mut self,
+        node: &CodeNode,
+        embedding: Vec<f32>,
+    ) -> Result<()> {
         let key = Self::create_node_content_key(node);
         self.insert(key, embedding, self.config.default_ttl).await
     }
@@ -94,7 +102,7 @@ impl EmbeddingCache {
     async fn evict_lru(&mut self) -> Result<()> {
         let mut evicted = 0;
         let mut lru_queue = self.lru_queue.write().await;
-        
+
         while self.check_memory_pressure().await && !lru_queue.is_empty() {
             if let Some(key) = lru_queue.pop_front() {
                 if let Some((_, entry)) = self.cache.remove(&key) {
@@ -116,12 +124,12 @@ impl EmbeddingCache {
     /// Update LRU position for accessed key
     async fn update_lru(&self, key: &str) {
         let mut lru_queue = self.lru_queue.write().await;
-        
+
         // Remove key if it exists (inefficient but simple for MVP)
         lru_queue.retain(|k| k != key);
         // Add to back as most recently used
         lru_queue.push_back(key.to_string());
-        
+
         // Limit queue size to prevent memory issues
         while lru_queue.len() > self.config.max_size {
             lru_queue.pop_front();
@@ -130,10 +138,12 @@ impl EmbeddingCache {
 
     /// Compress embedding if enabled and above threshold
     fn maybe_compress(&self, embedding: Vec<f32>) -> Vec<f32> {
-        if self.config.enable_compression && 
-           embedding.estimate_size() > self.config.compression_threshold_bytes {
+        if self.config.enable_compression
+            && embedding.estimate_size() > self.config.compression_threshold_bytes
+        {
             // Simple quantization compression (reduce precision)
-            embedding.into_iter()
+            embedding
+                .into_iter()
                 .map(|f| (f * 127.0).round() / 127.0)
                 .collect()
         } else {
@@ -176,30 +186,30 @@ impl EmbeddingCache {
 impl AiCache<String, Vec<f32>> for EmbeddingCache {
     async fn insert(&mut self, key: String, value: Vec<f32>, ttl: Option<Duration>) -> Result<()> {
         let start_time = SystemTime::now();
-        
+
         // Compress if configured
         let compressed_value = self.maybe_compress(value);
         let size_bytes = compressed_value.estimate_size() + key.len();
-        
+
         // Create cache entry
         let entry = CacheEntry::new(compressed_value, size_bytes, ttl);
-        
+
         // Check if we need to evict first
         {
             let mut memory_usage = self.memory_usage.lock();
             *memory_usage += size_bytes;
         }
-        
+
         if self.check_memory_pressure().await {
             self.evict_lru().await?;
         }
 
         // Insert entry
         self.cache.insert(key.clone(), entry);
-        
+
         // Update LRU
         self.update_lru(&key).await;
-        
+
         // Update metrics
         if self.config.enable_metrics {
             let mut stats = self.stats.write().await;
@@ -212,13 +222,13 @@ impl AiCache<String, Vec<f32>> for EmbeddingCache {
 
     async fn get(&mut self, key: &String) -> Result<Option<Vec<f32>>> {
         let start_time = SystemTime::now();
-        
+
         if let Some(mut entry) = self.cache.get_mut(key) {
             // Check if expired
             if entry.is_expired() {
                 drop(entry);
                 self.cache.remove(key);
-                
+
                 // Update metrics
                 if self.config.enable_metrics {
                     let mut stats = self.stats.write().await;
@@ -234,7 +244,7 @@ impl AiCache<String, Vec<f32>> for EmbeddingCache {
 
             // Update LRU
             self.update_lru(key).await;
-            
+
             // Update metrics
             if self.config.enable_metrics {
                 let mut stats = self.stats.write().await;
@@ -330,7 +340,10 @@ mod tests {
         let key = "test_key".to_string();
 
         // Test insert and get
-        cache.insert(key.clone(), embedding.clone(), None).await.unwrap();
+        cache
+            .insert(key.clone(), embedding.clone(), None)
+            .await
+            .unwrap();
         let result = cache.get(&key).await.unwrap();
         assert_eq!(result, Some(embedding));
 
@@ -347,7 +360,10 @@ mod tests {
         let node_id = NodeId::new_v4();
         let embedding = vec![0.5, 0.6, 0.7, 0.8];
 
-        cache.store_node_embedding(node_id, embedding.clone()).await.unwrap();
+        cache
+            .store_node_embedding(node_id, embedding.clone())
+            .await
+            .unwrap();
         let result = cache.get_node_embedding(node_id).await.unwrap();
         assert_eq!(result, Some(embedding));
     }
@@ -366,11 +382,15 @@ mod tests {
                 end_line: None,
                 end_column: None,
             },
-        ).with_content("fn test() {}".to_string());
+        )
+        .with_content("fn test() {}".to_string());
 
         let embedding = vec![0.9, 0.8, 0.7, 0.6];
 
-        cache.store_content_embedding(&node, embedding.clone()).await.unwrap();
+        cache
+            .store_content_embedding(&node, embedding.clone())
+            .await
+            .unwrap();
         let result = cache.get_content_embedding(&node).await.unwrap();
         assert_eq!(result, Some(embedding));
     }
@@ -403,14 +423,17 @@ mod tests {
         let embedding = vec![1.0, 2.0, 3.0];
         let ttl = Duration::from_millis(50);
 
-        cache.insert(key.clone(), embedding, Some(ttl)).await.unwrap();
-        
+        cache
+            .insert(key.clone(), embedding, Some(ttl))
+            .await
+            .unwrap();
+
         // Should be available immediately
         assert!(cache.get(&key).await.unwrap().is_some());
-        
+
         // Wait for expiration
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         // Should be expired now
         assert!(cache.get(&key).await.unwrap().is_none());
     }

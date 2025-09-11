@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
-use rocksdb::{BlockBasedOptions, ColumnFamily, ColumnFamilyDescriptor, DBWithThreadMode, MultiThreaded, Options, ReadOptions, WriteBatch, WriteOptions, Cache, DBCompressionType, IteratorMode};
+use rocksdb::{
+    BlockBasedOptions, Cache, ColumnFamily, ColumnFamilyDescriptor, DBCompressionType,
+    DBWithThreadMode, IteratorMode, MultiThreaded, Options, ReadOptions, WriteBatch, WriteOptions,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::{HashMap, HashSet};
@@ -27,7 +30,12 @@ pub struct Node {
 
 impl Node {
     pub fn new(labels: Vec<String>, properties: HashMap<String, JsonValue>) -> Self {
-        Self { id: Uuid::new_v4(), labels, properties, version: 1 }
+        Self {
+            id: Uuid::new_v4(),
+            labels,
+            properties,
+            version: 1,
+        }
     }
 }
 
@@ -86,7 +94,7 @@ impl RocksNodeStore {
 
         let mut read_options = ReadOptions::default();
         read_options.set_verify_checksums(false);
-        read_options.set_fill_cache(true);
+        read_options.fill_cache(true);
 
         Ok(Self {
             db: Arc::new(db),
@@ -140,7 +148,7 @@ impl RocksNodeStore {
         ColumnFamilyDescriptor::new(HISTORY_CF, opts)
     }
 
-    fn cf(&self, name: &str) -> Result<&ColumnFamily> {
+    fn cf(&self, name: &str) -> Result<std::sync::Arc<rocksdb::BoundColumnFamily<'_>>> {
         self.db
             .cf_handle(name)
             .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", name)))
@@ -192,7 +200,12 @@ impl RocksNodeStore {
         v
     }
 
-    fn write_node_indices(batch: &mut WriteBatch, label_cf: &ColumnFamily, prop_cf: &ColumnFamily, node: &Node) {
+    fn write_node_indices(
+        batch: &mut WriteBatch,
+        label_cf: &Arc<rocksdb::BoundColumnFamily<'_>>,
+        prop_cf: &Arc<rocksdb::BoundColumnFamily<'_>>,
+        node: &Node,
+    ) {
         // Deduplicate labels to avoid duplicate index entries
         let mut seen = HashSet::new();
         for label in &node.labels {
@@ -205,7 +218,12 @@ impl RocksNodeStore {
         }
     }
 
-    fn delete_node_indices(batch: &mut WriteBatch, label_cf: &ColumnFamily, prop_cf: &ColumnFamily, node: &Node) {
+    fn delete_node_indices(
+        batch: &mut WriteBatch,
+        label_cf: &Arc<rocksdb::BoundColumnFamily<'_>>,
+        prop_cf: &Arc<rocksdb::BoundColumnFamily<'_>>,
+        node: &Node,
+    ) {
         let mut seen = HashSet::new();
         for label in &node.labels {
             if seen.insert(label) {
@@ -224,7 +242,9 @@ impl NodeStore for RocksNodeStore {
         if node.id.is_nil() {
             node.id = Uuid::new_v4();
         }
-        if node.version == 0 { node.version = 1; }
+        if node.version == 0 {
+            node.version = 1;
+        }
 
         let nodes_cf = self.cf(NODES_CF)?;
         let labels_cf = self.cf(LABEL_INDEX_CF)?;
@@ -232,17 +252,21 @@ impl NodeStore for RocksNodeStore {
         let history_cf = self.cf(HISTORY_CF)?;
 
         let node_key = Self::id_key(node.id);
-        let node_bytes = bincode::serialize(&node)
-            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        let node_bytes =
+            bincode::serialize(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         let mut batch = WriteBatch::default();
-        batch.put_cf(nodes_cf, node_key, &node_bytes);
-        Self::write_node_indices(&mut batch, labels_cf, props_cf, &node);
+        batch.put_cf(&nodes_cf, node_key, &node_bytes);
+        Self::write_node_indices(&mut batch, &labels_cf, &props_cf, &node);
         // Write initial history entry
-        batch.put_cf(history_cf, Self::history_key(node.id, node.version), &node_bytes);
+        batch.put_cf(
+            &history_cf,
+            Self::history_key(node.id, node.version),
+            &node_bytes,
+        );
 
         self.db
-            .write_opt(&batch, &self.write_options)
+            .write_opt(batch, &self.write_options)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.read_cache.insert(node.id, Arc::new(node));
@@ -251,13 +275,14 @@ impl NodeStore for RocksNodeStore {
 
     async fn read(&self, id: Uuid) -> Result<Option<Node>> {
         if let Some(cached) = self.read_cache.get(&id) {
-            return Ok(Some((cached.as_ref()).as_ref().clone()));
+            let node = cached.value().as_ref().clone();
+            return Ok(Some(node));
         }
         let nodes_cf = self.cf(NODES_CF)?;
         let key = Self::id_key(id);
         let data = self
             .db
-            .get_cf_opt(nodes_cf, &key, &self.read_options)
+            .get_cf_opt(&nodes_cf, &key, &self.read_options)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
         if let Some(bytes) = data {
             let node: Node = bincode::deserialize(&bytes)
@@ -283,20 +308,24 @@ impl NodeStore for RocksNodeStore {
         let history_cf = self.cf(HISTORY_CF)?;
 
         let node_key = Self::id_key(node.id);
-        let node_bytes = bincode::serialize(&node)
-            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        let node_bytes =
+            bincode::serialize(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         let mut batch = WriteBatch::default();
         // Update main record
-        batch.put_cf(nodes_cf, node_key, &node_bytes);
+        batch.put_cf(&nodes_cf, node_key, &node_bytes);
         // Update indices: remove old, add new
-        Self::delete_node_indices(&mut batch, labels_cf, props_cf, &prev);
-        Self::write_node_indices(&mut batch, labels_cf, props_cf, &node);
+        Self::delete_node_indices(&mut batch, &labels_cf, &props_cf, &prev);
+        Self::write_node_indices(&mut batch, &labels_cf, &props_cf, &node);
         // Append history for new version
-        batch.put_cf(history_cf, Self::history_key(node.id, node.version), &node_bytes);
+        batch.put_cf(
+            &history_cf,
+            Self::history_key(node.id, node.version),
+            &node_bytes,
+        );
 
         self.db
-            .write_opt(&batch, &self.write_options)
+            .write_opt(batch, &self.write_options)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.read_cache.insert(node.id, Arc::new(node));
@@ -304,18 +333,20 @@ impl NodeStore for RocksNodeStore {
     }
 
     async fn delete(&self, id: Uuid) -> Result<()> {
-        let Some(node) = self.read(id).await? else { return Ok(()); };
+        let Some(node) = self.read(id).await? else {
+            return Ok(());
+        };
 
         let nodes_cf = self.cf(NODES_CF)?;
         let labels_cf = self.cf(LABEL_INDEX_CF)?;
         let props_cf = self.cf(PROP_INDEX_CF)?;
 
         let mut batch = WriteBatch::default();
-        batch.delete_cf(nodes_cf, Self::id_key(id));
-        Self::delete_node_indices(&mut batch, labels_cf, props_cf, &node);
+        batch.delete_cf(&nodes_cf, Self::id_key(id));
+        Self::delete_node_indices(&mut batch, &labels_cf, &props_cf, &node);
 
         self.db
-            .write_opt(&batch, &self.write_options)
+            .write_opt(batch, &self.write_options)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.read_cache.remove(&id);
@@ -323,97 +354,151 @@ impl NodeStore for RocksNodeStore {
     }
 
     async fn batch_create(&self, mut nodes: Vec<Node>) -> Result<()> {
-        if nodes.is_empty() { return Ok(()); }
+        if nodes.is_empty() {
+            return Ok(());
+        }
         let nodes_cf = self.cf(NODES_CF)?;
         let labels_cf = self.cf(LABEL_INDEX_CF)?;
         let props_cf = self.cf(PROP_INDEX_CF)?;
         let history_cf = self.cf(HISTORY_CF)?;
         let mut batch = WriteBatch::default();
         for node in nodes.iter_mut() {
-            if node.id.is_nil() { node.id = Uuid::new_v4(); }
-            if node.version == 0 { node.version = 1; }
+            if node.id.is_nil() {
+                node.id = Uuid::new_v4();
+            }
+            if node.version == 0 {
+                node.version = 1;
+            }
             let key = Self::id_key(node.id);
-            let bytes = bincode::serialize(&*node)
-                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            batch.put_cf(nodes_cf, key, &bytes);
-            Self::write_node_indices(&mut batch, labels_cf, props_cf, node);
-            batch.put_cf(history_cf, Self::history_key(node.id, node.version), &bytes);
+            let bytes =
+                bincode::serialize(&*node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            batch.put_cf(&nodes_cf, key, &bytes);
+            Self::write_node_indices(&mut batch, &labels_cf, &props_cf, node);
+            batch.put_cf(
+                &history_cf,
+                Self::history_key(node.id, node.version),
+                &bytes,
+            );
         }
         self.db
-            .write_opt(&batch, &self.write_options)
+            .write_opt(batch, &self.write_options)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
-        for n in nodes.into_iter() {
-            self.read_cache.insert(n.id, Arc::new(n));
+        for n in nodes.iter() {
+            self.read_cache.insert(n.id, Arc::new(n.clone()));
         }
         Ok(())
     }
 
     async fn batch_update(&self, nodes: Vec<Node>) -> Result<()> {
-        if nodes.is_empty() { return Ok(()); }
-        let nodes_cf = self.cf(NODES_CF)?;
-        let labels_cf = self.cf(LABEL_INDEX_CF)?;
-        let props_cf = self.cf(PROP_INDEX_CF)?;
-        let history_cf = self.cf(HISTORY_CF)?;
+        if nodes.is_empty() {
+            return Ok(());
+        }
         let mut batch = WriteBatch::default();
         for mut node in nodes.into_iter() {
             let Some(prev) = self.read(node.id).await? else {
                 return Err(CodeGraphError::NodeNotFound(node.id.to_string()));
             };
             node.version = prev.version + 1;
+            // Obtain CF handles after await to avoid holding non-Send references across .await
+            let nodes_cf = self.cf(NODES_CF)?;
+            let labels_cf = self.cf(LABEL_INDEX_CF)?;
+            let props_cf = self.cf(PROP_INDEX_CF)?;
+            let history_cf = self.cf(HISTORY_CF)?;
+
             let key = Self::id_key(node.id);
-            let bytes = bincode::serialize(&node)
-                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            batch.put_cf(nodes_cf, key, &bytes);
-            Self::delete_node_indices(&mut batch, labels_cf, props_cf, &prev);
-            Self::write_node_indices(&mut batch, labels_cf, props_cf, &node);
-            batch.put_cf(history_cf, Self::history_key(node.id, node.version), &bytes);
+            let bytes =
+                bincode::serialize(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            batch.put_cf(&nodes_cf, key, &bytes);
+            Self::delete_node_indices(&mut batch, &labels_cf, &props_cf, &prev);
+            Self::write_node_indices(&mut batch, &labels_cf, &props_cf, &node);
+            batch.put_cf(
+                &history_cf,
+                Self::history_key(node.id, node.version),
+                &bytes,
+            );
             self.read_cache.insert(node.id, Arc::new(node));
         }
         self.db
-            .write_opt(&batch, &self.write_options)
+            .write_opt(batch, &self.write_options)
             .map_err(|e| CodeGraphError::Database(e.to_string()))
     }
 
     async fn find_by_label(&self, label: &str) -> Result<Vec<Node>> {
-        let labels_cf = self.cf(LABEL_INDEX_CF)?;
         let prefix = {
             let mut p = Vec::with_capacity(4 + label.len());
             p.extend_from_slice(b"lbl:");
             p.extend_from_slice(label.as_bytes());
             p
         };
-        let iter = self
-            .db
-            .iterator_cf_opt(labels_cf, self.read_options.clone(), IteratorMode::From(&prefix, rocksdb::Direction::Forward));
-        let mut out = Vec::new();
-        for item in iter {
-            let (key, _val) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            if !key.starts_with(&prefix) { break; }
-            if key.len() >= prefix.len() + 16 {
-                let id_bytes = &key[key.len()-16..];
-                if let Ok(id) = Uuid::from_slice(id_bytes) {
-                    if let Some(n) = self.read(id).await? { out.push(n); }
+
+        // Collect all matching IDs first, without holding the column family reference
+        let node_ids = {
+            let labels_cf = self.cf(LABEL_INDEX_CF)?;
+            let iter = self.db.iterator_cf_opt(
+                &labels_cf,
+                ReadOptions::default(),
+                IteratorMode::From(&prefix, rocksdb::Direction::Forward),
+            );
+
+            let mut ids = Vec::new();
+            for item in iter {
+                let (key, _val) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                if !key.starts_with(&prefix) {
+                    break;
                 }
+                if key.len() >= prefix.len() + 16 {
+                    let id_bytes = &key[key.len() - 16..];
+                    if let Ok(id) = Uuid::from_slice(id_bytes) {
+                        ids.push(id);
+                    }
+                }
+            }
+            ids
+        };
+
+        // Now fetch the actual nodes
+        let mut out = Vec::new();
+        for id in node_ids {
+            if let Some(n) = self.read(id).await? {
+                out.push(n);
             }
         }
         Ok(out)
     }
 
     async fn find_by_property(&self, name: &str, value: &JsonValue) -> Result<Vec<Node>> {
-        let props_cf = self.cf(PROP_INDEX_CF)?;
         let prefix = Self::prop_index_prefix(name, value);
-        let iter = self
-            .db
-            .iterator_cf_opt(props_cf, self.read_options.clone(), IteratorMode::From(&prefix, rocksdb::Direction::Forward));
-        let mut out = Vec::new();
-        for item in iter {
-            let (key, _val) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            if !key.starts_with(&prefix) { break; }
-            if key.len() >= prefix.len() + 16 {
-                let id_bytes = &key[key.len()-16..];
-                if let Ok(id) = Uuid::from_slice(id_bytes) {
-                    if let Some(n) = self.read(id).await? { out.push(n); }
+
+        // Collect all matching IDs first, without holding the column family reference
+        let node_ids = {
+            let props_cf = self.cf(PROP_INDEX_CF)?;
+            let iter = self.db.iterator_cf_opt(
+                &props_cf,
+                ReadOptions::default(),
+                IteratorMode::From(&prefix, rocksdb::Direction::Forward),
+            );
+
+            let mut ids = Vec::new();
+            for item in iter {
+                let (key, _val) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                if !key.starts_with(&prefix) {
+                    break;
                 }
+                if key.len() >= prefix.len() + 16 {
+                    let id_bytes = &key[key.len() - 16..];
+                    if let Ok(id) = Uuid::from_slice(id_bytes) {
+                        ids.push(id);
+                    }
+                }
+            }
+            ids
+        };
+
+        // Now fetch the actual nodes
+        let mut out = Vec::new();
+        for id in node_ids {
+            if let Some(n) = self.read(id).await? {
+                out.push(n);
             }
         }
         Ok(out)
@@ -424,15 +509,19 @@ impl NodeStore for RocksNodeStore {
         let mut prefix = Vec::with_capacity(5 + 16);
         prefix.extend_from_slice(b"hist:");
         prefix.extend_from_slice(Self::id_key(id).as_slice());
-        let iter = self
-            .db
-            .iterator_cf_opt(history_cf, self.read_options.clone(), IteratorMode::From(&prefix, rocksdb::Direction::Forward));
+        let iter = self.db.iterator_cf_opt(
+            &history_cf,
+            ReadOptions::default(),
+            IteratorMode::From(&prefix, rocksdb::Direction::Forward),
+        );
         let mut out = Vec::new();
         for item in iter {
             let (key, val) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            if !key.starts_with(&prefix) { break; }
-            let node: Node = bincode::deserialize(&val)
-                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            if !key.starts_with(&prefix) {
+                break;
+            }
+            let node: Node =
+                bincode::deserialize(&val).map_err(|e| CodeGraphError::Database(e.to_string()))?;
             out.push(node);
         }
         // Already ordered by version due to suffix
@@ -468,7 +557,10 @@ mod tests {
             assert_eq!(got.id, id);
             assert_eq!(got.version, 1);
             assert_eq!(got.labels, vec!["User".to_string()]);
-            assert_eq!(got.properties.get("name").unwrap(), &JsonValue::String("alice".into()));
+            assert_eq!(
+                got.properties.get("name").unwrap(),
+                &JsonValue::String("alice".into())
+            );
         });
     }
 
@@ -480,7 +572,8 @@ mod tests {
         block_on(async {
             s.create(n.clone()).await.unwrap();
             // update
-            n.properties.insert("path".into(), JsonValue::String("/b".into()));
+            n.properties
+                .insert("path".into(), JsonValue::String("/b".into()));
             s.update(n.clone()).await.unwrap();
             let got = s.read(id).await.unwrap().unwrap();
             assert_eq!(got.version, 2);
@@ -501,13 +594,26 @@ mod tests {
             // find by label and prop
             let by_label = s.find_by_label("Tag").await.unwrap();
             assert!(by_label.iter().any(|x| x.id == id));
-            let by_prop = s.find_by_property("key", &JsonValue::String("v".into())).await.unwrap();
+            let by_prop = s
+                .find_by_property("key", &JsonValue::String("v".into()))
+                .await
+                .unwrap();
             assert!(by_prop.iter().any(|x| x.id == id));
 
             s.delete(id).await.unwrap();
             assert!(s.read(id).await.unwrap().is_none());
-            assert!(!s.find_by_label("Tag").await.unwrap().iter().any(|x| x.id == id));
-            assert!(!s.find_by_property("key", &JsonValue::String("v".into())).await.unwrap().iter().any(|x| x.id == id));
+            assert!(!s
+                .find_by_label("Tag")
+                .await
+                .unwrap()
+                .iter()
+                .any(|x| x.id == id));
+            assert!(!s
+                .find_by_property("key", &JsonValue::String("v".into()))
+                .await
+                .unwrap()
+                .iter()
+                .any(|x| x.id == id));
         });
     }
 
@@ -525,7 +631,7 @@ mod tests {
             s.batch_create(nodes.clone()).await.unwrap();
             let evens = s.find_by_label("Even").await.unwrap();
             assert!(evens.len() >= 400); // rough check
-            // spot check reads
+                                         // spot check reads
             for n in evens.iter().take(5) {
                 let got = s.read(n.id).await.unwrap();
                 assert!(got.is_some());
@@ -550,7 +656,10 @@ mod tests {
                 .await
                 .unwrap()
                 .into_iter()
-                .map(|mut n| { n.labels = vec!["Updated".into()]; n })
+                .map(|mut n| {
+                    n.labels = vec!["Updated".into()];
+                    n
+                })
                 .collect();
             s.batch_update(updated.clone()).await.unwrap();
             let updated_nodes = s.find_by_label("Updated").await.unwrap();
@@ -567,7 +676,10 @@ mod tests {
         let b = node_with("User", ("role", JsonValue::String("user".into())));
         block_on(async {
             s.batch_create(vec![a.clone(), b.clone()]).await.unwrap();
-            let admins = s.find_by_property("role", &JsonValue::String("admin".into())).await.unwrap();
+            let admins = s
+                .find_by_property("role", &JsonValue::String("admin".into()))
+                .await
+                .unwrap();
             assert!(admins.iter().any(|x| x.id == a.id));
             assert!(!admins.iter().any(|x| x.id == b.id));
         });
@@ -580,7 +692,10 @@ mod tests {
         let b = node_with("Item", ("price", JsonValue::from(20)));
         block_on(async {
             s.batch_create(vec![a.clone(), b.clone()]).await.unwrap();
-            let cheap = s.find_by_property("price", &JsonValue::from(10)).await.unwrap();
+            let cheap = s
+                .find_by_property("price", &JsonValue::from(10))
+                .await
+                .unwrap();
             assert!(cheap.iter().any(|x| x.id == a.id));
             assert!(!cheap.iter().any(|x| x.id == b.id));
         });
@@ -596,7 +711,10 @@ mod tests {
         block_on(async {
             s.create(n.clone()).await.unwrap();
             let got = s.read(id).await.unwrap().unwrap();
-            assert_eq!(got.properties.get("meta").unwrap(), &serde_json::json!({"a":1, "b": [1,2,3]}));
+            assert_eq!(
+                got.properties.get("meta").unwrap(),
+                &serde_json::json!({"a":1, "b": [1,2,3]})
+            );
         });
     }
 
@@ -643,8 +761,18 @@ mod tests {
             s.create(n.clone()).await.unwrap();
             n.labels = vec!["New".into()];
             s.update(n.clone()).await.unwrap();
-            assert!(!s.find_by_label("Old").await.unwrap().iter().any(|x| x.id == id));
-            assert!(s.find_by_label("New").await.unwrap().iter().any(|x| x.id == id));
+            assert!(!s
+                .find_by_label("Old")
+                .await
+                .unwrap()
+                .iter()
+                .any(|x| x.id == id));
+            assert!(s
+                .find_by_label("New")
+                .await
+                .unwrap()
+                .iter()
+                .any(|x| x.id == id));
         });
     }
 
@@ -655,11 +783,26 @@ mod tests {
         let id = n.id;
         block_on(async {
             s.create(n.clone()).await.unwrap();
-            assert!(s.find_by_property("k", &JsonValue::from(1)).await.unwrap().iter().any(|x| x.id == id));
+            assert!(s
+                .find_by_property("k", &JsonValue::from(1))
+                .await
+                .unwrap()
+                .iter()
+                .any(|x| x.id == id));
             n.properties.insert("k".into(), JsonValue::from(2));
             s.update(n.clone()).await.unwrap();
-            assert!(!s.find_by_property("k", &JsonValue::from(1)).await.unwrap().iter().any(|x| x.id == id));
-            assert!(s.find_by_property("k", &JsonValue::from(2)).await.unwrap().iter().any(|x| x.id == id));
+            assert!(!s
+                .find_by_property("k", &JsonValue::from(1))
+                .await
+                .unwrap()
+                .iter()
+                .any(|x| x.id == id));
+            assert!(s
+                .find_by_property("k", &JsonValue::from(2))
+                .await
+                .unwrap()
+                .iter()
+                .any(|x| x.id == id));
         });
     }
 
@@ -672,7 +815,9 @@ mod tests {
             props.insert("i".into(), JsonValue::from(i as i64));
             nodes.push(Node::new(vec!["B".into()], props));
         }
-        block_on(async { s.batch_create(nodes).await.unwrap(); });
+        block_on(async {
+            s.batch_create(nodes).await.unwrap();
+        });
     }
 
     #[test]
@@ -703,4 +848,3 @@ mod tests {
         });
     }
 }
-

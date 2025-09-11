@@ -4,29 +4,28 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use std::sync::Arc;
-use tower_http::cors::{CorsLayer, Any};
-use tower_http::add_extension::AddExtensionLayer;
-use tower::ServiceBuilder;
-use codegraph_core::security::{AuthContext, JwtManager, ApiKeyManager, SecurityLogger, SecurityEvent, AuthorizationEngine};
-use uuid::Uuid;
+use codegraph_core::security::{
+    ApiKeyManager, AuthContext, AuthorizationEngine, JwtManager, SecurityEvent, SecurityLogger,
+};
 use std::net::IpAddr;
+use std::sync::Arc;
+use tower::ServiceBuilder;
+use tower_http::add_extension::AddExtensionLayer;
+use tower_http::cors::{Any, CorsLayer};
+use uuid::Uuid;
 
 /// Security headers middleware
-pub async fn security_headers_middleware(
-    req: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
+pub async fn security_headers_middleware(req: Request, next: Next) -> Result<Response, StatusCode> {
     let mut response = next.run(req).await;
-    
+
     let headers = response.headers_mut();
-    
+
     // Strict Transport Security (HSTS)
     headers.insert(
         header::STRICT_TRANSPORT_SECURITY,
         HeaderValue::from_static("max-age=31536000; includeSubDomains; preload"),
     );
-    
+
     // Content Security Policy
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
@@ -43,40 +42,40 @@ pub async fn security_headers_middleware(
              worker-src 'none'; \
              frame-ancestors 'none'; \
              base-uri 'self'; \
-             form-action 'self'"
+             form-action 'self'",
         ),
     );
-    
+
     // X-Frame-Options
     headers.insert(
         "X-Frame-Options".parse().unwrap(),
         HeaderValue::from_static("DENY"),
     );
-    
+
     // X-Content-Type-Options
     headers.insert(
         "X-Content-Type-Options".parse().unwrap(),
         HeaderValue::from_static("nosniff"),
     );
-    
+
     // X-XSS-Protection
     headers.insert(
         "X-XSS-Protection".parse().unwrap(),
         HeaderValue::from_static("1; mode=block"),
     );
-    
+
     // Referrer-Policy
     headers.insert(
         "Referrer-Policy".parse().unwrap(),
         HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
-    
+
     // X-Permitted-Cross-Domain-Policies
     headers.insert(
         "X-Permitted-Cross-Domain-Policies".parse().unwrap(),
         HeaderValue::from_static("none"),
     );
-    
+
     // Cache-Control for sensitive endpoints
     if let Some(path) = response.extensions().get::<String>() {
         if path.contains("admin") || path.contains("auth") {
@@ -86,7 +85,7 @@ pub async fn security_headers_middleware(
             );
         }
     }
-    
+
     Ok(response)
 }
 
@@ -98,7 +97,7 @@ pub async fn auth_middleware(
 ) -> Result<Response, StatusCode> {
     let client_ip = extract_client_ip(&req);
     let path = req.uri().path().to_string();
-    
+
     // Check for API key authentication first
     if let Some(api_key) = req.headers().get("X-API-KEY").and_then(|v| v.to_str().ok()) {
         return api_key_auth(api_key, &mut req, next, &state, &client_ip).await;
@@ -126,7 +125,7 @@ pub async fn auth_middleware(
                     ip_address: client_ip,
                     method: "JWT".to_string(),
                 });
-                
+
                 // Check token expiry
                 if auth_context.expires_at <= chrono::Utc::now() {
                     SecurityLogger::log_event(SecurityEvent::AuthenticationFailure {
@@ -136,7 +135,7 @@ pub async fn auth_middleware(
                     });
                     return Err(StatusCode::UNAUTHORIZED);
                 }
-                
+
                 req.extensions_mut().insert(auth_context);
                 req.extensions_mut().insert(path); // For cache control headers
                 Ok(next.run(req).await)
@@ -153,7 +152,10 @@ pub async fn auth_middleware(
     } else {
         // Allow unauthenticated access to public endpoints
         let public_endpoints = ["/health", "/metrics", "/docs", "/graphiql"];
-        if public_endpoints.iter().any(|&endpoint| path.starts_with(endpoint)) {
+        if public_endpoints
+            .iter()
+            .any(|&endpoint| path.starts_with(endpoint))
+        {
             Ok(next.run(req).await)
         } else {
             SecurityLogger::log_event(SecurityEvent::AuthenticationFailure {
@@ -184,15 +186,17 @@ async fn api_key_auth(
                 project_access: vec![],
                 session_id: key_info.id.to_string(),
                 issued_at: key_info.created_at,
-                expires_at: key_info.expires_at.unwrap_or_else(|| chrono::Utc::now() + chrono::Duration::days(365)),
+                expires_at: key_info
+                    .expires_at
+                    .unwrap_or_else(|| chrono::Utc::now() + chrono::Duration::days(365)),
             };
-            
+
             SecurityLogger::log_event(SecurityEvent::AuthenticationSuccess {
                 user_id: auth_context.user_id,
                 ip_address: client_ip.to_string(),
                 method: "API_KEY".to_string(),
             });
-            
+
             req.extensions_mut().insert(auth_context);
             Ok(next.run(req).await)
         }
@@ -211,7 +215,7 @@ async fn api_key_auth(
 use governor::{
     clock::DefaultClock,
     state::{InMemoryState, NotKeyed},
-    RateLimiter, Quota,
+    Quota, RateLimiter,
 };
 use std::{collections::HashMap, num::NonZeroU32, sync::Mutex};
 
@@ -225,14 +229,14 @@ impl RateLimitManager {
             limiters: Mutex::new(HashMap::new()),
         }
     }
-    
+
     fn get_limiter(&self, tier: &str) -> Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>> {
         let mut limiters = self.limiters.lock().unwrap();
-        
+
         if let Some(limiter) = limiters.get(tier) {
             return limiter.clone();
         }
-        
+
         let quota = match tier {
             "anonymous" => Quota::per_minute(NonZeroU32::new(60).unwrap()),
             "user" => Quota::per_minute(NonZeroU32::new(1000).unwrap()),
@@ -240,12 +244,12 @@ impl RateLimitManager {
             "admin" => Quota::per_minute(NonZeroU32::new(10000).unwrap()),
             _ => Quota::per_minute(NonZeroU32::new(60).unwrap()),
         };
-        
+
         let limiter = Arc::new(RateLimiter::direct(quota));
         limiters.insert(tier.to_string(), limiter.clone());
         limiter
     }
-    
+
     pub fn check_rate_limit(&self, tier: &str) -> Result<(), StatusCode> {
         let limiter = self.get_limiter(tier);
         match limiter.check() {
@@ -262,10 +266,13 @@ pub async fn rate_limit_middleware(
 ) -> Result<Response, StatusCode> {
     let auth_context = req.extensions().get::<AuthContext>();
     let client_ip = extract_client_ip(&req);
-    
+
     let user_tier = auth_context
         .map(|ctx| {
-            if ctx.permissions.contains(&codegraph_core::security::Permission::ADMIN_SYSTEM) {
+            if ctx
+                .permissions
+                .contains(&codegraph_core::security::Permission::ADMIN_SYSTEM)
+            {
                 "admin"
             } else if ctx.roles.contains(&"premium".to_string()) {
                 "premium"
@@ -274,7 +281,7 @@ pub async fn rate_limit_middleware(
             }
         })
         .unwrap_or("anonymous");
-    
+
     match state.rate_limiter.check_rate_limit(user_tier) {
         Ok(_) => Ok(next.run(req).await),
         Err(status) => {
@@ -283,24 +290,22 @@ pub async fn rate_limit_middleware(
                 ip_address: client_ip,
                 description: format!("Rate limit exceeded for tier: {}", user_tier),
             });
-            
+
             // Add rate limit headers
             let mut response = Response::new(axum::body::Body::from("Rate limit exceeded"));
             *response.status_mut() = status;
-            
+
             response.headers_mut().insert(
                 "X-RateLimit-Limit",
                 HeaderValue::from_str(&format!("{}", get_limit_for_tier(user_tier))).unwrap(),
             );
-            response.headers_mut().insert(
-                "X-RateLimit-Remaining", 
-                HeaderValue::from_static("0"),
-            );
-            response.headers_mut().insert(
-                "Retry-After",
-                HeaderValue::from_static("60"),
-            );
-            
+            response
+                .headers_mut()
+                .insert("X-RateLimit-Remaining", HeaderValue::from_static("0"));
+            response
+                .headers_mut()
+                .insert("Retry-After", HeaderValue::from_static("60"));
+
             Ok(response)
         }
     }
@@ -318,19 +323,25 @@ fn get_limit_for_tier(tier: &str) -> u32 {
 
 /// Permission checking middleware
 pub async fn require_permission(
-    required_permissions: Vec<codegraph_core::security::Permission>
-) -> impl Fn(Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Response, StatusCode>> + Send>> {
+    required_permissions: Vec<codegraph_core::security::Permission>,
+) -> impl Fn(
+    Request,
+    Next,
+)
+    -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Response, StatusCode>> + Send>> {
     move |req: Request, next: Next| {
         let required_perms = required_permissions.clone();
         Box::pin(async move {
             let auth_context = req.extensions().get::<AuthContext>();
             let client_ip = extract_client_ip(&req);
-            
+
             match auth_context {
                 Some(ctx) => {
                     if AuthorizationEngine::has_permission(ctx, &required_perms) {
                         // Log admin access for sensitive operations
-                        if required_perms.contains(&codegraph_core::security::Permission::ADMIN_SYSTEM) {
+                        if required_perms
+                            .contains(&codegraph_core::security::Permission::ADMIN_SYSTEM)
+                        {
                             SecurityLogger::log_event(SecurityEvent::AdminAccess {
                                 user_id: ctx.user_id,
                                 action: req.method().to_string(),
@@ -370,14 +381,14 @@ fn extract_client_ip(req: &Request) -> String {
             }
         }
     }
-    
+
     // Check X-Real-IP header
     if let Some(real_ip) = req.headers().get("X-Real-IP") {
         if let Ok(ip_str) = real_ip.to_str() {
             return ip_str.to_string();
         }
     }
-    
+
     // Fallback to connection info (may not be available in all cases)
     "unknown".to_string()
 }
@@ -414,14 +425,18 @@ pub fn security_middleware_stack() -> ServiceBuilder<
     tower::layer::util::Stack<
         tower::layer::util::Stack<
             axum::middleware::FromFnLayer<
-                fn(Request, Next) -> impl std::future::Future<Output = Result<Response, StatusCode>>
+                fn(
+                    Request,
+                    Next,
+                )
+                    -> impl std::future::Future<Output = Result<Response, StatusCode>>,
             >,
-            tower_http::cors::CorsLayer
+            tower_http::cors::CorsLayer,
         >,
         axum::middleware::FromFnLayer<
-            fn(Request, Next) -> impl std::future::Future<Output = Result<Response, StatusCode>>
-        >
-    >
+            fn(Request, Next) -> impl std::future::Future<Output = Result<Response, StatusCode>>,
+        >,
+    >,
 > {
     ServiceBuilder::new()
         .layer(axum::middleware::from_fn(security_headers_middleware))
@@ -432,23 +447,23 @@ pub fn security_middleware_stack() -> ServiceBuilder<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::{Request, StatusCode};
     use axum::body::Body;
-    
+    use axum::http::{Request, StatusCode};
+
     #[test]
     fn test_rate_limit_manager() {
         let manager = RateLimitManager::new();
-        
+
         // Should allow first request
         assert_eq!(manager.check_rate_limit("user"), Ok(()));
-        
+
         // Test different tiers have different limits
         assert_eq!(get_limit_for_tier("anonymous"), 60);
         assert_eq!(get_limit_for_tier("user"), 1000);
         assert_eq!(get_limit_for_tier("premium"), 5000);
         assert_eq!(get_limit_for_tier("admin"), 10000);
     }
-    
+
     #[test]
     fn test_client_ip_extraction() {
         let mut req = Request::builder()
@@ -456,15 +471,15 @@ mod tests {
             .header("X-Forwarded-For", "192.168.1.1, 10.0.0.1")
             .body(Body::empty())
             .unwrap();
-            
+
         assert_eq!(extract_client_ip(&req), "192.168.1.1");
-        
+
         let mut req = Request::builder()
             .uri("/test")
             .header("X-Real-IP", "192.168.1.2")
             .body(Body::empty())
             .unwrap();
-            
+
         assert_eq!(extract_client_ip(&req), "192.168.1.2");
     }
 }

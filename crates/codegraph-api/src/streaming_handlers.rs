@@ -47,10 +47,13 @@ pub async fn stream_search_results(
     let limit = params.limit.unwrap_or(1000);
     let batch_size = params.batch_size.unwrap_or(50);
     let throttle_duration = Duration::from_millis(params.throttle_ms.unwrap_or(10));
-    
+
     debug!(
         "Starting streaming search: query='{}', limit={}, batch_size={}, throttle_ms={}",
-        params.query, limit, batch_size, params.throttle_ms.unwrap_or(10)
+        params.query,
+        limit,
+        batch_size,
+        params.throttle_ms.unwrap_or(10)
     );
 
     let results = state
@@ -61,14 +64,9 @@ pub async fn stream_search_results(
 
     let graph = state.graph.read().await;
     let stream_id = Uuid::new_v4().to_string();
-    
-    let search_stream = create_backpressure_stream(
-        results,
-        graph,
-        batch_size,
-        throttle_duration,
-        stream_id,
-    );
+
+    let search_stream =
+        create_backpressure_stream(results, graph, batch_size, throttle_duration, stream_id);
 
     Ok(StreamBodyAsOptions::new()
         .buffering_ready_items(batch_size)
@@ -83,10 +81,10 @@ fn create_backpressure_stream(
     stream_id: String,
 ) -> Pin<Box<dyn Stream<Item = StreamingSearchResult> + Send + 'static>> {
     let total_results = results.len();
-    
+
     // Convert results to owned data to avoid lifetime issues
     let owned_results: Vec<_> = results.into_iter().collect();
-    
+
     let stream = stream::iter(owned_results.into_iter().enumerate())
         .chunks(batch_size)
         .enumerate()
@@ -96,7 +94,7 @@ fn create_backpressure_stream(
                 if batch_idx > 0 {
                     sleep(throttle_duration).await;
                 }
-                
+
                 let mut batch_results = Vec::new();
                 for (global_idx, search_result) in batch {
                     // Note: In a real implementation, we would need to handle the graph access differently
@@ -113,14 +111,14 @@ fn create_backpressure_stream(
                     };
                     batch_results.push(dummy_result);
                 }
-                
+
                 debug!(
                     "Processed batch {} with {} items for stream {}",
                     batch_idx,
                     batch_results.len(),
                     stream_id
                 );
-                
+
                 stream::iter(batch_results)
             }
         })
@@ -137,13 +135,16 @@ pub async fn stream_large_dataset(
         .get("batch_size")
         .and_then(|s| s.parse().ok())
         .unwrap_or(100);
-    
+
     let throttle_ms: u64 = params
         .get("throttle_ms")
         .and_then(|s| s.parse().ok())
         .unwrap_or(5);
 
-    debug!("Streaming large dataset with batch_size={}, throttle_ms={}", batch_size, throttle_ms);
+    debug!(
+        "Streaming large dataset with batch_size={}, throttle_ms={}",
+        batch_size, throttle_ms
+    );
 
     let dataset_stream = create_large_dataset_stream(batch_size, throttle_ms);
 
@@ -158,7 +159,7 @@ fn create_large_dataset_stream(
 ) -> impl Stream<Item = StreamingSearchResult> + Send + 'static {
     let total_items = 10000; // Simulate large dataset
     let throttle_duration = Duration::from_millis(throttle_ms);
-    
+
     stream::iter(0..total_items)
         .chunks(batch_size)
         .enumerate()
@@ -166,7 +167,7 @@ fn create_large_dataset_stream(
             if batch_idx > 0 {
                 sleep(throttle_duration).await;
             }
-            
+
             let batch_results: Vec<_> = batch
                 .into_iter()
                 .map(|i| StreamingSearchResult {
@@ -180,9 +181,13 @@ fn create_large_dataset_stream(
                     total_processed: i + 1,
                 })
                 .collect();
-            
-            debug!("Generated batch {} with {} items", batch_idx, batch_results.len());
-            
+
+            debug!(
+                "Generated batch {} with {} items",
+                batch_idx,
+                batch_results.len()
+            );
+
             stream::iter(batch_results)
         })
         .flatten()
@@ -194,8 +199,11 @@ pub async fn stream_csv_results(
 ) -> ApiResult<impl IntoResponse> {
     let limit = params.limit.unwrap_or(1000);
     let batch_size = params.batch_size.unwrap_or(50);
-    
-    debug!("Streaming CSV results: limit={}, batch_size={}", limit, batch_size);
+
+    debug!(
+        "Streaming CSV results: limit={}, batch_size={}",
+        limit, batch_size
+    );
 
     let results = state
         .semantic_search
@@ -221,7 +229,7 @@ fn create_csv_stream(
             if batch_idx > 0 {
                 sleep(Duration::from_millis(10)).await;
             }
-            
+
             let batch_results: Vec<_> = batch
                 .into_iter()
                 .map(|(idx, search_result)| StreamingSearchResult {
@@ -235,7 +243,7 @@ fn create_csv_stream(
                     total_processed: idx + 1,
                 })
                 .collect();
-            
+
             stream::iter(batch_results)
         })
         .flatten()
@@ -252,7 +260,7 @@ pub async fn get_stream_metadata(
         estimated_batches: 20,
         stream_id,
     };
-    
+
     Ok(axum::Json(metadata))
 }
 
@@ -274,7 +282,7 @@ pub async fn get_flow_control_stats(
         average_batch_time_ms: 15.5,
         backpressure_events: 2,
     };
-    
+
     Ok(axum::Json(stats))
 }
 
@@ -292,7 +300,7 @@ where
     T: Send + 'static,
 {
     use futures::stream::FuturesUnordered;
-    
+
     let stream = stream::iter(items.into_iter())
         .chunks(batch_size)
         .enumerate()

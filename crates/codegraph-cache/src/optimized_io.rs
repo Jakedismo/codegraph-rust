@@ -5,8 +5,8 @@ use tokio::sync::{RwLock, Mutex, Semaphore};
 use tokio::time::timeout;
 use parking_lot::RwLock as SyncRwLock;
 use crossbeam_channel::{bounded, Receiver, Sender};
-use crate::{CacheKey, CacheEntry, CacheStats, Result};
-use codegraph_core::{NodeId, CodeGraphError, OptimizedCodeNode, CompactCacheKey, CacheType};
+use crate::{CacheKey, CacheEntry, CacheStats};
+use codegraph_core::{NodeId, CodeGraphError, Result};
 
 /// High-performance I/O optimization strategies for 3x throughput improvement
 pub struct OptimizedIOManager {
@@ -52,7 +52,7 @@ impl OptimizedIOManager {
         }
     }
 
-    pub async fn optimized_read<T>(&self, keys: Vec<CompactCacheKey>) -> Result<Vec<Option<T>>> 
+    pub async fn optimized_read<T>(&self, keys: Vec<CacheKey>) -> Result<Vec<Option<T>>> 
     where
         T: serde::de::DeserializeOwned + Send + 'static,
     {
@@ -81,7 +81,7 @@ impl OptimizedIOManager {
         Ok(merged_results)
     }
 
-    pub async fn optimized_write<T>(&self, data: Vec<(CompactCacheKey, T)>) -> Result<()>
+    pub async fn optimized_write<T>(&self, data: Vec<(CacheKey, T)>) -> Result<()>
     where
         T: serde::Serialize + Send + 'static,
     {
@@ -148,7 +148,7 @@ pub struct BatchedIOReader {
 
 #[derive(Debug)]
 struct ReadRequest {
-    key: CompactCacheKey,
+    key: CacheKey,
     response_sender: tokio::sync::oneshot::Sender<Option<Vec<u8>>>,
 }
 
@@ -161,7 +161,7 @@ impl BatchedIOReader {
         }
     }
 
-    pub async fn batch_read<T>(&self, keys: Vec<CompactCacheKey>) -> Result<Vec<Option<T>>>
+    pub async fn batch_read<T>(&self, keys: Vec<CacheKey>) -> Result<Vec<Option<T>>>
     where
         T: serde::de::DeserializeOwned,
     {
@@ -259,7 +259,7 @@ impl BatchedIOReader {
 pub struct BufferedWriter {
     buffer_size: usize,
     flush_interval: Duration,
-    write_buffer: Arc<Mutex<Vec<(CompactCacheKey, Vec<u8>)>>>,
+    write_buffer: Arc<Mutex<Vec<(CacheKey, Vec<u8>)>>>,
     flush_trigger: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
@@ -273,7 +273,7 @@ impl BufferedWriter {
         }
     }
 
-    pub async fn buffer_writes<T>(&self, data: Vec<(CompactCacheKey, T)>) -> Result<()>
+    pub async fn buffer_writes<T>(&self, data: Vec<(CacheKey, T)>) -> Result<()>
     where
         T: serde::Serialize,
     {
@@ -339,7 +339,7 @@ impl BufferedWriter {
         Ok(())
     }
 
-    async fn perform_batched_write(&self, data: Vec<(CompactCacheKey, Vec<u8>)>) -> Result<()> {
+    async fn perform_batched_write(&self, data: Vec<(CacheKey, Vec<u8>)>) -> Result<()> {
         // Placeholder for actual batched write implementation
         tokio::time::sleep(Duration::from_micros(data.len() as u64)).await;
         Ok(())
@@ -350,8 +350,8 @@ impl BufferedWriter {
 pub struct PrefetchEngine {
     prefetch_depth: usize,
     pattern_history_size: usize,
-    access_patterns: Arc<RwLock<HashMap<CompactCacheKey, Vec<CompactCacheKey>>>>,
-    prefetch_cache: Arc<RwLock<HashMap<CompactCacheKey, Vec<u8>>>>,
+    access_patterns: Arc<RwLock<HashMap<CacheKey, Vec<CacheKey>>>>,
+    prefetch_cache: Arc<RwLock<HashMap<CacheKey, Vec<u8>>>>,
     prediction_accuracy: Arc<SyncRwLock<PredictionMetrics>>,
 }
 
@@ -373,7 +373,7 @@ impl PrefetchEngine {
         }
     }
 
-    pub async fn record_access_pattern(&self, keys: &[CompactCacheKey]) {
+    pub async fn record_access_pattern(&self, keys: &[CacheKey]) {
         if keys.len() < 2 {
             return;
         }
@@ -397,7 +397,7 @@ impl PrefetchEngine {
         }
     }
 
-    pub async fn check_prefetched<T>(&self, keys: &[CompactCacheKey]) -> (Vec<Option<T>>, Vec<CompactCacheKey>)
+    pub async fn check_prefetched<T>(&self, keys: &[CacheKey]) -> (Vec<Option<T>>, Vec<CacheKey>)
     where
         T: serde::de::DeserializeOwned,
     {
@@ -436,7 +436,7 @@ impl PrefetchEngine {
         };
     }
 
-    pub async fn prefetch_predicted_keys(&self, current_key: CompactCacheKey) -> Result<()> {
+    pub async fn prefetch_predicted_keys(&self, current_key: CacheKey) -> Result<()> {
         let patterns = self.access_patterns.read().await;
         
         if let Some(next_keys) = patterns.get(&current_key) {
@@ -481,7 +481,7 @@ impl CompressionLayer {
         }
     }
 
-    pub async fn compress_batch<T>(&self, data: &[(CompactCacheKey, T)]) -> Result<Vec<(CompactCacheKey, Vec<u8>)>>
+    pub async fn compress_batch<T>(&self, data: &[(CacheKey, T)]) -> Result<Vec<(CacheKey, Vec<u8>)>>
     where
         T: serde::Serialize,
     {

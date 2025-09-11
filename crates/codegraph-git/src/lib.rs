@@ -4,18 +4,18 @@
 //! This crate aims to be thread-safe and efficient for large repositories.
 
 pub mod errors;
-pub mod types;
-pub mod repo;
-pub mod hooks;
-pub mod watcher;
-pub mod merge;
 pub mod history;
+pub mod hooks;
+pub mod merge;
+pub mod repo;
+pub mod types;
+pub mod watcher;
 
 pub use errors::{GitIntegrationError, Result};
-pub use types::*;
 pub use repo::GitRepository;
-pub use types::{HookInstallOptions, HookKind};
-pub use watcher::RepoWatcher;
-pub use types::{WatchEvent, WatchOptions};
 pub use types::MergeStrategy;
-pub use types::{MergeOutcome, HistoryInsights, HistoryOptions};
+pub use types::*;
+pub use types::{HistoryInsights, HistoryOptions, MergeOutcome};
+pub use types::{HookInstallOptions, HookKind};
+pub use types::{WatchEvent, WatchOptions};
+pub use watcher::RepoWatcher;

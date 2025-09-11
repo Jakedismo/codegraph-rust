@@ -1,18 +1,21 @@
 use axum::{
+    body::Body,
+    extract::{Path, Query, Request},
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::Response,
-    extract::{Request, Path, Query},
-    body::Body,
 };
 use hyper::Version;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    sync::{Arc, atomic::{AtomicU64, Ordering}},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 use tokio::sync::{RwLock, Semaphore};
-use tracing::{debug, info, warn, instrument};
-use serde::{Deserialize, Serialize};
+use tracing::{debug, info, instrument, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Http2OptimizerConfig {
@@ -99,7 +102,7 @@ pub struct ConnectionMetrics {
 impl StreamMultiplexer {
     pub fn new(config: Http2OptimizerConfig) -> Self {
         let stream_semaphore = Arc::new(Semaphore::new(config.max_concurrent_streams));
-        
+
         Self {
             config,
             active_streams: Arc::new(RwLock::new(HashMap::new())),
@@ -112,24 +115,30 @@ impl StreamMultiplexer {
 
     #[instrument(skip(self))]
     pub async fn acquire_stream(&self) -> Result<StreamHandle, Http2Error> {
-        let permit = self.stream_semaphore
+        let permit = self
+            .stream_semaphore
             .acquire()
             .await
             .map_err(|_| Http2Error::StreamLimitExceeded)?;
 
         let stream_id = self.next_stream_id.fetch_add(2, Ordering::Relaxed) as u32;
         let metrics = Arc::new(StreamMetrics::new(stream_id));
-        
+
         {
             let mut streams = self.active_streams.write().await;
             streams.insert(stream_id, metrics.clone());
         }
 
         self.total_streams.fetch_add(1, Ordering::Relaxed);
-        self.connection_metrics.streams_created.fetch_add(1, Ordering::Relaxed);
+        self.connection_metrics
+            .streams_created
+            .fetch_add(1, Ordering::Relaxed);
 
-        info!("Acquired stream {}, total active: {}", stream_id, 
-              self.active_streams.read().await.len());
+        info!(
+            "Acquired stream {}, total active: {}",
+            stream_id,
+            self.active_streams.read().await.len()
+        );
 
         Ok(StreamHandle {
             stream_id,
@@ -145,7 +154,7 @@ impl StreamMultiplexer {
             let duration = metrics.start_time.elapsed();
             let bytes_sent = metrics.bytes_sent.load(Ordering::Relaxed);
             let bytes_received = metrics.bytes_received.load(Ordering::Relaxed);
-            
+
             debug!(
                 "Released stream {} after {:?}, sent: {} bytes, received: {} bytes",
                 stream_id, duration, bytes_sent, bytes_received
@@ -232,7 +241,7 @@ impl ServerPushStrategy {
 
         let path = request.uri().path();
         let cache = self.push_cache.read().await;
-        
+
         if let Some(resources) = cache.get(path) {
             let now = Instant::now();
             let valid_resources: Vec<PushResource> = resources
@@ -240,12 +249,17 @@ impl ServerPushStrategy {
                 .filter(|resource| now.duration_since(resource.created_at) < resource.max_age)
                 .cloned()
                 .collect();
-            
+
             if !valid_resources.is_empty() {
-                self.push_metrics.fetch_add(valid_resources.len() as u64, Ordering::Relaxed);
-                info!("Found {} push resources for path: {}", valid_resources.len(), path);
+                self.push_metrics
+                    .fetch_add(valid_resources.len() as u64, Ordering::Relaxed);
+                info!(
+                    "Found {} push resources for path: {}",
+                    valid_resources.len(),
+                    path
+                );
             }
-            
+
             valid_resources
         } else {
             vec![]
@@ -254,14 +268,14 @@ impl ServerPushStrategy {
 
     pub async fn create_push_headers(&self, resources: &[PushResource]) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        
+
         for resource in resources {
             let link_value = format!("<{}>; rel=preload", resource.path);
             if let Ok(header_value) = HeaderValue::from_str(&link_value) {
                 headers.append("link", header_value);
             }
         }
-        
+
         headers
     }
 
@@ -294,19 +308,24 @@ impl HpackCompressor {
     #[instrument(skip(self, headers))]
     pub fn optimize_headers(&self, headers: &mut HeaderMap) -> Result<(), Http2Error> {
         let original_size = self.calculate_header_size(headers);
-        
+
         // Remove redundant headers that HTTP/2 handles automatically
         headers.remove("connection");
         headers.remove("upgrade");
         headers.remove("proxy-connection");
         headers.remove("transfer-encoding");
-        
+
         // Optimize common headers by lowercasing (HPACK prefers lowercase)
         let headers_to_optimize = [
-            "content-type", "content-length", "user-agent", "accept",
-            "accept-encoding", "accept-language", "cache-control"
+            "content-type",
+            "content-length",
+            "user-agent",
+            "accept",
+            "accept-encoding",
+            "accept-language",
+            "cache-control",
         ];
-        
+
         for header_name in &headers_to_optimize {
             if let Some(value) = headers.remove(*header_name) {
                 if let Ok(name) = HeaderName::from_str(&header_name.to_lowercase()) {
@@ -317,28 +336,40 @@ impl HpackCompressor {
 
         // Add HTTP/2 specific optimizations
         if !headers.contains_key("cache-control") {
-            headers.insert("cache-control", HeaderValue::from_static("public, max-age=3600"));
+            headers.insert(
+                "cache-control",
+                HeaderValue::from_static("public, max-age=3600"),
+            );
         }
 
         let optimized_size = self.calculate_header_size(headers);
         let bytes_saved = original_size.saturating_sub(optimized_size);
-        
-        self.compression_stats.headers_compressed.fetch_add(1, Ordering::Relaxed);
-        self.compression_stats.bytes_saved.fetch_add(bytes_saved as u64, Ordering::Relaxed);
-        
+
+        self.compression_stats
+            .headers_compressed
+            .fetch_add(1, Ordering::Relaxed);
+        self.compression_stats
+            .bytes_saved
+            .fetch_add(bytes_saved as u64, Ordering::Relaxed);
+
         if original_size > 0 {
             let ratio = ((optimized_size * 10000) / original_size) as u64;
-            self.compression_stats.compression_ratio.store(ratio, Ordering::Relaxed);
+            self.compression_stats
+                .compression_ratio
+                .store(ratio, Ordering::Relaxed);
         }
 
-        debug!("Header optimization: {} -> {} bytes (saved: {})", 
-               original_size, optimized_size, bytes_saved);
+        debug!(
+            "Header optimization: {} -> {} bytes (saved: {})",
+            original_size, optimized_size, bytes_saved
+        );
 
         Ok(())
     }
 
     fn calculate_header_size(&self, headers: &HeaderMap) -> usize {
-        headers.iter()
+        headers
+            .iter()
             .map(|(name, value)| name.as_str().len() + value.len() + 4) // +4 for ": " and "\r\n"
             .sum()
     }
@@ -381,18 +412,22 @@ impl FlowControlOptimizer {
         // Adaptive window sizing based on bandwidth-delay product
         let bandwidth_estimate = bytes_pending * 1000 / rtt_ms.max(1);
         let bdp = bandwidth_estimate * rtt_ms / 1000;
-        
+
         // Use 2x BDP as window size, clamped to reasonable bounds
         let optimal_size = (bdp * 2).clamp(
             self.config.initial_window_size as u64,
-            1024 * 1024 // 1MB max
+            1024 * 1024, // 1MB max
         );
 
         self.window_size.store(optimal_size, Ordering::Relaxed);
-        self.flow_stats.avg_window_size.store(optimal_size, Ordering::Relaxed);
+        self.flow_stats
+            .avg_window_size
+            .store(optimal_size, Ordering::Relaxed);
 
-        debug!("Calculated optimal window size: {} bytes (BDP: {}, RTT: {}ms)", 
-               optimal_size, bdp, rtt_ms);
+        debug!(
+            "Calculated optimal window size: {} bytes (BDP: {}, RTT: {}ms)",
+            optimal_size, bdp, rtt_ms
+        );
 
         optimal_size as u32
     }
@@ -400,9 +435,11 @@ impl FlowControlOptimizer {
     pub fn should_send_window_update(&self, consumed_bytes: u64) -> bool {
         let current_window = self.window_size.load(Ordering::Relaxed);
         let threshold = current_window / 2;
-        
+
         if consumed_bytes >= threshold {
-            self.flow_stats.window_updates_sent.fetch_add(1, Ordering::Relaxed);
+            self.flow_stats
+                .window_updates_sent
+                .fetch_add(1, Ordering::Relaxed);
             true
         } else {
             false
@@ -451,7 +488,10 @@ impl Http2Optimizer {
     }
 
     #[instrument(skip(self, request))]
-    pub async fn optimize_request(&self, mut request: Request<Body>) -> Result<Request<Body>, Http2Error> {
+    pub async fn optimize_request(
+        &self,
+        mut request: Request<Body>,
+    ) -> Result<Request<Body>, Http2Error> {
         // Only optimize HTTP/2 requests
         if request.version() != Version::HTTP_2 {
             return Ok(request);
@@ -474,7 +514,11 @@ impl Http2Optimizer {
     }
 
     #[instrument(skip(self, response))]
-    pub async fn optimize_response(&self, mut response: Response<Body>, request: &Request<Body>) -> Result<Response<Body>, Http2Error> {
+    pub async fn optimize_response(
+        &self,
+        mut response: Response<Body>,
+        request: &Request<Body>,
+    ) -> Result<Response<Body>, Http2Error> {
         // Only optimize HTTP/2 responses
         if request.version() != Version::HTTP_2 {
             return Ok(response);
@@ -487,7 +531,10 @@ impl Http2Optimizer {
         // Add server push headers if applicable
         let push_resources = self.push_strategy.get_push_resources(request).await;
         if !push_resources.is_empty() {
-            let push_headers = self.push_strategy.create_push_headers(&push_resources).await;
+            let push_headers = self
+                .push_strategy
+                .create_push_headers(&push_resources)
+                .await;
             for (name, value) in push_headers {
                 if let Some(name) = name {
                     headers.insert(name, value);
@@ -503,7 +550,9 @@ impl Http2Optimizer {
     }
 
     pub async fn register_push_resources(&self, path: &str, resources: Vec<PushResource>) {
-        self.push_strategy.register_push_resources(path, resources).await;
+        self.push_strategy
+            .register_push_resources(path, resources)
+            .await;
     }
 
     pub async fn get_connection_metrics(&self) -> Http2Metrics {
@@ -511,9 +560,21 @@ impl Http2Optimizer {
             active_streams: self.multiplexer.get_stream_count().await,
             total_streams: self.multiplexer.total_streams.load(Ordering::Relaxed),
             push_promises_sent: self.push_strategy.get_push_count(),
-            headers_compressed: self.hpack_compressor.get_stats().headers_compressed.load(Ordering::Relaxed),
-            bytes_saved: self.hpack_compressor.get_stats().bytes_saved.load(Ordering::Relaxed),
-            window_updates_sent: self.flow_control.get_stats().window_updates_sent.load(Ordering::Relaxed),
+            headers_compressed: self
+                .hpack_compressor
+                .get_stats()
+                .headers_compressed
+                .load(Ordering::Relaxed),
+            bytes_saved: self
+                .hpack_compressor
+                .get_stats()
+                .bytes_saved
+                .load(Ordering::Relaxed),
+            window_updates_sent: self
+                .flow_control
+                .get_stats()
+                .window_updates_sent
+                .load(Ordering::Relaxed),
             current_window_size: self.flow_control.get_current_window_size(),
         }
     }
@@ -579,17 +640,17 @@ mod tests {
         let config = Http2OptimizerConfig::default();
         let push_strategy = ServerPushStrategy::new(config);
 
-        let resources = vec![
-            PushResource {
-                path: "/style.css".to_string(),
-                headers: HashMap::new(),
-                priority: 1,
-                max_age: Duration::from_secs(3600),
-                created_at: Instant::now(),
-            }
-        ];
+        let resources = vec![PushResource {
+            path: "/style.css".to_string(),
+            headers: HashMap::new(),
+            priority: 1,
+            max_age: Duration::from_secs(3600),
+            created_at: Instant::now(),
+        }];
 
-        push_strategy.register_push_resources("/index.html", resources).await;
+        push_strategy
+            .register_push_resources("/index.html", resources)
+            .await;
 
         let request = Request::builder()
             .method(Method::GET)
@@ -610,9 +671,8 @@ mod tests {
         let optimal_size = flow_control.calculate_optimal_window_size(1000, 100);
         assert!(optimal_size >= config.initial_window_size);
 
-        let should_update = flow_control.should_send_window_update(
-            flow_control.get_current_window_size() / 2 + 1
-        );
+        let should_update =
+            flow_control.should_send_window_update(flow_control.get_current_window_size() / 2 + 1);
         assert!(should_update);
     }
 }

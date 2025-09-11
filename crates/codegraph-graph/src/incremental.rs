@@ -11,8 +11,8 @@ use tokio::sync::RwLock as AsyncRwLock;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use codegraph_core::{CodeGraphError, CodeNode, NodeId};
-use crate::{CodeGraph, GraphDelta, DeltaOperation, DeltaApplicationResult, GraphDeltaProcessor};
+use crate::{CodeGraph, DeltaApplicationResult, DeltaOperation, GraphDelta, GraphDeltaProcessor};
+use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateRegion {
@@ -96,8 +96,18 @@ impl SelectiveNodeUpdater {
     fn default_strategies() -> HashMap<String, UpdateStrategy> {
         let mut strategies = HashMap::new();
         strategies.insert("rust".to_string(), UpdateStrategy::DiffOnly);
-        strategies.insert("typescript".to_string(), UpdateStrategy::Merge { similarity_threshold: 0.8 });
-        strategies.insert("javascript".to_string(), UpdateStrategy::Merge { similarity_threshold: 0.8 });
+        strategies.insert(
+            "typescript".to_string(),
+            UpdateStrategy::Merge {
+                similarity_threshold: 0.8,
+            },
+        );
+        strategies.insert(
+            "javascript".to_string(),
+            UpdateStrategy::Merge {
+                similarity_threshold: 0.8,
+            },
+        );
         strategies.insert("python".to_string(), UpdateStrategy::DiffOnly);
         strategies.insert("go".to_string(), UpdateStrategy::Replace);
         strategies.insert("default".to_string(), UpdateStrategy::DiffOnly);
@@ -109,16 +119,21 @@ impl SelectiveNodeUpdater {
         request: SelectiveUpdateRequest,
     ) -> Result<SelectiveUpdateResult> {
         let start_time = std::time::Instant::now();
-        
-        info!("Starting selective update for region {} in {}", 
-              request.region.id, request.region.file_path);
+
+        info!(
+            "Starting selective update for region {} in {}",
+            request.region.id, request.region.file_path
+        );
 
         // Check if we can use cached result
         if let Some(cached) = self.get_cached_update(&request).await {
-            info!("Using cached update result for region {}", request.region.id);
+            info!(
+                "Using cached update result for region {}",
+                request.region.id
+            );
             return Ok(SelectiveUpdateResult {
                 updated_nodes: HashSet::new(),
-                added_nodes: cached.nodes.iter().filter_map(|n| n.id.clone()).collect(),
+                added_nodes: cached.nodes.iter().map(|n| n.id).collect(),
                 removed_nodes: HashSet::new(),
                 duration: start_time.elapsed(),
                 bytes_processed: 0,
@@ -127,23 +142,28 @@ impl SelectiveNodeUpdater {
 
         // Get current nodes in the region
         let current_nodes = self.get_nodes_in_region(&request.region).await?;
-        
+
         // Determine update strategy
         let strategy = self.get_update_strategy(&request.region.file_path);
-        
+
         // Apply selective update
         let result = match strategy {
             UpdateStrategy::Replace => {
-                self.apply_replace_strategy(&request, &current_nodes).await?
+                self.apply_replace_strategy(&request, &current_nodes)
+                    .await?
             }
-            UpdateStrategy::Merge { similarity_threshold } => {
-                self.apply_merge_strategy(&request, &current_nodes, similarity_threshold).await?
+            UpdateStrategy::Merge {
+                similarity_threshold,
+            } => {
+                self.apply_merge_strategy(&request, &current_nodes, similarity_threshold)
+                    .await?
             }
-            UpdateStrategy::DiffOnly => {
-                self.apply_diff_strategy(&request, &current_nodes).await?
-            }
+            UpdateStrategy::DiffOnly => self.apply_diff_strategy(&request, &current_nodes).await?,
             UpdateStrategy::Custom { name } => {
-                warn!("Custom strategy '{}' not implemented, falling back to DiffOnly", name);
+                warn!(
+                    "Custom strategy '{}' not implemented, falling back to DiffOnly",
+                    name
+                );
                 self.apply_diff_strategy(&request, &current_nodes).await?
             }
         };
@@ -151,15 +171,19 @@ impl SelectiveNodeUpdater {
         // Cache the result for future use
         self.cache_update_result(&request, &result).await;
 
-        // Update performance tracking
-        self.performance_tracker.record_update(&request, &result).await;
-
         let duration = start_time.elapsed();
-        info!("Selective update completed in {}ms: {} updated, {} added, {} removed",
-              duration.as_millis(),
-              result.updated_nodes.len(),
-              result.added_nodes.len(),
-              result.removed_nodes.len());
+
+        // Update performance tracking
+        self.performance_tracker
+            .record_update(&request, &result, duration)
+            .await;
+        info!(
+            "Selective update completed in {}ms: {} updated, {} added, {} removed",
+            duration.as_millis(),
+            result.updated_nodes.len(),
+            result.added_nodes.len(),
+            result.removed_nodes.len()
+        );
 
         Ok(SelectiveUpdateResult {
             updated_nodes: result.updated_nodes,
@@ -172,13 +196,13 @@ impl SelectiveNodeUpdater {
 
     async fn get_nodes_in_region(&self, region: &UpdateRegion) -> Result<Vec<CodeNode>> {
         let graph = self.graph.read().await;
-        
+
         // Get nodes that intersect with the region
         let mut nodes_in_region = Vec::new();
-        
+
         // This would be more efficient with a spatial index, but for now we'll check all nodes
         for node_id in &region.affected_nodes {
-            if let Some(node) = graph.get_node(node_id).await? {
+            if let Some(node) = graph.get_node(*node_id).await? {
                 // Check if node is within the region bounds
                 if self.node_intersects_region(&node, region) {
                     nodes_in_region.push(node);
@@ -202,21 +226,21 @@ impl SelectiveNodeUpdater {
         current_nodes: &[CodeNode],
     ) -> Result<InternalUpdateResult> {
         let mut graph = self.graph.write().await;
-        
+
         let mut updated_nodes = HashSet::new();
         let mut added_nodes = HashSet::new();
         let mut removed_nodes = HashSet::new();
 
         // Remove all current nodes in the region
         for node in current_nodes {
-            graph.remove_node(&node.id).await?;
-            removed_nodes.insert(node.id.clone());
+            graph.remove_node(node.id).await?;
+            removed_nodes.insert(node.id);
         }
 
         // Add all new nodes
         for node in &request.new_nodes {
             graph.add_node(node.clone()).await?;
-            added_nodes.insert(node.id.clone());
+            added_nodes.insert(node.id);
         }
 
         Ok(InternalUpdateResult {
@@ -236,24 +260,20 @@ impl SelectiveNodeUpdater {
         let mut added_nodes = HashSet::new();
         let mut removed_nodes = HashSet::new();
 
-        // Create maps for efficient lookups
-        let current_map: HashMap<String, &CodeNode> = current_nodes
-            .iter()
-            .filter_map(|n| n.id.as_ref().map(|id| (id.clone(), n)))
-            .collect();
+        // Create maps for efficient lookups by NodeId
+        let current_map: HashMap<NodeId, &CodeNode> =
+            current_nodes.iter().map(|n| (n.id, n)).collect();
 
-        let new_map: HashMap<String, &CodeNode> = request.new_nodes
-            .iter()
-            .filter_map(|n| n.id.as_ref().map(|id| (id.clone(), n)))
-            .collect();
+        let new_map: HashMap<NodeId, &CodeNode> =
+            request.new_nodes.iter().map(|n| (n.id, n)).collect();
 
         let mut graph = self.graph.write().await;
 
         // Find nodes to remove (not in new set)
         for (node_id, _) in &current_map {
             if !new_map.contains_key(node_id) {
-                graph.remove_node(node_id).await?;
-                removed_nodes.insert(node_id.clone());
+                graph.remove_node(*node_id).await?;
+                removed_nodes.insert(*node_id);
             }
         }
 
@@ -265,15 +285,15 @@ impl SelectiveNodeUpdater {
                     let similarity = self.calculate_node_similarity(current_node, new_node);
                     if similarity < similarity_threshold {
                         // Update the node
-                        graph.remove_node(node_id).await?;
+                        graph.remove_node(*node_id).await?;
                         graph.add_node((*new_node).clone()).await?;
-                        updated_nodes.insert(node_id.clone());
+                        updated_nodes.insert(*node_id);
                     }
                 }
                 None => {
                     // Add new node
                     graph.add_node((*new_node).clone()).await?;
-                    added_nodes.insert(node_id.clone());
+                    added_nodes.insert(*node_id);
                 }
             }
         }
@@ -291,15 +311,21 @@ impl SelectiveNodeUpdater {
         current_nodes: &[CodeNode],
     ) -> Result<InternalUpdateResult> {
         // Use delta computation for precise differences
-        let delta_result = self.delta_processor.compute_delta(
-            current_nodes,
-            &request.new_nodes,
-            Some(request.region.file_path.clone()),
-            Some(request.region.content_hash.clone()),
-        ).await?;
+        let delta_result = self
+            .delta_processor
+            .compute_delta(
+                current_nodes,
+                &request.new_nodes,
+                Some(request.region.file_path.clone()),
+                Some(request.region.content_hash.clone()),
+            )
+            .await?;
 
         let mut graph = self.graph.write().await;
-        let application_result = self.delta_processor.apply_delta(&mut graph, &delta_result.delta).await?;
+        let application_result = self
+            .delta_processor
+            .apply_delta(&mut graph, &delta_result.delta)
+            .await?;
 
         // Extract the operation results
         let mut updated_nodes = HashSet::new();
@@ -367,15 +393,15 @@ impl SelectiveNodeUpdater {
     fn calculate_text_similarity(&self, text1: &str, text2: &str) -> f64 {
         // Simple similarity based on common subsequences
         // For better accuracy, could use more sophisticated algorithms like Jaro-Winkler
-        
+
         if text1 == text2 {
             return 1.0;
         }
-        
+
         if text1.is_empty() && text2.is_empty() {
             return 1.0;
         }
-        
+
         if text1.is_empty() || text2.is_empty() {
             return 0.0;
         }
@@ -383,7 +409,7 @@ impl SelectiveNodeUpdater {
         // Use Levenshtein distance as a simple similarity measure
         let distance = self.levenshtein_distance(text1, text2);
         let max_len = std::cmp::max(text1.len(), text2.len()) as f64;
-        
+
         if max_len == 0.0 {
             1.0
         } else {
@@ -408,7 +434,11 @@ impl SelectiveNodeUpdater {
 
         for i in 1..=s1_len {
             for j in 1..=s2_len {
-                let cost = if s1_chars[i - 1] == s2_chars[j - 1] { 0 } else { 1 };
+                let cost = if s1_chars[i - 1] == s2_chars[j - 1] {
+                    0
+                } else {
+                    1
+                };
                 matrix[i][j] = std::cmp::min(
                     std::cmp::min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1),
                     matrix[i - 1][j - 1] + cost,
@@ -421,7 +451,7 @@ impl SelectiveNodeUpdater {
 
     fn get_update_strategy(&self, file_path: &str) -> UpdateStrategy {
         let strategies = self.update_strategies.read();
-        
+
         // Determine strategy based on file extension
         if let Some(extension) = std::path::Path::new(file_path).extension() {
             if let Some(ext_str) = extension.to_str() {
@@ -432,12 +462,18 @@ impl SelectiveNodeUpdater {
         }
 
         // Return default strategy
-        strategies.get("default").unwrap_or(&UpdateStrategy::DiffOnly).clone()
+        strategies
+            .get("default")
+            .unwrap_or(&UpdateStrategy::DiffOnly)
+            .clone()
     }
 
     async fn get_cached_update(&self, request: &SelectiveUpdateRequest) -> Option<CachedUpdate> {
-        let cache_key = format!("{}:{}", request.region.file_path, request.region.content_hash);
-        
+        let cache_key = format!(
+            "{}:{}",
+            request.region.file_path, request.region.content_hash
+        );
+
         if let Some(mut cached) = self.update_cache.get_mut(&cache_key) {
             cached.access_count += 1;
             Some(cached.value().clone())
@@ -446,9 +482,16 @@ impl SelectiveNodeUpdater {
         }
     }
 
-    async fn cache_update_result(&self, request: &SelectiveUpdateRequest, result: &InternalUpdateResult) {
-        let cache_key = format!("{}:{}", request.region.file_path, request.region.content_hash);
-        
+    async fn cache_update_result(
+        &self,
+        request: &SelectiveUpdateRequest,
+        result: &InternalUpdateResult,
+    ) {
+        let cache_key = format!(
+            "{}:{}",
+            request.region.file_path, request.region.content_hash
+        );
+
         let cached_update = CachedUpdate {
             region_id: request.region.id,
             content_hash: request.region.content_hash.clone(),
@@ -468,8 +511,9 @@ impl SelectiveNodeUpdater {
     async fn cleanup_cache(&self) {
         // Remove oldest entries that haven't been accessed recently
         let cutoff_time = Utc::now() - chrono::Duration::minutes(30);
-        
-        let keys_to_remove: Vec<String> = self.update_cache
+
+        let keys_to_remove: Vec<String> = self
+            .update_cache
             .iter()
             .filter_map(|entry| {
                 if entry.value().timestamp < cutoff_time && entry.value().access_count <= 1 {
@@ -486,7 +530,10 @@ impl SelectiveNodeUpdater {
     }
 
     fn calculate_bytes_processed(&self, request: &SelectiveUpdateRequest) -> usize {
-        request.region.end_byte.saturating_sub(request.region.start_byte)
+        request
+            .region
+            .end_byte
+            .saturating_sub(request.region.start_byte)
     }
 
     pub fn add_pending_update(&self, request: SelectiveUpdateRequest) {
@@ -532,20 +579,28 @@ impl PerformanceTracker {
         }
     }
 
-    async fn record_update(&self, request: &SelectiveUpdateRequest, result: &InternalUpdateResult) {
+    async fn record_update(
+        &self,
+        request: &SelectiveUpdateRequest,
+        result: &InternalUpdateResult,
+        duration: Duration,
+    ) {
         let file_type = std::path::Path::new(&request.region.file_path)
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("unknown");
 
         // Record update time
-        self.update_times.insert(request.region.id.to_string(), result.duration);
+        self.update_times
+            .insert(request.region.id.to_string(), duration);
 
         // Record throughput (nodes per second)
-        let total_nodes = result.updated_nodes.len() + result.added_nodes.len() + result.removed_nodes.len();
-        let throughput = total_nodes as f64 / result.duration.as_secs_f64();
-        
-        self.throughput_data.entry(file_type.to_string())
+        let total_nodes =
+            result.updated_nodes.len() + result.added_nodes.len() + result.removed_nodes.len();
+        let throughput = total_nodes as f64 / duration.as_secs_f64();
+
+        self.throughput_data
+            .entry(file_type.to_string())
             .and_modify(|data| {
                 data.push(throughput);
                 if data.len() > 100 {
@@ -556,9 +611,9 @@ impl PerformanceTracker {
     }
 
     pub fn get_average_throughput(&self, file_type: &str) -> Option<f64> {
-        self.throughput_data.get(file_type).map(|data| {
-            data.iter().sum::<f64>() / data.len() as f64
-        })
+        self.throughput_data
+            .get(file_type)
+            .map(|data| data.iter().sum::<f64>() / data.len() as f64)
     }
 }
 
@@ -571,9 +626,13 @@ mod tests {
     #[tokio::test]
     async fn test_selective_updater_creation() {
         let temp_dir = TempDir::new().unwrap();
-        let graph = Arc::new(AsyncRwLock::new(CodeGraph::new(&temp_dir.path().join("test.db")).await.unwrap()));
+        let graph = Arc::new(AsyncRwLock::new(
+            CodeGraph::new(&temp_dir.path().join("test.db"))
+                .await
+                .unwrap(),
+        ));
         let updater = SelectiveNodeUpdater::new(graph);
-        
+
         // Test that it can be created successfully
         assert!(true);
     }
@@ -581,14 +640,14 @@ mod tests {
     #[test]
     fn test_text_similarity() {
         let updater = SelectiveNodeUpdater::new(Arc::new(AsyncRwLock::new(
-            // This won't actually work in tests without proper initialization, 
+            // This won't actually work in tests without proper initialization,
             // but it's fine for testing the similarity function
-            unsafe { std::mem::zeroed() }
+            unsafe { std::mem::zeroed() },
         )));
-        
+
         let similarity = updater.calculate_text_similarity("hello world", "hello world");
         assert_eq!(similarity, 1.0);
-        
+
         let similarity = updater.calculate_text_similarity("hello", "world");
         assert!(similarity < 1.0);
     }
@@ -601,14 +660,17 @@ mod tests {
             UpdatePriority::Normal,
             UpdatePriority::High,
         ];
-        
+
         priorities.sort();
-        
-        assert_eq!(priorities, vec![
-            UpdatePriority::Low,
-            UpdatePriority::Normal,
-            UpdatePriority::High,
-            UpdatePriority::Critical,
-        ]);
+
+        assert_eq!(
+            priorities,
+            vec![
+                UpdatePriority::Low,
+                UpdatePriority::Normal,
+                UpdatePriority::High,
+                UpdatePriority::Critical,
+            ]
+        );
     }
 }

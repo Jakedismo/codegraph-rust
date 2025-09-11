@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result, VectorStore};
-use faiss::{Index, index::IndexImpl, MetricType};
-use faiss::index::ConcurrentIndex;
+use faiss::{index::IndexImpl, Index, MetricType};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -30,8 +29,9 @@ impl FaissVectorStore {
     fn ensure_index(&self) -> Result<()> {
         let mut index_guard = self.index.write();
         if index_guard.is_none() {
-            let index = faiss::index_factory(self.dimension as u32, "Flat", MetricType::InnerProduct)
-                .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+            let index =
+                faiss::index_factory(self.dimension as u32, "Flat", MetricType::InnerProduct)
+                    .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
             *index_guard = Some(index);
         }
         Ok(())
@@ -113,7 +113,11 @@ impl VectorStore for FaissVectorStore {
         let node_ids: Vec<NodeId> = results
             .labels
             .into_iter()
-            .filter_map(|faiss_id| faiss_id.get().and_then(|v| id_mapping.get(&((v as i64))).cloned()))
+            .filter_map(|faiss_id| {
+                faiss_id
+                    .get()
+                    .and_then(|v| id_mapping.get(&(v as i64)).cloned())
+            })
             .collect();
 
         Ok(node_ids)

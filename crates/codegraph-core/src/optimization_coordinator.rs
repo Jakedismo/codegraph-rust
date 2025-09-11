@@ -1,11 +1,10 @@
+use crate::{
+    CodeGraphError, EmbeddingPool, PerformanceEvent, PerformanceMonitor, PerformanceTargets, Result,
+};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, Semaphore};
-use tracing::{info, warn, error, instrument};
-use crate::{
-    PerformanceMonitor, PerformanceTargets, PerformanceEvent, EmbeddingPool,
-    Result, CodeGraphError
-};
+use tracing::{error, info, instrument, warn};
 
 /// Cross-cluster performance optimization coordinator
 /// Orchestrates memory, CPU, and I/O optimizations for maximum synergy
@@ -26,25 +25,37 @@ pub struct OptimizationCoordinator {
 
 /// Memory-focused optimization cluster
 pub struct MemoryOptimizationCluster {
+    #[allow(dead_code)]
     embedding_pool: Arc<RwLock<EmbeddingPool>>,
+    #[allow(dead_code)]
     compact_cache: Arc<RwLock<CompactCacheSystem>>,
+    #[allow(dead_code)]
     node_arena: Arc<RwLock<NodeArena>>,
+    #[allow(dead_code)]
     memory_metrics: Arc<RwLock<MemoryMetrics>>,
 }
 
 /// CPU-focused optimization cluster
 pub struct CpuOptimizationCluster {
+    #[allow(dead_code)]
     simd_processor: Arc<SIMDVectorProcessor>,
+    #[allow(dead_code)]
     parallel_executor: Arc<ParallelTaskExecutor>,
+    #[allow(dead_code)]
     cpu_metrics: Arc<RwLock<CpuMetrics>>,
 }
 
 /// I/O-focused optimization cluster
 pub struct IoOptimizationCluster {
+    #[allow(dead_code)]
     batched_reader: Arc<BatchedIOReader>,
+    #[allow(dead_code)]
     write_buffer: Arc<BufferedWriter>,
+    #[allow(dead_code)]
     prefetch_engine: Arc<PrefetchEngine>,
+    #[allow(dead_code)]
     compression_layer: Arc<CompressionLayer>,
+    #[allow(dead_code)]
     io_metrics: Arc<RwLock<IoMetrics>>,
 }
 
@@ -146,13 +157,17 @@ impl OptimizationCoordinator {
     pub async fn new(config: OptimizationConfig) -> Result<Self> {
         info!("Initializing Performance Optimization Coordinator");
 
-        let performance_monitor = Arc::new(PerformanceMonitor::new(config.performance_targets.clone()));
-        
-        let memory_cluster = Arc::new(MemoryOptimizationCluster::new(config.memory_config.clone()).await?);
-        let cpu_cluster = Arc::new(CpuOptimizationCluster::new(config.cpu_config.clone()).await?);  
+        let performance_monitor =
+            Arc::new(PerformanceMonitor::new(config.performance_targets.clone()));
+
+        let memory_cluster =
+            Arc::new(MemoryOptimizationCluster::new(config.memory_config.clone()).await?);
+        let cpu_cluster = Arc::new(CpuOptimizationCluster::new(config.cpu_config.clone()).await?);
         let io_cluster = Arc::new(IoOptimizationCluster::new(config.io_config.clone()).await?);
-        
-        let coordination_semaphore = Arc::new(Semaphore::new(config.coordination_config.max_concurrent_optimizations));
+
+        let coordination_semaphore = Arc::new(Semaphore::new(
+            config.coordination_config.max_concurrent_optimizations,
+        ));
 
         Ok(Self {
             memory_cluster,
@@ -171,8 +186,9 @@ impl OptimizationCoordinator {
         info!("Starting coordinated performance optimization");
 
         // Acquire coordination semaphore to limit concurrent optimizations
-        let _permit = self.coordination_semaphore.acquire().await
-            .map_err(|_| CodeGraphError::Concurrency("Failed to acquire coordination semaphore".into()))?;
+        let _permit = self.coordination_semaphore.acquire().await.map_err(|_| {
+            CodeGraphError::Concurrency("Failed to acquire coordination semaphore".into())
+        })?;
 
         // Phase 1: Baseline performance measurement
         let baseline_metrics = self.measure_baseline_performance().await?;
@@ -187,14 +203,16 @@ impl OptimizationCoordinator {
         info!("Performance validation completed: {:?}", validation_results);
 
         // Phase 4: Generate comprehensive report
-        let report = self.generate_optimization_report(
-            optimization_results,
-            validation_results,
-            optimization_start.elapsed(),
-        ).await?;
+        let report = self
+            .generate_optimization_report(
+                optimization_results,
+                validation_results,
+                optimization_start.elapsed(),
+            )
+            .await?;
 
         info!(
-            "Optimization coordination completed. Overall improvement: {:.2}%", 
+            "Optimization coordination completed. Overall improvement: {:.2}%",
             report.overall_performance_improvement
         );
 
@@ -207,12 +225,12 @@ impl OptimizationCoordinator {
 
         // Execute optimizations with timeout protection
         let timeout_duration = self.config.coordination_config.optimization_timeout;
-        
+
         let results = tokio::time::timeout(timeout_duration, async {
             // Run all cluster optimizations in parallel
             let (memory_results, cpu_results, io_results) = tokio::try_join!(
                 self.memory_cluster.optimize(),
-                self.cpu_cluster.optimize(), 
+                self.cpu_cluster.optimize(),
                 self.io_cluster.optimize()
             )?;
 
@@ -221,7 +239,8 @@ impl OptimizationCoordinator {
                 cpu_results,
                 io_results,
             })
-        }).await
+        })
+        .await
         .map_err(|_| CodeGraphError::Timeout("Optimization timeout exceeded".into()))??;
 
         info!("All cluster optimizations completed successfully");
@@ -254,7 +273,7 @@ impl OptimizationCoordinator {
 
         let current_metrics = self.performance_monitor.get_current_metrics();
         let target_achievement = self.performance_monitor.targets_achieved();
-        
+
         let validation = ValidationResults {
             targets_achieved: target_achievement.overall_achievement_percentage,
             latency_improvement: self.calculate_latency_improvement(&current_metrics),
@@ -264,9 +283,15 @@ impl OptimizationCoordinator {
         };
 
         if validation.validation_passed {
-            info!("Performance validation PASSED - targets achieved: {:.1}%", validation.targets_achieved);
+            info!(
+                "Performance validation PASSED - targets achieved: {:.1}%",
+                validation.targets_achieved
+            );
         } else {
-            warn!("Performance validation FAILED - targets achieved: {:.1}%", validation.targets_achieved);
+            warn!(
+                "Performance validation FAILED - targets achieved: {:.1}%",
+                validation.targets_achieved
+            );
         }
 
         Ok(validation)
@@ -279,7 +304,6 @@ impl OptimizationCoordinator {
         validation_results: ValidationResults,
         optimization_duration: Duration,
     ) -> Result<OptimizationReport> {
-        
         let improvements = self.performance_monitor.calculate_improvements();
         let overall_improvement = improvements.values().sum::<f64>() / improvements.len() as f64;
 
@@ -288,7 +312,7 @@ impl OptimizationCoordinator {
 
         Ok(OptimizationReport {
             memory_optimization_results: optimization_results.memory_results,
-            cpu_optimization_results: optimization_results.cpu_results, 
+            cpu_optimization_results: optimization_results.cpu_results,
             io_optimization_results: optimization_results.io_results,
             overall_performance_improvement: overall_improvement,
             targets_achieved,
@@ -313,7 +337,7 @@ impl OptimizationCoordinator {
                         error!("Periodic performance check failed: {:?}", e);
                     }
                 }
-                
+
                 // React to performance events
                 event = event_receiver.recv() => {
                     match event {
@@ -331,7 +355,7 @@ impl OptimizationCoordinator {
                         _ => {}
                     }
                 }
-                
+
                 // Graceful shutdown on cancellation
                 _ = tokio::signal::ctrl_c() => {
                     info!("Shutting down continuous optimization monitoring");
@@ -360,14 +384,14 @@ impl OptimizationCoordinator {
     }
 
     async fn periodic_performance_check(&self) -> Result<()> {
-        let metrics = self.performance_monitor.get_current_metrics();
+        let _metrics = self.performance_monitor.get_current_metrics();
         let targets = self.performance_monitor.targets_achieved();
-        
+
         if targets.overall_achievement_percentage < 70.0 {
             info!("Performance degradation detected, triggering optimization");
             let _ = self.execute_coordinated_optimization().await;
         }
-        
+
         Ok(())
     }
 
@@ -382,7 +406,7 @@ impl OptimizationCoordinator {
     }
 
     fn calculate_memory_improvement(&self, _metrics: &crate::PerformanceMetrics) -> f64 {
-        // Calculate memory improvement percentage  
+        // Calculate memory improvement percentage
         45.0 // Mock 45% improvement
     }
 
@@ -455,7 +479,7 @@ pub struct MemoryOptimizationResults {
     pub gc_pause_reduction: f64,
 }
 
-#[derive(Debug, Clone)]  
+#[derive(Debug, Clone)]
 pub struct CpuOptimizationResults {
     pub cpu_utilization_improvement: f64,
     pub vectorization_speedup: f64,
@@ -473,9 +497,13 @@ pub struct IoOptimizationResults {
 
 #[derive(Debug)]
 struct BaselineMetrics {
+    #[allow(dead_code)]
     node_query_latency_ms: f64,
+    #[allow(dead_code)]
     memory_usage_mb: u64,
+    #[allow(dead_code)]
     throughput_qps: f64,
+    #[allow(dead_code)]
     timestamp: Instant,
 }
 
@@ -544,7 +572,7 @@ impl IoOptimizationCluster {
 #[derive(Debug, Default)]
 struct MemoryMetrics;
 
-#[derive(Debug, Default)] 
+#[derive(Debug, Default)]
 struct CpuMetrics;
 
 #[derive(Debug, Default)]

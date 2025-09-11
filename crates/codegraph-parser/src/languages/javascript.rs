@@ -10,4 +10,3 @@ pub fn extract_js_ts_nodes(
     // Lightweight stub for JS/TS; parser falls back to generic visitor where needed.
     Vec::new()
 }
-

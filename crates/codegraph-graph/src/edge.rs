@@ -71,6 +71,32 @@ impl HighPerformanceEdge {
     }
 }
 
+impl From<crate::storage::SerializableEdge> for HighPerformanceEdge {
+    fn from(edge: crate::storage::SerializableEdge) -> Self {
+        Self {
+            id: edge.id,
+            from: edge.from,
+            to: edge.to,
+            edge_type: edge.edge_type,
+            weight: edge.weight,
+            metadata: edge.metadata,
+        }
+    }
+}
+
+impl From<HighPerformanceEdge> for crate::storage::SerializableEdge {
+    fn from(edge: HighPerformanceEdge) -> Self {
+        Self {
+            id: edge.id,
+            from: edge.from,
+            to: edge.to,
+            edge_type: edge.edge_type,
+            weight: edge.weight,
+            metadata: edge.metadata,
+        }
+    }
+}
+
 impl From<CodeEdge> for HighPerformanceEdge {
     fn from(edge: CodeEdge) -> Self {
         Self {

@@ -1,6 +1,6 @@
-use std::path::Path;
-use std::io;
 use codegraph_core::MappedFile;
+use std::io;
+use std::path::Path;
 
 /// High-performance file reading helpers with optional io_uring acceleration on Linux.
 ///
@@ -40,7 +40,9 @@ pub async fn read_file_to_string(path: &str) -> io::Result<String> {
                         let buf = vec![0u8; to_read];
                         let (res, buf) = file.read_at(buf, offset).await;
                         let n = res?;
-                        if n == 0 { break; }
+                        if n == 0 {
+                            break;
+                        }
                         out.extend_from_slice(&buf[..n]);
                         remaining = remaining.saturating_sub(n);
                         offset += n as u64;

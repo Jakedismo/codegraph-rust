@@ -1,9 +1,9 @@
+use crate::EmbeddingGenerator;
 #[cfg(feature = "faiss")]
-use crate::{FaissVectorStore, SearchCacheManager, CacheConfig, QueryHash};
-use codegraph_core::{CodeNode, NodeId, CodeGraphError, Result, Language, NodeType};
+use crate::{CacheConfig, FaissVectorStore, QueryHash, SearchCacheManager};
 #[cfg(feature = "faiss")]
 use codegraph_core::VectorStore;
-use crate::EmbeddingGenerator;
+use codegraph_core::{CodeGraphError, CodeNode, Language, NodeId, NodeType, Result};
 use futures::future::try_join_all;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -106,7 +106,11 @@ impl SemanticSearch {
         if let Some(cached) = self.cache.get_query_results(&qh) {
             let mut results: Vec<SearchResult> = cached
                 .into_iter()
-                .map(|(node_id, score)| SearchResult { node_id, score, node: None })
+                .map(|(node_id, score)| SearchResult {
+                    node_id,
+                    score,
+                    node: None,
+                })
                 .collect();
             normalize_scores(&mut results);
             return Ok(results);
@@ -121,12 +125,22 @@ impl SemanticSearch {
 
         let mut results = Vec::with_capacity(node_ids.len());
         for node_id in node_ids {
-            let score = self.calculate_similarity_score(query_embedding, node_id).await?;
-            results.push(SearchResult { node_id, score, node: None });
+            let score = self
+                .calculate_similarity_score(query_embedding, node_id)
+                .await?;
+            results.push(SearchResult {
+                node_id,
+                score,
+                node: None,
+            });
         }
 
         // Sort desc by score, truncate and normalize
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(limit);
         normalize_scores(&mut results);
 
@@ -141,7 +155,10 @@ impl SemanticSearch {
         function_node: &CodeNode,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        if !matches!(function_node.node_type, Some(codegraph_core::NodeType::Function)) {
+        if !matches!(
+            function_node.node_type,
+            Some(codegraph_core::NodeType::Function)
+        ) {
             return Err(CodeGraphError::InvalidOperation(
                 "Node must be a function".to_string(),
             ));
@@ -171,7 +188,7 @@ impl SemanticSearch {
             move || {
                 let dimension = 384;
                 let mut embedding = vec![0.0f32; dimension];
-                
+
                 let hash = simple_hash(&query);
                 let mut rng_state = hash;
 
@@ -221,7 +238,9 @@ impl SemanticSearch {
 
     fn combine_embeddings(&self, embeddings: &[Vec<f32>]) -> Result<Vec<f32>> {
         if embeddings.is_empty() {
-            return Err(CodeGraphError::Vector("No embeddings to combine".to_string()));
+            return Err(CodeGraphError::Vector(
+                "No embeddings to combine".to_string(),
+            ));
         }
 
         let dimension = embeddings[0].len();
@@ -268,14 +287,20 @@ impl SemanticSearch {
         if let Some(cached) = self.cache.get_query_results(&qh) {
             let mut results: Vec<SearchResult> = cached
                 .into_iter()
-                .map(|(node_id, score)| SearchResult { node_id, score, node: None })
+                .map(|(node_id, score)| SearchResult {
+                    node_id,
+                    score,
+                    node: None,
+                })
                 .collect();
             normalize_scores(&mut results);
             return Ok(results);
         }
 
         let prefetch_k = (limit.saturating_mul(4)).max(limit + 25);
-        let base = self.search_by_embedding(query_embedding, prefetch_k).await?;
+        let base = self
+            .search_by_embedding(query_embedding, prefetch_k)
+            .await?;
 
         // Apply filters if provided
         let mut filtered = if let Some(f) = filters {
@@ -308,13 +333,19 @@ impl SemanticSearch {
         let mw = 1.0 - vw;
 
         let prefetch_k = (limit.saturating_mul(4)).max(limit + 25);
-        let mut candidates = self.search_by_embedding(query_embedding, prefetch_k).await?;
+        let mut candidates = self
+            .search_by_embedding(query_embedding, prefetch_k)
+            .await?;
 
         for r in &mut candidates {
             let meta_score = self.metadata_match_score(r.node_id, filters);
             r.score = vw * r.score + mw * meta_score;
         }
-        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         candidates.truncate(limit);
         normalize_scores(&mut candidates);
         Ok(candidates)
@@ -328,9 +359,13 @@ impl SemanticSearch {
         filters: Option<&SearchFilters>,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        if queries.is_empty() { return Ok(Vec::new()); }
+        if queries.is_empty() {
+            return Ok(Vec::new());
+        }
 
-        let futs = queries.iter().map(|q| self.semantic_search(q, filters, limit));
+        let futs = queries
+            .iter()
+            .map(|q| self.semantic_search(q, filters, limit));
         let lists: Vec<Vec<SearchResult>> = try_join_all(futs).await?;
 
         use std::collections::hash_map::Entry;
@@ -340,7 +375,11 @@ impl SemanticSearch {
                 for list in lists {
                     for r in list {
                         agg.entry(r.node_id)
-                            .and_modify(|(s, _)| { if r.score > *s { *s = r.score; } })
+                            .and_modify(|(s, _)| {
+                                if r.score > *s {
+                                    *s = r.score;
+                                }
+                            })
                             .or_insert((r.score, 1));
                     }
                 }
@@ -349,43 +388,72 @@ impl SemanticSearch {
                 for list in lists {
                     for r in list {
                         match agg.entry(r.node_id) {
-                            Entry::Occupied(mut e) => { let v = e.get_mut(); v.0 += r.score; v.1 += 1; },
-                            Entry::Vacant(e) => { e.insert((r.score, 1)); },
+                            Entry::Occupied(mut e) => {
+                                let v = e.get_mut();
+                                v.0 += r.score;
+                                v.1 += 1;
+                            }
+                            Entry::Vacant(e) => {
+                                e.insert((r.score, 1));
+                            }
                         }
                     }
                 }
                 let qn = queries.len();
                 agg.retain(|_, &mut (_, c)| c == qn);
-                for (_, v) in agg.iter_mut() { v.0 /= qn as f32; }
+                for (_, v) in agg.iter_mut() {
+                    v.0 /= qn as f32;
+                }
             }
         }
 
         let mut combined: Vec<SearchResult> = agg
             .into_iter()
-            .map(|(node_id, (score, _))| SearchResult { node_id, score, node: None })
+            .map(|(node_id, (score, _))| SearchResult {
+                node_id,
+                score,
+                node: None,
+            })
             .collect();
-        combined.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        combined.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         combined.truncate(limit);
         normalize_scores(&mut combined);
         Ok(combined)
     }
 
     fn node_matches_filters(&self, node_id: NodeId, filters: &SearchFilters) -> bool {
-        let node = match self.node_metadata.get(&node_id) { Some(n) => n, None => return false };
+        let node = match self.node_metadata.get(&node_id) {
+            Some(n) => n,
+            None => return false,
+        };
 
         if let Some(ref langs) = filters.languages {
-            if !node.language.as_ref().map(|l| langs.contains(l)).unwrap_or(false) {
+            if !node
+                .language
+                .as_ref()
+                .map(|l| langs.contains(l))
+                .unwrap_or(false)
+            {
                 return false;
             }
         }
         if let Some(ref types) = filters.node_types {
-            if !node.node_type.as_ref().map(|t| types.contains(t)).unwrap_or(false) {
+            if !node
+                .node_type
+                .as_ref()
+                .map(|t| types.contains(t))
+                .unwrap_or(false)
+            {
                 return false;
             }
         }
         for (k, v) in &filters.attribute_equals {
             match node.metadata.attributes.get(k) {
-                Some(val) if val == v => {},
+                Some(val) if val == v => {}
                 _ => return false,
             }
         }
@@ -399,29 +467,60 @@ impl SemanticSearch {
     }
 
     fn metadata_match_score(&self, node_id: NodeId, filters: &SearchFilters) -> f32 {
-        let node = match self.node_metadata.get(&node_id) { Some(n) => n, None => return 0.0 };
+        let node = match self.node_metadata.get(&node_id) {
+            Some(n) => n,
+            None => return 0.0,
+        };
         let mut score = 0.0f32;
         let mut denom = 0.0f32;
 
         if let Some(ref langs) = filters.languages {
             denom += 1.0;
-            if node.language.as_ref().map(|l| langs.contains(l)).unwrap_or(false) { score += 1.0; }
+            if node
+                .language
+                .as_ref()
+                .map(|l| langs.contains(l))
+                .unwrap_or(false)
+            {
+                score += 1.0;
+            }
         }
         if let Some(ref types) = filters.node_types {
             denom += 1.0;
-            if node.node_type.as_ref().map(|t| types.contains(t)).unwrap_or(false) { score += 1.0; }
+            if node
+                .node_type
+                .as_ref()
+                .map(|t| types.contains(t))
+                .unwrap_or(false)
+            {
+                score += 1.0;
+            }
         }
         if !filters.attribute_equals.is_empty() {
             denom += 1.0;
-            let all_match = filters.attribute_equals.iter().all(|(k, v)| node.metadata.attributes.get(k).map(|val| val == v).unwrap_or(false));
-            if all_match { score += 1.0; }
+            let all_match = filters.attribute_equals.iter().all(|(k, v)| {
+                node.metadata
+                    .attributes
+                    .get(k)
+                    .map(|val| val == v)
+                    .unwrap_or(false)
+            });
+            if all_match {
+                score += 1.0;
+            }
         }
         if !filters.path_prefixes.is_empty() {
             denom += 1.0;
             let p = &node.location.file_path;
-            if filters.path_prefixes.iter().any(|pre| p.starts_with(pre)) { score += 1.0; }
+            if filters.path_prefixes.iter().any(|pre| p.starts_with(pre)) {
+                score += 1.0;
+            }
         }
-        if denom == 0.0 { 0.0 } else { score / denom }
+        if denom == 0.0 {
+            0.0
+        } else {
+            score / denom
+        }
     }
 }
 
@@ -463,7 +562,11 @@ fn build_filter_signature(filters: Option<&SearchFilters>) -> String {
             .map(|s| s.iter().map(|t| format!("{:?}", t)).collect())
             .unwrap_or_else(Vec::new);
         types.sort();
-        let mut attrs: Vec<(String, String)> = f.attribute_equals.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let mut attrs: Vec<(String, String)> = f
+            .attribute_equals
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
         attrs.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
         let mut paths = f.path_prefixes.clone();
         paths.sort();
@@ -477,12 +580,18 @@ fn build_filter_signature(filters: Option<&SearchFilters>) -> String {
 }
 
 fn normalize_scores(results: &mut [SearchResult]) {
-    if results.is_empty() { return; }
+    if results.is_empty() {
+        return;
+    }
     let mut min_s = f32::INFINITY;
     let mut max_s = f32::NEG_INFINITY;
     for r in results.iter() {
-        if r.score < min_s { min_s = r.score; }
-        if r.score > max_s { max_s = r.score; }
+        if r.score < min_s {
+            min_s = r.score;
+        }
+        if r.score > max_s {
+            max_s = r.score;
+        }
     }
     let range = (max_s - min_s).max(1e-12);
     for r in results.iter_mut() {

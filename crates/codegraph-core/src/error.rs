@@ -70,6 +70,9 @@ pub enum CodeGraphError {
 
     #[error("Memory pool error: {0}")]
     MemoryPool(String),
+
+    #[error("Notify error: {0}")]
+    Notify(#[from] notify::Error),
 }
 
 pub type Result<T> = std::result::Result<T, CodeGraphError>;

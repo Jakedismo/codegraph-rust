@@ -1,5 +1,5 @@
-use codegraph_core::{CodeNode, Result};
 use async_trait::async_trait;
+use codegraph_core::{CodeNode, Result};
 use std::time::Duration;
 
 /// Performance metrics for embedding operations
@@ -19,7 +19,7 @@ impl EmbeddingMetrics {
         } else {
             texts_processed as f64 / duration.as_secs_f64()
         };
-        
+
         let average_latency = if texts_processed == 0 {
             Duration::ZERO
         } else {
@@ -61,26 +61,26 @@ impl Default for BatchConfig {
 pub trait EmbeddingProvider: Send + Sync {
     /// Generate embedding for a single code node
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>>;
-    
+
     /// Generate embeddings for multiple code nodes with batch optimization
     async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>>;
-    
+
     /// Generate embeddings with batch configuration and metrics
     async fn generate_embeddings_with_config(
         &self,
         nodes: &[CodeNode],
         config: &BatchConfig,
     ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)>;
-    
+
     /// Get the embedding dimension for this provider
     fn embedding_dimension(&self) -> usize;
-    
+
     /// Get provider name for identification
     fn provider_name(&self) -> &str;
-    
+
     /// Check if provider is available (e.g., API accessible, model loaded)
     async fn is_available(&self) -> bool;
-    
+
     /// Get provider-specific performance characteristics
     fn performance_characteristics(&self) -> ProviderCharacteristics;
 }
@@ -125,10 +125,7 @@ pub struct HybridEmbeddingPipeline {
 }
 
 impl HybridEmbeddingPipeline {
-    pub fn new(
-        primary: Box<dyn EmbeddingProvider>,
-        strategy: FallbackStrategy,
-    ) -> Self {
+    pub fn new(primary: Box<dyn EmbeddingProvider>, strategy: FallbackStrategy) -> Self {
         Self {
             primary,
             fallbacks: Vec::new(),
@@ -136,12 +133,12 @@ impl HybridEmbeddingPipeline {
             health_checker: ProviderHealthChecker::new(),
         }
     }
-    
+
     pub fn add_fallback(mut self, provider: Box<dyn EmbeddingProvider>) -> Self {
         self.fallbacks.push(provider);
         self
     }
-    
+
     async fn select_provider(&self) -> &dyn EmbeddingProvider {
         match self.strategy {
             FallbackStrategy::None => self.primary.as_ref(),
@@ -161,11 +158,13 @@ impl HybridEmbeddingPipeline {
                 // Choose provider with best throughput that's available
                 let mut best_provider = self.primary.as_ref();
                 let mut best_throughput = if self.primary.is_available().await {
-                    self.primary.performance_characteristics().expected_throughput
+                    self.primary
+                        .performance_characteristics()
+                        .expected_throughput
                 } else {
                     0.0
                 };
-                
+
                 for fallback in &self.fallbacks {
                     if fallback.is_available().await {
                         let throughput = fallback.performance_characteristics().expected_throughput;
@@ -179,7 +178,9 @@ impl HybridEmbeddingPipeline {
             }
             FallbackStrategy::ReliabilityBased => {
                 // Use health checker to determine most reliable provider
-                self.health_checker.select_most_reliable(&self.primary, &self.fallbacks).await
+                self.health_checker
+                    .select_most_reliable(&self.primary, &self.fallbacks)
+                    .await
             }
         }
     }
@@ -189,7 +190,7 @@ impl HybridEmbeddingPipeline {
 impl EmbeddingProvider for HybridEmbeddingPipeline {
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
         let provider = self.select_provider().await;
-        
+
         match provider.generate_embedding(node).await {
             Ok(embedding) => Ok(embedding),
             Err(e) => {
@@ -203,10 +204,10 @@ impl EmbeddingProvider for HybridEmbeddingPipeline {
             }
         }
     }
-    
+
     async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {
         let provider = self.select_provider().await;
-        
+
         match provider.generate_embeddings(nodes).await {
             Ok(embeddings) => Ok(embeddings),
             Err(e) => {
@@ -220,29 +221,34 @@ impl EmbeddingProvider for HybridEmbeddingPipeline {
             }
         }
     }
-    
+
     async fn generate_embeddings_with_config(
         &self,
         nodes: &[CodeNode],
         config: &BatchConfig,
     ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)> {
         let provider = self.select_provider().await;
-        provider.generate_embeddings_with_config(nodes, config).await
+        provider
+            .generate_embeddings_with_config(nodes, config)
+            .await
     }
-    
+
     fn embedding_dimension(&self) -> usize {
         self.primary.embedding_dimension()
     }
-    
+
     fn provider_name(&self) -> &str {
         "HybridPipeline"
     }
-    
+
     async fn is_available(&self) -> bool {
-        self.primary.is_available().await || 
-        self.fallbacks.iter().any(|f| futures::executor::block_on(f.is_available()))
+        self.primary.is_available().await
+            || self
+                .fallbacks
+                .iter()
+                .any(|f| futures::executor::block_on(f.is_available()))
     }
-    
+
     fn performance_characteristics(&self) -> ProviderCharacteristics {
         self.primary.performance_characteristics()
     }
@@ -258,7 +264,7 @@ impl ProviderHealthChecker {
     pub fn new() -> Self {
         Self {}
     }
-    
+
     pub async fn select_most_reliable<'a>(
         &self,
         primary: &'a Box<dyn EmbeddingProvider>,

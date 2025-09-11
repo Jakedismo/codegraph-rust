@@ -1,5 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use async_graphql::{Request, Variables};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,8 +11,8 @@ use crate::state::AppState;
 
 /// Benchmark configuration
 struct BenchConfig {
-    pub simple_query_target_ms: u64,   // 50ms target
-    pub complex_query_target_ms: u64,  // 200ms target
+    pub simple_query_target_ms: u64,  // 50ms target
+    pub complex_query_target_ms: u64, // 200ms target
     pub batch_size_variants: Vec<usize>,
     pub depth_variants: Vec<i32>,
     pub dataset_sizes: Vec<usize>,
@@ -44,7 +44,7 @@ fn bench_simple_queries(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("simple_queries");
     group.measurement_time(Duration::from_secs(10));
-    
+
     // Health query benchmark
     group.bench_function("health_query", |b| {
         let query = r#"
@@ -53,7 +53,7 @@ fn bench_simple_queries(c: &mut Criterion) {
                 version
             }
         "#;
-        
+
         b.to_async(&rt).iter(|| async {
             let req = Request::new(query);
             let res = schema.execute(black_box(req)).await;
@@ -72,12 +72,12 @@ fn bench_simple_queries(c: &mut Criterion) {
                 }
             }
         "#;
-        
+
         b.to_async(&rt).iter(|| async {
             let variables = Variables::from_json(json!({
                 "id": Uuid::new_v4().to_string()
             }));
-            
+
             let req = Request::new(query).variables(variables);
             let res = schema.execute(black_box(req)).await;
             black_box(res)
@@ -95,7 +95,7 @@ fn bench_code_search(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("code_search");
     group.measurement_time(Duration::from_secs(15));
-    
+
     let query = r#"
         query SearchCode($input: CodeSearchInput!) {
             searchCode(input: $input) {
@@ -140,7 +140,7 @@ fn bench_code_search(c: &mut Criterion) {
                             "nodeTypeFilter": ["FUNCTION"]
                         }
                     }));
-                    
+
                     let req = Request::new(query).variables(variables);
                     let res = schema.execute(black_box(req)).await;
                     black_box(res)
@@ -153,7 +153,10 @@ fn bench_code_search(c: &mut Criterion) {
     let search_queries = vec![
         ("simple", "test"),
         ("medium", "function implementation error handling"),
-        ("complex", "async function with error handling and logging implementation pattern"),
+        (
+            "complex",
+            "async function with error handling and logging implementation pattern",
+        ),
     ];
 
     for (complexity, search_query) in search_queries {
@@ -169,7 +172,7 @@ fn bench_code_search(c: &mut Criterion) {
                             "offset": 0
                         }
                     }));
-                    
+
                     let req = Request::new(query).variables(variables);
                     let res = schema.execute(black_box(req)).await;
                     black_box(res)
@@ -189,7 +192,7 @@ fn bench_semantic_search(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("semantic_search");
     group.measurement_time(Duration::from_secs(20));
-    
+
     let query = r#"
         query SemanticSearch($input: SemanticSearchInput!) {
             semanticSearch(input: $input) {
@@ -227,7 +230,7 @@ fn bench_semantic_search(c: &mut Criterion) {
                             "limit": 10
                         }
                     }));
-                    
+
                     let req = Request::new(query).variables(variables);
                     let res = schema.execute(black_box(req)).await;
                     black_box(res)
@@ -250,7 +253,7 @@ fn bench_semantic_search(c: &mut Criterion) {
                             "limit": limit
                         }
                     }));
-                    
+
                     let req = Request::new(query).variables(variables);
                     let res = schema.execute(black_box(req)).await;
                     black_box(res)
@@ -270,7 +273,7 @@ fn bench_graph_traversal(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("graph_traversal");
     group.measurement_time(Duration::from_secs(25));
-    
+
     let query = r#"
         query TraverseGraph($input: GraphTraversalInput!) {
             traverseGraph(input: $input) {
@@ -310,7 +313,7 @@ fn bench_graph_traversal(c: &mut Criterion) {
                             "limit": 100
                         }
                     }));
-                    
+
                     let req = Request::new(query).variables(variables);
                     let res = schema.execute(black_box(req)).await;
                     black_box(res)
@@ -335,7 +338,7 @@ fn bench_graph_traversal(c: &mut Criterion) {
                             "limit": 50
                         }
                     }));
-                    
+
                     let req = Request::new(query).variables(variables);
                     let res = schema.execute(black_box(req)).await;
                     black_box(res)
@@ -354,7 +357,7 @@ fn bench_subgraph_extraction(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("subgraph_extraction");
     group.measurement_time(Duration::from_secs(20));
-    
+
     let query = r#"
         query ExtractSubgraph($input: SubgraphExtractionInput!) {
             extractSubgraph(input: $input) {
@@ -392,7 +395,7 @@ fn bench_subgraph_extraction(c: &mut Criterion) {
                             "extractionStrategy": "RADIUS"
                         }
                     }));
-                    
+
                     let req = Request::new(query).variables(variables);
                     let res = schema.execute(black_box(req)).await;
                     black_box(res)
@@ -416,7 +419,7 @@ fn bench_subgraph_extraction(c: &mut Criterion) {
                             "extractionStrategy": strategy
                         }
                     }));
-                    
+
                     let req = Request::new(query).variables(variables);
                     let res = schema.execute(black_box(req)).await;
                     black_box(res)
@@ -448,7 +451,7 @@ fn bench_dataloader_batching(c: &mut Criterion) {
             query_parts.push(format!("$id{}: ID!", i));
             query_body_parts.push(format!("node{}: node(id: $id{}) {{ id name }}", i, i));
             variables.insert(format!("id{}", i), json!(Uuid::new_v4().to_string()));
-            
+
             if i < batch_size - 1 {
                 query_parts.push(", ".to_string());
             }
@@ -483,7 +486,7 @@ fn bench_dataloader_batching(c: &mut Criterion) {
                 let variables = Variables::from_json(json!({
                     "id": Uuid::new_v4().to_string()
                 }));
-                
+
                 let req = Request::new(query).variables(variables);
                 let res = schema.execute(req).await;
                 results.push(res);
@@ -502,7 +505,7 @@ fn bench_complex_queries(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("complex_queries");
     group.measurement_time(Duration::from_secs(30));
-    
+
     // Complex query combining multiple operations
     let complex_query = r#"
         query ComplexWorkflow($searchQuery: String!, $nodeId: ID!, $traversalInput: GraphTraversalInput!) {
@@ -573,7 +576,7 @@ fn bench_complex_queries(c: &mut Criterion) {
                     "limit": 30
                 }
             }));
-            
+
             let req = Request::new(complex_query).variables(variables);
             let res = schema.execute(black_box(req)).await;
             black_box(res)
@@ -623,7 +626,7 @@ fn bench_complex_queries(c: &mut Criterion) {
             let variables = Variables::from_json(json!({
                 "searchQuery": "complex nested data structure operations"
             }));
-            
+
             let req = Request::new(nested_query).variables(variables);
             let res = schema.execute(black_box(req)).await;
             black_box(res)
@@ -660,20 +663,22 @@ fn bench_concurrent_queries(c: &mut Criterion) {
             |b, &concurrency| {
                 b.to_async(&rt).iter(|| async {
                     let schema = schema.clone();
-                    let tasks: Vec<_> = (0..concurrency).map(|i| {
-                        let schema = schema.clone();
-                        tokio::spawn(async move {
-                            let variables = Variables::from_json(json!({
-                                "input": {
-                                    "query": format!("concurrent test query {}", i),
-                                    "limit": 10
-                                }
-                            }));
-                            
-                            let req = Request::new(query).variables(variables);
-                            schema.execute(req).await
+                    let tasks: Vec<_> = (0..concurrency)
+                        .map(|i| {
+                            let schema = schema.clone();
+                            tokio::spawn(async move {
+                                let variables = Variables::from_json(json!({
+                                    "input": {
+                                        "query": format!("concurrent test query {}", i),
+                                        "limit": 10
+                                    }
+                                }));
+
+                                let req = Request::new(query).variables(variables);
+                                schema.execute(req).await
+                            })
                         })
-                    }).collect();
+                        .collect();
 
                     let results = futures::future::join_all(tasks).await;
                     black_box(results)
@@ -715,12 +720,12 @@ mod benchmark_tests {
     #[tokio::test]
     async fn test_bench_setup() {
         let (schema, state) = create_bench_setup().await;
-        
+
         // Verify schema is functional
         let query = "query { health }";
         let req = Request::new(query);
         let res = schema.execute(req).await;
-        
+
         assert!(res.errors.is_empty());
     }
 

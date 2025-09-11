@@ -1,16 +1,14 @@
-use crate::{CodeGraphError, CodeNode, NodeId, Result, Language, NodeType};
 use crate::traits::{GraphStore, VectorStore};
+use crate::{CodeGraphError, CodeNode, Language, NodeId, NodeType, Result};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use memmap2::Mmap;
-use parking_lot::RwLock;
 use std::collections::HashSet;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, info, warn};
 
 /// Embedding service abstraction used by the integrator.
 ///
@@ -41,27 +39,41 @@ pub struct HasherEmbeddingService {
 }
 
 impl HasherEmbeddingService {
-    pub fn new(dimension: usize) -> Self { Self { dim: dimension } }
+    pub fn new(dimension: usize) -> Self {
+        Self { dim: dimension }
+    }
 }
 
 #[async_trait]
 impl EmbeddingService for HasherEmbeddingService {
-    fn dimension(&self) -> usize { self.dim }
+    fn dimension(&self) -> usize {
+        self.dim
+    }
 
     async fn embed(&self, node: &CodeNode) -> Result<Vec<f32>> {
         // Build a deterministic text from the node
         let mut text = String::new();
-        if let Some(lang) = &node.language { text.push_str(&format!("{:?} ", lang)); }
-        if let Some(nt) = &node.node_type { text.push_str(&format!("{:?} ", nt)); }
+        if let Some(lang) = &node.language {
+            text.push_str(&format!("{:?} ", lang));
+        }
+        if let Some(nt) = &node.node_type {
+            text.push_str(&format!("{:?} ", nt));
+        }
         text.push_str(&node.name);
         text.push(' ');
-        if let Some(c) = &node.content { text.push_str(c.as_str()); }
+        if let Some(c) = &node.content {
+            text.push_str(c.as_str());
+        }
         // Truncate for safety
-        if text.len() > 4096 { text.truncate(4096); }
+        if text.len() > 4096 {
+            text.truncate(4096);
+        }
 
         // Simple RNG based on djb2 hash, normalized to unit vector
         let mut hash: u32 = 5381;
-        for b in text.as_bytes() { hash = hash.wrapping_mul(33).wrapping_add(*b as u32); }
+        for b in text.as_bytes() {
+            hash = hash.wrapping_mul(33).wrapping_add(*b as u32);
+        }
         let mut state = hash;
         let mut v = vec![0.0f32; self.dim];
         for i in 0..self.dim {
@@ -69,7 +81,11 @@ impl EmbeddingService for HasherEmbeddingService {
             v[i] = ((state as f32 / u32::MAX as f32) - 0.5) * 2.0;
         }
         let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0.0 { for x in &mut v { *x /= norm; } }
+        if norm > 0.0 {
+            for x in &mut v {
+                *x /= norm;
+            }
+        }
         Ok(v)
     }
 }
@@ -80,7 +96,9 @@ use std::pin::Pin;
 /// Adapter to build an embedding service from an async function/closure.
 pub struct FnEmbeddingService {
     dim: usize,
-    func: Arc<dyn Fn(CodeNode) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send>> + Send + Sync>,
+    func: Arc<
+        dyn Fn(CodeNode) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send>> + Send + Sync,
+    >,
 }
 
 impl FnEmbeddingService {
@@ -89,19 +107,29 @@ impl FnEmbeddingService {
         F: Fn(CodeNode) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Vec<f32>>> + Send + 'static,
     {
-        let func: Arc<dyn Fn(CodeNode) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send>> + Send + Sync> =
-            Arc::new(move |n: CodeNode| {
-                let fut = f(n);
-                Box::pin(fut)
-            });
-        Self { dim: dimension, func }
+        let func: Arc<
+            dyn Fn(CodeNode) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send>>
+                + Send
+                + Sync,
+        > = Arc::new(move |n: CodeNode| {
+            let fut = f(n);
+            Box::pin(fut)
+        });
+        Self {
+            dim: dimension,
+            func,
+        }
     }
 }
 
 #[async_trait]
 impl EmbeddingService for FnEmbeddingService {
-    fn dimension(&self) -> usize { self.dim }
-    async fn embed(&self, node: &CodeNode) -> Result<Vec<f32>> { (self.func)((*node).clone()).await }
+    fn dimension(&self) -> usize {
+        self.dim
+    }
+    async fn embed(&self, node: &CodeNode) -> Result<Vec<f32>> {
+        (self.func)((*node).clone()).await
+    }
     async fn embed_batch(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {
         // Simple concurrent batching
         let futures: Vec<_> = nodes.iter().cloned().map(|n| (self.func)(n)).collect();
@@ -119,7 +147,12 @@ pub struct SnippetExtractor {
 }
 
 impl Default for SnippetExtractor {
-    fn default() -> Self { Self { context_lines: 40, max_read_bytes: 256 * 1024 } }
+    fn default() -> Self {
+        Self {
+            context_lines: 40,
+            max_read_bytes: 256 * 1024,
+        }
+    }
 }
 
 impl SnippetExtractor {
@@ -133,7 +166,8 @@ impl SnippetExtractor {
         match File::open(path).and_then(|f| unsafe { Mmap::map(&f) }) {
             Ok(mmap) => {
                 let content = std::str::from_utf8(&mmap).unwrap_or("");
-                let snippet = if let Some((start, end)) = self.window_around_location(content, node) {
+                let snippet = if let Some((start, end)) = self.window_around_location(content, node)
+                {
                     content[start..end].to_string()
                 } else {
                     // Entire file, truncated
@@ -146,28 +180,51 @@ impl SnippetExtractor {
     }
 
     fn compose_text(&self, node: &CodeNode, body: Option<&str>) -> String {
-        let lang = node.language.as_ref().map(|l| format!("{:?}", l).to_lowercase()).unwrap_or_else(|| "unknown".into());
-        let ntype = node.node_type.as_ref().map(|t| format!("{:?}", t).to_lowercase()).unwrap_or_else(|| "unknown".into());
+        let lang = node
+            .language
+            .as_ref()
+            .map(|l| format!("{:?}", l).to_lowercase())
+            .unwrap_or_else(|| "unknown".into());
+        let ntype = node
+            .node_type
+            .as_ref()
+            .map(|t| format!("{:?}", t).to_lowercase())
+            .unwrap_or_else(|| "unknown".into());
         let mut out = format!("{} {} {}\n", lang, ntype, node.name);
-        if let Some(b) = body { out.push_str(b); }
-        if out.len() > self.max_read_bytes { out.truncate(self.max_read_bytes); }
+        if let Some(b) = body {
+            out.push_str(b);
+        }
+        if out.len() > self.max_read_bytes {
+            out.truncate(self.max_read_bytes);
+        }
         out
     }
 
     fn window_around_location(&self, content: &str, node: &CodeNode) -> Option<(usize, usize)> {
         let line = node.location.line as usize;
-        if line == 0 { return None; }
+        if line == 0 {
+            return None;
+        }
         let start_line = line.saturating_sub(self.context_lines);
-        let end_line = node.location.end_line.unwrap_or(line + self.context_lines as u32) as usize + self.context_lines;
+        // If end_line is provided, extend by context; otherwise use current line then extend
+        let base_end: usize = node.location.end_line.unwrap_or(line as u32) as usize;
+        let end_line = base_end.saturating_add(self.context_lines);
 
         // Map line numbers to byte offsets
         let mut cur_line = 1usize;
         let mut start_idx = 0usize;
         let mut end_idx = content.len();
         for (idx, ch) in content.char_indices() {
-            if cur_line == start_line { start_idx = idx; }
-            if cur_line > end_line { end_idx = idx; break; }
-            if ch == '\n' { cur_line += 1; }
+            if cur_line == start_line {
+                start_idx = idx;
+            }
+            if cur_line > end_line {
+                end_idx = idx;
+                break;
+            }
+            if ch == '\n' {
+                cur_line += 1;
+            }
         }
         Some((start_idx.min(content.len()), end_idx.min(content.len())))
     }
@@ -198,34 +255,51 @@ impl GraphVectorIntegrator {
         }
     }
 
-    pub fn with_extractor(mut self, extractor: SnippetExtractor) -> Self { self.extractor = extractor; self }
+    pub fn with_extractor(mut self, extractor: SnippetExtractor) -> Self {
+        self.extractor = extractor;
+        self
+    }
 
     /// Compute a stable signature of the node's embedding-relevant content for incremental updates.
     fn signature(&self, node: &CodeNode) -> u64 {
         let mut s = std::collections::hash_map::DefaultHasher::new();
         node.id.hash(&mut s);
         node.name.hash(&mut s);
-        if let Some(t) = &node.node_type { t.hash(&mut s); }
-        if let Some(l) = &node.language { l.hash(&mut s); }
+        if let Some(t) = &node.node_type {
+            t.hash(&mut s);
+        }
+        if let Some(l) = &node.language {
+            l.hash(&mut s);
+        }
         node.location.file_path.hash(&mut s);
         let snippet = self.extractor.extract(node);
         snippet.hash(&mut s);
         s.finish()
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn signature_len(&self) -> usize {
+        self.signatures.len()
+    }
+
     /// Prepare nodes by ensuring `content` holds the extracted snippet text.
     fn prepare_nodes(&self, nodes: &[CodeNode]) -> Vec<CodeNode> {
-        nodes.iter().map(|n| {
-            let mut c = n.clone();
-            c.content = Some(self.extractor.extract(n).into());
-            c
-        }).collect()
+        nodes
+            .iter()
+            .map(|n| {
+                let mut c = n.clone();
+                c.content = Some(self.extractor.extract(n).into());
+                c
+            })
+            .collect()
     }
 
     /// Index embeddings for the provided nodes, skipping unchanged ones.
     /// Returns the number of nodes embedded and stored.
     pub async fn index_nodes(&self, nodes: &[CodeNode]) -> Result<usize> {
-        if nodes.is_empty() { return Ok(0); }
+        if nodes.is_empty() {
+            return Ok(0);
+        }
 
         let prepared = self.prepare_nodes(nodes);
 
@@ -234,17 +308,23 @@ impl GraphVectorIntegrator {
         for n in prepared.into_iter() {
             let sig = self.signature(&n);
             match self.signatures.get(&n.id) {
-                Some(prev) if *prev == sig => {}, // unchanged
-                _ => { changed.push((n, sig)); }
+                Some(prev) if *prev == sig => {} // unchanged
+                _ => {
+                    changed.push((n, sig));
+                }
             }
         }
 
-        if changed.is_empty() { return Ok(0); }
+        if changed.is_empty() {
+            return Ok(0);
+        }
 
         let nodes_only: Vec<CodeNode> = changed.iter().map(|(n, _)| n.clone()).collect();
         let embeddings = self.embedder.embed_batch(&nodes_only).await?;
         if embeddings.len() != nodes_only.len() {
-            return Err(CodeGraphError::Vector("embedding batch size mismatch".into()));
+            return Err(CodeGraphError::Vector(
+                "embedding batch size mismatch".into(),
+            ));
         }
 
         // Attach embeddings to nodes
@@ -262,14 +342,22 @@ impl GraphVectorIntegrator {
         }
 
         // Update signatures map
-        for (n, sig) in changed.into_iter() { self.signatures.insert(n.id, sig); }
+        for (n, sig) in changed.into_iter() {
+            self.signatures.insert(n.id, sig);
+        }
         Ok(to_store.len())
     }
 
     /// Process graph updates: index new/modified nodes, drop signatures for deleted nodes.
-    pub async fn sync_changes(&self, created_or_modified: &[CodeNode], deleted: &[NodeId]) -> Result<(usize, usize)> {
+    pub async fn sync_changes(
+        &self,
+        created_or_modified: &[CodeNode],
+        deleted: &[NodeId],
+    ) -> Result<(usize, usize)> {
         let added = self.index_nodes(created_or_modified).await?;
-        for id in deleted { self.signatures.remove(id); }
+        for id in deleted {
+            self.signatures.remove(id);
+        }
         Ok((added, deleted.len()))
     }
 
@@ -278,12 +366,22 @@ impl GraphVectorIntegrator {
         // Build a synthetic node for query embedding
         let qnode = CodeNode {
             id: NodeId::nil(),
-            name: "__query__".to_string(),
+            name: "__query__".into(),
             node_type: Some(NodeType::Other("query".into())),
             language: Some(Language::Other("text".into())),
-            location: crate::Location { file_path: "__query__".into(), line: 0, column: 0, end_line: None, end_column: None },
+            location: crate::Location {
+                file_path: "__query__".into(),
+                line: 0,
+                column: 0,
+                end_line: None,
+                end_column: None,
+            },
             content: Some(query.into()),
-            metadata: crate::Metadata { attributes: Default::default(), created_at: chrono::Utc::now(), updated_at: chrono::Utc::now() },
+            metadata: crate::Metadata {
+                attributes: Default::default(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            },
             embedding: None,
             complexity: None,
         };
@@ -292,23 +390,36 @@ impl GraphVectorIntegrator {
     }
 
     /// Semantic search by embedding; returns resolved nodes from the graph.
-    pub async fn semantic_search_embedding(&self, query_vec: &[f32], limit: usize) -> Result<Vec<CodeNode>> {
+    pub async fn semantic_search_embedding(
+        &self,
+        query_vec: &[f32],
+        limit: usize,
+    ) -> Result<Vec<CodeNode>> {
         if query_vec.len() != self.embedder.dimension() {
             return Err(CodeGraphError::Vector(format!(
-                "Query vector dim {} != embedder dim {}", query_vec.len(), self.embedder.dimension()
+                "Query vector dim {} != embedder dim {}",
+                query_vec.len(),
+                self.embedder.dimension()
             )));
         }
         let ids = {
             let vs = self.vector.lock().await;
-            vs.search_similar(query_vec, limit.saturating_mul(3).max(limit + 8)).await?
+            vs.search_similar(query_vec, limit.saturating_mul(3).max(limit + 8))
+                .await?
         };
         // Resolve nodes from graph, dedupe, and truncate
         let mut seen = HashSet::new();
         let mut out = Vec::new();
         for id in ids {
-            if !seen.insert(id) { continue; }
-            if let Some(n) = self.graph.get_node(id).await? { out.push(n); }
-            if out.len() >= limit { break; }
+            if !seen.insert(id) {
+                continue;
+            }
+            if let Some(n) = self.graph.get_node(id).await? {
+                out.push(n);
+            }
+            if out.len() >= limit {
+                break;
+            }
         }
         Ok(out)
     }
@@ -317,21 +428,39 @@ impl GraphVectorIntegrator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Language, NodeType, Location, Metadata};
+    use crate::{Language, Location, Metadata, NodeType};
+    use crossbeam_channel::{unbounded, Receiver, Sender};
     use std::collections::HashMap;
     use tokio_test::block_on;
-    use crossbeam_channel::{unbounded, Sender, Receiver};
 
-    struct InMemoryGraph { nodes: DashMap<NodeId, CodeNode> }
+    struct InMemoryGraph {
+        nodes: DashMap<NodeId, CodeNode>,
+    }
 
     #[async_trait]
     impl GraphStore for InMemoryGraph {
-        async fn add_node(&mut self, node: CodeNode) -> Result<()> { self.nodes.insert(node.id, node); Ok(()) }
-        async fn get_node(&self, id: NodeId) -> Result<Option<CodeNode>> { Ok(self.nodes.get(&id).map(|e| e.clone())) }
-        async fn update_node(&mut self, node: CodeNode) -> Result<()> { self.nodes.insert(node.id, node); Ok(()) }
-        async fn remove_node(&mut self, id: NodeId) -> Result<()> { self.nodes.remove(&id); Ok(()) }
+        async fn add_node(&mut self, node: CodeNode) -> Result<()> {
+            self.nodes.insert(node.id, node);
+            Ok(())
+        }
+        async fn get_node(&self, id: NodeId) -> Result<Option<CodeNode>> {
+            Ok(self.nodes.get(&id).map(|e| e.clone()))
+        }
+        async fn update_node(&mut self, node: CodeNode) -> Result<()> {
+            self.nodes.insert(node.id, node);
+            Ok(())
+        }
+        async fn remove_node(&mut self, id: NodeId) -> Result<()> {
+            self.nodes.remove(&id);
+            Ok(())
+        }
         async fn find_nodes_by_name(&self, name: &str) -> Result<Vec<CodeNode>> {
-            Ok(self.nodes.iter().filter(|e| e.name == name).map(|e| e.clone()).collect())
+            Ok(self
+                .nodes
+                .iter()
+                .filter(|e| e.name.as_str() == name)
+                .map(|e| e.clone())
+                .collect())
         }
     }
 
@@ -344,16 +473,28 @@ mod tests {
     #[async_trait]
     impl VectorStore for InMemoryVectorStore {
         async fn store_embeddings(&mut self, nodes: &[CodeNode]) -> Result<()> {
-            for n in nodes { if let Some(e) = &n.embedding { self.embs.insert(n.id, e.clone()); } }
+            for n in nodes {
+                if let Some(e) = &n.embedding {
+                    self.embs.insert(n.id, e.clone());
+                }
+            }
             Ok(())
         }
-        async fn search_similar(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<NodeId>> {
-            let mut sims: Vec<(NodeId, f32)> = self.embs.iter().map(|kv| {
-                let s = cosine(&kv.value(), query_embedding);
-                (*kv.key(), s)
-            }).collect();
-            sims.sort_by(|a,b| b.1.partial_cmp(&a.1).unwrap());
-            Ok(sims.into_iter().take(limit).map(|(id,_)| id).collect())
+        async fn search_similar(
+            &self,
+            query_embedding: &[f32],
+            limit: usize,
+        ) -> Result<Vec<NodeId>> {
+            let mut sims: Vec<(NodeId, f32)> = self
+                .embs
+                .iter()
+                .map(|kv| {
+                    let s = cosine(&kv.value(), query_embedding);
+                    (*kv.key(), s)
+                })
+                .collect();
+            sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            Ok(sims.into_iter().take(limit).map(|(id, _)| id).collect())
         }
         async fn get_embedding(&self, node_id: NodeId) -> Result<Option<Vec<f32>>> {
             Ok(self.embs.get(&node_id).map(|e| e.clone()))
@@ -361,23 +502,39 @@ mod tests {
     }
 
     fn cosine(a: &[f32], b: &[f32]) -> f32 {
-        if a.len()!=b.len() { return 0.0; }
-        let dot: f32 = a.iter().zip(b.iter()).map(|(x,y)| x*y).sum();
-        let na: f32 = a.iter().map(|x| x*x).sum::<f32>().sqrt();
-        let nb: f32 = b.iter().map(|x| x*x).sum::<f32>().sqrt();
-        if na==0.0 || nb==0.0 { 0.0 } else { dot/(na*nb) }
+        if a.len() != b.len() {
+            return 0.0;
+        }
+        let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+        let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let nb: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if na == 0.0 || nb == 0.0 {
+            0.0
+        } else {
+            dot / (na * nb)
+        }
     }
 
     fn make_node(name: &str, lang: Language, t: NodeType, content: &str) -> CodeNode {
         let now = chrono::Utc::now();
         CodeNode {
             id: NodeId::new_v4(),
-            name: name.to_string(),
+            name: name.into(),
             node_type: Some(t),
             language: Some(lang),
-            location: Location { file_path: "mem".into(), line: 1, column: 1, end_line: None, end_column: None },
+            location: Location {
+                file_path: "mem".into(),
+                line: 1,
+                column: 1,
+                end_line: None,
+                end_column: None,
+            },
             content: Some(content.into()),
-            metadata: Metadata { attributes: HashMap::new(), created_at: now, updated_at: now },
+            metadata: Metadata {
+                attributes: HashMap::new(),
+                created_at: now,
+                updated_at: now,
+            },
             embedding: None,
             complexity: None,
         }
@@ -386,29 +543,58 @@ mod tests {
     #[test]
     fn index_and_search_memory() {
         block_on(async {
-            let graph = Arc::new(InMemoryGraph { nodes: DashMap::new() });
-            let mut vstore = InMemoryVectorStore { dim: 384, embs: DashMap::new() };
+            let graph = Arc::new(InMemoryGraph {
+                nodes: DashMap::new(),
+            });
+            let vstore = InMemoryVectorStore {
+                dim: 384,
+                embs: DashMap::new(),
+            };
             let embedder = Arc::new(HasherEmbeddingService::new(384));
             let integrator = GraphVectorIntegrator::new(graph.clone(), Box::new(vstore), embedder);
 
             // Build sample nodes
-            let a = make_node("sum", Language::Rust, NodeType::Function, "fn sum(a: i32, b: i32) -> i32 { a + b }");
-            let b = make_node("add", Language::Rust, NodeType::Function, "fn add(x: i32, y: i32) -> i32 { x + y }");
-            let c = make_node("read_file", Language::Rust, NodeType::Function, "fn read_file(p: &str) -> String { std::fs::read_to_string(p).unwrap() }");
-            graph.add_node(a.clone()).await.unwrap();
-            graph.add_node(b.clone()).await.unwrap();
-            graph.add_node(c.clone()).await.unwrap();
+            let a = make_node(
+                "sum",
+                Language::Rust,
+                NodeType::Function,
+                "fn sum(a: i32, b: i32) -> i32 { a + b }",
+            );
+            let b = make_node(
+                "add",
+                Language::Rust,
+                NodeType::Function,
+                "fn add(x: i32, y: i32) -> i32 { x + y }",
+            );
+            let c = make_node(
+                "read_file",
+                Language::Rust,
+                NodeType::Function,
+                "fn read_file(p: &str) -> String { std::fs::read_to_string(p).unwrap() }",
+            );
+            graph.nodes.insert(a.id, a.clone());
+            graph.nodes.insert(b.id, b.clone());
+            graph.nodes.insert(c.id, c.clone());
 
             // Index nodes
-            let n = integrator.index_nodes(&[a.clone(), b.clone(), c.clone()]).await.unwrap();
+            let n = integrator
+                .index_nodes(&[a.clone(), b.clone(), c.clone()])
+                .await
+                .unwrap();
             assert_eq!(n, 3);
 
             // Search by text
-            let results = integrator.semantic_search_text("sum two numbers", 2).await.unwrap();
+            let results = integrator
+                .semantic_search_text("sum two numbers", 2)
+                .await
+                .unwrap();
             assert!(!results.is_empty());
 
             // Incremental: re-index with unchanged nodes should skip
-            let n2 = integrator.index_nodes(&[a.clone(), b.clone(), c.clone()]).await.unwrap();
+            let n2 = integrator
+                .index_nodes(&[a.clone(), b.clone(), c.clone()])
+                .await
+                .unwrap();
             assert_eq!(n2, 0);
         });
     }

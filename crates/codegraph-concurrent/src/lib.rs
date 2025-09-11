@@ -4,7 +4,6 @@
 //! - `mpmc`: Lock-free bounded multi-producer multi-consumer queue (wrapper)
 //! - `graph`: Lock-free adjacency operations using atomics (ArcSwap + SkipMap)
 
-pub mod spsc;
-pub mod mpmc;
 pub mod graph;
-
+pub mod mpmc;
+pub mod spsc;

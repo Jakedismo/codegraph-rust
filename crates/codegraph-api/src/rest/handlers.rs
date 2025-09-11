@@ -1,13 +1,16 @@
 use crate::{ApiError, ApiResult, AppState};
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header::{CACHE_CONTROL, ETAG}},
+    http::{
+        header::{CACHE_CONTROL, ETAG},
+        HeaderMap, HeaderValue, StatusCode,
+    },
     Json,
 };
 use serde::{Deserialize, Serialize};
-use utoipa::{ToSchema, IntoParams};
-use uuid::Uuid;
 use sha2::{Digest, Sha256};
+use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
 
 #[derive(Serialize, ToSchema)]
 pub struct LocationDto {
@@ -59,11 +62,14 @@ pub async fn post_index(
     }
 
     // Validate directory exists
-    let meta = tokio::fs::metadata(&req.path).await.map_err(|_| {
-        ApiError::Validation(format!("path does not exist: {}", req.path))
-    })?;
+    let meta = tokio::fs::metadata(&req.path)
+        .await
+        .map_err(|_| ApiError::Validation(format!("path does not exist: {}", req.path)))?;
     if !meta.is_dir() {
-        return Err(ApiError::Validation(format!("path is not a directory: {}", req.path)));
+        return Err(ApiError::Validation(format!(
+            "path is not a directory: {}",
+            req.path
+        )));
     }
 
     let parallel = req.parallel.unwrap_or(true);
@@ -95,7 +101,10 @@ pub async fn post_index(
         total_files: stats.total_files,
         total_lines: stats.total_lines,
         duration_ms,
-        message: format!("Indexed {} nodes from {} files", nodes_count, stats.parsed_files),
+        message: format!(
+            "Indexed {} nodes from {} files",
+            nodes_count, stats.parsed_files
+        ),
     }))
 }
 
@@ -171,7 +180,10 @@ pub async fn get_search(
         }
     }
 
-    let body = SearchResponse { total: items.len(), results: items };
+    let body = SearchResponse {
+        total: items.len(),
+        results: items,
+    };
     Ok((cache_headers(&body), Json(body)))
 }
 
@@ -279,7 +291,9 @@ pub async fn get_neighbors(
     let uuid = Uuid::parse_str(params.id.trim())
         .map_err(|_| ApiError::BadRequest("Invalid node ID format".to_string()))?;
     let mut limit = params.limit.unwrap_or(50);
-    if limit == 0 || limit > 500 { limit = 50; }
+    if limit == 0 || limit > 500 {
+        limit = 50;
+    }
 
     let graph = state.graph.read().await;
     // Validate node exists
@@ -292,7 +306,10 @@ pub async fn get_neighbors(
         return Err(ApiError::NotFound(format!("Node {} not found", params.id)));
     }
 
-    let neighbors = graph.get_neighbors(uuid).await.map_err(ApiError::CodeGraph)?;
+    let neighbors = graph
+        .get_neighbors(uuid)
+        .await
+        .map_err(ApiError::CodeGraph)?;
     let mut out = Vec::new();
     for nid in neighbors.into_iter().take(limit) {
         if let Ok(Some(n)) = graph.get_node(nid).await {
@@ -305,7 +322,11 @@ pub async fn get_neighbors(
         }
     }
 
-    let body = NeighborsResponse { center: params.id, total: out.len(), neighbors: out };
+    let body = NeighborsResponse {
+        center: params.id,
+        total: out.len(),
+        neighbors: out,
+    };
     Ok((cache_headers(&body), Json(body)))
 }
 
@@ -314,7 +335,10 @@ fn cache_headers<T: serde::Serialize>(value: &T) -> HeaderMap {
     let hash = Sha256::digest(&bytes);
     let etag = format!("\"{:x}\"", hash);
     let mut headers = HeaderMap::new();
-    headers.insert(CACHE_CONTROL, HeaderValue::from_static("public, max-age=60"));
+    headers.insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=60"),
+    );
     if let Ok(val) = HeaderValue::from_str(&etag) {
         headers.insert(ETAG, val);
     }

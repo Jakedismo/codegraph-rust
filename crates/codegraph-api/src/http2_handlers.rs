@@ -1,13 +1,16 @@
 use axum::{
     extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode},
     response::Json,
-    http::{StatusCode, HeaderMap},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{instrument, info};
+use tracing::{info, instrument};
 
-use crate::{AppState, http2_optimizer::{Http2Metrics, PushResource}};
+use crate::{
+    http2_optimizer::{Http2Metrics, PushResource},
+    AppState,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct Http2ConfigQuery {
@@ -58,7 +61,7 @@ pub async fn get_http2_metrics(
     State(state): State<AppState>,
 ) -> Result<Json<Http2Metrics>, StatusCode> {
     info!("Getting HTTP/2 performance metrics");
-    
+
     let metrics = state.http2_optimizer.get_connection_metrics().await;
     Ok(Json(metrics))
 }
@@ -68,7 +71,7 @@ pub async fn get_http2_config(
     State(state): State<AppState>,
 ) -> Result<Json<Http2ConfigResponse>, StatusCode> {
     info!("Getting HTTP/2 configuration");
-    
+
     // In a real implementation, this would come from the optimizer's configuration
     let config = Http2ConfigResponse {
         max_concurrent_streams: 100,
@@ -81,7 +84,7 @@ pub async fn get_http2_config(
         enable_adaptive_window: true,
         max_header_list_size: 8192,
     };
-    
+
     Ok(Json(config))
 }
 
@@ -91,7 +94,7 @@ pub async fn update_http2_config(
     Query(params): Query<Http2ConfigQuery>,
 ) -> Result<Json<Http2ConfigResponse>, StatusCode> {
     info!("Updating HTTP/2 configuration: {:?}", params);
-    
+
     // In a real implementation, this would update the optimizer's configuration
     // For now, we'll just return the current configuration
     let config = Http2ConfigResponse {
@@ -105,7 +108,7 @@ pub async fn update_http2_config(
         enable_adaptive_window: params.enable_adaptive_window.unwrap_or(true),
         max_header_list_size: 8192,
     };
-    
+
     Ok(Json(config))
 }
 
@@ -114,9 +117,13 @@ pub async fn register_push_resources(
     State(state): State<AppState>,
     Json(request): Json<RegisterPushResourcesRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    info!("Registering server push resources for path: {}", request.base_path);
-    
-    let resources: Vec<PushResource> = request.resources
+    info!(
+        "Registering server push resources for path: {}",
+        request.base_path
+    );
+
+    let resources: Vec<PushResource> = request
+        .resources
         .into_iter()
         .map(|dto| PushResource {
             path: dto.path,
@@ -126,11 +133,12 @@ pub async fn register_push_resources(
             created_at: std::time::Instant::now(),
         })
         .collect();
-    
-    state.http2_optimizer
+
+    state
+        .http2_optimizer
         .register_push_resources(&request.base_path, resources)
         .await;
-    
+
     Ok(StatusCode::CREATED)
 }
 
@@ -139,9 +147,9 @@ pub async fn get_http2_health(
     State(state): State<AppState>,
 ) -> Result<Json<Http2HealthResponse>, StatusCode> {
     info!("Getting HTTP/2 health status");
-    
+
     let metrics = state.http2_optimizer.get_connection_metrics().await;
-    
+
     let health = Http2HealthResponse {
         status: "healthy".to_string(),
         version: "HTTP/2".to_string(),
@@ -154,7 +162,7 @@ pub async fn get_http2_health(
         active_connections: 1, // Single server connection
         total_streams_processed: metrics.total_streams,
     };
-    
+
     Ok(Json(health))
 }
 
@@ -174,43 +182,43 @@ pub async fn get_stream_analytics(
     State(state): State<AppState>,
 ) -> Result<Json<StreamAnalyticsResponse>, StatusCode> {
     info!("Getting HTTP/2 stream analytics");
-    
+
     let metrics = state.http2_optimizer.get_connection_metrics().await;
-    
+
     // Calculate various efficiency metrics
     let stream_utilization = if metrics.total_streams > 0 {
         (metrics.active_streams as f64 / 100.0) * 100.0 // Percentage of max streams
     } else {
         0.0
     };
-    
+
     let push_hit_rate = if metrics.push_promises_sent > 0 {
         // Assume 80% hit rate for demo
         80.0
     } else {
         0.0
     };
-    
+
     let compression_efficiency = if metrics.bytes_saved > 0 {
         (metrics.bytes_saved as f64 / (metrics.bytes_saved as f64 + 1000000.0)) * 100.0
     } else {
         0.0
     };
-    
+
     let mut recommendations = Vec::new();
-    
+
     if stream_utilization < 50.0 {
         recommendations.push("Consider increasing concurrent request batching".to_string());
     }
-    
+
     if push_hit_rate < 70.0 {
         recommendations.push("Review server push resource selection".to_string());
     }
-    
+
     if compression_efficiency < 60.0 {
         recommendations.push("Optimize header compression strategies".to_string());
     }
-    
+
     let analytics = StreamAnalyticsResponse {
         stream_utilization,
         average_stream_duration_ms: 250.0, // Simulated
@@ -220,7 +228,7 @@ pub async fn get_stream_analytics(
         flow_control_efficiency: 85.0, // Simulated
         recommendations,
     };
-    
+
     Ok(Json(analytics))
 }
 
@@ -240,7 +248,7 @@ pub async fn get_performance_metrics(
     State(state): State<AppState>,
 ) -> Result<Json<PerformanceMetricsResponse>, StatusCode> {
     info!("Getting HTTP/2 performance metrics");
-    
+
     // In a real implementation, these would be calculated from actual measurements
     let performance = PerformanceMetricsResponse {
         throughput_mbps: 125.5,
@@ -251,7 +259,7 @@ pub async fn get_performance_metrics(
         connection_reuse_rate: 0.95,
         http2_adoption_rate: 0.88,
     };
-    
+
     Ok(Json(performance))
 }
 
@@ -278,32 +286,36 @@ pub async fn tune_http2_optimization(
     State(state): State<AppState>,
     Json(request): Json<OptimizationTuningRequest>,
 ) -> Result<Json<OptimizationTuningResponse>, StatusCode> {
-    info!("Tuning HTTP/2 optimization for workload: {}", request.workload_type);
-    
-    let (window_size, max_streams, frame_size, push_strategy, compression_level) = match request.workload_type.as_str() {
-        "streaming" => (
-            128 * 1024, // Larger window for streaming
-            50,         // Fewer concurrent streams
-            32768,      // Larger frames
-            "predictive".to_string(),
-            "adaptive".to_string(),
-        ),
-        "api" => (
-            64 * 1024,  // Standard window
-            100,        // More concurrent streams
-            16384,      // Standard frames
-            "selective".to_string(),
-            "aggressive".to_string(),
-        ),
-        _ => (
-            65535,      // Default window
-            75,         // Balanced streams
-            16384,      // Standard frames
-            "balanced".to_string(),
-            "standard".to_string(),
-        ),
-    };
-    
+    info!(
+        "Tuning HTTP/2 optimization for workload: {}",
+        request.workload_type
+    );
+
+    let (window_size, max_streams, frame_size, push_strategy, compression_level) =
+        match request.workload_type.as_str() {
+            "streaming" => (
+                128 * 1024, // Larger window for streaming
+                50,         // Fewer concurrent streams
+                32768,      // Larger frames
+                "predictive".to_string(),
+                "adaptive".to_string(),
+            ),
+            "api" => (
+                64 * 1024, // Standard window
+                100,       // More concurrent streams
+                16384,     // Standard frames
+                "selective".to_string(),
+                "aggressive".to_string(),
+            ),
+            _ => (
+                65535, // Default window
+                75,    // Balanced streams
+                16384, // Standard frames
+                "balanced".to_string(),
+                "standard".to_string(),
+            ),
+        };
+
     let tuning = OptimizationTuningResponse {
         recommended_window_size: window_size,
         recommended_max_streams: max_streams,
@@ -312,6 +324,6 @@ pub async fn tune_http2_optimization(
         compression_level,
         applied: true,
     };
-    
+
     Ok(Json(tuning))
 }

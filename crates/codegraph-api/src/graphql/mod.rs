@@ -1,6 +1,6 @@
-pub mod types;
 pub mod loaders;
 pub mod resolvers;
+pub mod types;
 
 #[cfg(test)]
 mod tests;
@@ -8,6 +8,6 @@ mod tests;
 #[cfg(feature = "bench")]
 mod benchmarks;
 
-pub use types::*;
 pub use loaders::*;
 pub use resolvers::*;
+pub use types::*;

@@ -9,7 +9,11 @@ pub struct HookInstallOptions {
 
 impl Default for HookInstallOptions {
     fn default() -> Self {
-        Self { pre_commit: true, post_commit: true, overwrite: false }
+        Self {
+            pre_commit: true,
+            post_commit: true,
+            overwrite: false,
+        }
     }
 }
 
@@ -62,7 +66,11 @@ pub struct HistoryOptions {
 
 impl Default for HistoryOptions {
     fn default() -> Self {
-        Self { branch: None, max_commits: Some(5000), since_timestamp: None }
+        Self {
+            branch: None,
+            max_commits: Some(5000),
+            since_timestamp: None,
+        }
     }
 }
 
@@ -97,7 +105,10 @@ pub struct WatchOptions {
 
 impl Default for WatchOptions {
     fn default() -> Self {
-        Self { debounce_ms: 200, ignore_dot_git: true }
+        Self {
+            debounce_ms: 200,
+            ignore_dot_git: true,
+        }
     }
 }
 
@@ -106,4 +117,3 @@ pub struct WatchEvent {
     pub kind: String,
     pub path: Option<String>,
 }
-

@@ -1,5 +1,9 @@
-use crate::{FileWatcherImpl, UpdateSchedulerImpl, DeltaProcessorImpl, GraphUpdaterImpl, ProgressTrackerImpl};
-use codegraph_core::traits::{FileWatcher, UpdateScheduler, DeltaProcessor, GraphUpdater, ProgressTracker};
+use crate::{
+    DeltaProcessorImpl, FileWatcherImpl, GraphUpdaterImpl, ProgressTrackerImpl, UpdateSchedulerImpl,
+};
+use codegraph_core::traits::{
+    DeltaProcessor, FileWatcher, GraphUpdater, ProgressTracker, UpdateScheduler,
+};
 use crossbeam_channel::unbounded;
 use std::thread;
 
@@ -20,7 +24,10 @@ pub async fn run_pipeline(path: &str) -> codegraph_core::Result<()> {
     });
 
     let scheduler_thread = tokio::spawn(async move {
-        update_scheduler.schedule(change_rx, update_tx).await.unwrap();
+        update_scheduler
+            .schedule(change_rx, update_tx)
+            .await
+            .unwrap();
     });
 
     let processor_thread = tokio::spawn(async move {
@@ -36,10 +43,18 @@ pub async fn run_pipeline(path: &str) -> codegraph_core::Result<()> {
     });
 
     watcher_thread.join().unwrap();
-    scheduler_thread.await?;
-    processor_thread.await?;
-    updater_thread.await?;
-    tracker_thread.await?;
+    scheduler_thread
+        .await
+        .map_err(|e| codegraph_core::CodeGraphError::Threading(e.to_string()))?;
+    processor_thread
+        .await
+        .map_err(|e| codegraph_core::CodeGraphError::Threading(e.to_string()))?;
+    updater_thread
+        .await
+        .map_err(|e| codegraph_core::CodeGraphError::Threading(e.to_string()))?;
+    tracker_thread
+        .await
+        .map_err(|e| codegraph_core::CodeGraphError::Threading(e.to_string()))?;
 
     Ok(())
 }

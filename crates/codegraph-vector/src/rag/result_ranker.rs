@@ -1,5 +1,5 @@
-use codegraph_core::{CodeGraphError, Result};
 use crate::rag::RetrievalResult;
+use codegraph_core::{CodeGraphError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{debug, instrument};
@@ -94,9 +94,11 @@ impl ResultRanker {
         // Calculate scores for each result
         let mut ranked_results = Vec::new();
         for result in results.drain(..) {
-            let score_breakdown = self.calculate_score_breakdown(&result, query, query_embedding).await?;
+            let score_breakdown = self
+                .calculate_score_breakdown(&result, query, query_embedding)
+                .await?;
             let final_score = self.calculate_final_score(&score_breakdown);
-            
+
             ranked_results.push(RankedResult {
                 retrieval_result: result,
                 final_score,
@@ -111,7 +113,11 @@ impl ResultRanker {
         }
 
         // Sort by final score
-        ranked_results.sort_by(|a, b| b.final_score.partial_cmp(&a.final_score).unwrap_or(std::cmp::Ordering::Equal));
+        ranked_results.sort_by(|a, b| {
+            b.final_score
+                .partial_cmp(&a.final_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Assign ranks
         for (index, result) in ranked_results.iter_mut().enumerate() {
@@ -135,7 +141,8 @@ impl ResultRanker {
             cached.clone()
         } else {
             let embedding = self.generate_query_embedding(query).await?;
-            self.query_cache.insert(query.to_string(), embedding.clone());
+            self.query_cache
+                .insert(query.to_string(), embedding.clone());
             embedding
         };
 
@@ -143,7 +150,7 @@ impl ResultRanker {
         for (content, score) in results.iter_mut() {
             let content_embedding = self.generate_text_embedding(content).await?;
             let semantic_similarity = cosine_similarity(&query_embedding, &content_embedding);
-            
+
             // Combine original score with semantic similarity
             *score = (*score * 0.4) + (semantic_similarity * 0.6);
         }
@@ -160,7 +167,9 @@ impl ResultRanker {
         query: &str,
         query_embedding: &[f32],
     ) -> Result<ScoreBreakdown> {
-        let semantic_score = self.calculate_semantic_score(result, query_embedding).await?;
+        let semantic_score = self
+            .calculate_semantic_score(result, query_embedding)
+            .await?;
         let keyword_score = self.calculate_keyword_score(result, query);
         let recency_score = self.calculate_recency_score(result);
         let popularity_score = self.calculate_popularity_score(result);
@@ -178,26 +187,33 @@ impl ResultRanker {
     }
 
     fn calculate_final_score(&self, breakdown: &ScoreBreakdown) -> f32 {
-        let base_score = 
-            (breakdown.semantic_score * self.config.semantic_weight) +
-            (breakdown.keyword_score * self.config.keyword_weight) +
-            (breakdown.recency_score * self.config.recency_weight) +
-            (breakdown.popularity_score * self.config.popularity_weight);
+        let base_score = (breakdown.semantic_score * self.config.semantic_weight)
+            + (breakdown.keyword_score * self.config.keyword_weight)
+            + (breakdown.recency_score * self.config.recency_weight)
+            + (breakdown.popularity_score * self.config.popularity_weight);
 
         // Apply type boost
         let boosted_score = base_score * breakdown.type_boost;
-        
+
         // Apply diversity penalty
         boosted_score * (1.0 - breakdown.diversity_penalty)
     }
 
-    async fn calculate_semantic_score(&self, result: &RetrievalResult, query_embedding: &[f32]) -> Result<f32> {
+    async fn calculate_semantic_score(
+        &self,
+        result: &RetrievalResult,
+        query_embedding: &[f32],
+    ) -> Result<f32> {
         if let Some(ref node) = result.node {
             if let Some(ref embedding) = node.embedding {
                 Ok(cosine_similarity(query_embedding, embedding))
             } else {
                 // Generate embedding for the node content
-                let content = format!("{} {}", node.name.as_str(), node.content.as_deref().unwrap_or(""));
+                let content = format!(
+                    "{} {}",
+                    node.name.as_str(),
+                    node.content.as_deref().unwrap_or("")
+                );
                 let node_embedding = self.generate_text_embedding(&content).await?;
                 Ok(cosine_similarity(query_embedding, &node_embedding))
             }
@@ -218,7 +234,8 @@ impl ResultRanker {
                 return 0.0;
             }
 
-            let node_text = format!("{} {}", 
+            let node_text = format!(
+                "{} {}",
                 node.name.as_str().to_lowercase(),
                 node.content.as_deref().unwrap_or("").to_lowercase()
             );
@@ -239,7 +256,9 @@ impl ResultRanker {
     fn calculate_recency_score(&self, result: &RetrievalResult) -> f32 {
         if let Some(ref node) = result.node {
             let now = chrono::Utc::now();
-            let age_days = now.signed_duration_since(node.metadata.updated_at).num_days();
+            let age_days = now
+                .signed_duration_since(node.metadata.updated_at)
+                .num_days();
 
             // Score decreases with age, but levels off after 30 days
             let max_age = 30.0;
@@ -252,7 +271,10 @@ impl ResultRanker {
 
     fn calculate_popularity_score(&self, result: &RetrievalResult) -> f32 {
         if let Some(ref node) = result.node {
-            self.node_popularity.get(node.name.as_str()).cloned().unwrap_or(0.0)
+            self.node_popularity
+                .get(node.name.as_str())
+                .cloned()
+                .unwrap_or(0.0)
         } else {
             0.0
         }
@@ -262,7 +284,11 @@ impl ResultRanker {
         if let Some(ref node) = result.node {
             if let Some(ref node_type) = node.node_type {
                 let type_str = format!("{:?}", node_type).to_lowercase();
-                self.config.type_boost_factors.get(&type_str).cloned().unwrap_or(1.0)
+                self.config
+                    .type_boost_factors
+                    .get(&type_str)
+                    .cloned()
+                    .unwrap_or(1.0)
             } else {
                 1.0
             }
@@ -274,19 +300,22 @@ impl ResultRanker {
     async fn apply_diversity_scoring(&mut self, results: &mut [RankedResult]) -> Result<()> {
         // Group results by similarity to avoid redundant results
         let mut groups: Vec<Vec<usize>> = Vec::new();
-        
+
         for (i, result) in results.iter().enumerate() {
             let mut assigned = false;
-            
+
             for group in &mut groups {
                 let group_representative = &results[group[0]];
-                if self.are_similar_results(result, group_representative).await? {
+                if self
+                    .are_similar_results(result, group_representative)
+                    .await?
+                {
                     group.push(i);
                     assigned = true;
                     break;
                 }
             }
-            
+
             if !assigned {
                 groups.push(vec![i]);
             }
@@ -307,8 +336,15 @@ impl ResultRanker {
         Ok(())
     }
 
-    async fn are_similar_results(&self, result1: &RankedResult, result2: &RankedResult) -> Result<bool> {
-        if let (Some(ref node1), Some(ref node2)) = (&result1.retrieval_result.node, &result2.retrieval_result.node) {
+    async fn are_similar_results(
+        &self,
+        result1: &RankedResult,
+        result2: &RankedResult,
+    ) -> Result<bool> {
+        if let (Some(ref node1), Some(ref node2)) = (
+            &result1.retrieval_result.node,
+            &result2.retrieval_result.node,
+        ) {
             // Check if they have the same name or very similar content
             if node1.name == node2.name {
                 return Ok(true);
@@ -316,7 +352,9 @@ impl ResultRanker {
 
             // Check content similarity
             if let (Some(ref content1), Some(ref content2)) = (&node1.content, &node2.content) {
-                let similarity = self.calculate_content_similarity(content1, content2).await?;
+                let similarity = self
+                    .calculate_content_similarity(content1, content2)
+                    .await?;
                 Ok(similarity > 0.8) // 80% similarity threshold
             } else {
                 Ok(false)
@@ -338,7 +376,7 @@ impl ResultRanker {
             move || {
                 let dimension = 384;
                 let mut embedding = vec![0.0f32; dimension];
-                
+
                 let hash = simple_hash(&query);
                 let mut rng_state = hash;
 
@@ -370,7 +408,7 @@ impl ResultRanker {
     pub fn update_popularity_scores(&mut self, node_access_counts: &HashMap<String, u32>) {
         // Convert access counts to normalized popularity scores
         let max_count = node_access_counts.values().copied().max().unwrap_or(1);
-        
+
         for (node_name, count) in node_access_counts.iter() {
             let popularity = *count as f32 / max_count as f32;
             self.node_popularity.insert(node_name.clone(), popularity);
@@ -411,8 +449,8 @@ fn simple_hash(text: &str) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegraph_core::{Language, NodeType};
     use crate::rag::RetrievalMethod;
+    use codegraph_core::{Language, NodeType};
     use uuid::Uuid;
 
     fn create_test_retrieval_result(name: &str, content: &str, score: f32) -> RetrievalResult {
@@ -449,7 +487,7 @@ mod tests {
     #[tokio::test]
     async fn test_ranking_by_relevance_score() {
         let mut ranker = ResultRanker::new();
-        
+
         let results = vec![
             create_test_retrieval_result("low_score", "some content", 0.3),
             create_test_retrieval_result("high_score", "important content", 0.9),
@@ -458,14 +496,17 @@ mod tests {
 
         let query = "test query";
         let query_embedding = vec![0.5; 384]; // Mock embedding
-        
-        let ranked = ranker.rank_results(results, query, &query_embedding).await.unwrap();
-        
+
+        let ranked = ranker
+            .rank_results(results, query, &query_embedding)
+            .await
+            .unwrap();
+
         assert_eq!(ranked.len(), 3);
         assert_eq!(ranked[0].rank, 1);
         assert_eq!(ranked[1].rank, 2);
         assert_eq!(ranked[2].rank, 3);
-        
+
         // Check that results are sorted by final score
         assert!(ranked[0].final_score >= ranked[1].final_score);
         assert!(ranked[1].final_score >= ranked[2].final_score);
@@ -474,7 +515,7 @@ mod tests {
     #[tokio::test]
     async fn test_semantic_similarity_ranking() {
         let mut ranker = ResultRanker::new();
-        
+
         let mut results = vec![
             ("function for data processing".to_string(), 0.5),
             ("async file operations".to_string(), 0.5),
@@ -482,8 +523,11 @@ mod tests {
         ];
 
         let query = "async file handling";
-        ranker.rank_by_semantic_similarity(&mut results, query).await.unwrap();
-        
+        ranker
+            .rank_by_semantic_similarity(&mut results, query)
+            .await
+            .unwrap();
+
         // Results should be re-ranked based on semantic similarity
         // The "async file operations" should rank higher due to keyword overlap
         assert!(results[0].1 > 0.5); // Score should be boosted
@@ -493,7 +537,7 @@ mod tests {
     fn test_keyword_score_calculation() {
         let ranker = ResultRanker::new();
         let result = create_test_retrieval_result("read_file", "async function to read files", 0.8);
-        
+
         let score = ranker.calculate_keyword_score(&result, "async file reading");
         assert!(score > 0.0);
         assert!(score <= 1.0);
@@ -503,7 +547,7 @@ mod tests {
     fn test_type_boost_calculation() {
         let ranker = ResultRanker::new();
         let result = create_test_retrieval_result("test_func", "test content", 0.5);
-        
+
         let boost = ranker.calculate_type_boost(&result);
         assert_eq!(boost, 1.2); // Function should get 1.2x boost
     }
@@ -519,7 +563,7 @@ mod tests {
             type_boost: 1.2,
             diversity_penalty: 0.1,
         };
-        
+
         let final_score = ranker.calculate_final_score(&breakdown);
         assert!(final_score > 0.0);
         assert!(final_score < 2.0); // Should be reasonable range
@@ -530,7 +574,7 @@ mod tests {
         let vec1 = vec![1.0, 0.0, 0.0];
         let vec2 = vec![1.0, 0.0, 0.0];
         let vec3 = vec![0.0, 1.0, 0.0];
-        
+
         assert!((cosine_similarity(&vec1, &vec2) - 1.0).abs() < 1e-6);
         assert!((cosine_similarity(&vec1, &vec3) - 0.0).abs() < 1e-6);
     }

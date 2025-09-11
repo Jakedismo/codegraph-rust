@@ -1,12 +1,11 @@
-use codegraph_core::{CodeNode, NodeId, Result};
+use crate::rag::{
+    ContextRetriever, GeneratedResponse, GenerationConfig, ProcessedQuery, QueryProcessor,
+    RankedResult, RankingConfig, ResponseGenerator, ResultRanker, RetrievalConfig,
+};
 use crate::EmbeddingGenerator;
 #[cfg(feature = "faiss")]
-use crate::{SemanticSearch, FaissVectorStore};
-use crate::rag::{
-    QueryProcessor, ProcessedQuery, ContextRetriever, RetrievalConfig, 
-    ResultRanker, RankingConfig, ResponseGenerator, GenerationConfig,
-    GeneratedResponse, RankedResult
-};
+use crate::{FaissVectorStore, SemanticSearch};
+use codegraph_core::{CodeNode, NodeId, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -89,11 +88,15 @@ impl RAGSystem {
         info!("Initializing RAG system with config: {:?}", config);
 
         let query_processor = QueryProcessor::new();
-        let context_retriever = Arc::new(RwLock::new(ContextRetriever::with_config(config.retrieval.clone())));
-        let result_ranker = Arc::new(RwLock::new(ResultRanker::with_config(config.ranking.clone())));
+        let context_retriever = Arc::new(RwLock::new(ContextRetriever::with_config(
+            config.retrieval.clone(),
+        )));
+        let result_ranker = Arc::new(RwLock::new(ResultRanker::with_config(
+            config.ranking.clone(),
+        )));
         let response_generator = ResponseGenerator::with_config(config.generation.clone());
         let embedding_generator = Arc::new(EmbeddingGenerator::default());
-        
+
         Ok(Self {
             config,
             query_processor,
@@ -116,21 +119,21 @@ impl RAGSystem {
                 vector_store,
                 self.embedding_generator.clone(),
             ));
-            
+
             {
                 let mut retriever = self.context_retriever.write().await;
                 retriever.set_semantic_search(semantic_search.clone());
             }
-            
+
             self.semantic_search = Some(semantic_search);
             info!("Vector store initialized with FAISS backend");
         }
-        
+
         #[cfg(not(feature = "faiss"))]
         {
             warn!("FAISS feature not enabled, semantic search will be limited");
         }
-        
+
         Ok(())
     }
 
@@ -138,7 +141,7 @@ impl RAGSystem {
     pub async fn process_query(&self, query: &str) -> Result<QueryResult> {
         let query_id = Uuid::new_v4();
         let start_time = std::time::Instant::now();
-        
+
         debug!("Processing query: {} (ID: {})", query, query_id);
 
         // Check cache first
@@ -167,11 +170,13 @@ impl RAGSystem {
         let retrieval_start = std::time::Instant::now();
         let retrieval_results = {
             let retriever = self.context_retriever.read().await;
-            retriever.retrieve_context(
-                query,
-                &processed_query.semantic_embedding,
-                &processed_query.keywords,
-            ).await?
+            retriever
+                .retrieve_context(
+                    query,
+                    &processed_query.semantic_embedding,
+                    &processed_query.keywords,
+                )
+                .await?
         };
         performance_metrics.context_retrieval_ms = retrieval_start.elapsed().as_millis() as u64;
         performance_metrics.results_retrieved = retrieval_results.len();
@@ -180,18 +185,23 @@ impl RAGSystem {
         let ranking_start = std::time::Instant::now();
         let ranked_results = {
             let mut ranker = self.result_ranker.write().await;
-            ranker.rank_results(
-                retrieval_results,
-                query,
-                &processed_query.semantic_embedding,
-            ).await?
+            ranker
+                .rank_results(
+                    retrieval_results,
+                    query,
+                    &processed_query.semantic_embedding,
+                )
+                .await?
         };
         performance_metrics.result_ranking_ms = ranking_start.elapsed().as_millis() as u64;
         performance_metrics.results_ranked = ranked_results.len();
 
         // Step 4: Generate response
         let generation_start = std::time::Instant::now();
-        let generated_response = self.response_generator.generate_response(query, &ranked_results).await?;
+        let generated_response = self
+            .response_generator
+            .generate_response(query, &ranked_results)
+            .await?;
         performance_metrics.response_generation_ms = generation_start.elapsed().as_millis() as u64;
 
         let total_time = start_time.elapsed();
@@ -205,7 +215,9 @@ impl RAGSystem {
             retrieved_results: ranked_results,
             response: generated_response.answer,
             confidence_score: generated_response.confidence,
-            context_used: generated_response.sources.iter()
+            context_used: generated_response
+                .sources
+                .iter()
                 .map(|s| s.snippet.clone())
                 .collect(),
             processing_time_ms: performance_metrics.total_processing_ms,
@@ -220,19 +232,23 @@ impl RAGSystem {
 
         // Check performance target
         if result.processing_time_ms > self.config.performance_target_ms {
-            warn!("Query processing exceeded target time: {}ms > {}ms", 
-                result.processing_time_ms, self.config.performance_target_ms);
+            warn!(
+                "Query processing exceeded target time: {}ms > {}ms",
+                result.processing_time_ms, self.config.performance_target_ms
+            );
         }
 
-        info!("Query processed successfully in {}ms (ID: {})", 
-            result.processing_time_ms, query_id);
+        info!(
+            "Query processed successfully in {}ms (ID: {})",
+            result.processing_time_ms, query_id
+        );
 
         Ok(result)
     }
 
     pub async fn add_context(&mut self, node: CodeNode) -> Result<()> {
         debug!("Adding context node: {}", node.name.as_str());
-        
+
         {
             let mut retriever = self.context_retriever.write().await;
             retriever.add_node_to_cache(node.clone());
@@ -240,40 +256,52 @@ impl RAGSystem {
 
         // Add to semantic search if available
         #[cfg(feature = "faiss")]
-        if let Some(ref semantic_search) = self.semantic_search {
+        if let Some(ref _semantic_search) = self.semantic_search {
             if node.embedding.is_none() {
                 // Generate embedding if not present
                 let embedding = self.embedding_generator.generate_embedding(&node).await?;
                 let mut updated_node = node;
                 updated_node.embedding = Some(embedding);
-                
+
                 // TODO: Add to vector store
-                debug!("Generated embedding for node: {}", updated_node.name.as_str());
+                debug!(
+                    "Generated embedding for node: {}",
+                    updated_node.name.as_str()
+                );
             }
         }
 
         Ok(())
     }
 
-    pub async fn retrieve_context(&self, query: &str, limit: usize) -> Result<Vec<crate::rag::RetrievalResult>> {
+    pub async fn retrieve_context(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::rag::RetrievalResult>> {
         let processed_query = self.query_processor.analyze_query(query).await?;
-        
+
         let retriever = self.context_retriever.read().await;
-        let mut results = retriever.retrieve_context(
-            query,
-            &processed_query.semantic_embedding,
-            &processed_query.keywords,
-        ).await?;
+        let mut results = retriever
+            .retrieve_context(
+                query,
+                &processed_query.semantic_embedding,
+                &processed_query.keywords,
+            )
+            .await?;
 
         results.truncate(limit);
         Ok(results)
     }
 
     pub async fn generate_response(&self, query: &str) -> Result<GeneratedResponse> {
-        let retrieval_results = self.retrieve_context(query, self.config.retrieval.max_results).await?;
-        
+        let retrieval_results = self
+            .retrieve_context(query, self.config.retrieval.max_results)
+            .await?;
+
         // Convert retrieval results to ranked results for response generation
-        let ranked_results: Vec<RankedResult> = retrieval_results.into_iter()
+        let ranked_results: Vec<RankedResult> = retrieval_results
+            .into_iter()
             .enumerate()
             .map(|(i, result)| RankedResult {
                 retrieval_result: result,
@@ -290,7 +318,9 @@ impl RAGSystem {
             })
             .collect();
 
-        self.response_generator.generate_response(query, &ranked_results).await
+        self.response_generator
+            .generate_response(query, &ranked_results)
+            .await
     }
 
     async fn check_cache(&self, query: &str) -> Result<Option<QueryResult>> {
@@ -300,7 +330,7 @@ impl RAGSystem {
 
     async fn cache_result(&self, query: &str, result: QueryResult) -> Result<()> {
         let mut cache = self.query_cache.write().await;
-        
+
         // Implement simple LRU eviction if cache is full
         if cache.len() >= self.config.cache_size {
             // Remove oldest entry (simplified LRU)
@@ -308,7 +338,7 @@ impl RAGSystem {
                 cache.remove(&key_to_remove);
             }
         }
-        
+
         cache.insert(query.to_string(), result);
         Ok(())
     }
@@ -323,7 +353,7 @@ impl RAGSystem {
     async fn update_query_metrics(&self, result: &QueryResult) {
         let mut metrics = self.metrics.write().await;
         metrics.total_queries += 1;
-        
+
         if result.confidence_score > 0.5 {
             metrics.successful_queries += 1;
         } else {
@@ -332,7 +362,9 @@ impl RAGSystem {
 
         // Update average response time
         let total = metrics.total_queries;
-        metrics.average_response_time_ms = (metrics.average_response_time_ms * (total - 1) as f64 + result.processing_time_ms as f64) / total as f64;
+        metrics.average_response_time_ms = (metrics.average_response_time_ms * (total - 1) as f64
+            + result.processing_time_ms as f64)
+            / total as f64;
     }
 
     pub async fn get_system_metrics(&self) -> SystemMetrics {
@@ -364,7 +396,10 @@ impl RAGSystem {
     pub async fn update_popularity_scores(&self, node_access_counts: HashMap<String, u32>) {
         let mut ranker = self.result_ranker.write().await;
         ranker.update_popularity_scores(&node_access_counts);
-        debug!("Updated popularity scores for {} nodes", node_access_counts.len());
+        debug!(
+            "Updated popularity scores for {} nodes",
+            node_access_counts.len()
+        );
     }
 }
 
@@ -377,10 +412,10 @@ mod tests {
         let now = chrono::Utc::now();
         CodeNode {
             id: Uuid::new_v4(),
-            name: name.to_string(),
+            name: name.into(),
             node_type: Some(node_type),
             language: Some(Language::Rust),
-            content: Some(content.to_string()),
+            content: Some(content.into()),
             embedding: None,
             location: Location {
                 file_path: "test.rs".to_string(),
@@ -402,7 +437,7 @@ mod tests {
     async fn test_rag_system_initialization() {
         let config = RAGConfig::default();
         let rag_system = RAGSystem::new(config).await;
-        
+
         assert!(rag_system.is_ok());
         let system = rag_system.unwrap();
         assert_eq!(system.get_cache_size().await, 0);
@@ -414,12 +449,16 @@ mod tests {
         let mut rag_system = RAGSystem::new(config).await.unwrap();
 
         // Add test context
-        let node = create_test_node("test_function", "fn test() -> i32 { 42 }", NodeType::Function);
+        let node = create_test_node(
+            "test_function",
+            "fn test() -> i32 { 42 }",
+            NodeType::Function,
+        );
         rag_system.add_context(node).await.unwrap();
 
         // Test query
         let result = rag_system.process_query("test function").await.unwrap();
-        
+
         assert!(!result.response.is_empty());
         assert!(result.processing_time_ms < 1000); // Should be fast
         assert!(!result.query_id.is_nil());
@@ -436,13 +475,13 @@ mod tests {
         // First query
         let query = "cached function test";
         let result1 = rag_system.process_query(query).await.unwrap();
-        
+
         // Second query (should be cached)
         let result2 = rag_system.process_query(query).await.unwrap();
-        
+
         assert_eq!(result1.query_id, result2.query_id);
         assert_eq!(result1.response, result2.response);
-        
+
         // Cache should have 1 entry
         assert_eq!(rag_system.get_cache_size().await, 1);
     }
@@ -456,7 +495,7 @@ mod tests {
         rag_system.add_context(node).await.unwrap();
 
         let result = rag_system.process_query("performance test").await.unwrap();
-        
+
         assert!(result.performance_metrics.query_processing_ms > 0);
         assert!(result.performance_metrics.context_retrieval_ms >= 0);
         assert!(result.performance_metrics.result_ranking_ms >= 0);
@@ -480,7 +519,7 @@ mod tests {
         rag_system.process_query("test query 2").await.unwrap();
 
         let metrics = rag_system.get_system_metrics().await;
-        
+
         assert_eq!(metrics.total_queries, 2);
         assert!(metrics.average_response_time_ms > 0.0);
     }
@@ -491,16 +530,27 @@ mod tests {
         let mut rag_system = RAGSystem::new(config).await.unwrap();
 
         let nodes = vec![
-            create_test_node("read_file", "fn read_file(path: &str) -> String", NodeType::Function),
-            create_test_node("write_file", "fn write_file(path: &str, content: &str)", NodeType::Function),
+            create_test_node(
+                "read_file",
+                "fn read_file(path: &str) -> String",
+                NodeType::Function,
+            ),
+            create_test_node(
+                "write_file",
+                "fn write_file(path: &str, content: &str)",
+                NodeType::Function,
+            ),
         ];
 
         for node in nodes {
             rag_system.add_context(node).await.unwrap();
         }
 
-        let response = rag_system.generate_response("file operations").await.unwrap();
-        
+        let response = rag_system
+            .generate_response("file operations")
+            .await
+            .unwrap();
+
         assert!(!response.answer.is_empty());
         assert!(response.confidence > 0.0);
         assert!(!response.sources.is_empty());

@@ -7,12 +7,11 @@ use tokio::fs;
 use tokio::time::sleep;
 use tracing::{info, warn};
 
-use codegraph_core::{CodeNode, Language};
 use crate::{
-    DiffBasedParser, FileSystemWatcher, SemanticAnalyzer,
-    TreeSitterParser, BatchedChanges, FileChangeEvent,
-    IncrementalParseResult, ChangeImpactAnalysis
+    BatchedChanges, ChangeImpactAnalysis, DiffBasedParser, FileChangeEvent, FileSystemWatcher,
+    IncrementalParseResult, SemanticAnalyzer, TreeSitterParser,
 };
+use codegraph_core::{CodeNode, Language};
 
 pub struct IncrementalParsingTestSuite {
     temp_dir: TempDir,
@@ -92,13 +91,14 @@ fn main() {
         // Wait for change detection with timeout
         let mut changes_detected = false;
         let mut change_detection_time = Duration::default();
-        
-        for _ in 0..50 { // Max 5 seconds
+
+        for _ in 0..50 {
+            // Max 5 seconds
             sleep(Duration::from_millis(100)).await;
             if let Some(batch) = watcher.next_batch().await {
                 changes_detected = true;
                 change_detection_time = modification_start.elapsed();
-                
+
                 // Verify we detected the right kind of change
                 assert!(!batch.changes.is_empty());
                 match &batch.changes[0] {
@@ -123,7 +123,7 @@ fn main() {
 
     async fn test_diff_based_parsing(&self) -> Result<DiffParsingTestResult> {
         info!("Testing diff-based parsing");
-        
+
         let test_file = self.temp_dir.path().join("diff_test.rs");
         let old_content = r#"
 struct Calculator {
@@ -171,16 +171,19 @@ impl Calculator {
 
         // Parse initial content
         let old_nodes = self.parser.parse_file(&test_file.to_string_lossy()).await?;
-        
+
         // Parse with diff-based parser
         let parse_start = Instant::now();
-        let result = self.diff_parser.parse_incremental(
-            &test_file.to_string_lossy(),
-            old_content,
-            new_content,
-            None,
-            &old_nodes,
-        ).await?;
+        let result = self
+            .diff_parser
+            .parse_incremental(
+                &test_file.to_string_lossy(),
+                old_content,
+                new_content,
+                None,
+                &old_nodes,
+            )
+            .await?;
         let parse_time = parse_start.elapsed();
 
         // Verify results
@@ -223,16 +226,16 @@ fn main() {
         fs::write(&test_file, test_code).await?;
 
         let nodes = self.parser.parse_file(&test_file.to_string_lossy()).await?;
-        
+
         // Test semantic analysis
         let analysis_start = Instant::now();
-        
+
         // For this test, we'll simulate finding affected symbols
         let changed_lines = vec![2, 3]; // Lines where calculate_total is defined
-        
+
         // In a real implementation, this would use the tree and semantic analyzer
         let affected_symbols = vec!["calculate_total".to_string(), "main".to_string()];
-        
+
         let analysis_time = analysis_start.elapsed();
 
         Ok(SemanticAnalysisTestResult {
@@ -248,10 +251,10 @@ fn main() {
         info!("Testing performance characteristics");
 
         let mut results = Vec::new();
-        
+
         // Test with different file sizes
         let file_sizes = vec![100, 500, 1000, 5000]; // lines
-        
+
         for &size in &file_sizes {
             let test_result = self.measure_incremental_performance(size).await?;
             results.push(test_result);
@@ -259,12 +262,22 @@ fn main() {
 
         // Calculate averages
         let avg_update_time = Duration::from_nanos(
-            (results.iter().map(|r| r.update_time.as_nanos()).sum::<u128>() / results.len() as u128) as u64
+            (results
+                .iter()
+                .map(|r| r.update_time.as_nanos())
+                .sum::<u128>()
+                / results.len() as u128) as u64,
         );
 
-        let avg_throughput = results.iter().map(|r| r.throughput_lines_per_sec).sum::<f64>() / results.len() as f64;
+        let avg_throughput = results
+            .iter()
+            .map(|r| r.throughput_lines_per_sec)
+            .sum::<f64>()
+            / results.len() as f64;
 
-        let meets_latency_target = results.iter().all(|r| r.update_time < Duration::from_secs(1));
+        let meets_latency_target = results
+            .iter()
+            .all(|r| r.update_time < Duration::from_secs(1));
 
         Ok(PerformanceTestResult {
             test_cases: results,
@@ -275,7 +288,10 @@ fn main() {
         })
     }
 
-    async fn measure_incremental_performance(&self, file_size_lines: usize) -> Result<SinglePerformanceTest> {
+    async fn measure_incremental_performance(
+        &self,
+        file_size_lines: usize,
+    ) -> Result<SinglePerformanceTest> {
         // Generate test file of specified size
         let mut content = String::new();
         content.push_str("fn main() {\n");
@@ -284,7 +300,10 @@ fn main() {
         }
         content.push_str("}\n");
 
-        let test_file = self.temp_dir.path().join(&format!("perf_test_{}.rs", file_size_lines));
+        let test_file = self
+            .temp_dir
+            .path()
+            .join(&format!("perf_test_{}.rs", file_size_lines));
         fs::write(&test_file, &content).await?;
 
         // Initial parse
@@ -295,13 +314,16 @@ fn main() {
 
         // Measure incremental update
         let update_start = Instant::now();
-        let _result = self.diff_parser.parse_incremental(
-            &test_file.to_string_lossy(),
-            &content,
-            &modified_content,
-            None,
-            &nodes,
-        ).await?;
+        let _result = self
+            .diff_parser
+            .parse_incremental(
+                &test_file.to_string_lossy(),
+                &content,
+                &modified_content,
+                None,
+                &nodes,
+            )
+            .await?;
         let update_time = update_start.elapsed();
 
         let throughput = file_size_lines as f64 / update_time.as_secs_f64();
@@ -326,7 +348,9 @@ fn main() {
         let module_file = src_dir.join("calculator.rs");
 
         // Write initial files
-        fs::write(&main_file, r#"
+        fs::write(
+            &main_file,
+            r#"
 mod calculator;
 use calculator::Calculator;
 
@@ -336,14 +360,22 @@ fn main() {
     calc.add(3);
     println!("Result: {}", calc.get_value());
 }
-"#).await?;
+"#,
+        )
+        .await?;
 
-        fs::write(&lib_file, r#"
+        fs::write(
+            &lib_file,
+            r#"
 pub mod calculator;
 pub use calculator::*;
-"#).await?;
+"#,
+        )
+        .await?;
 
-        fs::write(&module_file, r#"
+        fs::write(
+            &module_file,
+            r#"
 pub struct Calculator {
     value: i32,
 }
@@ -361,7 +393,9 @@ impl Calculator {
         self.value
     }
 }
-"#).await?;
+"#,
+        )
+        .await?;
 
         // Setup file system monitoring
         let mut watcher = FileSystemWatcher::new()?;
@@ -370,7 +404,11 @@ impl Calculator {
         let e2e_start = Instant::now();
 
         // Parse all files initially
-        let initial_nodes = self.parser.parse_directory(&src_dir.to_string_lossy()).await?.0;
+        let initial_nodes = self
+            .parser
+            .parse_directory(&src_dir.to_string_lossy())
+            .await?
+            .0;
         let initial_parse_time = e2e_start.elapsed();
 
         // Simulate a change to the calculator module
@@ -410,8 +448,9 @@ impl Calculator {
         // Wait for change detection
         let mut change_detected = false;
         let mut change_propagation_time = Duration::default();
-        
-        for _ in 0..50 { // Max 5 seconds
+
+        for _ in 0..50 {
+            // Max 5 seconds
             sleep(Duration::from_millis(100)).await;
             if let Some(_batch) = watcher.next_batch().await {
                 change_detected = true;
@@ -442,14 +481,17 @@ impl Calculator {
 }
 "#;
 
-        let _incremental_result = self.diff_parser.parse_incremental(
-            &module_file.to_string_lossy(),
-            old_content,
-            modified_calculator,
-            None,
-            &initial_nodes,
-        ).await?;
-        
+        let _incremental_result = self
+            .diff_parser
+            .parse_incremental(
+                &module_file.to_string_lossy(),
+                old_content,
+                modified_calculator,
+                None,
+                &initial_nodes,
+            )
+            .await?;
+
         let incremental_parse_time = reparse_start.elapsed();
         let total_e2e_time = e2e_start.elapsed();
 
@@ -608,7 +650,11 @@ impl IncrementalTestResults {
         report.push_str(&format!(
             "## Overall Result\n\
             **Target (<1 second update propagation): {}**\n",
-            if overall_success { "✅ ACHIEVED" } else { "❌ NOT MET" }
+            if overall_success {
+                "✅ ACHIEVED"
+            } else {
+                "❌ NOT MET"
+            }
         ));
 
         report
@@ -680,9 +726,9 @@ mod tests {
     async fn test_integration_test_suite() {
         let test_suite = IncrementalParsingTestSuite::new().unwrap();
         let results = test_suite.test_full_incremental_pipeline().await.unwrap();
-        
+
         println!("{}", results.generate_report());
-        
+
         // Basic assertions
         assert!(results.file_monitoring.is_some());
         assert!(results.diff_parsing.is_some());
@@ -695,7 +741,7 @@ mod tests {
     async fn test_file_monitoring_only() {
         let test_suite = IncrementalParsingTestSuite::new().unwrap();
         let result = test_suite.test_file_system_monitoring().await.unwrap();
-        
+
         assert!(result.changes_detected);
         assert!(result.change_detection_time < Duration::from_secs(5));
     }
@@ -704,7 +750,7 @@ mod tests {
     async fn test_diff_parsing_only() {
         let test_suite = IncrementalParsingTestSuite::new().unwrap();
         let result = test_suite.test_diff_based_parsing().await.unwrap();
-        
+
         assert!(result.parsing_successful);
         assert!(result.nodes_parsed > 0);
     }

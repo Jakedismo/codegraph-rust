@@ -1,14 +1,14 @@
+use crate::connection_pool::{load_base_urls_from_env, ConnectionPoolConfig, HttpClientPool};
+use crate::http2_optimizer::{Http2Optimizer, Http2OptimizerConfig};
+use crate::performance::{PerformanceOptimizer, PerformanceOptimizerConfig};
+use crate::service_registry::ServiceRegistry;
+use codegraph_core::{ConfigManager, Settings};
 use codegraph_graph::CodeGraph;
 use codegraph_parser::TreeSitterParser;
 use codegraph_vector::{EmbeddingGenerator, FaissVectorStore, SemanticSearch};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::connection_pool::{ConnectionPoolConfig, HttpClientPool, load_base_urls_from_env};
-use crate::performance::{PerformanceOptimizer, PerformanceOptimizerConfig};
-use crate::http2_optimizer::{Http2Optimizer, Http2OptimizerConfig};
-use crate::service_registry::ServiceRegistry;
-use codegraph_core::{ConfigManager, Settings};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -40,14 +40,18 @@ impl AppState {
         // Network connection pool with keep-alive and load balancing
         let pool_cfg = ConnectionPoolConfig::from_env();
         let base_urls = load_base_urls_from_env();
-        let http_client_pool = Arc::new(HttpClientPool::new(pool_cfg, base_urls).expect("Failed to init HttpClientPool"));
+        let http_client_pool = Arc::new(
+            HttpClientPool::new(pool_cfg, base_urls).expect("Failed to init HttpClientPool"),
+        );
 
         // HTTP/2 optimization
         let http2_config = Http2OptimizerConfig::default();
         let http2_optimizer = Arc::new(Http2Optimizer::new(http2_config));
 
         // API-level performance optimizer (LRU caching + complexity guardrails)
-        let perf = Arc::new(PerformanceOptimizer::new(PerformanceOptimizerConfig::default()));
+        let perf = Arc::new(PerformanceOptimizer::new(
+            PerformanceOptimizerConfig::default(),
+        ));
         {
             // Periodically close idle connections to keep pool healthy
             let pool = http_client_pool.clone();
@@ -90,10 +94,11 @@ impl WebSocketMetrics {
         self.total_subscriptions.fetch_add(1, Ordering::Relaxed);
         // track peak
         let mut peak = self.peak_subscriptions.load(Ordering::Relaxed);
-        while now > peak && self
-            .peak_subscriptions
-            .compare_exchange(peak, now, Ordering::Relaxed, Ordering::Relaxed)
-            .is_err()
+        while now > peak
+            && self
+                .peak_subscriptions
+                .compare_exchange(peak, now, Ordering::Relaxed, Ordering::Relaxed)
+                .is_err()
         {
             peak = self.peak_subscriptions.load(Ordering::Relaxed);
         }

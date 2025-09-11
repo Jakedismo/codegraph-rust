@@ -1,7 +1,6 @@
-use codegraph_core::{ChangeEvent, Result, UpdatePayload, traits::UpdateScheduler};
+use codegraph_core::{traits::UpdateScheduler, ChangeEvent, Result, UpdatePayload};
 use crossbeam_channel::{Receiver, Sender};
 use tokio::time::{self, Duration};
-
 
 pub struct UpdateSchedulerImpl;
 
@@ -35,7 +34,9 @@ impl UpdateScheduler for UpdateSchedulerImpl {
                                 }
                                 _ => None,
                             };
-                            tx.send(UpdatePayload { event, content })?;
+                            tx.send(UpdatePayload { event, content }).map_err(|e| {
+                                codegraph_core::CodeGraphError::Threading(e.to_string())
+                            })?;
                         }
                     }
 
@@ -48,7 +49,9 @@ impl UpdateScheduler for UpdateSchedulerImpl {
             }
 
             // If the buffer is getting large or it's been a while since the last event, process it.
-            if buffer.len() > 100 || (time::Instant::now() - last_event_time > Duration::from_millis(200)) {
+            if buffer.len() > 100
+                || (time::Instant::now() - last_event_time > Duration::from_millis(200))
+            {
                 if !buffer.is_empty() {
                     for event in buffer.drain(..) {
                         let content = match &event {
@@ -57,7 +60,9 @@ impl UpdateScheduler for UpdateSchedulerImpl {
                             }
                             _ => None,
                         };
-                        tx.send(UpdatePayload { event, content })?;
+                        tx.send(UpdatePayload { event, content }).map_err(|e| {
+                            codegraph_core::CodeGraphError::Threading(e.to_string())
+                        })?;
                     }
                 }
             }

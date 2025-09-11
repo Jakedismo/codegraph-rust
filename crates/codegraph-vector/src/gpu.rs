@@ -1,6 +1,6 @@
 use codegraph_core::{CodeGraphError, Result};
-use std::time::Instant;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpuDeviceInfo {
@@ -111,7 +111,7 @@ impl GpuAcceleration {
         // In a real implementation, this would detect actual GPU hardware
         // For now, we'll simulate GPU detection
         let device_info = Self::detect_gpu_device()?;
-        
+
         Ok(Self {
             device_info,
             allocations: Vec::new(),
@@ -123,7 +123,7 @@ impl GpuAcceleration {
         // Simulate GPU detection - in real implementation would use CUDA/OpenCL/Metal
         #[cfg(target_os = "macos")]
         let gpu_available = Self::detect_metal_gpu();
-        
+
         #[cfg(not(target_os = "macos"))]
         let gpu_available = Self::detect_cuda_gpu();
 
@@ -131,7 +131,7 @@ impl GpuAcceleration {
             Ok(GpuDeviceInfo {
                 available: true,
                 device_name: "Apple M-Series GPU".to_string(), // Or detected GPU name
-                memory_gb: 16.0, // Unified memory on Apple Silicon
+                memory_gb: 16.0,                               // Unified memory on Apple Silicon
                 compute_major: 2,
                 compute_minor: 0,
                 max_threads_per_block: 1024,
@@ -161,8 +161,8 @@ impl GpuAcceleration {
     fn detect_cuda_gpu() -> bool {
         // In real implementation, would check for CUDA runtime
         // For now, simulate based on common GPU presence
-        std::env::var("CUDA_VISIBLE_DEVICES").is_ok() || 
-        std::path::Path::new("/usr/local/cuda").exists()
+        std::env::var("CUDA_VISIBLE_DEVICES").is_ok()
+            || std::path::Path::new("/usr/local/cuda").exists()
     }
 
     pub fn get_device_info(&self) -> Result<&GpuDeviceInfo> {
@@ -175,20 +175,24 @@ impl GpuAcceleration {
         }
 
         if size_bytes == 0 {
-            return Err(CodeGraphError::Vector("Cannot allocate zero bytes".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Cannot allocate zero bytes".to_string(),
+            ));
         }
 
         // Check if we have enough memory (simplified check)
         let total_allocated: usize = self.allocations.iter().map(|a| a.size()).sum();
         let available_memory = (self.device_info.memory_gb * 1024.0 * 1024.0 * 1024.0) as usize;
-        
+
         if total_allocated + size_bytes > available_memory {
-            return Err(CodeGraphError::Vector("Insufficient GPU memory".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Insufficient GPU memory".to_string(),
+            ));
         }
 
         let allocation = GpuMemoryAllocation::new(size_bytes);
         self.allocations.push(allocation);
-        
+
         // Return a copy of the allocation
         Ok(GpuMemoryAllocation::new(size_bytes))
     }
@@ -199,11 +203,12 @@ impl GpuAcceleration {
         }
 
         allocation.invalidate();
-        
+
         // In real implementation, would call cudaFree or equivalent
         // For now, just simulate deallocation
-        self.allocations.retain(|a| a.device_ptr != allocation.device_ptr);
-        
+        self.allocations
+            .retain(|a| a.device_ptr != allocation.device_ptr);
+
         Ok(())
     }
 
@@ -214,33 +219,40 @@ impl GpuAcceleration {
 
         if vectors.len() % dimension != 0 {
             return Err(CodeGraphError::Vector(
-                "Vector data length not divisible by dimension".to_string()
+                "Vector data length not divisible by dimension".to_string(),
             ));
         }
 
         let vector_count = vectors.len() / dimension;
         let size_bytes = vectors.len() * std::mem::size_of::<f32>();
-        
+
         // Simulate GPU memory allocation and upload
         let allocation = GpuMemoryAllocation::new(size_bytes);
         let mut gpu_data = GpuVectorData::new(allocation, vector_count, dimension);
-        
+
         // Simulate upload time based on data size
         let upload_time_ms = (size_bytes / 1024 / 1024) as u64; // 1ms per MB
         std::thread::sleep(std::time::Duration::from_millis(upload_time_ms.min(10)));
-        
+
         gpu_data.mark_uploaded();
-        
+
         Ok(gpu_data)
     }
 
-    pub fn compute_distances(&self, query: &[f32], gpu_data: &GpuVectorData, limit: usize) -> Result<Vec<f32>> {
+    pub fn compute_distances(
+        &self,
+        query: &[f32],
+        gpu_data: &GpuVectorData,
+        limit: usize,
+    ) -> Result<Vec<f32>> {
         if !self.device_info.available {
             return Err(CodeGraphError::Vector("GPU not available".to_string()));
         }
 
         if !gpu_data.is_uploaded() {
-            return Err(CodeGraphError::Vector("Vector data not uploaded to GPU".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Vector data not uploaded to GPU".to_string(),
+            ));
         }
 
         if query.len() != gpu_data.dimension() {
@@ -253,7 +265,7 @@ impl GpuAcceleration {
 
         // Simulate GPU-accelerated distance computation
         let start = Instant::now();
-        
+
         // In real implementation, this would launch GPU kernels
         let mut distances = Vec::new();
         for i in 0..limit.min(gpu_data.vector_count()) {
@@ -261,9 +273,9 @@ impl GpuAcceleration {
             let distance = (i as f32 * 0.1) + (query[0] * 0.01);
             distances.push(distance);
         }
-        
+
         let computation_time = start.elapsed();
-        
+
         // Simulate realistic GPU computation time
         if computation_time < std::time::Duration::from_micros(100) {
             std::thread::sleep(std::time::Duration::from_micros(100));
@@ -276,9 +288,17 @@ impl GpuAcceleration {
         Ok(&self.cpu_fallback)
     }
 
-    pub fn compute_distances_cpu(&self, query: &[f32], vectors: &[f32], dimension: usize, limit: usize) -> Result<Vec<f32>> {
+    pub fn compute_distances_cpu(
+        &self,
+        query: &[f32],
+        vectors: &[f32],
+        dimension: usize,
+        limit: usize,
+    ) -> Result<Vec<f32>> {
         if vectors.len() % dimension != 0 {
-            return Err(CodeGraphError::Vector("Invalid vector data layout".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Invalid vector data layout".to_string(),
+            ));
         }
 
         let vector_count = vectors.len() / dimension;
@@ -287,7 +307,7 @@ impl GpuAcceleration {
         for i in 0..limit.min(vector_count) {
             let start_idx = i * dimension;
             let vector = &vectors[start_idx..start_idx + dimension];
-            
+
             let distance = self.cosine_distance(query, vector);
             distances.push(distance);
         }
@@ -314,7 +334,7 @@ impl GpuAcceleration {
     pub fn get_memory_stats(&self) -> GpuMemoryStats {
         let total_allocated: usize = self.allocations.iter().map(|a| a.size()).sum();
         let total_memory = (self.device_info.memory_gb * 1024.0 * 1024.0 * 1024.0) as usize;
-        
+
         GpuMemoryStats {
             total_memory_bytes: total_memory,
             allocated_bytes: total_allocated,
@@ -332,7 +352,7 @@ impl GpuAcceleration {
         // In real implementation, would call cudaDeviceSynchronize or equivalent
         // For now, just simulate synchronization delay
         std::thread::sleep(std::time::Duration::from_micros(10));
-        
+
         Ok(())
     }
 
@@ -344,7 +364,10 @@ impl GpuAcceleration {
         // In real implementation, would call cudaSetDevice or equivalent
         // For now, just validate device_id
         if device_id > 0 {
-            return Err(CodeGraphError::Vector(format!("Invalid device ID: {}", device_id)));
+            return Err(CodeGraphError::Vector(format!(
+                "Invalid device ID: {}",
+                device_id
+            )));
         }
 
         Ok(())
@@ -362,20 +385,18 @@ pub struct GpuMemoryStats {
 
 impl Default for GpuAcceleration {
     fn default() -> Self {
-        Self::new().unwrap_or_else(|_| {
-            Self {
-                device_info: GpuDeviceInfo {
-                    available: false,
-                    device_name: "Failed to initialize".to_string(),
-                    memory_gb: 0.0,
-                    compute_major: 0,
-                    compute_minor: 0,
-                    max_threads_per_block: 0,
-                    multiprocessor_count: 0,
-                },
-                allocations: Vec::new(),
-                cpu_fallback: CpuFallback::new(),
-            }
+        Self::new().unwrap_or_else(|_| Self {
+            device_info: GpuDeviceInfo {
+                available: false,
+                device_name: "Failed to initialize".to_string(),
+                memory_gb: 0.0,
+                compute_major: 0,
+                compute_minor: 0,
+                max_threads_per_block: 0,
+                multiprocessor_count: 0,
+            },
+            allocations: Vec::new(),
+            cpu_fallback: CpuFallback::new(),
         })
     }
 }

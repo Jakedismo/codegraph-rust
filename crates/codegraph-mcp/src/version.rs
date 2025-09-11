@@ -96,7 +96,14 @@ impl VersionNegotiator {
     }
 
     pub fn negotiate(&self, requested_version: &str) -> crate::Result<ProtocolVersion> {
-        if let Some(negotiated) = ProtocolVersion::negotiate(requested_version, &self.supported_versions.iter().map(|s| s.as_str()).collect::<Vec<_>>()) {
+        if let Some(negotiated) = ProtocolVersion::negotiate(
+            requested_version,
+            &self
+                .supported_versions
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>(),
+        ) {
             ProtocolVersion::new(negotiated)
         } else {
             Err(crate::McpError::VersionMismatch {
@@ -111,7 +118,8 @@ impl VersionNegotiator {
     }
 
     pub fn supports(&self, version: &str) -> bool {
-        self.supported_versions.contains(&version.to_string()) && ProtocolVersion::is_supported(version)
+        self.supported_versions.contains(&version.to_string())
+            && ProtocolVersion::is_supported(version)
     }
 }
 
@@ -149,7 +157,7 @@ mod tests {
         let negotiator = VersionNegotiator::new();
         assert!(negotiator.negotiate("2025-03-26").is_ok());
         assert!(negotiator.negotiate("2024-11-05").is_ok());
-        
+
         // When negotiating unsupported version, it should return latest supported
         let result = negotiator.negotiate("1.0.0");
         assert!(result.is_ok()); // Will fallback to latest supported version

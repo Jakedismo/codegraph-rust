@@ -62,3 +62,13 @@ faiss = ["dep:faiss"]
 persistent = ["dep:memmap2", "dep:flate2"]
 gpu = ["faiss/gpu"]
 readahead = []
+
+[[example]]
+name = "memory_profiler_demo"
+path = "examples/memory_profiler_demo.rs"
+required-features = ["demo"]
+
+[[example]]
+name = "readahead_demo"
+path = "examples/readahead_demo.rs"
+required-features = ["demo"]

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::fs;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, error, info, warn};
 
 /// Header for the memory-mapped vector storage file
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,18 +59,18 @@ pub enum CompressionType {
     /// No compression
     None,
     /// Product Quantization
-    ProductQuantization { 
+    ProductQuantization {
         /// Number of subquantizers
-        m: usize, 
+        m: usize,
         /// Number of bits per subquantizer
-        nbits: u32 
+        nbits: u32,
     },
     /// Scalar Quantization
-    ScalarQuantization { 
+    ScalarQuantization {
         /// Number of bits per scalar
         nbits: u32,
         /// Use uniform quantization
-        uniform: bool 
+        uniform: bool,
     },
 }
 
@@ -134,13 +134,13 @@ impl ProductQuantizer {
     pub fn new(dimension: usize, m: usize, nbits: u32) -> Result<Self> {
         if dimension % m != 0 {
             return Err(CodeGraphError::Vector(
-                "Dimension must be divisible by number of subquantizers".to_string()
+                "Dimension must be divisible by number of subquantizers".to_string(),
             ));
         }
-        
+
         let dsub = dimension / m;
         let ksub = 1 << nbits;
-        
+
         Ok(Self {
             m,
             dsub,
@@ -154,29 +154,33 @@ impl ProductQuantizer {
     /// Train the quantizer on a set of vectors
     pub fn train(&mut self, vectors: &[Vec<f32>]) -> Result<()> {
         if vectors.is_empty() {
-            return Err(CodeGraphError::Vector("Cannot train on empty vector set".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Cannot train on empty vector set".to_string(),
+            ));
         }
 
         let dimension = vectors[0].len();
         if dimension != self.m * self.dsub {
-            return Err(CodeGraphError::Vector("Vector dimension mismatch".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Vector dimension mismatch".to_string(),
+            ));
         }
 
         // Train each subquantizer independently using k-means
         for sub_idx in 0..self.m {
             let start_dim = sub_idx * self.dsub;
             let end_dim = start_dim + self.dsub;
-            
+
             // Extract subvectors for this subquantizer
             let subvectors: Vec<Vec<f32>> = vectors
                 .iter()
                 .map(|v| v[start_dim..end_dim].to_vec())
                 .collect();
-            
+
             // Run k-means clustering
             self.centroids[sub_idx] = self.kmeans_clustering(&subvectors, self.ksub)?;
         }
-        
+
         self.trained = true;
         debug!("Product quantizer trained with {} subquantizers", self.m);
         Ok(())
@@ -189,16 +193,16 @@ impl ProductQuantizer {
         }
 
         let mut codes = Vec::with_capacity(self.m);
-        
+
         for sub_idx in 0..self.m {
             let start_dim = sub_idx * self.dsub;
             let end_dim = start_dim + self.dsub;
             let subvector = &vector[start_dim..end_dim];
-            
+
             // Find nearest centroid
             let mut best_idx = 0;
             let mut best_dist = f32::INFINITY;
-            
+
             for (centroid_idx, centroid) in self.centroids[sub_idx].iter().enumerate() {
                 let dist = self.euclidean_distance(subvector, centroid);
                 if dist < best_dist {
@@ -206,10 +210,10 @@ impl ProductQuantizer {
                     best_idx = centroid_idx;
                 }
             }
-            
+
             codes.push(best_idx as u8);
         }
-        
+
         Ok(codes)
     }
 
@@ -218,50 +222,53 @@ impl ProductQuantizer {
         if !self.trained {
             return Err(CodeGraphError::Vector("Quantizer not trained".to_string()));
         }
-        
+
         if codes.len() != self.m {
             return Err(CodeGraphError::Vector("Invalid code length".to_string()));
         }
 
         let mut decoded = Vec::with_capacity(self.m * self.dsub);
-        
+
         for (sub_idx, &code) in codes.iter().enumerate() {
             let centroid_idx = code as usize;
             if centroid_idx >= self.ksub {
                 return Err(CodeGraphError::Vector("Invalid centroid index".to_string()));
             }
-            
+
             decoded.extend_from_slice(&self.centroids[sub_idx][centroid_idx]);
         }
-        
+
         Ok(decoded)
     }
 
     /// Simple k-means clustering implementation
     fn kmeans_clustering(&self, vectors: &[Vec<f32>], k: usize) -> Result<Vec<Vec<f32>>> {
         if vectors.is_empty() || k == 0 {
-            return Err(CodeGraphError::Vector("Invalid clustering parameters".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Invalid clustering parameters".to_string(),
+            ));
         }
 
         let dimension = vectors[0].len();
         let mut centroids = Vec::with_capacity(k);
-        
+
         // Initialize centroids randomly from input vectors
         for i in 0..k {
             let idx = i % vectors.len();
             centroids.push(vectors[idx].clone());
         }
-        
+
         // Run k-means iterations
-        for _iteration in 0..50 { // Maximum 50 iterations
+        for _iteration in 0..50 {
+            // Maximum 50 iterations
             let mut assignments = vec![0; vectors.len()];
             let mut changed = false;
-            
+
             // Assign vectors to nearest centroids
             for (vec_idx, vector) in vectors.iter().enumerate() {
                 let mut best_centroid = 0;
                 let mut best_dist = f32::INFINITY;
-                
+
                 for (centroid_idx, centroid) in centroids.iter().enumerate() {
                     let dist = self.euclidean_distance(vector, centroid);
                     if dist < best_dist {
@@ -269,13 +276,13 @@ impl ProductQuantizer {
                         best_centroid = centroid_idx;
                     }
                 }
-                
+
                 if assignments[vec_idx] != best_centroid {
                     changed = true;
                 }
                 assignments[vec_idx] = best_centroid;
             }
-            
+
             // Update centroids
             for centroid_idx in 0..k {
                 let assigned_vectors: Vec<&Vec<f32>> = vectors
@@ -284,7 +291,7 @@ impl ProductQuantizer {
                     .filter(|(idx, _)| assignments[*idx] == centroid_idx)
                     .map(|(_, vec)| vec)
                     .collect();
-                
+
                 if !assigned_vectors.is_empty() {
                     let mut new_centroid = vec![0.0; dimension];
                     for vector in assigned_vectors.iter() {
@@ -292,21 +299,21 @@ impl ProductQuantizer {
                             new_centroid[i] += val;
                         }
                     }
-                    
+
                     let count = assigned_vectors.len() as f32;
                     for val in new_centroid.iter_mut() {
                         *val /= count;
                     }
-                    
+
                     centroids[centroid_idx] = new_centroid;
                 }
             }
-            
+
             if !changed {
                 break;
             }
         }
-        
+
         Ok(centroids)
     }
 
@@ -347,7 +354,9 @@ impl ScalarQuantizer {
 
     pub fn train(&mut self, vectors: &[Vec<f32>]) -> Result<()> {
         if vectors.is_empty() {
-            return Err(CodeGraphError::Vector("Cannot train on empty vector set".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Cannot train on empty vector set".to_string(),
+            ));
         }
 
         let dimension = vectors[0].len();
@@ -409,7 +418,7 @@ impl ScalarQuantizer {
         for (i, &val) in vector.iter().enumerate() {
             let normalized = (val - self.biases[i]) * self.scales[i];
             let quantized = (normalized.max(0.0).min(max_val as f32)) as u32;
-            
+
             // Pack bits efficiently
             match self.nbits {
                 8 => encoded.push(quantized as u8),
@@ -443,7 +452,9 @@ impl ScalarQuantizer {
         for i in 0..dimension {
             let start_idx = i * bytes_per_val;
             if start_idx + bytes_per_val > encoded.len() {
-                return Err(CodeGraphError::Vector("Insufficient encoded data".to_string()));
+                return Err(CodeGraphError::Vector(
+                    "Insufficient encoded data".to_string(),
+                ));
             }
 
             let quantized = match self.nbits {
@@ -451,7 +462,7 @@ impl ScalarQuantizer {
                 16 => u16::from_le_bytes([encoded[start_idx], encoded[start_idx + 1]]) as u32,
                 _ => u32::from_le_bytes([
                     encoded[start_idx],
-                    encoded[start_idx + 1], 
+                    encoded[start_idx + 1],
                     encoded[start_idx + 2],
                     encoded[start_idx + 3],
                 ]),
@@ -492,11 +503,7 @@ pub struct PersistentVectorStore {
 }
 
 impl PersistentVectorStore {
-    pub fn new<P: AsRef<Path>>(
-        storage_path: P, 
-        backup_path: P,
-        dimension: usize
-    ) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(storage_path: P, backup_path: P, dimension: usize) -> Result<Self> {
         let storage_path = storage_path.as_ref().to_path_buf();
         let backup_path = backup_path.as_ref().to_path_buf();
         let log_path = storage_path.with_extension("log");
@@ -547,36 +554,41 @@ impl PersistentVectorStore {
 
         // Write header
         let header = self.header.read();
-        let header_bytes = bincode::serialize(&*header)
-            .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
-        
+        let header_bytes =
+            bincode::serialize(&*header).map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+
         file.write_all(&(header_bytes.len() as u64).to_le_bytes())?;
         file.write_all(&header_bytes)?;
         file.flush()?;
 
-        info!("Initialized persistent vector storage at {:?}", self.storage_path);
+        info!(
+            "Initialized persistent vector storage at {:?}",
+            self.storage_path
+        );
         Ok(())
     }
 
     /// Load storage from disk
     fn load_from_disk(&self) -> Result<()> {
         let mut file = File::open(&self.storage_path)?;
-        
+
         // Read header size
         let mut header_size_bytes = [0u8; 8];
         file.read_exact(&mut header_size_bytes)?;
         let header_size = u64::from_le_bytes(header_size_bytes);
-        
+
         // Read header
         let mut header_bytes = vec![0u8; header_size as usize];
         file.read_exact(&mut header_bytes)?;
-        
+
         let loaded_header: StorageHeader = bincode::deserialize(&header_bytes)
             .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
-        
+
         // Verify header integrity
         if loaded_header.version != 1 {
-            return Err(CodeGraphError::Vector("Unsupported storage version".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Unsupported storage version".to_string(),
+            ));
         }
 
         *self.header.write() = loaded_header.clone();
@@ -585,25 +597,25 @@ impl PersistentVectorStore {
         // Load metadata if available
         if loaded_header.metadata_offset > 0 {
             file.seek(SeekFrom::Start(loaded_header.metadata_offset))?;
-            
+
             let mut metadata_size_bytes = [0u8; 8];
             file.read_exact(&mut metadata_size_bytes)?;
             let metadata_size = u64::from_le_bytes(metadata_size_bytes);
-            
+
             if metadata_size > 0 {
                 let mut metadata_bytes = vec![0u8; metadata_size as usize];
                 file.read_exact(&mut metadata_bytes)?;
-                
-                let loaded_metadata: HashMap<NodeId, VectorMetadata> = 
+
+                let loaded_metadata: HashMap<NodeId, VectorMetadata> =
                     bincode::deserialize(&metadata_bytes)
                         .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
-                
+
                 // Build reverse mapping
                 let mut vector_id_mapping = HashMap::new();
                 for (node_id, metadata) in &loaded_metadata {
                     vector_id_mapping.insert(metadata.vector_id, *node_id);
                 }
-                
+
                 *self.metadata.write() = loaded_metadata;
                 *self.vector_id_mapping.write() = vector_id_mapping;
             }
@@ -618,14 +630,17 @@ impl PersistentVectorStore {
             }
         }
 
-        info!("Loaded persistent vector storage with {} vectors", loaded_header.vector_count);
+        info!(
+            "Loaded persistent vector storage with {} vectors",
+            loaded_header.vector_count
+        );
         Ok(())
     }
 
     /// Save storage to disk
     async fn save_to_disk(&self) -> Result<()> {
         let temp_path = self.storage_path.with_extension("tmp");
-        
+
         {
             let mut file = OpenOptions::new()
                 .create(true)
@@ -640,35 +655,39 @@ impl PersistentVectorStore {
                 .as_secs();
 
             // Calculate offsets
-            let header_bytes = bincode::serialize(&*header)
-                .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+            let header_bytes =
+                bincode::serialize(&*header).map_err(|e| CodeGraphError::Vector(e.to_string()))?;
             let header_section_size = 8 + header_bytes.len() as u64;
 
             header.metadata_offset = header_section_size;
-            
+
             // Write header
             file.write_all(&(header_bytes.len() as u64).to_le_bytes())?;
-            file.write_all(&bincode::serialize(&*header)
-                .map_err(|e| CodeGraphError::Vector(e.to_string()))?)?;
+            file.write_all(
+                &bincode::serialize(&*header).map_err(|e| CodeGraphError::Vector(e.to_string()))?,
+            )?;
 
             // Write metadata
             let metadata = self.metadata.read();
             let metadata_bytes = bincode::serialize(&*metadata)
                 .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
-            
+
             file.write_all(&(metadata_bytes.len() as u64).to_le_bytes())?;
             file.write_all(&metadata_bytes)?;
-            
+
             file.flush()?;
         }
 
         // Atomic replace
         fs::rename(&temp_path, &self.storage_path).await?;
-        
+
         // Save update log
-        let log_entries = self.update_log.lock();
+        let log_entries = {
+            let log = self.update_log.lock();
+            log.clone()
+        };
         if !log_entries.is_empty() {
-            let log_bytes = bincode::serialize(&*log_entries)
+            let log_bytes = bincode::serialize(&log_entries)
                 .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
             fs::write(&self.log_path, log_bytes).await?;
         }
@@ -682,7 +701,7 @@ impl PersistentVectorStore {
         let header = self.header.read();
         let pq = ProductQuantizer::new(header.dimension, m, nbits)?;
         *self.pq_quantizer.write() = Some(pq);
-        
+
         info!("Enabled product quantization with m={}, nbits={}", m, nbits);
         Ok(())
     }
@@ -692,8 +711,11 @@ impl PersistentVectorStore {
         let header = self.header.read();
         let sq = ScalarQuantizer::new(header.dimension, nbits, uniform);
         *self.sq_quantizer.write() = Some(sq);
-        
-        info!("Enabled scalar quantization with nbits={}, uniform={}", nbits, uniform);
+
+        info!(
+            "Enabled scalar quantization with nbits={}, uniform={}",
+            nbits, uniform
+        );
         Ok(())
     }
 
@@ -703,16 +725,16 @@ impl PersistentVectorStore {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let backup_file = self.backup_path.join(format!("backup_{}.db", timestamp));
-        
+
         fs::copy(&self.storage_path, &backup_file).await?;
-        
+
         if self.log_path.exists() {
             let backup_log = self.backup_path.join(format!("backup_{}.log", timestamp));
             fs::copy(&self.log_path, &backup_log).await?;
         }
-        
+
         info!("Created backup at {:?}", backup_file);
         Ok(backup_file)
     }
@@ -726,13 +748,13 @@ impl PersistentVectorStore {
 
         // Create current backup before restoring
         self.create_backup().await?;
-        
+
         // Replace current storage with backup
         fs::copy(backup_path, &self.storage_path).await?;
-        
+
         // Reload from restored file
         self.load_from_disk()?;
-        
+
         info!("Restored from backup {:?}", backup_path);
         Ok(())
     }
@@ -754,7 +776,8 @@ impl PersistentVectorStore {
             match entry.operation {
                 UpdateOperation::Insert | UpdateOperation::Update => {
                     if let Some(vector_data) = entry.vector_data {
-                        self.store_single_vector(entry.node_id, &vector_data).await?;
+                        self.store_single_vector(entry.node_id, &vector_data)
+                            .await?;
                     }
                 }
                 UpdateOperation::Delete => {
@@ -765,7 +788,7 @@ impl PersistentVectorStore {
 
         // Clear the log after applying updates
         self.update_log.lock().clear();
-        
+
         // Remove log file
         if self.log_path.exists() {
             fs::remove_file(&self.log_path).await?;
@@ -794,9 +817,9 @@ impl PersistentVectorStore {
             if pq.trained {
                 compressed_data = pq.encode(vector)?;
                 compressed_size = compressed_data.len();
-                compression_type = CompressionType::ProductQuantization { 
-                    m: pq.m, 
-                    nbits: pq.nbits 
+                compression_type = CompressionType::ProductQuantization {
+                    m: pq.m,
+                    nbits: pq.nbits,
                 };
             } else {
                 compressed_data = bincode::serialize(vector)
@@ -808,9 +831,9 @@ impl PersistentVectorStore {
             if sq.trained {
                 compressed_data = sq.encode(vector)?;
                 compressed_size = compressed_data.len();
-                compression_type = CompressionType::ScalarQuantization { 
-                    nbits: sq.nbits, 
-                    uniform: sq.uniform 
+                compression_type = CompressionType::ScalarQuantization {
+                    nbits: sq.nbits,
+                    uniform: sq.uniform,
                 };
             } else {
                 compressed_data = bincode::serialize(vector)
@@ -819,8 +842,8 @@ impl PersistentVectorStore {
                 compression_type = CompressionType::None;
             }
         } else {
-            compressed_data = bincode::serialize(vector)
-                .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+            compressed_data =
+                bincode::serialize(vector).map_err(|e| CodeGraphError::Vector(e.to_string()))?;
             compressed_size = compressed_data.len();
             compression_type = CompressionType::None;
         }
@@ -841,7 +864,7 @@ impl PersistentVectorStore {
         {
             let mut meta_map = self.metadata.write();
             let mut vector_map = self.vector_id_mapping.write();
-            
+
             meta_map.insert(node_id, metadata);
             vector_map.insert(vector_id, node_id);
         }
@@ -853,9 +876,12 @@ impl PersistentVectorStore {
             header.compression_type = compression_type;
         }
 
-        debug!("Stored vector for node {} with compression ratio {:.2}", 
-               node_id, vector.len() * 4 / compressed_size.max(1));
-        
+        debug!(
+            "Stored vector for node {} with compression ratio {:.2}",
+            node_id,
+            vector.len() * 4 / compressed_size.max(1)
+        );
+
         Ok(())
     }
 
@@ -882,7 +908,9 @@ impl PersistentVectorStore {
     /// Train quantizers on existing vectors
     pub async fn train_quantizers(&self, sample_vectors: &[Vec<f32>]) -> Result<()> {
         if sample_vectors.is_empty() {
-            return Err(CodeGraphError::Vector("No vectors provided for training".to_string()));
+            return Err(CodeGraphError::Vector(
+                "No vectors provided for training".to_string(),
+            ));
         }
 
         // Train PQ if enabled
@@ -904,24 +932,23 @@ impl PersistentVectorStore {
     pub fn get_stats(&self) -> Result<StorageStats> {
         let header = self.header.read();
         let metadata = self.metadata.read();
-        
+
         let total_vectors = header.vector_count;
         let active_vectors = metadata.len();
         let storage_size = std::fs::metadata(&self.storage_path)
             .map(|m| m.len())
             .unwrap_or(0);
 
-        let compressed_vectors = metadata.values()
-            .filter(|m| m.compressed)
-            .count();
+        let compressed_vectors = metadata.values().filter(|m| m.compressed).count();
 
         let avg_compression_ratio = if compressed_vectors > 0 {
             let original_size = header.dimension * 4; // f32 size
-            let total_compressed_size: usize = metadata.values()
+            let total_compressed_size: usize = metadata
+                .values()
                 .filter(|m| m.compressed)
                 .map(|m| m.compressed_size)
                 .sum();
-            
+
             (original_size * compressed_vectors) as f64 / total_compressed_size as f64
         } else {
             1.0
@@ -958,9 +985,7 @@ impl VectorStore for PersistentVectorStore {
     async fn store_embeddings(&mut self, nodes: &[CodeNode]) -> Result<()> {
         let vectors_with_embeddings: Vec<_> = nodes
             .iter()
-            .filter_map(|node| {
-                node.embedding.as_ref().map(|emb| (node.id, emb.clone()))
-            })
+            .filter_map(|node| node.embedding.as_ref().map(|emb| (node.id, emb.clone())))
             .collect();
 
         if vectors_with_embeddings.is_empty() {
@@ -972,13 +997,13 @@ impl VectorStore for PersistentVectorStore {
             .iter()
             .map(|(_, emb)| emb.clone())
             .collect();
-        
+
         self.train_quantizers(&sample_vectors).await?;
 
         // Store vectors
         for (node_id, embedding) in vectors_with_embeddings {
             self.store_single_vector(node_id, &embedding).await?;
-            
+
             // Add to incremental log
             let log_entry = UpdateLogEntry {
                 operation: UpdateOperation::Insert,
@@ -990,13 +1015,13 @@ impl VectorStore for PersistentVectorStore {
                     .as_secs(),
                 vector_data: Some(embedding),
             };
-            
+
             self.update_log.lock().push(log_entry);
         }
 
         // Save to disk
         self.save_to_disk().await?;
-        
+
         info!("Stored {} embeddings to persistent storage", nodes.len());
         Ok(())
     }
@@ -1037,10 +1062,10 @@ impl VectorStore for PersistentVectorStore {
                 .zip(reconstructed_vector.iter())
                 .map(|(a, b)| a * b)
                 .sum();
-            
+
             let query_norm: f32 = query_embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
             let similarity = dot_product / (query_norm * meta.norm);
-            
+
             similarities.push((*node_id, similarity));
         }
 
@@ -1069,7 +1094,9 @@ impl VectorStore for PersistentVectorStore {
                         let decompressed = pq.decode(&dummy_codes)?;
                         Ok(Some(decompressed))
                     } else {
-                        Err(CodeGraphError::Vector("PQ quantizer not available".to_string()))
+                        Err(CodeGraphError::Vector(
+                            "PQ quantizer not available".to_string(),
+                        ))
                     }
                 }
                 CompressionType::ScalarQuantization { .. } => {
@@ -1079,17 +1106,19 @@ impl VectorStore for PersistentVectorStore {
                         let decompressed = sq.decode(&dummy_encoded)?;
                         Ok(Some(decompressed))
                     } else {
-                        Err(CodeGraphError::Vector("SQ quantizer not available".to_string()))
+                        Err(CodeGraphError::Vector(
+                            "SQ quantizer not available".to_string(),
+                        ))
                     }
                 }
                 CompressionType::None => {
                     // Load uncompressed vector from disk
-                    Ok(Some(vec![0.0; header.dimension]))
+                    Ok(Some(vec![0.0; self.header.read().dimension]))
                 }
             }
         } else {
             // Load uncompressed vector from disk
-            Ok(Some(vec![0.0; header.dimension]))
+            Ok(Some(vec![0.0; self.header.read().dimension]))
         }
     }
 }

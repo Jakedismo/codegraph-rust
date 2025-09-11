@@ -1,4 +1,4 @@
-use crate::{CodeNode, NodeId, Result, ChangeEvent, UpdatePayload, Delta};
+use crate::{ChangeEvent, CodeNode, Delta, NodeId, Result, UpdatePayload};
 use async_trait::async_trait;
 use crossbeam_channel::{Receiver, Sender};
 

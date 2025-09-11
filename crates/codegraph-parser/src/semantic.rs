@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::Result;
-use tree_sitter::{Node, Tree, TreeCursor};
 use tracing::{debug, info, warn};
+use tree_sitter::{Node, Tree, TreeCursor};
 
 use codegraph_core::{CodeGraphError, CodeNode, Language};
 
@@ -152,22 +152,36 @@ pub struct SemanticAnalyzer {
 impl SemanticAnalyzer {
     pub fn new() -> Self {
         let mut analyzers: HashMap<Language, Box<dyn LanguageSemanticAnalyzer>> = HashMap::new();
-        
+
         // Register language-specific analyzers
         analyzers.insert(Language::Rust, Box::new(RustSemanticAnalyzer::new()));
-        analyzers.insert(Language::TypeScript, Box::new(TypeScriptSemanticAnalyzer::new()));
-        analyzers.insert(Language::JavaScript, Box::new(JavaScriptSemanticAnalyzer::new()));
+        analyzers.insert(
+            Language::TypeScript,
+            Box::new(TypeScriptSemanticAnalyzer::new()),
+        );
+        analyzers.insert(
+            Language::JavaScript,
+            Box::new(JavaScriptSemanticAnalyzer::new()),
+        );
         analyzers.insert(Language::Python, Box::new(PythonSemanticAnalyzer::new()));
         analyzers.insert(Language::Go, Box::new(GoSemanticAnalyzer::new()));
-        
+
         Self { language_analyzers }
     }
 
-    pub fn analyze(&self, tree: &Tree, content: &str, language: Language) -> Result<SemanticContext> {
+    pub fn analyze(
+        &self,
+        tree: &Tree,
+        content: &str,
+        language: Language,
+    ) -> Result<SemanticContext> {
         if let Some(analyzer) = self.language_analyzers.get(&language) {
             analyzer.analyze(tree, content)
         } else {
-            warn!("No semantic analyzer available for language: {:?}", language);
+            warn!(
+                "No semantic analyzer available for language: {:?}",
+                language
+            );
             Ok(SemanticContext {
                 symbols: HashMap::new(),
                 scopes: vec![Scope {
@@ -228,9 +242,10 @@ impl SemanticAnalyzer {
         affected: &mut HashSet<String>,
     ) {
         for dependency in &context.dependencies {
-            if dependency.target_symbol == symbol_name 
-                && !affected.contains(&dependency.symbol) 
-                && dependency.strength >= DependencyStrength::Medium {
+            if dependency.target_symbol == symbol_name
+                && !affected.contains(&dependency.symbol)
+                && dependency.strength >= DependencyStrength::Medium
+            {
                 affected.insert(dependency.symbol.clone());
                 // Recursively find dependencies
                 self.find_dependent_symbols(context, &dependency.symbol, affected);
@@ -251,7 +266,7 @@ impl SemanticAnalyzer {
                 Some(new_symbol) => {
                     if self.has_symbol_changed(old_symbol, new_symbol) {
                         impact.modified_symbols.insert(name.clone());
-                        
+
                         // Determine impact level based on symbol type
                         let impact_level = match old_symbol.symbol_type {
                             SymbolType::Function | SymbolType::Method => ImpactLevel::High,
@@ -260,13 +275,15 @@ impl SemanticAnalyzer {
                             SymbolType::Constant => ImpactLevel::Low,
                             _ => ImpactLevel::Medium,
                         };
-                        
+
                         impact.symbol_impacts.insert(name.clone(), impact_level);
                     }
                 }
                 None => {
                     impact.removed_symbols.insert(name.clone());
-                    impact.symbol_impacts.insert(name.clone(), ImpactLevel::High);
+                    impact
+                        .symbol_impacts
+                        .insert(name.clone(), ImpactLevel::High);
                 }
             }
         }
@@ -286,10 +303,10 @@ impl SemanticAnalyzer {
     }
 
     fn has_symbol_changed(&self, old_symbol: &Symbol, new_symbol: &Symbol) -> bool {
-        old_symbol.symbol_type != new_symbol.symbol_type ||
-        old_symbol.visibility != new_symbol.visibility ||
-        old_symbol.references.len() != new_symbol.references.len() ||
-        old_symbol.metadata != new_symbol.metadata
+        old_symbol.symbol_type != new_symbol.symbol_type
+            || old_symbol.visibility != new_symbol.visibility
+            || old_symbol.references.len() != new_symbol.references.len()
+            || old_symbol.metadata != new_symbol.metadata
     }
 
     fn analyze_dependency_changes(
@@ -299,12 +316,14 @@ impl SemanticAnalyzer {
         impact: &mut ChangeImpactAnalysis,
     ) {
         // Create maps for efficient lookup
-        let old_deps: HashMap<String, &Dependency> = old_context.dependencies
+        let old_deps: HashMap<String, &Dependency> = old_context
+            .dependencies
             .iter()
             .map(|d| (format!("{}:{}", d.symbol, d.target_symbol), d))
             .collect();
 
-        let new_deps: HashMap<String, &Dependency> = new_context.dependencies
+        let new_deps: HashMap<String, &Dependency> = new_context
+            .dependencies
             .iter()
             .map(|d| (format!("{}:{}", d.symbol, d.target_symbol), d))
             .collect();
@@ -313,8 +332,9 @@ impl SemanticAnalyzer {
         for (key, old_dep) in &old_deps {
             match new_deps.get(key) {
                 Some(new_dep) => {
-                    if old_dep.dependency_type != new_dep.dependency_type ||
-                       old_dep.strength != new_dep.strength {
+                    if old_dep.dependency_type != new_dep.dependency_type
+                        || old_dep.strength != new_dep.strength
+                    {
                         impact.modified_dependencies.push((*new_dep).clone());
                     }
                 }
@@ -358,7 +378,11 @@ impl ChangeImpactAnalysis {
     }
 
     pub fn get_max_impact_level(&self) -> ImpactLevel {
-        self.symbol_impacts.values().max().cloned().unwrap_or(ImpactLevel::Low)
+        self.symbol_impacts
+            .values()
+            .max()
+            .cloned()
+            .unwrap_or(ImpactLevel::Low)
     }
 }
 
@@ -391,18 +415,19 @@ impl RustSemanticAnalyzer {
 impl LanguageSemanticAnalyzer for RustSemanticAnalyzer {
     fn analyze(&self, tree: &Tree, content: &str) -> Result<SemanticContext> {
         let mut cursor = tree.walk();
-        
-        let symbols_map: HashMap<String, Symbol> = self.extract_symbols(&mut cursor, content)
+
+        let symbols_map: HashMap<String, Symbol> = self
+            .extract_symbols(&mut cursor, content)
             .into_iter()
             .map(|s| (s.name.clone(), s))
             .collect();
-            
+
         cursor = tree.walk();
         let scopes = self.extract_scopes(&mut cursor);
-        
+
         cursor = tree.walk();
         let imports = self.extract_imports(&mut cursor, content);
-        
+
         cursor = tree.walk();
         let exports = self.extract_exports(&mut cursor, content);
 
@@ -433,7 +458,7 @@ impl LanguageSemanticAnalyzer for RustSemanticAnalyzer {
     fn extract_scopes(&self, cursor: &mut TreeCursor) -> Vec<Scope> {
         let mut scopes = Vec::new();
         let mut scope_id = 0;
-        
+
         // Global scope
         scopes.push(Scope {
             id: scope_id,
@@ -464,7 +489,7 @@ impl LanguageSemanticAnalyzer for RustSemanticAnalyzer {
 
     fn analyze_dependencies(&self, context: &SemanticContext) -> Vec<Dependency> {
         let mut dependencies = Vec::new();
-        
+
         // Analyze function calls, type usage, etc.
         for (symbol_name, symbol) in &context.symbols {
             for reference in &symbol.references {
@@ -499,7 +524,7 @@ impl RustSemanticAnalyzer {
         scope_id: usize,
     ) {
         let node = cursor.node();
-        
+
         match node.kind() {
             "function_item" => {
                 if let Some(symbol) = self.extract_function_symbol(node, lines, scope_id) {
@@ -543,9 +568,15 @@ impl RustSemanticAnalyzer {
         }
     }
 
-    fn extract_function_symbol(&self, node: Node, lines: &[&str], scope_id: usize) -> Option<Symbol> {
+    fn extract_function_symbol(
+        &self,
+        node: Node,
+        lines: &[&str],
+        scope_id: usize,
+    ) -> Option<Symbol> {
         // Find function name
-        let name = self.find_child_by_kind(node, "identifier")
+        let name = self
+            .find_child_by_kind(node, "identifier")
             .and_then(|n| self.get_node_text(n, lines))?;
 
         let visibility = if self.has_pub_modifier(node) {
@@ -566,7 +597,8 @@ impl RustSemanticAnalyzer {
     }
 
     fn extract_struct_symbol(&self, node: Node, lines: &[&str], scope_id: usize) -> Option<Symbol> {
-        let name = self.find_child_by_kind(node, "type_identifier")
+        let name = self
+            .find_child_by_kind(node, "type_identifier")
             .and_then(|n| self.get_node_text(n, lines))?;
 
         let visibility = if self.has_pub_modifier(node) {
@@ -586,8 +618,14 @@ impl RustSemanticAnalyzer {
         })
     }
 
-    fn extract_variable_symbol(&self, node: Node, lines: &[&str], scope_id: usize) -> Option<Symbol> {
-        let name = self.find_child_by_kind(node, "identifier")
+    fn extract_variable_symbol(
+        &self,
+        node: Node,
+        lines: &[&str],
+        scope_id: usize,
+    ) -> Option<Symbol> {
+        let name = self
+            .find_child_by_kind(node, "identifier")
             .and_then(|n| self.get_node_text(n, lines))?;
 
         Some(Symbol {
@@ -609,7 +647,7 @@ impl RustSemanticAnalyzer {
         parent_id: Option<usize>,
     ) {
         let node = cursor.node();
-        
+
         let scope_type = match node.kind() {
             "function_item" => Some(ScopeType::Function),
             "impl_item" => Some(ScopeType::Class),
@@ -654,9 +692,14 @@ impl RustSemanticAnalyzer {
         }
     }
 
-    fn extract_imports_recursive(&self, cursor: &mut TreeCursor, imports: &mut Vec<Import>, content: &str) {
+    fn extract_imports_recursive(
+        &self,
+        cursor: &mut TreeCursor,
+        imports: &mut Vec<Import>,
+        content: &str,
+    ) {
         let node = cursor.node();
-        
+
         if node.kind() == "use_declaration" {
             if let Some(import) = self.parse_rust_use_declaration(node, content) {
                 imports.push(import);
@@ -674,9 +717,14 @@ impl RustSemanticAnalyzer {
         }
     }
 
-    fn extract_exports_recursive(&self, cursor: &mut TreeCursor, exports: &mut Vec<Export>, content: &str) {
+    fn extract_exports_recursive(
+        &self,
+        cursor: &mut TreeCursor,
+        exports: &mut Vec<Export>,
+        content: &str,
+    ) {
         let node = cursor.node();
-        
+
         // In Rust, pub items are exports
         if self.has_pub_modifier(node) {
             match node.kind() {
@@ -723,7 +771,7 @@ impl RustSemanticAnalyzer {
     fn get_node_text(&self, node: Node, lines: &[&str]) -> Option<String> {
         let start = node.start_position();
         let end = node.end_position();
-        
+
         if start.row >= lines.len() || end.row >= lines.len() {
             return None;
         }
@@ -737,7 +785,12 @@ impl RustSemanticAnalyzer {
             }
         } else {
             let mut text = String::new();
-            for (i, &line) in lines.iter().enumerate().skip(start.row).take(end.row - start.row + 1) {
+            for (i, &line) in lines
+                .iter()
+                .enumerate()
+                .skip(start.row)
+                .take(end.row - start.row + 1)
+            {
                 if i == start.row {
                     text.push_str(&line[start.column..]);
                 } else if i == end.row {
@@ -771,9 +824,11 @@ impl RustSemanticAnalyzer {
     fn get_item_name(&self, node: Node, content: &str) -> Option<String> {
         let lines: Vec<&str> = content.lines().collect();
         match node.kind() {
-            "function_item" => self.find_child_by_kind(node, "identifier")
+            "function_item" => self
+                .find_child_by_kind(node, "identifier")
                 .and_then(|n| self.get_node_text(n, &lines)),
-            "struct_item" | "enum_item" => self.find_child_by_kind(node, "type_identifier")
+            "struct_item" | "enum_item" => self
+                .find_child_by_kind(node, "type_identifier")
                 .and_then(|n| self.get_node_text(n, &lines)),
             _ => None,
         }
@@ -815,7 +870,9 @@ impl RustSemanticAnalyzer {
 // Placeholder implementations for other languages
 pub struct TypeScriptSemanticAnalyzer;
 impl TypeScriptSemanticAnalyzer {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 impl LanguageSemanticAnalyzer for TypeScriptSemanticAnalyzer {
     fn analyze(&self, _tree: &Tree, _content: &str) -> Result<SemanticContext> {
@@ -828,16 +885,28 @@ impl LanguageSemanticAnalyzer for TypeScriptSemanticAnalyzer {
             dependencies: Vec::new(),
         })
     }
-    fn extract_symbols(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Symbol> { Vec::new() }
-    fn extract_scopes(&self, _cursor: &mut TreeCursor) -> Vec<Scope> { Vec::new() }
-    fn extract_imports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Import> { Vec::new() }
-    fn extract_exports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Export> { Vec::new() }
-    fn analyze_dependencies(&self, _context: &SemanticContext) -> Vec<Dependency> { Vec::new() }
+    fn extract_symbols(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Symbol> {
+        Vec::new()
+    }
+    fn extract_scopes(&self, _cursor: &mut TreeCursor) -> Vec<Scope> {
+        Vec::new()
+    }
+    fn extract_imports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Import> {
+        Vec::new()
+    }
+    fn extract_exports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Export> {
+        Vec::new()
+    }
+    fn analyze_dependencies(&self, _context: &SemanticContext) -> Vec<Dependency> {
+        Vec::new()
+    }
 }
 
 pub struct JavaScriptSemanticAnalyzer;
 impl JavaScriptSemanticAnalyzer {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 impl LanguageSemanticAnalyzer for JavaScriptSemanticAnalyzer {
     fn analyze(&self, _tree: &Tree, _content: &str) -> Result<SemanticContext> {
@@ -849,16 +918,28 @@ impl LanguageSemanticAnalyzer for JavaScriptSemanticAnalyzer {
             dependencies: Vec::new(),
         })
     }
-    fn extract_symbols(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Symbol> { Vec::new() }
-    fn extract_scopes(&self, _cursor: &mut TreeCursor) -> Vec<Scope> { Vec::new() }
-    fn extract_imports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Import> { Vec::new() }
-    fn extract_exports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Export> { Vec::new() }
-    fn analyze_dependencies(&self, _context: &SemanticContext) -> Vec<Dependency> { Vec::new() }
+    fn extract_symbols(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Symbol> {
+        Vec::new()
+    }
+    fn extract_scopes(&self, _cursor: &mut TreeCursor) -> Vec<Scope> {
+        Vec::new()
+    }
+    fn extract_imports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Import> {
+        Vec::new()
+    }
+    fn extract_exports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Export> {
+        Vec::new()
+    }
+    fn analyze_dependencies(&self, _context: &SemanticContext) -> Vec<Dependency> {
+        Vec::new()
+    }
 }
 
 pub struct PythonSemanticAnalyzer;
 impl PythonSemanticAnalyzer {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 impl LanguageSemanticAnalyzer for PythonSemanticAnalyzer {
     fn analyze(&self, _tree: &Tree, _content: &str) -> Result<SemanticContext> {
@@ -870,16 +951,28 @@ impl LanguageSemanticAnalyzer for PythonSemanticAnalyzer {
             dependencies: Vec::new(),
         })
     }
-    fn extract_symbols(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Symbol> { Vec::new() }
-    fn extract_scopes(&self, _cursor: &mut TreeCursor) -> Vec<Scope> { Vec::new() }
-    fn extract_imports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Import> { Vec::new() }
-    fn extract_exports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Export> { Vec::new() }
-    fn analyze_dependencies(&self, _context: &SemanticContext) -> Vec<Dependency> { Vec::new() }
+    fn extract_symbols(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Symbol> {
+        Vec::new()
+    }
+    fn extract_scopes(&self, _cursor: &mut TreeCursor) -> Vec<Scope> {
+        Vec::new()
+    }
+    fn extract_imports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Import> {
+        Vec::new()
+    }
+    fn extract_exports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Export> {
+        Vec::new()
+    }
+    fn analyze_dependencies(&self, _context: &SemanticContext) -> Vec<Dependency> {
+        Vec::new()
+    }
 }
 
 pub struct GoSemanticAnalyzer;
 impl GoSemanticAnalyzer {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 impl LanguageSemanticAnalyzer for GoSemanticAnalyzer {
     fn analyze(&self, _tree: &Tree, _content: &str) -> Result<SemanticContext> {
@@ -891,11 +984,21 @@ impl LanguageSemanticAnalyzer for GoSemanticAnalyzer {
             dependencies: Vec::new(),
         })
     }
-    fn extract_symbols(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Symbol> { Vec::new() }
-    fn extract_scopes(&self, _cursor: &mut TreeCursor) -> Vec<Scope> { Vec::new() }
-    fn extract_imports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Import> { Vec::new() }
-    fn extract_exports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Export> { Vec::new() }
-    fn analyze_dependencies(&self, _context: &SemanticContext) -> Vec<Dependency> { Vec::new() }
+    fn extract_symbols(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Symbol> {
+        Vec::new()
+    }
+    fn extract_scopes(&self, _cursor: &mut TreeCursor) -> Vec<Scope> {
+        Vec::new()
+    }
+    fn extract_imports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Import> {
+        Vec::new()
+    }
+    fn extract_exports(&self, _cursor: &mut TreeCursor, _content: &str) -> Vec<Export> {
+        Vec::new()
+    }
+    fn analyze_dependencies(&self, _context: &SemanticContext) -> Vec<Dependency> {
+        Vec::new()
+    }
 }
 
 #[cfg(test)]

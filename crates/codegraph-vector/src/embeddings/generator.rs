@@ -5,15 +5,20 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, CodeNode, Language, Location, NodeId, NodeType, Result};
+use codegraph_core::{CodeNode, Language, Location, NodeType, Result};
 use tokio::sync::Mutex;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
-use crate::providers::{BatchConfig as ProviderBatchConfig, EmbeddingMetrics, EmbeddingProvider, FallbackStrategy, HybridEmbeddingPipeline};
+use crate::providers::{
+    BatchConfig as ProviderBatchConfig, EmbeddingProvider, FallbackStrategy,
+    HybridEmbeddingPipeline,
+};
 use crate::simd_ops::SIMDVectorOps;
 
 #[cfg(feature = "local-embeddings")]
-use crate::local_provider::{DeviceType, LocalEmbeddingConfig, LocalEmbeddingProvider, PoolingStrategy};
+use crate::local_provider::{
+    DeviceType, LocalEmbeddingConfig, LocalEmbeddingProvider, PoolingStrategy,
+};
 
 #[cfg(feature = "openai")]
 use crate::openai_provider::{OpenAiConfig, OpenAiEmbeddingProvider};
@@ -66,10 +71,18 @@ pub struct LocalEmbeddingConfigCompat {
 }
 
 #[derive(Debug, Clone)]
-pub enum LocalDeviceTypeCompat { Cpu, Cuda(usize), Metal }
+pub enum LocalDeviceTypeCompat {
+    Cpu,
+    Cuda(usize),
+    Metal,
+}
 
 #[derive(Debug, Clone)]
-pub enum LocalPoolingCompat { Cls, Mean, Max }
+pub enum LocalPoolingCompat {
+    Cls,
+    Mean,
+    Max,
+}
 
 #[cfg(feature = "local-embeddings")]
 impl From<&LocalEmbeddingConfigCompat> for LocalEmbeddingConfig {
@@ -192,7 +205,11 @@ fn hash_text(text: &str) -> u64 {
 }
 
 fn node_from_text(text: &str) -> CodeNode {
-    let name = if text.len() <= 32 { text.to_string() } else { text[..32].to_string() };
+    let name = if text.len() <= 32 {
+        text.to_string()
+    } else {
+        text[..32].to_string()
+    };
     CodeNode::new(
         name,
         Some(NodeType::Other("text".into())),
@@ -226,7 +243,9 @@ impl AdvancedEmbeddingGenerator {
         )));
 
         // Build providers based on features and availability
+        #[allow(unused_mut)] // mut needed for conditional compilation
         let mut primary: Option<Box<dyn EmbeddingProvider>> = None;
+        #[allow(unused_mut)] // mut needed for conditional compilation
         let mut fallbacks: Vec<Box<dyn EmbeddingProvider>> = Vec::new();
 
         // Helper to push local provider
@@ -244,7 +263,8 @@ impl AdvancedEmbeddingGenerator {
                     pooling_strategy: LocalPoolingCompat::Mean,
                 }
             };
-            let provider = LocalEmbeddingProvider::new(LocalEmbeddingConfig::from(local_cfg)).await?;
+            let provider =
+                LocalEmbeddingProvider::new(LocalEmbeddingConfig::from(local_cfg)).await?;
             Ok(Box::new(provider))
         }
 
@@ -390,7 +410,9 @@ impl AdvancedEmbeddingGenerator {
 
         if let Some(pipeline) = &self.pipeline {
             let cfg = self.provider_batch_config();
-            let (emb, metrics) = pipeline.generate_embeddings_with_config(nodes, &cfg).await?;
+            let (emb, metrics) = pipeline
+                .generate_embeddings_with_config(nodes, &cfg)
+                .await?;
             info!(
                 "Embedding pipeline: {} texts in {:?} ({:.1} tps)",
                 metrics.texts_processed, metrics.duration, metrics.throughput
@@ -435,7 +457,10 @@ impl AdvancedEmbeddingGenerator {
     }
 
     /// Quality validation: compute cosine similarity across pairs and return average.
-    pub fn validate_similarity_pairs(&self, pairs: &[(Vec<f32>, Vec<f32>)]) -> Result<(f32, usize)> {
+    pub fn validate_similarity_pairs(
+        &self,
+        pairs: &[(Vec<f32>, Vec<f32>)],
+    ) -> Result<(f32, usize)> {
         if pairs.is_empty() {
             return Ok((0.0, 0));
         }
@@ -452,7 +477,9 @@ impl AdvancedEmbeddingGenerator {
     /// Returns true if average similarity across the set exceeds configured threshold.
     pub fn passes_quality_threshold(&self, pairs: &[(Vec<f32>, Vec<f32>)]) -> Result<bool> {
         let (avg, n) = self.validate_similarity_pairs(pairs)?;
-        if n == 0 { return Ok(false); }
+        if n == 0 {
+            return Ok(false);
+        }
         Ok(avg >= self.config.quality_similarity_threshold)
     }
 
@@ -460,14 +487,20 @@ impl AdvancedEmbeddingGenerator {
         // Simple deterministic pseudo-embedding with L2 normalization
         let mut out = vec![0.0f32; dim];
         let mut h = 5381u32;
-        for b in text.bytes() { h = h.wrapping_mul(33).wrapping_add(b as u32); }
+        for b in text.bytes() {
+            h = h.wrapping_mul(33).wrapping_add(b as u32);
+        }
         let mut state = h;
         for i in 0..dim {
             state = state.wrapping_mul(1103515245).wrapping_add(12345);
             out[i] = ((state as f32 / u32::MAX as f32) - 0.5) * 2.0;
         }
         let norm: f32 = out.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0.0 { for v in &mut out { *v /= norm; } }
+        if norm > 0.0 {
+            for v in &mut out {
+                *v /= norm;
+            }
+        }
         out
     }
 }
@@ -489,4 +522,3 @@ impl TextEmbeddingEngine for AdvancedEmbeddingGenerator {
         self.embed_texts_batched(texts).await
     }
 }
-

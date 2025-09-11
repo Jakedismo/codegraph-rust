@@ -4,20 +4,19 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use chrono::{DateTime, Utc};
 use codegraph_core::{
-    VersionId, SnapshotId, TransactionId, IsolationLevel, 
-    Version, Snapshot, VersionDiff, ChangeType,
+    ChangeType, IsolationLevel, Snapshot, SnapshotId, TransactionId, Version, VersionDiff,
+    VersionId,
 };
 use codegraph_graph::{
-    TransactionalGraph, ConcurrentTransactionManager, RecoveryManager,
-    GitLikeVersionManager, Branch, Tag, MergeResult, MergeConflict,
-    ConflictType, RebaseResult, TransactionStatistics, RecoveryStatistics,
-    IntegrityReport,
+    Branch, ConcurrentTransactionManager, ConflictType, GitLikeVersionManager, IntegrityReport,
+    MergeConflict, MergeResult, RebaseResult, RecoveryManager, RecoveryStatistics, Tag,
+    TransactionStatistics, TransactionalGraph,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 // Request/Response DTOs
 
@@ -355,9 +354,7 @@ pub async fn create_branch(
     }))
 }
 
-pub async fn list_branches(
-    State(state): State<AppState>,
-) -> ApiResult<Json<Vec<BranchDto>>> {
+pub async fn list_branches(State(state): State<AppState>) -> ApiResult<Json<Vec<BranchDto>>> {
     // TODO: Implement actual branch listing
     Ok(Json(vec![]))
 }
@@ -397,7 +394,10 @@ pub async fn merge_branches(
         conflicts: vec![],
         merged_version_id: Some(VersionId::new_v4().to_string()),
         merge_commit_message: request.message.unwrap_or_else(|| {
-            format!("Merge branch '{}' into '{}'", request.source_branch, request.target_branch)
+            format!(
+                "Merge branch '{}' into '{}'",
+                request.source_branch, request.target_branch
+            )
         }),
     }))
 }
@@ -507,7 +507,10 @@ pub async fn create_backup(
     Ok(Json(HashMap::from([
         ("backup_id".to_string(), Uuid::new_v4().to_string()),
         ("status".to_string(), "created".to_string()),
-        ("message".to_string(), "Backup created successfully".to_string()),
+        (
+            "message".to_string(),
+            "Backup created successfully".to_string(),
+        ),
     ])))
 }
 
@@ -518,7 +521,10 @@ pub async fn restore_from_backup(
     // TODO: Implement actual backup restoration
     Ok(Json(HashMap::from([
         ("status".to_string(), "restored".to_string()),
-        ("message".to_string(), format!("Restored from backup {}", backup_id)),
+        (
+            "message".to_string(),
+            format!("Restored from backup {}", backup_id),
+        ),
     ])))
 }
 
@@ -564,9 +570,21 @@ fn convert_version_diff(diff: VersionDiff, from: String, to: String) -> VersionD
     VersionDiffDto {
         from_version: from,
         to_version: to,
-        added_nodes: diff.added_nodes.into_iter().map(|id| id.to_string()).collect(),
-        modified_nodes: diff.modified_nodes.into_iter().map(|id| id.to_string()).collect(),
-        deleted_nodes: diff.deleted_nodes.into_iter().map(|id| id.to_string()).collect(),
+        added_nodes: diff
+            .added_nodes
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect(),
+        modified_nodes: diff
+            .modified_nodes
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect(),
+        deleted_nodes: diff
+            .deleted_nodes
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect(),
         node_changes,
     }
 }

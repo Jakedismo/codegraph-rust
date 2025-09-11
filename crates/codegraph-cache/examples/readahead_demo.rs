@@ -1,5 +1,5 @@
-use codegraph_cache::{ReadAheadIntegration, ReadAheadOptimizer, ReadAheadConfig};
-use codegraph_core::{CompactCacheKey, CacheType};
+use codegraph_cache::{ReadAheadConfig, ReadAheadIntegration, ReadAheadOptimizer};
+use codegraph_core::{CacheType, CompactCacheKey};
 use std::time::{Duration, Instant};
 
 #[tokio::main]
@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match integration.run_comprehensive_demo().await {
         Ok(()) => {
             println!("\n🎉 Demo completed successfully!");
-            
+
             // Show final metrics
             let metrics = integration.optimizer.get_metrics().await;
             print_detailed_metrics(&metrics);
@@ -32,23 +32,53 @@ fn print_detailed_metrics(metrics: &codegraph_cache::ReadAheadMetrics) {
     println!("┌─────────────────────────────────────┬─────────────┐");
     println!("│ Metric                              │ Value       │");
     println!("├─────────────────────────────────────┼─────────────┤");
-    println!("│ Total Predictions                   │ {:11} │", metrics.total_predictions);
-    println!("│ Successful Predictions              │ {:11} │", metrics.successful_predictions);
-    println!("│ Prediction Accuracy                 │ {:8.2}%   │", metrics.prediction_accuracy);
-    println!("│ Cache Hits from Read-ahead          │ {:11} │", metrics.cache_hits_from_readahead);
-    println!("│ Sequential Reads Detected           │ {:11} │", metrics.sequential_reads_detected);
-    println!("│ Cache Warming Events                │ {:11} │", metrics.cache_warming_events);
-    println!("│ Bytes Prefetched                    │ {:11} │", metrics.bytes_prefetched);
-    println!("│ I/O Reduction                       │ {:8.2}%   │", metrics.io_reduction_percentage);
-    println!("│ Average Prediction Time             │ {:8.2}ms  │", metrics.average_prediction_time_ms);
-    println!("│ Pattern Recognition Success Rate    │ {:8.2}%   │", metrics.pattern_recognition_success_rate);
+    println!(
+        "│ Total Predictions                   │ {:11} │",
+        metrics.total_predictions
+    );
+    println!(
+        "│ Successful Predictions              │ {:11} │",
+        metrics.successful_predictions
+    );
+    println!(
+        "│ Prediction Accuracy                 │ {:8.2}%   │",
+        metrics.prediction_accuracy
+    );
+    println!(
+        "│ Cache Hits from Read-ahead          │ {:11} │",
+        metrics.cache_hits_from_readahead
+    );
+    println!(
+        "│ Sequential Reads Detected           │ {:11} │",
+        metrics.sequential_reads_detected
+    );
+    println!(
+        "│ Cache Warming Events                │ {:11} │",
+        metrics.cache_warming_events
+    );
+    println!(
+        "│ Bytes Prefetched                    │ {:11} │",
+        metrics.bytes_prefetched
+    );
+    println!(
+        "│ I/O Reduction                       │ {:8.2}%   │",
+        metrics.io_reduction_percentage
+    );
+    println!(
+        "│ Average Prediction Time             │ {:8.2}ms  │",
+        metrics.average_prediction_time_ms
+    );
+    println!(
+        "│ Pattern Recognition Success Rate    │ {:8.2}%   │",
+        metrics.pattern_recognition_success_rate
+    );
     println!("└─────────────────────────────────────┴─────────────┘");
 }
 
 /// Standalone example showing basic read-ahead functionality
 async fn basic_readahead_example() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 Basic Read-Ahead Example");
-    
+
     let config = ReadAheadConfig {
         max_pattern_history: 1000,
         prediction_window_size: 20,
@@ -65,26 +95,29 @@ async fn basic_readahead_example() -> Result<(), Box<dyn std::error::Error>> {
     // Simulate sequential access pattern
     println!("Simulating sequential access pattern...");
     let start_time = Instant::now();
-    
+
     for i in 0..50 {
         let key = CompactCacheKey {
             hash: 1000 + i,
             cache_type: CacheType::Node,
         };
-        
+
         if let Some(_data) = optimizer.optimize_read(key).await? {
             // Data retrieved successfully
         }
     }
-    
+
     let elapsed = start_time.elapsed();
     println!("Sequential access completed in: {:?}", elapsed);
-    
+
     // Get final metrics
     let metrics = optimizer.get_metrics().await;
     println!("Predictions made: {}", metrics.total_predictions);
-    println!("Average prediction time: {:.2}ms", metrics.average_prediction_time_ms);
-    
+    println!(
+        "Average prediction time: {:.2}ms",
+        metrics.average_prediction_time_ms
+    );
+
     Ok(())
 }
 

@@ -29,4 +29,3 @@ use utoipa::OpenApi;
     )
 )]
 pub struct ApiDoc;
-

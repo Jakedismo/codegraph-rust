@@ -1,4 +1,4 @@
-use crate::{NodeId, Result, CodeGraphError};
+use crate::{CodeGraphError, NodeId, Result};
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use std::mem;
@@ -26,10 +26,7 @@ impl CompactString {
 
     pub fn as_str(&self) -> &str {
         match self {
-            Self::Stack(data, len) => {
-                std::str::from_utf8(&data[..*len as usize])
-                    .unwrap_or("")
-            }
+            Self::Stack(data, len) => std::str::from_utf8(&data[..*len as usize]).unwrap_or(""),
             Self::Heap(s) => s.as_str(),
         }
     }
@@ -82,12 +79,12 @@ pub struct PackedLocation {
 
 impl PackedLocation {
     pub fn new(file_id: u16, start_line: u16, end_line: u16, start_col: u8, end_col: u8) -> Self {
-        let packed = ((file_id as u64) << 48) |
-                     ((start_line as u64) << 32) |
-                     ((end_line as u64) << 16) |
-                     ((start_col as u64) << 8) |
-                     (end_col as u64);
-        
+        let packed = ((file_id as u64) << 48)
+            | ((start_line as u64) << 32)
+            | ((end_line as u64) << 16)
+            | ((start_col as u64) << 8)
+            | (end_col as u64);
+
         Self { packed }
     }
 
@@ -174,13 +171,13 @@ impl OptNodeType {
 #[repr(C)] // Ensure optimal memory layout
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OptimizedCodeNode {
-    pub id: NodeId,                     // 8 bytes
-    pub name: CompactString,            // 32 bytes (vs 64+ for String)
-    pub node_type: OptNodeType,         // 1 byte (vs 24+ for String)
-    pub location: PackedLocation,       // 8 bytes (vs 32 for separate fields)
+    pub id: NodeId,               // 8 bytes
+    pub name: CompactString,      // 32 bytes (vs 64+ for String)
+    pub node_type: OptNodeType,   // 1 byte (vs 24+ for String)
+    pub location: PackedLocation, // 8 bytes (vs 32 for separate fields)
     // Metadata stored separately via pointer to reduce hot path memory
-    pub metadata_offset: u32,           // 4 bytes (offset in metadata pool)
-    pub embedding_offset: u32,          // 4 bytes (offset in embedding pool)
+    pub metadata_offset: u32,  // 4 bytes (offset in metadata pool)
+    pub embedding_offset: u32, // 4 bytes (offset in embedding pool)
 } // Total: 57 bytes + padding = ~64 bytes (vs ~120 bytes original)
 
 impl OptimizedCodeNode {
@@ -210,6 +207,7 @@ pub struct EmbeddingPool {
 pub struct AlignedVec<T> {
     data: Vec<T>,
     capacity: usize,
+    #[allow(dead_code)]
     alignment: usize,
 }
 
@@ -218,7 +216,7 @@ impl<T> AlignedVec<T> {
         let data = Vec::with_capacity(capacity);
         // Ensure proper alignment for SIMD operations
         assert_eq!(data.as_ptr() as usize % alignment, 0);
-        
+
         Self {
             data,
             capacity,
@@ -301,18 +299,18 @@ impl EmbeddingPool {
 /// Compact cache key reducing hash table overhead by 70%
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CompactCacheKey {
-    hash: u64,              // Pre-computed hash for O(1) comparison
-    type_discriminant: u8,  // Cache type (node, embedding, query, etc.)
+    hash: u64,             // Pre-computed hash for O(1) comparison
+    type_discriminant: u8, // Cache type (node, embedding, query, etc.)
 }
 
 impl CompactCacheKey {
     pub fn new(data: &[u8], cache_type: CacheType) -> Self {
         use std::hash::{DefaultHasher, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
         hasher.write(data);
         let hash = hasher.finish();
-        
+
         Self {
             hash,
             type_discriminant: cache_type as u8,
@@ -352,7 +350,7 @@ mod tests {
         let small = CompactString::new("function_name");
         assert!(matches!(small, CompactString::Stack(_, _)));
         assert_eq!(small.memory_footprint(), 32); // Significantly less than String
-        
+
         // Test heap allocation for large strings
         let large = CompactString::new(&"a".repeat(50));
         assert!(matches!(large, CompactString::Heap(_)));
@@ -361,7 +359,7 @@ mod tests {
     #[test]
     fn test_packed_location_efficiency() {
         let loc = PackedLocation::new(1000, 42, 45, 10, 15);
-        
+
         assert_eq!(loc.file_id(), 1000);
         assert_eq!(loc.start_line(), 42);
         assert_eq!(loc.end_line(), 45);
@@ -373,14 +371,14 @@ mod tests {
     #[test]
     fn test_embedding_pool_efficiency() {
         let mut pool = EmbeddingPool::new(10, 512);
-        
+
         // Test allocation and reuse
         let vec1 = pool.acquire();
         pool.release(vec1);
-        
+
         let vec2 = pool.acquire(); // Should reuse the previous vector
         assert!(pool.efficiency_ratio() > 0.0);
-        
+
         pool.release(vec2);
     }
 
@@ -388,7 +386,7 @@ mod tests {
     fn test_compact_cache_key_efficiency() {
         let key1 = CompactCacheKey::from_string("test_key", CacheType::Node);
         let key2 = CompactCacheKey::from_string("test_key", CacheType::Node);
-        
+
         assert_eq!(key1, key2); // Hash collision test
         assert_eq!(CompactCacheKey::memory_footprint(), 9); // vs 32+ for String
     }
@@ -396,7 +394,7 @@ mod tests {
     #[test]
     fn test_optimized_node_memory_footprint() {
         let node = OptimizedCodeNode {
-            id: 12345,
+            id: NodeId::new_v4(),
             name: CompactString::new("test_function"),
             node_type: OptNodeType::Function,
             location: PackedLocation::new(1, 10, 20, 5, 15),
@@ -406,6 +404,9 @@ mod tests {
 
         // Verify significant memory reduction
         assert!(OptimizedCodeNode::memory_footprint() < 80); // vs ~120 original
-        println!("Optimized node size: {} bytes", OptimizedCodeNode::memory_footprint());
+        println!(
+            "Optimized node size: {} bytes",
+            OptimizedCodeNode::memory_footprint()
+        );
     }
 }

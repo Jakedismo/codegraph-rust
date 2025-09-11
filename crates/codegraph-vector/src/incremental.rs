@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
-use crossbeam_channel::{Receiver, Sender, unbounded};
+use crossbeam_channel::{unbounded, Receiver, Sender};
+use tokio::sync::mpsc as tokio_mpsc;
 use dashmap::DashMap;
 use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
@@ -30,10 +31,7 @@ pub enum IncrementalOperation {
         timestamp: u64,
     },
     /// Delete vector
-    Delete {
-        node_id: NodeId,
-        timestamp: u64,
-    },
+    Delete { node_id: NodeId, timestamp: u64 },
     /// Batch operation containing multiple updates
     Batch {
         operations: Vec<IncrementalOperation>,
@@ -44,27 +42,26 @@ pub enum IncrementalOperation {
 impl IncrementalOperation {
     pub fn timestamp(&self) -> u64 {
         match self {
-            Self::Insert { timestamp, .. } |
-            Self::Update { timestamp, .. } |
-            Self::Delete { timestamp, .. } |
-            Self::Batch { timestamp, .. } => *timestamp,
+            Self::Insert { timestamp, .. }
+            | Self::Update { timestamp, .. }
+            | Self::Delete { timestamp, .. }
+            | Self::Batch { timestamp, .. } => *timestamp,
         }
     }
 
     pub fn affected_nodes(&self) -> HashSet<NodeId> {
         match self {
-            Self::Insert { node_id, .. } |
-            Self::Update { node_id, .. } |
-            Self::Delete { node_id, .. } => {
+            Self::Insert { node_id, .. }
+            | Self::Update { node_id, .. }
+            | Self::Delete { node_id, .. } => {
                 let mut set = HashSet::new();
                 set.insert(*node_id);
                 set
             }
-            Self::Batch { operations, .. } => {
-                operations.iter()
-                    .flat_map(|op| op.affected_nodes())
-                    .collect()
-            }
+            Self::Batch { operations, .. } => operations
+                .iter()
+                .flat_map(|op| op.affected_nodes())
+                .collect(),
         }
     }
 }
@@ -133,7 +130,9 @@ impl IndexSegment {
         if let Some(vector) = self.vectors.remove(&node_id) {
             self.node_ids.remove(&node_id);
             let vector_size = vector.len() * std::mem::size_of::<f32>();
-            self.size_bytes = self.size_bytes.saturating_sub(vector_size + std::mem::size_of::<NodeId>());
+            self.size_bytes = self
+                .size_bytes
+                .saturating_sub(vector_size + std::mem::size_of::<NodeId>());
             self.last_modified = SystemTime::now();
             true
         } else {
@@ -183,9 +182,11 @@ impl Default for IncrementalConfig {
         Self {
             max_batch_size: 1000,
             batch_timeout: Duration::from_millis(100),
-            max_segment_size: 10_000_000, // 10MB
+            max_segment_size: 10_000_000,              // 10MB
             max_segment_age: Duration::from_secs(300), // 5 minutes
-            worker_threads: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
+            worker_threads: std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4),
             enable_parallel_processing: true,
             parallel_threshold: 100,
             enable_wal: true,
@@ -216,7 +217,7 @@ struct WriteAheadLog {
     log_path: std::path::PathBuf,
     log_file: Arc<Mutex<std::fs::File>>,
     pending_entries: Arc<Mutex<VecDeque<WALEntry>>>,
-    flush_sender: Sender<()>,
+    flush_sender: tokio_mpsc::UnboundedSender<()>,
     _flush_task: tokio::task::JoinHandle<()>,
 }
 
@@ -231,7 +232,7 @@ struct WALEntry {
 impl WriteAheadLog {
     fn new<P: AsRef<std::path::Path>>(log_path: P, flush_interval: Duration) -> Result<Self> {
         let log_path = log_path.as_ref().to_path_buf();
-        
+
         // Ensure parent directory exists
         if let Some(parent) = log_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -241,20 +242,20 @@ impl WriteAheadLog {
             std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(&log_path)?
+                .open(&log_path)?,
         ));
 
         let pending_entries = Arc::new(Mutex::new(VecDeque::new()));
-        let (flush_sender, flush_receiver) = unbounded();
+        let (flush_sender, mut flush_receiver) = tokio_mpsc::unbounded_channel();
 
         // Start flush task
         let flush_task = {
             let log_file = Arc::clone(&log_file);
             let pending_entries = Arc::clone(&pending_entries);
-            
+
             tokio::spawn(async move {
                 let mut interval = interval(flush_interval);
-                
+
                 loop {
                     tokio::select! {
                         _ = interval.tick() => {
@@ -262,8 +263,8 @@ impl WriteAheadLog {
                                 error!("Failed to flush WAL: {}", e);
                             }
                         }
-                        result = flush_receiver.recv_async() => {
-                            if result.is_err() {
+                        msg = flush_receiver.recv() => {
+                            if msg.is_none() {
                                 break; // Channel closed
                             }
                             if let Err(e) = Self::flush_pending(&log_file, &pending_entries) {
@@ -298,11 +299,11 @@ impl WriteAheadLog {
         {
             let mut pending = self.pending_entries.lock();
             pending.push_back(entry);
-            
+
             // Trigger flush if too many pending entries
             if pending.len() >= 100 {
                 drop(pending);
-                let _ = self.flush_sender.try_send(());
+                let _ = self.flush_sender.send(());
             }
         }
 
@@ -311,7 +312,7 @@ impl WriteAheadLog {
 
     fn flush_pending(
         log_file: &Arc<Mutex<std::fs::File>>,
-        pending_entries: &Arc<Mutex<VecDeque<WALEntry>>>
+        pending_entries: &Arc<Mutex<VecDeque<WALEntry>>>,
     ) -> Result<()> {
         let entries_to_flush = {
             let mut pending = pending_entries.lock();
@@ -327,9 +328,9 @@ impl WriteAheadLog {
 
         let mut file = log_file.lock();
         for entry in entries_to_flush {
-            let serialized = bincode::serialize(&entry)
-                .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
-            
+            let serialized =
+                bincode::serialize(&entry).map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+
             use std::io::Write;
             file.write_all(&(serialized.len() as u32).to_le_bytes())?;
             file.write_all(&serialized)?;
@@ -343,11 +344,15 @@ impl WriteAheadLog {
     fn calculate_checksum(&self, operation: &IncrementalOperation) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
-        
+
         match operation {
-            IncrementalOperation::Insert { node_id, vector, timestamp } => {
+            IncrementalOperation::Insert {
+                node_id,
+                vector,
+                timestamp,
+            } => {
                 0u8.hash(&mut hasher);
                 node_id.hash(&mut hasher);
                 timestamp.hash(&mut hasher);
@@ -355,7 +360,12 @@ impl WriteAheadLog {
                     val.to_bits().hash(&mut hasher);
                 }
             }
-            IncrementalOperation::Update { node_id, old_vector, new_vector, timestamp } => {
+            IncrementalOperation::Update {
+                node_id,
+                old_vector,
+                new_vector,
+                timestamp,
+            } => {
                 1u8.hash(&mut hasher);
                 node_id.hash(&mut hasher);
                 timestamp.hash(&mut hasher);
@@ -373,7 +383,10 @@ impl WriteAheadLog {
                 node_id.hash(&mut hasher);
                 timestamp.hash(&mut hasher);
             }
-            IncrementalOperation::Batch { operations, timestamp } => {
+            IncrementalOperation::Batch {
+                operations,
+                timestamp,
+            } => {
                 3u8.hash(&mut hasher);
                 timestamp.hash(&mut hasher);
                 operations.len().hash(&mut hasher);
@@ -382,7 +395,7 @@ impl WriteAheadLog {
                 }
             }
         }
-        
+
         hasher.finish()
     }
 }
@@ -403,11 +416,11 @@ pub struct IncrementalUpdateManager {
 impl IncrementalUpdateManager {
     pub fn new(config: IncrementalConfig) -> Result<Self> {
         let (operation_sender, operation_receiver) = unbounded();
-        
+
         let wal = if config.enable_wal {
             Some(WriteAheadLog::new(
                 "/tmp/codegraph_incremental.wal",
-                config.wal_flush_interval
+                config.wal_flush_interval,
             )?)
         } else {
             None
@@ -458,10 +471,10 @@ impl IncrementalUpdateManager {
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             debug!("Starting incremental update worker {}", worker_id);
-            
+
             let mut batch = Vec::new();
             let mut last_batch_time = SystemTime::now();
-            
+
             loop {
                 // Try to receive operations with timeout
                 let operation = {
@@ -472,11 +485,12 @@ impl IncrementalUpdateManager {
                 match operation {
                     Ok(op) => {
                         batch.push(op);
-                        
+
                         // Check if we should process the batch
-                        let should_process = batch.len() >= config.max_batch_size ||
-                            last_batch_time.elapsed().unwrap_or_default() >= config.batch_timeout;
-                        
+                        let should_process = batch.len() >= config.max_batch_size
+                            || last_batch_time.elapsed().unwrap_or_default()
+                                >= config.batch_timeout;
+
                         if should_process && !batch.is_empty() {
                             Self::process_batch(
                                 &segments,
@@ -484,8 +498,9 @@ impl IncrementalUpdateManager {
                                 &current_segment,
                                 &stats,
                                 &config,
-                                std::mem::take(&mut batch)
-                            ).await;
+                                std::mem::take(&mut batch),
+                            )
+                            .await;
                             last_batch_time = SystemTime::now();
                         }
                     }
@@ -498,8 +513,9 @@ impl IncrementalUpdateManager {
                                 &current_segment,
                                 &stats,
                                 &config,
-                                std::mem::take(&mut batch)
-                            ).await;
+                                std::mem::take(&mut batch),
+                            )
+                            .await;
                             last_batch_time = SystemTime::now();
                         }
                     }
@@ -522,60 +538,67 @@ impl IncrementalUpdateManager {
 
         let start_time = SystemTime::now();
         let batch_size = operations.len();
-        
+
         debug!("Processing batch of {} operations", batch_size);
 
         // Process operations in parallel if enabled and batch is large enough
-        let results = if config.enable_parallel_processing && operations.len() >= config.parallel_threshold {
-            operations
-                .into_par_iter()
-                .map(|op| Self::process_single_operation(
-                    segments,
-                    next_segment_id,
-                    current_segment,
-                    config,
-                    op
-                ))
-                .collect::<Vec<_>>()
-        } else {
-            operations
-                .into_iter()
-                .map(|op| Self::process_single_operation(
-                    segments,
-                    next_segment_id,
-                    current_segment,
-                    config,
-                    op
-                ))
-                .collect::<Vec<_>>()
-        };
+        let results =
+            if config.enable_parallel_processing && operations.len() >= config.parallel_threshold {
+                operations
+                    .into_par_iter()
+                    .map(|op| {
+                        Self::process_single_operation(
+                            segments,
+                            next_segment_id,
+                            current_segment,
+                            config,
+                            op,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                operations
+                    .into_iter()
+                    .map(|op| {
+                        Self::process_single_operation(
+                            segments,
+                            next_segment_id,
+                            current_segment,
+                            config,
+                            op,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            };
 
         // Update statistics
         {
             let mut stats_guard = stats.write();
             stats_guard.batches_processed += 1;
             stats_guard.total_operations += batch_size as u64;
-            
+
             let successful = results.iter().filter(|r| r.is_ok()).count() as u64;
             let failed = results.len() as u64 - successful;
-            
+
             stats_guard.successful_operations += successful;
             stats_guard.failed_operations += failed;
-            
+
             // Update averages
             let total_batches = stats_guard.batches_processed as f64;
-            stats_guard.average_batch_size = 
-                (stats_guard.average_batch_size * (total_batches - 1.0) + batch_size as f64) / total_batches;
-            
+            stats_guard.average_batch_size =
+                (stats_guard.average_batch_size * (total_batches - 1.0) + batch_size as f64)
+                    / total_batches;
+
             let processing_time = start_time.elapsed().unwrap_or_default().as_millis() as f64;
-            stats_guard.average_processing_time_ms = 
-                (stats_guard.average_processing_time_ms * (total_batches - 1.0) + processing_time) / total_batches;
-            
+            stats_guard.average_processing_time_ms =
+                (stats_guard.average_processing_time_ms * (total_batches - 1.0) + processing_time)
+                    / total_batches;
+
             stats_guard.last_update_timestamp = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs();
-            
+
             stats_guard.active_segments = segments.len();
         }
 
@@ -590,29 +613,29 @@ impl IncrementalUpdateManager {
         operation: IncrementalOperation,
     ) -> Result<()> {
         match operation {
-            IncrementalOperation::Insert { node_id, vector, .. } => {
-                Self::handle_insert(
-                    segments,
-                    next_segment_id,
-                    current_segment,
-                    config,
-                    node_id,
-                    vector,
-                )
-            }
-            IncrementalOperation::Update { node_id, new_vector, .. } => {
-                Self::handle_update(
-                    segments,
-                    next_segment_id,
-                    current_segment,
-                    config,
-                    node_id,
-                    new_vector,
-                )
-            }
-            IncrementalOperation::Delete { node_id, .. } => {
-                Self::handle_delete(segments, node_id)
-            }
+            IncrementalOperation::Insert {
+                node_id, vector, ..
+            } => Self::handle_insert(
+                segments,
+                next_segment_id,
+                current_segment,
+                config,
+                node_id,
+                vector,
+            ),
+            IncrementalOperation::Update {
+                node_id,
+                new_vector,
+                ..
+            } => Self::handle_update(
+                segments,
+                next_segment_id,
+                current_segment,
+                config,
+                node_id,
+                new_vector,
+            ),
+            IncrementalOperation::Delete { node_id, .. } => Self::handle_delete(segments, node_id),
             IncrementalOperation::Batch { operations, .. } => {
                 for op in operations {
                     Self::process_single_operation(
@@ -639,13 +662,15 @@ impl IncrementalUpdateManager {
         // Get or create current segment
         let segment_id = {
             let mut current = current_segment.write();
-            
+
             if let Some(current_id) = *current {
                 // Check if current segment has space
                 if let Some(segment_ref) = segments.get(&current_id) {
                     let segment = segment_ref.read();
-                    if !segment.is_sealed && 
-                       segment.size_bytes + vector.len() * std::mem::size_of::<f32>() < config.max_segment_size {
+                    if !segment.is_sealed
+                        && segment.size_bytes + vector.len() * std::mem::size_of::<f32>()
+                            < config.max_segment_size
+                    {
                         current_id
                     } else {
                         // Current segment is full, create new one
@@ -655,12 +680,12 @@ impl IncrementalUpdateManager {
                             *next_id += 1;
                             id
                         };
-                        
+
                         // Seal the current segment
                         if let Some(segment_ref) = segments.get(&current_id) {
                             segment_ref.write().seal();
                         }
-                        
+
                         *current = Some(new_id);
                         segments.insert(new_id, Arc::new(RwLock::new(IndexSegment::new(new_id))));
                         new_id
@@ -673,7 +698,7 @@ impl IncrementalUpdateManager {
                         *next_id += 1;
                         id
                     };
-                    
+
                     *current = Some(new_id);
                     segments.insert(new_id, Arc::new(RwLock::new(IndexSegment::new(new_id))));
                     new_id
@@ -686,7 +711,7 @@ impl IncrementalUpdateManager {
                     *next_id += 1;
                     id
                 };
-                
+
                 *current = Some(new_id);
                 segments.insert(new_id, Arc::new(RwLock::new(IndexSegment::new(new_id))));
                 new_id
@@ -697,7 +722,9 @@ impl IncrementalUpdateManager {
         if let Some(segment_ref) = segments.get(&segment_id) {
             let mut segment = segment_ref.write();
             if !segment.add_vector(node_id, vector) {
-                return Err(CodeGraphError::Vector("Failed to add vector to segment".to_string()));
+                return Err(CodeGraphError::Vector(
+                    "Failed to add vector to segment".to_string(),
+                ));
             }
         }
 
@@ -727,7 +754,14 @@ impl IncrementalUpdateManager {
         }
 
         // If not found in existing segments, treat as insert
-        Self::handle_insert(segments, next_segment_id, current_segment, config, node_id, new_vector)
+        Self::handle_insert(
+            segments,
+            next_segment_id,
+            current_segment,
+            config,
+            node_id,
+            new_vector,
+        )
     }
 
     fn handle_delete(
@@ -750,7 +784,8 @@ impl IncrementalUpdateManager {
         }
 
         // Send to worker queue
-        self.operation_sender.send(operation)
+        self.operation_sender
+            .send(operation)
             .map_err(|e| CodeGraphError::Vector(format!("Failed to submit operation: {}", e)))?;
 
         // Update pending count
@@ -786,12 +821,16 @@ impl IncrementalUpdateManager {
 
     /// Get all segments (for testing/debugging)
     pub fn get_segments(&self) -> Vec<Arc<RwLock<IndexSegment>>> {
-        self.segments.iter().map(|entry| Arc::clone(entry.value())).collect()
+        self.segments
+            .iter()
+            .map(|entry| Arc::clone(entry.value()))
+            .collect()
     }
 
     /// Merge small segments to optimize storage
     pub async fn merge_segments(&self, max_segments_to_merge: usize) -> Result<usize> {
-        let segments_to_merge: Vec<_> = self.segments
+        let segments_to_merge: Vec<_> = self
+            .segments
             .iter()
             .filter(|entry| {
                 let segment = entry.value().read();
@@ -829,8 +868,9 @@ impl IncrementalUpdateManager {
         merged_segment.seal();
 
         // Insert merged segment and remove old ones
-        self.segments.insert(merged_id, Arc::new(RwLock::new(merged_segment)));
-        
+        self.segments
+            .insert(merged_id, Arc::new(RwLock::new(merged_segment)));
+
         for (segment_id, _) in segments_to_merge {
             self.segments.remove(&segment_id);
         }
@@ -857,7 +897,8 @@ impl IncrementalUpdateManager {
         };
 
         for _ in 0..self.config.worker_threads {
-            self.operation_sender.send(flush_op.clone())
+            self.operation_sender
+                .send(flush_op.clone())
                 .map_err(|e| CodeGraphError::Vector(format!("Failed to send flush: {}", e)))?;
         }
 
@@ -898,16 +939,19 @@ mod tests {
         let manager = IncrementalUpdateManager::new(config).unwrap();
 
         // Test insert operations
-        let insert_ops = (0..5).map(|i| {
-            IncrementalOperation::Insert {
-                node_id: i,
-                vector: vec![i as f32; 128],
-                timestamp: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-            }
-        }).collect();
+        let insert_ops = (0..5)
+            .map(|i| {
+                let nid = NodeId::new_v4();
+                IncrementalOperation::Insert {
+                    node_id: nid,
+                    vector: vec![i as f32; 128],
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                }
+            })
+            .collect();
 
         manager.submit_batch(insert_ops).unwrap();
 
@@ -930,8 +974,9 @@ mod tests {
 
         // Add enough vectors to create multiple segments
         for i in 0..50 {
+            let nid = NodeId::new_v4();
             let op = IncrementalOperation::Insert {
-                node_id: i,
+                node_id: nid,
                 vector: vec![1.0; 100], // Relatively large vectors
                 timestamp: SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -956,11 +1001,14 @@ mod tests {
         // Create several small segments manually for testing
         for segment_id in 0..5 {
             let mut segment = IndexSegment::new(segment_id);
-            for node_id in (segment_id * 10)..(segment_id * 10 + 5) {
-                segment.add_vector(node_id, vec![1.0; 10]);
+            for _ in (segment_id * 10)..(segment_id * 10 + 5) {
+                let nid = NodeId::new_v4();
+                segment.add_vector(nid, vec![1.0; 10]);
             }
             segment.seal();
-            manager.segments.insert(segment_id, Arc::new(RwLock::new(segment)));
+            manager
+                .segments
+                .insert(segment_id, Arc::new(RwLock::new(segment)));
         }
 
         let segments_before = manager.segments.len();
@@ -968,6 +1016,9 @@ mod tests {
         let segments_after = manager.segments.len();
 
         assert!(merged_count > 0, "Should merge segments");
-        assert!(segments_after < segments_before, "Should reduce segment count");
+        assert!(
+            segments_after < segments_before,
+            "Should reduce segment count"
+        );
     }
 }

@@ -1,7 +1,7 @@
-use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
 use crate::EmbeddingGenerator;
 #[cfg(feature = "faiss")]
 use crate::SemanticSearch;
+use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -93,7 +93,7 @@ impl ContextRetriever {
         keywords: &[String],
     ) -> Result<Vec<RetrievalResult>> {
         debug!("Retrieving context for query: {}", query);
-        
+
         let mut all_results = Vec::new();
 
         // Semantic similarity search (requires `faiss` feature)
@@ -125,12 +125,18 @@ impl ContextRetriever {
     }
 
     #[cfg(feature = "faiss")]
-    async fn semantic_similarity_search(&self, query_embedding: &[f32]) -> Result<Vec<RetrievalResult>> {
-        let semantic_search = self.semantic_search.as_ref()
-            .ok_or_else(|| CodeGraphError::InvalidOperation("SemanticSearch not configured".to_string()))?;
+    async fn semantic_similarity_search(
+        &self,
+        query_embedding: &[f32],
+    ) -> Result<Vec<RetrievalResult>> {
+        let semantic_search = self.semantic_search.as_ref().ok_or_else(|| {
+            CodeGraphError::InvalidOperation("SemanticSearch not configured".to_string())
+        })?;
 
-        let search_results = semantic_search.search_by_embedding(query_embedding, self.config.max_results * 2).await?;
-        
+        let search_results = semantic_search
+            .search_by_embedding(query_embedding, self.config.max_results * 2)
+            .await?;
+
         let mut results = Vec::new();
         for search_result in search_results {
             if let Some(node) = self.get_node(search_result.node_id).await? {
@@ -149,7 +155,10 @@ impl ContextRetriever {
     }
 
     #[cfg(not(feature = "faiss"))]
-    async fn semantic_similarity_search(&self, _query_embedding: &[f32]) -> Result<Vec<RetrievalResult>> {
+    async fn semantic_similarity_search(
+        &self,
+        _query_embedding: &[f32],
+    ) -> Result<Vec<RetrievalResult>> {
         Ok(Vec::new())
     }
 
@@ -171,19 +180,33 @@ impl ContextRetriever {
         }
 
         // Sort by relevance score
-        results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.relevance_score
+                .partial_cmp(&a.relevance_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok(results)
     }
 
-    async fn hybrid_search(&self, query: &str, query_embedding: &[f32], keywords: &[String]) -> Result<Vec<RetrievalResult>> {
+    async fn hybrid_search(
+        &self,
+        _query: &str,
+        query_embedding: &[f32],
+        keywords: &[String],
+    ) -> Result<Vec<RetrievalResult>> {
         let mut results = Vec::new();
 
         // Get semantic similarity scores
         #[cfg(feature = "faiss")]
         let semantic_scores = if let Some(semantic_search) = &self.semantic_search {
-            let search_results = semantic_search.search_by_embedding(query_embedding, self.config.max_results * 3).await?;
-            search_results.into_iter().map(|r| (r.node_id, r.score)).collect::<HashMap<_, _>>()
+            let search_results = semantic_search
+                .search_by_embedding(query_embedding, self.config.max_results * 3)
+                .await?;
+            search_results
+                .into_iter()
+                .map(|r| (r.node_id, r.score))
+                .collect::<HashMap<_, _>>()
         } else {
             HashMap::new()
         };
@@ -194,10 +217,10 @@ impl ContextRetriever {
         for (node_id, node) in &self.node_cache {
             let semantic_score = semantic_scores.get(node_id).cloned().unwrap_or(0.0);
             let keyword_score = self.calculate_keyword_relevance(node, keywords);
-            
+
             // Weighted combination of scores
             let combined_score = (semantic_score * 0.7) + (keyword_score * 0.3);
-            
+
             if combined_score > self.config.relevance_threshold {
                 let context_snippet = self.extract_context_snippet(node);
                 results.push(RetrievalResult {
@@ -213,7 +236,11 @@ impl ContextRetriever {
         Ok(results)
     }
 
-    pub async fn calculate_relevance_scores(&self, query: &str, contexts: &[String]) -> Result<Vec<f32>> {
+    pub async fn calculate_relevance_scores(
+        &self,
+        query: &str,
+        contexts: &[String],
+    ) -> Result<Vec<f32>> {
         let mut scores = Vec::new();
 
         // Generate query embedding for comparison
@@ -222,7 +249,7 @@ impl ContextRetriever {
         for context in contexts {
             // Generate embedding for each context
             let context_embedding = self.generate_text_embedding(context).await?;
-            
+
             // Calculate cosine similarity
             let similarity = cosine_similarity(&query_embedding, &context_embedding);
             scores.push(similarity);
@@ -237,7 +264,7 @@ impl ContextRetriever {
             move || {
                 let dimension = 384;
                 let mut embedding = vec![0.0f32; dimension];
-                
+
                 let hash = simple_hash(&query);
                 let mut rng_state = hash;
 
@@ -271,25 +298,34 @@ impl ContextRetriever {
             return 0.0;
         }
 
-        let node_text = format!("{} {} {}", 
+        let node_text = format!(
+            "{} {} {}",
             node.name.as_str(),
             node.content.as_deref().unwrap_or(""),
-            node.node_type.as_ref().map(|t| format!("{:?}", t)).unwrap_or_default()
-        ).to_lowercase();
+            node.node_type
+                .as_ref()
+                .map(|t| format!("{:?}", t))
+                .unwrap_or_default()
+        )
+        .to_lowercase();
 
         let mut matches = 0;
         let mut total_weight = 0.0;
 
         for keyword in keywords {
             let keyword_lower = keyword.to_lowercase();
-            
+
             // Exact match in name gets highest weight
             if node.name.as_str().to_lowercase().contains(&keyword_lower) {
                 matches += 1;
                 total_weight += 3.0;
             }
             // Match in content gets medium weight
-            else if node.content.as_ref().map_or(false, |c| c.to_lowercase().contains(&keyword_lower)) {
+            else if node
+                .content
+                .as_ref()
+                .map_or(false, |c| c.to_lowercase().contains(&keyword_lower))
+            {
                 matches += 1;
                 total_weight += 2.0;
             }
@@ -328,8 +364,12 @@ impl ContextRetriever {
 
     async fn rank_results(&self, results: &mut [RetrievalResult], _query: &str) -> Result<()> {
         // Sort by relevance score (descending)
-        results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
-        
+        results.sort_by(|a, b| {
+            b.relevance_score
+                .partial_cmp(&a.relevance_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         // Apply additional ranking factors
         for result in results.iter_mut() {
             // Boost certain node types
@@ -347,7 +387,11 @@ impl ContextRetriever {
         }
 
         // Re-sort after applying boosts
-        results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.relevance_score
+                .partial_cmp(&a.relevance_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok(())
     }
@@ -393,10 +437,10 @@ mod tests {
         let now = chrono::Utc::now();
         CodeNode {
             id: Uuid::new_v4(),
-            name: name.to_string(),
+            name: name.into(),
             node_type: Some(node_type),
             language: Some(Language::Rust),
-            content: Some(content.to_string()),
+            content: Some(content.into()),
             embedding: None,
             location: Location {
                 file_path: "test.rs".to_string(),
@@ -417,11 +461,15 @@ mod tests {
     #[tokio::test]
     async fn test_keyword_relevance_calculation() {
         let retriever = ContextRetriever::new();
-        let node = create_test_node("read_file", "fn read_file(path: &str) -> Result<String>", NodeType::Function);
-        
+        let node = create_test_node(
+            "read_file",
+            "fn read_file(path: &str) -> Result<String>",
+            NodeType::Function,
+        );
+
         let keywords = vec!["read".to_string(), "file".to_string()];
         let score = retriever.calculate_keyword_relevance(&node, &keywords);
-        
+
         assert!(score > 0.0);
         assert!(score <= 3.0); // Maximum possible score
     }
@@ -433,12 +481,12 @@ mod tests {
             ..Default::default()
         };
         let retriever = ContextRetriever::with_config(config);
-        
+
         let long_content = "This is a very long content that exceeds the context window size and should be truncated properly to fit within the specified limits for the context snippet.";
         let node = create_test_node("test_function", long_content, NodeType::Function);
-        
+
         let snippet = retriever.extract_context_snippet(&node);
-        
+
         assert!(snippet.len() <= 53); // 50 + "..." = 53
         assert!(snippet.ends_with("..."));
     }
@@ -446,7 +494,7 @@ mod tests {
     #[tokio::test]
     async fn test_relevance_score_calculation() {
         let retriever = ContextRetriever::new();
-        
+
         let contexts = vec![
             "function for reading files".to_string(),
             "async network operation".to_string(),
@@ -454,8 +502,11 @@ mod tests {
         ];
 
         let query = "file reading function";
-        let scores = retriever.calculate_relevance_scores(query, &contexts).await.unwrap();
-        
+        let scores = retriever
+            .calculate_relevance_scores(query, &contexts)
+            .await
+            .unwrap();
+
         assert_eq!(scores.len(), 3);
         // First context should have highest relevance due to keyword overlap
         assert!(scores[0] >= scores[1]);
@@ -467,7 +518,7 @@ mod tests {
         let vec1 = vec![1.0, 0.0, 0.0];
         let vec2 = vec![1.0, 0.0, 0.0];
         let vec3 = vec![0.0, 1.0, 0.0];
-        
+
         assert!((cosine_similarity(&vec1, &vec2) - 1.0).abs() < 1e-6);
         assert!((cosine_similarity(&vec1, &vec3) - 0.0).abs() < 1e-6);
     }

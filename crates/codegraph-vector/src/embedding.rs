@@ -39,7 +39,7 @@ impl EmbeddingGenerator {
 
     pub async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {
         let mut embeddings = Vec::with_capacity(nodes.len());
-        
+
         for node in nodes {
             let embedding = self.generate_embedding(node).await?;
             embeddings.push(embedding);
@@ -49,9 +49,14 @@ impl EmbeddingGenerator {
     }
 
     fn prepare_text(&self, node: &CodeNode) -> String {
-        let mut text = format!("{} {} {}", 
-            node.language.as_ref().map_or("unknown".to_string(), language_to_string),
-            node.node_type.as_ref().map_or("unknown".to_string(), node_type_to_string),
+        let mut text = format!(
+            "{} {} {}",
+            node.language
+                .as_ref()
+                .map_or("unknown".to_string(), language_to_string),
+            node.node_type
+                .as_ref()
+                .map_or("unknown".to_string(), node_type_to_string),
             node.name.as_str()
         );
 
@@ -73,7 +78,7 @@ impl EmbeddingGenerator {
             let dimension = self.model_config.dimension;
             move || {
                 let mut embedding = vec![0.0f32; dimension];
-                
+
                 let hash = simple_hash(&text);
                 let mut rng_state = hash;
 

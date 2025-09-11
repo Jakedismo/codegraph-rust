@@ -1,11 +1,19 @@
-use std::sync::Arc;
-use crate::types::{Endpoint, EndpointPool};
 use super::Balancer;
+use crate::types::{Endpoint, EndpointPool};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 
 pub struct HrwHashing;
-impl HrwHashing { pub fn new() -> Self { Self } }
-impl Default for HrwHashing { fn default() -> Self { Self::new() } }
+impl HrwHashing {
+    pub fn new() -> Self {
+        Self
+    }
+}
+impl Default for HrwHashing {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 fn hrw_score(key: &[u8], endpoint: &Endpoint) -> u64 {
     let mut hasher = Sha256::new();
@@ -19,11 +27,15 @@ fn hrw_score(key: &[u8], endpoint: &Endpoint) -> u64 {
 }
 
 impl Balancer for HrwHashing {
-    fn name(&self) -> &'static str { "hrw_hashing" }
+    fn name(&self) -> &'static str {
+        "hrw_hashing"
+    }
 
     fn pick(&self, pool: &EndpointPool, key: Option<&[u8]>) -> Option<Arc<Endpoint>> {
         let eps = pool.healthy_endpoints();
-        if eps.is_empty() { return None; }
+        if eps.is_empty() {
+            return None;
+        }
         let key = key.unwrap_or(b"");
         let mut best = None::<Arc<Endpoint>>;
         let mut best_score = 0u64;
@@ -37,4 +49,3 @@ impl Balancer for HrwHashing {
         best
     }
 }
-

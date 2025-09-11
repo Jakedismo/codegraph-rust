@@ -7,4 +7,3 @@ impl RateLimitManager {
         Identity::new()
     }
 }
-

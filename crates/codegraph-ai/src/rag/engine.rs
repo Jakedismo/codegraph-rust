@@ -9,7 +9,10 @@ use uuid::Uuid;
 use codegraph_core::{CodeNode, GraphStore, NodeId, Result};
 use codegraph_graph::CodeGraph;
 use codegraph_vector::rag as vec_rag;
-use codegraph_vector::rag::{ContextRetriever, GeneratedResponse, QueryProcessor, ResultRanker, ResponseGenerator, RetrievalMethod};
+use codegraph_vector::rag::{
+    ContextRetriever, GeneratedResponse, QueryProcessor, ResponseGenerator, ResultRanker,
+    RetrievalMethod,
+};
 
 /// Configuration for the high-level RAG engine.
 #[derive(Debug, Clone)]
@@ -241,12 +244,7 @@ impl RAGEngine {
         // Spawn background task for streaming pipeline
         let _handle: JoinHandle<()> = tokio::spawn(async move {
             let started_ts = Instant::now();
-            let _ = tx
-                .send(StreamEvent::Started {
-                    query_id,
-                    ts_ms: 0,
-                })
-                .await;
+            let _ = tx.send(StreamEvent::Started { query_id, ts_ms: 0 }).await;
 
             // Step 0: quick pre-processing for fast TTFB
             let mut quick_intro_sent = false;
@@ -269,11 +267,7 @@ impl RAGEngine {
                         "Analyzing: '{}' — intent: {}, keywords: {:?}",
                         processed.original_query, processed.intent, processed.keywords
                     );
-                    let _ = tx
-                        .send(StreamEvent::Token {
-                            text: intro,
-                        })
-                        .await;
+                    let _ = tx.send(StreamEvent::Token { text: intro }).await;
                     quick_intro_sent = true;
 
                     // Proceed with retrieval
@@ -286,14 +280,9 @@ impl RAGEngine {
                         Ok((processed_q, results)) => {
                             // Send some context snippets quickly
                             for r in results.iter().take(3) {
-                                let snippet = r
-                                    .context_snippet
-                                    .chars()
-                                    .take(180)
-                                    .collect::<String>();
-                                let _ = tx
-                                    .send(StreamEvent::Context { snippet })
-                                    .await;
+                                let snippet =
+                                    r.context_snippet.chars().take(180).collect::<String>();
+                                let _ = tx.send(StreamEvent::Context { snippet }).await;
                             }
 
                             if let Err(e) = send_progress("ranking results").await {
@@ -304,7 +293,11 @@ impl RAGEngine {
                             let ranked = {
                                 let mut rk = this.ranker.write().await;
                                 match rk
-                                    .rank_results(results, &query_string, &processed_q.semantic_embedding)
+                                    .rank_results(
+                                        results,
+                                        &query_string,
+                                        &processed_q.semantic_embedding,
+                                    )
                                     .await
                                 {
                                     Ok(r) => r,
@@ -324,7 +317,11 @@ impl RAGEngine {
                             }
 
                             // Generate response
-                            match this.generator.generate_response(&query_string, &ranked).await {
+                            match this
+                                .generator
+                                .generate_response(&query_string, &ranked)
+                                .await
+                            {
                                 Ok(gen) => {
                                     // Stream the final answer in chunks
                                     let citations = this.map_sources_to_citations(&ranked, &gen);
@@ -334,11 +331,10 @@ impl RAGEngine {
                                     let mut i = 0;
                                     let chars: Vec<char> = answer.chars().collect();
                                     while i < chars.len() {
-                                        let end = (i + config.streaming_chunk_chars).min(chars.len());
+                                        let end =
+                                            (i + config.streaming_chunk_chars).min(chars.len());
                                         let chunk = chars[i..end].iter().collect::<String>();
-                                        let _ = tx
-                                            .send(StreamEvent::Token { text: chunk })
-                                            .await;
+                                        let _ = tx.send(StreamEvent::Token { text: chunk }).await;
                                         i = end;
                                         // light throttling for smoother UX
                                         if config.streaming_min_delay_ms > 0 {
@@ -452,4 +448,3 @@ impl RAGEngine {
         }
     }
 }
-

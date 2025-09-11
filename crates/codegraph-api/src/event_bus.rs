@@ -1,8 +1,8 @@
 use async_graphql::SimpleBroker;
 use chrono::Utc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use parking_lot::RwLock;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::subscriptions::{GraphUpdateEvent, GraphUpdateType, IndexingProgressEvent};
 
@@ -40,7 +40,9 @@ pub fn publish_graph_update(
     // Store in ring buffer for reconnection catch-up
     {
         let mut buf = GRAPH_UPDATE_BUFFER.write();
-        if buf.len() >= BUFFER_CAPACITY { buf.pop_front(); }
+        if buf.len() >= BUFFER_CAPACITY {
+            buf.pop_front();
+        }
         buf.push_back(event.clone());
     }
     SimpleBroker::publish(event);
@@ -64,7 +66,9 @@ pub fn publish_indexing_progress(
     };
     {
         let mut buf = INDEXING_BUFFER.write();
-        if buf.len() >= BUFFER_CAPACITY { buf.pop_front(); }
+        if buf.len() >= BUFFER_CAPACITY {
+            buf.pop_front();
+        }
         buf.push_back(event.clone());
     }
     SimpleBroker::publish(event);

@@ -20,7 +20,9 @@ impl Arena {
     }
 
     pub fn with_capacity(bytes: usize) -> Self {
-        Self { bump: Bump::with_capacity(bytes) }
+        Self {
+            bump: Bump::with_capacity(bytes),
+        }
     }
 
     /// Allocate a string into the arena and return a &'a str borrowed
@@ -55,9 +57,13 @@ impl ArenaIndex {
         Self(((page as u64) << 32) | (offset as u64))
     }
     #[inline]
-    pub fn page(self) -> u32 { (self.0 >> 32) as u32 }
+    pub fn page(self) -> u32 {
+        (self.0 >> 32) as u32
+    }
     #[inline]
-    pub fn offset(self) -> u32 { self.0 as u32 }
+    pub fn offset(self) -> u32 {
+        self.0 as u32
+    }
 }
 
 /// Paged arena for long-lived objects (e.g., nodes/edges) that avoids per-item
@@ -68,9 +74,9 @@ impl ArenaIndex {
 /// - Memory: contiguous pages improve locality and reduce allocator overhead.
 #[derive(Debug)]
 pub struct PagedArena<T> {
-    pages: Vec<Vec<T>>,     // owned pages
-    page_capacity: usize,   // items per page
-    len: usize,             // total items
+    pages: Vec<Vec<T>>,   // owned pages
+    page_capacity: usize, // items per page
+    len: usize,           // total items
     category: MemoryCategory,
     _marker: PhantomData<T>,
 }
@@ -78,7 +84,13 @@ pub struct PagedArena<T> {
 impl<T> PagedArena<T> {
     pub fn with_page_capacity(page_capacity: usize, category: MemoryCategory) -> Self {
         let cap = page_capacity.max(1);
-        Self { pages: Vec::new(), page_capacity: cap, len: 0, category, _marker: PhantomData }
+        Self {
+            pages: Vec::new(),
+            page_capacity: cap,
+            len: 0,
+            category,
+            _marker: PhantomData,
+        }
     }
 
     pub fn new_nodes() -> Self {
@@ -93,7 +105,12 @@ impl<T> PagedArena<T> {
 
     #[inline]
     fn ensure_page(&mut self) {
-        if self.pages.last().map(|p| p.len() < self.page_capacity).unwrap_or(false) {
+        if self
+            .pages
+            .last()
+            .map(|p| p.len() < self.page_capacity)
+            .unwrap_or(false)
+        {
             return;
         }
         self.pages.push(Vec::with_capacity(self.page_capacity));
@@ -112,8 +129,12 @@ impl<T> PagedArena<T> {
     }
 
     /// Length (number of elements) in the arena.
-    pub fn len(&self) -> usize { self.len }
-    pub fn is_empty(&self) -> bool { self.len == 0 }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
 
     /// Immutable access by index.
     pub fn get(&self, idx: ArenaIndex) -> Option<&T> {
@@ -165,7 +186,12 @@ pub struct ChunkArena<T> {
 impl<T> ChunkArena<T> {
     pub fn with_chunk_capacity(chunk_capacity: usize, category: MemoryCategory) -> Self {
         let cap = chunk_capacity.max(1);
-        Self { chunks: Vec::new(), chunk_capacity: cap, len: 0, category }
+        Self {
+            chunks: Vec::new(),
+            chunk_capacity: cap,
+            len: 0,
+            category,
+        }
     }
 
     #[inline]
@@ -177,7 +203,9 @@ impl<T> ChunkArena<T> {
         }
     }
 
-    pub fn len(&self) -> usize { self.len }
+    pub fn len(&self) -> usize {
+        self.len
+    }
 
     /// Push an element, moving it into the arena.
     pub fn push(&mut self, value: T) {

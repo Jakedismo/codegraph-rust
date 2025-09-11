@@ -1,13 +1,15 @@
-use async_graphql::{Context, Object, Result, ID, dataloader::DataLoader};
+use async_graphql::{dataloader::DataLoader, Context, Object, Result, ID};
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::graphql::{
-    CodeSearchInput, CodeSearchResult, GraphTraversalInput, GraphTraversalResult,
-    SemanticSearchInput, SemanticSearchResult, SubgraphExtractionInput, SubgraphResult,
-    GraphQLCodeNode, QueryRoot, GraphQLEdge, GraphQLEdgeType,
+use crate::graphql::loaders::{
+    EdgesBySourceLoader, GraphTraversalLoader, NodeLoader, SemanticSearchLoader,
 };
-use crate::graphql::loaders::{NodeLoader, EdgesBySourceLoader, SemanticSearchLoader, GraphTraversalLoader};
+use crate::graphql::{
+    CodeSearchInput, CodeSearchResult, GraphQLCodeNode, GraphQLEdge, GraphQLEdgeType,
+    GraphTraversalInput, GraphTraversalResult, QueryRoot, SemanticSearchInput,
+    SemanticSearchResult, SubgraphExtractionInput, SubgraphResult,
+};
 
 pub struct Query;
 

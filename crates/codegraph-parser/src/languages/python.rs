@@ -11,4 +11,3 @@ pub fn extract_python(_file_path: &str, _source: &str) -> PythonExtraction {
     // Lightweight stub to keep compilation healthy for non-Rust paths.
     PythonExtraction::default()
 }
-

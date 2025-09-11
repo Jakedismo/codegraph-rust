@@ -1,6 +1,5 @@
 use codegraph_core::{CodeGraphError, NodeId, Result};
-use faiss::{Index, index::IndexImpl, MetricType};
-use faiss::index::ConcurrentIndex;
+use faiss::{index::IndexImpl, Index, MetricType};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -85,7 +84,7 @@ impl SimpleFaissManager {
         // Add to FAISS index
         let mut index_guard = self.index.write();
         let index = index_guard.as_mut().unwrap();
-        
+
         index
             .add(&flat_vectors)
             .map_err(|e| CodeGraphError::Vector(format!("Failed to add vectors: {}", e)))?;
@@ -133,9 +132,13 @@ impl SimpleFaissManager {
         let id_mapping = self.id_mapping.read();
         let mut results = Vec::new();
 
-        for (distance, label) in search_result.distances.into_iter().zip(search_result.labels) {
+        for (distance, label) in search_result
+            .distances
+            .into_iter()
+            .zip(search_result.labels)
+        {
             if let Some(raw) = label.get() {
-                if let Some(node_id) = id_mapping.get(&((raw as i64))) {
+                if let Some(node_id) = id_mapping.get(&(raw as i64)) {
                     results.push((*node_id, distance));
                 }
             }

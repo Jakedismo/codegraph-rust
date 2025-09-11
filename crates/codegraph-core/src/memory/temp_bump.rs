@@ -1,5 +1,5 @@
-use bumpalo::Bump;
 use super::debug::{MemoryCategory, MEMORY_TRACKER};
+use bumpalo::Bump;
 
 /// TempBump provides a scoped bump allocator intended for temporary
 /// allocations during parsing/analysis. Dropping a `Scope` frees all
@@ -10,23 +10,39 @@ pub struct TempBump {
 }
 
 impl TempBump {
-    pub fn new() -> Self { Self { inner: Bump::new() } }
-    pub fn with_capacity(bytes: usize) -> Self { Self { inner: Bump::with_capacity(bytes) } }
+    pub fn new() -> Self {
+        Self { inner: Bump::new() }
+    }
+    pub fn with_capacity(bytes: usize) -> Self {
+        Self {
+            inner: Bump::with_capacity(bytes),
+        }
+    }
 
     /// Start a new scope. All allocations through the returned `Scope` will
     /// be freed when it is dropped. Not re-entrant: do not nest scopes.
     pub fn scope(&mut self) -> Scope<'_> {
         let bump_mut: *mut Bump = &mut self.inner;
         let bump_ref: &Bump = unsafe { &*bump_mut };
-        Scope { bump_ref, bump_mut, bytes_allocated: 0 }
+        Scope {
+            bump_ref,
+            bump_mut,
+            bytes_allocated: 0,
+        }
     }
 }
 
-pub struct Scope<'a> { bump_ref: &'a Bump, bump_mut: *mut Bump, bytes_allocated: usize }
+pub struct Scope<'a> {
+    bump_ref: &'a Bump,
+    bump_mut: *mut Bump,
+    bytes_allocated: usize,
+}
 
 impl<'a> Scope<'a> {
     #[inline]
-    fn bump_ref(&self) -> &Bump { self.bump_ref }
+    fn bump_ref(&self) -> &Bump {
+        self.bump_ref
+    }
 
     #[inline]
     pub fn alloc_str<'b>(&'b mut self, s: &str) -> &'b str {

@@ -16,6 +16,7 @@ crossbeam-skiplist = { workspace = true }
 arc-swap = { workspace = true }
 
 codegraph-core = { path = "../codegraph-core" }
+async-trait = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

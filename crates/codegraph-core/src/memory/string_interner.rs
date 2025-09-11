@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use parking_lot::RwLock;
 use hashbrown::HashMap;
-use std::hash::BuildHasherDefault;
+use parking_lot::RwLock;
 use rustc_hash::FxHasher;
+use std::hash::BuildHasherDefault;
+use std::sync::Arc;
 
 use super::debug::{MemoryCategory, MEMORY_TRACKER};
 
@@ -17,7 +17,13 @@ pub struct StringInterner {
 }
 
 impl StringInterner {
-    pub fn new() -> Self { Self { map: RwLock::new(HashMap::with_hasher(BuildHasherDefault::<FxHasher>::default())) } }
+    pub fn new() -> Self {
+        Self {
+            map: RwLock::new(HashMap::with_hasher(
+                BuildHasherDefault::<FxHasher>::default(),
+            )),
+        }
+    }
 
     /// Interns the provided string slice. If already present, returns a clone
     /// of the existing Arc; otherwise inserts and returns the new Arc.
@@ -40,7 +46,9 @@ impl StringInterner {
         arc
     }
 
-    pub fn len(&self) -> usize { self.map.read().len() }
+    pub fn len(&self) -> usize {
+        self.map.read().len()
+    }
 
     pub fn clear(&self) {
         let mut map = self.map.write();

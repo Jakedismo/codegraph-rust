@@ -1,7 +1,5 @@
-use codegraph_core::{CodeNode, Language, NodeType, Location};
-use codegraph_vector::{
-    BatchConfig, EmbeddingProvider, HybridEmbeddingPipeline, FallbackStrategy,
-};
+use codegraph_core::{CodeNode, Language, Location, NodeType};
+use codegraph_vector::{BatchConfig, EmbeddingProvider, FallbackStrategy, HybridEmbeddingPipeline};
 use std::time::Duration;
 
 /// Create a test CodeNode for embedding tests
@@ -18,11 +16,11 @@ fn create_test_node(name: &str, content: Option<String>) -> CodeNode {
             end_column: Some(10),
         },
     );
-    
+
     if let Some(content) = content {
         node = node.with_content(content);
     }
-    
+
     node
 }
 
@@ -59,7 +57,7 @@ impl MockEmbeddingProvider {
 impl EmbeddingProvider for MockEmbeddingProvider {
     async fn generate_embedding(&self, _node: &CodeNode) -> codegraph_core::Result<Vec<f32>> {
         tokio::time::sleep(self.latency).await;
-        
+
         if self.fail_on_generate {
             return Err(codegraph_core::CodeGraphError::External(
                 "Mock provider failure".to_string(),
@@ -87,7 +85,10 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         Ok(embedding)
     }
 
-    async fn generate_embeddings(&self, nodes: &[CodeNode]) -> codegraph_core::Result<Vec<Vec<f32>>> {
+    async fn generate_embeddings(
+        &self,
+        nodes: &[CodeNode],
+    ) -> codegraph_core::Result<Vec<Vec<f32>>> {
         let mut embeddings = Vec::with_capacity(nodes.len());
         for node in nodes {
             embeddings.push(self.generate_embedding(node).await?);
@@ -103,13 +104,10 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         let start = std::time::Instant::now();
         let embeddings = self.generate_embeddings(nodes).await?;
         let duration = start.elapsed();
-        
-        let metrics = codegraph_vector::EmbeddingMetrics::new(
-            self.name.clone(),
-            nodes.len(),
-            duration,
-        );
-        
+
+        let metrics =
+            codegraph_vector::EmbeddingMetrics::new(self.name.clone(), nodes.len(), duration);
+
         Ok((embeddings, metrics))
     }
 
@@ -151,12 +149,15 @@ async fn test_mock_provider_single_embedding() {
     let node = create_test_node("test_function", Some("fn test() {}".to_string()));
 
     let embedding = provider.generate_embedding(&node).await.unwrap();
-    
+
     assert_eq!(embedding.len(), 384);
-    
+
     // Check L2 normalization
     let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-    assert!((norm - 1.0).abs() < 1e-5, "Embedding should be L2 normalized");
+    assert!(
+        (norm - 1.0).abs() < 1e-5,
+        "Embedding should be L2 normalized"
+    );
 }
 
 #[tokio::test]
@@ -169,14 +170,17 @@ async fn test_mock_provider_batch_embeddings() {
     ];
 
     let embeddings = provider.generate_embeddings(&nodes).await.unwrap();
-    
+
     assert_eq!(embeddings.len(), 3);
     for embedding in &embeddings {
         assert_eq!(embedding.len(), 384);
-        
+
         // Check L2 normalization
         let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-        assert!((norm - 1.0).abs() < 1e-5, "Embedding should be L2 normalized");
+        assert!(
+            (norm - 1.0).abs() < 1e-5,
+            "Embedding should be L2 normalized"
+        );
     }
 
     // Embeddings should be different for different inputs
@@ -191,7 +195,7 @@ async fn test_deterministic_embeddings() {
 
     let embedding1 = provider.generate_embedding(&node).await.unwrap();
     let embedding2 = provider.generate_embedding(&node).await.unwrap();
-    
+
     // Same input should produce same embedding
     assert_eq!(embedding1, embedding2);
 }
@@ -203,7 +207,7 @@ async fn test_batch_config_metrics() {
         create_test_node("function1", None),
         create_test_node("function2", None),
     ];
-    
+
     let config = BatchConfig {
         batch_size: 10,
         max_concurrent: 2,
@@ -215,7 +219,7 @@ async fn test_batch_config_metrics() {
         .generate_embeddings_with_config(&nodes, &config)
         .await
         .unwrap();
-    
+
     assert_eq!(embeddings.len(), 2);
     assert_eq!(metrics.texts_processed, 2);
     assert_eq!(metrics.provider_name, "test");
@@ -236,15 +240,13 @@ async fn test_provider_failure_handling() {
 async fn test_hybrid_pipeline_primary_success() {
     let primary = MockEmbeddingProvider::new("primary", 384);
     let fallback = MockEmbeddingProvider::new("fallback", 384);
-    
-    let pipeline = HybridEmbeddingPipeline::new(
-        Box::new(primary),
-        FallbackStrategy::Sequential,
-    ).add_fallback(Box::new(fallback));
+
+    let pipeline = HybridEmbeddingPipeline::new(Box::new(primary), FallbackStrategy::Sequential)
+        .add_fallback(Box::new(fallback));
 
     let node = create_test_node("test_function", None);
     let embedding = pipeline.generate_embedding(&node).await.unwrap();
-    
+
     assert_eq!(embedding.len(), 384);
     assert_eq!(pipeline.provider_name(), "HybridPipeline");
 }
@@ -253,35 +255,32 @@ async fn test_hybrid_pipeline_primary_success() {
 async fn test_hybrid_pipeline_fallback_on_failure() {
     let primary = MockEmbeddingProvider::new("primary", 384).with_failure();
     let fallback = MockEmbeddingProvider::new("fallback", 384);
-    
-    let pipeline = HybridEmbeddingPipeline::new(
-        Box::new(primary),
-        FallbackStrategy::Sequential,
-    ).add_fallback(Box::new(fallback));
+
+    let pipeline = HybridEmbeddingPipeline::new(Box::new(primary), FallbackStrategy::Sequential)
+        .add_fallback(Box::new(fallback));
 
     let node = create_test_node("test_function", None);
     let embedding = pipeline.generate_embedding(&node).await.unwrap();
-    
+
     assert_eq!(embedding.len(), 384);
 }
 
 #[tokio::test]
 async fn test_hybrid_pipeline_fastest_first_strategy() {
-    let slow_primary = MockEmbeddingProvider::new("slow", 384)
-        .with_latency(Duration::from_millis(100));
-    let fast_fallback = MockEmbeddingProvider::new("fast", 384)
-        .with_latency(Duration::from_millis(10));
-    
-    let pipeline = HybridEmbeddingPipeline::new(
-        Box::new(slow_primary),
-        FallbackStrategy::FastestFirst,
-    ).add_fallback(Box::new(fast_fallback));
+    let slow_primary =
+        MockEmbeddingProvider::new("slow", 384).with_latency(Duration::from_millis(100));
+    let fast_fallback =
+        MockEmbeddingProvider::new("fast", 384).with_latency(Duration::from_millis(10));
+
+    let pipeline =
+        HybridEmbeddingPipeline::new(Box::new(slow_primary), FallbackStrategy::FastestFirst)
+            .add_fallback(Box::new(fast_fallback));
 
     let node = create_test_node("test_function", None);
     let start = std::time::Instant::now();
     let embedding = pipeline.generate_embedding(&node).await.unwrap();
     let duration = start.elapsed();
-    
+
     assert_eq!(embedding.len(), 384);
     // Should use the faster provider
     assert!(duration < Duration::from_millis(50));
@@ -298,9 +297,8 @@ async fn test_empty_input_handling() {
 
 #[tokio::test]
 async fn test_performance_target_throughput() {
-    let provider = MockEmbeddingProvider::new("test", 384)
-        .with_latency(Duration::from_millis(5)); // 5ms per embedding
-    
+    let provider = MockEmbeddingProvider::new("test", 384).with_latency(Duration::from_millis(5)); // 5ms per embedding
+
     // Create 100 test nodes
     let nodes: Vec<CodeNode> = (0..100)
         .map(|i| create_test_node(&format!("function_{}", i), None))
@@ -309,21 +307,25 @@ async fn test_performance_target_throughput() {
     let start = std::time::Instant::now();
     let embeddings = provider.generate_embeddings(&nodes).await.unwrap();
     let duration = start.elapsed();
-    
+
     assert_eq!(embeddings.len(), 100);
-    
+
     let throughput = nodes.len() as f64 / duration.as_secs_f64();
     println!("Achieved throughput: {:.2} texts/s", throughput);
-    
+
     // Target: ≥100 texts/s
     // With 5ms latency, sequential processing gives ~200 texts/s
-    assert!(throughput >= 50.0, "Throughput too low: {:.2} texts/s", throughput);
+    assert!(
+        throughput >= 50.0,
+        "Throughput too low: {:.2} texts/s",
+        throughput
+    );
 }
 
 #[tokio::test]
 async fn test_large_batch_processing() {
     let provider = MockEmbeddingProvider::new("test", 384);
-    
+
     // Create 1000 test nodes for batch processing test
     let nodes: Vec<CodeNode> = (0..1000)
         .map(|i| create_test_node(&format!("node_{}", i), None))
@@ -342,14 +344,19 @@ async fn test_large_batch_processing() {
         .await
         .unwrap();
     let duration = start.elapsed();
-    
+
     assert_eq!(embeddings.len(), 1000);
     assert_eq!(metrics.texts_processed, 1000);
-    
+
     // Target: 1k texts ≤30s
-    assert!(duration <= Duration::from_secs(30), 
-        "Batch processing too slow: {:?}", duration);
-    
-    println!("1000 text batch processed in {:?} ({:.2} texts/s)", 
-        duration, metrics.throughput);
+    assert!(
+        duration <= Duration::from_secs(30),
+        "Batch processing too slow: {:?}",
+        duration
+    );
+
+    println!(
+        "1000 text batch processed in {:?} ({:.2} texts/s)",
+        duration, metrics.throughput
+    );
 }

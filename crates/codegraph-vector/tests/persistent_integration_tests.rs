@@ -2,9 +2,9 @@
 mod persistent_tests {
     use codegraph_core::{CodeNode, NodeId};
     use codegraph_vector::{
-        PersistentVectorStore, IncrementalUpdateManager, IncrementalConfig, IncrementalOperation,
-        ConsistencyManager, ConsistencyConfig, IsolationLevel, VectorOperation,
-        CompressionType, StorageStats,
+        CompressionType, ConsistencyConfig, ConsistencyManager, IncrementalConfig,
+        IncrementalOperation, IncrementalUpdateManager, IsolationLevel, PersistentVectorStore,
+        StorageStats, VectorOperation,
     };
     use std::collections::HashMap;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -49,11 +49,8 @@ mod persistent_tests {
         let backup_path = temp_dir.path().join("backups");
 
         // Create persistent storage
-        let mut store = PersistentVectorStore::new(
-            &storage_path,
-            &backup_path,
-            TEST_DIMENSION,
-        ).unwrap();
+        let mut store =
+            PersistentVectorStore::new(&storage_path, &backup_path, TEST_DIMENSION).unwrap();
 
         // Generate test data
         let test_vectors = create_test_vectors(100, TEST_DIMENSION);
@@ -88,11 +85,8 @@ mod persistent_tests {
         let storage_path = temp_dir.path().join("test_compressed.db");
         let backup_path = temp_dir.path().join("backups");
 
-        let mut store = PersistentVectorStore::new(
-            &storage_path,
-            &backup_path,
-            TEST_DIMENSION,
-        ).unwrap();
+        let mut store =
+            PersistentVectorStore::new(&storage_path, &backup_path, TEST_DIMENSION).unwrap();
 
         // Enable product quantization
         store.enable_product_quantization(16, 8).unwrap();
@@ -114,11 +108,8 @@ mod persistent_tests {
         let storage_path = temp_dir.path().join("test_scalar.db");
         let backup_path = temp_dir.path().join("backups");
 
-        let mut store = PersistentVectorStore::new(
-            &storage_path,
-            &backup_path,
-            TEST_DIMENSION,
-        ).unwrap();
+        let mut store =
+            PersistentVectorStore::new(&storage_path, &backup_path, TEST_DIMENSION).unwrap();
 
         // Enable scalar quantization
         store.enable_scalar_quantization(8, false).unwrap();
@@ -138,11 +129,8 @@ mod persistent_tests {
         let storage_path = temp_dir.path().join("test_backup.db");
         let backup_path = temp_dir.path().join("backups");
 
-        let mut store = PersistentVectorStore::new(
-            &storage_path,
-            &backup_path,
-            TEST_DIMENSION,
-        ).unwrap();
+        let mut store =
+            PersistentVectorStore::new(&storage_path, &backup_path, TEST_DIMENSION).unwrap();
 
         let test_vectors = create_test_vectors(20, TEST_DIMENSION);
         let test_nodes = create_test_nodes(&test_vectors);
@@ -158,7 +146,8 @@ mod persistent_tests {
             temp_dir.path().join("test_backup2.db"),
             &backup_path,
             TEST_DIMENSION,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Restore from backup
         new_store.restore_from_backup(&backup_file).await.unwrap();
@@ -181,16 +170,16 @@ mod persistent_tests {
         let manager = IncrementalUpdateManager::new(config).unwrap();
 
         // Submit insert operations
-        let insert_ops: Vec<_> = (0..25).map(|i| {
-            IncrementalOperation::Insert {
+        let insert_ops: Vec<_> = (0..25)
+            .map(|i| IncrementalOperation::Insert {
                 node_id: i,
                 vector: vec![i as f32; TEST_DIMENSION],
                 timestamp: SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
-            }
-        }).collect();
+            })
+            .collect();
 
         manager.submit_batch(insert_ops).unwrap();
 
@@ -202,8 +191,8 @@ mod persistent_tests {
         assert!(stats.batches_processed > 0);
 
         // Test update operations
-        let update_ops: Vec<_> = (0..5).map(|i| {
-            IncrementalOperation::Update {
+        let update_ops: Vec<_> = (0..5)
+            .map(|i| IncrementalOperation::Update {
                 node_id: i,
                 old_vector: Some(vec![i as f32; TEST_DIMENSION]),
                 new_vector: vec![(i + 100) as f32; TEST_DIMENSION],
@@ -211,22 +200,22 @@ mod persistent_tests {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
-            }
-        }).collect();
+            })
+            .collect();
 
         manager.submit_batch(update_ops).unwrap();
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Test delete operations
-        let delete_ops: Vec<_> = (20..25).map(|i| {
-            IncrementalOperation::Delete {
+        let delete_ops: Vec<_> = (20..25)
+            .map(|i| IncrementalOperation::Delete {
                 node_id: i,
                 timestamp: SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
-            }
-        }).collect();
+            })
+            .collect();
 
         manager.submit_batch(delete_ops).unwrap();
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -248,18 +237,20 @@ mod persistent_tests {
 
         // Add vectors to trigger multiple segments
         for batch in 0..10 {
-            let ops: Vec<_> = (0..10).map(|i| {
-                let node_id = batch * 10 + i;
-                IncrementalOperation::Insert {
-                    node_id,
-                    vector: vec![1.0; 100], // Large vectors
-                    timestamp: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                }
-            }).collect();
-            
+            let ops: Vec<_> = (0..10)
+                .map(|i| {
+                    let node_id = batch * 10 + i;
+                    IncrementalOperation::Insert {
+                        node_id,
+                        vector: vec![1.0; 100], // Large vectors
+                        timestamp: SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                    }
+                })
+                .collect();
+
             manager.submit_batch(ops).unwrap();
         }
 
@@ -272,10 +263,13 @@ mod persistent_tests {
         // Test segment merging
         let initial_count = segments.len();
         let merged_count = manager.merge_segments(5).await.unwrap();
-        
+
         if merged_count > 0 {
             let new_segments = manager.get_segments();
-            assert!(new_segments.len() <= initial_count, "Should reduce segment count");
+            assert!(
+                new_segments.len() <= initial_count,
+                "Should reduce segment count"
+            );
         }
     }
 
@@ -285,7 +279,9 @@ mod persistent_tests {
         let manager = ConsistencyManager::new(config);
 
         // Test transaction lifecycle
-        let txn_id = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+        let txn_id = manager
+            .begin_transaction(IsolationLevel::ReadCommitted)
+            .unwrap();
 
         // Add operations to transaction
         let operations = vec![
@@ -318,15 +314,19 @@ mod persistent_tests {
         let manager = ConsistencyManager::new(config);
 
         // Start two transactions
-        let txn1 = manager.begin_transaction(IsolationLevel::Serializable).unwrap();
-        let txn2 = manager.begin_transaction(IsolationLevel::Serializable).unwrap();
+        let txn1 = manager
+            .begin_transaction(IsolationLevel::Serializable)
+            .unwrap();
+        let txn2 = manager
+            .begin_transaction(IsolationLevel::Serializable)
+            .unwrap();
 
         // Both try to modify the same node
         let op1 = VectorOperation::Insert {
             node_id: 1,
             vector: vec![1.0, 2.0, 3.0],
         };
-        
+
         let op2 = VectorOperation::Update {
             node_id: 1,
             old_vector: None,
@@ -334,7 +334,7 @@ mod persistent_tests {
         };
 
         manager.add_operation(txn1, op1).unwrap();
-        
+
         // Second transaction should detect conflict with serializable isolation
         let result = manager.add_operation(txn2, op2);
         assert!(result.is_err(), "Should detect serialization conflict");
@@ -345,25 +345,36 @@ mod persistent_tests {
 
     #[tokio::test]
     async fn test_lock_management() {
-        use codegraph_vector::{LockMode};
-        
+        use codegraph_vector::LockMode;
+
         let config = ConsistencyConfig::default();
         let manager = ConsistencyManager::new(config);
 
-        let txn1 = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
-        let txn2 = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+        let txn1 = manager
+            .begin_transaction(IsolationLevel::ReadCommitted)
+            .unwrap();
+        let txn2 = manager
+            .begin_transaction(IsolationLevel::ReadCommitted)
+            .unwrap();
 
         // Transaction 1 acquires shared lock
-        manager.acquire_lock(txn1, 1, LockMode::Shared).await.unwrap();
+        manager
+            .acquire_lock(txn1, 1, LockMode::Shared)
+            .await
+            .unwrap();
 
         // Transaction 2 can also acquire shared lock
-        manager.acquire_lock(txn2, 1, LockMode::Shared).await.unwrap();
+        manager
+            .acquire_lock(txn2, 1, LockMode::Shared)
+            .await
+            .unwrap();
 
         // But transaction 2 cannot acquire exclusive lock (should timeout)
         let result = tokio::time::timeout(
             Duration::from_millis(100),
-            manager.acquire_lock(txn2, 1, LockMode::Exclusive)
-        ).await;
+            manager.acquire_lock(txn2, 1, LockMode::Exclusive),
+        )
+        .await;
 
         assert!(result.is_err(), "Should timeout on exclusive lock conflict");
 
@@ -377,7 +388,9 @@ mod persistent_tests {
         let config = ConsistencyConfig::default();
         let manager = ConsistencyManager::new(config);
 
-        let txn_id = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+        let txn_id = manager
+            .begin_transaction(IsolationLevel::ReadCommitted)
+            .unwrap();
 
         // Add some operations
         let operations = vec![
@@ -402,9 +415,9 @@ mod persistent_tests {
 
         // Abort transaction and get rollback operations
         let rollback_ops = manager.abort_transaction(txn_id).unwrap();
-        
+
         assert_eq!(rollback_ops.len(), 3);
-        
+
         // Verify rollback operations are in reverse order and correct type
         match &rollback_ops[0] {
             VectorOperation::Insert { node_id, .. } => {
@@ -414,7 +427,11 @@ mod persistent_tests {
         }
 
         match &rollback_ops[1] {
-            VectorOperation::Update { node_id, new_vector, .. } => {
+            VectorOperation::Update {
+                node_id,
+                new_vector,
+                ..
+            } => {
                 assert_eq!(*node_id, 11);
                 assert_eq!(*new_vector, vec![1.0, 2.0, 3.0]); // Should restore old vector
             }
@@ -436,13 +453,15 @@ mod persistent_tests {
 
         // Create and commit some transactions
         for i in 0..5 {
-            let txn_id = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
-            
+            let txn_id = manager
+                .begin_transaction(IsolationLevel::ReadCommitted)
+                .unwrap();
+
             let op = VectorOperation::Insert {
                 node_id: i,
                 vector: vec![i as f32; 3],
             };
-            
+
             manager.add_operation(txn_id, op).unwrap();
             manager.prepare_transaction(txn_id).unwrap();
             manager.commit_transaction(txn_id).unwrap();
@@ -466,28 +485,22 @@ mod persistent_tests {
 
         // Create and populate storage
         {
-            let mut store = PersistentVectorStore::new(
-                &storage_path,
-                &backup_path,
-                TEST_DIMENSION,
-            ).unwrap();
+            let mut store =
+                PersistentVectorStore::new(&storage_path, &backup_path, TEST_DIMENSION).unwrap();
 
             let test_vectors = create_test_vectors(50, TEST_DIMENSION);
             let test_nodes = create_test_nodes(&test_vectors);
 
             store.store_embeddings(&test_nodes).await.unwrap();
-            
+
             let stats = store.get_stats().unwrap();
             assert_eq!(stats.active_vectors, 50);
         }
 
         // Reload storage and verify data persistence
         {
-            let store = PersistentVectorStore::new(
-                &storage_path,
-                &backup_path,
-                TEST_DIMENSION,
-            ).unwrap();
+            let store =
+                PersistentVectorStore::new(&storage_path, &backup_path, TEST_DIMENSION).unwrap();
 
             let stats = store.get_stats().unwrap();
             assert_eq!(stats.active_vectors, 50);
@@ -513,16 +526,16 @@ mod persistent_tests {
         let manager = IncrementalUpdateManager::new(config).unwrap();
 
         // Submit operations that should be logged to WAL
-        let operations: Vec<_> = (0..20).map(|i| {
-            IncrementalOperation::Insert {
+        let operations: Vec<_> = (0..20)
+            .map(|i| IncrementalOperation::Insert {
                 node_id: i,
                 vector: vec![i as f32; 10],
                 timestamp: SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
-            }
-        }).collect();
+            })
+            .collect();
 
         for op in operations {
             manager.submit_operation(op).unwrap();
@@ -541,11 +554,8 @@ mod persistent_tests {
         let storage_path = temp_dir.path().join("test_perf.db");
         let backup_path = temp_dir.path().join("backups");
 
-        let mut store = PersistentVectorStore::new(
-            &storage_path,
-            &backup_path,
-            TEST_DIMENSION,
-        ).unwrap();
+        let mut store =
+            PersistentVectorStore::new(&storage_path, &backup_path, TEST_DIMENSION).unwrap();
 
         // Enable compression for better performance
         store.enable_product_quantization(16, 8).unwrap();
@@ -559,21 +569,25 @@ mod persistent_tests {
         for batch in 0..num_batches {
             let vectors = create_test_vectors(batch_size, TEST_DIMENSION);
             let nodes = create_test_nodes(&vectors);
-            
+
             store.store_embeddings(&nodes).await.unwrap();
         }
 
         let storage_time = start_time.elapsed().unwrap();
-        println!("Stored {} vectors in {:?}", batch_size * num_batches, storage_time);
+        println!(
+            "Stored {} vectors in {:?}",
+            batch_size * num_batches,
+            storage_time
+        );
 
         // Test search performance
         let search_start = SystemTime::now();
         let query_vector = vec![0.5; TEST_DIMENSION];
-        
+
         for _ in 0..50 {
             let _results = store.search_similar(&query_vector, 10).await.unwrap();
         }
-        
+
         let search_time = search_start.elapsed().unwrap();
         println!("Performed 50 searches in {:?}", search_time);
 

@@ -1,5 +1,5 @@
 /// Memory Profiler Demo - Comprehensive example showcasing all profiler features
-/// 
+///
 /// This example demonstrates:
 /// 1. Memory allocation tracking with detailed categorization
 /// 2. Real-time leak detection and pattern analysis
@@ -7,14 +7,14 @@
 /// 4. Live dashboard with WebSocket monitoring
 /// 5. Integration with existing cache system
 use codegraph_cache::{
-    MemoryProfiler, MemoryDashboard, ProfilerConfig, AllocationType,
-    MemoryManager, CacheConfig, CacheOptimizedHashMap, MEMORY_PROFILER,
+    AllocationType, CacheConfig, CacheOptimizedHashMap, MemoryDashboard, MemoryManager,
+    MemoryProfiler, ProfilerConfig, MEMORY_PROFILER,
 };
-use std::alloc::{Layout, System, GlobalAlloc};
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::{sleep, interval};
-use tracing::{info, warn, error};
+use tokio::time::{interval, sleep};
+use tracing::{error, info, warn};
 use tracing_subscriber;
 
 /// Custom allocator that integrates with the memory profiler
@@ -31,7 +31,7 @@ unsafe impl GlobalAlloc for DemoAllocator {
                 s if s < 1024 * 1024 => AllocationType::Cache,
                 _ => AllocationType::Vector,
             };
-            
+
             MEMORY_PROFILER.record_allocation(ptr, layout, category);
         }
         ptr
@@ -47,9 +47,7 @@ unsafe impl GlobalAlloc for DemoAllocator {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter("debug")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("debug").init();
 
     info!("🚀 Starting Memory Profiler Demo");
 
@@ -60,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         leak_detection_interval: Duration::from_secs(10),
         history_retention: Duration::from_hours(1),
         memory_limit_bytes: 250 * 1024 * 1024, // 250MB target
-        sampling_rate: 1.0, // Profile all allocations
+        sampling_rate: 1.0,                    // Profile all allocations
         real_time_monitoring: true,
         enable_stack_traces: false, // Disabled for demo performance
     };
@@ -121,7 +119,7 @@ async fn monitor_memory_profiler() {
                         warn!("Memory pressure: {:?} - {}/{} bytes", level, current_usage, limit);
                     }
                     codegraph_cache::ProfilerEvent::LeakDetected { leak } => {
-                        error!("🚨 Memory leak detected: {} bytes, age: {}s", 
+                        error!("🚨 Memory leak detected: {} bytes, age: {}s",
                                leak.size, leak.age.as_secs());
                     }
                     codegraph_cache::ProfilerEvent::RecommendationGenerated { recommendation } => {
@@ -131,7 +129,7 @@ async fn monitor_memory_profiler() {
                     _ => {}
                 }
             }
-            
+
             _ = report_interval.tick() => {
                 let metrics = MEMORY_PROFILER.get_metrics();
                 info!("📈 Current usage: {} MB, Peak: {} MB, Allocations: {}",
@@ -160,7 +158,7 @@ async fn simulate_cache_operations() {
 
         let key = format!("cache_key_{}", i);
         let value = vec![0u8; size];
-        
+
         cache.insert(key.clone(), value, size);
 
         // Occasionally access old entries
@@ -188,9 +186,9 @@ async fn simulate_vector_operations() {
 
         // Simulate embedding vectors
         let dimension = match i % 3 {
-            0 => 384,   // Small embeddings
-            1 => 768,   // Medium embeddings
-            _ => 1536,  // Large embeddings
+            0 => 384,  // Small embeddings
+            1 => 768,  // Medium embeddings
+            _ => 1536, // Large embeddings
         };
 
         let _embedding: Vec<f32> = (0..dimension).map(|_| fastrand::f32()).collect();
@@ -255,13 +253,13 @@ async fn simulate_memory_leaks() {
         };
 
         let layout = Layout::from_size_align(leak_size, 8).unwrap();
-        let allocation_id = MEMORY_PROFILER.record_allocation(
-            std::ptr::null_mut(),
-            layout,
-            AllocationType::Temp
-        );
+        let allocation_id =
+            MEMORY_PROFILER.record_allocation(std::ptr::null_mut(), layout, AllocationType::Temp);
 
-        warn!("🐛 Simulated memory leak: {} bytes (ID: {})", leak_size, allocation_id);
+        warn!(
+            "🐛 Simulated memory leak: {} bytes (ID: {})",
+            leak_size, allocation_id
+        );
 
         // Don't call record_deallocation to simulate the leak
     }
@@ -285,14 +283,26 @@ async fn generate_final_report() {
     // Overall Memory Metrics
     println!("\n📈 OVERALL MEMORY METRICS");
     println!("─".repeat(40));
-    println!("Total Allocated:     {} MB", metrics.total_allocated / (1024 * 1024));
-    println!("Total Freed:         {} MB", metrics.total_freed / (1024 * 1024));
-    println!("Current Usage:       {} MB", metrics.current_usage / (1024 * 1024));
-    println!("Peak Usage:          {} MB", metrics.peak_usage / (1024 * 1024));
+    println!(
+        "Total Allocated:     {} MB",
+        metrics.total_allocated / (1024 * 1024)
+    );
+    println!(
+        "Total Freed:         {} MB",
+        metrics.total_freed / (1024 * 1024)
+    );
+    println!(
+        "Current Usage:       {} MB",
+        metrics.current_usage / (1024 * 1024)
+    );
+    println!(
+        "Peak Usage:          {} MB",
+        metrics.peak_usage / (1024 * 1024)
+    );
     println!("Active Allocations:  {}", metrics.active_allocations);
     println!("Memory Pressure:     {:?}", metrics.memory_pressure);
     println!("Target Limit:        250 MB");
-    
+
     let usage_percentage = (metrics.current_usage as f64 / (250.0 * 1024.0 * 1024.0)) * 100.0;
     println!("Usage vs Target:     {:.1}%", usage_percentage);
 
@@ -300,11 +310,13 @@ async fn generate_final_report() {
     println!("\n🎯 MEMORY USAGE BY CATEGORY");
     println!("─".repeat(40));
     for (category, cat_metrics) in &metrics.categories {
-        println!("{:12} - Current: {:>8} MB, Peak: {:>8} MB, Count: {:>6}",
-                 format!("{:?}", category),
-                 cat_metrics.current / (1024 * 1024),
-                 cat_metrics.peak_size / (1024 * 1024),
-                 cat_metrics.count);
+        println!(
+            "{:12} - Current: {:>8} MB, Peak: {:>8} MB, Count: {:>6}",
+            format!("{:?}", category),
+            cat_metrics.current / (1024 * 1024),
+            cat_metrics.peak_size / (1024 * 1024),
+            cat_metrics.count
+        );
     }
 
     // Memory Leaks
@@ -314,13 +326,22 @@ async fn generate_final_report() {
         println!("✅ No memory leaks detected!");
     } else {
         let total_leaked = leaks.iter().map(|l| l.size).sum::<usize>();
-        println!("Total Leaks: {} ({} MB)", leaks.len(), total_leaked / (1024 * 1024));
-        
+        println!(
+            "Total Leaks: {} ({} MB)",
+            leaks.len(),
+            total_leaked / (1024 * 1024)
+        );
+
         for leak in &leaks[..std::cmp::min(5, leaks.len())] {
-            println!("  • {} bytes - Age: {}s - Category: {:?} - Impact: {:?}",
-                     leak.size, leak.age.as_secs(), leak.category, leak.estimated_impact);
+            println!(
+                "  • {} bytes - Age: {}s - Category: {:?} - Impact: {:?}",
+                leak.size,
+                leak.age.as_secs(),
+                leak.category,
+                leak.estimated_impact
+            );
         }
-        
+
         if leaks.len() > 5 {
             println!("  ... and {} more leaks", leaks.len() - 5);
         }
@@ -330,11 +351,13 @@ async fn generate_final_report() {
     println!("\n📊 USAGE PATTERNS ANALYSIS");
     println!("─".repeat(40));
     for (category, pattern) in &patterns {
-        println!("{:12} - Avg: {:>6} KB, Peak: {:>8} KB, Fragmentation: {:.1}%",
-                 format!("{:?}", category),
-                 pattern.average_usage / 1024,
-                 pattern.peak_usage / 1024,
-                 pattern.fragmentation_ratio * 100.0);
+        println!(
+            "{:12} - Avg: {:>6} KB, Peak: {:>8} KB, Fragmentation: {:.1}%",
+            format!("{:?}", category),
+            pattern.average_usage / 1024,
+            pattern.peak_usage / 1024,
+            pattern.fragmentation_ratio * 100.0
+        );
     }
 
     // Optimization Recommendations
@@ -345,15 +368,19 @@ async fn generate_final_report() {
     } else {
         for (i, rec) in recommendations.iter().enumerate().take(5) {
             println!("{}. {:?} - {}", i + 1, rec.severity, rec.description);
-            println!("   Category: {:?}, Savings: {} MB, Difficulty: {:?}",
-                     rec.category, rec.estimated_savings / (1024 * 1024), rec.implementation_difficulty);
+            println!(
+                "   Category: {:?}, Savings: {} MB, Difficulty: {:?}",
+                rec.category,
+                rec.estimated_savings / (1024 * 1024),
+                rec.implementation_difficulty
+            );
         }
     }
 
     // Performance Assessment
     println!("\n⚡ PERFORMANCE ASSESSMENT");
     println!("─".repeat(40));
-    
+
     let performance_score = calculate_performance_score(&metrics, &leaks, usage_percentage);
     let grade = match performance_score {
         90..=100 => "A+ (Excellent)",
@@ -363,11 +390,21 @@ async fn generate_final_report() {
         50..=59 => "D (Poor)",
         _ => "F (Critical)",
     };
-    
+
     println!("Overall Score:       {}/100 ({})", performance_score, grade);
     println!("Memory Efficiency:   {:.1}%", 100.0 - usage_percentage);
-    println!("Leak Impact:         {}", if leaks.is_empty() { "None" } else { "Detected" });
-    println!("Target Compliance:   {}", if usage_percentage < 80.0 { "✅ Compliant" } else { "⚠️ Exceeds target" });
+    println!(
+        "Leak Impact:         {}",
+        if leaks.is_empty() { "None" } else { "Detected" }
+    );
+    println!(
+        "Target Compliance:   {}",
+        if usage_percentage < 80.0 {
+            "✅ Compliant"
+        } else {
+            "⚠️ Exceeds target"
+        }
+    );
 
     println!("\n" + "=".repeat(80));
     println!("📋 Report completed. Dashboard available at: http://localhost:8080");
@@ -378,7 +415,7 @@ async fn generate_final_report() {
 fn calculate_performance_score(
     metrics: &codegraph_cache::MemoryMetrics,
     leaks: &[codegraph_cache::MemoryLeak],
-    usage_percentage: f64
+    usage_percentage: f64,
 ) -> u32 {
     let mut score = 100u32;
 
@@ -405,7 +442,7 @@ fn calculate_performance_score(
         codegraph_cache::MemoryPressure::Critical => score = score.saturating_sub(30),
         codegraph_cache::MemoryPressure::High => score = score.saturating_sub(15),
         codegraph_cache::MemoryPressure::Medium => score = score.saturating_sub(5),
-        codegraph_cache::MemoryPressure::Low => {},
+        codegraph_cache::MemoryPressure::Low => {}
     }
 
     score

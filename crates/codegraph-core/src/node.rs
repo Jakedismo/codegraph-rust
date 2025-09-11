@@ -1,4 +1,4 @@
-use crate::{Location, Metadata, NodeId, NodeType, Language, SharedStr};
+use crate::{Language, Location, Metadata, NodeId, NodeType, SharedStr};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

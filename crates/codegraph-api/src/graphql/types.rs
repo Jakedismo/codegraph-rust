@@ -1,6 +1,6 @@
 use async_graphql::{Enum, Object, SimpleObject, ID};
-use codegraph_core::{CodeNode, NodeId, NodeType, Language, Location, EdgeType};
 use chrono::{DateTime, Utc};
+use codegraph_core::{CodeNode, EdgeType, Language, Location, NodeId, NodeType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;

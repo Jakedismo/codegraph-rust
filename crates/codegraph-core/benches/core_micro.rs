@@ -1,5 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use codegraph_core::{CodeNode, Language, Location, NodeType};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use serde_json;
 
 fn gen_node(i: usize) -> CodeNode {
@@ -7,7 +7,13 @@ fn gen_node(i: usize) -> CodeNode {
         format!("node_{}", i),
         Some(NodeType::Function),
         Some(Language::Rust),
-        Location { file_path: format!("/tmp/file_{}.rs", i % 10), line: 1, column: 1, end_line: Some(10), end_column: Some(1) },
+        Location {
+            file_path: format!("/tmp/file_{}.rs", i % 10),
+            line: 1,
+            column: 1,
+            end_line: Some(10),
+            end_column: Some(1),
+        },
     )
     .with_content("fn x() {}".to_string())
 }
@@ -52,4 +58,3 @@ fn bench_json_serde(c: &mut Criterion) {
 
 criterion_group!(benches, bench_node_creation, bench_json_serde);
 criterion_main!(benches);
-

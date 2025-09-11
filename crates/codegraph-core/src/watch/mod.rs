@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 
 /// Intelligent, cross-platform file watcher with:
 /// - Debouncing/coalescing of rapid events
@@ -30,10 +30,12 @@ pub struct IntelligentFileWatcher {
 
 #[derive(Debug, Clone)]
 struct FileState {
+    #[allow(dead_code)]
     modified: std::time::SystemTime,
-    code_hash: String,                // hash of normalized source (no comments/formatting)
+    code_hash: String, // hash of normalized source (no comments/formatting)
     symbols_hash: HashMap<String, String>, // symbol -> body hash
     imports: HashSet<PathBuf>,
+    #[allow(dead_code)]
     language: Language,
 }
 
@@ -134,8 +136,13 @@ impl IntelligentFileWatcher {
         Ok(())
     }
 
-    fn process_path_event(&self, path: &Path, kind: &EventKind, tx: &CbSender<ChangeEvent>) -> Result<()> {
-        use notify::event::{CreateKind, ModifyKind, RemoveKind};
+    fn process_path_event(
+        &self,
+        path: &Path,
+        kind: &EventKind,
+        tx: &CbSender<ChangeEvent>,
+    ) -> Result<()> {
+        use notify::event::{CreateKind, RemoveKind};
 
         // Read current file state if exists
         let exists = path.exists();
@@ -143,7 +150,11 @@ impl IntelligentFileWatcher {
         let prev = self.files.get(path);
 
         // Handle deletions
-        if matches!(kind, EventKind::Remove(RemoveKind::Any) | EventKind::Remove(_)) || !exists {
+        if matches!(
+            kind,
+            EventKind::Remove(RemoveKind::Any) | EventKind::Remove(_)
+        ) || !exists
+        {
             if prev.is_some() {
                 self.files.remove(path);
                 // Clean reverse deps entries
@@ -162,12 +173,18 @@ impl IntelligentFileWatcher {
                 return Ok(());
             }
         };
-        let (code_hash, symbols_hash, imports) = summarize_file(path, &content, lang);
+        let (code_hash, symbols_hash, imports) = summarize_file(path, &content, &lang);
 
         // Rebuild FileState
         let meta = fs::metadata(path)?;
         let modified = meta.modified()?;
-        let new_state = FileState { modified, code_hash: code_hash.clone(), symbols_hash: symbols_hash.clone(), imports: imports.clone(), language: lang };
+        let new_state = FileState {
+            modified,
+            code_hash: code_hash.clone(),
+            symbols_hash: symbols_hash.clone(),
+            imports: imports.clone(),
+            language: lang,
+        };
 
         // Decide if semantic change occurred
         let semantic_changed = match prev.as_ref() {
@@ -180,7 +197,11 @@ impl IntelligentFileWatcher {
             let changes = diff_symbol_maps(&prev_state.symbols_hash, &symbols_hash);
             self.last_symbol_changes.insert(path.to_path_buf(), changes);
         } else {
-            let changes = SymbolChanges { added: symbols_hash.keys().cloned().collect(), modified: vec![], removed: vec![] };
+            let changes = SymbolChanges {
+                added: symbols_hash.keys().cloned().collect(),
+                modified: vec![],
+                removed: vec![],
+            };
             self.last_symbol_changes.insert(path.to_path_buf(), changes);
         }
 
@@ -193,7 +214,9 @@ impl IntelligentFileWatcher {
         // Only emit change if semantic_changed, else skip (format/comments only)
         if semantic_changed {
             let event = match kind {
-                EventKind::Create(CreateKind::Any) | EventKind::Create(_) => ChangeEvent::Created(path.to_string_lossy().to_string()),
+                EventKind::Create(CreateKind::Any) | EventKind::Create(_) => {
+                    ChangeEvent::Created(path.to_string_lossy().to_string())
+                }
                 _ => ChangeEvent::Modified(path.to_string_lossy().to_string()),
             };
             let _ = tx.send(event);
@@ -202,7 +225,9 @@ impl IntelligentFileWatcher {
             if let Some(dependents) = self.reverse_deps.get(path) {
                 for dep in dependents.iter() {
                     // Avoid spamming duplicates if already same as main path
-                    if dep == path { continue; }
+                    if dep == path {
+                        continue;
+                    }
                     let _ = tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
                 }
             }
@@ -280,11 +305,15 @@ fn detect_language(path: &Path) -> Language {
     }
 }
 
-fn summarize_file(path: &Path, content: &str, lang: Language) -> (String, HashMap<String, String>, HashSet<PathBuf>) {
-    let normalized = normalize_source(content, &lang);
+fn summarize_file(
+    path: &Path,
+    content: &str,
+    lang: &Language,
+) -> (String, HashMap<String, String>, HashSet<PathBuf>) {
+    let normalized = normalize_source(content, lang);
     let code_hash = hash_str(&normalized);
-    let symbols = extract_symbols(&normalized, &lang);
-    let imports = extract_imports(path, content, &lang);
+    let symbols = extract_symbols(&normalized, lang);
+    let imports = extract_imports(path, content, lang);
     (code_hash, symbols, imports)
 }
 
@@ -296,9 +325,12 @@ fn hash_str(s: &str) -> String {
 
 fn normalize_source(src: &str, lang: &Language) -> String {
     match lang {
-        Language::Rust | Language::JavaScript | Language::TypeScript | Language::Go | Language::Java | Language::Cpp => {
-            strip_comments_c_like(src)
-        }
+        Language::Rust
+        | Language::JavaScript
+        | Language::TypeScript
+        | Language::Go
+        | Language::Java
+        | Language::Cpp => strip_comments_c_like(src),
         Language::Python => strip_comments_python(src),
         _ => strip_whitespace(src),
     }
@@ -328,11 +360,18 @@ fn strip_comments_c_like(s: &str) -> String {
             if let Some('/') = it.peek() {
                 // line comment
                 // consume rest of line
-                while let Some(ch) = it.next() { if ch == '\n' { out.push('\n'); break; } }
+                while let Some(ch) = it.next() {
+                    if ch == '\n' {
+                        out.push('\n');
+                        break;
+                    }
+                }
                 continue;
             }
             if let Some('*') = it.peek() {
-                in_block = true; it.next(); continue;
+                in_block = true;
+                it.next();
+                continue;
             }
         }
         out.push(c);
@@ -350,18 +389,25 @@ fn strip_comments_python(s: &str) -> String {
         while let Some(c) = chars.next() {
             if let Some(q) = in_str {
                 acc.push(c);
-                if c == q && !escaped { in_str = None; }
+                if c == q && !escaped {
+                    in_str = None;
+                }
                 escaped = c == '\\' && !escaped;
                 continue;
             }
             match c {
-                '\'' | '"' => { in_str = Some(c); acc.push(c); }
+                '\'' | '"' => {
+                    in_str = Some(c);
+                    acc.push(c);
+                }
                 '#' => break, // ignore rest of line
                 _ => acc.push(c),
             }
         }
         let trimmed = acc.trim();
-        if !trimmed.is_empty() { out_lines.push(trimmed.to_string()); }
+        if !trimmed.is_empty() {
+            out_lines.push(trimmed.to_string());
+        }
     }
     out_lines.join("\n")
 }
@@ -376,31 +422,66 @@ fn extract_symbols(src: &str, lang: &Language) -> HashMap<String, String> {
         let line = lines[i].trim();
         let (is_sym, name) = match lang {
             Language::Rust => match line.strip_prefix("fn ") {
-                Some(rest) => (true, rest.split(|c: char| c == '(' || c.is_whitespace()).next().unwrap_or("").to_string()),
+                Some(rest) => (
+                    true,
+                    rest.split(|c: char| c == '(' || c.is_whitespace())
+                        .next()
+                        .unwrap_or("")
+                        .to_string(),
+                ),
                 None => match line.strip_prefix("struct ") {
                     Some(r) => (true, r.split_whitespace().next().unwrap_or("").to_string()),
                     None => match line.strip_prefix("enum ") {
                         Some(r) => (true, r.split_whitespace().next().unwrap_or("").to_string()),
                         None => (false, String::new()),
-                    }
+                    },
                 },
             },
             Language::Python => match line.strip_prefix("def ") {
-                Some(rest) => (true, rest.split(|c: char| c == '(' || c.is_whitespace()).next().unwrap_or("").to_string()),
+                Some(rest) => (
+                    true,
+                    rest.split(|c: char| c == '(' || c.is_whitespace())
+                        .next()
+                        .unwrap_or("")
+                        .to_string(),
+                ),
                 None => match line.strip_prefix("class ") {
-                    Some(r) => (true, r.split(|c: char| c == ':' || c.is_whitespace()).next().unwrap_or("").to_string()),
+                    Some(r) => (
+                        true,
+                        r.split(|c: char| c == ':' || c.is_whitespace())
+                            .next()
+                            .unwrap_or("")
+                            .to_string(),
+                    ),
                     None => (false, String::new()),
                 },
             },
             Language::JavaScript | Language::TypeScript => {
-                if let Some(rest) = line.strip_prefix("function ") { (true, rest.split(|c: char| c == '(' || c.is_whitespace()).next().unwrap_or("").to_string()) }
-                else if let Some(rest) = line.strip_prefix("class ") { (true, rest.split_whitespace().next().unwrap_or("").to_string()) }
-                else { (false, String::new()) }
+                if let Some(rest) = line.strip_prefix("function ") {
+                    (
+                        true,
+                        rest.split(|c: char| c == '(' || c.is_whitespace())
+                            .next()
+                            .unwrap_or("")
+                            .to_string(),
+                    )
+                } else if let Some(rest) = line.strip_prefix("class ") {
+                    (
+                        true,
+                        rest.split_whitespace().next().unwrap_or("").to_string(),
+                    )
+                } else {
+                    (false, String::new())
+                }
             }
             Language::Go => match line.strip_prefix("func ") {
                 Some(rest) => {
                     // patterns: func Name(…) or func (r Receiver) Name(…)
-                    let name = rest.split_whitespace().skip_while(|s| s.starts_with('(')).next().unwrap_or("");
+                    let name = rest
+                        .split_whitespace()
+                        .skip_while(|s| s.starts_with('('))
+                        .next()
+                        .unwrap_or("");
                     let name = name.split('(').next().unwrap_or("");
                     (true, name.to_string())
                 }
@@ -410,7 +491,9 @@ fn extract_symbols(src: &str, lang: &Language) -> HashMap<String, String> {
                 if line.starts_with("class ") || line.starts_with("struct ") {
                     let name = line.split_whitespace().nth(1).unwrap_or("");
                     (true, name.to_string())
-                } else { (false, String::new()) }
+                } else {
+                    (false, String::new())
+                }
             }
             _ => (false, String::new()),
         };
@@ -421,14 +504,22 @@ fn extract_symbols(src: &str, lang: &Language) -> HashMap<String, String> {
             while i < lines.len() {
                 let l = lines[i].trim();
                 let next_is_sym = match lang {
-                    Language::Rust => l.starts_with("fn ") || l.starts_with("struct ") || l.starts_with("enum "),
+                    Language::Rust => {
+                        l.starts_with("fn ") || l.starts_with("struct ") || l.starts_with("enum ")
+                    }
                     Language::Python => l.starts_with("def ") || l.starts_with("class "),
-                    Language::JavaScript | Language::TypeScript => l.starts_with("function ") || l.starts_with("class "),
+                    Language::JavaScript | Language::TypeScript => {
+                        l.starts_with("function ") || l.starts_with("class ")
+                    }
                     Language::Go => l.starts_with("func "),
-                    Language::Java | Language::Cpp => l.starts_with("class ") || l.starts_with("struct ") || l.ends_with("") && false,
+                    Language::Java | Language::Cpp => {
+                        l.starts_with("class ") || l.starts_with("struct ")
+                    }
                     _ => false,
                 };
-                if next_is_sym { break; }
+                if next_is_sym {
+                    break;
+                }
                 i += 1;
             }
             let body = lines[start..i].join("\n");
@@ -448,13 +539,23 @@ fn diff_symbol_maps(old: &HashMap<String, String>, new: &HashMap<String, String>
     for (k, v) in new.iter() {
         match old.get(k) {
             None => added.push(k.clone()),
-            Some(ov) => if ov != v { modified.push(k.clone()); },
+            Some(ov) => {
+                if ov != v {
+                    modified.push(k.clone());
+                }
+            }
         }
     }
     for k in old.keys() {
-        if !new.contains_key(k) { removed.push(k.clone()); }
+        if !new.contains_key(k) {
+            removed.push(k.clone());
+        }
     }
-    SymbolChanges { added, modified, removed }
+    SymbolChanges {
+        added,
+        modified,
+        removed,
+    }
 }
 
 fn extract_imports(file: &Path, src: &str, lang: &Language) -> HashSet<PathBuf> {
@@ -465,13 +566,19 @@ fn extract_imports(file: &Path, src: &str, lang: &Language) -> HashSet<PathBuf> 
                 let l = line.trim();
                 if let Some(idx) = l.find("import ") {
                     let s = &l[idx..];
-                    if let Some(q) = s.find(" from ") { // import {A} from 'x'
-                        let tail = &s[q+6..];
+                    if let Some(q) = s.find(" from ") {
+                        // import {A} from 'x'
+                        let tail = &s[q + 6..];
                         if let Some(path_str) = extract_quoted(tail) {
-                            if let Some(p) = resolve_relative_js(file, &path_str) { out.insert(p); }
+                            if let Some(p) = resolve_relative_js(file, &path_str) {
+                                out.insert(p);
+                            }
                         }
-                    } else if let Some(path_str) = extract_quoted(s) { // import x from 'y'
-                        if let Some(p) = resolve_relative_js(file, &path_str) { out.insert(p); }
+                    } else if let Some(path_str) = extract_quoted(s) {
+                        // import x from 'y'
+                        if let Some(p) = resolve_relative_js(file, &path_str) {
+                            out.insert(p);
+                        }
                     }
                 }
             }
@@ -483,16 +590,21 @@ fn extract_imports(file: &Path, src: &str, lang: &Language) -> HashSet<PathBuf> 
                     let parts: Vec<&str> = rest.split_whitespace().collect();
                     if parts.len() >= 2 {
                         let mod_path = parts[0];
-                        if let Some(p) = resolve_python_module(file, mod_path) { out.insert(p); }
+                        if let Some(p) = resolve_python_module(file, mod_path) {
+                            out.insert(p);
+                        }
                     }
                 } else if let Some(rest) = l.strip_prefix("import ") {
                     let mod_path = rest.split_whitespace().next().unwrap_or("");
-                    if let Some(p) = resolve_python_module(file, mod_path) { out.insert(p); }
+                    if let Some(p) = resolve_python_module(file, mod_path) {
+                        out.insert(p);
+                    }
                 }
             }
         }
         Language::Rust => {
-            for line in src.lines() { // support simple `mod foo;`
+            for line in src.lines() {
+                // support simple `mod foo;`
                 let l = line.trim();
                 if let Some(name) = l.strip_prefix("mod ") {
                     let name = name.trim().trim_end_matches(';');
@@ -508,20 +620,30 @@ fn extract_imports(file: &Path, src: &str, lang: &Language) -> HashSet<PathBuf> 
 }
 
 fn resolve_relative_js(file: &Path, spec: &str) -> Option<PathBuf> {
-    if !(spec.starts_with("./") || spec.starts_with("../")) { return None; }
+    if !(spec.starts_with("./") || spec.starts_with("../")) {
+        return None;
+    }
     let mut base = file.parent()?.to_path_buf();
     base.push(spec);
     let candidates = ["", ".ts", ".tsx", ".js", ".jsx"]; // try as file or directory index
-    // If spec already has extension, just return canonicalized path
-    if Path::new(&base).extension().is_some() { return Some(normalize_path(&base)); }
+                                                         // If spec already has extension, just return canonicalized path
+    if Path::new(&base).extension().is_some() {
+        return Some(normalize_path(&base));
+    }
     for ext in candidates.iter() {
         let mut p = base.clone();
-        if !ext.is_empty() { p.set_extension(&ext[1..]); }
-        if p.exists() { return Some(normalize_path(&p)); }
+        if !ext.is_empty() {
+            p.set_extension(&ext[1..]);
+        }
+        if p.exists() {
+            return Some(normalize_path(&p));
+        }
         // try index files
         let mut idx = base.clone();
         idx.push(format!("index{}", ext));
-        if idx.exists() { return Some(normalize_path(&idx)); }
+        if idx.exists() {
+            return Some(normalize_path(&idx));
+        }
     }
     Some(normalize_path(&base)) // best effort
 }
@@ -531,24 +653,37 @@ fn resolve_python_module(file: &Path, mod_path: &str) -> Option<PathBuf> {
     if mod_path.starts_with('.') {
         let mut base = file.parent()?.to_path_buf();
         let dots = mod_path.chars().take_while(|c| *c == '.').count();
-        for _ in 0..(dots - 1) { base = base.parent()?.to_path_buf(); }
+        for _ in 0..(dots - 1) {
+            base = base.parent()?.to_path_buf();
+        }
         let tail: String = mod_path.chars().skip(dots).collect();
-        if !tail.is_empty() { base.push(tail.replace('.', "/")); }
-        if base.extension().is_none() { base.set_extension("py"); }
+        if !tail.is_empty() {
+            base.push(tail.replace('.', "/"));
+        }
+        if base.extension().is_none() {
+            base.set_extension("py");
+        }
         return Some(normalize_path(&base));
     }
     // Absolute import within same project: best effort
     let mut base = file.parent()?.to_path_buf();
     base.push(mod_path.replace('.', "/"));
-    if base.extension().is_none() { base.set_extension("py"); }
+    if base.extension().is_none() {
+        base.set_extension("py");
+    }
     Some(normalize_path(&base))
 }
 
 fn extract_quoted(s: &str) -> Option<String> {
     let s = s.trim();
     let bytes = s.as_bytes();
-    if bytes.is_empty() { return None; }
-    let q = match bytes[0] { b'\'' | b'"' => bytes[0] as char, _ => return None };
+    if bytes.is_empty() {
+        return None;
+    }
+    let q = match bytes[0] {
+        b'\'' | b'"' => bytes[0] as char,
+        _ => return None,
+    };
     let end = s[1..].find(q)? + 1;
     Some(s[1..end].to_string())
 }
@@ -559,7 +694,9 @@ fn normalize_path(p: &Path) -> PathBuf {
     for comp in p.components() {
         match comp {
             std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => { out.pop(); }
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
             _ => out.push(comp.as_os_str()),
         }
     }
@@ -668,7 +805,8 @@ mod tests {
     fn test_watcher_detects_create_modify_delete_with_debounce() {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("main.rs");
-        let watcher = IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(25));
+        let watcher =
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(25));
         let (tx, rx) = crossbeam_channel::unbounded();
 
         std::thread::spawn(move || {
@@ -678,19 +816,32 @@ mod tests {
         fs::write(&file, "fn a(){}\n").unwrap();
         std::thread::sleep(Duration::from_millis(120));
         // Rapid edits
-        for _ in 0..5 { fs::write(&file, "fn a(){ /*x*/ }\n").unwrap(); }
+        for _ in 0..5 {
+            fs::write(&file, "fn a(){ /*x*/ }\n").unwrap();
+        }
         std::thread::sleep(Duration::from_millis(120));
         std::fs::remove_file(&file).unwrap();
         std::thread::sleep(Duration::from_millis(120));
 
         // Collect events
         let mut evs: Vec<ChangeEvent> = Vec::new();
-        while let Ok(ev) = rx.try_recv() { evs.push(ev); }
+        while let Ok(ev) = rx.try_recv() {
+            evs.push(ev);
+        }
 
         // Expect at least one Created and one Deleted, and not too many Modified due to debounce
-        let created = evs.iter().filter(|e| matches!(e, ChangeEvent::Created(_))).count();
-        let modified = evs.iter().filter(|e| matches!(e, ChangeEvent::Modified(_))).count();
-        let deleted = evs.iter().filter(|e| matches!(e, ChangeEvent::Deleted(_))).count();
+        let created = evs
+            .iter()
+            .filter(|e| matches!(e, ChangeEvent::Created(_)))
+            .count();
+        let modified = evs
+            .iter()
+            .filter(|e| matches!(e, ChangeEvent::Modified(_)))
+            .count();
+        let deleted = evs
+            .iter()
+            .filter(|e| matches!(e, ChangeEvent::Deleted(_)))
+            .count();
         assert!(created >= 1);
         assert!(deleted >= 1);
         assert!(modified <= 3, "modified too many: {}", modified);
@@ -700,10 +851,13 @@ mod tests {
     fn test_comment_only_changes_ignored() {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("main.rs");
-        let watcher = IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
+        let watcher =
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
         let (tx, rx) = crossbeam_channel::unbounded();
 
-        std::thread::spawn(move || { watcher.watch(tx).unwrap(); });
+        std::thread::spawn(move || {
+            watcher.watch(tx).unwrap();
+        });
 
         fs::write(&file, "fn a(){1}\n").unwrap();
         std::thread::sleep(Duration::from_millis(120));
@@ -713,7 +867,10 @@ mod tests {
 
         let evs: Vec<_> = rx.try_iter().collect();
         // Should have a Created, but no Modified due to comment-only change
-        let modified = evs.iter().filter(|e| matches!(e, ChangeEvent::Modified(_))).count();
+        let modified = evs
+            .iter()
+            .filter(|e| matches!(e, ChangeEvent::Modified(_)))
+            .count();
         assert_eq!(modified, 0);
     }
 
@@ -725,28 +882,40 @@ mod tests {
         fs::write(&a, "export const A=1\n").unwrap();
         fs::write(&b, "import {A} from './a'\nexport const B=A\n").unwrap();
 
-        let watcher = IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
+        let watcher =
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
         let (tx, rx) = crossbeam_channel::unbounded();
-        std::thread::spawn(move || { watcher.watch(tx).unwrap(); });
+        std::thread::spawn(move || {
+            watcher.watch(tx).unwrap();
+        });
 
         // Modify a.ts and expect b.ts to be scheduled too
         std::thread::sleep(Duration::from_millis(120));
         fs::write(&a, "export const A=2\n").unwrap();
         std::thread::sleep(Duration::from_millis(160));
         let evs: Vec<_> = rx.try_iter().collect();
-        let b_triggered = evs.iter().any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("b.ts")));
-        assert!(b_triggered, "dependent file was not triggered: {:?}", "b.ts");
+        let b_triggered = evs
+            .iter()
+            .any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("b.ts")));
+        assert!(
+            b_triggered,
+            "dependent file was not triggered: {:?}",
+            "b.ts"
+        );
     }
 
     #[test]
     fn test_incremental_symbol_changes_detected() {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("main.rs");
-        let watcher = IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
+        let watcher =
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
         let (tx, rx) = crossbeam_channel::unbounded();
         let wref = Arc::new(watcher);
         let wclone = wref.clone();
-        std::thread::spawn(move || { wclone.watch(tx).unwrap(); });
+        std::thread::spawn(move || {
+            wclone.watch(tx).unwrap();
+        });
         fs::write(&file, "fn a(){}\nfn b(){}\n").unwrap();
         std::thread::sleep(Duration::from_millis(140));
         fs::write(&file, "fn a(){1}\nfn b(){}\n").unwrap();
@@ -792,14 +961,19 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("main.rs");
         fs::write(&file, "fn a(){}\n").unwrap();
-        let watcher = IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
+        let watcher =
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
         let (tx, rx) = crossbeam_channel::unbounded();
-        std::thread::spawn(move || { watcher.watch(tx).unwrap(); });
+        std::thread::spawn(move || {
+            watcher.watch(tx).unwrap();
+        });
         std::thread::sleep(Duration::from_millis(100));
         std::fs::remove_file(&file).unwrap();
         std::thread::sleep(Duration::from_millis(160));
         let evs: Vec<_> = rx.try_iter().collect();
-        let got_delete = evs.iter().any(|e| matches!(e, ChangeEvent::Deleted(p) if p.ends_with("main.rs")));
+        let got_delete = evs
+            .iter()
+            .any(|e| matches!(e, ChangeEvent::Deleted(p) if p.ends_with("main.rs")));
         assert!(got_delete);
     }
 
@@ -807,9 +981,12 @@ mod tests {
     fn test_non_tracked_extension_ignored() {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("notes.txt");
-        let watcher = IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
+        let watcher =
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
         let (tx, rx) = crossbeam_channel::unbounded();
-        std::thread::spawn(move || { watcher.watch(tx).unwrap(); });
+        std::thread::spawn(move || {
+            watcher.watch(tx).unwrap();
+        });
         fs::write(&file, "hello").unwrap();
         std::thread::sleep(Duration::from_millis(120));
         assert!(rx.try_recv().is_err());
@@ -824,15 +1001,22 @@ mod tests {
         fs::write(&a, "export const A=1\n").unwrap();
         fs::write(&b, "import {A} from './a'\nexport const B=A\n").unwrap();
         fs::write(&c, "import {A} from './a'\nexport const C=A\n").unwrap();
-        let watcher = IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
+        let watcher =
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
         let (tx, rx) = crossbeam_channel::unbounded();
-        std::thread::spawn(move || { watcher.watch(tx).unwrap(); });
+        std::thread::spawn(move || {
+            watcher.watch(tx).unwrap();
+        });
         std::thread::sleep(Duration::from_millis(120));
         fs::write(&a, "export const A=3\n").unwrap();
         std::thread::sleep(Duration::from_millis(160));
         let evs: Vec<_> = rx.try_iter().collect();
-        let b_tr = evs.iter().any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("b.ts")));
-        let c_tr = evs.iter().any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("c.ts")));
+        let b_tr = evs
+            .iter()
+            .any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("b.ts")));
+        let c_tr = evs
+            .iter()
+            .any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("c.ts")));
         assert!(b_tr && c_tr);
     }
 
@@ -843,14 +1027,19 @@ mod tests {
         let utils = tmp.path().join("utils.rs");
         fs::write(&lib, "mod utils;\npub fn a(){}\n").unwrap();
         fs::write(&utils, "pub fn util(){}\n").unwrap();
-        let watcher = IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
+        let watcher =
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
         let (tx, rx) = crossbeam_channel::unbounded();
-        std::thread::spawn(move || { watcher.watch(tx).unwrap(); });
+        std::thread::spawn(move || {
+            watcher.watch(tx).unwrap();
+        });
         std::thread::sleep(Duration::from_millis(120));
         fs::write(&utils, "pub fn util(){ /* changed */ }\n").unwrap();
         std::thread::sleep(Duration::from_millis(160));
         let evs: Vec<_> = rx.try_iter().collect();
-        let lib_tr = evs.iter().any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("lib.rs")));
+        let lib_tr = evs
+            .iter()
+            .any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("lib.rs")));
         assert!(lib_tr);
     }
 
@@ -858,14 +1047,22 @@ mod tests {
     fn test_coalescing_many_edits() {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("main.rs");
-        let watcher = IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(30));
+        let watcher =
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(30));
         let (tx, rx) = crossbeam_channel::unbounded();
-        std::thread::spawn(move || { watcher.watch(tx).unwrap(); });
+        std::thread::spawn(move || {
+            watcher.watch(tx).unwrap();
+        });
         fs::write(&file, "fn a(){}\n").unwrap();
         std::thread::sleep(Duration::from_millis(120));
-        for _ in 0..20 { fs::write(&file, "fn a(){1}\n").unwrap(); }
+        for _ in 0..20 {
+            fs::write(&file, "fn a(){1}\n").unwrap();
+        }
         std::thread::sleep(Duration::from_millis(200));
-        let modified = rx.try_iter().filter(|e| matches!(e, ChangeEvent::Modified(_))).count();
+        let modified = rx
+            .try_iter()
+            .filter(|e| matches!(e, ChangeEvent::Modified(_)))
+            .count();
         assert!(modified <= 4);
     }
 

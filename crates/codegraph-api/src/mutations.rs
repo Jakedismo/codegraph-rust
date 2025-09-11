@@ -1,7 +1,6 @@
-
-use async_graphql::{Context, Object, Result, InputObject, ID, Union, OneOfObject};
+use async_graphql::{Context, InputObject, Object, OneOfObject, Result, Union, ID};
+use codegraph_core::{CodeNode, Language, Location, NodeId, NodeType};
 use codegraph_graph::TransactionalGraph;
-use codegraph_core::{CodeNode, NodeType, Location, Language, NodeId};
 
 #[derive(InputObject)]
 pub struct AddNodeInput {
@@ -46,7 +45,9 @@ pub struct UpdateConfigurationInput {
     pub value: String,
 }
 
-pub struct Mutation { pub(crate) graph: TransactionalGraph }
+pub struct Mutation {
+    pub(crate) graph: TransactionalGraph,
+}
 
 #[Object]
 impl Mutation {
@@ -77,7 +78,10 @@ impl Mutation {
         let mut graph = self.graph.clone();
         let node_id = NodeId::from(input.id.to_string());
 
-        let mut node = graph.get_node(node_id).await?.ok_or_else(|| "Node not found")?;
+        let mut node = graph
+            .get_node(node_id)
+            .await?
+            .ok_or_else(|| "Node not found")?;
 
         if let Some(name) = input.name {
             node.name = name;
@@ -126,13 +130,21 @@ impl Mutation {
     }
 
     /// Updates the configuration.
-    async fn update_configuration(&self, ctx: &Context<'_>, input: UpdateConfigurationInput) -> Result<bool> {
+    async fn update_configuration(
+        &self,
+        ctx: &Context<'_>,
+        input: UpdateConfigurationInput,
+    ) -> Result<bool> {
         // Placeholder for configuration update logic
         Ok(true)
     }
 
     /// Executes a batch of operations in a single transaction.
-    async fn batch_operations(&self, ctx: &Context<'_>, operations: Vec<BatchOperationInput>) -> Result<bool> {
+    async fn batch_operations(
+        &self,
+        ctx: &Context<'_>,
+        operations: Vec<BatchOperationInput>,
+    ) -> Result<bool> {
         let mut graph = self.graph.clone();
         graph.begin_transaction().await?;
 
@@ -155,7 +167,10 @@ impl Mutation {
                 }
                 BatchOperationInput::UpdateNode(input) => {
                     let node_id = NodeId::from(input.id.to_string());
-                    let mut node = graph.get_node(node_id).await?.ok_or_else(|| "Node not found")?;
+                    let mut node = graph
+                        .get_node(node_id)
+                        .await?
+                        .ok_or_else(|| "Node not found")?;
 
                     if let Some(name) = input.name {
                         node.name = name;

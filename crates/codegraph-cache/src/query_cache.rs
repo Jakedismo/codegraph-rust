@@ -1,4 +1,4 @@
-use crate::{AiCache, CacheConfig, CacheEntry, CacheStats, CacheSizeEstimator};
+use crate::{AiCache, CacheConfig, CacheEntry, CacheSizeEstimator, CacheStats};
 use async_trait::async_trait;
 use codegraph_core::{NodeId, Result};
 use dashmap::DashMap;
@@ -21,9 +21,9 @@ pub struct QueryResult {
 
 impl CacheSizeEstimator for QueryResult {
     fn estimate_size(&self) -> usize {
-        std::mem::size_of::<Self>() +
-            self.node_ids.len() * std::mem::size_of::<NodeId>() +
-            self.scores.len() * std::mem::size_of::<f32>()
+        std::mem::size_of::<Self>()
+            + self.node_ids.len() * std::mem::size_of::<NodeId>()
+            + self.scores.len() * std::mem::size_of::<f32>()
     }
 }
 
@@ -37,9 +37,9 @@ pub struct CachedQuery {
 
 impl CacheSizeEstimator for CachedQuery {
     fn estimate_size(&self) -> usize {
-        std::mem::size_of::<Self>() +
-            self.query_embedding.estimate_size() +
-            self.result.estimate_size()
+        std::mem::size_of::<Self>()
+            + self.query_embedding.estimate_size()
+            + self.result.estimate_size()
     }
 }
 
@@ -123,7 +123,8 @@ impl QueryCache {
 
         for entry in self.cache.iter() {
             let cached_query = &entry.value().value;
-            let similarity = Self::cosine_similarity(query_embedding, &cached_query.query_embedding);
+            let similarity =
+                Self::cosine_similarity(query_embedding, &cached_query.query_embedding);
 
             if similarity >= self.config.similarity_threshold {
                 if let Some((_, current_best)) = &best_match {
@@ -147,7 +148,7 @@ impl QueryCache {
         ttl: Option<Duration>,
     ) -> Result<()> {
         let key = Self::create_query_key(&query_embedding);
-        
+
         let cached_query = CachedQuery {
             query_embedding,
             result,
@@ -173,12 +174,12 @@ impl QueryCache {
     /// Update LRU position for accessed key
     async fn update_lru(&self, key: &str) {
         let mut lru_queue = self.lru_queue.write().await;
-        
+
         // Remove key if it exists
         lru_queue.retain(|k| k != key);
         // Add to back as most recently used
         lru_queue.push_back(key.to_string());
-        
+
         // Limit queue size
         while lru_queue.len() > self.config.base_config.max_size {
             lru_queue.pop_front();
@@ -195,7 +196,7 @@ impl QueryCache {
     async fn evict_lru(&mut self) -> Result<()> {
         let mut evicted = 0;
         let mut lru_queue = self.lru_queue.write().await;
-        
+
         while self.check_memory_pressure().await && !lru_queue.is_empty() {
             if let Some(key) = lru_queue.pop_front() {
                 if let Some((_, entry)) = self.cache.remove(&key) {
@@ -264,16 +265,21 @@ impl QueryCache {
 
 #[async_trait]
 impl AiCache<String, CachedQuery> for QueryCache {
-    async fn insert(&mut self, key: String, value: CachedQuery, ttl: Option<Duration>) -> Result<()> {
+    async fn insert(
+        &mut self,
+        key: String,
+        value: CachedQuery,
+        ttl: Option<Duration>,
+    ) -> Result<()> {
         let size_bytes = value.estimate_size() + key.len();
         let entry = CacheEntry::new(value, size_bytes, ttl);
-        
+
         // Update memory usage
         {
             let mut memory_usage = self.memory_usage.lock();
             *memory_usage += size_bytes;
         }
-        
+
         // Check memory pressure and evict if needed
         if self.check_memory_pressure().await {
             self.evict_lru().await?;
@@ -281,10 +287,10 @@ impl AiCache<String, CachedQuery> for QueryCache {
 
         // Insert entry
         self.cache.insert(key.clone(), entry);
-        
+
         // Update LRU
         self.update_lru(&key).await;
-        
+
         // Update metrics
         if self.config.base_config.enable_metrics {
             let mut stats = self.stats.write().await;
@@ -297,13 +303,13 @@ impl AiCache<String, CachedQuery> for QueryCache {
 
     async fn get(&mut self, key: &String) -> Result<Option<CachedQuery>> {
         let start_time = SystemTime::now();
-        
+
         if let Some(mut entry) = self.cache.get_mut(key) {
             // Check if expired
             if entry.is_expired() {
                 drop(entry);
                 self.cache.remove(key);
-                
+
                 if self.config.base_config.enable_metrics {
                     let mut stats = self.stats.write().await;
                     stats.misses += 1;
@@ -318,7 +324,7 @@ impl AiCache<String, CachedQuery> for QueryCache {
 
             // Update LRU
             self.update_lru(key).await;
-            
+
             // Update metrics
             if self.config.base_config.enable_metrics {
                 let mut stats = self.stats.write().await;
@@ -419,11 +425,11 @@ mod tests {
     #[tokio::test]
     async fn test_semantic_query_matching() {
         let mut cache = QueryCache::default();
-        
+
         let query1 = vec![0.8, 0.6, 0.0];
         let query2 = vec![0.7, 0.7, 0.1]; // Similar to query1
         let query3 = vec![0.0, 0.0, 1.0]; // Very different
-        
+
         let result = QueryResult {
             node_ids: vec![NodeId::new_v4()],
             scores: vec![0.95],
@@ -432,12 +438,15 @@ mod tests {
         };
 
         // Store first query result
-        cache.store_query_result(query1.clone(), result.clone(), None).await.unwrap();
+        cache
+            .store_query_result(query1.clone(), result.clone(), None)
+            .await
+            .unwrap();
 
         // Should find similar query
         let similar_result = cache.get_similar_query_result(&query2).await.unwrap();
         assert!(similar_result.is_some());
-        
+
         // Should not find dissimilar query
         let dissimilar_result = cache.get_similar_query_result(&query3).await.unwrap();
         assert!(dissimilar_result.is_none());
@@ -447,7 +456,7 @@ mod tests {
     async fn test_query_cache_basic_operations() {
         let mut cache = QueryCache::default();
         let key = "test_query".to_string();
-        
+
         let cached_query = CachedQuery {
             query_embedding: vec![0.5, 0.5, 0.5],
             result: QueryResult {
@@ -460,7 +469,10 @@ mod tests {
         };
 
         // Test insert and get
-        cache.insert(key.clone(), cached_query.clone(), None).await.unwrap();
+        cache
+            .insert(key.clone(), cached_query.clone(), None)
+            .await
+            .unwrap();
         let result = cache.get(&key).await.unwrap();
         assert!(result.is_some());
 
@@ -492,7 +504,10 @@ mod tests {
                 total_results: 10,
                 query_time_ms: 100,
             };
-            cache.store_query_result(query_embedding, result, None).await.unwrap();
+            cache
+                .store_query_result(query_embedding, result, None)
+                .await
+                .unwrap();
         }
 
         // Check that eviction occurred

@@ -1,8 +1,8 @@
-use async_graphql::{Context, Subscription, SimpleObject};
+use crate::state::AppState;
 use async_graphql::futures_util::Stream;
 use async_graphql::futures_util::StreamExt;
+use async_graphql::{Context, SimpleObject, Subscription};
 use async_stream::stream;
-use crate::state::AppState;
 use chrono::{DateTime, Utc};
 
 #[derive(Clone, Copy, Eq, PartialEq, async_graphql::Enum)]
@@ -42,7 +42,11 @@ pub struct SubscriptionRoot;
 
 #[Subscription]
 impl SubscriptionRoot {
-    async fn graph_updates(&self, ctx: &Context<'_>, #[graphql(default = 0)] from_seq: u64) -> impl Stream<Item = GraphUpdateEvent> {
+    async fn graph_updates(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(default = 0)] from_seq: u64,
+    ) -> impl Stream<Item = GraphUpdateEvent> {
         // Use a wrapper stream to track connection lifecycle metrics
         let state = ctx.data_unchecked::<AppState>().clone();
         let mut inner = async_graphql::SimpleBroker::<GraphUpdateEvent>::subscribe();
@@ -60,7 +64,11 @@ impl SubscriptionRoot {
         }
     }
 
-    async fn indexing_progress(&self, ctx: &Context<'_>, #[graphql(default = 0)] from_seq: u64) -> impl Stream<Item = IndexingProgressEvent> {
+    async fn indexing_progress(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(default = 0)] from_seq: u64,
+    ) -> impl Stream<Item = IndexingProgressEvent> {
         let state = ctx.data_unchecked::<AppState>().clone();
         let mut inner = async_graphql::SimpleBroker::<IndexingProgressEvent>::subscribe();
         stream! {

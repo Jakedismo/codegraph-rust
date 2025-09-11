@@ -173,7 +173,6 @@ impl ToString for Permission {
     }
 }
 
-use std::{collections::HashMap, num::NonZeroU32, sync::Arc};
 use governor::clock::QuantaClock;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
@@ -184,7 +183,6 @@ pub enum ResourceType {
     PROJECT,
     REPOSITORY,
 }
- 
 
 pub struct RateLimitManager {
     limiters: HashMap<String, Arc<RateLimiter<NotKeyed, InMemoryState, QuantaClock>>>,
@@ -214,7 +212,11 @@ impl RateLimitManager {
         Self { limiters }
     }
 
-    pub fn get_limiter(&self, user_tier: &str, operation: &str) -> Arc<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> {
+    pub fn get_limiter(
+        &self,
+        user_tier: &str,
+        operation: &str,
+    ) -> Arc<RateLimiter<NotKeyed, InMemoryState, QuantaClock>> {
         let limiter_key = if operation.starts_with("subscribe") {
             "subscription"
         } else if user_tier == "premium" {
@@ -240,9 +242,6 @@ pub struct ApiKey {
     pub key: String,
     pub permissions: Vec<Permission>,
 }
-
-
-
 
 lazy_static! {
     static ref PERMISSION_HIERARCHY: HashMap<Permission, Vec<Permission>> = {

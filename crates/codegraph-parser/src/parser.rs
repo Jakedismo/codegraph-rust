@@ -1,17 +1,16 @@
 use crate::{AstVisitor, LanguageRegistry};
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, CodeParser, Language, Result};
-use rayon::prelude::*;
+use futures::stream::{self, StreamExt};
+use sha2::Digest;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::fs;
 use tokio::sync::Semaphore;
+use tracing::{debug, info, warn};
 use tree_sitter::{InputEdit, Parser, Point, Tree};
-use tracing::{debug, error, info, warn};
-use sha2::Digest;
-use futures::stream::{self, StreamExt};
 
 use crate::fast_io::read_file_to_string;
 use crate::file_collect::collect_source_files;
@@ -68,20 +67,20 @@ impl TreeSitterParser {
 
     fn get_parser_from_pool(&self, language: &Language) -> Option<Parser> {
         let mut pool = self.parser_pool.lock();
-        
+
         for parser_set in pool.iter_mut() {
             if let Some(parser) = parser_set.remove(language) {
                 return Some(parser);
             }
         }
-        
+
         // Create new parser if pool is empty
         self.registry.create_parser(language)
     }
-    
+
     fn return_parser_to_pool(&self, language: Language, parser: Parser) {
         let mut pool = self.parser_pool.lock();
-        
+
         if let Some(parser_set) = pool.first_mut() {
             parser_set.insert(language, parser);
         } else {
@@ -117,12 +116,18 @@ impl TreeSitterParser {
         Ok(files)
     }
 
-    pub async fn parse_directory_parallel(&self, dir_path: &str) -> Result<(Vec<CodeNode>, ParsingStatistics)> {
+    pub async fn parse_directory_parallel(
+        &self,
+        dir_path: &str,
+    ) -> Result<(Vec<CodeNode>, ParsingStatistics)> {
         let start_time = Instant::now();
         let dir_path = Path::new(dir_path);
-        
-        info!("Starting parallel parsing of directory: {}", dir_path.display());
-        
+
+        info!(
+            "Starting parallel parsing of directory: {}",
+            dir_path.display()
+        );
+
         // Collect and size files
         let sized_files = tokio::task::spawn_blocking({
             let dir = dir_path.to_path_buf();
@@ -131,7 +136,11 @@ impl TreeSitterParser {
                 collect_source_files(&dir)
                     .unwrap_or_default()
                     .into_iter()
-                    .filter(|(p, _)| p.to_str().map(|s| registry.detect_language(s).is_some()).unwrap_or(false))
+                    .filter(|(p, _)| {
+                        p.to_str()
+                            .map(|s| registry.detect_language(s).is_some())
+                            .unwrap_or(false)
+                    })
                     .collect::<Vec<(std::path::PathBuf, u64)>>()
             }
         })
@@ -144,23 +153,24 @@ impl TreeSitterParser {
 
         let files: Vec<std::path::PathBuf> = sized_files.into_iter().map(|(p, _)| p).collect();
         let total_files = files.len();
-        
+
         info!("Found {} files to parse", total_files);
-        
+
         // Create semaphore for concurrency control
         let semaphore = Arc::new(Semaphore::new(self.max_concurrent_files));
-        
+
         // Process files in chunks for better memory management
         let mut all_nodes = Vec::new();
         let mut total_lines = 0;
         let mut parsed_files = 0;
         let mut failed_files = 0;
-        
+
         let mut stream = stream::iter(files.into_iter().map(|file_path| {
             let semaphore = semaphore.clone();
             async move {
                 let _permit = semaphore.acquire().await.unwrap();
-                self.parse_file_with_caching(&file_path.to_string_lossy()).await
+                self.parse_file_with_caching(&file_path.to_string_lossy())
+                    .await
             }
         }))
         .buffer_unordered(self.max_concurrent_files);
@@ -178,11 +188,11 @@ impl TreeSitterParser {
                 }
             }
         }
-        
+
         let parsing_duration = start_time.elapsed();
         let files_per_second = parsed_files as f64 / parsing_duration.as_secs_f64();
         let lines_per_second = total_lines as f64 / parsing_duration.as_secs_f64();
-        
+
         let stats = ParsingStatistics {
             total_files,
             parsed_files,
@@ -192,44 +202,56 @@ impl TreeSitterParser {
             files_per_second,
             lines_per_second,
         };
-        
+
         info!(
             "Parsing completed: {}/{} files, {} lines in {:.2}s ({:.1} files/s, {:.0} lines/s)",
-            parsed_files, total_files, total_lines,
+            parsed_files,
+            total_files,
+            total_lines,
             parsing_duration.as_secs_f64(),
-            files_per_second, lines_per_second
+            files_per_second,
+            lines_per_second
         );
-        
+
         Ok((all_nodes, stats))
     }
 
     async fn parse_file_with_caching(&self, file_path: &str) -> Result<(Vec<CodeNode>, usize)> {
         let path = Path::new(file_path);
-        let metadata = fs::metadata(path).await.map_err(|e| CodeGraphError::Io(e))?;
+        let metadata = fs::metadata(path)
+            .await
+            .map_err(|e| CodeGraphError::Io(e))?;
         let last_modified = metadata.modified().map_err(|e| CodeGraphError::Io(e))?;
-        
+
         // Check cache first
         if let Some(cached) = self.parsed_cache.get(file_path) {
             if cached.last_modified == last_modified {
                 debug!("Using cached parse result for {}", file_path);
                 if let Some(tree) = &cached.tree {
-                    let mut visitor = AstVisitor::new(cached.language.clone(), file_path.to_string(), cached.content.clone());
+                    let mut visitor = AstVisitor::new(
+                        cached.language.clone(),
+                        file_path.to_string(),
+                        cached.content.clone(),
+                    );
                     visitor.visit(tree.root_node());
                     let line_count = cached.content.lines().count();
                     return Ok((visitor.nodes, line_count));
                 }
             }
         }
-        
+
         // Parse file
         let result = self.parse_file_internal(file_path).await;
-        
+
         match &result {
             Ok((_, _, content)) => {
                 // Cache successful parse
-                let language = self.registry.detect_language(file_path).unwrap_or(Language::Other("unknown".to_string()));
+                let language = self
+                    .registry
+                    .detect_language(file_path)
+                    .unwrap_or(Language::Other("unknown".to_string()));
                 let content_hash = format!("{:x}", sha2::Sha256::digest(&content));
-                
+
                 let parsed_file = ParsedFile {
                     file_path: file_path.to_string(),
                     language,
@@ -238,38 +260,49 @@ impl TreeSitterParser {
                     last_modified,
                     content_hash,
                 };
-                
+
                 self.parsed_cache.insert(file_path.to_string(), parsed_file);
             }
             Err(e) => {
                 debug!("Failed to cache parse result for {}: {}", file_path, e);
             }
         }
-        
+
         result.map(|(nodes, lines, _)| (nodes, lines))
     }
 
     async fn parse_file_internal(&self, file_path: &str) -> Result<(Vec<CodeNode>, usize, String)> {
-        let language = self.registry.detect_language(file_path)
+        let language = self
+            .registry
+            .detect_language(file_path)
             .ok_or_else(|| CodeGraphError::Parse(format!("Unknown file type: {}", file_path)))?;
 
-        let content = read_file_to_string(file_path).await
+        let content = read_file_to_string(file_path)
+            .await
             .map_err(|e| CodeGraphError::Io(e))?;
-        
+
         let line_count = content.lines().count();
-        let nodes = self.parse_content_with_recovery(&content, file_path, language).await?;
-        
+        let nodes = self
+            .parse_content_with_recovery(&content, file_path, language)
+            .await?;
+
         Ok((nodes, line_count, content))
     }
 
-    async fn parse_content_with_recovery(&self, content: &str, file_path: &str, language: Language) -> Result<Vec<CodeNode>> {
+    async fn parse_content_with_recovery(
+        &self,
+        content: &str,
+        file_path: &str,
+        language: Language,
+    ) -> Result<Vec<CodeNode>> {
         let registry = self.registry.clone();
         let content = content.to_string();
         let file_path = file_path.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let mut parser = registry.create_parser(&language)
-                .ok_or_else(|| CodeGraphError::Parse(format!("Unsupported language: {:?}", language)))?;
+            let mut parser = registry.create_parser(&language).ok_or_else(|| {
+                CodeGraphError::Parse(format!("Unsupported language: {:?}", language))
+            })?;
 
             // First attempt: try to parse normally
             match parser.parse(&content, None) {
@@ -278,14 +311,15 @@ impl TreeSitterParser {
                         warn!("Parse tree has errors for file: {}", file_path);
                         // Continue with partial parsing - we can still extract useful information
                     }
-                    
+
                     if matches!(language, Language::Rust) {
                         // Use advanced Rust extractor
                         use crate::languages::rust::RustExtractor;
                         Ok(RustExtractor::extract(&tree, &content, &file_path))
                     } else if matches!(language, Language::Python) {
                         // Use Python extractor (docstrings, type hints, call graph metadata)
-                        let extraction = crate::languages::python::extract_python(&file_path, &content);
+                        let extraction =
+                            crate::languages::python::extract_python(&file_path, &content);
                         Ok(extraction.nodes)
                     } else if matches!(language, Language::JavaScript | Language::TypeScript) {
                         let nodes = crate::languages::javascript::extract_js_ts_nodes(
@@ -296,33 +330,44 @@ impl TreeSitterParser {
                         );
                         Ok(nodes)
                     } else {
-                        let mut visitor = AstVisitor::new(language.clone(), file_path.clone(), content.clone());
+                        let mut visitor =
+                            AstVisitor::new(language.clone(), file_path.clone(), content.clone());
                         visitor.visit(tree.root_node());
                         Ok(visitor.nodes)
                     }
                 }
                 None => {
                     // Fallback: try to parse line by line for basic recovery
-                    warn!("Complete parsing failed for {}, attempting line-by-line recovery", file_path);
-                    
+                    warn!(
+                        "Complete parsing failed for {}, attempting line-by-line recovery",
+                        file_path
+                    );
+
                     let mut recovered_nodes = Vec::new();
                     let lines: Vec<&str> = content.lines().collect();
-                    
+
                     for (line_num, line) in lines.iter().enumerate() {
                         if let Some(tree) = parser.parse(line, None) {
                             if !tree.root_node().has_error() {
                                 if matches!(language, Language::Rust) {
                                     use crate::languages::rust::RustExtractor;
-                                    let nodes = RustExtractor::extract(&tree, line, &format!("{}:{}", file_path, line_num + 1));
+                                    let nodes = RustExtractor::extract(
+                                        &tree,
+                                        line,
+                                        &format!("{}:{}", file_path, line_num + 1),
+                                    );
                                     recovered_nodes.extend(nodes);
                                 } else if matches!(language, Language::Python) {
-                                    let extraction = crate::languages::python::extract_python(&format!("{}:{}", file_path, line_num + 1), line);
+                                    let extraction = crate::languages::python::extract_python(
+                                        &format!("{}:{}", file_path, line_num + 1),
+                                        line,
+                                    );
                                     recovered_nodes.extend(extraction.nodes);
                                 } else {
                                     let mut visitor = AstVisitor::new(
                                         language.clone(),
                                         format!("{}:{}", file_path, line_num + 1),
-                                        line.to_string()
+                                        line.to_string(),
                                     );
                                     visitor.visit(tree.root_node());
                                     recovered_nodes.extend(visitor.nodes);
@@ -330,21 +375,36 @@ impl TreeSitterParser {
                             }
                         }
                     }
-                    
+
                     if recovered_nodes.is_empty() {
-                        Err(CodeGraphError::Parse(format!("Failed to parse file: {}", file_path)))
+                        Err(CodeGraphError::Parse(format!(
+                            "Failed to parse file: {}",
+                            file_path
+                        )))
                     } else {
-                        info!("Recovered {} nodes from partially parsed file: {}", recovered_nodes.len(), file_path);
+                        info!(
+                            "Recovered {} nodes from partially parsed file: {}",
+                            recovered_nodes.len(),
+                            file_path
+                        );
                         Ok(recovered_nodes)
                     }
                 }
             }
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Parse(e.to_string()))?
     }
 
-    pub async fn incremental_update(&self, file_path: &str, old_content: &str, new_content: &str) -> Result<Vec<CodeNode>> {
-        let language = self.registry.detect_language(file_path)
+    pub async fn incremental_update(
+        &self,
+        file_path: &str,
+        old_content: &str,
+        new_content: &str,
+    ) -> Result<Vec<CodeNode>> {
+        let language = self
+            .registry
+            .detect_language(file_path)
             .ok_or_else(|| CodeGraphError::Parse(format!("Unknown file type: {}", file_path)))?;
 
         let registry = self.registry.clone();
@@ -353,11 +413,13 @@ impl TreeSitterParser {
         let new_content = new_content.to_string();
 
         tokio::task::spawn_blocking(move || {
-            let mut parser = registry.create_parser(&language)
-                .ok_or_else(|| CodeGraphError::Parse(format!("Unsupported language: {:?}", language)))?;
+            let mut parser = registry.create_parser(&language).ok_or_else(|| {
+                CodeGraphError::Parse(format!("Unsupported language: {:?}", language))
+            })?;
 
             // Parse old content first
-            let old_tree = parser.parse(&old_content, None)
+            let old_tree = parser
+                .parse(&old_content, None)
                 .ok_or_else(|| CodeGraphError::Parse("Failed to parse old content".to_string()))?;
 
             // Create diff and compute edit
@@ -403,14 +465,16 @@ impl TreeSitterParser {
             }
 
             // Parse with the updated tree
-            let new_tree = parser.parse(&new_content, Some(&updated_tree))
+            let new_tree = parser
+                .parse(&new_content, Some(&updated_tree))
                 .ok_or_else(|| CodeGraphError::Parse("Failed to incremental parse".to_string()))?;
 
             let mut visitor = AstVisitor::new(language, file_path, new_content);
             visitor.visit(new_tree.root_node());
 
             Ok(visitor.nodes)
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Parse(e.to_string()))?
     }
 

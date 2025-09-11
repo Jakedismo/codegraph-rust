@@ -43,7 +43,7 @@ impl BufferPool {
             miss_count: AtomicUsize::new(0),
         }
     }
-    
+
     /// Get a buffer from the pool, creating a new one if necessary
     #[instrument(skip(self))]
     pub fn get(&self) -> BytesMut {
@@ -59,16 +59,16 @@ impl BufferPool {
             buffer
         }
     }
-    
+
     /// Return a buffer to the pool
     #[instrument(skip(self, buffer))]
     pub fn put(&self, buffer: BytesMut) {
         let current_count = self.allocated_count.load(Ordering::Relaxed);
-        
-        if current_count < self.max_buffers 
-            && buffer.capacity() >= self.buffer_size / 2 
-            && buffer.capacity() <= self.buffer_size * 2 {
-            
+
+        if current_count < self.max_buffers
+            && buffer.capacity() >= self.buffer_size / 2
+            && buffer.capacity() <= self.buffer_size * 2
+        {
             self.buffers.push(buffer);
             self.allocated_count.fetch_add(1, Ordering::Relaxed);
             trace!("Returned buffer to pool");
@@ -77,7 +77,7 @@ impl BufferPool {
             // Buffer will be dropped, freeing memory
         }
     }
-    
+
     /// Get pool statistics
     pub fn stats(&self) -> BufferPoolStats {
         BufferPoolStats {
@@ -127,7 +127,7 @@ impl RingBuffer {
         // Ensure capacity is power of 2 for efficient modulo operations
         let capacity = capacity.next_power_of_two();
         let buffer = vec![0u8; capacity].into_boxed_slice();
-        
+
         Self {
             buffer,
             capacity,
@@ -135,25 +135,25 @@ impl RingBuffer {
             tail: AtomicUsize::new(0),
         }
     }
-    
+
     /// Write data to the ring buffer
     /// Returns the number of bytes written
     pub fn write(&self, data: &[u8]) -> usize {
         let head = self.head.load(Ordering::Acquire);
         let tail = self.tail.load(Ordering::Acquire);
-        
+
         let available = self.available_write_space(head, tail);
         let write_len = data.len().min(available);
-        
+
         if write_len == 0 {
             return 0;
         }
-        
+
         // Calculate write positions considering wrap-around
         let mask = self.capacity - 1;
         let start_pos = head & mask;
         let end_pos = (head + write_len) & mask;
-        
+
         if start_pos < end_pos {
             // No wrap-around
             unsafe {
@@ -167,7 +167,7 @@ impl RingBuffer {
             // Handle wrap-around
             let first_chunk = self.capacity - start_pos;
             let second_chunk = write_len - first_chunk;
-            
+
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     data.as_ptr(),
@@ -181,29 +181,29 @@ impl RingBuffer {
                 );
             }
         }
-        
+
         self.head.store(head + write_len, Ordering::Release);
         write_len
     }
-    
+
     /// Read data from the ring buffer
     /// Returns the number of bytes read
     pub fn read(&self, output: &mut [u8]) -> usize {
         let head = self.head.load(Ordering::Acquire);
         let tail = self.tail.load(Ordering::Acquire);
-        
+
         let available = self.available_read_data(head, tail);
         let read_len = output.len().min(available);
-        
+
         if read_len == 0 {
             return 0;
         }
-        
+
         // Calculate read positions considering wrap-around
         let mask = self.capacity - 1;
         let start_pos = tail & mask;
         let end_pos = (tail + read_len) & mask;
-        
+
         if start_pos < end_pos {
             // No wrap-around
             unsafe {
@@ -217,7 +217,7 @@ impl RingBuffer {
             // Handle wrap-around
             let first_chunk = self.capacity - start_pos;
             let second_chunk = read_len - first_chunk;
-            
+
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     self.buffer.as_ptr().add(start_pos),
@@ -231,33 +231,33 @@ impl RingBuffer {
                 );
             }
         }
-        
+
         self.tail.store(tail + read_len, Ordering::Release);
         read_len
     }
-    
+
     /// Get the amount of data available for reading
     pub fn available_read(&self) -> usize {
         let head = self.head.load(Ordering::Acquire);
         let tail = self.tail.load(Ordering::Acquire);
         self.available_read_data(head, tail)
     }
-    
+
     /// Get the amount of space available for writing
     pub fn available_write(&self) -> usize {
         let head = self.head.load(Ordering::Acquire);
         let tail = self.tail.load(Ordering::Acquire);
         self.available_write_space(head, tail)
     }
-    
+
     fn available_read_data(&self, head: usize, tail: usize) -> usize {
         head.wrapping_sub(tail)
     }
-    
+
     fn available_write_space(&self, head: usize, tail: usize) -> usize {
         self.capacity - 1 - self.available_read_data(head, tail)
     }
-    
+
     /// Get buffer capacity
     pub fn capacity(&self) -> usize {
         self.capacity
@@ -278,25 +278,28 @@ impl SharedBuffer {
             version: AtomicUsize::new(0),
         }
     }
-    
+
     /// Update the buffer with new data
     #[instrument(skip(self, new_data))]
     pub fn update(&self, new_data: Bytes) {
         self.data.store(Arc::new(new_data));
         self.version.fetch_add(1, Ordering::Release);
-        debug!("Updated shared buffer, new version: {}", self.version.load(Ordering::Acquire));
+        debug!(
+            "Updated shared buffer, new version: {}",
+            self.version.load(Ordering::Acquire)
+        );
     }
-    
+
     /// Get a reference to the current data
     pub fn load(&self) -> Arc<Bytes> {
         self.data.load_full()
     }
-    
+
     /// Get the current version number
     pub fn version(&self) -> usize {
         self.version.load(Ordering::Acquire)
     }
-    
+
     /// Check if the buffer has been updated since the given version
     pub fn is_updated_since(&self, version: usize) -> bool {
         self.version.load(Ordering::Acquire) > version
@@ -315,34 +318,36 @@ impl AlignedBuffer {
     pub fn new(size: usize, alignment: usize) -> ZeroCopyResult<Self> {
         let layout = Layout::from_size_align(size, alignment)
             .map_err(|e| ZeroCopyError::Buffer(format!("Invalid layout: {}", e)))?;
-        
+
         let ptr = unsafe { alloc(layout) };
         if ptr.is_null() {
-            return Err(ZeroCopyError::Buffer("Failed to allocate memory".to_string()));
+            return Err(ZeroCopyError::Buffer(
+                "Failed to allocate memory".to_string(),
+            ));
         }
-        
+
         Ok(Self {
             ptr: NonNull::new(ptr).unwrap(),
             layout,
             capacity: size,
         })
     }
-    
+
     /// Get a mutable slice to the buffer
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.capacity) }
     }
-    
+
     /// Get a slice to the buffer
     pub fn as_slice(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.capacity) }
     }
-    
+
     /// Get the buffer capacity
     pub fn capacity(&self) -> usize {
         self.capacity
     }
-    
+
     /// Get the buffer alignment
     pub fn alignment(&self) -> usize {
         self.layout.align()
@@ -377,7 +382,7 @@ impl MPMCBufferQueue {
             total_dequeued: AtomicUsize::new(0),
         }
     }
-    
+
     /// Push a buffer to the queue
     pub fn push(&self, buffer: Bytes) -> Result<(), Bytes> {
         match self.queue.push(buffer) {
@@ -388,7 +393,7 @@ impl MPMCBufferQueue {
             Err(buffer) => Err(buffer),
         }
     }
-    
+
     /// Pop a buffer from the queue
     pub fn pop(&self) -> Option<Bytes> {
         match self.queue.pop() {
@@ -399,22 +404,22 @@ impl MPMCBufferQueue {
             None => None,
         }
     }
-    
+
     /// Get the current length of the queue
     pub fn len(&self) -> usize {
         self.queue.len()
     }
-    
+
     /// Check if the queue is empty
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }
-    
+
     /// Check if the queue is full
     pub fn is_full(&self) -> bool {
         self.queue.is_full()
     }
-    
+
     /// Get queue statistics
     pub fn stats(&self) -> MPMCBufferQueueStats {
         MPMCBufferQueueStats {
@@ -448,20 +453,20 @@ impl BufferManager {
     /// Create a new buffer manager with default pool sizes
     pub fn new() -> Self {
         Self {
-            small_pool: BufferPool::new(4096, 100),     // 4KB buffers
-            medium_pool: BufferPool::new(65536, 50),    // 64KB buffers
-            large_pool: BufferPool::new(1048576, 10),   // 1MB buffers
+            small_pool: BufferPool::new(4096, 100),   // 4KB buffers
+            medium_pool: BufferPool::new(65536, 50),  // 64KB buffers
+            large_pool: BufferPool::new(1048576, 10), // 1MB buffers
             mpmc_queue: MPMCBufferQueue::new(1000),
             stats: RwLock::new(BufferManagerStats::default()),
         }
     }
-    
+
     /// Get an appropriately sized buffer
     #[instrument(skip(self))]
     pub fn get_buffer(&self, size: usize) -> BytesMut {
         let mut stats = self.stats.write();
         stats.total_requests += 1;
-        
+
         let buffer = if size <= 4096 {
             stats.small_requests += 1;
             self.small_pool.get()
@@ -475,15 +480,15 @@ impl BufferManager {
             stats.oversized_requests += 1;
             BytesMut::with_capacity(size)
         };
-        
+
         buffer
     }
-    
+
     /// Return a buffer to the appropriate pool
     #[instrument(skip(self, buffer))]
     pub fn return_buffer(&self, buffer: BytesMut) {
         let capacity = buffer.capacity();
-        
+
         if capacity <= 8192 {
             self.small_pool.put(buffer);
         } else if capacity <= 131072 {
@@ -493,17 +498,17 @@ impl BufferManager {
         }
         // Large buffers are dropped
     }
-    
+
     /// Submit a buffer to the MPMC queue
     pub fn submit_buffer(&self, buffer: Bytes) -> Result<(), Bytes> {
         self.mpmc_queue.push(buffer)
     }
-    
+
     /// Retrieve a buffer from the MPMC queue
     pub fn retrieve_buffer(&self) -> Option<Bytes> {
         self.mpmc_queue.pop()
     }
-    
+
     /// Get comprehensive buffer manager statistics
     pub fn stats(&self) -> BufferManagerStats {
         let mut stats = self.stats.read().clone();
@@ -538,22 +543,22 @@ pub struct BufferManagerStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
     use std::sync::Arc;
+    use std::thread;
 
     #[test]
     fn test_buffer_pool() {
         let pool = BufferPool::new(1024, 10);
-        
+
         // Test getting and returning buffers
         let buffer1 = pool.get();
         assert_eq!(buffer1.capacity(), 1024);
-        
+
         pool.put(buffer1);
-        
+
         let buffer2 = pool.get();
         assert_eq!(buffer2.capacity(), 1024);
-        
+
         let stats = pool.stats();
         assert_eq!(stats.hit_count, 1);
         assert_eq!(stats.miss_count, 1);
@@ -562,17 +567,17 @@ mod tests {
     #[test]
     fn test_ring_buffer() {
         let ring = RingBuffer::new(64);
-        
+
         // Test basic write/read
         let data = b"hello world";
         let written = ring.write(data);
         assert_eq!(written, data.len());
-        
+
         let mut output = [0u8; 20];
         let read = ring.read(&mut output);
         assert_eq!(read, data.len());
         assert_eq!(&output[..read], data);
-        
+
         // Test wrap-around
         let large_data = [42u8; 100];
         let written = ring.write(&large_data);
@@ -583,15 +588,15 @@ mod tests {
     fn test_shared_buffer() {
         let initial_data = Bytes::from_static(b"initial");
         let shared = SharedBuffer::new(initial_data);
-        
+
         assert_eq!(shared.version(), 0);
-        
+
         let data = shared.load();
         assert_eq!(&**data, b"initial");
-        
+
         shared.update(Bytes::from_static(b"updated"));
         assert_eq!(shared.version(), 1);
-        
+
         let updated_data = shared.load();
         assert_eq!(&**updated_data, b"updated");
     }
@@ -599,14 +604,14 @@ mod tests {
     #[test]
     fn test_aligned_buffer() {
         let mut buffer = AlignedBuffer::new(1024, 64).unwrap();
-        
+
         assert_eq!(buffer.capacity(), 1024);
         assert_eq!(buffer.alignment(), 64);
-        
+
         let slice = buffer.as_mut_slice();
         slice[0] = 42;
         slice[1023] = 24;
-        
+
         let read_slice = buffer.as_slice();
         assert_eq!(read_slice[0], 42);
         assert_eq!(read_slice[1023], 24);
@@ -615,20 +620,20 @@ mod tests {
     #[test]
     fn test_mpmc_buffer_queue() {
         let queue = MPMCBufferQueue::new(10);
-        
+
         // Test single-threaded operations
         let data = Bytes::from_static(b"test data");
         queue.push(data.clone()).unwrap();
-        
+
         let retrieved = queue.pop().unwrap();
         assert_eq!(retrieved, data);
-        
+
         // Test queue full
         for i in 0..10 {
             let data = Bytes::from(format!("data {}", i));
             queue.push(data).unwrap();
         }
-        
+
         let overflow_data = Bytes::from_static(b"overflow");
         assert!(queue.push(overflow_data).is_err());
     }
@@ -636,22 +641,22 @@ mod tests {
     #[test]
     fn test_buffer_manager() {
         let manager = BufferManager::new();
-        
+
         // Test different sized buffer requests
         let small_buf = manager.get_buffer(1024);
         assert!(small_buf.capacity() >= 1024);
-        
+
         let medium_buf = manager.get_buffer(32768);
         assert!(medium_buf.capacity() >= 32768);
-        
+
         let large_buf = manager.get_buffer(524288);
         assert!(large_buf.capacity() >= 524288);
-        
+
         // Return buffers
         manager.return_buffer(small_buf);
         manager.return_buffer(medium_buf);
         manager.return_buffer(large_buf);
-        
+
         let stats = manager.stats();
         assert!(stats.total_requests >= 3);
     }
@@ -661,7 +666,7 @@ mod tests {
         let ring = Arc::new(RingBuffer::new(1024));
         let ring_reader = ring.clone();
         let ring_writer = ring.clone();
-        
+
         let writer = thread::spawn(move || {
             for i in 0..100 {
                 let data = format!("message {}", i);
@@ -670,11 +675,11 @@ mod tests {
                 }
             }
         });
-        
+
         let reader = thread::spawn(move || {
             let mut received = 0;
             let mut buffer = [0u8; 100];
-            
+
             while received < 100 {
                 let read = ring_reader.read(&mut buffer);
                 if read > 0 {
@@ -683,7 +688,7 @@ mod tests {
                 thread::yield_now();
             }
         });
-        
+
         writer.join().unwrap();
         reader.join().unwrap();
     }

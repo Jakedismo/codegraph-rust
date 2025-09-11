@@ -1,4 +1,4 @@
-use codegraph_core::{ChangeEvent, Result, traits::FileWatcher};
+use codegraph_core::{traits::FileWatcher, ChangeEvent, Result};
 use crossbeam_channel::Sender;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
@@ -9,7 +9,9 @@ pub struct FileWatcherImpl {
 
 impl FileWatcherImpl {
     pub fn new(path: &str) -> Self {
-        Self { path: path.to_string() }
+        Self {
+            path: path.to_string(),
+        }
     }
 }
 
@@ -25,14 +27,22 @@ impl FileWatcher for FileWatcherImpl {
             match res {
                 Ok(event) => {
                     let change_event = match event.kind {
-                        notify::EventKind::Create(_) => Some(ChangeEvent::Created(event.paths[0].to_str().unwrap().to_string())),
-                        notify::EventKind::Modify(_) => Some(ChangeEvent::Modified(event.paths[0].to_str().unwrap().to_string())),
-                        notify::EventKind::Remove(_) => Some(ChangeEvent::Deleted(event.paths[0].to_str().unwrap().to_string())),
+                        notify::EventKind::Create(_) => Some(ChangeEvent::Created(
+                            event.paths[0].to_str().unwrap().to_string(),
+                        )),
+                        notify::EventKind::Modify(_) => Some(ChangeEvent::Modified(
+                            event.paths[0].to_str().unwrap().to_string(),
+                        )),
+                        notify::EventKind::Remove(_) => Some(ChangeEvent::Deleted(
+                            event.paths[0].to_str().unwrap().to_string(),
+                        )),
                         _ => None,
                     };
 
                     if let Some(change_event) = change_event {
-                        tx.send(change_event)?;
+                        tx.send(change_event).map_err(|e| {
+                            codegraph_core::CodeGraphError::Threading(e.to_string())
+                        })?;
                     }
                 }
                 Err(e) => return Err(e.into()),

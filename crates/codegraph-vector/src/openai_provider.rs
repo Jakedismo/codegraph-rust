@@ -2,8 +2,8 @@
 use crate::providers::{
     BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
 };
-use codegraph_core::{CodeGraphError, CodeNode, Result};
 use async_trait::async_trait;
+use codegraph_core::{CodeGraphError, CodeNode, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -177,7 +177,7 @@ impl OpenAiEmbeddingProvider {
                     } else {
                         // Get status before consuming response
                         let status = response.status();
-                        
+
                         // Try to parse error response
                         if let Ok(api_error) = response.json::<ApiError>().await {
                             last_error = Some(CodeGraphError::External(format!(
@@ -193,10 +193,7 @@ impl OpenAiEmbeddingProvider {
                     }
                 }
                 Ok(Err(e)) => {
-                    last_error = Some(CodeGraphError::Network(format!(
-                        "Request failed: {}",
-                        e
-                    )));
+                    last_error = Some(CodeGraphError::Network(format!("Request failed: {}", e)));
                 }
                 Err(_) => {
                     last_error = Some(CodeGraphError::Timeout(
@@ -232,28 +229,26 @@ impl OpenAiEmbeddingProvider {
         let texts: Vec<String> = nodes.iter().map(|node| self.prepare_text(node)).collect();
 
         // Process in chunks to respect API limits and batch configuration
-        let chunk_size = config.batch_size.min(self.config.max_tokens_per_request / 100); // Conservative estimate
+        let chunk_size = config
+            .batch_size
+            .min(self.config.max_tokens_per_request / 100); // Conservative estimate
 
         for chunk in texts.chunks(chunk_size) {
             debug!("Processing batch of {} texts", chunk.len());
-            
+
             let response = self.call_api(chunk.to_vec()).await?;
-            
+
             // Sort embeddings by index to maintain order
             let mut batch_embeddings: Vec<_> = response.data.into_iter().collect();
             batch_embeddings.sort_by_key(|item| item.index);
-            
+
             for item in batch_embeddings {
                 all_embeddings.push(item.embedding);
             }
         }
 
         let duration = start_time.elapsed();
-        let metrics = EmbeddingMetrics::new(
-            "OpenAI".to_string(),
-            nodes.len(),
-            duration,
-        );
+        let metrics = EmbeddingMetrics::new("OpenAI".to_string(), nodes.len(), duration);
 
         info!(
             "OpenAI embedding generation completed: {} texts in {:?} ({:.2} texts/s)",
@@ -292,7 +287,10 @@ impl EmbeddingProvider for OpenAiEmbeddingProvider {
         config: &BatchConfig,
     ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)> {
         if nodes.is_empty() {
-            return Ok((Vec::new(), EmbeddingMetrics::new("OpenAI".to_string(), 0, Duration::ZERO)));
+            return Ok((
+                Vec::new(),
+                EmbeddingMetrics::new("OpenAI".to_string(), 0, Duration::ZERO),
+            ));
         }
 
         self.process_in_batches(nodes, config).await

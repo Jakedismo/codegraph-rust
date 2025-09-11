@@ -1,5 +1,5 @@
-use codegraph_core::{CodeNode, Language, Location, NodeId, NodeType, Result, Metadata};
-use codegraph_vector::{OptimizedKnnEngine, SearchConfig, ContextualSearchResult};
+use codegraph_core::{CodeNode, Language, Location, Metadata, NodeId, NodeType, Result};
+use codegraph_vector::{ContextualSearchResult, OptimizedKnnEngine, SearchConfig};
 use std::collections::HashMap;
 use tokio_test;
 
@@ -30,12 +30,12 @@ fn create_test_node(
 fn generate_random_embedding(dimension: usize, seed: u64) -> Vec<f32> {
     let mut embedding = vec![0.0; dimension];
     let mut state = seed;
-    
+
     for i in 0..dimension {
         state = state.wrapping_mul(1103515245).wrapping_add(12345);
         embedding[i] = ((state as f32 / u32::MAX as f32) - 0.5) * 2.0;
     }
-    
+
     // Normalize
     let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
     if norm > 0.0 {
@@ -43,7 +43,7 @@ fn generate_random_embedding(dimension: usize, seed: u64) -> Vec<f32> {
             *x /= norm;
         }
     }
-    
+
     embedding
 }
 
@@ -79,13 +79,15 @@ async fn test_basic_knn_search() -> Result<()> {
 
     // Test search
     let query_embedding = generate_random_embedding(dimension, 1);
-    let results = engine.single_similarity_search(
-        query_embedding,
-        SearchConfig {
-            k: 2,
-            ..SearchConfig::default()
-        },
-    ).await?;
+    let results = engine
+        .single_similarity_search(
+            query_embedding,
+            SearchConfig {
+                k: 2,
+                ..SearchConfig::default()
+            },
+        )
+        .await?;
 
     assert!(!results.is_empty());
     assert!(results.len() <= 2);
@@ -113,7 +115,11 @@ async fn test_parallel_search() -> Result<()> {
         nodes.push(create_test_node(
             &format!("function_{}", i),
             NodeType::Function,
-            if i % 2 == 0 { Language::Rust } else { Language::Python },
+            if i % 2 == 0 {
+                Language::Rust
+            } else {
+                Language::Python
+            },
             generate_random_embedding(dimension, i as u64),
         ));
     }
@@ -173,16 +179,16 @@ async fn test_contextual_ranking() -> Result<()> {
     engine.build_indices(&nodes).await?;
 
     // Search with a query that should prefer Rust functions
-    let results = engine.single_similarity_search(
-        generate_random_embedding(dimension, 1),
-        config.clone(),
-    ).await?;
+    let results = engine
+        .single_similarity_search(generate_random_embedding(dimension, 1), config.clone())
+        .await?;
 
     assert!(!results.is_empty());
-    
+
     // The rust_function should potentially rank higher due to context scoring
     // even if embeddings are similar
-    let rust_function_result = results.iter()
+    let rust_function_result = results
+        .iter()
         .find(|r| r.node.as_ref().unwrap().name == "rust_function");
     assert!(rust_function_result.is_some());
 
@@ -202,7 +208,7 @@ async fn test_clustering() -> Result<()> {
     // Create nodes with similar embeddings to form clusters
     let mut nodes = Vec::new();
     let base_embedding = generate_random_embedding(dimension, 42);
-    
+
     // Cluster 1: Rust functions
     for i in 0..5 {
         let mut embedding = base_embedding.clone();
@@ -234,13 +240,12 @@ async fn test_clustering() -> Result<()> {
     assert!(!cluster_info.is_empty());
 
     // Test search results include cluster information
-    let results = engine.single_similarity_search(
-        base_embedding,
-        config,
-    ).await?;
+    let results = engine
+        .single_similarity_search(base_embedding, config)
+        .await?;
 
     assert!(!results.is_empty());
-    
+
     // Some results should have cluster information
     let has_cluster_info = results.iter().any(|r| r.cluster_id.is_some());
     assert!(has_cluster_info);
@@ -268,13 +273,16 @@ async fn test_batch_function_search() -> Result<()> {
     engine.build_indices(&nodes).await?;
 
     // Test batch search for similar functions
-    let function_nodes: Vec<_> = nodes.iter()
+    let function_nodes: Vec<_> = nodes
+        .iter()
         .filter(|n| matches!(n.node_type, Some(NodeType::Function)))
         .take(3)
         .cloned()
         .collect();
 
-    let results = engine.batch_search_similar_functions(&function_nodes, None).await?;
+    let results = engine
+        .batch_search_similar_functions(&function_nodes, None)
+        .await?;
 
     assert_eq!(results.len(), 3);
     for result_set in results {
@@ -291,14 +299,12 @@ async fn test_cache_performance() -> Result<()> {
     let engine = OptimizedKnnEngine::new(dimension, config)?;
 
     // Create test nodes
-    let nodes = vec![
-        create_test_node(
-            "test_function",
-            NodeType::Function,
-            Language::Rust,
-            generate_random_embedding(dimension, 42),
-        ),
-    ];
+    let nodes = vec![create_test_node(
+        "test_function",
+        NodeType::Function,
+        Language::Rust,
+        generate_random_embedding(dimension, 42),
+    )];
 
     engine.build_indices(&nodes).await?;
 
@@ -307,26 +313,23 @@ async fn test_cache_performance() -> Result<()> {
 
     // First search (cache miss)
     let start = std::time::Instant::now();
-    let _results1 = engine.single_similarity_search(
-        query_embedding.clone(),
-        search_config.clone(),
-    ).await?;
+    let _results1 = engine
+        .single_similarity_search(query_embedding.clone(), search_config.clone())
+        .await?;
     let first_duration = start.elapsed();
 
     // Second search (should be cache hit)
     let start = std::time::Instant::now();
-    let _results2 = engine.single_similarity_search(
-        query_embedding,
-        search_config,
-    ).await?;
+    let _results2 = engine
+        .single_similarity_search(query_embedding, search_config)
+        .await?;
     let second_duration = start.elapsed();
 
     // Second search should be faster due to caching
     // Note: This might not always be true in tests due to small dataset
     println!(
         "First search: {:?}, Second search: {:?}",
-        first_duration,
-        second_duration
+        first_duration, second_duration
     );
 
     let stats = engine.get_performance_stats();
@@ -345,7 +348,7 @@ async fn test_precision_recall_tradeoff() -> Result<()> {
             ..SearchConfig::default()
         },
     )?;
-    
+
     let engine_fast = OptimizedKnnEngine::new(
         dimension,
         SearchConfig {
@@ -371,23 +374,27 @@ async fn test_precision_recall_tradeoff() -> Result<()> {
     let query_embedding = generate_random_embedding(dimension, 999);
 
     // Test both engines
-    let exact_results = engine_exact.single_similarity_search(
-        query_embedding.clone(),
-        SearchConfig {
-            k: 10,
-            precision_recall_tradeoff: 1.0,
-            ..SearchConfig::default()
-        },
-    ).await?;
+    let exact_results = engine_exact
+        .single_similarity_search(
+            query_embedding.clone(),
+            SearchConfig {
+                k: 10,
+                precision_recall_tradeoff: 1.0,
+                ..SearchConfig::default()
+            },
+        )
+        .await?;
 
-    let fast_results = engine_fast.single_similarity_search(
-        query_embedding,
-        SearchConfig {
-            k: 10,
-            precision_recall_tradeoff: 0.0,
-            ..SearchConfig::default()
-        },
-    ).await?;
+    let fast_results = engine_fast
+        .single_similarity_search(
+            query_embedding,
+            SearchConfig {
+                k: 10,
+                precision_recall_tradeoff: 0.0,
+                ..SearchConfig::default()
+            },
+        )
+        .await?;
 
     assert_eq!(exact_results.len(), fast_results.len());
 
@@ -411,8 +418,16 @@ async fn test_related_code_discovery() -> Result<()> {
     for i in 0..20 {
         nodes.push(create_test_node(
             &format!("node_{}", i),
-            if i % 3 == 0 { NodeType::Function } else { NodeType::Struct },
-            if i % 2 == 0 { Language::Rust } else { Language::Python },
+            if i % 3 == 0 {
+                NodeType::Function
+            } else {
+                NodeType::Struct
+            },
+            if i % 2 == 0 {
+                Language::Rust
+            } else {
+                Language::Python
+            },
             generate_random_embedding(dimension, i as u64),
         ));
     }
@@ -421,10 +436,12 @@ async fn test_related_code_discovery() -> Result<()> {
 
     // Test related code discovery
     let seed_nodes: Vec<NodeId> = nodes.iter().take(3).map(|n| n.id).collect();
-    let related_clusters = engine.discover_related_code_clusters(&seed_nodes, 15).await?;
+    let related_clusters = engine
+        .discover_related_code_clusters(&seed_nodes, 15)
+        .await?;
 
     assert!(!related_clusters.is_empty());
-    
+
     for (cluster_id, results) in related_clusters {
         println!("Cluster {}: {} related nodes", cluster_id, results.len());
         assert!(!results.is_empty());

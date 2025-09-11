@@ -1,4 +1,4 @@
-use codegraph_core::{Result, traits::ProgressTracker};
+use codegraph_core::{traits::ProgressTracker, Result};
 
 pub struct ProgressTrackerImpl;
 

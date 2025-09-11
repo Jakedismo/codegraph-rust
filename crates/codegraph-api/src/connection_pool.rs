@@ -67,13 +67,20 @@ pub struct LoadBalancedEndpoints {
 
 impl LoadBalancedEndpoints {
     pub fn new(endpoints: Vec<Url>) -> Self {
-        Self { endpoints, index: AtomicUsize::new(0) }
+        Self {
+            endpoints,
+            index: AtomicUsize::new(0),
+        }
     }
 
-    pub fn is_empty(&self) -> bool { self.endpoints.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.endpoints.is_empty()
+    }
 
     pub fn next(&self) -> Option<Url> {
-        if self.endpoints.is_empty() { return None; }
+        if self.endpoints.is_empty() {
+            return None;
+        }
         let i = self.index.fetch_add(1, Ordering::Relaxed);
         Some(self.endpoints[i % self.endpoints.len()].clone())
     }
@@ -91,8 +98,14 @@ pub struct HttpClientPool {
 impl std::fmt::Debug for HttpClientPool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HttpClientPool")
-            .field("pool_max_idle_per_host", &self.config.pool_max_idle_per_host)
-            .field("pool_idle_timeout_secs", &self.config.pool_idle_timeout_secs)
+            .field(
+                "pool_max_idle_per_host",
+                &self.config.pool_max_idle_per_host,
+            )
+            .field(
+                "pool_idle_timeout_secs",
+                &self.config.pool_idle_timeout_secs,
+            )
             .field("connect_timeout_secs", &self.config.connect_timeout_secs)
             .finish()
     }
@@ -117,10 +130,18 @@ impl HttpClientPool {
         if let Some(ka) = config.tcp_keepalive_secs.map(Duration::from_secs) {
             builder = builder.tcp_keepalive(ka);
         }
-        if let Some(interval) = config.http2_keep_alive_interval_secs.map(Duration::from_secs) {
-            builder = builder.http2_keep_alive_interval(interval).http2_keep_alive_while_idle(true);
+        if let Some(interval) = config
+            .http2_keep_alive_interval_secs
+            .map(Duration::from_secs)
+        {
+            builder = builder
+                .http2_keep_alive_interval(interval)
+                .http2_keep_alive_while_idle(true);
         }
-        if let Some(timeout) = config.http2_keep_alive_timeout_secs.map(Duration::from_secs) {
+        if let Some(timeout) = config
+            .http2_keep_alive_timeout_secs
+            .map(Duration::from_secs)
+        {
             builder = builder.http2_keep_alive_timeout(timeout);
         }
 
@@ -134,7 +155,9 @@ impl HttpClientPool {
         })
     }
 
-    pub fn client(&self) -> &Client { &self.client }
+    pub fn client(&self) -> &Client {
+        &self.client
+    }
 
     pub fn close_idle(&self) {
         self.client.close_idle_connections();
@@ -178,7 +201,11 @@ impl HttpClientPool {
 pub fn load_base_urls_from_env() -> Vec<String> {
     std::env::var("OUTBOUND_BASE_URLS")
         .ok()
-        .map(|s| s.split(',').map(|v| v.trim().to_string()).filter(|v| !v.is_empty()).collect())
+        .map(|s| {
+            s.split(',')
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .collect()
+        })
         .unwrap_or_else(Vec::new)
 }
-

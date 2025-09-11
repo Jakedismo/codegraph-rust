@@ -10,7 +10,7 @@ description = "Graph data structures and operations for CodeGraph"
 codegraph-core = { workspace = true }
 # Reduce linked compression backends to minimize binary size.
 # Keep zstd only; disable default features (snappy, lz4, zlib, bzip2).
-rocksdb = { workspace = true, default-features = false, features = ["zstd"] }
+rocksdb = { workspace = true, features = ["zstd"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true }
@@ -27,6 +27,9 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 sha2 = { workspace = true }
 memmap2 = { workspace = true }
+num_cpus = "1.16"
+crossbeam-channel = "0.5"
+notify = "6.0"
 
 [dev-dependencies]
 tokio-test = { workspace = true }

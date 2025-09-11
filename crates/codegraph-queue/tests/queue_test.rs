@@ -1,5 +1,5 @@
-
-use super::*;
+use chrono::Utc;
+use codegraph_queue::*;
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -15,7 +15,10 @@ async fn test_add_and_process_task() {
         created_at: Utc::now(),
     };
 
-    queue.add_task(task.clone(), Priority::Normal).await.unwrap();
+    queue
+        .add_task(task.clone(), Priority::Normal)
+        .await
+        .unwrap();
     assert_eq!(queue.queue_size().await, 1);
 
     let queue_handle = tokio::spawn(async move {
@@ -56,8 +59,14 @@ async fn test_priority() {
         created_at: Utc::now(),
     };
 
-    queue.add_task(normal_task.clone(), Priority::Normal).await.unwrap();
-    queue.add_task(critical_task.clone(), Priority::Critical).await.unwrap();
+    queue
+        .add_task(normal_task.clone(), Priority::Normal)
+        .await
+        .unwrap();
+    queue
+        .add_task(critical_task.clone(), Priority::Critical)
+        .await
+        .unwrap();
 
     let queue_handle = tokio::spawn(async move {
         queue.run().await;

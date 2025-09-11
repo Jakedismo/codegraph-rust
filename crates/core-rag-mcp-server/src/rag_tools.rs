@@ -1,10 +1,10 @@
 use crate::{CoreRagServerConfig, Result};
+use chrono::{DateTime, Utc};
 use codegraph_core::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
 
 /// RAG tools providing CodeGraph functionality
 #[derive(Clone)]
@@ -114,7 +114,7 @@ impl RagTools {
     /// Create new RAG tools instance
     pub fn new(config: CoreRagServerConfig) -> Result<Self> {
         config.validate()?;
-        
+
         // Initialize mock stores - in real implementation, these would be actual CodeGraph components
         let graph = Arc::new(RwLock::new(MockGraphStore::new()));
         let vector = Arc::new(RwLock::new(MockVectorStore::new()));
@@ -142,7 +142,9 @@ impl RagTools {
                 name: "calculate_embeddings".to_string(),
                 path: "src/vector/embeddings.rs".to_string(),
                 node_type: "function".to_string(),
-                content: "pub async fn calculate_embeddings(input: &str) -> Result<Vec<f32>> { ... }".to_string(),
+                content:
+                    "pub async fn calculate_embeddings(input: &str) -> Result<Vec<f32>> { ... }"
+                        .to_string(),
                 score: 0.95,
                 language: Some("rust".to_string()),
             },
@@ -180,7 +182,8 @@ impl RagTools {
     let tokens = tokenize(&preprocessed);
     let embeddings = model.encode(&tokens).await?;
     Ok(embeddings)
-}"#.to_string(),
+}"#
+                .to_string(),
                 language: Some("rust".to_string()),
                 start_line: 15,
                 end_line: 20,
@@ -222,24 +225,20 @@ impl RagTools {
                     score: 1.0,
                 },
             ],
-            dependents: vec![
-                RelatedNode {
-                    id: "node_005".to_string(),
-                    name: "search_similar".to_string(),
-                    path: "src/search/similarity.rs".to_string(),
-                    relationship_type: "called_by".to_string(),
-                    score: 0.95,
-                },
-            ],
-            related: vec![
-                RelatedNode {
-                    id: "node_006".to_string(),
-                    name: "generate_embeddings".to_string(),
-                    path: "src/vector/generator.rs".to_string(),
-                    relationship_type: "similar_function".to_string(),
-                    score: 0.87,
-                },
-            ],
+            dependents: vec![RelatedNode {
+                id: "node_005".to_string(),
+                name: "search_similar".to_string(),
+                path: "src/search/similarity.rs".to_string(),
+                relationship_type: "called_by".to_string(),
+                score: 0.95,
+            }],
+            related: vec![RelatedNode {
+                id: "node_006".to_string(),
+                name: "generate_embeddings".to_string(),
+                path: "src/vector/generator.rs".to_string(),
+                relationship_type: "similar_function".to_string(),
+                score: 0.87,
+            }],
         };
 
         Ok(analysis)
@@ -296,8 +295,8 @@ impl RagTools {
         let filtered_results: Vec<_> = mock_results
             .into_iter()
             .filter(|r| {
-                r.title.to_lowercase().contains(&query.to_lowercase()) ||
-                r.context.to_lowercase().contains(&query.to_lowercase())
+                r.title.to_lowercase().contains(&query.to_lowercase())
+                    || r.context.to_lowercase().contains(&query.to_lowercase())
             })
             .take(limit as usize)
             .collect();

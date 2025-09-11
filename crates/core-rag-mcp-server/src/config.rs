@@ -6,16 +6,16 @@ use std::path::PathBuf;
 pub struct CoreRagServerConfig {
     /// Path to the CodeGraph database
     pub database_path: PathBuf,
-    
+
     /// Vector database configuration
     pub vector_config: VectorConfig,
-    
+
     /// Cache configuration
     pub cache_config: CacheConfig,
-    
+
     /// Parser configuration
     pub parser_config: ParserConfig,
-    
+
     /// Performance tuning options
     pub performance: PerformanceConfig,
 }
@@ -24,13 +24,13 @@ pub struct CoreRagServerConfig {
 pub struct VectorConfig {
     /// Maximum number of search results
     pub max_results: u32,
-    
+
     /// Default similarity threshold
     pub default_threshold: f32,
-    
+
     /// Vector dimension size
     pub dimension: usize,
-    
+
     /// Index type for FAISS
     pub index_type: String,
 }
@@ -39,10 +39,10 @@ pub struct VectorConfig {
 pub struct CacheConfig {
     /// Cache size in MB
     pub cache_size_mb: usize,
-    
+
     /// TTL for cache entries in seconds
     pub ttl_seconds: u64,
-    
+
     /// Enable LRU eviction
     pub enable_lru: bool,
 }
@@ -51,10 +51,10 @@ pub struct CacheConfig {
 pub struct ParserConfig {
     /// Supported file extensions
     pub file_extensions: Vec<String>,
-    
+
     /// Maximum file size to parse in bytes
     pub max_file_size: usize,
-    
+
     /// Enable incremental parsing
     pub incremental: bool,
 }
@@ -63,13 +63,13 @@ pub struct ParserConfig {
 pub struct PerformanceConfig {
     /// Number of worker threads
     pub worker_threads: usize,
-    
+
     /// Batch size for processing
     pub batch_size: usize,
-    
+
     /// Connection pool size
     pub connection_pool_size: usize,
-    
+
     /// Enable parallel processing
     pub enable_parallel: bool,
 }
@@ -157,21 +157,30 @@ impl CoreRagServerConfig {
     /// Validate configuration
     pub fn validate(&self) -> crate::Result<()> {
         if self.vector_config.max_results == 0 {
-            return Err(crate::CoreRagError::config("max_results must be greater than 0"));
+            return Err(crate::CoreRagError::config(
+                "max_results must be greater than 0",
+            ));
         }
-        
-        if self.vector_config.default_threshold < 0.0 || self.vector_config.default_threshold > 1.0 {
-            return Err(crate::CoreRagError::config("default_threshold must be between 0.0 and 1.0"));
+
+        if self.vector_config.default_threshold < 0.0 || self.vector_config.default_threshold > 1.0
+        {
+            return Err(crate::CoreRagError::config(
+                "default_threshold must be between 0.0 and 1.0",
+            ));
         }
-        
+
         if self.cache_config.cache_size_mb == 0 {
-            return Err(crate::CoreRagError::config("cache_size_mb must be greater than 0"));
+            return Err(crate::CoreRagError::config(
+                "cache_size_mb must be greater than 0",
+            ));
         }
-        
+
         if self.performance.worker_threads == 0 {
-            return Err(crate::CoreRagError::config("worker_threads must be greater than 0"));
+            return Err(crate::CoreRagError::config(
+                "worker_threads must be greater than 0",
+            ));
         }
-        
+
         Ok(())
     }
 }

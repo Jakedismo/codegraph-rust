@@ -1,9 +1,9 @@
 use codegraph_api::Server;
+use codegraph_core::ConfigManager;
 use std::net::SocketAddr;
 use std::str::FromStr;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use std::sync::Arc;
-use codegraph_core::ConfigManager;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> codegraph_core::Result<()> {
@@ -44,7 +44,9 @@ async fn main() -> codegraph_core::Result<()> {
     let settings = config.settings().read().await.clone();
 
     // Bind address configurable via config or env override
-    let host = std::env::var("HOST").ok().unwrap_or_else(|| settings.server.host.clone());
+    let host = std::env::var("HOST")
+        .ok()
+        .unwrap_or_else(|| settings.server.host.clone());
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|v| v.parse().ok())

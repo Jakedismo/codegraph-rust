@@ -4,11 +4,11 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use similar::{ChangeTag, TextDiff};
-use tree_sitter::{InputEdit, Node, Point, Tree, TreeCursor};
 use tracing::{debug, info, warn};
+use tree_sitter::{InputEdit, Node, Point, Tree, TreeCursor};
 
-use codegraph_core::{CodeGraphError, CodeNode, Language};
 use crate::{AstVisitor, LanguageRegistry};
+use codegraph_core::{CodeGraphError, CodeNode, Language};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextRange {
@@ -81,14 +81,20 @@ impl DiffBasedParser {
         old_tree: Option<&Tree>,
         old_nodes: &[CodeNode],
     ) -> Result<IncrementalParseResult> {
-        let language = self.registry.detect_language(file_path)
+        let language = self
+            .registry
+            .detect_language(file_path)
             .ok_or_else(|| CodeGraphError::Parse(format!("Unknown file type: {}", file_path)))?;
 
         // Compute text diff
         let diff = TextDiff::from_lines(old_content, new_content);
         let changed_regions = self.compute_changed_regions(&diff, old_content, new_content)?;
 
-        debug!("Found {} changed regions for {}", changed_regions.len(), file_path);
+        debug!(
+            "Found {} changed regions for {}",
+            changed_regions.len(),
+            file_path
+        );
 
         // If we don't have an old tree, do a full parse
         if old_tree.is_none() || changed_regions.is_empty() {
@@ -99,10 +105,13 @@ impl DiffBasedParser {
 
         // Find affected nodes
         let affected_nodes = self.find_affected_nodes(old_tree, &changed_regions, old_nodes)?;
-        
+
         // Determine if we need full reparse or can do incremental
         if self.should_do_full_reparse(&changed_regions, &affected_nodes) {
-            warn!("Changed regions too extensive, falling back to full reparse for {}", file_path);
+            warn!(
+                "Changed regions too extensive, falling back to full reparse for {}",
+                file_path
+            );
             return self.full_parse(file_path, new_content, language).await;
         }
 
@@ -116,7 +125,8 @@ impl DiffBasedParser {
             &changed_regions,
             &affected_nodes,
             language,
-        ).await
+        )
+        .await
     }
 
     fn compute_changed_regions(
@@ -135,13 +145,13 @@ impl DiffBasedParser {
 
         for change in diff.iter_all_changes() {
             let value = change.value();
-            
+
             match change.tag() {
                 ChangeTag::Equal => {
                     // Skip equal sections, just update offsets
                     old_byte_offset += value.len();
                     new_byte_offset += value.len();
-                    
+
                     // Update line/col tracking
                     for ch in value.chars() {
                         if ch == '\n' {
@@ -158,7 +168,7 @@ impl DiffBasedParser {
                 ChangeTag::Delete => {
                     let start_point = Point::new(old_line, old_col);
                     let end_byte = old_byte_offset + value.len();
-                    
+
                     // Calculate end point
                     let mut end_line = old_line;
                     let mut end_col = old_col;
@@ -185,7 +195,7 @@ impl DiffBasedParser {
                 ChangeTag::Insert => {
                     let start_point = Point::new(new_line, new_col);
                     let end_byte = new_byte_offset + value.len();
-                    
+
                     // Calculate end point
                     let mut end_line = new_line;
                     let mut end_col = new_col;
@@ -216,7 +226,10 @@ impl DiffBasedParser {
         self.merge_adjacent_regions(regions)
     }
 
-    fn merge_adjacent_regions(&self, mut regions: Vec<ChangedRegion>) -> Result<Vec<ChangedRegion>> {
+    fn merge_adjacent_regions(
+        &self,
+        mut regions: Vec<ChangedRegion>,
+    ) -> Result<Vec<ChangedRegion>> {
         if regions.len() <= 1 {
             return Ok(regions);
         }
@@ -229,8 +242,9 @@ impl DiffBasedParser {
 
         for region in rest.iter().cloned() {
             // Check if regions are adjacent and of the same type
-            if current.range.end_byte == region.range.start_byte 
-                && current.change_type == region.change_type {
+            if current.range.end_byte == region.range.start_byte
+                && current.change_type == region.change_type
+            {
                 // Merge regions
                 current = ChangedRegion {
                     range: TextRange::new(
@@ -267,9 +281,12 @@ impl DiffBasedParser {
         }
 
         // Add semantic context - nodes that might be affected by semantic changes
-        let semantic_affected = self.semantic_analyzer
-            .find_semantically_affected_nodes(old_nodes, &affected, changed_regions)?;
-        
+        let semantic_affected = self.semantic_analyzer.find_semantically_affected_nodes(
+            old_nodes,
+            &affected,
+            changed_regions,
+        )?;
+
         affected.extend(semantic_affected);
 
         Ok(affected)
@@ -292,7 +309,7 @@ impl DiffBasedParser {
         // Check if node overlaps with changed region
         if node_range.overlaps(&region.range) {
             let needs_reparse = self.determine_reparse_necessity(&node, region);
-            
+
             affected.push(AffectedNode {
                 node_id: format!("{}:{}:{}", node.kind(), node.start_byte(), node.end_byte()),
                 node_type: node.kind().to_string(),
@@ -320,9 +337,17 @@ impl DiffBasedParser {
         // Simple heuristic: reparse if the change affects structural elements
         matches!(
             node.kind(),
-            "function_item" | "struct_item" | "impl_item" | "mod_item" | 
-            "function_declaration" | "class_declaration" | "method_definition" |
-            "block" | "if_expression" | "while_expression" | "for_expression"
+            "function_item"
+                | "struct_item"
+                | "impl_item"
+                | "mod_item"
+                | "function_declaration"
+                | "class_declaration"
+                | "method_definition"
+                | "block"
+                | "if_expression"
+                | "while_expression"
+                | "for_expression"
         )
     }
 
@@ -331,7 +356,7 @@ impl DiffBasedParser {
         // 1. Too many regions changed
         // 2. Too many nodes affected
         // 3. Changes affect top-level structure
-        
+
         if regions.len() > 50 || affected.len() > 100 {
             return true;
         }
@@ -360,17 +385,20 @@ impl DiffBasedParser {
         let file_path = file_path.to_string();
 
         let (nodes, tree) = tokio::task::spawn_blocking(move || {
-            let mut parser = registry.create_parser(&language)
-                .ok_or_else(|| CodeGraphError::Parse(format!("Unsupported language: {:?}", language)))?;
+            let mut parser = registry.create_parser(&language).ok_or_else(|| {
+                CodeGraphError::Parse(format!("Unsupported language: {:?}", language))
+            })?;
 
-            let tree = parser.parse(&content, None)
+            let tree = parser
+                .parse(&content, None)
                 .ok_or_else(|| CodeGraphError::Parse("Failed to parse file".to_string()))?;
 
             let mut visitor = AstVisitor::new(language, file_path, content);
             visitor.visit(tree.root_node());
 
             Ok((visitor.nodes, tree))
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Parse(e.to_string()))??;
 
         Ok(IncrementalParseResult {
@@ -397,41 +425,47 @@ impl DiffBasedParser {
         let file_path = file_path.to_string();
         let old_content = old_content.to_string();
         let new_content = new_content.to_string();
-        let affected_ranges: Vec<TextRange> = affected_nodes.iter().map(|n| n.range.clone()).collect();
+        let affected_ranges: Vec<TextRange> =
+            affected_nodes.iter().map(|n| n.range.clone()).collect();
 
         // Convert changed regions to input edits
         let edits = self.convert_to_input_edits(changed_regions, &old_content, &new_content)?;
 
         let (nodes, tree, reparse_count) = tokio::task::spawn_blocking(move || {
-            let mut parser = registry.create_parser(&language)
-                .ok_or_else(|| CodeGraphError::Parse(format!("Unsupported language: {:?}", language)))?;
+            let mut parser = registry.create_parser(&language).ok_or_else(|| {
+                CodeGraphError::Parse(format!("Unsupported language: {:?}", language))
+            })?;
 
             // Clone the old tree for editing
             let mut updated_tree = old_tree.clone();
-            
+
             // Apply all edits
             for edit in &edits {
                 updated_tree.edit(edit);
             }
 
             // Reparse with the updated tree
-            let new_tree = parser.parse(&new_content, Some(&updated_tree))
+            let new_tree = parser
+                .parse(&new_content, Some(&updated_tree))
                 .ok_or_else(|| CodeGraphError::Parse("Failed to incremental parse".to_string()))?;
 
             let mut visitor = AstVisitor::new(language, file_path, new_content);
             visitor.visit(new_tree.root_node());
 
             // Count how many nodes we had to reparse
-            let reparse_count = affected_nodes.iter()
-                .filter(|n| n.needs_reparse)
-                .count();
+            let reparse_count = affected_nodes.iter().filter(|n| n.needs_reparse).count();
 
             Ok((visitor.nodes, new_tree, reparse_count))
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Parse(e.to_string()))??;
 
-        info!("Incremental parse completed for {}: {} nodes affected, {} reparsed", 
-              file_path, affected_nodes.len(), reparse_count);
+        info!(
+            "Incremental parse completed for {}: {} nodes affected, {} reparsed",
+            file_path,
+            affected_nodes.len(),
+            reparse_count
+        );
 
         Ok(IncrementalParseResult {
             nodes,
@@ -453,7 +487,7 @@ impl DiffBasedParser {
 
         for region in regions {
             let adjusted_start = (region.range.start_byte as i32 + offset_adjustment) as usize;
-            
+
             match region.change_type {
                 ChangeType::Delete => {
                     edits.push(InputEdit {
@@ -482,7 +516,7 @@ impl DiffBasedParser {
                     // Treat modify as delete + insert
                     let old_len = region.range.end_byte - region.range.start_byte;
                     let new_len = region.content.len();
-                    
+
                     edits.push(InputEdit {
                         start_byte: adjusted_start,
                         old_end_byte: adjusted_start + old_len,
@@ -523,19 +557,26 @@ impl SemanticAnalyzer {
         _changed_regions: &[ChangedRegion],
     ) -> Result<Vec<AffectedNode>> {
         let mut semantic_affected = Vec::new();
-        
+
         // For each directly affected node, find nodes that might be semantically dependent
         for affected in directly_affected {
             // Find function calls, variable references, etc. that might be affected
             for node in old_nodes {
                 if self.is_semantically_dependent(node, affected) {
                     semantic_affected.push(AffectedNode {
-                        node_id: format!("semantic:{}:{}", node.node_type, node.name.as_deref().unwrap_or("unnamed")),
+                        node_id: format!(
+                            "semantic:{}:{}",
+                            node.node_type,
+                            node.name.as_deref().unwrap_or("unnamed")
+                        ),
                         node_type: node.node_type.clone(),
                         range: TextRange::new(
                             node.start_byte.unwrap_or(0),
                             node.end_byte.unwrap_or(0),
-                            Point::new(node.start_line.unwrap_or(0), node.start_column.unwrap_or(0)),
+                            Point::new(
+                                node.start_line.unwrap_or(0),
+                                node.start_column.unwrap_or(0),
+                            ),
                             Point::new(node.end_line.unwrap_or(0), node.end_column.unwrap_or(0)),
                         ),
                         change_type: ChangeType::Modify,
@@ -554,7 +595,9 @@ impl SemanticAnalyzer {
             // Check for function calls, variable references, etc.
             if affected.node_type == "function_item" || affected.node_type == "variable" {
                 // This would need more sophisticated analysis in a real implementation
-                return node.content.as_ref()
+                return node
+                    .content
+                    .as_ref()
                     .map(|content| content.contains(node_name))
                     .unwrap_or(false);
             }
@@ -581,13 +624,19 @@ mod tests {
         let parser = DiffBasedParser::new();
         let old_content = "fn main() {\n    println!(\"Hello\");\n}";
         let new_content = "fn main() {\n    println!(\"Hello, World!\");\n}";
-        
+
         let diff = TextDiff::from_lines(old_content, new_content);
-        let regions = parser.compute_changed_regions(&diff, old_content, new_content).unwrap();
-        
+        let regions = parser
+            .compute_changed_regions(&diff, old_content, new_content)
+            .unwrap();
+
         assert!(!regions.is_empty());
-        assert!(regions.iter().any(|r| matches!(r.change_type, ChangeType::Delete)));
-        assert!(regions.iter().any(|r| matches!(r.change_type, ChangeType::Insert)));
+        assert!(regions
+            .iter()
+            .any(|r| matches!(r.change_type, ChangeType::Delete)));
+        assert!(regions
+            .iter()
+            .any(|r| matches!(r.change_type, ChangeType::Insert)));
     }
 
     #[tokio::test]
@@ -595,20 +644,23 @@ mod tests {
         let parser = DiffBasedParser::new();
         let temp_dir = TempDir::new().unwrap();
         let test_file = temp_dir.path().join("test.rs");
-        
+
         let old_content = "fn main() {\n    let x = 1;\n}";
         let new_content = "fn main() {\n    let x = 2;\n}";
-        
+
         fs::write(&test_file, old_content).await.unwrap();
-        
-        let result = parser.parse_incremental(
-            &test_file.to_string_lossy(),
-            old_content,
-            new_content,
-            None,
-            &[]
-        ).await.unwrap();
-        
+
+        let result = parser
+            .parse_incremental(
+                &test_file.to_string_lossy(),
+                old_content,
+                new_content,
+                None,
+                &[],
+            )
+            .await
+            .unwrap();
+
         assert!(!result.nodes.is_empty());
     }
 }

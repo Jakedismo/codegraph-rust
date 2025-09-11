@@ -4,7 +4,9 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use futures::FutureExt;
 use parking_lot::RwLock;
-use prometheus::{register_gauge, register_histogram, register_int_counter, Gauge, Histogram, IntCounter};
+use prometheus::{
+    register_gauge, register_histogram, register_int_counter, Gauge, Histogram, IntCounter,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
@@ -43,7 +45,10 @@ pub struct PruningConfig {
 
 impl Default for PruningConfig {
     fn default() -> Self {
-        Self { target_sparsity: 0.5, structured: true }
+        Self {
+            target_sparsity: 0.5,
+            structured: true,
+        }
     }
 }
 
@@ -56,7 +61,11 @@ pub struct DistillationConfig {
 
 impl Default for DistillationConfig {
     fn default() -> Self {
-        Self { teacher_model_path: String::new(), temperature: 2.0, alpha: 0.9 }
+        Self {
+            teacher_model_path: String::new(),
+            temperature: 2.0,
+            alpha: 0.9,
+        }
     }
 }
 
@@ -79,20 +88,27 @@ pub struct BatchingConfig {
 
 impl Default for BatchingConfig {
     fn default() -> Self {
-        Self { max_batch_size: 32, max_delay_ms: 8 }
+        Self {
+            max_batch_size: 32,
+            max_delay_ms: 8,
+        }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitoringThresholds {
     pub target_size_reduction_ratio: f32, // e.g., 0.60 for 60%
-    pub max_accuracy_drop: f32,          // e.g., 0.02 for 2%
-    pub gpu_utilization_target: f64,     // 0..100
+    pub max_accuracy_drop: f32,           // e.g., 0.02 for 2%
+    pub gpu_utilization_target: f64,      // 0..100
 }
 
 impl Default for MonitoringThresholds {
     fn default() -> Self {
-        Self { target_size_reduction_ratio: 0.60, max_accuracy_drop: 0.02, gpu_utilization_target: 85.0 }
+        Self {
+            target_size_reduction_ratio: 0.60,
+            max_accuracy_drop: 0.02,
+            gpu_utilization_target: 85.0,
+        }
     }
 }
 
@@ -124,7 +140,9 @@ impl InferenceModel for NoopModel {
         Ok(inputs.iter().cloned().map(|i| TensorOutput(i.0)).collect())
     }
 
-    fn size_bytes(&self) -> Result<u64> { Ok(self.size) }
+    fn size_bytes(&self) -> Result<u64> {
+        Ok(self.size)
+    }
 }
 
 // Metrics registry
@@ -143,25 +161,30 @@ impl OptimizerMetrics {
             inference_requests_total: register_int_counter!(
                 "cg_ai_inference_requests_total",
                 "Total inference requests"
-            ).expect("register metric"),
+            )
+            .expect("register metric"),
             inference_latency_seconds: register_histogram!(
                 "cg_ai_inference_latency_seconds",
                 "Inference latency (seconds)",
                 vec![0.001, 0.002, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0]
-            ).expect("register metric"),
+            )
+            .expect("register metric"),
             batch_size: register_histogram!(
                 "cg_ai_batch_size",
                 "Batch sizes for dynamic batching",
                 vec![1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0]
-            ).expect("register metric"),
+            )
+            .expect("register metric"),
             model_size_bytes: register_gauge!(
                 "cg_ai_model_size_bytes",
                 "Current optimized model size in bytes"
-            ).expect("register metric"),
+            )
+            .expect("register metric"),
             gpu_utilization: register_gauge!(
                 "cg_ai_gpu_utilization_percent",
                 "GPU utilization percentage"
-            ).expect("register metric"),
+            )
+            .expect("register metric"),
         }
     }
 }
@@ -177,11 +200,7 @@ pub struct DynamicBatcher<I: Send + 'static, O: Send + 'static> {
 }
 
 impl<I: Send + 'static, O: Send + 'static> DynamicBatcher<I, O> {
-    pub fn spawn<F, Fut>(
-        cfg: BatchingConfig,
-        metrics: OptimizerMetrics,
-        mut run_batch: F,
-    ) -> Self
+    pub fn spawn<F, Fut>(cfg: BatchingConfig, metrics: OptimizerMetrics, mut run_batch: F) -> Self
     where
         F: FnMut(Vec<I>) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<Vec<O>>> + Send + 'static,
@@ -195,7 +214,9 @@ impl<I: Send + 'static, O: Send + 'static> DynamicBatcher<I, O> {
 
             loop {
                 let delay = async {
-                    let wait = max_delay.checked_sub(last_flush.elapsed()).unwrap_or_default();
+                    let wait = max_delay
+                        .checked_sub(last_flush.elapsed())
+                        .unwrap_or_default();
                     sleep(wait).await;
                 };
 
@@ -238,8 +259,17 @@ impl<I: Send + 'static, O: Send + 'static> DynamicBatcher<I, O> {
         F: FnMut(Vec<I>) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<Vec<O>>> + Send + 'static,
     {
-        if buffer.is_empty() { return; }
-        let inputs: Vec<I> = buffer.iter_mut().map(|r| std::mem::replace(&mut r.input, unsafe { std::mem::MaybeUninit::zeroed().assume_init() })).collect();
+        if buffer.is_empty() {
+            return;
+        }
+        let inputs: Vec<I> = buffer
+            .iter_mut()
+            .map(|r| {
+                std::mem::replace(&mut r.input, unsafe {
+                    std::mem::MaybeUninit::zeroed().assume_init()
+                })
+            })
+            .collect();
         let size = inputs.len();
         metrics.batch_size.observe(size as f64);
 
@@ -247,7 +277,11 @@ impl<I: Send + 'static, O: Send + 'static> DynamicBatcher<I, O> {
         match run_batch(inputs).await {
             Ok(outputs) => {
                 if outputs.len() != size {
-                    let err = anyhow::anyhow!("batch output size mismatch: got {} expected {}", outputs.len(), size);
+                    let err = anyhow::anyhow!(
+                        "batch output size mismatch: got {} expected {}",
+                        outputs.len(),
+                        size
+                    );
                     for req in buffer.drain(..) {
                         let _ = req.tx.send(Err(err.clone()));
                     }
@@ -256,11 +290,15 @@ impl<I: Send + 'static, O: Send + 'static> DynamicBatcher<I, O> {
                         let _ = req.tx.send(Ok(out));
                     }
                 }
-                metrics.inference_latency_seconds.observe(start.elapsed().as_secs_f64());
+                metrics
+                    .inference_latency_seconds
+                    .observe(start.elapsed().as_secs_f64());
             }
             Err(e) => {
                 error!(error=?e, "batch inference failed");
-                for req in buffer.drain(..) { let _ = req.tx.send(Err(e.clone())); }
+                for req in buffer.drain(..) {
+                    let _ = req.tx.send(Err(e.clone()));
+                }
             }
         }
     }
@@ -268,7 +306,10 @@ impl<I: Send + 'static, O: Send + 'static> DynamicBatcher<I, O> {
     pub async fn infer(&self, input: I) -> Result<O> {
         let (tx, rx) = oneshot::channel();
         let req = BatchRequest { input, tx };
-        self.tx.send(req).await.context("dynamic batch queue full or closed")?;
+        self.tx
+            .send(req)
+            .await
+            .context("dynamic batch queue full or closed")?;
         rx.await.context("inference canceled")?
     }
 }
@@ -303,7 +344,9 @@ impl ModelOptimizer {
         })
     }
 
-    pub fn summary(&self) -> OptimizationSummary { self.state.read().clone() }
+    pub fn summary(&self) -> OptimizationSummary {
+        self.state.read().clone()
+    }
 
     // Quantization APIs – backend-specific implementations behind feature flags.
     pub fn quantize_fp16(&self) -> Result<()> {
@@ -373,7 +416,10 @@ impl ModelOptimizer {
         }
     }
 
-    pub fn dynamic_batcher(&self, cfg: BatchingConfig) -> DynamicBatcher<TensorInput, TensorOutput> {
+    pub fn dynamic_batcher(
+        &self,
+        cfg: BatchingConfig,
+    ) -> DynamicBatcher<TensorInput, TensorOutput> {
         let model = self.model.clone();
         let metrics = self.metrics.clone();
         DynamicBatcher::spawn(cfg, metrics.clone(), move |inputs| {
@@ -458,7 +504,10 @@ mod tests {
     async fn test_dynamic_batcher_basic() {
         let model = Arc::new(NoopModel { size: 10 });
         let opt = ModelOptimizer::new(model, MonitoringThresholds::default()).unwrap();
-        let batcher = opt.dynamic_batcher(BatchingConfig { max_batch_size: 8, max_delay_ms: 5 });
+        let batcher = opt.dynamic_batcher(BatchingConfig {
+            max_batch_size: 8,
+            max_delay_ms: 5,
+        });
 
         let futs: Vec<_> = (0..10)
             .map(|i| {
@@ -473,4 +522,3 @@ mod tests {
         }
     }
 }
-

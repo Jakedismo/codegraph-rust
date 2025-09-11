@@ -1,8 +1,8 @@
+use crate::types::Endpoint;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{interval, MissedTickBehavior};
-use tracing::{info, warn, debug};
-use crate::types::Endpoint;
+use tracing::{info, warn};
 
 pub struct HealthCheckConfig {
     pub interval: Duration,
@@ -25,7 +25,10 @@ impl Default for HealthCheckConfig {
 }
 
 pub async fn start_active_http_checks(endpoints: Vec<Arc<Endpoint>>, cfg: HealthCheckConfig) {
-    let client = reqwest::Client::builder().timeout(cfg.timeout).build().unwrap();
+    let client = reqwest::Client::builder()
+        .timeout(cfg.timeout)
+        .build()
+        .unwrap();
     let mut ticker = interval(cfg.interval);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -42,9 +45,12 @@ pub async fn start_active_http_checks(endpoints: Vec<Arc<Endpoint>>, cfg: Health
                 match clientc.get(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
                         let was_unhealthy = !epc.is_healthy();
-                        epc.consecutive_failures.store(0, std::sync::atomic::Ordering::Relaxed);
+                        epc.consecutive_failures
+                            .store(0, std::sync::atomic::Ordering::Relaxed);
                         if was_unhealthy {
-                            let cur = epc.consecutive_failures.load(std::sync::atomic::Ordering::Relaxed);
+                            let cur = epc
+                                .consecutive_failures
+                                .load(std::sync::atomic::Ordering::Relaxed);
                             if cur <= recovery_threshold {
                                 epc.set_healthy(true);
                                 info!("endpoint recovered: {}", base);
@@ -55,17 +61,26 @@ pub async fn start_active_http_checks(endpoints: Vec<Arc<Endpoint>>, cfg: Health
                     }
                     Ok(resp) => {
                         warn!("health check non-200 for {}: {}", base, resp.status());
-                        let f = epc.consecutive_failures.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                        if f >= failure_threshold { epc.set_healthy(false); }
+                        let f = epc
+                            .consecutive_failures
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                            + 1;
+                        if f >= failure_threshold {
+                            epc.set_healthy(false);
+                        }
                     }
                     Err(e) => {
                         warn!("health check failed for {}: {}", base, e);
-                        let f = epc.consecutive_failures.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                        if f >= failure_threshold { epc.set_healthy(false); }
+                        let f = epc
+                            .consecutive_failures
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                            + 1;
+                        if f >= failure_threshold {
+                            epc.set_healthy(false);
+                        }
                     }
                 }
             });
         }
     }
 }
-

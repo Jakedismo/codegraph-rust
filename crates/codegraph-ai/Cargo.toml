@@ -25,3 +25,4 @@ futures = { workspace = true }
 similar = { workspace = true }
 arc-swap = { workspace = true }
 num_cpus = { workspace = true }
+prometheus = { workspace = true }

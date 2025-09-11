@@ -1,27 +1,27 @@
-use async_graphql::{Context, Object, Result, ID, dataloader::DataLoader};
+use async_graphql::{dataloader::DataLoader, Context, Object, Result, ID};
 use async_trait::async_trait;
-use codegraph_core::{NodeId, CodeGraphError};
+use codegraph_core::{CodeGraphError, NodeId};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Instant;
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
-use crate::graphql::types::{
-    CodeSearchInput, CodeSearchResult, GraphQLCodeNode, GraphTraversalInput,
-    GraphTraversalResult, SemanticSearchInput, SemanticSearchResult, ScoredNode,
-    SubgraphExtractionInput, SubgraphResult, PageInfo, SearchMetadata,
-    TraversalMetadata, SubgraphMetadata, SemanticSearchMetadata, SearchSortBy,
-};
-use crate::graphql::loaders::{
-    LoaderFactory, NodeLoader, EdgesBySourceLoader, SemanticSearchLoader,
-    GraphTraversalLoader, TraversalKey,
-};
-use crate::state::AppState;
 use crate::auth::{AuthContext, RateLimitManager};
 use crate::event_bus;
+use crate::graphql::loaders::{
+    EdgesBySourceLoader, GraphTraversalLoader, LoaderFactory, NodeLoader, SemanticSearchLoader,
+    TraversalKey,
+};
 use crate::graphql::types::GraphQLEdge;
+use crate::graphql::types::{
+    CodeSearchInput, CodeSearchResult, GraphQLCodeNode, GraphTraversalInput, GraphTraversalResult,
+    PageInfo, ScoredNode, SearchMetadata, SearchSortBy, SemanticSearchInput,
+    SemanticSearchMetadata, SemanticSearchResult, SubgraphExtractionInput, SubgraphMetadata,
+    SubgraphResult, TraversalMetadata,
+};
 use crate::mutations::UpdateNodeInput;
+use crate::state::AppState;
 
 pub struct QueryRoot;
 
@@ -42,7 +42,9 @@ impl QueryRoot {
         state
             .performance
             .guard_traversal_complexity(Some(max_depth), None)
-            .map_err(|e| async_graphql::Error::new(format!("Path query rejected by complexity guard: {}", e)))?;
+            .map_err(|e| {
+                async_graphql::Error::new(format!("Path query rejected by complexity guard: {}", e))
+            })?;
         let loader = ctx.data::<DataLoader<NodeLoader>>()?;
 
         // Validate input parameters
@@ -50,27 +52,43 @@ impl QueryRoot {
         let offset = input.offset.unwrap_or(0).max(0);
 
         // Perform search using the semantic search system
-        let search_results = state.semantic_search
+        let search_results = state
+            .semantic_search
             .search(&input.query, limit as usize)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Search failed: {}", e)))?;
 
         // Apply filters
         let mut filtered_results = search_results;
-        
+
         if let Some(ref language_filters) = input.language_filter {
             filtered_results.retain(|node| {
                 node.language.as_ref().map_or(false, |lang| {
                     language_filters.iter().any(|filter_lang| {
                         matches!(
                             (lang, filter_lang),
-                            (codegraph_core::Language::Rust, crate::graphql::types::GraphQLLanguage::Rust) |
-                            (codegraph_core::Language::Python, crate::graphql::types::GraphQLLanguage::Python) |
-                            (codegraph_core::Language::TypeScript, crate::graphql::types::GraphQLLanguage::TypeScript) |
-                            (codegraph_core::Language::JavaScript, crate::graphql::types::GraphQLLanguage::JavaScript) |
-                            (codegraph_core::Language::Go, crate::graphql::types::GraphQLLanguage::Go) |
-                            (codegraph_core::Language::Java, crate::graphql::types::GraphQLLanguage::Java) |
-                            (codegraph_core::Language::Cpp, crate::graphql::types::GraphQLLanguage::Cpp)
+                            (
+                                codegraph_core::Language::Rust,
+                                crate::graphql::types::GraphQLLanguage::Rust
+                            ) | (
+                                codegraph_core::Language::Python,
+                                crate::graphql::types::GraphQLLanguage::Python
+                            ) | (
+                                codegraph_core::Language::TypeScript,
+                                crate::graphql::types::GraphQLLanguage::TypeScript
+                            ) | (
+                                codegraph_core::Language::JavaScript,
+                                crate::graphql::types::GraphQLLanguage::JavaScript
+                            ) | (
+                                codegraph_core::Language::Go,
+                                crate::graphql::types::GraphQLLanguage::Go
+                            ) | (
+                                codegraph_core::Language::Java,
+                                crate::graphql::types::GraphQLLanguage::Java
+                            ) | (
+                                codegraph_core::Language::Cpp,
+                                crate::graphql::types::GraphQLLanguage::Cpp
+                            )
                         )
                     })
                 })
@@ -83,11 +101,22 @@ impl QueryRoot {
                     node_type_filters.iter().any(|filter_type| {
                         matches!(
                             (node_type, filter_type),
-                            (codegraph_core::NodeType::Function, crate::graphql::types::GraphQLNodeType::Function) |
-                            (codegraph_core::NodeType::Struct, crate::graphql::types::GraphQLNodeType::Struct) |
-                            (codegraph_core::NodeType::Class, crate::graphql::types::GraphQLNodeType::Class) |
-                            (codegraph_core::NodeType::Interface, crate::graphql::types::GraphQLNodeType::Interface) |
-                            (codegraph_core::NodeType::Module, crate::graphql::types::GraphQLNodeType::Module)
+                            (
+                                codegraph_core::NodeType::Function,
+                                crate::graphql::types::GraphQLNodeType::Function
+                            ) | (
+                                codegraph_core::NodeType::Struct,
+                                crate::graphql::types::GraphQLNodeType::Struct
+                            ) | (
+                                codegraph_core::NodeType::Class,
+                                crate::graphql::types::GraphQLNodeType::Class
+                            ) | (
+                                codegraph_core::NodeType::Interface,
+                                crate::graphql::types::GraphQLNodeType::Interface
+                            ) | (
+                                codegraph_core::NodeType::Module,
+                                crate::graphql::types::GraphQLNodeType::Module
+                            )
                         )
                     })
                 })
@@ -96,16 +125,16 @@ impl QueryRoot {
 
         // Apply file path pattern filter
         if let Some(ref file_pattern) = input.file_path_pattern {
-            filtered_results.retain(|node| {
-                node.location.file_path.contains(file_pattern)
-            });
+            filtered_results.retain(|node| node.location.file_path.contains(file_pattern));
         }
 
         // Apply content filter
         if let Some(ref content_filter) = input.content_filter {
             filtered_results.retain(|node| {
                 node.content.as_ref().map_or(false, |content| {
-                    content.to_lowercase().contains(&content_filter.to_lowercase())
+                    content
+                        .to_lowercase()
+                        .contains(&content_filter.to_lowercase())
                 })
             });
         }
@@ -114,10 +143,15 @@ impl QueryRoot {
         if let Some(sort_by) = input.sort_by {
             match sort_by {
                 SearchSortBy::Name => filtered_results.sort_by(|a, b| a.name.cmp(&b.name)),
-                SearchSortBy::CreatedAt => filtered_results.sort_by(|a, b| a.metadata.created_at.cmp(&b.metadata.created_at)),
-                SearchSortBy::UpdatedAt => filtered_results.sort_by(|a, b| a.metadata.updated_at.cmp(&b.metadata.updated_at)),
+                SearchSortBy::CreatedAt => filtered_results
+                    .sort_by(|a, b| a.metadata.created_at.cmp(&b.metadata.created_at)),
+                SearchSortBy::UpdatedAt => filtered_results
+                    .sort_by(|a, b| a.metadata.updated_at.cmp(&b.metadata.updated_at)),
                 SearchSortBy::Complexity => filtered_results.sort_by(|a, b| {
-                    b.complexity.unwrap_or(0.0).partial_cmp(&a.complexity.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal)
+                    b.complexity
+                        .unwrap_or(0.0)
+                        .partial_cmp(&a.complexity.unwrap_or(0.0))
+                        .unwrap_or(std::cmp::Ordering::Equal)
                 }),
                 SearchSortBy::Relevance => {} // Already sorted by relevance from semantic search
             }
@@ -138,10 +172,16 @@ impl QueryRoot {
 
         // Log performance warning if search takes too long
         if query_time_ms > 50 {
-            warn!("Code search took {}ms (>50ms target for simple queries)", query_time_ms);
+            warn!(
+                "Code search took {}ms (>50ms target for simple queries)",
+                query_time_ms
+            );
         }
 
-        info!("Code search completed: {} results in {}ms", total_count, query_time_ms);
+        info!(
+            "Code search completed: {} results in {}ms",
+            total_count, query_time_ms
+        );
 
         Ok(CodeSearchResult {
             nodes: paginated_results,
@@ -149,7 +189,11 @@ impl QueryRoot {
             page_info: PageInfo {
                 has_next_page: (offset + limit) < total_count as i32,
                 has_previous_page: offset > 0,
-                start_cursor: if offset > 0 { Some(offset.to_string()) } else { None },
+                start_cursor: if offset > 0 {
+                    Some(offset.to_string())
+                } else {
+                    None
+                },
                 end_cursor: Some((offset + paginated_results.len() as i32).to_string()),
             },
             search_metadata: SearchMetadata {
@@ -160,7 +204,10 @@ impl QueryRoot {
                     input.node_type_filter.map(|_| "node_type".to_string()),
                     input.file_path_pattern.map(|_| "file_path".to_string()),
                     input.content_filter.map(|_| "content".to_string()),
-                ].into_iter().flatten().collect(),
+                ]
+                .into_iter()
+                .flatten()
+                .collect(),
             },
         })
     }
@@ -184,13 +231,25 @@ impl QueryRoot {
         state
             .performance
             .guard_traversal_complexity(input.max_depth, input.limit)
-            .map_err(|e| async_graphql::Error::new(format!("Traversal rejected by complexity guard: {}", e)))?;
+            .map_err(|e| {
+                async_graphql::Error::new(format!("Traversal rejected by complexity guard: {}", e))
+            })?;
 
-        let edge_types_vec = input.edge_types.as_ref().map(|v| v.iter().map(|e| format!("{:?}", e)).collect::<Vec<_>>());
-        let cache_key = state
+        let edge_types_vec = input
+            .edge_types
+            .as_ref()
+            .map(|v| v.iter().map(|e| format!("{:?}", e)).collect::<Vec<_>>());
+        let cache_key = state.performance.key_for_traversal(
+            &input.start_node_id,
+            input.max_depth,
+            input.limit,
+            edge_types_vec.as_deref(),
+        );
+        if let Some(cached) = state
             .performance
-            .key_for_traversal(&input.start_node_id, input.max_depth, input.limit, edge_types_vec.as_deref());
-        if let Some(cached) = state.performance.get_cached_json::<GraphTraversalResult>(&cache_key).await {
+            .get_cached_json::<GraphTraversalResult>(&cache_key)
+            .await
+        {
             return Ok(cached);
         }
 
@@ -208,7 +267,9 @@ impl QueryRoot {
             edge_types: input.edge_types.as_ref().map_or(vec![], |types| {
                 types.iter().map(|t| format!("{:?}", t)).collect()
             }),
-            direction: input.direction.map_or("Both".to_string(), |d| format!("{:?}", d)),
+            direction: input
+                .direction
+                .map_or("Both".to_string(), |d| format!("{:?}", d)),
         };
 
         // Use DataLoader for efficient traversal caching
@@ -219,7 +280,8 @@ impl QueryRoot {
             .unwrap_or_default();
 
         // Load edges for the traversed nodes using DataLoader
-        let node_ids: Vec<NodeId> = traversed_nodes.iter()
+        let node_ids: Vec<NodeId> = traversed_nodes
+            .iter()
             .filter_map(|node| NodeId::from_str(&node.id.to_string()).ok())
             .collect();
 
@@ -231,20 +293,25 @@ impl QueryRoot {
         let edges: Vec<_> = edges_map.values().flatten().cloned().collect();
 
         // Build traversal path (simplified for demo)
-        let traversal_path: Vec<ID> = traversed_nodes.iter()
-            .map(|node| node.id.clone())
-            .collect();
+        let traversal_path: Vec<ID> = traversed_nodes.iter().map(|node| node.id.clone()).collect();
 
         let elapsed = start_time.elapsed();
         let traversal_time_ms = elapsed.as_millis() as i32;
 
         // Check performance target for complex queries
         if traversal_time_ms > 200 {
-            warn!("Graph traversal took {}ms (>200ms target for complex queries)", traversal_time_ms);
+            warn!(
+                "Graph traversal took {}ms (>200ms target for complex queries)",
+                traversal_time_ms
+            );
         }
 
-        info!("Graph traversal completed: {} nodes, {} edges in {}ms", 
-            traversed_nodes.len(), edges.len(), traversal_time_ms);
+        info!(
+            "Graph traversal completed: {} nodes, {} edges in {}ms",
+            traversed_nodes.len(),
+            edges.len(),
+            traversal_time_ms
+        );
 
         let result = GraphTraversalResult {
             nodes: traversed_nodes.into_iter().take(limit as usize).collect(),
@@ -278,7 +345,7 @@ impl QueryRoot {
         let edges_loader = ctx.data::<DataLoader<EdgesBySourceLoader>>()?;
 
         let radius = input.radius.unwrap_or(2).max(1).min(5);
-        
+
         // Determine nodes to extract subgraph for
         let target_nodes: Vec<NodeId> = if let Some(center_id_str) = input.center_node_id.as_ref() {
             // Extract around a center node
@@ -286,12 +353,15 @@ impl QueryRoot {
                 .map_err(|_| async_graphql::Error::new("Invalid center node ID"))?]
         } else if let Some(node_id_strs) = input.node_ids.as_ref() {
             // Extract around specific nodes
-            node_id_strs.iter()
+            node_id_strs
+                .iter()
                 .map(|id_str| NodeId::from_str(&id_str.to_string()))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|_| async_graphql::Error::new("Invalid node ID in list"))?
         } else {
-            return Err(async_graphql::Error::new("Either center_node_id or node_ids must be provided"));
+            return Err(async_graphql::Error::new(
+                "Either center_node_id or node_ids must be provided",
+            ));
         };
 
         // Build subgraph by expanding from target nodes
@@ -331,7 +401,7 @@ impl QueryRoot {
 
                 for edge in edges {
                     subgraph_edges.push(edge.clone());
-                    
+
                     // Add target node to visit queue
                     if let Ok(target_id) = NodeId::from_str(&edge.target_id.to_string()) {
                         if !visited.contains(&target_id) {
@@ -344,7 +414,7 @@ impl QueryRoot {
 
         let elapsed = start_time.elapsed();
         let extraction_time_ms = elapsed.as_millis() as i32;
-        
+
         let nodes: Vec<_> = subgraph_nodes.into_values().collect();
         let node_count = nodes.len() as i32;
         let edge_count = subgraph_edges.len() as i32;
@@ -356,8 +426,10 @@ impl QueryRoot {
             0.0
         };
 
-        info!("Subgraph extraction completed: {} nodes, {} edges in {}ms", 
-            node_count, edge_count, extraction_time_ms);
+        info!(
+            "Subgraph extraction completed: {} nodes, {} edges in {}ms",
+            node_count, edge_count, extraction_time_ms
+        );
 
         Ok(SubgraphResult {
             nodes,
@@ -366,7 +438,9 @@ impl QueryRoot {
             center_node_id: input.center_node_id,
             extraction_metadata: SubgraphMetadata {
                 extraction_time_ms,
-                extraction_strategy: input.extraction_strategy.map_or("radius".to_string(), |s| format!("{:?}", s)),
+                extraction_strategy: input
+                    .extraction_strategy
+                    .map_or("radius".to_string(), |s| format!("{:?}", s)),
                 node_count,
                 edge_count,
                 connectivity_score,
@@ -392,10 +466,13 @@ impl QueryRoot {
 
         // Generate query embedding
         let embedding_start = Instant::now();
-        let query_embedding = state.embedding_generator
+        let query_embedding = state
+            .embedding_generator
             .generate_text_embedding(&input.query)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Embedding generation failed: {}", e)))?;
+            .map_err(|e| {
+                async_graphql::Error::new(format!("Embedding generation failed: {}", e))
+            })?;
         let embedding_time_ms = embedding_start.elapsed().as_millis() as i32;
 
         // Perform semantic search using DataLoader for caching
@@ -420,9 +497,16 @@ impl QueryRoot {
                     language_filters.iter().any(|filter_lang| {
                         matches!(
                             (lang, filter_lang),
-                            (codegraph_core::Language::Rust, crate::graphql::types::GraphQLLanguage::Rust) |
-                            (codegraph_core::Language::Python, crate::graphql::types::GraphQLLanguage::Python) |
-                            (codegraph_core::Language::TypeScript, crate::graphql::types::GraphQLLanguage::TypeScript)
+                            (
+                                codegraph_core::Language::Rust,
+                                crate::graphql::types::GraphQLLanguage::Rust
+                            ) | (
+                                codegraph_core::Language::Python,
+                                crate::graphql::types::GraphQLLanguage::Python
+                            ) | (
+                                codegraph_core::Language::TypeScript,
+                                crate::graphql::types::GraphQLLanguage::TypeScript
+                            )
                         )
                     })
                 })
@@ -436,9 +520,16 @@ impl QueryRoot {
                     node_type_filters.iter().any(|filter_type| {
                         matches!(
                             (node_type, filter_type),
-                            (codegraph_core::NodeType::Function, crate::graphql::types::GraphQLNodeType::Function) |
-                            (codegraph_core::NodeType::Struct, crate::graphql::types::GraphQLNodeType::Struct) |
-                            (codegraph_core::NodeType::Class, crate::graphql::types::GraphQLNodeType::Class)
+                            (
+                                codegraph_core::NodeType::Function,
+                                crate::graphql::types::GraphQLNodeType::Function
+                            ) | (
+                                codegraph_core::NodeType::Struct,
+                                crate::graphql::types::GraphQLNodeType::Struct
+                            ) | (
+                                codegraph_core::NodeType::Class,
+                                crate::graphql::types::GraphQLNodeType::Class
+                            )
                         )
                     })
                 })
@@ -446,23 +537,34 @@ impl QueryRoot {
         }
 
         // Sort by similarity score and apply limit
-        filtered_results.sort_by(|a, b| b.similarity_score.partial_cmp(&a.similarity_score).unwrap_or(std::cmp::Ordering::Equal));
+        filtered_results.sort_by(|a, b| {
+            b.similarity_score
+                .partial_cmp(&a.similarity_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         filtered_results.truncate(limit as usize);
 
         // Convert to scored nodes
-        let scored_nodes: Vec<ScoredNode> = filtered_results.into_iter().map(|result| {
-            ScoredNode {
-                node: result.node.into(),
-                similarity_score: result.similarity_score,
-                ranking_score: result.similarity_score, // Simplified ranking
-                distance_metric: "cosine".to_string(),
-            }
-        }).collect();
+        let scored_nodes: Vec<ScoredNode> = filtered_results
+            .into_iter()
+            .map(|result| {
+                ScoredNode {
+                    node: result.node.into(),
+                    similarity_score: result.similarity_score,
+                    ranking_score: result.similarity_score, // Simplified ranking
+                    distance_metric: "cosine".to_string(),
+                }
+            })
+            .collect();
 
         let elapsed = start_time.elapsed();
         let total_time_ms = elapsed.as_millis() as i32;
 
-        info!("Semantic search completed: {} results in {}ms", scored_nodes.len(), total_time_ms);
+        info!(
+            "Semantic search completed: {} results in {}ms",
+            scored_nodes.len(),
+            total_time_ms
+        );
 
         Ok(SemanticSearchResult {
             nodes: scored_nodes,
@@ -488,7 +590,11 @@ impl QueryRoot {
     ) -> Result<Vec<GraphQLCodeNode>> {
         // Basic rate limiting per-operation
         if let Some(auth) = ctx.data_opt::<AuthContext>() {
-            let tier = if auth.roles.contains(&"premium".to_string()) { "premium" } else { "user" };
+            let tier = if auth.roles.contains(&"premium".to_string()) {
+                "premium"
+            } else {
+                "user"
+            };
             let rl = RateLimitManager::new();
             let _ = rl.check_rate_limit(tier, "getNeighbors");
         }
@@ -520,10 +626,9 @@ impl QueryRoot {
             }
         }
 
-        let neighbors_map = node_loader
-            .load_many(neighbor_ids)
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Failed to load neighbor nodes: {}", e)))?;
+        let neighbors_map = node_loader.load_many(neighbor_ids).await.map_err(|e| {
+            async_graphql::Error::new(format!("Failed to load neighbor nodes: {}", e))
+        })?;
 
         Ok(neighbors_map.into_values().collect())
     }
@@ -539,7 +644,11 @@ impl QueryRoot {
     ) -> Result<Vec<GraphQLEdge>> {
         // Basic rate limiting per-operation
         if let Some(auth) = ctx.data_opt::<AuthContext>() {
-            let tier = if auth.roles.contains(&"premium".to_string()) { "premium" } else { "user" };
+            let tier = if auth.roles.contains(&"premium".to_string()) {
+                "premium"
+            } else {
+                "user"
+            };
             let rl = RateLimitManager::new();
             let _ = rl.check_rate_limit(tier, "findPath");
         }
@@ -555,20 +664,31 @@ impl QueryRoot {
         // Use optimizer to choose A* if beneficial; fallback to BFS internally
         let path_opt = {
             let graph = state.graph.read().await;
-            state.performance.find_path_nodes(&graph, from_id, to_id, Some(max_depth)).await
-        }.map_err(|e| async_graphql::Error::new(format!("Path search failed: {}", e)))?;
+            state
+                .performance
+                .find_path_nodes(&graph, from_id, to_id, Some(max_depth))
+                .await
+        }
+        .map_err(|e| async_graphql::Error::new(format!("Path search failed: {}", e)))?;
 
-        let Some(path) = path_opt else { return Ok(vec![]); };
+        let Some(path) = path_opt else {
+            return Ok(vec![]);
+        };
 
         // Store node path in cache for identical queries
         let path_cache_key = state.performance.key_for_path(&from, &to, Some(max_depth));
         let path_ids: Vec<ID> = path.iter().map(|n| ID(n.to_string())).collect();
-        state.performance.put_cached_json(path_cache_key, &path_ids).await;
+        state
+            .performance
+            .put_cached_json(path_cache_key, &path_ids)
+            .await;
 
         // Build list of consecutive pairs to resolve actual edges via DataLoader
         let mut from_ids: Vec<NodeId> = Vec::new();
         for win in path.windows(2) {
-            if let [a, _b] = win { from_ids.push(*a); }
+            if let [a, _b] = win {
+                from_ids.push(*a);
+            }
         }
 
         let edges_map = edges_loader
@@ -581,7 +701,10 @@ impl QueryRoot {
         for win in path.windows(2) {
             if let [a, b] = win {
                 if let Some(edges) = edges_map.get(a) {
-                    if let Some(edge) = edges.iter().find(|e| e.target_id.to_string() == b.to_string()) {
+                    if let Some(edge) = edges
+                        .iter()
+                        .find(|e| e.target_id.to_string() == b.to_string())
+                    {
                         result.push(edge.clone());
                         continue;
                     }
@@ -609,21 +732,25 @@ impl QueryRoot {
         let node_id = NodeId::from_str(&id.to_string())
             .map_err(|_| async_graphql::Error::new("Invalid node ID format"))?;
 
-        node_loader.load_one(node_id).await
+        node_loader
+            .load_one(node_id)
+            .await
             .map_err(|e| async_graphql::Error::new(format!("Failed to load node: {}", e)))
     }
 
     /// Get multiple nodes by IDs (batch operation using DataLoader)
     async fn nodes(&self, ctx: &Context<'_>, ids: Vec<ID>) -> Result<Vec<GraphQLCodeNode>> {
         let node_loader = ctx.data::<DataLoader<NodeLoader>>()?;
-        let node_ids: Result<Vec<NodeId>, _> = ids.iter()
+        let node_ids: Result<Vec<NodeId>, _> = ids
+            .iter()
             .map(|id| NodeId::from_str(&id.to_string()))
             .collect();
-        
-        let node_ids = node_ids
-            .map_err(|_| async_graphql::Error::new("Invalid node ID format"))?;
 
-        let result = node_loader.load_many(node_ids).await
+        let node_ids = node_ids.map_err(|_| async_graphql::Error::new("Invalid node ID format"))?;
+
+        let result = node_loader
+            .load_many(node_ids)
+            .await
             .map_err(|e| async_graphql::Error::new(format!("Failed to load nodes: {}", e)))?;
 
         Ok(result.into_values().collect())
@@ -638,7 +765,11 @@ impl MutationRoot {
     async fn index_repository(&self, ctx: &Context<'_>, repo_url: String) -> Result<bool> {
         // Rate-limit indexing operations a bit more strictly
         if let Some(auth) = ctx.data_opt::<AuthContext>() {
-            let tier = if auth.roles.contains(&"premium".to_string()) { "premium" } else { "user" };
+            let tier = if auth.roles.contains(&"premium".to_string()) {
+                "premium"
+            } else {
+                "user"
+            };
             let rl = RateLimitManager::new();
             let _ = rl.check_rate_limit(tier, "indexRepository");
         }
@@ -646,15 +777,45 @@ impl MutationRoot {
         // Simulate async indexing with staged progress via broker
         let job_id = Uuid::new_v4().to_string();
         tokio::spawn(async move {
-            event_bus::publish_indexing_progress(job_id.clone(), 0.05, "queued".into(), Some(30.0), Some("Queued for indexing".into()));
+            event_bus::publish_indexing_progress(
+                job_id.clone(),
+                0.05,
+                "queued".into(),
+                Some(30.0),
+                Some("Queued for indexing".into()),
+            );
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            event_bus::publish_indexing_progress(job_id.clone(), 0.35, "cloning".into(), Some(25.0), Some(format!("Cloning {}", repo_url)));
+            event_bus::publish_indexing_progress(
+                job_id.clone(),
+                0.35,
+                "cloning".into(),
+                Some(25.0),
+                Some(format!("Cloning {}", repo_url)),
+            );
             tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-            event_bus::publish_indexing_progress(job_id.clone(), 0.65, "parsing".into(), Some(10.0), Some("Parsing files".into()));
+            event_bus::publish_indexing_progress(
+                job_id.clone(),
+                0.65,
+                "parsing".into(),
+                Some(10.0),
+                Some("Parsing files".into()),
+            );
             tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-            event_bus::publish_indexing_progress(job_id.clone(), 0.85, "embedding".into(), Some(5.0), Some("Generating embeddings".into()));
+            event_bus::publish_indexing_progress(
+                job_id.clone(),
+                0.85,
+                "embedding".into(),
+                Some(5.0),
+                Some("Generating embeddings".into()),
+            );
             tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-            event_bus::publish_indexing_progress(job_id.clone(), 1.0, "completed".into(), None, Some("Index build completed".into()));
+            event_bus::publish_indexing_progress(
+                job_id.clone(),
+                1.0,
+                "completed".into(),
+                None,
+                Some("Index build completed".into()),
+            );
         });
 
         Ok(true)
@@ -663,7 +824,11 @@ impl MutationRoot {
     /// Update existing node fields
     async fn update_node(&self, ctx: &Context<'_>, input: UpdateNodeInput) -> Result<bool> {
         if let Some(auth) = ctx.data_opt::<AuthContext>() {
-            let tier = if auth.roles.contains(&"premium".to_string()) { "premium" } else { "user" };
+            let tier = if auth.roles.contains(&"premium".to_string()) {
+                "premium"
+            } else {
+                "user"
+            };
             let rl = RateLimitManager::new();
             let _ = rl.check_rate_limit(tier, "updateNode");
         }
@@ -682,14 +847,30 @@ impl MutationRoot {
 
         // Apply updates
         let mut updated = current.clone();
-        if let Some(name) = input.name { updated.name = name; }
-        if let Some(nt) = input.node_type { updated.node_type = Some(nt); }
-        if let Some(lang) = input.language { updated.language = Some(lang); }
-        if let Some(fp) = input.file_path { updated.location.file_path = fp; }
-        if let Some(sl) = input.start_line { updated.location.line = sl as u32; }
-        if let Some(sc) = input.start_column { updated.location.column = sc as u32; }
-        if let Some(el) = input.end_line { updated.location.end_line = Some(el as u32); }
-        if let Some(ec) = input.end_column { updated.location.end_column = Some(ec as u32); }
+        if let Some(name) = input.name {
+            updated.name = name;
+        }
+        if let Some(nt) = input.node_type {
+            updated.node_type = Some(nt);
+        }
+        if let Some(lang) = input.language {
+            updated.language = Some(lang);
+        }
+        if let Some(fp) = input.file_path {
+            updated.location.file_path = fp;
+        }
+        if let Some(sl) = input.start_line {
+            updated.location.line = sl as u32;
+        }
+        if let Some(sc) = input.start_column {
+            updated.location.column = sc as u32;
+        }
+        if let Some(el) = input.end_line {
+            updated.location.end_line = Some(el as u32);
+        }
+        if let Some(ec) = input.end_column {
+            updated.location.end_column = Some(ec as u32);
+        }
 
         graph
             .update_node(updated.clone())
@@ -711,7 +892,11 @@ impl MutationRoot {
     /// Delete a node by ID
     async fn delete_node(&self, ctx: &Context<'_>, id: ID) -> Result<bool> {
         if let Some(auth) = ctx.data_opt::<AuthContext>() {
-            let tier = if auth.roles.contains(&"premium".to_string()) { "premium" } else { "user" };
+            let tier = if auth.roles.contains(&"premium".to_string()) {
+                "premium"
+            } else {
+                "user"
+            };
             let rl = RateLimitManager::new();
             let _ = rl.check_rate_limit(tier, "deleteNode");
         }

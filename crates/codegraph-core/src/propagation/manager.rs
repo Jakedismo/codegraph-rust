@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
 
-use crate::{CodeGraphError, Result};
+use crate::Result;
 
 /// Impact level used to derive scheduling priority.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -53,7 +53,9 @@ pub struct DependencyGraph {
 }
 
 impl DependencyGraph {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Replace dependencies for a file atomically.
     pub fn set_file_dependencies(&self, file: &str, deps: &[FileDependency]) {
@@ -64,7 +66,9 @@ impl DependencyGraph {
         // Remove previous edges for file
         if let Some(old_deps) = fwd.get(file).cloned() {
             for to in old_deps {
-                if let Some(rset) = rev.get_mut(&to) { rset.remove(file); }
+                if let Some(rset) = rev.get_mut(&to) {
+                    rset.remove(file);
+                }
                 w.remove(&(file.to_string(), to));
             }
         }
@@ -73,7 +77,9 @@ impl DependencyGraph {
         let mut out = HashSet::with_capacity(deps.len());
         for d in deps {
             out.insert(d.to.clone());
-            rev.entry(d.to.clone()).or_default().insert(file.to_string());
+            rev.entry(d.to.clone())
+                .or_default()
+                .insert(file.to_string());
             w.insert((file.to_string(), d.to.clone()), (d.kind, d.strength));
         }
         fwd.insert(file.to_string(), out);
@@ -85,8 +91,12 @@ impl DependencyGraph {
         let mut rev = self.reverse.write();
         let mut w = self.weights.write();
 
-        fwd.entry(dep.from.clone()).or_default().insert(dep.to.clone());
-        rev.entry(dep.to.clone()).or_default().insert(dep.from.clone());
+        fwd.entry(dep.from.clone())
+            .or_default()
+            .insert(dep.to.clone());
+        rev.entry(dep.to.clone())
+            .or_default()
+            .insert(dep.from.clone());
         w.insert((dep.from, dep.to), (dep.kind, dep.strength));
     }
 
@@ -109,8 +119,15 @@ impl DependencyGraph {
     }
 
     /// Get edge weight/kind if present.
-    pub fn edge_info(&self, from: &str, to: &str) -> Option<(FileDependencyKind, DependencyStrength)> {
-        self.weights.read().get(&(from.to_string(), to.to_string())).cloned()
+    pub fn edge_info(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Option<(FileDependencyKind, DependencyStrength)> {
+        self.weights
+            .read()
+            .get(&(from.to_string(), to.to_string()))
+            .cloned()
     }
 }
 
@@ -124,7 +141,7 @@ pub struct FileChange {
     pub user_visible: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Priority {
     Low = 1,
     Medium = 2,
@@ -168,7 +185,8 @@ impl PartialOrd for UpdateItem {
 impl Ord for UpdateItem {
     fn cmp(&self, other: &Self) -> Ordering {
         // Higher priority first; tie-breaker by reason length and file name
-        self.priority.cmp(&other.priority)
+        self.priority
+            .cmp(&other.priority)
             .then_with(|| self.reason.len().cmp(&other.reason.len()))
             .then_with(|| other.file_path.cmp(&self.file_path))
     }
@@ -206,10 +224,17 @@ pub struct ChangePropagationManager {
 impl ChangePropagationManager {
     pub fn new(batch_max: usize) -> Self {
         let (tx, _rx) = broadcast::channel(256);
-        Self { deps: DependencyGraph::new(), batch_max: batch_max.max(1), notifier: None, tx }
+        Self {
+            deps: DependencyGraph::new(),
+            batch_max: batch_max.max(1),
+            notifier: None,
+            tx,
+        }
     }
 
-    pub fn graph(&self) -> &DependencyGraph { &self.deps }
+    pub fn graph(&self) -> &DependencyGraph {
+        &self.deps
+    }
 
     pub fn with_notifier(mut self, notifier: std::sync::Arc<dyn ChangeNotifier>) -> Self {
         self.notifier = Some(notifier);
@@ -217,11 +242,16 @@ impl ChangePropagationManager {
     }
 
     /// Subscribe to internal broadcast of change notifications.
-    pub fn subscribe(&self) -> broadcast::Receiver<ChangeEventNotification> { self.tx.subscribe() }
+    pub fn subscribe(&self) -> broadcast::Receiver<ChangeEventNotification> {
+        self.tx.subscribe()
+    }
 
     /// Compute impacted files from an initial set of changes, schedule by priority,
     /// and return coalesced batches optimized for downstream writes.
-    pub fn analyze_and_schedule(&self, changed: Vec<FileChange>) -> Result<(Vec<UpdateBatch>, Vec<String>)> {
+    pub fn analyze_and_schedule(
+        &self,
+        changed: Vec<FileChange>,
+    ) -> Result<(Vec<UpdateBatch>, Vec<String>)> {
         let start = Instant::now();
 
         // Impact analysis: BFS over dependents avoiding cycles
@@ -232,7 +262,10 @@ impl ChangePropagationManager {
 
         for ch in changed.into_iter() {
             impacted.insert(ch.file_path.clone());
-            impact_levels.entry(ch.file_path.clone()).and_modify(|lvl| { *lvl = std::cmp::max(*lvl, ch.impact) }).or_insert(ch.impact);
+            impact_levels
+                .entry(ch.file_path.clone())
+                .and_modify(|lvl| *lvl = std::cmp::max(*lvl, ch.impact))
+                .or_insert(ch.impact);
             queue.push_back((ch.file_path.clone(), ch.impact, ch.user_visible));
             direct_changed.push(ch.file_path);
         }
@@ -240,16 +273,20 @@ impl ChangePropagationManager {
         while let Some((file, base_impact, user_visible)) = queue.pop_front() {
             for dep in self.deps.dependents_of(&file) {
                 // amplify impact based on edge info
-                let (kind, strength) = self.deps.edge_info(&file, &dep)
+                let (kind, strength) = self
+                    .deps
+                    .edge_info(&file, &dep)
                     .unwrap_or((FileDependencyKind::References, DependencyStrength::Medium));
                 let mut level = Self::amplify_impact(base_impact, kind, strength);
-                if user_visible { level = std::cmp::max(level, ImpactLevel::High); }
+                if user_visible {
+                    level = std::cmp::max(level, ImpactLevel::High);
+                }
 
                 let first_seen = impacted.insert(dep.clone());
                 // Track the strongest impact for each file
                 impact_levels
                     .entry(dep.clone())
-                    .and_modify(|lvl| { *lvl = std::cmp::max(*lvl, level) })
+                    .and_modify(|lvl| *lvl = std::cmp::max(*lvl, level))
                     .or_insert(level);
 
                 if first_seen {
@@ -281,21 +318,33 @@ impl ChangePropagationManager {
         let mut batches: Vec<UpdateBatch> = Vec::new();
         let mut by_priority: HashMap<Priority, Vec<String>> = HashMap::new();
         while let Some(item) = heap.pop() {
-            by_priority.entry(item.priority).or_default().push(item.file_path);
+            by_priority
+                .entry(item.priority)
+                .or_default()
+                .push(item.file_path);
         }
         for (priority, mut files) in by_priority.into_iter() {
             // Stable order to improve cache behavior
             files.sort();
             for chunk in files.chunks(self.batch_max) {
-                batches.push(UpdateBatch { files: chunk.to_vec(), priority });
+                batches.push(UpdateBatch {
+                    files: chunk.to_vec(),
+                    priority,
+                });
             }
         }
 
         // Emit notification
         let impacted_vec: Vec<String> = impacted.into_iter().collect();
-        let notif = ChangeEventNotification { changed_files: direct_changed.clone(), impacted_files: impacted_vec.clone(), batches: batches.clone() };
+        let notif = ChangeEventNotification {
+            changed_files: direct_changed.clone(),
+            impacted_files: impacted_vec.clone(),
+            batches: batches.clone(),
+        };
         let _ = self.tx.send(notif.clone());
-        if let Some(n) = &self.notifier { n.notify(notif); }
+        if let Some(n) = &self.notifier {
+            n.notify(notif);
+        }
 
         // Performance guardrail (best-effort): warn if breached
         let _elapsed = start.elapsed();
@@ -304,7 +353,11 @@ impl ChangePropagationManager {
         Ok((batches, impacted_vec))
     }
 
-    fn amplify_impact(base: ImpactLevel, kind: FileDependencyKind, strength: DependencyStrength) -> ImpactLevel {
+    fn amplify_impact(
+        base: ImpactLevel,
+        kind: FileDependencyKind,
+        strength: DependencyStrength,
+    ) -> ImpactLevel {
         use DependencyStrength::*;
         use FileDependencyKind::*;
         let bump = match (kind, strength) {
@@ -341,7 +394,12 @@ mod tests {
     use super::*;
 
     fn dep(from: &str, to: &str, kind: FileDependencyKind) -> FileDependency {
-        FileDependency { from: from.to_string(), to: to.to_string(), kind, strength: DependencyStrength::Medium }
+        FileDependency {
+            from: from.to_string(),
+            to: to.to_string(),
+            kind,
+            strength: DependencyStrength::Medium,
+        }
     }
 
     #[test]
@@ -351,18 +409,26 @@ mod tests {
         g.add_dependency(dep("b.rs", "c.rs", FileDependencyKind::Uses));
 
         assert_eq!(g.dependents_of("a.rs"), vec!["b.rs".to_string()]);
-        let mut prereq_c = g.prerequisites_of("c.rs"); prereq_c.sort();
+        let mut prereq_c = g.prerequisites_of("c.rs");
+        prereq_c.sort();
         assert_eq!(prereq_c, vec!["b.rs".to_string()]);
     }
 
     #[test]
     fn impact_analysis_chain() {
         let mgr = ChangePropagationManager::new(10);
-        mgr.graph().add_dependency(dep("a", "b", FileDependencyKind::Imports));
-        mgr.graph().add_dependency(dep("b", "c", FileDependencyKind::Imports));
+        mgr.graph()
+            .add_dependency(dep("a", "b", FileDependencyKind::Imports));
+        mgr.graph()
+            .add_dependency(dep("b", "c", FileDependencyKind::Imports));
 
         let (batches, impacted) = mgr
-            .analyze_and_schedule(vec![FileChange { file_path: "a".into(), impact: ImpactLevel::Medium, details: None, user_visible: false }])
+            .analyze_and_schedule(vec![FileChange {
+                file_path: "a".into(),
+                impact: ImpactLevel::Medium,
+                details: None,
+                user_visible: false,
+            }])
             .unwrap();
 
         // All should be impacted: a, b, c
@@ -381,11 +447,18 @@ mod tests {
     #[test]
     fn impact_analysis_cycle_no_infinite_loop() {
         let mgr = ChangePropagationManager::new(10);
-        mgr.graph().add_dependency(dep("a", "b", FileDependencyKind::Imports));
-        mgr.graph().add_dependency(dep("b", "a", FileDependencyKind::Imports));
+        mgr.graph()
+            .add_dependency(dep("a", "b", FileDependencyKind::Imports));
+        mgr.graph()
+            .add_dependency(dep("b", "a", FileDependencyKind::Imports));
 
         let (_batches, impacted) = mgr
-            .analyze_and_schedule(vec![FileChange { file_path: "a".into(), impact: ImpactLevel::High, details: None, user_visible: false }])
+            .analyze_and_schedule(vec![FileChange {
+                file_path: "a".into(),
+                impact: ImpactLevel::High,
+                details: None,
+                user_visible: false,
+            }])
             .unwrap();
 
         let mut set: HashSet<_> = impacted.into_iter().collect();
@@ -397,43 +470,74 @@ mod tests {
     #[test]
     fn priority_ranks_user_visible_exports_higher() {
         let mgr = ChangePropagationManager::new(10);
-        mgr.graph().add_dependency(FileDependency { from: "core".into(), to: "api".into(), kind: FileDependencyKind::Exports, strength: DependencyStrength::Strong });
+        mgr.graph().add_dependency(FileDependency {
+            from: "core".into(),
+            to: "api".into(),
+            kind: FileDependencyKind::Exports,
+            strength: DependencyStrength::Strong,
+        });
 
         let (batches, _impacted) = mgr
-            .analyze_and_schedule(vec![FileChange { file_path: "core".into(), impact: ImpactLevel::Medium, details: None, user_visible: true }])
+            .analyze_and_schedule(vec![FileChange {
+                file_path: "core".into(),
+                impact: ImpactLevel::Medium,
+                details: None,
+                user_visible: true,
+            }])
             .unwrap();
 
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].priority, Priority::Critical);
-        let mut files = batches[0].files.clone(); files.sort();
+        let mut files = batches[0].files.clone();
+        files.sort();
         assert_eq!(files, vec!["api", "core"]);
     }
 
     #[test]
     fn batching_reduces_write_pressure() {
         let mgr = ChangePropagationManager::new(5);
-        for i in 0..30 { // star: root -> leaf{i}
+        for i in 0..30 {
+            // star: root -> leaf{i}
             let leaf = format!("leaf{}", i);
-            mgr.graph().add_dependency(dep("root", &leaf, FileDependencyKind::Imports));
+            mgr.graph()
+                .add_dependency(dep("root", &leaf, FileDependencyKind::Imports));
         }
 
         let (batches, impacted) = mgr
-            .analyze_and_schedule(vec![FileChange { file_path: "root".into(), impact: ImpactLevel::Medium, details: None, user_visible: false }])
+            .analyze_and_schedule(vec![FileChange {
+                file_path: "root".into(),
+                impact: ImpactLevel::Medium,
+                details: None,
+                user_visible: false,
+            }])
             .unwrap();
 
         let naive_writes = impacted.len();
         let batched_writes: usize = batches.len();
         // Expect batching to reduce writes by >= 70%
         // i.e., number_of_batches <= 30% of naive individual writes
-        assert!(batched_writes * 10 <= naive_writes * 3, "expected at least 70% reduction: naive={}, batches={}", naive_writes, batched_writes);
+        assert!(
+            batched_writes * 10 <= naive_writes * 3,
+            "expected at least 70% reduction: naive={}, batches={}",
+            naive_writes,
+            batched_writes
+        );
     }
 
     #[tokio::test]
     async fn notifications_are_broadcast() {
         let mgr = ChangePropagationManager::new(3);
-        mgr.graph().add_dependency(dep("x", "y", FileDependencyKind::Uses));
+        mgr.graph()
+            .add_dependency(dep("x", "y", FileDependencyKind::Uses));
         let mut rx = mgr.subscribe();
-        let _ = mgr.analyze_and_schedule(vec![FileChange { file_path: "x".into(), impact: ImpactLevel::Low, details: None, user_visible: false }]).unwrap();
+        let _ = mgr
+            .analyze_and_schedule(vec![FileChange {
+                file_path: "x".into(),
+                impact: ImpactLevel::Low,
+                details: None,
+                user_visible: false,
+            }])
+            .unwrap();
         let evt = rx.recv().await.expect("should receive event");
         assert!(evt.changed_files.contains(&"x".to_string()));
         assert!(evt.impacted_files.iter().any(|f| f == "y" || f == "x"));

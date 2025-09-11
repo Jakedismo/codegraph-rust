@@ -1,6 +1,6 @@
 use codegraph_core::Language;
-use tree_sitter::{Parser, Tree};
 use std::collections::HashMap;
+use tree_sitter::Parser;
 
 pub struct LanguageConfig {
     pub language: tree_sitter::Language,
@@ -75,9 +75,7 @@ impl LanguageRegistry {
     }
 
     pub fn detect_language(&self, file_path: &str) -> Option<Language> {
-        let extension = std::path::Path::new(file_path)
-            .extension()?
-            .to_str()?;
+        let extension = std::path::Path::new(file_path).extension()?.to_str()?;
 
         for (lang, config) in &self.configs {
             if config.file_extensions.contains(&extension) {

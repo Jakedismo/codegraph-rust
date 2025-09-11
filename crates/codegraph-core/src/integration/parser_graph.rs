@@ -1,5 +1,5 @@
-use crate::{CodeGraphError, CodeNode, EdgeType, Language, Location, Result};
 use crate::traits::{CodeParser, GraphStore};
+use crate::{CodeNode, EdgeType, Result};
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};
@@ -22,7 +22,12 @@ pub trait EdgeSink: Send + Sync {
 
     async fn add_edges_batch(
         &self,
-        edges: Vec<(crate::NodeId, crate::NodeId, EdgeType, HashMap<String, String>)>,
+        edges: Vec<(
+            crate::NodeId,
+            crate::NodeId,
+            EdgeType,
+            HashMap<String, String>,
+        )>,
     ) -> Result<()> {
         for (from, to, t, meta) in edges {
             self.add_edge(from, to, t, meta).await?;
@@ -102,14 +107,14 @@ where
                 added.push(id);
 
                 self.symbol_index.write().insert(name.clone(), id);
-                self.symbol_index.write().insert(crate::SharedStr::from(fq), id);
+                self.symbol_index
+                    .write()
+                    .insert(crate::SharedStr::from(fq), id);
                 names_in_file.push((name, id, edge_context_for(&node)));
             }
         }
 
-        self.file_nodes
-            .write()
-            .insert(path.clone(), added.clone());
+        self.file_nodes.write().insert(path.clone(), added.clone());
 
         // derive edges within file (calls/imports)
         let edges = self.derive_edges_for_file(&path, &names_in_file).await?;
@@ -133,27 +138,14 @@ where
         // Two-phase approach for better linking: first ingest nodes, then edges.
         // Phase 1: parse + add nodes for all files (incremental aware)
         for chunk in files.chunks(64) {
-            let mut tasks = Vec::with_capacity(chunk.len());
             for file in chunk.iter().cloned() {
-                let permit = semaphore.clone().acquire_owned().await.unwrap();
-                let this = self.clone_arc();
-                tasks.push(tokio::spawn(async move {
-                    let _p = permit;
-                    match this.process_file(file.to_string_lossy().as_ref()).await {
-                        Ok(sum) => Ok::<_, CodeGraphError>((file, sum)),
-                        Err(e) => Err(e),
-                    }
-                }));
-            }
-
-            for t in tasks {
-                match t.await.map_err(|e| CodeGraphError::Threading(e.to_string()))? {
-                    Ok((_f, sum)) => {
-                        match sum.status {
-                            ProcessStatus::Processed => processed += 1,
-                            ProcessStatus::Skipped => skipped += 1,
-                        }
-                    }
+                // Bound concurrency using semaphore, but avoid spawning to keep non-Send futures acceptable
+                let _permit = semaphore.clone().acquire_owned().await.unwrap();
+                match self.process_file(file.to_string_lossy().as_ref()).await {
+                    Ok(sum) => match sum.status {
+                        ProcessStatus::Processed => processed += 1,
+                        ProcessStatus::Skipped => skipped += 1,
+                    },
                     Err(e) => warn!("process_file error: {}", e),
                 }
             }
@@ -166,15 +158,30 @@ where
         }
 
         let elapsed = start.elapsed();
-        info!("Processed {} files ({} skipped) in {:.2}s", processed, skipped, elapsed.as_secs_f64());
-        Ok(DirSummary { total, processed, skipped, duration: elapsed })
+        info!(
+            "Processed {} files ({} skipped) in {:.2}s",
+            processed,
+            skipped,
+            elapsed.as_secs_f64()
+        );
+        Ok(DirSummary {
+            total,
+            processed,
+            skipped,
+            duration: elapsed,
+        })
     }
 
     /// Reprocess only changed files in a directory (incremental update).
-    pub async fn incremental_update_dir(&self, dir: &str, max_concurrent: usize) -> Result<DirSummary> {
+    pub async fn incremental_update_dir(
+        &self,
+        dir: &str,
+        max_concurrent: usize,
+    ) -> Result<DirSummary> {
         self.process_directory(dir, max_concurrent).await
     }
 
+    #[allow(dead_code)]
     fn clone_arc(&self) -> Self {
         Self {
             parser: self.parser.clone(),
@@ -190,13 +197,22 @@ where
         &self,
         file: &Path,
         names_in_file: &[(crate::SharedStr, crate::NodeId, EdgeContext)],
-    ) -> Result<Vec<(crate::NodeId, crate::NodeId, EdgeType, HashMap<String, String>)>> {
+    ) -> Result<
+        Vec<(
+            crate::NodeId,
+            crate::NodeId,
+            EdgeType,
+            HashMap<String, String>,
+        )>,
+    > {
         let mut edges = Vec::new();
 
         // Build quick lookup of local candidates and global symbols
         let global = self.symbol_index.read();
         let mut global_map: HashMap<&str, crate::NodeId> = HashMap::new();
-        for (k, v) in global.iter() { global_map.insert(k.as_str(), *v); }
+        for (k, v) in global.iter() {
+            global_map.insert(k.as_str(), *v);
+        }
 
         // For each function/import in this file, scan for references
         for (name, from_id, ctx) in names_in_file {
@@ -214,8 +230,13 @@ where
                 EdgeContext::Content(content) => {
                     // Local calls: search for other names in same file
                     for (other_name, to_id, _ctx2) in names_in_file.iter() {
-                        if other_name == name { continue; }
-                        if content.as_str().contains(&format!("{}(", other_name.as_str())) {
+                        if other_name == name {
+                            continue;
+                        }
+                        if content
+                            .as_str()
+                            .contains(&format!("{}(", other_name.as_str()))
+                        {
                             let mut meta = HashMap::new();
                             meta.insert("kind".into(), "call".into());
                             meta.insert("file".into(), file.to_string_lossy().to_string());
@@ -230,7 +251,16 @@ where
         Ok(edges)
     }
 
-    async fn derive_cross_file_edges(&self) -> Result<Vec<(crate::NodeId, crate::NodeId, EdgeType, HashMap<String, String>)>> {
+    async fn derive_cross_file_edges(
+        &self,
+    ) -> Result<
+        Vec<(
+            crate::NodeId,
+            crate::NodeId,
+            EdgeType,
+            HashMap<String, String>,
+        )>,
+    > {
         // Detect cross-file function call relationships by scanning function bodies against a symbol table.
         let mut edges = Vec::new();
         let mut seen: HashSet<(crate::NodeId, crate::NodeId, EdgeType)> = HashSet::new();
@@ -255,13 +285,19 @@ where
         {
             let mut seen_names = HashSet::new();
             for (k, _) in &symbols {
-                let key = if let Some(pos) = k.rfind("::") { &k[pos + 2..] } else { k.as_str() };
+                let key = if let Some(pos) = k.rfind("::") {
+                    &k[pos + 2..]
+                } else {
+                    k.as_str()
+                };
                 if !key.is_empty() && seen_names.insert(key) {
                     simple_names.push(key.to_string());
                 }
             }
             // Keep it bounded to avoid quadratic blowup
-            if simple_names.len() > 5000 { simple_names.truncate(5000); }
+            if simple_names.len() > 5000 {
+                simple_names.truncate(5000);
+            }
         }
 
         // For each node in each file, fetch content and scan for calls
@@ -270,13 +306,20 @@ where
             for node_id in node_ids {
                 // Fetch node and inspect
                 if let Some(node) = self.graph.lock().await.get_node(node_id).await? {
-                    if !matches!(node.node_type, Some(crate::NodeType::Function)) { continue; }
-                    let content = match &node.content { Some(c) => c.as_str(), None => continue };
+                    if !matches!(node.node_type, Some(crate::NodeType::Function)) {
+                        continue;
+                    }
+                    let content = match &node.content {
+                        Some(c) => c.as_str(),
+                        None => continue,
+                    };
 
                     // Heuristic: match `name(` for potential call
                     for name in &simple_names {
                         // Skip self calls by name equality
-                        if node.name.as_str() == name { continue; }
+                        if node.name.as_str() == name {
+                            continue;
+                        }
                         if let Some((&target_id, _)) = symbols
                             .iter()
                             .find(|(k, _)| k.ends_with(name) || k.as_str() == name)
@@ -302,7 +345,10 @@ where
 
 /// Process result summaries
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProcessStatus { Processed, Skipped }
+pub enum ProcessStatus {
+    Processed,
+    Skipped,
+}
 
 #[derive(Debug, Clone)]
 pub struct ProcessSummary {
@@ -313,10 +359,18 @@ pub struct ProcessSummary {
 
 impl ProcessSummary {
     fn processed(file: &str, nodes_added: usize) -> Self {
-        Self { file: file.to_string(), status: ProcessStatus::Processed, nodes_added }
+        Self {
+            file: file.to_string(),
+            status: ProcessStatus::Processed,
+            nodes_added,
+        }
     }
     fn skipped(file: &str) -> Self {
-        Self { file: file.to_string(), status: ProcessStatus::Skipped, nodes_added: 0 }
+        Self {
+            file: file.to_string(),
+            status: ProcessStatus::Skipped,
+            nodes_added: 0,
+        }
     }
 }
 
@@ -343,7 +397,9 @@ fn edge_context_for(node: &CodeNode) -> EdgeContext {
             .clone()
             .map(EdgeContext::Import)
             .unwrap_or(EdgeContext::Other),
-        Some(crate::NodeType::Function) | Some(crate::NodeType::Class) | Some(crate::NodeType::Struct) => node
+        Some(crate::NodeType::Function)
+        | Some(crate::NodeType::Class)
+        | Some(crate::NodeType::Struct) => node
             .content
             .clone()
             .map(EdgeContext::Content)
@@ -364,23 +420,40 @@ fn parse_import_targets(s: &str) -> Vec<String> {
         // Rust: use a::b::c as d; or use a::b::{c,d};
         let body = text.trim_start_matches("use ").trim().trim_end_matches(';');
         if let Some(brace) = body.find('{') {
-            if let Some(end) = body.rfind('}') { let inner = &body[brace+1..end];
-                for part in inner.split(',') { let n = part.trim(); if !n.is_empty() { out.push(n.split_whitespace().next().unwrap_or("").to_string()); } }
+            if let Some(end) = body.rfind('}') {
+                let inner = &body[brace + 1..end];
+                for part in inner.split(',') {
+                    let n = part.trim();
+                    if !n.is_empty() {
+                        out.push(n.split_whitespace().next().unwrap_or("").to_string());
+                    }
+                }
             }
         } else {
             out.push(body.split_whitespace().next().unwrap_or("").to_string());
         }
     } else if text.starts_with("import ") {
         // JS/TS: import { A, B as C } from 'x'
-        if let Some(brace_start) = text.find('{') { if let Some(brace_end) = text.find('}') {
-            let inner = &text[brace_start+1..brace_end];
-            for part in inner.split(',') { let n = part.trim(); if n.is_empty() { continue; }
-                let name = n.split_whitespace().next().unwrap_or(""); if !name.is_empty() { out.push(name.to_string()); }
+        if let Some(brace_start) = text.find('{') {
+            if let Some(brace_end) = text.find('}') {
+                let inner = &text[brace_start + 1..brace_end];
+                for part in inner.split(',') {
+                    let n = part.trim();
+                    if n.is_empty() {
+                        continue;
+                    }
+                    let name = n.split_whitespace().next().unwrap_or("");
+                    if !name.is_empty() {
+                        out.push(name.to_string());
+                    }
+                }
             }
-        }} else {
+        } else {
             // import Default from 'x' | import * as ns from 'x' (skip wildcard)
             let tokens: Vec<&str> = text[6..].trim().split_whitespace().collect();
-            if !tokens.is_empty() && tokens[0] != "*" { out.push(tokens[0].trim_matches(',').to_string()); }
+            if !tokens.is_empty() && tokens[0] != "*" {
+                out.push(tokens[0].trim_matches(',').to_string());
+            }
         }
     }
     out
@@ -392,7 +465,10 @@ async fn collect_source_files(dir: &str) -> Result<Vec<PathBuf>> {
     while let Some(d) = dirs.pop() {
         let mut rd = match fs::read_dir(&d).await {
             Ok(x) => x,
-            Err(e) => { warn!("read_dir failed for {}: {}", d.display(), e); continue; }
+            Err(e) => {
+                warn!("read_dir failed for {}: {}", d.display(), e);
+                continue;
+            }
         };
         while let Ok(Some(entry)) = rd.next_entry().await {
             let path = entry.path();

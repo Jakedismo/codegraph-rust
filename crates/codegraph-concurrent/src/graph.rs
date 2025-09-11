@@ -1,16 +1,17 @@
-use std::sync::Arc;
-use arc-swap::ArcSwap;
-use crossbeam_skiplist::SkipMap;
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
-use codegraph_core::{CodeNode, NodeId, Result as CgResult, CodeGraphError};
+use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use codegraph_core::GraphStore;
+use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result as CgResult};
+use crossbeam_skiplist::SkipMap;
+use std::sync::Arc;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum GraphError {
-    #[error("node not found: {0}")] NotFound(NodeId),
-    #[error("internal error: {0}")] Internal(String),
+    #[error("node not found: {0}")]
+    NotFound(NodeId),
+    #[error("internal error: {0}")]
+    Internal(String),
 }
 
 /// Lock-free adjacency graph using lock-free concurrent maps and ArcSwap for RCU-style updates.
@@ -19,12 +20,14 @@ pub enum GraphError {
 ///   lock-free reads and atomic updates (copy-on-write on update path).
 #[derive(Debug, Default)]
 pub struct LockFreeAdjacencyGraph {
-    nodes: SkipMap<NodeId, Arc<CodeNode>>,                              // lock-free map
-    adjacency: SkipMap<NodeId, Arc<ArcSwap<Vec<NodeId>>>>,              // lock-free map of lock-free lists
+    nodes: SkipMap<NodeId, Arc<CodeNode>>, // lock-free map
+    adjacency: SkipMap<NodeId, Arc<ArcSwap<Vec<NodeId>>>>, // lock-free map of lock-free lists
 }
 
 impl LockFreeAdjacencyGraph {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Add a directed edge from -> to. Creates adjacency entry if missing.
     pub fn add_edge(&self, from: NodeId, to: NodeId) {
@@ -40,7 +43,7 @@ impl LockFreeAdjacencyGraph {
 
         // RCU-style copy-on-write update: retry on contention
         entry.rcu(|current| {
-            let mut next = current.clone();
+            let mut next = (**current).clone();
             next.push(to);
             next
         });
@@ -80,7 +83,9 @@ impl GraphStore for LockFreeAdjacencyGraph {
     async fn find_nodes_by_name(&self, name: &str) -> CgResult<Vec<CodeNode>> {
         let mut out = Vec::new();
         for e in self.nodes.iter() {
-            if e.value().name == name { out.push(e.value().as_ref().clone()); }
+            if e.value().name.as_str() == name {
+                out.push(e.value().as_ref().clone());
+            }
         }
         Ok(out)
     }
@@ -89,7 +94,7 @@ impl GraphStore for LockFreeAdjacencyGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegraph_core::{Location, Metadata, Language, NodeType};
+    use codegraph_core::{Language, Location, Metadata, NodeType};
     use uuid::Uuid;
 
     fn sample_node(name: &str) -> CodeNode {
@@ -97,7 +102,13 @@ mod tests {
             name.to_string(),
             Some(NodeType::Function),
             Some(Language::Rust),
-            Location { file_path: "x".into(), line: 1, column: 1, end_line: None, end_column: None }
+            Location {
+                file_path: "x".into(),
+                line: 1,
+                column: 1,
+                end_line: None,
+                end_column: None,
+            },
         )
     }
 
@@ -127,4 +138,3 @@ mod tests {
         assert_eq!(n, expected);
     }
 }
-

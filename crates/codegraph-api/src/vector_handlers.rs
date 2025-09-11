@@ -5,8 +5,8 @@ use axum::{
 };
 use codegraph_core::NodeId;
 use codegraph_vector::{
-    BatchOperation, BatchStats, IndexStats, SearchPerformanceStats,
-    IndexConfig, IndexType, SearchConfig,
+    BatchOperation, BatchStats, IndexConfig, IndexStats, IndexType, SearchConfig,
+    SearchPerformanceStats,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -112,12 +112,12 @@ pub struct IndexConfigDto {
     pub gpu_enabled: Option<bool>,
     pub compression_level: Option<u32>,
     // Index-specific parameters
-    pub nlist: Option<usize>,      // For IVF
-    pub nprobe: Option<usize>,     // For IVF
-    pub m: Option<usize>,          // For HNSW/PQ
+    pub nlist: Option<usize>,           // For IVF
+    pub nprobe: Option<usize>,          // For IVF
+    pub m: Option<usize>,               // For HNSW/PQ
     pub ef_construction: Option<usize>, // For HNSW
-    pub ef_search: Option<usize>,  // For HNSW
-    pub nbits: Option<usize>,      // For LSH/PQ
+    pub ef_search: Option<usize>,       // For HNSW
+    pub nbits: Option<usize>,           // For LSH/PQ
 }
 
 #[derive(Serialize)]
@@ -191,10 +191,12 @@ pub async fn vector_search(
     Json(request): Json<VectorSearchRequest>,
 ) -> ApiResult<Json<VectorSearchResponse>> {
     let start_time = Instant::now();
-    
+
     // Validate embedding dimension
     if request.query_embedding.is_empty() {
-        return Err(ApiError::BadRequest("Query embedding cannot be empty".to_string()));
+        return Err(ApiError::BadRequest(
+            "Query embedding cannot be empty".to_string(),
+        ));
     }
 
     // Use the optimized search engine for sub-millisecond performance
@@ -212,7 +214,7 @@ pub async fn vector_search(
 
     for (node_id, distance) in results {
         let score = 1.0 / (1.0 + distance); // Convert distance to similarity score
-        
+
         let metadata = if let Ok(Some(node)) = graph.get_node(node_id).await {
             Some(SearchResultMetadata {
                 name: node.name,
@@ -250,7 +252,8 @@ pub async fn batch_vector_search(
         return Err(ApiError::BadRequest("No queries provided".to_string()));
     }
 
-    let query_refs: Vec<&[f32]> = request.queries
+    let query_refs: Vec<&[f32]> = request
+        .queries
         .iter()
         .map(|q| q.embedding.as_slice())
         .collect();
@@ -274,7 +277,7 @@ pub async fn batch_vector_search(
 
         for (node_id, distance) in query_result {
             let score = 1.0 / (1.0 + distance);
-            
+
             let metadata = if let Ok(Some(node)) = graph.get_node(node_id).await {
                 Some(SearchResultMetadata {
                     name: node.name,
@@ -311,12 +314,10 @@ pub async fn batch_vector_search(
     }))
 }
 
-pub async fn get_index_stats(
-    State(state): State<AppState>,
-) -> ApiResult<Json<IndexStatsResponse>> {
+pub async fn get_index_stats(State(state): State<AppState>) -> ApiResult<Json<IndexStatsResponse>> {
     // Get stats from the search engine
     let stats = state.vector_search.get_performance_stats();
-    
+
     // This is a simplified response - in a real implementation,
     // you'd get these stats from the index manager
     Ok(Json(IndexStatsResponse {
@@ -346,14 +347,14 @@ pub async fn rebuild_index(
     Json(_request): Json<RebuildIndexRequest>,
 ) -> ApiResult<Json<RebuildIndexResponse>> {
     let start_time = Instant::now();
-    
+
     // Placeholder implementation - would rebuild the FAISS index
     // This would involve:
     // 1. Creating a new index with the specified config
     // 2. Re-adding all vectors from storage
     // 3. Training the index if necessary
     // 4. Replacing the old index atomically
-    
+
     // Broadcast indexing progress start
     let job_id = uuid::Uuid::new_v4().to_string();
     crate::event_bus::publish_indexing_progress(
@@ -363,9 +364,9 @@ pub async fn rebuild_index(
         None,
         Some("Index rebuild started".to_string()),
     );
-    
+
     let rebuild_time_ms = start_time.elapsed().as_millis() as u64;
-    
+
     // Broadcast indexing progress completion
     crate::event_bus::publish_indexing_progress(
         job_id.clone(),
@@ -413,42 +414,54 @@ pub async fn submit_batch_operations(
     for op in request.operations {
         let operation = match op.operation_type.as_str() {
             "insert" => {
-                let embedding = op.embedding
-                    .ok_or_else(|| ApiError::BadRequest("Embedding required for insert operation".to_string()))?;
+                let embedding = op.embedding.ok_or_else(|| {
+                    ApiError::BadRequest("Embedding required for insert operation".to_string())
+                })?;
                 let node_id = Uuid::parse_str(&op.node_id)
                     .map_err(|_| ApiError::BadRequest("Invalid node ID format".to_string()))?;
                 BatchOperation::Insert { node_id, embedding }
-            },
+            }
             "update" => {
-                let embedding = op.embedding
-                    .ok_or_else(|| ApiError::BadRequest("Embedding required for update operation".to_string()))?;
+                let embedding = op.embedding.ok_or_else(|| {
+                    ApiError::BadRequest("Embedding required for update operation".to_string())
+                })?;
                 let node_id = Uuid::parse_str(&op.node_id)
                     .map_err(|_| ApiError::BadRequest("Invalid node ID format".to_string()))?;
                 BatchOperation::Update { node_id, embedding }
-            },
+            }
             "delete" => {
                 let node_id = Uuid::parse_str(&op.node_id)
                     .map_err(|_| ApiError::BadRequest("Invalid node ID format".to_string()))?;
                 BatchOperation::Delete { node_id }
-            },
+            }
             "search" => {
-                let embedding = op.embedding
-                    .ok_or_else(|| ApiError::BadRequest("Embedding required for search operation".to_string()))?;
-                let search_params = op.search_params
-                    .ok_or_else(|| ApiError::BadRequest("Search parameters required for search operation".to_string()))?;
-                let callback_id = search_params.callback_id
+                let embedding = op.embedding.ok_or_else(|| {
+                    ApiError::BadRequest("Embedding required for search operation".to_string())
+                })?;
+                let search_params = op.search_params.ok_or_else(|| {
+                    ApiError::BadRequest(
+                        "Search parameters required for search operation".to_string(),
+                    )
+                })?;
+                let callback_id = search_params
+                    .callback_id
                     .map(|id| Uuid::parse_str(&id))
                     .transpose()
                     .map_err(|_| ApiError::BadRequest("Invalid callback ID format".to_string()))?
                     .unwrap_or_else(Uuid::new_v4);
-                
+
                 BatchOperation::Search {
                     query_embedding: embedding,
                     k: search_params.k,
                     callback_id,
                 }
-            },
-            _ => return Err(ApiError::BadRequest(format!("Unknown operation type: {}", op.operation_type))),
+            }
+            _ => {
+                return Err(ApiError::BadRequest(format!(
+                    "Unknown operation type: {}",
+                    op.operation_type
+                )));
+            }
         };
         batch_operations.push(operation);
     }
@@ -469,7 +482,7 @@ pub async fn get_batch_status(
 ) -> ApiResult<Json<BatchStatusResponse>> {
     // Get statistics from the batch processor
     // This would need to be integrated with the actual BatchProcessor in AppState
-    
+
     // Placeholder implementation
     Ok(Json(BatchStatusResponse {
         total_operations: 0,

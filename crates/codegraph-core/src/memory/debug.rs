@@ -51,4 +51,3 @@ impl MemoryTracker {
 }
 
 pub static MEMORY_TRACKER: Lazy<MemoryTracker> = Lazy::new(|| MemoryTracker::default());
-

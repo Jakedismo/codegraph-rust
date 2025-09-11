@@ -45,12 +45,12 @@ async fn test_cache_metrics() {
 
 mod integration_tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_rag_integration() {
         // TODO: Test integration with RAG engineer
     }
-    
+
     #[tokio::test]
     async fn test_ml_pipeline_integration() {
         // TODO: Test integration with ML pipeline

@@ -9,7 +9,7 @@ use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
 /// Transaction isolation levels for vector operations
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum IsolationLevel {
     /// Read uncommitted - fastest but least consistent
     ReadUncommitted,
@@ -22,7 +22,7 @@ pub enum IsolationLevel {
 }
 
 /// Transaction state
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransactionState {
     Active,
     Preparing,
@@ -53,9 +53,9 @@ pub enum VectorOperation {
 impl VectorOperation {
     pub fn node_id(&self) -> NodeId {
         match self {
-            Self::Insert { node_id, .. } |
-            Self::Update { node_id, .. } |
-            Self::Delete { node_id, .. } => *node_id,
+            Self::Insert { node_id, .. }
+            | Self::Update { node_id, .. }
+            | Self::Delete { node_id, .. } => *node_id,
         }
     }
 
@@ -66,19 +66,19 @@ impl VectorOperation {
                 node_id: *node_id,
                 vector: None,
             }),
-            Self::Update { node_id, old_vector, .. } => {
-                old_vector.as_ref().map(|old| Self::Update {
-                    node_id: *node_id,
-                    old_vector: None,
-                    new_vector: old.clone(),
-                })
-            },
-            Self::Delete { node_id, vector } => {
-                vector.as_ref().map(|vec| Self::Insert {
-                    node_id: *node_id,
-                    vector: vec.clone(),
-                })
-            },
+            Self::Update {
+                node_id,
+                old_vector,
+                ..
+            } => old_vector.as_ref().map(|old| Self::Update {
+                node_id: *node_id,
+                old_vector: None,
+                new_vector: old.clone(),
+            }),
+            Self::Delete { node_id, vector } => vector.as_ref().map(|vec| Self::Insert {
+                node_id: *node_id,
+                vector: vec.clone(),
+            }),
         }
     }
 }
@@ -148,12 +148,12 @@ impl Transaction {
             IsolationLevel::ReadUncommitted => false,
             IsolationLevel::ReadCommitted => false,
             IsolationLevel::RepeatableRead => {
-                !self.read_set.is_disjoint(&other.write_set) ||
-                !other.read_set.is_disjoint(&self.write_set)
+                !self.read_set.is_disjoint(&other.write_set)
+                    || !other.read_set.is_disjoint(&self.write_set)
             }
             IsolationLevel::Serializable => {
-                !self.read_set.is_disjoint(&other.write_set) ||
-                !other.read_set.is_disjoint(&self.write_set)
+                !self.read_set.is_disjoint(&other.write_set)
+                    || !other.read_set.is_disjoint(&self.write_set)
             }
         }
     }
@@ -173,9 +173,12 @@ impl LockMode {
     pub fn is_compatible(self, other: LockMode) -> bool {
         use LockMode::*;
         match (self, other) {
-            (Shared, Shared) | (Shared, IntentionShared) | (IntentionShared, Shared) |
-            (IntentionShared, IntentionShared) | (IntentionShared, IntentionExclusive) |
-            (IntentionExclusive, IntentionShared) => true,
+            (Shared, Shared)
+            | (Shared, IntentionShared)
+            | (IntentionShared, Shared)
+            | (IntentionShared, IntentionShared)
+            | (IntentionShared, IntentionExclusive)
+            | (IntentionExclusive, IntentionShared) => true,
             _ => false,
         }
     }
@@ -184,7 +187,9 @@ impl LockMode {
         use LockMode::*;
         match (self, other) {
             (Exclusive, _) => true,
-            (SharedIntentionExclusive, Shared) | (SharedIntentionExclusive, IntentionShared) => true,
+            (SharedIntentionExclusive, Shared) | (SharedIntentionExclusive, IntentionShared) => {
+                true
+            }
             (IntentionExclusive, IntentionShared) => true,
             _ => false,
         }
@@ -210,6 +215,7 @@ pub struct ConsistencyCheckpoint {
 }
 
 /// Consistency manager for vector storage
+#[derive(Clone)]
 pub struct ConsistencyManager {
     /// Active transactions
     active_transactions: Arc<RwLock<HashMap<u64, Transaction>>>,
@@ -273,7 +279,7 @@ pub struct TransactionLogEntry {
 impl ConsistencyManager {
     pub fn new(config: ConsistencyConfig) -> Self {
         let (commit_sender, commit_receiver) = watch::channel(0);
-        
+
         let manager = Self {
             active_transactions: Arc::new(RwLock::new(HashMap::new())),
             lock_table: Arc::new(RwLock::new(HashMap::new())),
@@ -306,60 +312,71 @@ impl ConsistencyManager {
         };
 
         let mut active_txns = self.active_transactions.write();
-        
+
         // Check transaction limit
         if active_txns.len() >= self.config.max_active_transactions {
             return Err(CodeGraphError::Vector(
-                "Maximum number of active transactions reached".to_string()
+                "Maximum number of active transactions reached".to_string(),
             ));
         }
 
         let transaction = Transaction::new(transaction_id, isolation_level);
         active_txns.insert(transaction_id, transaction);
 
-        debug!("Started transaction {} with isolation level {:?}", transaction_id, isolation_level);
+        debug!(
+            "Started transaction {} with isolation level {:?}",
+            transaction_id, isolation_level
+        );
         Ok(transaction_id)
     }
 
     /// Add an operation to a transaction
-    pub fn add_operation(
-        &self, 
-        transaction_id: u64, 
-        operation: VectorOperation
-    ) -> Result<()> {
+    pub fn add_operation(&self, transaction_id: u64, operation: VectorOperation) -> Result<()> {
         let mut active_txns = self.active_transactions.write();
-        
-        let transaction = active_txns.get_mut(&transaction_id)
+
+        let transaction = active_txns
+            .get_mut(&transaction_id)
             .ok_or_else(|| CodeGraphError::Vector("Transaction not found".to_string()))?;
 
         if transaction.state != TransactionState::Active {
-            return Err(CodeGraphError::Vector("Transaction is not active".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Transaction is not active".to_string(),
+            ));
         }
 
         if transaction.is_expired() {
             transaction.state = TransactionState::Failed;
-            return Err(CodeGraphError::Vector("Transaction has expired".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Transaction has expired".to_string(),
+            ));
         }
 
         // Check for conflicts with other transactions
         let transaction_clone = transaction.clone();
         drop(transaction); // Release mutable borrow
-        
-        let conflicts = active_txns.values()
+
+        let conflicts = active_txns
+            .values()
             .filter(|other| other.id != transaction_id && other.conflicts_with(&transaction_clone))
             .count();
-        
-        let transaction = active_txns.get_mut(&transaction_id)
+
+        let transaction = active_txns
+            .get_mut(&transaction_id)
             .ok_or_else(|| CodeGraphError::Vector("Transaction not found".to_string()))?;
 
         if conflicts > 0 {
             match transaction.isolation_level {
                 IsolationLevel::Serializable => {
-                    return Err(CodeGraphError::Vector("Serialization conflict detected".to_string()));
+                    return Err(CodeGraphError::Vector(
+                        "Serialization conflict detected".to_string(),
+                    ));
                 }
                 _ => {
                     // For lower isolation levels, we might wait or proceed
-                    warn!("Conflict detected in transaction {} but proceeding due to isolation level", transaction_id);
+                    warn!(
+                        "Conflict detected in transaction {} but proceeding due to isolation level",
+                        transaction_id
+                    );
                 }
             }
         }
@@ -370,7 +387,10 @@ impl ConsistencyManager {
         let log_entry = TransactionLogEntry {
             transaction_id,
             operation,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             state: TransactionState::Active,
         };
 
@@ -381,10 +401,10 @@ impl ConsistencyManager {
 
     /// Acquire a lock on a node
     pub async fn acquire_lock(
-        &self, 
-        transaction_id: u64, 
-        node_id: NodeId, 
-        mode: LockMode
+        &self,
+        transaction_id: u64,
+        node_id: NodeId,
+        mode: LockMode,
     ) -> Result<()> {
         let timeout = tokio::time::sleep(self.config.lock_timeout);
         tokio::pin!(timeout);
@@ -394,7 +414,7 @@ impl ConsistencyManager {
                 _ = &mut timeout => {
                     return Err(CodeGraphError::Vector("Lock acquisition timeout".to_string()));
                 }
-                result = self.try_acquire_lock(transaction_id, node_id, mode) => {
+                result = async { self.try_acquire_lock(transaction_id, node_id, mode) } => {
                     match result {
                         Ok(()) => return Ok(()),
                         Err(_) => {
@@ -407,25 +427,24 @@ impl ConsistencyManager {
         }
     }
 
-    fn try_acquire_lock(
-        &self, 
-        transaction_id: u64, 
-        node_id: NodeId, 
-        mode: LockMode
-    ) -> Result<()> {
+    fn try_acquire_lock(&self, transaction_id: u64, node_id: NodeId, mode: LockMode) -> Result<()> {
         let mut lock_table = self.lock_table.write();
         let locks = lock_table.entry(node_id).or_insert_with(Vec::new);
 
         // Check if any existing locks are incompatible
         for existing_lock in locks.iter() {
-            if existing_lock.transaction_id != transaction_id && 
-               !mode.is_compatible(existing_lock.mode) {
+            if existing_lock.transaction_id != transaction_id
+                && !mode.is_compatible(existing_lock.mode)
+            {
                 return Err(CodeGraphError::Vector("Lock conflict".to_string()));
             }
         }
 
         // Check if we already have a compatible or stronger lock
-        if let Some(existing) = locks.iter_mut().find(|l| l.transaction_id == transaction_id) {
+        if let Some(existing) = locks
+            .iter_mut()
+            .find(|l| l.transaction_id == transaction_id)
+        {
             if mode.is_stronger_than(existing.mode) {
                 existing.mode = mode;
                 existing.acquired_at = SystemTime::now();
@@ -439,14 +458,17 @@ impl ConsistencyManager {
             });
         }
 
-        debug!("Acquired {:?} lock on node {} for transaction {}", mode, node_id, transaction_id);
+        debug!(
+            "Acquired {:?} lock on node {} for transaction {}",
+            mode, node_id, transaction_id
+        );
         Ok(())
     }
 
     /// Release all locks held by a transaction
     pub fn release_locks(&self, transaction_id: u64) {
         let mut lock_table = self.lock_table.write();
-        
+
         for locks in lock_table.values_mut() {
             locks.retain(|lock| lock.transaction_id != transaction_id);
         }
@@ -460,24 +482,29 @@ impl ConsistencyManager {
     /// Prepare a transaction for two-phase commit
     pub fn prepare_transaction(&self, transaction_id: u64) -> Result<()> {
         let mut active_txns = self.active_transactions.write();
-        
-        let transaction = active_txns.get_mut(&transaction_id)
+
+        let transaction = active_txns
+            .get_mut(&transaction_id)
             .ok_or_else(|| CodeGraphError::Vector("Transaction not found".to_string()))?;
 
         if transaction.state != TransactionState::Active {
-            return Err(CodeGraphError::Vector("Transaction is not active".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Transaction is not active".to_string(),
+            ));
         }
 
         if transaction.is_expired() {
             transaction.state = TransactionState::Failed;
-            return Err(CodeGraphError::Vector("Transaction has expired".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Transaction has expired".to_string(),
+            ));
         }
 
         transaction.state = TransactionState::Preparing;
 
         // Validate transaction can be committed
         let validation_result = self.validate_transaction(transaction);
-        
+
         if validation_result.is_ok() {
             transaction.state = TransactionState::Prepared;
             info!("Prepared transaction {} for commit", transaction_id);
@@ -492,12 +519,15 @@ impl ConsistencyManager {
     /// Commit a prepared transaction
     pub fn commit_transaction(&self, transaction_id: u64) -> Result<()> {
         let mut active_txns = self.active_transactions.write();
-        
-        let mut transaction = active_txns.remove(&transaction_id)
+
+        let mut transaction = active_txns
+            .remove(&transaction_id)
             .ok_or_else(|| CodeGraphError::Vector("Transaction not found".to_string()))?;
 
         if transaction.state != TransactionState::Prepared {
-            return Err(CodeGraphError::Vector("Transaction is not prepared".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Transaction is not prepared".to_string(),
+            ));
         }
 
         transaction.state = TransactionState::Committed;
@@ -512,11 +542,17 @@ impl ConsistencyManager {
         // Log commit
         let log_entry = TransactionLogEntry {
             transaction_id,
-            operation: VectorOperation::Insert { node_id: 0, vector: vec![] }, // Dummy operation
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            operation: VectorOperation::Insert {
+                node_id: NodeId::nil(),
+                vector: vec![],
+            }, // Dummy operation
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             state: TransactionState::Committed,
         };
-        
+
         self.transaction_log.lock().push(log_entry);
 
         // Release locks
@@ -532,14 +568,16 @@ impl ConsistencyManager {
     /// Abort a transaction
     pub fn abort_transaction(&self, transaction_id: u64) -> Result<Vec<VectorOperation>> {
         let mut active_txns = self.active_transactions.write();
-        
-        let mut transaction = active_txns.remove(&transaction_id)
+
+        let mut transaction = active_txns
+            .remove(&transaction_id)
             .ok_or_else(|| CodeGraphError::Vector("Transaction not found".to_string()))?;
 
         transaction.state = TransactionState::Aborted;
 
         // Generate rollback operations
-        let rollback_operations: Vec<VectorOperation> = transaction.operations
+        let rollback_operations: Vec<VectorOperation> = transaction
+            .operations
             .iter()
             .rev() // Reverse order for rollback
             .filter_map(|op| op.inverse())
@@ -548,11 +586,17 @@ impl ConsistencyManager {
         // Log abort
         let log_entry = TransactionLogEntry {
             transaction_id,
-            operation: VectorOperation::Delete { node_id: 0, vector: None }, // Dummy operation
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            operation: VectorOperation::Delete {
+                node_id: NodeId::nil(),
+                vector: None,
+            }, // Dummy operation
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             state: TransactionState::Aborted,
         };
-        
+
         self.transaction_log.lock().push(log_entry);
 
         // Release locks
@@ -566,7 +610,9 @@ impl ConsistencyManager {
     fn validate_transaction(&self, transaction: &Transaction) -> Result<()> {
         // Check for expired transaction
         if transaction.is_expired() {
-            return Err(CodeGraphError::Vector("Transaction has expired".to_string()));
+            return Err(CodeGraphError::Vector(
+                "Transaction has expired".to_string(),
+            ));
         }
 
         // Check for conflicts based on isolation level
@@ -574,12 +620,15 @@ impl ConsistencyManager {
             IsolationLevel::Serializable => {
                 // Strict validation - check all read/write sets
                 let active_txns = self.active_transactions.read();
-                let conflicts = active_txns.values()
+                let conflicts = active_txns
+                    .values()
                     .filter(|other| other.id != transaction.id && transaction.conflicts_with(other))
                     .count();
-                
+
                 if conflicts > 0 {
-                    return Err(CodeGraphError::Vector("Serialization conflict detected".to_string()));
+                    return Err(CodeGraphError::Vector(
+                        "Serialization conflict detected".to_string(),
+                    ));
                 }
             }
             _ => {
@@ -591,7 +640,12 @@ impl ConsistencyManager {
     }
 
     /// Check if a node is visible to a transaction
-    pub fn is_visible(&self, node_id: NodeId, transaction_id: u64, committed_by: Option<u64>) -> bool {
+    pub fn is_visible(
+        &self,
+        node_id: NodeId,
+        transaction_id: u64,
+        committed_by: Option<u64>,
+    ) -> bool {
         let active_txns = self.active_transactions.read();
         let transaction = match active_txns.get(&transaction_id) {
             Some(txn) => txn,
@@ -645,7 +699,7 @@ impl ConsistencyManager {
         {
             let mut checkpoints = self.checkpoints.write();
             checkpoints.push(checkpoint.clone());
-            
+
             // Keep only recent checkpoints
             checkpoints.sort_by_key(|cp| cp.timestamp);
             let checkpoint_count = checkpoints.len();
@@ -672,13 +726,13 @@ impl ConsistencyManager {
 
         tokio::spawn(async move {
             let mut interval_timer = tokio::time::interval(interval);
-            
+
             loop {
                 interval_timer.tick().await;
-                
+
                 // Simple deadlock detection using wait-for graph
                 let deadlocks = Self::detect_deadlocks(&active_transactions, &lock_table);
-                
+
                 if !deadlocks.is_empty() {
                     warn!("Detected {} deadlocks", deadlocks.len());
                     // In a real implementation, we would resolve deadlocks
@@ -691,11 +745,11 @@ impl ConsistencyManager {
     /// Detect deadlocks using wait-for graph
     fn detect_deadlocks(
         active_transactions: &Arc<RwLock<HashMap<u64, Transaction>>>,
-        lock_table: &Arc<RwLock<HashMap<NodeId, Vec<Lock>>>>
+        lock_table: &Arc<RwLock<HashMap<NodeId, Vec<Lock>>>>,
     ) -> Vec<Vec<u64>> {
         let _active_txns = active_transactions.read();
         let _locks = lock_table.read();
-        
+
         // Simplified deadlock detection - in production this would
         // build a proper wait-for graph and detect cycles
         Vec::new()
@@ -703,19 +757,16 @@ impl ConsistencyManager {
 
     /// Start checkpoint manager task
     fn start_checkpoint_manager(&self) {
-        let consistency_manager = Arc::new(std::ptr::NonNull::from(self));
-        let interval = self.config.checkpoint_interval;
-        let max_log_entries = self.config.max_log_entries;
+        let manager = self.clone();
+        let interval = manager.config.checkpoint_interval;
+        let max_log_entries = manager.config.max_log_entries;
 
         tokio::spawn(async move {
             let mut interval_timer = tokio::time::interval(interval);
-            
+
             loop {
                 interval_timer.tick().await;
-                
-                // Safe to dereference as this task is owned by the manager
-                let manager = unsafe { consistency_manager.as_ref() };
-                
+
                 let should_checkpoint = {
                     let log = manager.transaction_log.lock();
                     log.len() >= max_log_entries
@@ -741,13 +792,14 @@ impl ConsistencyManager {
 
         tokio::spawn(async move {
             let mut interval_timer = tokio::time::interval(cleanup_interval);
-            
+
             loop {
                 interval_timer.tick().await;
-                
+
                 let expired_txns: Vec<u64> = {
                     let active_txns = active_transactions.read();
-                    active_txns.values()
+                    active_txns
+                        .values()
                         .filter(|txn| txn.is_expired())
                         .map(|txn| txn.id)
                         .collect()
@@ -755,7 +807,7 @@ impl ConsistencyManager {
 
                 if !expired_txns.is_empty() {
                     warn!("Cleaning up {} expired transactions", expired_txns.len());
-                    
+
                     let mut active_txns = active_transactions.write();
                     for txn_id in expired_txns {
                         if let Some(mut txn) = active_txns.remove(&txn_id) {
@@ -814,12 +866,15 @@ mod tests {
         let manager = ConsistencyManager::new(config);
 
         // Begin transaction
-        let txn_id = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+        let txn_id = manager
+            .begin_transaction(IsolationLevel::ReadCommitted)
+            .unwrap();
         assert!(txn_id > 0);
 
         // Add operations
+        let nid = NodeId::new_v4();
         let operation = VectorOperation::Insert {
-            node_id: 1,
+            node_id: nid,
             vector: vec![1.0, 2.0, 3.0],
         };
         manager.add_operation(txn_id, operation).unwrap();
@@ -839,17 +894,26 @@ mod tests {
         let config = ConsistencyConfig::default();
         let manager = ConsistencyManager::new(config);
 
-        let txn_id = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+        let txn_id = manager
+            .begin_transaction(IsolationLevel::ReadCommitted)
+            .unwrap();
 
         // Acquire shared lock
-        manager.acquire_lock(txn_id, 1, LockMode::Shared).await.unwrap();
+        let nid = NodeId::new_v4();
+        manager
+            .acquire_lock(txn_id, nid, LockMode::Shared)
+            .await
+            .unwrap();
 
         // Try to acquire incompatible lock from different transaction
-        let txn_id2 = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+        let txn_id2 = manager
+            .begin_transaction(IsolationLevel::ReadCommitted)
+            .unwrap();
         let result = tokio::time::timeout(
             Duration::from_millis(100),
-            manager.acquire_lock(txn_id2, 1, LockMode::Exclusive)
-        ).await;
+            manager.acquire_lock(txn_id2, nid, LockMode::Exclusive),
+        )
+        .await;
 
         assert!(result.is_err()); // Should timeout due to lock conflict
     }
@@ -859,10 +923,13 @@ mod tests {
         let config = ConsistencyConfig::default();
         let manager = ConsistencyManager::new(config);
 
-        let txn_id = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+        let txn_id = manager
+            .begin_transaction(IsolationLevel::ReadCommitted)
+            .unwrap();
 
+        let nid = NodeId::new_v4();
         let operation = VectorOperation::Insert {
-            node_id: 1,
+            node_id: nid,
             vector: vec![1.0, 2.0, 3.0],
         };
         manager.add_operation(txn_id, operation).unwrap();
@@ -873,7 +940,7 @@ mod tests {
 
         match &rollback_ops[0] {
             VectorOperation::Delete { node_id, .. } => {
-                assert_eq!(*node_id, 1);
+                assert_eq!(*node_id, nid);
             }
             _ => panic!("Expected delete operation for rollback"),
         }

@@ -8,14 +8,13 @@
 //! - `compact_map`: HashMap alternative using hashbrown + Fx hasher
 
 pub mod arena;
+pub mod compact_map;
+pub mod debug;
 pub mod string_interner;
 pub mod temp_bump;
-pub mod debug;
-pub mod compact_map;
 
 pub use arena::*;
+pub use compact_map::*;
+pub use debug::*;
 pub use string_interner::*;
 pub use temp_bump::*;
-pub use debug::*;
-pub use compact_map::*;
-

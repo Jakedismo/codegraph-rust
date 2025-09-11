@@ -39,19 +39,11 @@ pub enum InvalidationEvent {
         updated_at: SystemTime,
     },
     /// Dependency changed
-    DependencyChanged {
-        dependency: String,
-        version: String,
-    },
+    DependencyChanged { dependency: String, version: String },
     /// Manual invalidation
-    Manual {
-        keys: Vec<String>,
-        reason: String,
-    },
+    Manual { keys: Vec<String>, reason: String },
     /// Time-based expiration
-    Expired {
-        expired_at: SystemTime,
-    },
+    Expired { expired_at: SystemTime },
 }
 
 /// Cache invalidation manager
@@ -121,19 +113,28 @@ impl InvalidationManager {
     /// Register a file dependency for cache invalidation
     pub async fn register_file_dependency(&self, file_path: String, cache_key: String) {
         let mut mappings = self.file_mappings.write().await;
-        mappings.entry(file_path).or_insert_with(HashSet::new).insert(cache_key);
+        mappings
+            .entry(file_path)
+            .or_insert_with(HashSet::new)
+            .insert(cache_key);
     }
 
     /// Register a node dependency for cache invalidation
     pub async fn register_node_dependency(&self, node_id: NodeId, cache_key: String) {
         let mut mappings = self.node_mappings.write().await;
-        mappings.entry(node_id).or_insert_with(HashSet::new).insert(cache_key);
+        mappings
+            .entry(node_id)
+            .or_insert_with(HashSet::new)
+            .insert(cache_key);
     }
 
     /// Register a dependency for cache invalidation
     pub async fn register_dependency(&self, dependency: String, cache_key: String) {
         let mut mappings = self.dependency_mappings.write().await;
-        mappings.entry(dependency).or_insert_with(HashSet::new).insert(cache_key);
+        mappings
+            .entry(dependency)
+            .or_insert_with(HashSet::new)
+            .insert(cache_key);
     }
 
     /// Add an invalidation event listener
@@ -144,7 +145,8 @@ impl InvalidationManager {
     /// Handle file change event
     pub async fn handle_file_change(&self, file_path: String) -> Result<Vec<String>> {
         let mappings = self.file_mappings.read().await;
-        let keys_to_invalidate = mappings.get(&file_path)
+        let keys_to_invalidate = mappings
+            .get(&file_path)
             .map(|keys| keys.iter().cloned().collect())
             .unwrap_or_else(Vec::new);
 
@@ -162,7 +164,8 @@ impl InvalidationManager {
     /// Handle node update event
     pub async fn handle_node_update(&self, node_id: NodeId) -> Result<Vec<String>> {
         let mappings = self.node_mappings.read().await;
-        let keys_to_invalidate = mappings.get(&node_id)
+        let keys_to_invalidate = mappings
+            .get(&node_id)
             .map(|keys| keys.iter().cloned().collect())
             .unwrap_or_else(Vec::new);
 
@@ -178,9 +181,14 @@ impl InvalidationManager {
     }
 
     /// Handle dependency change event
-    pub async fn handle_dependency_change(&self, dependency: String, version: String) -> Result<Vec<String>> {
+    pub async fn handle_dependency_change(
+        &self,
+        dependency: String,
+        version: String,
+    ) -> Result<Vec<String>> {
         let mappings = self.dependency_mappings.read().await;
-        let keys_to_invalidate = mappings.get(&dependency)
+        let keys_to_invalidate = mappings
+            .get(&dependency)
             .map(|keys| keys.iter().cloned().collect())
             .unwrap_or_else(Vec::new);
 
@@ -202,21 +210,24 @@ impl InvalidationManager {
     }
 
     /// Cleanup expired entries based on TTL
-    pub async fn cleanup_expired_entries<T>(&self, cache: &mut dyn AiCache<String, T>) -> Result<usize> 
+    pub async fn cleanup_expired_entries<T>(
+        &self,
+        cache: &mut dyn AiCache<String, T>,
+    ) -> Result<usize>
     where
         T: Clone + Send + Sync,
     {
         let mut removed_count = 0;
-        
+
         // This is a simplified implementation
         // In a real implementation, we'd need access to cache internals
         // or the cache would need to provide an expiration cleanup method
-        
+
         debug!("Starting expired entry cleanup");
-        
+
         // For now, we'll just call the cache's stats to trigger any internal cleanup
         let _stats = cache.stats().await;
-        
+
         info!("Cleanup completed, {} entries removed", removed_count);
         Ok(removed_count)
     }
@@ -263,9 +274,12 @@ impl InvalidationManager {
             file_mappings_count: file_mappings.len(),
             node_mappings_count: node_mappings.len(),
             dependency_mappings_count: dependency_mappings.len(),
-            total_tracked_keys: file_mappings.values().map(|keys| keys.len()).sum::<usize>() +
-                              node_mappings.values().map(|keys| keys.len()).sum::<usize>() +
-                              dependency_mappings.values().map(|keys| keys.len()).sum::<usize>(),
+            total_tracked_keys: file_mappings.values().map(|keys| keys.len()).sum::<usize>()
+                + node_mappings.values().map(|keys| keys.len()).sum::<usize>()
+                + dependency_mappings
+                    .values()
+                    .map(|keys| keys.len())
+                    .sum::<usize>(),
         }
     }
 }
@@ -286,17 +300,39 @@ pub struct LoggingInvalidationListener;
 impl InvalidationListener for LoggingInvalidationListener {
     async fn on_invalidation(&self, event: InvalidationEvent) -> Result<()> {
         match event {
-            InvalidationEvent::FileChanged { file_path, modified_at } => {
-                info!("Cache invalidation: File '{}' changed at {:?}", file_path, modified_at);
+            InvalidationEvent::FileChanged {
+                file_path,
+                modified_at,
+            } => {
+                info!(
+                    "Cache invalidation: File '{}' changed at {:?}",
+                    file_path, modified_at
+                );
             }
-            InvalidationEvent::NodeUpdated { node_id, updated_at } => {
-                info!("Cache invalidation: Node '{}' updated at {:?}", node_id, updated_at);
+            InvalidationEvent::NodeUpdated {
+                node_id,
+                updated_at,
+            } => {
+                info!(
+                    "Cache invalidation: Node '{}' updated at {:?}",
+                    node_id, updated_at
+                );
             }
-            InvalidationEvent::DependencyChanged { dependency, version } => {
-                info!("Cache invalidation: Dependency '{}' changed to version '{}'", dependency, version);
+            InvalidationEvent::DependencyChanged {
+                dependency,
+                version,
+            } => {
+                info!(
+                    "Cache invalidation: Dependency '{}' changed to version '{}'",
+                    dependency, version
+                );
             }
             InvalidationEvent::Manual { keys, reason } => {
-                info!("Cache invalidation: Manual invalidation of {} keys, reason: {}", keys.len(), reason);
+                info!(
+                    "Cache invalidation: Manual invalidation of {} keys, reason: {}",
+                    keys.len(),
+                    reason
+                );
             }
             InvalidationEvent::Expired { expired_at } => {
                 debug!("Cache invalidation: Entries expired at {:?}", expired_at);
@@ -307,14 +343,14 @@ impl InvalidationListener for LoggingInvalidationListener {
 }
 
 /// Cache-aware invalidation listener that performs actual cache operations
-pub struct CacheInvalidationListener<T> 
+pub struct CacheInvalidationListener<T>
 where
     T: Clone + Send + Sync,
 {
     cache: Arc<RwLock<dyn AiCache<String, T>>>,
 }
 
-impl<T> CacheInvalidationListener<T> 
+impl<T> CacheInvalidationListener<T>
 where
     T: Clone + Send + Sync,
 {
@@ -376,12 +412,14 @@ mod tests {
     #[tokio::test]
     async fn test_file_dependency_tracking() {
         let manager = InvalidationManager::new(vec![InvalidationStrategy::ContentBased]);
-        
+
         let file_path = "src/test.rs".to_string();
         let cache_key = "test_key".to_string();
-        
-        manager.register_file_dependency(file_path.clone(), cache_key.clone()).await;
-        
+
+        manager
+            .register_file_dependency(file_path.clone(), cache_key.clone())
+            .await;
+
         let keys = manager.handle_file_change(file_path).await.unwrap();
         assert_eq!(keys, vec![cache_key]);
     }
@@ -389,12 +427,14 @@ mod tests {
     #[tokio::test]
     async fn test_node_dependency_tracking() {
         let manager = InvalidationManager::new(vec![InvalidationStrategy::DependencyBased]);
-        
+
         let node_id = NodeId::new_v4();
         let cache_key = "test_key".to_string();
-        
-        manager.register_node_dependency(node_id, cache_key.clone()).await;
-        
+
+        manager
+            .register_node_dependency(node_id, cache_key.clone())
+            .await;
+
         let keys = manager.handle_node_update(node_id).await.unwrap();
         assert_eq!(keys, vec![cache_key]);
     }
@@ -402,29 +442,34 @@ mod tests {
     #[tokio::test]
     async fn test_event_listener_notification() {
         let mut manager = InvalidationManager::new(vec![InvalidationStrategy::Manual]);
-        
+
         let (listener, call_count) = TestListener::new();
         manager.add_listener(Box::new(listener));
-        
-        manager.invalidate_keys(vec!["key1".to_string()], "test reason".to_string()).await.unwrap();
-        
+
+        manager
+            .invalidate_keys(vec!["key1".to_string()], "test reason".to_string())
+            .await
+            .unwrap();
+
         assert_eq!(call_count.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
     async fn test_mapping_cleanup() {
         let manager = InvalidationManager::new(vec![]);
-        
+
         let file_path = "test.rs";
         let cache_key = "test_key";
-        
-        manager.register_file_dependency(file_path.to_string(), cache_key.to_string()).await;
-        
+
+        manager
+            .register_file_dependency(file_path.to_string(), cache_key.to_string())
+            .await;
+
         let stats_before = manager.get_mapping_stats().await;
         assert_eq!(stats_before.file_mappings_count, 1);
-        
+
         manager.remove_file_mapping(file_path, cache_key).await;
-        
+
         let stats_after = manager.get_mapping_stats().await;
         assert_eq!(stats_after.file_mappings_count, 0);
     }

@@ -1,13 +1,10 @@
 use crate::{AstToGraphConverter, ConversionPipeline, ZeroCopyAstProcessor};
-use codegraph_core::{Language, NodeType, EdgeType};
-use tree_sitter::Parser;
+use codegraph_core::{EdgeType, Language, NodeType};
 use std::path::PathBuf;
 use tempfile::TempDir;
+use tree_sitter::Parser;
 
-mod conversion_tests;
-mod memory_tests;
-mod pipeline_tests;
-mod cross_file_tests;
+// Additional test modules can be added here as needed
 
 #[cfg(test)]
 mod integration_tests {
@@ -51,20 +48,22 @@ pub fn process_config(mut config: Config) -> HashMap<String, i32> {
         "#;
 
         let mut parser = Parser::new();
-        parser.set_language(tree_sitter_rust::language().into()).unwrap();
-        
+        parser
+            .set_language(tree_sitter_rust::language().into())
+            .unwrap();
+
         if let Some(tree) = parser.parse(rust_code, None) {
             let mut converter = AstToGraphConverter::new(
                 Language::Rust,
                 "test.rs".to_string(),
                 rust_code.to_string(),
             );
-            
+
             converter.convert(tree.root_node()).unwrap();
-            
+
             let nodes = converter.get_nodes();
             let edges = converter.get_edges();
-            
+
             // Verify we extracted the correct entities
             assert!(nodes.iter().any(|n| n.name == "Config"));
             assert!(nodes.iter().any(|n| n.name == "new"));
@@ -72,22 +71,25 @@ pub fn process_config(mut config: Config) -> HashMap<String, i32> {
             assert!(nodes.iter().any(|n| n.name == "get_value"));
             assert!(nodes.iter().any(|n| n.name == "create_config"));
             assert!(nodes.iter().any(|n| n.name == "process_config"));
-            
+
             // Verify we have relationships
             assert!(!edges.is_empty());
-            
+
             // Verify relationship types
             assert!(edges.iter().any(|e| matches!(e.edge_type, EdgeType::Calls)));
             assert!(edges.iter().any(|e| matches!(e.edge_type, EdgeType::Uses)));
-            
+
             println!("Extracted {} nodes and {} edges", nodes.len(), edges.len());
-            
+
             for node in &nodes {
                 println!("Node: {} ({:?})", node.name, node.node_type);
             }
-            
+
             for edge in &edges {
-                println!("Edge: {:?} -> {:?} ({:?})", edge.from, edge.to, edge.edge_type);
+                println!(
+                    "Edge: {:?} -> {:?} ({:?})",
+                    edge.from, edge.to, edge.edge_type
+                );
             }
         }
     }
@@ -124,29 +126,49 @@ export default User;
         "#;
 
         let mut parser = Parser::new();
-        parser.set_language(tree_sitter_typescript::language_typescript().into()).unwrap();
-        
+        parser
+            .set_language(tree_sitter_typescript::language_typescript().into())
+            .unwrap();
+
         if let Some(tree) = parser.parse(ts_code, None) {
             let mut converter = AstToGraphConverter::new(
                 Language::TypeScript,
                 "User.tsx".to_string(),
                 ts_code.to_string(),
             );
-            
+
             converter.convert(tree.root_node()).unwrap();
-            
+
             let nodes = converter.get_nodes();
             let edges = converter.get_edges();
-            
+
             // Verify TypeScript-specific entities
-            assert!(nodes.iter().any(|n| n.name == "UserProps" && matches!(n.node_type, Some(NodeType::Interface))));
-            assert!(nodes.iter().any(|n| n.name == "User" && matches!(n.node_type, Some(NodeType::Class))));
-            assert!(nodes.iter().any(|n| n.name == "createUser" && matches!(n.node_type, Some(NodeType::Function))));
-            
+            assert!(
+                nodes
+                    .iter()
+                    .any(|n| n.name == "UserProps"
+                        && matches!(n.node_type, Some(NodeType::Interface)))
+            );
+            assert!(nodes
+                .iter()
+                .any(|n| n.name == "User" && matches!(n.node_type, Some(NodeType::Class))));
+            assert!(
+                nodes
+                    .iter()
+                    .any(|n| n.name == "createUser"
+                        && matches!(n.node_type, Some(NodeType::Function)))
+            );
+
             // Verify inheritance relationship
-            assert!(edges.iter().any(|e| matches!(e.edge_type, EdgeType::Extends)));
-            
-            println!("TypeScript: Extracted {} nodes and {} edges", nodes.len(), edges.len());
+            assert!(edges
+                .iter()
+                .any(|e| matches!(e.edge_type, EdgeType::Extends)));
+
+            println!(
+                "TypeScript: Extracted {} nodes and {} edges",
+                nodes.len(),
+                edges.len()
+            );
         }
     }
 
@@ -183,87 +205,130 @@ def save_to_file(processor: DataProcessor, filename: str) -> None:
         "#;
 
         let mut parser = Parser::new();
-        parser.set_language(tree_sitter_python::language().into()).unwrap();
-        
+        parser
+            .set_language(tree_sitter_python::language().into())
+            .unwrap();
+
         if let Some(tree) = parser.parse(py_code, None) {
             let mut converter = AstToGraphConverter::new(
                 Language::Python,
                 "processor.py".to_string(),
                 py_code.to_string(),
             );
-            
+
             converter.convert(tree.root_node()).unwrap();
-            
+
             let nodes = converter.get_nodes();
             let edges = converter.get_edges();
-            
+
             // Verify Python-specific entities
-            assert!(nodes.iter().any(|n| n.name == "DataProcessor" && matches!(n.node_type, Some(NodeType::Class))));
-            assert!(nodes.iter().any(|n| n.name == "create_processor" && matches!(n.node_type, Some(NodeType::Function))));
-            assert!(nodes.iter().any(|n| n.name == "save_to_file" && matches!(n.node_type, Some(NodeType::Function))));
-            
+            assert!(
+                nodes
+                    .iter()
+                    .any(|n| n.name == "DataProcessor"
+                        && matches!(n.node_type, Some(NodeType::Class)))
+            );
+            assert!(nodes
+                .iter()
+                .any(|n| n.name == "create_processor"
+                    && matches!(n.node_type, Some(NodeType::Function))));
+            assert!(nodes.iter().any(
+                |n| n.name == "save_to_file" && matches!(n.node_type, Some(NodeType::Function))
+            ));
+
             // Verify import relationships
-            assert!(edges.iter().any(|e| matches!(e.edge_type, EdgeType::Imports)));
-            
-            println!("Python: Extracted {} nodes and {} edges", nodes.len(), edges.len());
+            assert!(edges
+                .iter()
+                .any(|e| matches!(e.edge_type, EdgeType::Imports)));
+
+            println!(
+                "Python: Extracted {} nodes and {} edges",
+                nodes.len(),
+                edges.len()
+            );
         }
     }
 
     #[test]
     fn test_cross_language_pipeline() {
         let mut pipeline = ConversionPipeline::new().unwrap();
-        
+
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create test files
         let rust_file = temp_dir.path().join("lib.rs");
-        std::fs::write(&rust_file, "pub fn hello() -> String { \"Hello\".to_string() }").unwrap();
-        
+        std::fs::write(
+            &rust_file,
+            "pub fn hello() -> String { \"Hello\".to_string() }",
+        )
+        .unwrap();
+
         let ts_file = temp_dir.path().join("app.ts");
-        std::fs::write(&ts_file, "export function greet(name: string): string { return `Hello, ${name}`; }").unwrap();
-        
+        std::fs::write(
+            &ts_file,
+            "export function greet(name: string): string { return `Hello, ${name}`; }",
+        )
+        .unwrap();
+
         // Process files
-        let rust_result = pipeline.process_file(&rust_file, std::fs::read_to_string(&rust_file).unwrap()).unwrap();
-        let ts_result = pipeline.process_file(&ts_file, std::fs::read_to_string(&ts_file).unwrap()).unwrap();
-        
+        let rust_result = pipeline
+            .process_file(&rust_file, std::fs::read_to_string(&rust_file).unwrap())
+            .unwrap();
+        let ts_result = pipeline
+            .process_file(&ts_file, std::fs::read_to_string(&ts_file).unwrap())
+            .unwrap();
+
         assert!(!rust_result.nodes.is_empty());
         assert!(!ts_result.nodes.is_empty());
-        
+
         // Build dependency graph
         let dep_graph = pipeline.build_dependency_graph().unwrap();
         let metrics = dep_graph.get_metrics();
-        
+
         assert_eq!(metrics.total_files, 2);
-        
-        println!("Cross-language pipeline processed {} files", metrics.total_files);
+
+        println!(
+            "Cross-language pipeline processed {} files",
+            metrics.total_files
+        );
     }
 
-    #[test] 
+    #[test]
     fn test_memory_efficient_processing() {
         let large_rust_code = generate_large_rust_file(1000);
-        
+
         let mut parser = Parser::new();
-        parser.set_language(tree_sitter_rust::language().into()).unwrap();
-        
+        parser
+            .set_language(tree_sitter_rust::language().into())
+            .unwrap();
+
         if let Some(tree) = parser.parse(&large_rust_code, None) {
             let mut processor = ZeroCopyAstProcessor::new(
                 large_rust_code.as_bytes(),
                 Language::Rust,
                 "large.rs".to_string(),
             );
-            
+
             let result = processor.process_tree_zero_copy(tree.root_node()).unwrap();
             let memory_usage = processor.get_memory_usage();
-            
+
             assert!(!result.nodes.is_empty());
             assert!(result.nodes.len() >= 1000); // Should find at least 1000 functions
-            
+
             // Verify memory efficiency
-            let efficiency = memory_usage.estimated_heap_usage as f64 / large_rust_code.len() as f64;
-            assert!(efficiency < 0.5, "Memory usage should be less than 50% of source size");
-            
-            println!("Memory efficiency: {:.2}% (heap: {} bytes, source: {} bytes)", 
-                     efficiency * 100.0, memory_usage.estimated_heap_usage, large_rust_code.len());
+            let efficiency =
+                memory_usage.estimated_heap_usage as f64 / large_rust_code.len() as f64;
+            assert!(
+                efficiency < 0.5,
+                "Memory usage should be less than 50% of source size"
+            );
+
+            println!(
+                "Memory efficiency: {:.2}% (heap: {} bytes, source: {} bytes)",
+                efficiency * 100.0,
+                memory_usage.estimated_heap_usage,
+                large_rust_code.len()
+            );
         }
     }
 }
@@ -271,14 +336,14 @@ def save_to_file(processor: DataProcessor, filename: str) -> None:
 fn generate_large_rust_file(num_functions: usize) -> String {
     let mut code = String::new();
     code.push_str("use std::collections::HashMap;\n\n");
-    
+
     for i in 0..num_functions {
         code.push_str(&format!(
             "pub fn function_{}() -> i32 {{\n    let mut map = HashMap::new();\n    map.insert({}, {});\n    {}\n}}\n\n",
             i, i, i * 2, i
         ));
     }
-    
+
     code
 }
 
@@ -317,41 +382,50 @@ pub fn create_default() -> Config {
         "#;
 
         let mut parser = Parser::new();
-        parser.set_language(tree_sitter_rust::language().into()).unwrap();
+        parser
+            .set_language(tree_sitter_rust::language().into())
+            .unwrap();
         let tree = parser.parse(rust_code, None).unwrap();
 
         let start = Instant::now();
-        
+
         for _ in 0..iterations {
             let mut converter = AstToGraphConverter::new(
                 Language::Rust,
                 "benchmark.rs".to_string(),
                 rust_code.to_string(),
             );
-            
+
             converter.convert(tree.root_node()).unwrap();
             let _nodes = converter.get_nodes();
             let _edges = converter.get_edges();
         }
-        
+
         let elapsed = start.elapsed();
         let avg_time = elapsed / iterations;
-        
-        println!("Benchmark: {} iterations in {:?} (avg: {:?}/iteration)", 
-                 iterations, elapsed, avg_time);
-        
+
+        println!(
+            "Benchmark: {} iterations in {:?} (avg: {:?}/iteration)",
+            iterations, elapsed, avg_time
+        );
+
         // Should be reasonably fast
-        assert!(avg_time.as_millis() < 100, "Conversion should be under 100ms per iteration");
+        assert!(
+            avg_time.as_millis() < 100,
+            "Conversion should be under 100ms per iteration"
+        );
     }
 
     #[test]
     fn benchmark_zero_copy_vs_regular() {
         let rust_code = generate_large_rust_file(100);
-        
+
         let mut parser = Parser::new();
-        parser.set_language(tree_sitter_rust::language().into()).unwrap();
+        parser
+            .set_language(tree_sitter_rust::language().into())
+            .unwrap();
         let tree = parser.parse(&rust_code, None).unwrap();
-        
+
         // Benchmark regular conversion
         let start = Instant::now();
         let mut converter = AstToGraphConverter::new(
@@ -361,7 +435,7 @@ pub fn create_default() -> Config {
         );
         converter.convert(tree.root_node()).unwrap();
         let regular_time = start.elapsed();
-        
+
         // Benchmark zero-copy conversion
         let start = Instant::now();
         let mut processor = ZeroCopyAstProcessor::new(
@@ -371,11 +445,14 @@ pub fn create_default() -> Config {
         );
         processor.process_tree_zero_copy(tree.root_node()).unwrap();
         let zero_copy_time = start.elapsed();
-        
+
         println!("Regular conversion: {:?}", regular_time);
         println!("Zero-copy conversion: {:?}", zero_copy_time);
-        
+
         // Zero-copy should be at least as fast (or faster)
-        assert!(zero_copy_time <= regular_time * 2, "Zero-copy should not be significantly slower");
+        assert!(
+            zero_copy_time <= regular_time * 2,
+            "Zero-copy should not be significantly slower"
+        );
     }
 }

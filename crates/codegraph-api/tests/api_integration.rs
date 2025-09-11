@@ -22,7 +22,11 @@ async fn graphiql_serves_html() {
 
     let resp = server.get("/graphiql").await;
     assert_eq!(resp.status_code(), 200);
-    let ct = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("");
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     assert!(ct.contains("text/html"), "expected HTML content-type");
 }
 
@@ -35,10 +39,7 @@ async fn graphql_health_query() {
     let query = json!({
         "query": "query { health }"
     });
-    let resp = server
-        .post("/graphql")
-        .json(&query)
-        .await;
+    let resp = server.post("/graphql").json(&query).await;
 
     assert_eq!(resp.status_code(), 200);
     let body: serde_json::Value = resp.json();
@@ -82,4 +83,3 @@ async fn parse_endpoint_parses_temp_rust_file() {
     let body: serde_json::Value = resp.json();
     assert!(body["nodes_created"].as_u64().unwrap_or(0) >= 0);
 }
-

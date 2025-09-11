@@ -1,9 +1,9 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock as AsyncRwLock;
-use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 /// Comprehensive cache metrics for performance monitoring
@@ -79,7 +79,7 @@ impl CacheMetrics {
         } else {
             1.0
         };
-        
+
         (hit_rate_score * 0.7) + (memory_efficiency * 0.3)
     }
 }
@@ -96,16 +96,16 @@ pub struct MetricsCollector {
     peak_memory_usage: AtomicU64,
     total_size: AtomicUsize,
     expired_cleanup_count: AtomicU64,
-    
+
     /// Response time tracking
     response_times: Arc<AsyncRwLock<Vec<u64>>>,
-    
+
     /// Detailed operation metrics
     operation_metrics: Arc<AsyncRwLock<HashMap<String, OperationMetrics>>>,
-    
+
     /// Metrics start time for rate calculations
     start_time: Instant,
-    
+
     /// Configuration for metrics collection
     config: MetricsConfig,
 }
@@ -240,14 +240,15 @@ impl MetricsCollector {
 
     /// Record expired entry cleanup
     pub fn record_expired_cleanup(&self, count: u64) {
-        self.expired_cleanup_count.fetch_add(count, Ordering::Relaxed);
+        self.expired_cleanup_count
+            .fetch_add(count, Ordering::Relaxed);
         debug!("Expired cleanup recorded: {} entries", count);
     }
 
     /// Add memory usage and update peak
     pub fn add_memory_usage(&self, bytes: u64) {
         let new_usage = self.memory_usage.fetch_add(bytes, Ordering::Relaxed) + bytes;
-        
+
         // Update peak memory usage
         let mut peak = self.peak_memory_usage.load(Ordering::Relaxed);
         while new_usage > peak {
@@ -264,8 +265,10 @@ impl MetricsCollector {
 
         // Check for memory alerts
         if self.config.enable_memory_alerts && new_usage > self.config.memory_alert_threshold {
-            warn!("Memory usage alert: {} bytes exceeds threshold {}", 
-                  new_usage, self.config.memory_alert_threshold);
+            warn!(
+                "Memory usage alert: {} bytes exceeds threshold {}",
+                new_usage, self.config.memory_alert_threshold
+            );
         }
     }
 
@@ -278,9 +281,9 @@ impl MetricsCollector {
     pub async fn record_response_time(&self, duration: Duration) {
         let duration_us = duration.as_micros() as u64;
         let mut times = self.response_times.write().await;
-        
+
         times.push(duration_us);
-        
+
         // Keep only the most recent samples
         if times.len() > self.config.max_response_time_samples {
             times.remove(0);
@@ -295,10 +298,10 @@ impl MetricsCollector {
 
         let duration_us = duration.as_micros() as u64;
         let mut metrics = self.operation_metrics.write().await;
-        
+
         let op_metrics = metrics.entry(operation.to_string()).or_default();
         op_metrics.add_duration(duration_us);
-        
+
         if !success {
             op_metrics.record_error();
         }
@@ -309,7 +312,7 @@ impl MetricsCollector {
         let hits = self.hits.load(Ordering::Relaxed);
         let misses = self.misses.load(Ordering::Relaxed);
         let total_requests = hits + misses;
-        
+
         let hit_rate = if total_requests > 0 {
             (hits as f64 / total_requests as f64) * 100.0
         } else {
@@ -356,10 +359,10 @@ impl MetricsCollector {
         self.peak_memory_usage.store(0, Ordering::Relaxed);
         self.total_size.store(0, Ordering::Relaxed);
         self.expired_cleanup_count.store(0, Ordering::Relaxed);
-        
+
         self.response_times.write().await.clear();
         self.operation_metrics.write().await.clear();
-        
+
         info!("Cache metrics reset");
     }
 
@@ -367,16 +370,20 @@ impl MetricsCollector {
     pub fn get_throughput_metrics(&self) -> ThroughputMetrics {
         let elapsed = self.start_time.elapsed();
         let elapsed_seconds = elapsed.as_secs_f64();
-        
+
         if elapsed_seconds > 0.0 {
             ThroughputMetrics {
                 hits_per_second: self.hits.load(Ordering::Relaxed) as f64 / elapsed_seconds,
                 misses_per_second: self.misses.load(Ordering::Relaxed) as f64 / elapsed_seconds,
-                insertions_per_second: self.insertions.load(Ordering::Relaxed) as f64 / elapsed_seconds,
-                evictions_per_second: self.evictions.load(Ordering::Relaxed) as f64 / elapsed_seconds,
-                total_ops_per_second: (self.hits.load(Ordering::Relaxed) + 
-                                     self.misses.load(Ordering::Relaxed) + 
-                                     self.insertions.load(Ordering::Relaxed)) as f64 / elapsed_seconds,
+                insertions_per_second: self.insertions.load(Ordering::Relaxed) as f64
+                    / elapsed_seconds,
+                evictions_per_second: self.evictions.load(Ordering::Relaxed) as f64
+                    / elapsed_seconds,
+                total_ops_per_second: (self.hits.load(Ordering::Relaxed)
+                    + self.misses.load(Ordering::Relaxed)
+                    + self.insertions.load(Ordering::Relaxed))
+                    as f64
+                    / elapsed_seconds,
             }
         } else {
             ThroughputMetrics::default()
@@ -406,9 +413,14 @@ impl MetricsCollector {
 
         // Hit rate recommendations
         if metrics.hit_rate < 50.0 {
-            recommendations.push("Low hit rate detected. Consider increasing cache size or adjusting TTL values.".to_string());
+            recommendations.push(
+                "Low hit rate detected. Consider increasing cache size or adjusting TTL values."
+                    .to_string(),
+            );
         } else if metrics.hit_rate > 95.0 {
-            recommendations.push("Very high hit rate. Consider reducing cache size to free up memory.".to_string());
+            recommendations.push(
+                "Very high hit rate. Consider reducing cache size to free up memory.".to_string(),
+            );
         }
 
         // Memory usage recommendations
@@ -419,7 +431,10 @@ impl MetricsCollector {
 
         // Response time recommendations
         if metrics.avg_response_time_us > 10_000 {
-            recommendations.push("High average response time detected. Consider optimizing cache lookup operations.".to_string());
+            recommendations.push(
+                "High average response time detected. Consider optimizing cache lookup operations."
+                    .to_string(),
+            );
         }
 
         // Eviction rate recommendations
@@ -502,7 +517,7 @@ impl MetricsAggregator {
     /// Get aggregated metrics from all collectors
     pub async fn get_aggregated_metrics(&self) -> CacheMetrics {
         let mut aggregated = CacheMetrics::default();
-        
+
         for collector in &self.collectors {
             let metrics = collector.get_metrics().await;
             aggregated.hits += metrics.hits;
@@ -511,7 +526,8 @@ impl MetricsAggregator {
             aggregated.evictions += metrics.evictions;
             aggregated.removals += metrics.removals;
             aggregated.memory_usage += metrics.memory_usage;
-            aggregated.peak_memory_usage = aggregated.peak_memory_usage.max(metrics.peak_memory_usage);
+            aggregated.peak_memory_usage =
+                aggregated.peak_memory_usage.max(metrics.peak_memory_usage);
             aggregated.total_size += metrics.total_size;
             aggregated.expired_cleanup_count += metrics.expired_cleanup_count;
         }
@@ -529,15 +545,15 @@ mod tests {
     #[tokio::test]
     async fn test_metrics_collection() {
         let collector = MetricsCollector::new();
-        
+
         // Record some operations
         collector.record_hit();
         collector.record_miss();
         collector.record_insertion(1024);
         collector.record_eviction(512);
-        
+
         let metrics = collector.get_metrics().await;
-        
+
         assert_eq!(metrics.hits, 1);
         assert_eq!(metrics.misses, 1);
         assert_eq!(metrics.insertions, 1);
@@ -549,11 +565,17 @@ mod tests {
     #[tokio::test]
     async fn test_response_time_tracking() {
         let collector = MetricsCollector::new();
-        
-        collector.record_response_time(Duration::from_millis(10)).await;
-        collector.record_response_time(Duration::from_millis(20)).await;
-        collector.record_response_time(Duration::from_millis(30)).await;
-        
+
+        collector
+            .record_response_time(Duration::from_millis(10))
+            .await;
+        collector
+            .record_response_time(Duration::from_millis(20))
+            .await;
+        collector
+            .record_response_time(Duration::from_millis(30))
+            .await;
+
         let metrics = collector.get_metrics().await;
         assert_eq!(metrics.avg_response_time_us, 20_000); // Average of 10, 20, 30 ms
     }
@@ -561,14 +583,20 @@ mod tests {
     #[tokio::test]
     async fn test_operation_metrics() {
         let collector = MetricsCollector::new();
-        
-        collector.record_operation("get", Duration::from_millis(5), true).await;
-        collector.record_operation("get", Duration::from_millis(10), true).await;
-        collector.record_operation("get", Duration::from_millis(15), false).await;
-        
+
+        collector
+            .record_operation("get", Duration::from_millis(5), true)
+            .await;
+        collector
+            .record_operation("get", Duration::from_millis(10), true)
+            .await;
+        collector
+            .record_operation("get", Duration::from_millis(15), false)
+            .await;
+
         let op_metrics = collector.get_operation_metrics().await;
         let get_metrics = op_metrics.get("get").unwrap();
-        
+
         assert_eq!(get_metrics.count, 3);
         assert_eq!(get_metrics.error_count, 1);
         assert_eq!(get_metrics.avg_duration_us, 10_000); // Average of 5, 10, 15 ms
@@ -577,14 +605,14 @@ mod tests {
     #[tokio::test]
     async fn test_throughput_metrics() {
         let collector = MetricsCollector::new();
-        
+
         // Wait a bit to ensure elapsed time > 0
         sleep(Duration::from_millis(100)).await;
-        
+
         collector.record_hit();
         collector.record_hit();
         collector.record_miss();
-        
+
         let throughput = collector.get_throughput_metrics();
         assert!(throughput.total_ops_per_second > 0.0);
         assert!(throughput.hits_per_second > 0.0);
@@ -593,16 +621,16 @@ mod tests {
     #[tokio::test]
     async fn test_metrics_reset() {
         let collector = MetricsCollector::new();
-        
+
         collector.record_hit();
         collector.record_insertion(1024);
-        
+
         let metrics_before = collector.get_metrics().await;
         assert!(metrics_before.hits > 0);
         assert!(metrics_before.memory_usage > 0);
-        
+
         collector.reset().await;
-        
+
         let metrics_after = collector.get_metrics().await;
         assert_eq!(metrics_after.hits, 0);
         assert_eq!(metrics_after.memory_usage, 0);
@@ -611,13 +639,13 @@ mod tests {
     #[tokio::test]
     async fn test_performance_report() {
         let collector = MetricsCollector::new();
-        
+
         collector.record_hit();
         collector.record_miss();
         collector.record_insertion(1024);
-        
+
         let report = collector.generate_report().await;
-        
+
         assert!(report.cache_metrics.hits > 0);
         assert!(!report.recommendations.is_empty());
         assert!(report.uptime.as_millis() > 0);
@@ -626,22 +654,22 @@ mod tests {
     #[tokio::test]
     async fn test_metrics_aggregator() {
         let mut aggregator = MetricsAggregator::new();
-        
+
         let collector1 = Arc::new(MetricsCollector::new());
         let collector2 = Arc::new(MetricsCollector::new());
-        
+
         collector1.record_hit();
         collector1.record_insertion(1024);
-        
+
         collector2.record_hit();
         collector2.record_hit();
         collector2.record_insertion(512);
-        
+
         aggregator.add_collector(collector1);
         aggregator.add_collector(collector2);
-        
+
         let aggregated = aggregator.get_aggregated_metrics().await;
-        
+
         assert_eq!(aggregated.hits, 3);
         assert_eq!(aggregated.insertions, 2);
         assert_eq!(aggregated.memory_usage, 1536); // 1024 + 512

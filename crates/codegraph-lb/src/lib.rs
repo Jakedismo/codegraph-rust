@@ -7,16 +7,16 @@
 //! - Simple traffic shaping (rate limit per route)
 //! - Tower `Service` for reverse proxying to upstreams
 
-pub mod types;
 pub mod algorithms;
-pub mod health;
 pub mod failover;
-pub mod shaping;
+pub mod health;
 pub mod metrics;
+pub mod shaping;
+pub mod types;
 
-pub use types::*;
 pub use algorithms::*;
-pub use health::*;
 pub use failover::*;
-pub use shaping::*;
+pub use health::*;
 pub use metrics::*;
+pub use shaping::*;
+pub use types::*;

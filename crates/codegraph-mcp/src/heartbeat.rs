@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Instant, MissedTickBehavior};
-use tracing::{debug, warn, error};
+use tracing::{debug, error, warn};
 
 #[derive(Debug, Clone)]
 pub struct HeartbeatConfig {
@@ -80,7 +80,10 @@ impl HeartbeatMonitor {
 
                 if time_since_last > config.timeout.as_millis() as u64 {
                     let missed = missed_count.fetch_add(1, Ordering::SeqCst) + 1;
-                    warn!("Heartbeat missed ({}), time since last: {}ms", missed, time_since_last);
+                    warn!(
+                        "Heartbeat missed ({}), time since last: {}ms",
+                        missed, time_since_last
+                    );
 
                     let mut current_state = state.write().await;
                     if missed >= config.max_missed as u64 {
@@ -112,7 +115,10 @@ impl HeartbeatMonitor {
             self.last_heartbeat.store(now, Ordering::SeqCst);
             debug!("Received valid pong for sequence {}", sequence);
         } else {
-            warn!("Received outdated pong sequence {} (expected around {})", sequence, expected_seq);
+            warn!(
+                "Received outdated pong sequence {} (expected around {})",
+                sequence, expected_seq
+            );
         }
     }
 
@@ -130,9 +136,7 @@ impl HeartbeatMonitor {
 
     pub fn is_healthy(&self) -> impl std::future::Future<Output = bool> + Send {
         let state = Arc::clone(&self.state);
-        async move {
-            *state.read().await == HeartbeatState::Healthy
-        }
+        async move { *state.read().await == HeartbeatState::Healthy }
     }
 }
 
@@ -227,7 +231,7 @@ impl HeartbeatManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::{pause, advance};
+    use tokio::time::{advance, pause};
 
     #[tokio::test]
     async fn test_heartbeat_config_default() {
@@ -263,7 +267,7 @@ mod tests {
     #[tokio::test]
     async fn test_pong_handling() {
         pause();
-        
+
         let config = HeartbeatConfig {
             interval: Duration::from_millis(100),
             timeout: Duration::from_millis(50),

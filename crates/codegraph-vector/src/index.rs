@@ -1,13 +1,14 @@
 #[cfg(feature = "persistent")]
 use crate::storage::PersistentStorage;
 use codegraph_core::{CodeGraphError, NodeId, Result};
-use faiss::{Index, MetricType};
-use faiss::index::{IndexImpl, Idx};
+use faiss::index::{Idx, IndexImpl};
 use faiss::selector::IdSelector;
-use serde::{Deserialize, Serialize};
+use faiss::{Index, MetricType};
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 /// Configuration for different FAISS index types optimized for various use cases
@@ -28,30 +29,30 @@ pub enum IndexType {
     Flat,
     /// IVF (Inverted File) index - good balance of speed/accuracy for medium datasets
     IVF {
-        nlist: usize,      // Number of clusters (sqrt(N) is typical)
-        nprobe: usize,     // Number of clusters to search (1-nlist)
+        nlist: usize,  // Number of clusters (sqrt(N) is typical)
+        nprobe: usize, // Number of clusters to search (1-nlist)
     },
     /// HNSW (Hierarchical Navigable Small World) - excellent for high-dimensional data
     HNSW {
-        m: usize,          // Number of bi-directional links for each node (4-64)
+        m: usize,               // Number of bi-directional links for each node (4-64)
         ef_construction: usize, // Size of dynamic candidate list (100-800)
-        ef_search: usize,  // Search time accuracy/speed tradeoff (10-500)
+        ef_search: usize,       // Search time accuracy/speed tradeoff (10-500)
     },
     /// LSH (Locality Sensitive Hashing) - very fast approximate search
     LSH {
-        nbits: usize,      // Number of hash bits (typically 1024-4096)
+        nbits: usize, // Number of hash bits (typically 1024-4096)
     },
     /// IVF+PQ hybrid (recommended for large datasets, memory-efficient)
     IVFPQ {
-        nlist: usize,     // coarse centroids
-        m: usize,         // sub-quantizers
-        nbits: usize,     // bits per sub-quantizer
-        nprobe: usize,    // number of coarse lists to probe at search time
+        nlist: usize,  // coarse centroids
+        m: usize,      // sub-quantizers
+        nbits: usize,  // bits per sub-quantizer
+        nprobe: usize, // number of coarse lists to probe at search time
     },
     /// Product Quantization - memory efficient for large datasets
     PQ {
-        m: usize,          // Number of sub-quantizers (multiple of dimension)
-        nbits: usize,      // Bits per sub-quantizer (1-16)
+        m: usize,     // Number of sub-quantizers (multiple of dimension)
+        nbits: usize, // Bits per sub-quantizer (1-16)
     },
     /// Hybrid approach combining multiple techniques for optimal performance
     Hybrid {
@@ -65,10 +66,10 @@ impl Default for IndexConfig {
         Self {
             // Default to an IVFPQ tuned for 768-dim transformer embeddings
             index_type: IndexType::IVFPQ {
-                nlist: 4096,          // good for ~1M vectors
-                m: 96,                // 768 / 96 = 8 dims per sub-vector
-                nbits: 8,             // 8-bit codes => 1 byte per sub-vector
-                nprobe: 64,           // search 64 lists
+                nlist: 4096, // good for ~1M vectors
+                m: 96,       // 768 / 96 = 8 dims per sub-vector
+                nbits: 8,    // 8-bit codes => 1 byte per sub-vector
+                nprobe: 64,  // search 64 lists
             },
             metric_type: MetricType::InnerProduct,
             dimension: 768, // Common transformer embedding dimension
@@ -116,7 +117,12 @@ impl IndexConfig {
     /// Create configuration for balanced performance
     pub fn balanced(dimension: usize) -> Self {
         Self {
-            index_type: IndexType::IVFPQ { nlist: 4096, m: (dimension / 8).max(1), nbits: 8, nprobe: 64 },
+            index_type: IndexType::IVFPQ {
+                nlist: 4096,
+                m: (dimension / 8).max(1),
+                nbits: 8,
+                nprobe: 64,
+            },
             metric_type: MetricType::InnerProduct,
             dimension,
             training_size_threshold: 20000,
@@ -129,23 +135,28 @@ impl IndexConfig {
     pub fn to_factory_string(&self) -> String {
         match &self.index_type {
             IndexType::Flat => "Flat".to_string(),
-            IndexType::IVF { nlist, nprobe } => {
+            IndexType::IVF { nlist, nprobe: _ } => {
                 format!("IVF{},Flat", nlist)
-            },
-            IndexType::IVFPQ { nlist, m, nbits, .. } => {
+            }
+            IndexType::IVFPQ {
+                nlist, m, nbits, ..
+            } => {
                 // Build a composite factory string: IVF coarse + PQ codes
                 format!("IVF{},PQ{}x{}", nlist, m, nbits)
-            },
-            IndexType::HNSW { m,  .. } => {
+            }
+            IndexType::HNSW { m, .. } => {
                 format!("HNSW{}", m)
-            },
+            }
             IndexType::LSH { nbits } => {
                 format!("LSH{}", nbits)
-            },
+            }
             IndexType::PQ { m, nbits } => {
                 format!("PQ{}x{}", m, nbits)
-            },
-            IndexType::Hybrid { coarse_quantizer, fine_quantizer } => {
+            }
+            IndexType::Hybrid {
+                coarse_quantizer,
+                fine_quantizer,
+            } => {
                 let coarse_config = IndexConfig {
                     index_type: *coarse_quantizer.clone(),
                     ..*self
@@ -154,8 +165,12 @@ impl IndexConfig {
                     index_type: *fine_quantizer.clone(),
                     ..*self
                 };
-                format!("{},{}", coarse_config.to_factory_string(), fine_config.to_factory_string())
-            },
+                format!(
+                    "{},{}",
+                    coarse_config.to_factory_string(),
+                    fine_config.to_factory_string()
+                )
+            }
         }
     }
 
@@ -172,13 +187,13 @@ pub struct FaissIndexManager {
     config: IndexConfig,
     index: RwLock<Option<IndexImpl>>,
     // Stable ID mappings to support add_with_ids/remove/search by NodeId
-    id_mapping: RwLock<HashMap<i64, NodeId>>,            // faiss_id -> NodeId
-    reverse_mapping: RwLock<HashMap<NodeId, i64>>,       // NodeId -> faiss_id
+    id_mapping: RwLock<HashMap<i64, NodeId>>, // faiss_id -> NodeId
+    reverse_mapping: RwLock<HashMap<NodeId, i64>>, // NodeId -> faiss_id
     next_id: RwLock<i64>,
     #[cfg(feature = "persistent")]
     storage: Option<Arc<PersistentStorage>>,
     #[cfg(feature = "gpu")]
-    gpu_resources: Option<faiss::gpu::GpuResources>,
+    gpu_resources: Option<faiss::gpu::StandardGpuResources>,
 }
 
 impl FaissIndexManager {
@@ -213,17 +228,20 @@ impl FaissIndexManager {
             #[cfg(feature = "gpu")]
             {
                 use faiss::gpu::{GpuResources, StandardGpuResources};
-                
-                let gpu_resources = StandardGpuResources::new()
-                    .map_err(|e| CodeGraphError::Vector(format!("Failed to initialize GPU resources: {}", e)))?;
-                
+
+                let gpu_resources = StandardGpuResources::new().map_err(|e| {
+                    CodeGraphError::Vector(format!("Failed to initialize GPU resources: {}", e))
+                })?;
+
                 self.gpu_resources = Some(gpu_resources);
                 info!("GPU acceleration enabled for FAISS index");
             }
             #[cfg(not(feature = "gpu"))]
             {
                 warn!("GPU acceleration requested but not compiled with GPU support");
-                return Err(CodeGraphError::Vector("GPU support not available".to_string()));
+                return Err(CodeGraphError::Vector(
+                    "GPU support not available".to_string(),
+                ));
             }
         }
         Ok(())
@@ -252,25 +270,33 @@ impl FaissIndexManager {
 
         // Create new index
         let factory_string = self.config.to_factory_string();
-        debug!("Creating FAISS index with factory string: {}", factory_string);
+        debug!(
+            "Creating FAISS index with factory string: {}",
+            factory_string
+        );
 
         let mut index = if self.config.gpu_enabled {
             #[cfg(feature = "gpu")]
             {
                 if let Some(ref gpu_resources) = self.gpu_resources {
-                    faiss::gpu::index_gpu_to_cpu(
-                        &faiss::gpu::index_cpu_to_gpu(
-                            gpu_resources,
-                            0, // device 0
-                            &faiss::index_factory(
-                                self.config.dimension.try_into().unwrap(),
-                                &factory_string,
-                                self.config.metric_type,
-                            ).map_err(|e| CodeGraphError::Vector(e.to_string()))?,
-                        ).map_err(|e| CodeGraphError::Vector(e.to_string()))?,
-                    ).map_err(|e| CodeGraphError::Vector(e.to_string()))?
+                    let cpu_idx = faiss::index_factory(
+                        self.config.dimension.try_into().unwrap(),
+                        &factory_string,
+                        self.config.metric_type,
+                    )
+                    .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+
+                    // Move to GPU then back to CPU to ensure GPU-capable parameters are applied
+                    let gpu_idx = cpu_idx
+                        .to_gpu(gpu_resources, 0)
+                        .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+                    gpu_idx
+                        .to_cpu()
+                        .map_err(|e| CodeGraphError::Vector(e.to_string()))?
                 } else {
-                    return Err(CodeGraphError::Vector("GPU resources not initialized".to_string()));
+                    return Err(CodeGraphError::Vector(
+                        "GPU resources not initialized".to_string(),
+                    ));
                 }
             }
             #[cfg(not(feature = "gpu"))]
@@ -279,35 +305,45 @@ impl FaissIndexManager {
                     self.config.dimension.try_into().unwrap(),
                     &factory_string,
                     self.config.metric_type,
-                ).map_err(|e| CodeGraphError::Vector(e.to_string()))?
+                )
+                .map_err(|e| CodeGraphError::Vector(e.to_string()))?
             }
         } else {
             faiss::index_factory(
                 self.config.dimension.try_into().unwrap(),
                 &factory_string,
                 self.config.metric_type,
-            ).map_err(|e| CodeGraphError::Vector(e.to_string()))?
+            )
+            .map_err(|e| CodeGraphError::Vector(e.to_string()))?
         };
 
         // Configure index-specific parameters
         self.config.configure_search_params(&mut index)?;
 
         *self.index.write() = Some(index);
-        info!("Created new FAISS index: {} for {} vectors", factory_string, num_vectors);
+        info!(
+            "Created new FAISS index: {} for {} vectors",
+            factory_string, num_vectors
+        );
         Ok(())
     }
 
     /// Train the index if necessary (required for some index types)
     pub fn train_index(&mut self, training_vectors: &[f32]) -> Result<()> {
         let mut guard = self.index.write();
-        let index = guard.as_mut()
+        let index = guard
+            .as_mut()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         if !index.is_trained() {
-            info!("Training FAISS index with {} vectors", training_vectors.len() / self.config.dimension);
-            index.train(training_vectors)
+            info!(
+                "Training FAISS index with {} vectors",
+                training_vectors.len() / self.config.dimension
+            );
+            index
+                .train(training_vectors)
                 .map_err(|e| CodeGraphError::Vector(format!("Index training failed: {}", e)))?;
-            
+
             // Save trained index if persistence is enabled
             #[cfg(feature = "persistent")]
             if let Some(ref storage) = self.storage {
@@ -320,15 +356,20 @@ impl FaissIndexManager {
     /// Add vectors to the index with batch optimization
     pub fn add_vectors(&mut self, vectors: &[f32]) -> Result<Vec<i64>> {
         let mut guard = self.index.write();
-        let index = guard.as_mut()
+        let index = guard
+            .as_mut()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         let num_vectors = vectors.len() / self.config.dimension;
         let start_id = index.ntotal();
-        
-        debug!("Adding {} vectors to FAISS index (starting from ID {})", num_vectors, start_id);
 
-        index.add(vectors)
+        debug!(
+            "Adding {} vectors to FAISS index (starting from ID {})",
+            num_vectors, start_id
+        );
+
+        index
+            .add(vectors)
             .map_err(|e| CodeGraphError::Vector(format!("Failed to add vectors: {}", e)))?;
 
         let ids: Vec<i64> = (start_id..start_id + num_vectors as u64)
@@ -337,7 +378,9 @@ impl FaissIndexManager {
 
         // Persist index updates if enabled
         #[cfg(feature = "persistent")]
-        if let Some(ref storage) = self.storage { storage.save_index(index, &self.config)?; }
+        if let Some(ref storage) = self.storage {
+            storage.save_index(index, &self.config)?;
+        }
 
         info!("Successfully added {} vectors to index", num_vectors);
         Ok(ids)
@@ -345,11 +388,14 @@ impl FaissIndexManager {
 
     /// Add vectors with explicit NodeIds. Supports large batches (10k+) efficiently.
     pub fn add_with_ids(&mut self, items: &[(NodeId, Vec<f32>)]) -> Result<Vec<i64>> {
-        if items.is_empty() { return Ok(Vec::new()); }
+        if items.is_empty() {
+            return Ok(Vec::new());
+        }
 
         // Flatten vectors and prepare IDs in chunks to avoid huge transient allocations
         let mut guard = self.index.write();
-        let index = guard.as_mut()
+        let index = guard
+            .as_mut()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         let dim = self.config.dimension;
@@ -366,7 +412,9 @@ impl FaissIndexManager {
                 let mut next = self.next_id.write();
                 for (node_id, _) in chunk.iter() {
                     // If already present, reuse id; else assign new
-                    let faiss_id = if let Some(id) = rev.get(node_id).copied() { id } else {
+                    let faiss_id = if let Some(id) = rev.get(node_id).copied() {
+                        id
+                    } else {
                         let id = *next;
                         *next += 1;
                         rev.insert(*node_id, id);
@@ -382,7 +430,9 @@ impl FaissIndexManager {
             for (_, v) in chunk.iter() {
                 if v.len() != dim {
                     return Err(CodeGraphError::Vector(format!(
-                        "Vector dimension {} does not match index dimension {}", v.len(), dim
+                        "Vector dimension {} does not match index dimension {}",
+                        v.len(),
+                        dim
                     )));
                 }
                 flat.extend_from_slice(v);
@@ -407,24 +457,30 @@ impl FaissIndexManager {
             storage.save_id_mapping(&*fwd, &*rev)?;
         }
 
-        info!("Successfully added {} vectors with explicit IDs", items.len());
+        info!(
+            "Successfully added {} vectors with explicit IDs",
+            items.len()
+        );
         Ok(assigned_ids)
     }
 
     /// Perform optimized K-nearest neighbor search
     pub fn search(&self, query_vector: &[f32], k: usize) -> Result<(Vec<f32>, Vec<i64>)> {
         let mut guard = self.index.write();
-        let index = guard.as_mut()
+        let index = guard
+            .as_mut()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         if query_vector.len() != self.config.dimension {
-            return Err(CodeGraphError::Vector(
-                format!("Query vector dimension {} doesn't match index dimension {}", 
-                       query_vector.len(), self.config.dimension)
-            ));
+            return Err(CodeGraphError::Vector(format!(
+                "Query vector dimension {} doesn't match index dimension {}",
+                query_vector.len(),
+                self.config.dimension
+            )));
         }
 
-        let result = index.search(query_vector, k)
+        let result = index
+            .search(query_vector, k)
             .map_err(|e| CodeGraphError::Vector(format!("Search failed: {}", e)))?;
 
         let labels: Vec<i64> = result
@@ -450,17 +506,25 @@ impl FaissIndexManager {
 
     /// Remove vectors by NodeId using FAISS ID selector. Returns number removed.
     pub fn remove_vectors(&mut self, node_ids: &[NodeId]) -> Result<usize> {
-        if node_ids.is_empty() { return Ok(0); }
+        if node_ids.is_empty() {
+            return Ok(0);
+        }
 
         let ids: Vec<i64> = {
             let rev = self.reverse_mapping.read();
-            node_ids.iter().filter_map(|nid| rev.get(nid).copied()).collect()
+            node_ids
+                .iter()
+                .filter_map(|nid| rev.get(nid).copied())
+                .collect()
         };
 
-        if ids.is_empty() { return Ok(0); }
+        if ids.is_empty() {
+            return Ok(0);
+        }
 
         let mut guard = self.index.write();
-        let index = guard.as_mut()
+        let index = guard
+            .as_mut()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         // Build selector and remove
@@ -506,7 +570,8 @@ impl FaissIndexManager {
     /// Get index statistics for monitoring and optimization
     pub fn get_stats(&self) -> Result<IndexStats> {
         let guard = self.index.read();
-        let index = guard.as_ref()
+        let index = guard
+            .as_ref()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         Ok(IndexStats {
@@ -520,27 +585,30 @@ impl FaissIndexManager {
 
     fn estimate_memory_usage(&self) -> Result<usize> {
         let guard = self.index.read();
-        let index = guard.as_ref()
+        let index = guard
+            .as_ref()
             .ok_or_else(|| CodeGraphError::Vector("Index not created".to_string()))?;
 
         let base_size = index.ntotal() as usize * self.config.dimension * 4; // 4 bytes per f32
-        
+
         let overhead = match &self.config.index_type {
             IndexType::Flat => 0,
             IndexType::IVF { nlist, .. } => nlist * self.config.dimension * 4,
-            IndexType::IVFPQ { nlist, m, nbits, .. } => {
+            IndexType::IVFPQ {
+                nlist, m, nbits, ..
+            } => {
                 let codebook_size = (1 << nbits) * m * 4;
                 let codes_size = index.ntotal() as usize * m; // approximate
                 let ivf_overhead = nlist * self.config.dimension * 4;
                 ivf_overhead + codebook_size + codes_size
-            },
+            }
             IndexType::HNSW { m, .. } => index.ntotal() as usize * m * 8, // 8 bytes per link
             IndexType::LSH { nbits } => nbits / 8,
             IndexType::PQ { m, nbits } => {
                 let codebook_size = (1 << nbits) * m * 4;
                 let codes_size = index.ntotal() as usize * m;
                 codebook_size + codes_size
-            },
+            }
             IndexType::Hybrid { .. } => base_size / 2, // Rough estimate
         };
 

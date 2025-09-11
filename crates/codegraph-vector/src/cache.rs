@@ -1,8 +1,8 @@
 use codegraph_core::NodeId;
 use dashmap::DashMap;
-use parking_lot::{RwLock, Mutex};
+use parking_lot::{Mutex, RwLock};
 use std::collections::{HashMap, VecDeque};
-use std::hash::{Hash, Hasher, DefaultHasher};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time;
@@ -19,7 +19,7 @@ impl Default for CacheConfig {
     fn default() -> Self {
         Self {
             max_entries: 10_000,
-            ttl: Duration::from_secs(3600), // 1 hour
+            ttl: Duration::from_secs(3600),             // 1 hour
             cleanup_interval: Duration::from_secs(300), // 5 minutes
             enable_stats: true,
         }
@@ -85,7 +85,7 @@ impl<T> CacheEntry<T> {
     }
 }
 
-pub struct LfuCache<K, V> 
+pub struct LfuCache<K, V>
 where
     K: Hash + Eq + Clone,
     V: Clone,
@@ -127,10 +127,10 @@ where
 
         let handle = tokio::spawn(async move {
             let mut cleanup_interval = time::interval(interval);
-            
+
             loop {
                 cleanup_interval.tick().await;
-                
+
                 // Remove expired entries
                 let expired_keys: Vec<K> = data
                     .iter()
@@ -161,9 +161,9 @@ where
                         .iter()
                         .map(|entry| (entry.key().clone(), *entry.value()))
                         .collect();
-                    
+
                     freq_list.sort_by(|a, b| a.1.cmp(&b.1));
-                    
+
                     for (key, _) in freq_list.into_iter().take(evict_count) {
                         keys_to_evict.push(key);
                     }
@@ -174,7 +174,7 @@ where
                         if let Some(mut order) = access_order.try_lock() {
                             order.retain(|k| k != &key);
                         }
-                        
+
                         if let Some(mut stats) = stats.try_write() {
                             stats.evictions += 1;
                         }
@@ -195,9 +195,10 @@ where
     pub fn get(&self, key: &K) -> Option<V> {
         if let Some(mut entry) = self.data.get_mut(key) {
             entry.access();
-            
+
             // Update frequency
-            self.frequency.entry(key.clone())
+            self.frequency
+                .entry(key.clone())
                 .and_modify(|freq| *freq += 1)
                 .or_insert(1);
 
@@ -249,15 +250,16 @@ where
 
     fn evict_lfu(&self) {
         // Find the least frequently used key
-        if let Some(min_entry) = self.frequency
+        if let Some(min_entry) = self
+            .frequency
             .iter()
             .min_by(|a, b| a.value().cmp(b.value()))
         {
             let key_to_evict = min_entry.key().clone();
-            
+
             self.data.remove(&key_to_evict);
             self.frequency.remove(&key_to_evict);
-            
+
             if let Some(mut order) = self.access_order.try_lock() {
                 order.retain(|k| k != &key_to_evict);
             }
@@ -273,7 +275,7 @@ where
     pub fn remove(&self, key: &K) -> Option<V> {
         let value = self.data.remove(key).map(|(_, entry)| entry.value);
         self.frequency.remove(key);
-        
+
         if let Some(mut order) = self.access_order.try_lock() {
             order.retain(|k| k != key);
         }
@@ -343,7 +345,7 @@ pub struct QueryHash {
 impl QueryHash {
     pub fn new(embedding: &[f32], k: usize, config: &str) -> Self {
         let mut hasher = DefaultHasher::new();
-        
+
         // Hash embedding (sample every 10th element for performance)
         for (i, &val) in embedding.iter().enumerate() {
             if i % 10 == 0 {
@@ -372,7 +374,10 @@ pub struct ContextHash {
 
 impl ContextHash {
     pub fn new(nodes: Vec<NodeId>, context_type: String) -> Self {
-        Self { nodes, context_type }
+        Self {
+            nodes,
+            context_type,
+        }
     }
 }
 
@@ -437,7 +442,10 @@ impl SearchCacheManager {
     pub fn get_cache_stats(&self) -> HashMap<String, CacheStats> {
         let mut stats = HashMap::new();
         stats.insert("query_cache".to_string(), self.query_cache.get_stats());
-        stats.insert("embedding_cache".to_string(), self.embedding_cache.get_stats());
+        stats.insert(
+            "embedding_cache".to_string(),
+            self.embedding_cache.get_stats(),
+        );
         stats.insert("context_cache".to_string(), self.context_cache.get_stats());
         stats
     }

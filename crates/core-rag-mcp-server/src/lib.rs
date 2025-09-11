@@ -1,21 +1,20 @@
 use rmcp::{
-    handler::server::router::tool::ToolRouter,
-    model::*,
-    tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt,
+    handler::server::router::tool::ToolRouter, model::*, tool, tool_handler, tool_router,
+    ErrorData as McpError, ServerHandler, ServiceExt,
 };
 use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-pub mod rag_tools;
-pub mod error;
 pub mod config;
+pub mod error;
+pub mod rag_tools;
 
 #[cfg(test)]
 mod tests;
 
-pub use error::*;
 pub use config::*;
+pub use error::*;
 pub use rag_tools::*;
 
 /// Core RAG MCP Server providing CodeGraph functionality through MCP protocol
@@ -34,7 +33,7 @@ impl CoreRagMcpServer {
     /// Create a new Core RAG MCP Server instance
     pub fn new(config: CoreRagServerConfig) -> Result<Self> {
         let rag_tools = RagTools::new(config.clone())?;
-        
+
         Ok(Self {
             config,
             rag_tools,
@@ -72,7 +71,11 @@ impl CoreRagMcpServer {
                             result.path,
                             result.node_type,
                             result.content.chars().take(200).collect::<String>()
-                                + if result.content.len() > 200 { "..." } else { "" }
+                                + if result.content.len() > 200 {
+                                    "..."
+                                } else {
+                                    ""
+                                }
                         ))
                         .collect::<Vec<_>>()
                         .join("\n")
@@ -85,13 +88,8 @@ impl CoreRagMcpServer {
     }
 
     /// Get detailed information about a specific code node
-    #[tool(
-        description = "Get detailed information about a specific code node by its ID"
-    )]
-    async fn get_code_details(
-        &self,
-        node_id: String,
-    ) -> Result<CallToolResult, McpError> {
+    #[tool(description = "Get detailed information about a specific code node by its ID")]
+    async fn get_code_details(&self, node_id: String) -> Result<CallToolResult, McpError> {
         match self.rag_tools.get_code_details(&node_id).await {
             Ok(Some(details)) => {
                 let content = format!(
@@ -118,15 +116,19 @@ impl CoreRagMcpServer {
 
                 Ok(CallToolResult::success(vec![Content::text(content)]))
             }
-            Ok(None) => Err(McpError::internal_error(format!("Node not found: {}", node_id))),
-            Err(e) => Err(McpError::internal_error(format!("Failed to get details: {}", e))),
+            Ok(None) => Err(McpError::internal_error(format!(
+                "Node not found: {}",
+                node_id
+            ))),
+            Err(e) => Err(McpError::internal_error(format!(
+                "Failed to get details: {}",
+                e
+            ))),
         }
     }
 
     /// Analyze code relationships and dependencies
-    #[tool(
-        description = "Analyze relationships and dependencies for a given code node"
-    )]
+    #[tool(description = "Analyze relationships and dependencies for a given code node")]
     async fn analyze_relationships(
         &self,
         node_id: String,
@@ -143,19 +145,22 @@ impl CoreRagMcpServer {
                      Related Nodes ({}):\n{}",
                     node_id,
                     analysis.dependencies.len(),
-                    analysis.dependencies
+                    analysis
+                        .dependencies
                         .iter()
                         .map(|dep| format!("  - {} ({})", dep.name, dep.relationship_type))
                         .collect::<Vec<_>>()
                         .join("\n"),
                     analysis.dependents.len(),
-                    analysis.dependents
+                    analysis
+                        .dependents
                         .iter()
                         .map(|dep| format!("  - {} ({})", dep.name, dep.relationship_type))
                         .collect::<Vec<_>>()
                         .join("\n"),
                     analysis.related.len(),
-                    analysis.related
+                    analysis
+                        .related
                         .iter()
                         .map(|rel| format!("  - {} (similarity: {:.3})", rel.name, rel.score))
                         .collect::<Vec<_>>()
@@ -169,9 +174,7 @@ impl CoreRagMcpServer {
     }
 
     /// Get repository statistics and overview
-    #[tool(
-        description = "Get statistics and overview of the CodeGraph repository"
-    )]
+    #[tool(description = "Get statistics and overview of the CodeGraph repository")]
     async fn get_repo_stats(&self) -> Result<CallToolResult, McpError> {
         match self.rag_tools.get_repo_stats().await {
             Ok(stats) => {
@@ -195,7 +198,8 @@ impl CoreRagMcpServer {
                     stats.class_count,
                     stats.module_count,
                     stats.test_file_count,
-                    stats.languages
+                    stats
+                        .languages
                         .iter()
                         .map(|(lang, count)| format!("  - {}: {} files", lang, count))
                         .collect::<Vec<_>>()
@@ -206,7 +210,10 @@ impl CoreRagMcpServer {
 
                 Ok(CallToolResult::success(vec![Content::text(content)]))
             }
-            Err(e) => Err(McpError::internal_error(format!("Failed to get stats: {}", e))),
+            Err(e) => Err(McpError::internal_error(format!(
+                "Failed to get stats: {}",
+                e
+            ))),
         }
     }
 
@@ -236,7 +243,11 @@ impl CoreRagMcpServer {
                             result.path,
                             result.relevance_score,
                             result.context.chars().take(300).collect::<String>()
-                                + if result.context.len() > 300 { "..." } else { "" }
+                                + if result.context.len() > 300 {
+                                    "..."
+                                } else {
+                                    ""
+                                }
                         ))
                         .collect::<Vec<_>>()
                         .join("\n")
@@ -244,7 +255,10 @@ impl CoreRagMcpServer {
 
                 Ok(CallToolResult::success(vec![Content::text(content)]))
             }
-            Err(e) => Err(McpError::internal_error(format!("Semantic search failed: {}", e))),
+            Err(e) => Err(McpError::internal_error(format!(
+                "Semantic search failed: {}",
+                e
+            ))),
         }
     }
 }
@@ -276,7 +290,10 @@ impl CoreRagMcpServer {
     ) -> impl Fn() -> Result<Self, std::io::Error> + Send + Sync + 'static {
         move || {
             Self::new(config.clone()).map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to create server: {}", e))
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to create server: {}", e),
+                )
             })
         }
     }

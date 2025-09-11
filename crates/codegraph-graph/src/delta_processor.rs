@@ -1,4 +1,4 @@
-use codegraph_core::{Delta, Result, UpdatePayload, traits::DeltaProcessor};
+use codegraph_core::{traits::DeltaProcessor, Delta, Result, UpdatePayload};
 use crossbeam_channel::{Receiver, Sender};
 
 pub struct DeltaProcessorImpl;
@@ -11,18 +11,36 @@ impl DeltaProcessor for DeltaProcessorImpl {
                 codegraph_core::ChangeEvent::Modified(path) => {
                     // In a real implementation, we would fetch the old content from the graph
                     // and compute a diff. For now, we'll just return the new content as the delta.
-                    let changes = payload.content.unwrap_or_default().lines().map(|s| s.to_string()).collect();
-                    Delta { file_path: path, changes }
+                    let changes = payload
+                        .content
+                        .unwrap_or_default()
+                        .lines()
+                        .map(|s| s.to_string())
+                        .collect();
+                    Delta {
+                        file_path: path,
+                        changes,
+                    }
                 }
                 codegraph_core::ChangeEvent::Created(path) => {
-                    let changes = payload.content.unwrap_or_default().lines().map(|s| s.to_string()).collect();
-                    Delta { file_path: path, changes }
+                    let changes = payload
+                        .content
+                        .unwrap_or_default()
+                        .lines()
+                        .map(|s| s.to_string())
+                        .collect();
+                    Delta {
+                        file_path: path,
+                        changes,
+                    }
                 }
-                codegraph_core::ChangeEvent::Deleted(path) => {
-                    Delta { file_path: path, changes: vec![] }
-                }
+                codegraph_core::ChangeEvent::Deleted(path) => Delta {
+                    file_path: path,
+                    changes: vec![],
+                },
             };
-            tx.send(delta)?;
+            tx.send(delta)
+                .map_err(|e| codegraph_core::CodeGraphError::Threading(e.to_string()))?;
         }
         Ok(())
     }

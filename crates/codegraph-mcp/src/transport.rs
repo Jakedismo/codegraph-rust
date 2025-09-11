@@ -30,13 +30,25 @@ pub enum IncomingFrame {
 
 /// WebSocket transport implementation using tokio-tungstenite
 pub struct WebSocketTransport {
-    writer: Arc<RwLock<SplitSink<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, WsMessage>>>,
+    writer: Arc<
+        RwLock<
+            SplitSink<
+                WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+                WsMessage,
+            >,
+        >,
+    >,
+    #[allow(dead_code)]
     incoming: Incoming,
+    #[allow(dead_code)]
     heartbeat: HeartbeatManager,
 }
 
 impl WebSocketTransport {
-    pub async fn connect(url: &Url, heartbeat: Option<HeartbeatManager>) -> Result<(Arc<Self>, Incoming)> {
+    pub async fn connect(
+        url: &Url,
+        heartbeat: Option<HeartbeatManager>,
+    ) -> Result<(Arc<Self>, Incoming)> {
         let (stream, _resp) = connect_async(url.as_str()).await.map_err(McpError::from)?;
         let (sink, mut stream) = stream.split();
 
@@ -53,7 +65,9 @@ impl WebSocketTransport {
             while let Some(frame) = stream.next().await {
                 match frame {
                     Ok(WsMessage::Text(txt)) => {
-                                                let _ = tx.send(IncomingFrame::Text(String::from_utf8_lossy(txt.as_bytes()).to_string()));
+                        let _ = tx.send(IncomingFrame::Text(
+                            String::from_utf8_lossy(txt.as_bytes()).to_string(),
+                        ));
                     }
                     Ok(WsMessage::Binary(b)) => {
                         let _ = tx.send(IncomingFrame::Binary(b.to_vec()));
@@ -69,14 +83,20 @@ impl WebSocketTransport {
                     }
                     Ok(WsMessage::Ping(payload)) => {
                         // Respond to ping immediately
-                        if let Err(e) = writer_clone.write().await.send(WsMessage::Pong(payload.into())).await {
+                        if let Err(e) = writer_clone
+                            .write()
+                            .await
+                            .send(WsMessage::Pong(payload.into()))
+                            .await
+                        {
                             error!(?e, "Failed to send PONG");
                             break;
                         }
                     }
                     Ok(WsMessage::Close(frame)) => {
-                        let _ = tx
-                            .send(IncomingFrame::Close(frame.map(|f| (f.code.into(), f.reason.to_string()))));
+                        let _ = tx.send(IncomingFrame::Close(
+                            frame.map(|f| (f.code.into(), f.reason.to_string())),
+                        ));
                         break;
                     }
                     Err(e) => {
@@ -96,7 +116,12 @@ impl WebSocketTransport {
                 tokio::spawn(async move {
                     // Use websocket Ping with ASCII-encoded sequence number
                     let payload = seq.to_string().into_bytes();
-                    if let Err(e) = writer_clone.write().await.send(WsMessage::Ping(payload.into())).await {
+                    if let Err(e) = writer_clone
+                        .write()
+                        .await
+                        .send(WsMessage::Ping(payload.into()))
+                        .await
+                    {
                         warn!(?e, "Failed to send heartbeat ping");
                     }
                 })
@@ -104,7 +129,11 @@ impl WebSocketTransport {
             .await?
         }
 
-        let transport = Arc::new(Self { writer, incoming: rx.resubscribe(), heartbeat: hb });
+        let transport = Arc::new(Self {
+            writer,
+            incoming: rx.resubscribe(),
+            heartbeat: hb,
+        });
         Ok((transport, rx.resubscribe()))
     }
 }

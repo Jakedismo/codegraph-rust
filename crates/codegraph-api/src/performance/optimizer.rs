@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_graphql::ID;
-use codegraph_core::{Result, CodeGraphError, NodeId};
+use codegraph_core::{CodeGraphError, NodeId, Result};
 use codegraph_graph::CodeGraph;
 use dashmap::DashMap;
 use parking_lot::RwLock;
@@ -136,7 +136,11 @@ impl LruBytesCache {
             hit_rate: {
                 let h = *self.hits.read();
                 let m = *self.misses.read();
-                if h + m == 0 { 0.0 } else { h as f64 / (h + m) as f64 }
+                if h + m == 0 {
+                    0.0
+                } else {
+                    h as f64 / (h + m) as f64
+                }
             },
         }
     }
@@ -167,7 +171,10 @@ impl std::fmt::Debug for PerformanceOptimizer {
         f.debug_struct("PerformanceOptimizer")
             .field("capacity", &self.cache.capacity)
             .field("ttl_secs", &self.config.cache_ttl_secs)
-            .field("compress_cache_entries", &self.config.compress_cache_entries)
+            .field(
+                "compress_cache_entries",
+                &self.config.compress_cache_entries,
+            )
             .finish()
     }
 }
@@ -175,22 +182,41 @@ impl std::fmt::Debug for PerformanceOptimizer {
 impl PerformanceOptimizer {
     pub fn new(config: PerformanceOptimizerConfig) -> Self {
         let ttl = Duration::from_secs(config.cache_ttl_secs);
-        Self { config: config.clone(), cache: LruBytesCache::new(config.cache_capacity, ttl) }
+        Self {
+            config: config.clone(),
+            cache: LruBytesCache::new(config.cache_capacity, ttl),
+        }
     }
 
-    pub fn stats(&self) -> CacheStats { self.cache.stats() }
+    pub fn stats(&self) -> CacheStats {
+        self.cache.stats()
+    }
 
-    pub fn max_traversal_depth(&self) -> usize { self.config.max_traversal_depth }
+    pub fn max_traversal_depth(&self) -> usize {
+        self.config.max_traversal_depth
+    }
 
-    pub fn max_traversal_nodes(&self) -> usize { self.config.max_traversal_nodes }
+    pub fn max_traversal_nodes(&self) -> usize {
+        self.config.max_traversal_nodes
+    }
 
     /// Generate a stable cache key for a GraphQL traversal request
-    pub fn key_for_traversal(&self, start: &ID, max_depth: Option<i32>, limit: Option<i32>, edge_types: Option<&[String]>) -> String {
+    pub fn key_for_traversal(
+        &self,
+        start: &ID,
+        max_depth: Option<i32>,
+        limit: Option<i32>,
+        edge_types: Option<&[String]>,
+    ) -> String {
         let mut hasher = Sha256::new();
         hasher.update(start.to_string().as_bytes());
         hasher.update(max_depth.unwrap_or(0).to_le_bytes());
         hasher.update(limit.unwrap_or(0).to_le_bytes());
-        if let Some(et) = edge_types { for e in et { hasher.update(e.as_bytes()); } }
+        if let Some(et) = edge_types {
+            for e in et {
+                hasher.update(e.as_bytes());
+            }
+        }
         format!("traverse:{:x}", hasher.finalize())
     }
 
@@ -204,17 +230,23 @@ impl PerformanceOptimizer {
     }
 
     /// Check a traversal request against complexity guardrails
-    pub fn guard_traversal_complexity(&self, max_depth: Option<i32>, limit: Option<i32>) -> std::result::Result<(), CodeGraphError> {
+    pub fn guard_traversal_complexity(
+        &self,
+        max_depth: Option<i32>,
+        limit: Option<i32>,
+    ) -> std::result::Result<(), CodeGraphError> {
         let depth = max_depth.unwrap_or(self.config.max_traversal_depth as i32) as usize;
         if depth > self.config.max_traversal_depth {
             return Err(CodeGraphError::InvalidQuery(format!(
-                "Traversal depth {} exceeds limit {}", depth, self.config.max_traversal_depth
+                "Traversal depth {} exceeds limit {}",
+                depth, self.config.max_traversal_depth
             )));
         }
         let limit_u = limit.unwrap_or(0).max(0) as usize;
         if limit_u > self.config.max_traversal_nodes {
             return Err(CodeGraphError::InvalidQuery(format!(
-                "Traversal node limit {} exceeds max {}", limit_u, self.config.max_traversal_nodes
+                "Traversal node limit {} exceeds max {}",
+                limit_u, self.config.max_traversal_nodes
             )));
         }
         Ok(())
@@ -227,14 +259,24 @@ impl PerformanceOptimizer {
                 // decompress
                 match zstd::decode_all(&entry.bytes[..]) {
                     Ok(b) => b,
-                    Err(e) => { warn!("cache decompression failed: {}", e); entry.bytes }
+                    Err(e) => {
+                        warn!("cache decompression failed: {}", e);
+                        entry.bytes
+                    }
                 }
-            } else { entry.bytes };
+            } else {
+                entry.bytes
+            };
             match serde_json::from_slice::<T>(&bytes) {
                 Ok(v) => Some(v),
-                Err(e) => { warn!("cached json decode failed: {}", e); None }
+                Err(e) => {
+                    warn!("cached json decode failed: {}", e);
+                    None
+                }
             }
-        } else { None }
+        } else {
+            None
+        }
     }
 
     /// Put cached JSON payload
@@ -244,18 +286,24 @@ impl PerformanceOptimizer {
                 let mut compressed = false;
                 if self.config.compress_cache_entries && bytes.len() > 1024 {
                     match zstd::encode_all(&bytes[..], 0) {
-                        Ok(b) => { bytes = b; compressed = true; }
+                        Ok(b) => {
+                            bytes = b;
+                            compressed = true;
+                        }
                         Err(e) => warn!("cache compression failed: {}", e),
                     }
                 }
                 self.cache
-                    .put(key, CacheEntry {
-                        bytes,
-                        content_type: "application/json",
-                        compressed,
-                        created_at: Instant::now(),
-                        ttl: self.cache.ttl,
-                    })
+                    .put(
+                        key,
+                        CacheEntry {
+                            bytes,
+                            content_type: "application/json",
+                            compressed,
+                            created_at: Instant::now(),
+                            ttl: self.cache.ttl,
+                        },
+                    )
                     .await;
             }
             Err(e) => warn!("cache serialization failed: {}", e),
@@ -280,4 +328,3 @@ impl PerformanceOptimizer {
         }
     }
 }
-

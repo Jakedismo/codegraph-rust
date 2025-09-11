@@ -2,11 +2,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use codegraph_core::{CodeNode, Language, NodeId, NodeType, Result, CodeGraphError};
+use codegraph_core::{CodeGraphError, CodeNode, Language, NodeId, NodeType, Result};
 use codegraph_graph::CodeGraph;
 use codegraph_vector::{EmbeddingGenerator, SemanticSearch};
-use tokio::sync::RwLock;
 use futures::future::try_join_all;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct SemanticSearchConfig {
@@ -59,7 +59,12 @@ impl SemanticSearchEngine {
         embeddings: Arc<EmbeddingGenerator>,
         cfg: Option<SemanticSearchConfig>,
     ) -> Self {
-        Self { graph, semantic, embeddings, cfg: cfg.unwrap_or_default() }
+        Self {
+            graph,
+            semantic,
+            embeddings,
+            cfg: cfg.unwrap_or_default(),
+        }
     }
 
     /// Find similar functions given a node as a seed.
@@ -70,7 +75,9 @@ impl SemanticSearchEngine {
         cross_language: bool,
     ) -> Result<Vec<(CodeNode, f32)>> {
         if !matches!(node.node_type, Some(NodeType::Function)) {
-            return Err(CodeGraphError::InvalidOperation("Node is not a function".into()));
+            return Err(CodeGraphError::InvalidOperation(
+                "Node is not a function".into(),
+            ));
         }
         let k = limit.max(1) * self.cfg.oversample;
         let results = self.semantic.find_similar_functions(node, k).await?;
@@ -82,9 +89,13 @@ impl SemanticSearchEngine {
                 if !cross_language && node.language.is_some() && found.language != node.language {
                     continue;
                 }
-                if !matches!(found.node_type, Some(NodeType::Function)) { continue; }
+                if !matches!(found.node_type, Some(NodeType::Function)) {
+                    continue;
+                }
                 out.push((found, r.score));
-                if out.len() >= limit { break; }
+                if out.len() >= limit {
+                    break;
+                }
             }
         }
         Ok(out)
@@ -102,7 +113,9 @@ impl SemanticSearchEngine {
                     out.push((node, r.score));
                 }
             }
-            if out.len() >= limit { break; }
+            if out.len() >= limit {
+                break;
+            }
         }
         Ok(out)
     }
@@ -123,27 +136,47 @@ impl SemanticSearchEngine {
         let mut clones = Vec::new();
 
         for cand in candidates.into_iter() {
-            if cand.score < threshold { continue; }
+            if cand.score < threshold {
+                continue;
+            }
             if let Some(other) = graph.get_node(cand.node_id).await? {
-                if !matches!(other.node_type, Some(NodeType::Function)) { continue; }
-                if !cross_language && node.language.is_some() && node.language != other.language { continue; }
+                if !matches!(other.node_type, Some(NodeType::Function)) {
+                    continue;
+                }
+                if !cross_language && node.language.is_some() && node.language != other.language {
+                    continue;
+                }
 
                 let ts = token_jaccard(&seed_tokens, &tokenize(&other));
                 // Combine vector score and token similarity with a conservative guard
                 if ts >= self.cfg.token_similarity_threshold {
-                    clones.push(CloneMatch { node_id: other.id, score: cand.score, token_similarity: ts });
+                    clones.push(CloneMatch {
+                        node_id: other.id,
+                        score: cand.score,
+                        token_similarity: ts,
+                    });
                 }
-                if clones.len() >= limit { break; }
+                if clones.len() >= limit {
+                    break;
+                }
             }
         }
 
         // Sort by combined score heuristic
-        clones.sort_by(|a, b| (b.score * 0.7 + b.token_similarity * 0.3).partial_cmp(&(a.score * 0.7 + a.token_similarity * 0.3)).unwrap());
+        clones.sort_by(|a, b| {
+            (b.score * 0.7 + b.token_similarity * 0.3)
+                .partial_cmp(&(a.score * 0.7 + a.token_similarity * 0.3))
+                .unwrap()
+        });
         Ok(clones)
     }
 
     /// Impact analysis: find nodes that depend on `root`. Traverses incoming edges up to depth or timeout.
-    pub async fn impact_analysis(&self, root: NodeId, max_depth: Option<usize>) -> Result<ImpactResult> {
+    pub async fn impact_analysis(
+        &self,
+        root: NodeId,
+        max_depth: Option<usize>,
+    ) -> Result<ImpactResult> {
         let depth = max_depth.unwrap_or(self.cfg.max_impact_depth);
         let deadline = Instant::now() + self.cfg.impact_timeout;
 
@@ -155,8 +188,12 @@ impl SemanticSearchEngine {
         visited.insert(root);
 
         while let Some((cur, d)) = q.pop_front() {
-            if Instant::now() >= deadline { break; }
-            if d >= depth { continue; }
+            if Instant::now() >= deadline {
+                break;
+            }
+            if d >= depth {
+                continue;
+            }
             // Incoming neighbors: who depends on current
             let incoming = graph.get_incoming_neighbors(cur).await?;
             for n in incoming {
@@ -171,13 +208,19 @@ impl SemanticSearchEngine {
     }
 
     /// Recommendations: suggest similar patterns for a given node by blending its neighborhood context.
-    pub async fn recommendations(&self, seed: &CodeNode, limit: usize) -> Result<Vec<(CodeNode, f32)>> {
+    pub async fn recommendations(
+        &self,
+        seed: &CodeNode,
+        limit: usize,
+    ) -> Result<Vec<(CodeNode, f32)>> {
         // Gather small 1-hop context
         let graph = self.graph.read().await;
         let mut ctx_nodes: Vec<CodeNode> = vec![seed.clone()];
         let neighbors = graph.get_neighbors(seed.id).await.unwrap_or_default();
         for nid in neighbors.into_iter().take(8) {
-            if let Some(n) = graph.get_node(nid).await? { ctx_nodes.push(n); }
+            if let Some(n) = graph.get_node(nid).await? {
+                ctx_nodes.push(n);
+            }
         }
 
         // Encode and combine embeddings
@@ -188,10 +231,14 @@ impl SemanticSearchEngine {
 
         let mut out = Vec::with_capacity(limit);
         for r in results.into_iter() {
-            if r.node_id == seed.id { continue; }
+            if r.node_id == seed.id {
+                continue;
+            }
             if let Some(n) = graph.get_node(r.node_id).await? {
                 out.push((n, r.score));
-                if out.len() >= limit { break; }
+                if out.len() >= limit {
+                    break;
+                }
             }
         }
         Ok(out)
@@ -214,10 +261,17 @@ pub struct RepoContext {
 
 impl MultiRepoSemanticSearchEngine {
     pub fn new(contexts: Vec<RepoContext>, cfg: Option<SemanticSearchConfig>) -> Self {
-        Self { contexts, cfg: cfg.unwrap_or_default() }
+        Self {
+            contexts,
+            cfg: cfg.unwrap_or_default(),
+        }
     }
 
-    pub async fn query_functions(&self, query: &str, limit: usize) -> Result<Vec<(String, CodeNode, f32)>> {
+    pub async fn query_functions(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, CodeNode, f32)>> {
         let k = (limit.max(1) * self.cfg.oversample).max(limit + 10);
         let mut futs = Vec::with_capacity(self.contexts.len());
         for ctx in &self.contexts {
@@ -231,21 +285,32 @@ impl MultiRepoSemanticSearchEngine {
         let mut merged: Vec<(String, NodeId, f32)> = Vec::new();
         for (i, res) in results.into_iter().enumerate() {
             let repo_id = self.contexts[i].repo_id.clone();
-            for r in res { merged.push((repo_id.clone(), r.node_id, r.score)); }
+            for r in res {
+                merged.push((repo_id.clone(), r.node_id, r.score));
+            }
         }
         // Sort and unique by NodeId while keeping highest score
         merged.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
         let mut seen: HashSet<NodeId> = HashSet::new();
         let mut out: Vec<(String, CodeNode, f32)> = Vec::new();
         for (repo_id, nid, score) in merged.into_iter() {
-            if !seen.insert(nid) { continue; }
-            let graph = &self.contexts.iter().find(|c| c.repo_id == repo_id).unwrap().graph;
+            if !seen.insert(nid) {
+                continue;
+            }
+            let graph = &self
+                .contexts
+                .iter()
+                .find(|c| c.repo_id == repo_id)
+                .unwrap()
+                .graph;
             if let Some(node) = graph.read().await.get_node(nid).await? {
                 if matches!(node.node_type, Some(NodeType::Function)) {
                     out.push((repo_id.clone(), node, score));
                 }
             }
-            if out.len() >= limit { break; }
+            if out.len() >= limit {
+                break;
+            }
         }
         Ok(out)
     }
@@ -256,7 +321,10 @@ impl MultiRepoSemanticSearchEngine {
 fn tokenize(node: &CodeNode) -> HashSet<String> {
     let mut s = String::new();
     s.push_str(node.name.as_str());
-    if let Some(ref c) = node.content { s.push(' '); s.push_str(c.as_str()); }
+    if let Some(ref c) = node.content {
+        s.push(' ');
+        s.push_str(c.as_str());
+    }
     // Lowercase alnum tokens
     let mut out: HashSet<String> = HashSet::new();
     let mut cur = String::new();
@@ -268,29 +336,48 @@ fn tokenize(node: &CodeNode) -> HashSet<String> {
             cur.clear();
         }
     }
-    if !cur.is_empty() { out.insert(cur); }
+    if !cur.is_empty() {
+        out.insert(cur);
+    }
     out
 }
 
 fn token_jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f32 {
-    if a.is_empty() || b.is_empty() { return 0.0; }
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
     let inter = a.intersection(b).count() as f32;
     let uni = (a.len() + b.len()) as f32 - inter;
-    if uni <= 0.0 { 0.0 } else { inter / uni }
+    if uni <= 0.0 {
+        0.0
+    } else {
+        inter / uni
+    }
 }
 
 fn average_unit(vectors: &[Vec<f32>]) -> Vec<f32> {
-    if vectors.is_empty() { return vec![]; }
+    if vectors.is_empty() {
+        return vec![];
+    }
     let dim = vectors[0].len();
     let mut sum = vec![0.0f32; dim];
     for v in vectors {
-        if v.len() != dim { continue; }
-        for (i, x) in v.iter().enumerate() { sum[i] += *x; }
+        if v.len() != dim {
+            continue;
+        }
+        for (i, x) in v.iter().enumerate() {
+            sum[i] += *x;
+        }
     }
     let n = vectors.len() as f32;
-    for x in &mut sum { *x /= n; }
+    for x in &mut sum {
+        *x /= n;
+    }
     let norm: f32 = sum.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm > 0.0 { for x in &mut sum { *x /= norm; } }
+    if norm > 0.0 {
+        for x in &mut sum {
+            *x /= norm;
+        }
+    }
     sum
 }
-

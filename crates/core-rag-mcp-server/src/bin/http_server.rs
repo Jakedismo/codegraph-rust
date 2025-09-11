@@ -1,21 +1,19 @@
 use core_rag_mcp_server::{CoreRagMcpServer, CoreRagServerConfig};
 use rmcp::{
     transport::{
-        streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService},
         stdio,
+        streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService},
     },
     ServiceExt,
 };
 use std::{env, net::SocketAddr, sync::Arc};
-use tracing::{info, error, warn};
+use tracing::{error, info, warn};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     tracing_subscriber::fmt()
-        .with_env_filter(
-            env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string())
-        )
+        .with_env_filter(env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()))
         .init();
 
     info!("Starting Core RAG MCP Server (HTTP)...");
@@ -49,18 +47,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create service factory
     let service_factory = CoreRagMcpServer::service_factory(config);
-    
+
     // Create session manager (using default local session manager)
     let session_manager = Arc::new(
-        rmcp::transport::streamable_http_server::session::local::LocalSessionManager::new()
+        rmcp::transport::streamable_http_server::session::local::LocalSessionManager::new(),
     );
 
     // Create HTTP service
-    let http_service = StreamableHttpService::new(
-        service_factory,
-        session_manager,
-        http_config,
-    );
+    let http_service = StreamableHttpService::new(service_factory, session_manager, http_config);
 
     info!("HTTP service created successfully");
     info!("Available endpoints:");
@@ -68,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("  - POST /mcp  - MCP JSON-RPC requests");
     info!("  - GET  /mcp  - MCP session management (stateful mode)");
     info!("  - DELETE /mcp - Close MCP session (stateful mode)");
-    
+
     info!("Available tools:");
     info!("  - search_code: Search for code patterns using vector similarity");
     info!("  - get_code_details: Get detailed information about a code node");
@@ -83,9 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/status", axum::routing::get(server_status))
         .fallback_service(tower::service_fn(move |req| {
             let service = http_service.clone();
-            async move {
-                service.handle(req).await
-            }
+            async move { service.handle(req).await }
         }));
 
     // Create server
@@ -123,7 +115,7 @@ async fn health_check() -> axum::Json<serde_json::Value> {
 /// Server status endpoint
 async fn server_status() -> axum::Json<serde_json::Value> {
     let memory_info = get_memory_info();
-    
+
     axum::Json(serde_json::json!({
         "service": "core-rag-mcp-server",
         "version": env!("CARGO_PKG_VERSION"),
@@ -172,12 +164,10 @@ fn parse_server_address() -> SocketAddr {
             8080
         });
 
-    format!("{}:{}", host, port)
-        .parse()
-        .unwrap_or_else(|_| {
-            warn!("Invalid address format, using 127.0.0.1:8080");
-            "127.0.0.1:8080".parse().unwrap()
-        })
+    format!("{}:{}", host, port).parse().unwrap_or_else(|_| {
+        warn!("Invalid address format, using 127.0.0.1:8080");
+        "127.0.0.1:8080".parse().unwrap()
+    })
 }
 
 /// Load configuration from file or environment

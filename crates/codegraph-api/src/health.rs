@@ -127,7 +127,9 @@ pub async fn comprehensive_health_check(
         } else {
             "unhealthy".to_string()
         },
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: option_env!("CARGO_PKG_VERSION")
+            .unwrap_or("0.1.0")
+            .to_string(),
         timestamp,
         uptime_seconds: uptime,
         components,
@@ -139,13 +141,14 @@ pub async fn comprehensive_health_check(
 
 async fn check_database_health(state: &AppState) -> ComponentStatus {
     let start = SystemTime::now();
-    
+
     // Try to read from the graph store with timeout
     let health_check = timeout(Duration::from_millis(1000), async {
         let graph = state.graph.read().await;
         // Try a simple operation to verify database connectivity
         graph.get_stats().await
-    }).await;
+    })
+    .await;
 
     let response_time = start.elapsed().unwrap_or_default().as_millis() as u64;
 
@@ -154,7 +157,7 @@ async fn check_database_health(state: &AppState) -> ComponentStatus {
             let mut details = HashMap::new();
             details.insert("total_nodes".to_string(), stats.total_nodes.to_string());
             details.insert("total_edges".to_string(), stats.total_edges.to_string());
-            
+
             ComponentStatus::healthy()
                 .with_response_time(response_time)
                 .with_details(details)
@@ -168,21 +171,25 @@ async fn check_database_health(state: &AppState) -> ComponentStatus {
 
 async fn check_vector_search_health(state: &AppState) -> ComponentStatus {
     let start = SystemTime::now();
-    
+
     let health_check = timeout(Duration::from_millis(1000), async {
         // Try a simple vector search operation
         state.semantic_search.get_index_stats().await
-    }).await;
+    })
+    .await;
 
     let response_time = start.elapsed().unwrap_or_default().as_millis() as u64;
 
     match health_check {
         Ok(Ok(stats)) => {
             let mut details = HashMap::new();
-            details.insert("indexed_vectors".to_string(), stats.total_vectors.to_string());
+            details.insert(
+                "indexed_vectors".to_string(),
+                stats.total_vectors.to_string(),
+            );
             details.insert("index_type".to_string(), format!("{:?}", stats.index_type));
             details.insert("dimension".to_string(), stats.dimension.to_string());
-            
+
             ComponentStatus::healthy()
                 .with_response_time(response_time)
                 .with_details(details)
@@ -196,11 +203,12 @@ async fn check_vector_search_health(state: &AppState) -> ComponentStatus {
 
 async fn check_parser_health(state: &AppState) -> ComponentStatus {
     let start = SystemTime::now();
-    
+
     // Try to parse a simple code snippet to verify parser health
     let health_check = timeout(Duration::from_millis(500), async {
         state.parser.parse_snippet("fn test() {}", "rust").await
-    }).await;
+    })
+    .await;
 
     let response_time = start.elapsed().unwrap_or_default().as_millis() as u64;
 
@@ -209,7 +217,7 @@ async fn check_parser_health(state: &AppState) -> ComponentStatus {
             let mut details = HashMap::new();
             details.insert("test_parse_success".to_string(), "true".to_string());
             details.insert("parsed_nodes".to_string(), nodes.len().to_string());
-            
+
             ComponentStatus::healthy()
                 .with_response_time(response_time)
                 .with_details(details)
@@ -228,17 +236,27 @@ async fn check_memory_health() -> ComponentStatus {
         match tracker.get_stats() {
             Ok(stats) => {
                 let mut details = HashMap::new();
-                details.insert("active_allocations".to_string(), stats.active_allocations.to_string());
-                details.insert("active_memory_mb".to_string(), (stats.active_memory / 1024 / 1024).to_string());
-                details.insert("leaked_allocations".to_string(), stats.leaked_allocations.to_string());
-                details.insert("leaked_memory_mb".to_string(), (stats.leaked_memory / 1024 / 1024).to_string());
-                
+                details.insert(
+                    "active_allocations".to_string(),
+                    stats.active_allocations.to_string(),
+                );
+                details.insert(
+                    "active_memory_mb".to_string(),
+                    (stats.active_memory / 1024 / 1024).to_string(),
+                );
+                details.insert(
+                    "leaked_allocations".to_string(),
+                    stats.leaked_allocations.to_string(),
+                );
+                details.insert(
+                    "leaked_memory_mb".to_string(),
+                    (stats.leaked_memory / 1024 / 1024).to_string(),
+                );
+
                 // Consider memory degraded if we have significant leaks
-                if stats.leaked_memory > 10 * 1024 * 1024 { // 10MB
-                    ComponentStatus::degraded(
-                        "Memory leaks detected".to_string(),
-                        details,
-                    )
+                if stats.leaked_memory > 10 * 1024 * 1024 {
+                    // 10MB
+                    ComponentStatus::degraded("Memory leaks detected".to_string(), details)
                 } else {
                     ComponentStatus::healthy().with_details(details)
                 }
@@ -246,19 +264,28 @@ async fn check_memory_health() -> ComponentStatus {
             Err(e) => ComponentStatus::unhealthy(format!("Memory tracker error: {}", e)),
         }
     }
-    
+
     #[cfg(not(feature = "leak-detect"))]
     {
         // Get basic memory info from system
         use sysinfo::{System, SystemExt};
         let mut sys = System::new_all();
         sys.refresh_memory();
-        
+
         let mut details = HashMap::new();
-        details.insert("available_memory_gb".to_string(), (sys.available_memory() / 1024 / 1024 / 1024).to_string());
-        details.insert("used_memory_gb".to_string(), (sys.used_memory() / 1024 / 1024 / 1024).to_string());
-        details.insert("total_memory_gb".to_string(), (sys.total_memory() / 1024 / 1024 / 1024).to_string());
-        
+        details.insert(
+            "available_memory_gb".to_string(),
+            (sys.available_memory() / 1024 / 1024 / 1024).to_string(),
+        );
+        details.insert(
+            "used_memory_gb".to_string(),
+            (sys.used_memory() / 1024 / 1024 / 1024).to_string(),
+        );
+        details.insert(
+            "total_memory_gb".to_string(),
+            (sys.total_memory() / 1024 / 1024 / 1024).to_string(),
+        );
+
         // Consider memory degraded if usage is very high
         let memory_usage_percent = (sys.used_memory() as f64 / sys.total_memory() as f64) * 100.0;
         if memory_usage_percent > 90.0 {
@@ -274,21 +301,21 @@ async fn check_memory_health() -> ComponentStatus {
 
 async fn check_storage_health(state: &AppState) -> ComponentStatus {
     use std::fs;
-    
+
     // Check if we can write to temp directory
     let temp_file = "/tmp/codegraph_health_check";
     match fs::write(temp_file, "health_check") {
         Ok(()) => {
             let _ = fs::remove_file(temp_file);
-            
+
             let mut details = HashMap::new();
             details.insert("write_test".to_string(), "passed".to_string());
-            
+
             // Check available disk space
             if let Ok(metadata) = fs::metadata("/tmp") {
                 details.insert("temp_dir_accessible".to_string(), "true".to_string());
             }
-            
+
             ComponentStatus::healthy().with_details(details)
         }
         Err(e) => ComponentStatus::unhealthy(format!("Storage write test failed: {}", e)),
@@ -296,21 +323,21 @@ async fn check_storage_health(state: &AppState) -> ComponentStatus {
 }
 
 async fn collect_system_metrics(state: &AppState) -> SystemMetrics {
-    use sysinfo::{System, SystemExt, ProcessExt};
-    
+    use sysinfo::{ProcessExt, System, SystemExt};
+
     let mut sys = System::new_all();
     sys.refresh_all();
-    
+
     // Get current process info
     let pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from(0));
     let process = sys.process(pid);
-    
+
     let memory_usage = process.map(|p| p.memory() * 1024).unwrap_or(0); // Convert KB to bytes
     let cpu_usage = process.map(|p| p.cpu_usage() as f64).unwrap_or(0.0);
-    
+
     // Get metrics from Prometheus registry
     let active_connections = crate::metrics::MEM_ACTIVE_ALLOCATIONS.get() as u64;
-    
+
     SystemMetrics {
         memory_usage_bytes: memory_usage,
         cpu_usage_percent: cpu_usage,
@@ -355,7 +382,7 @@ fn calculate_error_rate() -> f64 {
 // Readiness probe - checks if service is ready to receive traffic
 pub async fn readiness_check(State(state): State<AppState>) -> ApiResult<Json<HealthResponse>> {
     let health_response = comprehensive_health_check(State(state)).await?;
-    
+
     // Service is ready if core components are healthy
     let core_components_healthy = [
         &health_response.components.database.status,
@@ -363,11 +390,13 @@ pub async fn readiness_check(State(state): State<AppState>) -> ApiResult<Json<He
     ]
     .iter()
     .all(|status| *status == "healthy");
-    
+
     if core_components_healthy {
         Ok(health_response)
     } else {
-        Err(ApiError::ServiceUnavailable("Service not ready".to_string()))
+        Err(ApiError::ServiceUnavailable(
+            "Service not ready".to_string(),
+        ))
     }
 }
 

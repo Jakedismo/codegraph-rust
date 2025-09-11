@@ -1,4 +1,4 @@
-use crate::{CacheEntry, CacheStats, CacheSizeEstimator};
+use crate::{CacheEntry, CacheSizeEstimator, CacheStats};
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, Result};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, WriteBatch, DB};
@@ -36,11 +36,13 @@ impl<T> From<CacheEntry<T>> for StoredCacheEntry<T> {
     fn from(entry: CacheEntry<T>) -> Self {
         Self {
             value: entry.value,
-            created_at: entry.created_at
+            created_at: entry
+                .created_at
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or(Duration::ZERO)
                 .as_secs(),
-            last_accessed: entry.last_accessed
+            last_accessed: entry
+                .last_accessed
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or(Duration::ZERO)
                 .as_secs(),
@@ -102,7 +104,7 @@ impl PersistentStorage {
         db_opts.set_write_buffer_size(config.write_buffer_size);
         db_opts.set_max_write_buffer_number(config.max_write_buffer_number.try_into().unwrap());
         db_opts.set_target_file_size_base(config.target_file_size_base);
-        
+
         if config.enable_compression {
             db_opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
         }
@@ -123,10 +125,8 @@ impl PersistentStorage {
             .map_err(|e| CodeGraphError::Database(format!("Failed to open database: {}", e)))?;
 
         info!("Opened persistent storage at: {}", config.db_path);
-        
-        Ok(Self {
-            db: Arc::new(db),
-        })
+
+        Ok(Self { db: Arc::new(db) })
     }
 
     /// Store a value in the specified column family
@@ -143,12 +143,14 @@ impl PersistentStorage {
         let key = key.to_string();
 
         task::spawn_blocking(move || {
-            let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
-            
+            let cf = db.cf_handle(&cf_name).ok_or_else(|| {
+                CodeGraphError::Database(format!("Column family '{}' not found", cf_name))
+            })?;
+
             db.put_cf(cf, key.as_bytes(), &serialized)
                 .map_err(|e| CodeGraphError::Database(format!("Write failed: {}", e)))
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))??;
 
         Ok(())
@@ -164,18 +166,20 @@ impl PersistentStorage {
         let key = key.to_string();
 
         let data = task::spawn_blocking(move || {
-            let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
-            
+            let cf = db.cf_handle(&cf_name).ok_or_else(|| {
+                CodeGraphError::Database(format!("Column family '{}' not found", cf_name))
+            })?;
+
             db.get_cf(cf, key.as_bytes())
                 .map_err(|e| CodeGraphError::Database(format!("Read failed: {}", e)))
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))??;
 
         if let Some(bytes) = data {
             let stored_entry: StoredCacheEntry<T> = bincode::deserialize(&bytes)
                 .map_err(|e| CodeGraphError::Database(format!("Deserialization failed: {}", e)))?;
-            
+
             Ok(Some(stored_entry.into()))
         } else {
             Ok(None)
@@ -189,11 +193,13 @@ impl PersistentStorage {
         let key = key.to_string();
 
         task::spawn_blocking(move || {
-            let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
-            
+            let cf = db.cf_handle(&cf_name).ok_or_else(|| {
+                CodeGraphError::Database(format!("Column family '{}' not found", cf_name))
+            })?;
+
             // Check if key exists first
-            let exists = db.get_cf(cf, key.as_bytes())
+            let exists = db
+                .get_cf(cf, key.as_bytes())
                 .map_err(|e| CodeGraphError::Database(format!("Read failed: {}", e)))?
                 .is_some();
 
@@ -203,12 +209,17 @@ impl PersistentStorage {
             }
 
             Ok(exists)
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
     /// Batch store multiple entries
-    pub async fn batch_store<T>(&self, cf_name: &str, entries: Vec<(String, CacheEntry<T>)>) -> Result<()>
+    pub async fn batch_store<T>(
+        &self,
+        cf_name: &str,
+        entries: Vec<(String, CacheEntry<T>)>,
+    ) -> Result<()>
     where
         T: Serialize + Send + 'static,
     {
@@ -216,22 +227,25 @@ impl PersistentStorage {
         let cf_name = cf_name.to_string();
 
         task::spawn_blocking(move || {
-            let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
-            
+            let cf = db.cf_handle(&cf_name).ok_or_else(|| {
+                CodeGraphError::Database(format!("Column family '{}' not found", cf_name))
+            })?;
+
             let mut batch = WriteBatch::default();
-            
+
             for (key, entry) in entries {
                 let stored_entry: StoredCacheEntry<T> = entry.into();
-                let serialized = bincode::serialize(&stored_entry)
-                    .map_err(|e| CodeGraphError::Database(format!("Serialization failed: {}", e)))?;
-                
+                let serialized = bincode::serialize(&stored_entry).map_err(|e| {
+                    CodeGraphError::Database(format!("Serialization failed: {}", e))
+                })?;
+
                 batch.put_cf(cf, key.as_bytes(), &serialized);
             }
 
             db.write(batch)
                 .map_err(|e| CodeGraphError::Database(format!("Batch write failed: {}", e)))
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
@@ -241,22 +255,24 @@ impl PersistentStorage {
         let cf_name = cf_name.to_string();
 
         task::spawn_blocking(move || {
-            let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
-            
+            let cf = db.cf_handle(&cf_name).ok_or_else(|| {
+                CodeGraphError::Database(format!("Column family '{}' not found", cf_name))
+            })?;
+
             let iter = db.iterator_cf(cf, rocksdb::IteratorMode::Start);
             let mut keys = Vec::new();
 
             for item in iter {
-                let (key, _) = item
-                    .map_err(|e| CodeGraphError::Database(format!("Iterator failed: {}", e)))?;
-                
+                let (key, _) =
+                    item.map_err(|e| CodeGraphError::Database(format!("Iterator failed: {}", e)))?;
+
                 let key_str = String::from_utf8_lossy(&key).to_string();
                 keys.push(key_str);
             }
 
             Ok(keys)
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
@@ -266,17 +282,21 @@ impl PersistentStorage {
         let cf_name = cf_name.to_string();
 
         task::spawn_blocking(move || {
-            let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
-            
+            let cf = db.cf_handle(&cf_name).ok_or_else(|| {
+                CodeGraphError::Database(format!("Column family '{}' not found", cf_name))
+            })?;
+
             let property = format!("rocksdb.estimate-num-keys");
-            let count_str = db.property_value_cf(cf, &property)
+            let count_str = db
+                .property_value_cf(cf, &property)
                 .map_err(|e| CodeGraphError::Database(format!("Property read failed: {}", e)))?
                 .unwrap_or_else(|| "0".to_string());
 
-            count_str.parse::<u64>()
+            count_str
+                .parse::<u64>()
                 .map_err(|e| CodeGraphError::Database(format!("Failed to parse count: {}", e)))
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
@@ -289,9 +309,10 @@ impl PersistentStorage {
         let cf_name = cf_name.to_string();
 
         task::spawn_blocking(move || {
-            let cf = db.cf_handle(&cf_name)
-                .ok_or_else(|| CodeGraphError::Database(format!("Column family '{}' not found", cf_name)))?;
-            
+            let cf = db.cf_handle(&cf_name).ok_or_else(|| {
+                CodeGraphError::Database(format!("Column family '{}' not found", cf_name))
+            })?;
+
             let iter = db.iterator_cf(cf, rocksdb::IteratorMode::Start);
             let mut expired_keys = Vec::new();
             let now = SystemTime::now()
@@ -300,9 +321,9 @@ impl PersistentStorage {
                 .as_secs();
 
             for item in iter {
-                let (key, value) = item
-                    .map_err(|e| CodeGraphError::Database(format!("Iterator failed: {}", e)))?;
-                
+                let (key, value) =
+                    item.map_err(|e| CodeGraphError::Database(format!("Iterator failed: {}", e)))?;
+
                 // Try to deserialize and check expiration
                 if let Ok(stored_entry) = bincode::deserialize::<StoredCacheEntry<T>>(&value) {
                     if let Some(ttl_secs) = stored_entry.ttl_secs {
@@ -320,12 +341,14 @@ impl PersistentStorage {
             }
 
             if !expired_keys.is_empty() {
-                db.write(batch)
-                    .map_err(|e| CodeGraphError::Database(format!("Cleanup batch write failed: {}", e)))?;
+                db.write(batch).map_err(|e| {
+                    CodeGraphError::Database(format!("Cleanup batch write failed: {}", e))
+                })?;
             }
 
             Ok(expired_keys.len())
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
@@ -336,7 +359,8 @@ impl PersistentStorage {
         task::spawn_blocking(move || {
             db.compact_range::<&[u8], &[u8]>(None, None);
             Ok(())
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
@@ -355,7 +379,9 @@ impl PersistentStorage {
             // Get number of entries across all column families
             for cf_name in [CF_EMBEDDINGS, CF_QUERIES, CF_METADATA, CF_STATS] {
                 if let Some(cf) = db.cf_handle(cf_name) {
-                    if let Ok(Some(count_str)) = db.property_value_cf(cf, "rocksdb.estimate-num-keys") {
+                    if let Ok(Some(count_str)) =
+                        db.property_value_cf(cf, "rocksdb.estimate-num-keys")
+                    {
                         if let Ok(count) = count_str.parse::<u64>() {
                             match cf_name {
                                 CF_EMBEDDINGS => stats.embedding_entries = count,
@@ -370,7 +396,8 @@ impl PersistentStorage {
             }
 
             Ok(stats)
-        }).await
+        })
+        .await
         .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))?
     }
 
@@ -384,13 +411,13 @@ impl PersistentStorage {
     /// Retrieve latest cache statistics
     pub async fn get_latest_stats(&self) -> Result<Option<CacheStats>> {
         let keys = self.scan_keys(CF_STATS).await?;
-        
+
         if let Some(latest_key) = keys.last() {
             if let Some(entry) = self.retrieve::<CacheStats>(CF_STATS, latest_key).await? {
                 return Ok(Some(entry.value));
             }
         }
-        
+
         Ok(None)
     }
 }
@@ -416,13 +443,13 @@ pub struct StorageStats {
 pub trait PersistentCache<K, V>: Send + Sync {
     /// Load cache from persistent storage
     async fn load_from_storage(&mut self) -> Result<usize>;
-    
+
     /// Save cache to persistent storage
     async fn save_to_storage(&self) -> Result<()>;
-    
+
     /// Enable write-through caching (write to both cache and storage)
     fn enable_write_through(&mut self, enabled: bool);
-    
+
     /// Enable write-behind caching (batch writes to storage)
     fn enable_write_behind(&mut self, enabled: bool, batch_size: usize);
 }
@@ -445,14 +472,17 @@ mod tests {
     #[tokio::test]
     async fn test_store_and_retrieve() {
         let (storage, _temp_dir) = create_test_storage().await;
-        
+
         let key = "test_key";
         let value = vec![1.0f32, 2.0, 3.0];
         let entry = CacheEntry::new(value.clone(), value.estimate_size(), None);
-        
+
         storage.store(CF_EMBEDDINGS, key, entry).await.unwrap();
-        
-        let retrieved = storage.retrieve::<Vec<f32>>(CF_EMBEDDINGS, key).await.unwrap();
+
+        let retrieved = storage
+            .retrieve::<Vec<f32>>(CF_EMBEDDINGS, key)
+            .await
+            .unwrap();
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().value, value);
     }
@@ -460,35 +490,38 @@ mod tests {
     #[tokio::test]
     async fn test_remove() {
         let (storage, _temp_dir) = create_test_storage().await;
-        
+
         let key = "test_key";
         let value = vec![1.0f32, 2.0, 3.0];
         let entry = CacheEntry::new(value, value.estimate_size(), None);
-        
+
         storage.store(CF_EMBEDDINGS, key, entry).await.unwrap();
-        
+
         let removed = storage.remove(CF_EMBEDDINGS, key).await.unwrap();
         assert!(removed);
-        
-        let retrieved = storage.retrieve::<Vec<f32>>(CF_EMBEDDINGS, key).await.unwrap();
+
+        let retrieved = storage
+            .retrieve::<Vec<f32>>(CF_EMBEDDINGS, key)
+            .await
+            .unwrap();
         assert!(retrieved.is_none());
     }
 
     #[tokio::test]
     async fn test_batch_operations() {
         let (storage, _temp_dir) = create_test_storage().await;
-        
+
         let entries = vec![
             ("key1".to_string(), CacheEntry::new(vec![1.0f32], 4, None)),
             ("key2".to_string(), CacheEntry::new(vec![2.0f32], 4, None)),
             ("key3".to_string(), CacheEntry::new(vec![3.0f32], 4, None)),
         ];
-        
+
         storage.batch_store(CF_EMBEDDINGS, entries).await.unwrap();
-        
+
         let count = storage.count_entries(CF_EMBEDDINGS).await.unwrap();
         assert_eq!(count, 3);
-        
+
         let keys = storage.scan_keys(CF_EMBEDDINGS).await.unwrap();
         assert_eq!(keys.len(), 3);
     }
@@ -496,7 +529,7 @@ mod tests {
     #[tokio::test]
     async fn test_stats_storage() {
         let (storage, _temp_dir) = create_test_storage().await;
-        
+
         let stats = CacheStats {
             hits: 100,
             misses: 50,
@@ -506,12 +539,12 @@ mod tests {
             average_access_time_ns: 1000,
             hit_rate: 0.67,
         };
-        
+
         storage.store_stats(&stats).await.unwrap();
-        
+
         let retrieved_stats = storage.get_latest_stats().await.unwrap();
         assert!(retrieved_stats.is_some());
-        
+
         let retrieved = retrieved_stats.unwrap();
         assert_eq!(retrieved.hits, stats.hits);
         assert_eq!(retrieved.misses, stats.misses);

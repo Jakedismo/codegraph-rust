@@ -15,7 +15,9 @@ impl McpProtocol {
     }
 
     pub fn default() -> Self {
-        Self { version: ProtocolVersion::latest() }
+        Self {
+            version: ProtocolVersion::latest(),
+        }
     }
 
     pub fn version(&self) -> &ProtocolVersion {
@@ -25,12 +27,23 @@ impl McpProtocol {
     pub fn build_request<T: Serialize>(&self, method: &str, params: &T) -> Result<JsonRpcRequest> {
         let id = json!(Uuid::new_v4().to_string());
         let params_value = serde_json::to_value(params)?;
-        Ok(JsonRpcRequest::new(id, method.to_string(), Some(params_value)))
+        Ok(JsonRpcRequest::new(
+            id,
+            method.to_string(),
+            Some(params_value),
+        ))
     }
 
-    pub fn build_notification<T: Serialize>(&self, method: &str, params: &T) -> Result<JsonRpcNotification> {
+    pub fn build_notification<T: Serialize>(
+        &self,
+        method: &str,
+        params: &T,
+    ) -> Result<JsonRpcNotification> {
         let params_value = serde_json::to_value(params)?;
-        Ok(JsonRpcNotification::new(method.to_string(), Some(params_value)))
+        Ok(JsonRpcNotification::new(
+            method.to_string(),
+            Some(params_value),
+        ))
     }
 }
 
@@ -52,8 +65,14 @@ pub mod handshake {
         let protocol = McpProtocol::new(version);
         let params = McpInitializeParams {
             protocol_version: protocol.version().to_string(),
-            capabilities: capabilities.unwrap_or(McpCapabilities { experimental: None, sampling: None }),
-            client_info: McpClientInfo { name: client_name.to_string(), version: client_version.to_string() },
+            capabilities: capabilities.unwrap_or(McpCapabilities {
+                experimental: None,
+                sampling: None,
+            }),
+            client_info: McpClientInfo {
+                name: client_name.to_string(),
+                version: client_version.to_string(),
+            },
         };
         protocol.build_request(METHOD_INITIALIZE, &params)
     }
@@ -67,7 +86,9 @@ pub mod handshake {
                 }
                 JsonRpcResult::Error { error } => Err(McpError::Protocol(error.message.clone())),
             },
-            _ => Err(McpError::InvalidMessage("Expected initialize response".into())),
+            _ => Err(McpError::InvalidMessage(
+                "Expected initialize response".into(),
+            )),
         }
     }
 }
@@ -82,7 +103,8 @@ pub fn parse_response_typed<R: DeserializeOwned>(msg: &JsonRpcMessage) -> Result
             }
             JsonRpcResult::Error { error } => Err(McpError::Protocol(error.message.clone())),
         },
-        _ => Err(McpError::InvalidMessage("Expected JSON-RPC response".into())),
+        _ => Err(McpError::InvalidMessage(
+            "Expected JSON-RPC response".into(),
+        )),
     }
 }
-

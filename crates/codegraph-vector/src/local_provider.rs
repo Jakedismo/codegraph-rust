@@ -2,15 +2,17 @@
 use crate::providers::{
     BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
 };
-use codegraph_core::{CodeGraphError, CodeNode, Result};
 use async_trait::async_trait;
-use std::time::{Duration, Instant};
+use codegraph_core::{CodeGraphError, CodeNode, Result};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::task;
 use tracing::{debug, info, warn};
 
 #[cfg(feature = "local-embeddings")]
-use candle_core::{Device, Tensor, DType};
+use candle_core::{DType, Device, Tensor};
+#[cfg(feature = "local-embeddings")]
+use candle_core::IndexOp;
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config as BertConfig};
 use hf_hub::api::tokio::Api;
@@ -70,7 +72,7 @@ impl LocalEmbeddingProvider {
     /// Create new local embedding provider
     pub async fn new(config: LocalEmbeddingConfig) -> Result<Self> {
         info!("Loading local embedding model: {}", config.model_name);
-        
+
         let device = match config.device {
             DeviceType::Cpu => Device::Cpu,
             DeviceType::Cuda(id) => Device::new_cuda(id)
@@ -86,10 +88,9 @@ impl LocalEmbeddingProvider {
 
         // Load tokenizer
         info!("Loading tokenizer...");
-        let tokenizer_filename = repo
-            .get("tokenizer.json")
-            .await
-            .map_err(|e| CodeGraphError::External(format!("Failed to download tokenizer: {}", e)))?;
+        let tokenizer_filename = repo.get("tokenizer.json").await.map_err(|e| {
+            CodeGraphError::External(format!("Failed to download tokenizer: {}", e))
+        })?;
         let tokenizer = Tokenizer::from_file(tokenizer_filename)
             .map_err(|e| CodeGraphError::External(format!("Failed to load tokenizer: {}", e)))?;
 
@@ -100,23 +101,24 @@ impl LocalEmbeddingProvider {
             .await
             .map_err(|e| CodeGraphError::External(format!("Failed to download config: {}", e)))?;
         let bert_config: BertConfig = serde_json::from_str(
-            &std::fs::read_to_string(config_filename)
-                .map_err(|e| CodeGraphError::Io(format!("Failed to read config: {}", e)))?,
+            &std::fs::read_to_string(config_filename).map_err(CodeGraphError::Io)?,
         )
-        .map_err(|e| CodeGraphError::Serialization(format!("Failed to parse config: {}", e)))?;
+        .map_err(CodeGraphError::Serialization)?;
 
         // Load model weights
         info!("Loading model weights...");
-        let weights_filename = repo
-            .get("pytorch_model.bin")
-            .await
-            .or_else(|_| async { repo.get("model.safetensors").await })
-            .await
-            .map_err(|e| CodeGraphError::External(format!("Failed to download model weights: {}", e)))?;
+        let weights_filename = match repo.get("pytorch_model.bin").await {
+            Ok(p) => p,
+            Err(_) => repo
+                .get("model.safetensors")
+                .await
+                .map_err(|e| CodeGraphError::External(format!("Failed to download model weights: {}", e)))?,
+        };
 
         let weights = if weights_filename.to_string_lossy().ends_with(".safetensors") {
-            candle_core::safetensors::load(weights_filename, &device)
-                .map_err(|e| CodeGraphError::External(format!("Failed to load safetensors: {}", e)))?
+            candle_core::safetensors::load(weights_filename, &device).map_err(|e| {
+                CodeGraphError::External(format!("Failed to load safetensors: {}", e))
+            })?
         } else {
             // Handle PyTorch checkpoint
             return Err(CodeGraphError::Configuration(
@@ -127,7 +129,7 @@ impl LocalEmbeddingProvider {
         // Build model
         info!("Building BERT model...");
         let vs = VarBuilder::from_tensors(weights, DType::F32, &device);
-        let model = BertModel::load(&vs, &bert_config)
+        let model = BertModel::load(vs, &bert_config)
             .map_err(|e| CodeGraphError::External(format!("Failed to load BERT model: {}", e)))?;
 
         info!("Local embedding model loaded successfully");
@@ -170,7 +172,8 @@ impl LocalEmbeddingProvider {
 
     /// Tokenize text and create input tensors
     fn tokenize_text(&self, text: &str) -> Result<(Tensor, Tensor)> {
-        let encoding = self.tokenizer
+        let encoding = self
+            .tokenizer
             .encode(text, true)
             .map_err(|e| CodeGraphError::External(format!("Tokenization failed: {}", e)))?;
 
@@ -184,49 +187,73 @@ impl LocalEmbeddingProvider {
 
         let token_ids = Tensor::new(token_ids, &self.device)
             .map_err(|e| CodeGraphError::External(format!("Failed to create token tensor: {}", e)))?
-            .unsqueeze(0)?; // Add batch dimension
+            .unsqueeze(0)
+            .map_err(|e| CodeGraphError::External(format!("unsqueeze failed: {}", e)))?; // Add batch dimension
 
         let attention_mask = Tensor::new(
-            attention_mask.iter().map(|&x| x as f32).collect::<Vec<_>>().as_slice(),
+            attention_mask
+                .iter()
+                .map(|&x| x as f32)
+                .collect::<Vec<_>>()
+                .as_slice(),
             &self.device,
         )
         .map_err(|e| CodeGraphError::External(format!("Failed to create attention mask: {}", e)))?
-        .unsqueeze(0)?; // Add batch dimension
+        .unsqueeze(0)
+        .map_err(|e| CodeGraphError::External(format!("unsqueeze failed: {}", e)))?; // Add batch dimension
 
         Ok((token_ids, attention_mask))
     }
 
     /// Apply pooling strategy to get final embedding
-    fn apply_pooling(
-        &self,
-        sequence_output: &Tensor,
-        attention_mask: &Tensor,
-    ) -> Result<Tensor> {
+    fn apply_pooling(&self, sequence_output: &Tensor, attention_mask: &Tensor) -> Result<Tensor> {
         match self.config.pooling_strategy {
             PoolingStrategy::Cls => {
                 // Use [CLS] token embedding (first token)
-                let cls_embedding = sequence_output.i((.., 0, ..))?;
+                let cls_embedding = sequence_output
+                    .i((.., 0, ..))
+                    .map_err(|e| CodeGraphError::External(format!("Tensor index failed: {}", e)))?;
                 Ok(cls_embedding)
             }
             PoolingStrategy::Mean => {
                 // Mean pooling with attention mask
                 let input_mask_expanded = attention_mask
-                    .unsqueeze(2)?
-                    .expand(sequence_output.shape())?;
+                    .unsqueeze(2)
+                    .map_err(|e| CodeGraphError::External(format!("unsqueeze failed: {}", e)))?
+                    .expand(sequence_output.shape())
+                    .map_err(|e| CodeGraphError::External(format!("expand failed: {}", e)))?;
 
-                let masked_embeddings = sequence_output.mul(&input_mask_expanded)?;
-                let sum_embeddings = masked_embeddings.sum_keepdim(1)?;
+                let masked_embeddings = sequence_output
+                    .mul(&input_mask_expanded)
+                    .map_err(|e| CodeGraphError::External(format!("mul failed: {}", e)))?;
+                let sum_embeddings = masked_embeddings
+                    .sum_keepdim(1)
+                    .map_err(|e| CodeGraphError::External(format!("sum_keepdim failed: {}", e)))?;
                 let sum_mask = input_mask_expanded
-                    .sum_keepdim(1)?
-                    .clamp(1e-9, f64::INFINITY)?;
+                    .sum_keepdim(1)
+                    .map_err(|e| CodeGraphError::External(format!("sum_keepdim failed: {}", e)))?
+                    .clamp(1e-9, f64::INFINITY)
+                    .map_err(|e| CodeGraphError::External(format!("clamp failed: {}", e)))?;
 
-                let pooled = sum_embeddings.div(&sum_mask)?;
-                Ok(pooled.squeeze(1)?) // Remove sequence dimension
+                let pooled = sum_embeddings
+                    .div(&sum_mask)
+                    .map_err(|e| CodeGraphError::External(format!("div failed: {}", e)))?;
+                Ok(
+                    pooled
+                        .squeeze(1)
+                        .map_err(|e| CodeGraphError::External(format!("squeeze failed: {}", e)))?,
+                ) // Remove sequence dimension
             }
             PoolingStrategy::Max => {
                 // Max pooling
-                let pooled = sequence_output.max_keepdim(1)?;
-                Ok(pooled.squeeze(1)?) // Remove sequence dimension
+                let pooled = sequence_output
+                    .max_keepdim(1)
+                    .map_err(|e| CodeGraphError::External(format!("max_keepdim failed: {}", e)))?;
+                Ok(
+                    pooled
+                        .squeeze(1)
+                        .map_err(|e| CodeGraphError::External(format!("squeeze failed: {}", e)))?,
+                ) // Remove sequence dimension
             }
         }
     }
@@ -253,36 +280,80 @@ impl LocalEmbeddingProvider {
             let token_ids = &token_ids[..max_len];
             let attention_mask = &attention_mask[..max_len];
 
-            let token_ids = Tensor::new(token_ids, &device)?.unsqueeze(0)?;
+            let token_ids = Tensor::new(token_ids, &device)
+                .map_err(|e| CodeGraphError::External(format!("tensor new failed: {}", e)))?
+                .unsqueeze(0)
+                .map_err(|e| CodeGraphError::External(format!("unsqueeze failed: {}", e)))?;
             let attention_mask = Tensor::new(
-                attention_mask.iter().map(|&x| x as f32).collect::<Vec<_>>().as_slice(),
+                attention_mask
+                    .iter()
+                    .map(|&x| x as f32)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
                 &device,
-            )?.unsqueeze(0)?;
+            )
+            .map_err(|e| CodeGraphError::External(format!("tensor new failed: {}", e)))?
+            .unsqueeze(0)
+            .map_err(|e| CodeGraphError::External(format!("unsqueeze failed: {}", e)))?;
 
             // Forward pass
-            let sequence_output = model.forward(&token_ids, &attention_mask)?;
+            let sequence_output = model
+                .forward(&token_ids, &attention_mask, None)
+                .map_err(|e| CodeGraphError::External(format!("model forward failed: {}", e)))?;
 
             // Apply pooling
             let pooled = match config.pooling_strategy {
-                PoolingStrategy::Cls => sequence_output.i((.., 0, ..))?,
+                PoolingStrategy::Cls => sequence_output
+                    .i((.., 0, ..))
+                    .map_err(|e| CodeGraphError::External(format!("Tensor index failed: {}", e)))?,
                 PoolingStrategy::Mean => {
                     let input_mask_expanded = attention_mask
-                        .unsqueeze(2)?
-                        .expand(sequence_output.shape())?;
-                    let masked_embeddings = sequence_output.mul(&input_mask_expanded)?;
-                    let sum_embeddings = masked_embeddings.sum_keepdim(1)?;
-                    let sum_mask = input_mask_expanded.sum_keepdim(1)?.clamp(1e-9, f64::INFINITY)?;
-                    sum_embeddings.div(&sum_mask)?.squeeze(1)?
+                        .unsqueeze(2)
+                        .map_err(|e| CodeGraphError::External(format!("unsqueeze failed: {}", e)))?
+                        .expand(sequence_output.shape())
+                        .map_err(|e| CodeGraphError::External(format!("expand failed: {}", e)))?;
+                    let masked_embeddings = sequence_output
+                        .mul(&input_mask_expanded)
+                        .map_err(|e| CodeGraphError::External(format!("mul failed: {}", e)))?;
+                    let sum_embeddings = masked_embeddings
+                        .sum_keepdim(1)
+                        .map_err(|e| CodeGraphError::External(format!("sum_keepdim failed: {}", e)))?;
+                    let sum_mask = input_mask_expanded
+                        .sum_keepdim(1)
+                        .map_err(|e| CodeGraphError::External(format!("sum_keepdim failed: {}", e)))?
+                        .clamp(1e-9, f64::INFINITY)
+                        .map_err(|e| CodeGraphError::External(format!("clamp failed: {}", e)))?;
+                    sum_embeddings
+                        .div(&sum_mask)
+                        .map_err(|e| CodeGraphError::External(format!("div failed: {}", e)))?
+                        .squeeze(1)
+                        .map_err(|e| CodeGraphError::External(format!("squeeze failed: {}", e)))?
                 }
-                PoolingStrategy::Max => sequence_output.max_keepdim(1)?.squeeze(1)?,
+                PoolingStrategy::Max => sequence_output
+                    .max_keepdim(1)
+                    .map_err(|e| CodeGraphError::External(format!("max_keepdim failed: {}", e)))?
+                    .squeeze(1)
+                    .map_err(|e| CodeGraphError::External(format!("squeeze failed: {}", e)))?,
             };
 
             // L2 normalize
-            let norm = pooled.pow(&Tensor::new(2.0, &device)?)?.sum_keepdim(-1)?.sqrt()?;
-            let normalized = pooled.div(&norm.clamp(1e-12, f64::INFINITY)?)?;
+            let norm = pooled
+                .pow(&Tensor::new(2.0, &device).map_err(|e| CodeGraphError::External(format!("tensor new failed: {}", e)))?)
+                .map_err(|e| CodeGraphError::External(format!("pow failed: {}", e)))?
+                .sum_keepdim(1)
+                .map_err(|e| CodeGraphError::External(format!("sum_keepdim failed: {}", e)))?
+                .sqrt()
+                .map_err(|e| CodeGraphError::External(format!("sqrt failed: {}", e)))?;
+            let normalized = pooled
+                .div(&norm.clamp(1e-12, f64::INFINITY).map_err(|e| CodeGraphError::External(format!("clamp failed: {}", e)))?)
+                .map_err(|e| CodeGraphError::External(format!("div failed: {}", e)))?;
 
             // Convert to Vec<f32>
-            let embedding = normalized.squeeze(0)?.to_vec1::<f32>()?;
+            let embedding = normalized
+                .squeeze(0)
+                .map_err(|e| CodeGraphError::External(format!("squeeze failed: {}", e)))?
+                .to_vec1::<f32>()
+                .map_err(|e| CodeGraphError::External(format!("to_vec1 failed: {}", e)))?;
             Ok(embedding)
         })
         .await
@@ -300,7 +371,7 @@ impl LocalEmbeddingProvider {
         // For now, process sequentially to avoid complex batching logic
         // In a production implementation, this would batch multiple texts together
         let mut embeddings = Vec::with_capacity(texts.len());
-        
+
         for text in texts {
             let embedding = self.generate_single_embedding(text).await?;
             embeddings.push(embedding);
@@ -330,17 +401,20 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
         config: &BatchConfig,
     ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)> {
         if nodes.is_empty() {
-            return Ok((Vec::new(), EmbeddingMetrics::new("Local".to_string(), 0, Duration::ZERO)));
+            return Ok((
+                Vec::new(),
+                EmbeddingMetrics::new("Local".to_string(), 0, Duration::ZERO),
+            ));
         }
 
         let start_time = Instant::now();
-        
+
         // Prepare texts
         let texts: Vec<String> = nodes.iter().map(|node| self.prepare_text(node)).collect();
 
         // Process in batches
         let mut all_embeddings = Vec::with_capacity(nodes.len());
-        
+
         for chunk in texts.chunks(config.batch_size) {
             debug!("Processing local batch of {} texts", chunk.len());
             let batch_embeddings = self.process_batch(chunk.to_vec()).await?;
@@ -348,11 +422,7 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
         }
 
         let duration = start_time.elapsed();
-        let metrics = EmbeddingMetrics::new(
-            "Local".to_string(),
-            nodes.len(),
-            duration,
-        );
+        let metrics = EmbeddingMetrics::new("Local".to_string(), nodes.len(), duration);
 
         info!(
             "Local embedding generation completed: {} texts in {:?} ({:.2} texts/s)",
@@ -395,7 +465,8 @@ pub struct LocalEmbeddingProvider;
 impl LocalEmbeddingProvider {
     pub async fn new(_config: LocalEmbeddingConfig) -> Result<Self> {
         Err(CodeGraphError::Configuration(
-            "Local embeddings feature not enabled. Enable with --features local-embeddings".to_string(),
+            "Local embeddings feature not enabled. Enable with --features local-embeddings"
+                .to_string(),
         ))
     }
 }

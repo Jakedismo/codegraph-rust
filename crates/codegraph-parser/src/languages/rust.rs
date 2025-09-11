@@ -40,10 +40,16 @@ struct Collector<'a> {
 
 impl<'a> Collector<'a> {
     fn new(content: &'a str, file_path: &'a str) -> Self {
-        Self { content, file_path, nodes: Vec::new() }
+        Self {
+            content,
+            file_path,
+            nodes: Vec::new(),
+        }
     }
 
-    fn into_nodes(self) -> Vec<CodeNode> { self.nodes }
+    fn into_nodes(self) -> Vec<CodeNode> {
+        self.nodes
+    }
 
     fn walk(&mut self, cursor: &mut TreeCursor, mut ctx: WalkContext) {
         let node = cursor.node();
@@ -53,26 +59,39 @@ impl<'a> Collector<'a> {
             "mod_item" => {
                 if let Some(name) = self.child_text_by_kinds(node, &["identifier"]) {
                     let loc = self.location(&node);
-                    let mut code = CodeNode::new(name.clone(), Some(NodeType::Module), Some(Language::Rust), loc)
-                        .with_content(self.node_text(&node));
+                    let mut code = CodeNode::new(
+                        name.clone(),
+                        Some(NodeType::Module),
+                        Some(Language::Rust),
+                        loc,
+                    )
+                    .with_content(self.node_text(&node));
                     let qn = self.qname(&ctx.module_path, &name);
-                    code.metadata.attributes.insert("kind".into(), "module".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "module".into());
                     code.metadata.attributes.insert("qualified_name".into(), qn);
                     self.nodes.push(code);
 
                     // push module path for nested items only if there's a body
                     let has_body = node.child_by_field_name("body").is_some();
-                    if has_body { ctx.module_path.push(name); }
+                    if has_body {
+                        ctx.module_path.push(name);
+                    }
 
                     if cursor.goto_first_child() {
                         loop {
                             self.walk(cursor, ctx.clone());
-                            if !cursor.goto_next_sibling() { break; }
+                            if !cursor.goto_next_sibling() {
+                                break;
+                            }
                         }
                         cursor.goto_parent();
                     }
 
-                    if has_body { ctx.module_path.pop(); }
+                    if has_body {
+                        ctx.module_path.pop();
+                    }
                     return; // already recursed children
                 }
             }
@@ -87,13 +106,13 @@ impl<'a> Collector<'a> {
                     .next()
                     .unwrap_or_else(|| "use".into());
                 let loc = self.location(&node);
-                let mut code = CodeNode::new(name, Some(NodeType::Import), Some(Language::Rust), loc)
-                    .with_content(self.node_text(&node));
+                let mut code =
+                    CodeNode::new(name, Some(NodeType::Import), Some(Language::Rust), loc)
+                        .with_content(self.node_text(&node));
                 // Store full parsed import list and graph-friendly edges as metadata
-                code.metadata.attributes.insert(
-                    "imports".into(),
-                    json!(imports).to_string(),
-                );
+                code.metadata
+                    .attributes
+                    .insert("imports".into(), json!(imports).to_string());
                 code.metadata.attributes.insert(
                     "qualified_name".into(),
                     self.qname(&ctx.module_path, code.name.as_str()),
@@ -105,15 +124,23 @@ impl<'a> Collector<'a> {
             "trait_item" => {
                 if let Some(name) = self.child_text_by_kinds(node, &["type_identifier"]) {
                     let loc = self.location(&node);
-                    let mut code = CodeNode::new(name.clone(), Some(NodeType::Trait), Some(Language::Rust), loc)
-                        .with_content(self.node_text(&node));
+                    let mut code = CodeNode::new(
+                        name.clone(),
+                        Some(NodeType::Trait),
+                        Some(Language::Rust),
+                        loc,
+                    )
+                    .with_content(self.node_text(&node));
                     let (generics, lifetimes) = self.collect_generics_and_lifetimes(node);
-                    code.metadata.attributes.insert("generics".into(), json!(generics).to_string());
-                    code.metadata.attributes.insert("lifetimes".into(), json!(lifetimes).to_string());
-                    code.metadata.attributes.insert(
-                        "qualified_name".into(),
-                        self.qname(&ctx.module_path, &name),
-                    );
+                    code.metadata
+                        .attributes
+                        .insert("generics".into(), json!(generics).to_string());
+                    code.metadata
+                        .attributes
+                        .insert("lifetimes".into(), json!(lifetimes).to_string());
+                    code.metadata
+                        .attributes
+                        .insert("qualified_name".into(), self.qname(&ctx.module_path, &name));
                     self.nodes.push(code);
                 }
             }
@@ -122,15 +149,23 @@ impl<'a> Collector<'a> {
             "struct_item" => {
                 if let Some(name) = self.child_text_by_kinds(node, &["type_identifier"]) {
                     let loc = self.location(&node);
-                    let mut code = CodeNode::new(name.clone(), Some(NodeType::Struct), Some(Language::Rust), loc)
-                        .with_content(self.node_text(&node));
+                    let mut code = CodeNode::new(
+                        name.clone(),
+                        Some(NodeType::Struct),
+                        Some(Language::Rust),
+                        loc,
+                    )
+                    .with_content(self.node_text(&node));
                     let (generics, lifetimes) = self.collect_generics_and_lifetimes(node);
-                    code.metadata.attributes.insert("generics".into(), json!(generics).to_string());
-                    code.metadata.attributes.insert("lifetimes".into(), json!(lifetimes).to_string());
-                    code.metadata.attributes.insert(
-                        "qualified_name".into(),
-                        self.qname(&ctx.module_path, &name),
-                    );
+                    code.metadata
+                        .attributes
+                        .insert("generics".into(), json!(generics).to_string());
+                    code.metadata
+                        .attributes
+                        .insert("lifetimes".into(), json!(lifetimes).to_string());
+                    code.metadata
+                        .attributes
+                        .insert("qualified_name".into(), self.qname(&ctx.module_path, &name));
                     self.nodes.push(code);
                 }
             }
@@ -139,15 +174,23 @@ impl<'a> Collector<'a> {
             "enum_item" => {
                 if let Some(name) = self.child_text_by_kinds(node, &["type_identifier"]) {
                     let loc = self.location(&node);
-                    let mut code = CodeNode::new(name.clone(), Some(NodeType::Enum), Some(Language::Rust), loc)
-                        .with_content(self.node_text(&node));
+                    let mut code = CodeNode::new(
+                        name.clone(),
+                        Some(NodeType::Enum),
+                        Some(Language::Rust),
+                        loc,
+                    )
+                    .with_content(self.node_text(&node));
                     let (generics, lifetimes) = self.collect_generics_and_lifetimes(node);
-                    code.metadata.attributes.insert("generics".into(), json!(generics).to_string());
-                    code.metadata.attributes.insert("lifetimes".into(), json!(lifetimes).to_string());
-                    code.metadata.attributes.insert(
-                        "qualified_name".into(),
-                        self.qname(&ctx.module_path, &name),
-                    );
+                    code.metadata
+                        .attributes
+                        .insert("generics".into(), json!(generics).to_string());
+                    code.metadata
+                        .attributes
+                        .insert("lifetimes".into(), json!(lifetimes).to_string());
+                    code.metadata
+                        .attributes
+                        .insert("qualified_name".into(), self.qname(&ctx.module_path, &name));
                     self.nodes.push(code);
                 }
             }
@@ -156,7 +199,8 @@ impl<'a> Collector<'a> {
             "impl_item" => {
                 let loc = self.location(&node);
                 let text = self.node_text(&node);
-                let impl_info = parse_impl_signature(&node, self.content).unwrap_or_else(|| parse_impl_signature_text(&text));
+                let impl_info = parse_impl_signature(&node, self.content)
+                    .unwrap_or_else(|| parse_impl_signature_text(&text));
 
                 let mut code = CodeNode::new(
                     impl_info.for_type.clone().unwrap_or_else(|| "impl".into()),
@@ -166,14 +210,25 @@ impl<'a> Collector<'a> {
                 )
                 .with_content(text.clone());
                 if let Some(for_type) = &impl_info.for_type {
-                    code.metadata.attributes.insert("impl_for".into(), for_type.clone());
+                    code.metadata
+                        .attributes
+                        .insert("impl_for".into(), for_type.clone());
                 }
                 if let Some(trait_name) = &impl_info.trait_name {
-                    code.metadata.attributes.insert("impl_trait".into(), trait_name.clone());
+                    code.metadata
+                        .attributes
+                        .insert("impl_trait".into(), trait_name.clone());
                 }
-                code.metadata.attributes.insert("inherent".into(), json!(impl_info.trait_name.is_none()).to_string());
-                code.metadata.attributes.insert("generics".into(), json!(impl_info.generics).to_string());
-                code.metadata.attributes.insert("lifetimes".into(), json!(impl_info.lifetimes).to_string());
+                code.metadata.attributes.insert(
+                    "inherent".into(),
+                    json!(impl_info.trait_name.is_none()).to_string(),
+                );
+                code.metadata
+                    .attributes
+                    .insert("generics".into(), json!(impl_info.generics).to_string());
+                code.metadata
+                    .attributes
+                    .insert("lifetimes".into(), json!(impl_info.lifetimes).to_string());
                 code.metadata.attributes.insert(
                     "qualified_name".into(),
                     self.qname(&ctx.module_path, code.name.as_str()),
@@ -188,7 +243,9 @@ impl<'a> Collector<'a> {
                 if cursor.goto_first_child() {
                     loop {
                         self.walk(cursor, next_ctx.clone());
-                        if !cursor.goto_next_sibling() { break; }
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
                     }
                     cursor.goto_parent();
                 }
@@ -199,29 +256,48 @@ impl<'a> Collector<'a> {
             "function_item" => {
                 if let Some(name) = self.child_text_by_kinds(node, &["identifier"]) {
                     let loc = self.location(&node);
-                    let mut code = CodeNode::new(name.clone(), Some(NodeType::Function), Some(Language::Rust), loc)
-                        .with_content(self.node_text(&node));
+                    let mut code = CodeNode::new(
+                        name.clone(),
+                        Some(NodeType::Function),
+                        Some(Language::Rust),
+                        loc,
+                    )
+                    .with_content(self.node_text(&node));
                     let (generics, lifetimes) = self.collect_generics_and_lifetimes(node);
-                    code.metadata.attributes.insert("generics".into(), json!(generics).to_string());
-                    code.metadata.attributes.insert("lifetimes".into(), json!(lifetimes).to_string());
-                    let is_async = self.node_text(&node).contains("async fn")
-                        || has_child_kind(node, "async");
+                    code.metadata
+                        .attributes
+                        .insert("generics".into(), json!(generics).to_string());
+                    code.metadata
+                        .attributes
+                        .insert("lifetimes".into(), json!(lifetimes).to_string());
+                    let is_async =
+                        self.node_text(&node).contains("async fn") || has_child_kind(node, "async");
                     let is_unsafe = self.node_text(&node).contains("unsafe fn")
                         || has_child_kind(node, "unsafe");
                     let has_unsafe_block = subtree_contains_kind(&node, "unsafe_block");
-                    code.metadata.attributes.insert("async".into(), json!(is_async).to_string());
-                    code.metadata.attributes.insert("unsafe".into(), json!(is_unsafe).to_string());
-                    code.metadata.attributes.insert("has_unsafe_block".into(), json!(has_unsafe_block).to_string());
+                    code.metadata
+                        .attributes
+                        .insert("async".into(), json!(is_async).to_string());
+                    code.metadata
+                        .attributes
+                        .insert("unsafe".into(), json!(is_unsafe).to_string());
+                    code.metadata.attributes.insert(
+                        "has_unsafe_block".into(),
+                        json!(has_unsafe_block).to_string(),
+                    );
                     if let Some(for_type) = &ctx.current_impl_for {
-                        code.metadata.attributes.insert("method_of".into(), for_type.clone());
+                        code.metadata
+                            .attributes
+                            .insert("method_of".into(), for_type.clone());
                     }
                     if let Some(trait_name) = &ctx.current_impl_trait {
-                        code.metadata.attributes.insert("implements_trait".into(), trait_name.clone());
+                        code.metadata
+                            .attributes
+                            .insert("implements_trait".into(), trait_name.clone());
                     }
-                    code.metadata.attributes.insert(
-                        "qualified_name".into(),
-                        self.qname_with_impl(&ctx, &name),
-                    );
+                    code.metadata
+                        .attributes
+                        .insert("qualified_name".into(), self.qname_with_impl(&ctx, &name));
                     self.nodes.push(code);
                 }
             }
@@ -231,11 +307,18 @@ impl<'a> Collector<'a> {
                 // Try to get macro name: often in child field "macro" -> identifier or scoped_identifier
                 let macro_name = self
                     .child_by_field_text(node, "macro")
-                    .or_else(|| self.child_text_by_kinds(node, &["identifier", "scoped_identifier"]))
+                    .or_else(|| {
+                        self.child_text_by_kinds(node, &["identifier", "scoped_identifier"])
+                    })
                     .unwrap_or_else(|| "macro".into());
                 let loc = self.location(&node);
-                let mut code = CodeNode::new(macro_name, Some(NodeType::Other("macro_invocation".into())), Some(Language::Rust), loc)
-                    .with_content(self.node_text(&node));
+                let mut code = CodeNode::new(
+                    macro_name,
+                    Some(NodeType::Other("macro_invocation".into())),
+                    Some(Language::Rust),
+                    loc,
+                )
+                .with_content(self.node_text(&node));
                 code.metadata.attributes.insert(
                     "qualified_name".into(),
                     self.qname(&ctx.module_path, code.name.as_str()),
@@ -250,7 +333,9 @@ impl<'a> Collector<'a> {
         if cursor.goto_first_child() {
             loop {
                 self.walk(cursor, ctx.clone());
-                if !cursor.goto_next_sibling() { break; }
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
             }
             cursor.goto_parent();
         }
@@ -272,7 +357,9 @@ impl<'a> Collector<'a> {
     }
 
     fn node_text(&self, node: &Node) -> String {
-        node.utf8_text(self.content.as_bytes()).unwrap_or("").to_string()
+        node.utf8_text(self.content.as_bytes())
+            .unwrap_or("")
+            .to_string()
     }
 
     fn child_text_by_kinds(&self, node: Node, kinds: &[&str]) -> Option<String> {
@@ -283,15 +370,16 @@ impl<'a> Collector<'a> {
                 if kinds.iter().any(|k| n.kind() == *k) {
                     return Some(self.node_text(&n));
                 }
-                if !c.goto_next_sibling() { break; }
+                if !c.goto_next_sibling() {
+                    break;
+                }
             }
         }
         None
     }
 
     fn child_by_field_text(&self, node: Node, field: &str) -> Option<String> {
-        node.child_by_field_name(field)
-            .map(|n| self.node_text(&n))
+        node.child_by_field_name(field).map(|n| self.node_text(&n))
     }
 
     fn collect_generics_and_lifetimes(&self, node: Node) -> (Vec<String>, Vec<String>) {
@@ -308,13 +396,20 @@ impl<'a> Collector<'a> {
                     }
                     _ => {}
                 }
-                if !cursor.goto_next_sibling() { break; }
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
             }
         }
         (generics, lifetimes)
     }
 
-    fn collect_type_parameters(&self, node: Node, generics: &mut Vec<String>, lifetimes: &mut Vec<String>) {
+    fn collect_type_parameters(
+        &self,
+        node: Node,
+        generics: &mut Vec<String>,
+        lifetimes: &mut Vec<String>,
+    ) {
         let mut c = node.walk();
         if c.goto_first_child() {
             loop {
@@ -337,14 +432,19 @@ impl<'a> Collector<'a> {
                     }
                     _ => {}
                 }
-                if !c.goto_next_sibling() { break; }
+                if !c.goto_next_sibling() {
+                    break;
+                }
             }
         }
     }
 
     fn qname(&self, path: &[String], name: &str) -> String {
-        if path.is_empty() { format!("{}::{}", self.file_path, name) }
-        else { format!("{}::{}::{}", self.file_path, path.join("::"), name) }
+        if path.is_empty() {
+            format!("{}::{}", self.file_path, name)
+        } else {
+            format!("{}::{}::{}", self.file_path, path.join("::"), name)
+        }
     }
 
     fn qname_with_impl(&self, ctx: &WalkContext, name: &str) -> String {
@@ -366,20 +466,33 @@ struct ImportItem {
 fn parse_use_declaration(text: &str) -> Vec<ImportItem> {
     // Handles common forms: use a::b; use a::b as c; use a::{b, c as d, *}; use super::a; use crate::x::y;
     let mut s = text.trim();
-    if s.starts_with("use ") { s = &s[4..]; }
-    if let Some(idx) = s.rfind(';') { s = &s[..idx]; }
+    if s.starts_with("use ") {
+        s = &s[4..];
+    }
+    if let Some(idx) = s.rfind(';') {
+        s = &s[..idx];
+    }
 
     // Brace group
     if let Some(open) = s.find('{') {
         let prefix = s[..open].trim().trim_end_matches("::");
-        let rest = &s[open+1..];
+        let rest = &s[open + 1..];
         let close = rest.rfind('}').unwrap_or(rest.len());
         let inside = &rest[..close];
         let mut out = Vec::new();
         for part in inside.split(',') {
             let p = part.trim();
-            if p.is_empty() { continue; }
-            if p == "*" { out.push(ImportItem { full_path: format!("{}::*", prefix), alias: None, is_glob: true }); continue; }
+            if p.is_empty() {
+                continue;
+            }
+            if p == "*" {
+                out.push(ImportItem {
+                    full_path: format!("{}::*", prefix),
+                    alias: None,
+                    is_glob: true,
+                });
+                continue;
+            }
             let (name, alias) = split_alias(p);
             out.push(ImportItem {
                 full_path: format!("{}::{}", prefix, name),
@@ -391,13 +504,20 @@ fn parse_use_declaration(text: &str) -> Vec<ImportItem> {
     }
 
     let (name, alias) = split_alias(s.trim());
-    vec![ImportItem { full_path: name.to_string(), alias, is_glob: name.ends_with("::*") }]
+    vec![ImportItem {
+        full_path: name.to_string(),
+        alias,
+        is_glob: name.ends_with("::*"),
+    }]
 }
 
 fn split_alias(s: &str) -> (String, Option<String>) {
     // e.g., "foo as bar" -> ("foo", Some("bar"))
     if let Some(idx) = s.rfind(" as ") {
-        (s[..idx].trim().to_string(), Some(s[idx+4..].trim().to_string()))
+        (
+            s[..idx].trim().to_string(),
+            Some(s[idx + 4..].trim().to_string()),
+        )
     } else {
         (s.trim().to_string(), None)
     }
@@ -433,7 +553,9 @@ fn parse_impl_signature(node: &Node, content: &str) -> Option<ImplInfo> {
                     }
                     _ => {}
                 }
-                if !c.goto_next_sibling() { break; }
+                if !c.goto_next_sibling() {
+                    break;
+                }
             }
         }
     }
@@ -456,9 +578,12 @@ fn parse_impl_signature_text(text: &str) -> ImplInfo {
             let inside = &text[start + 1..end];
             for tok in inside.split(',') {
                 let t = tok.trim();
-                if t.is_empty() { continue; }
-                if t.starts_with('\'') { info.lifetimes.push(t.to_string()); }
-                else if t.starts_with("const ") {
+                if t.is_empty() {
+                    continue;
+                }
+                if t.starts_with('\'') {
+                    info.lifetimes.push(t.to_string());
+                } else if t.starts_with("const ") {
                     info.generics.push(t.to_string());
                 } else {
                     // remove bounds (after ':') for a clean name
@@ -494,7 +619,9 @@ fn matching_angle(text: &str, open: usize) -> Option<usize> {
             '<' => depth += 1,
             '>' => {
                 depth -= 1;
-                if depth == 0 { return Some(i); }
+                if depth == 0 {
+                    return Some(i);
+                }
             }
             _ => {}
         }
@@ -506,8 +633,12 @@ fn has_child_kind(node: Node, kind: &str) -> bool {
     let mut c = node.walk();
     if c.goto_first_child() {
         loop {
-            if c.node().kind() == kind { return true; }
-            if !c.goto_next_sibling() { break; }
+            if c.node().kind() == kind {
+                return true;
+            }
+            if !c.goto_next_sibling() {
+                break;
+            }
         }
     }
     false
@@ -518,12 +649,16 @@ fn subtree_contains_kind(node: &Node, kind: &str) -> bool {
     // DFS
     let mut stack = vec![*node];
     while let Some(n) = stack.pop() {
-        if n.kind() == kind { return true; }
+        if n.kind() == kind {
+            return true;
+        }
         let mut w = n.walk();
         if w.goto_first_child() {
             loop {
                 stack.push(w.node());
-                if !w.goto_next_sibling() { break; }
+                if !w.goto_next_sibling() {
+                    break;
+                }
             }
         }
     }
@@ -538,7 +673,9 @@ fn child_text_by_kinds(node: Node, content: &str, kinds: &[&str]) -> Option<Stri
             if kinds.iter().any(|k| n.kind() == *k) {
                 return n.utf8_text(content.as_bytes()).ok().map(|s| s.to_string());
             }
-            if !c.goto_next_sibling() { break; }
+            if !c.goto_next_sibling() {
+                break;
+            }
         }
     }
     None

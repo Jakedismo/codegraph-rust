@@ -5,7 +5,7 @@ use std::time::Instant;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::init();
-    
+
     println!("🚀 CodeGraph Optimized KNN Search Engine Demo");
     println!("============================================\n");
 
@@ -59,8 +59,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let embedding = generate_sample_embedding(dimension, (200 + i) as u64);
         let node = create_sample_node(
             &format!("data_structure_{}", i),
-            if i % 2 == 0 { NodeType::Struct } else { NodeType::Class },
-            if i % 2 == 0 { Language::Rust } else { Language::Python },
+            if i % 2 == 0 {
+                NodeType::Struct
+            } else {
+                NodeType::Class
+            },
+            if i % 2 == 0 {
+                Language::Rust
+            } else {
+                Language::Python
+            },
             embedding,
         );
         nodes.push(node);
@@ -90,13 +98,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n🔍 Single Similarity Search:");
     let query_embedding = generate_sample_embedding(dimension, 999);
     let search_start = Instant::now();
-    
-    let results = engine.single_similarity_search(query_embedding, config.clone()).await?;
+
+    let results = engine
+        .single_similarity_search(query_embedding, config.clone())
+        .await?;
     let search_duration = search_start.elapsed();
-    
+
     println!("   Search completed in {:?}", search_duration);
     println!("   Found {} results:", results.len());
-    
+
     for (i, result) in results.iter().enumerate().take(3) {
         if let Some(node) = &result.node {
             println!(
@@ -106,8 +116,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 result.similarity_score,
                 result.context_score
             );
-            println!("      Type: {:?}, Language: {:?}",
-                node.node_type, node.language);
+            println!(
+                "      Type: {:?}, Language: {:?}",
+                node.node_type, node.language
+            );
             if let Some(cluster_id) = result.cluster_id {
                 println!("      Cluster: {}", cluster_id);
             }
@@ -121,30 +133,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         generate_sample_embedding(dimension, 1002),
         generate_sample_embedding(dimension, 1003),
     ];
-    
+
     let parallel_start = Instant::now();
-    let parallel_results = engine.parallel_similarity_search(queries, Some(config.clone())).await?;
+    let parallel_results = engine
+        .parallel_similarity_search(queries, Some(config.clone()))
+        .await?;
     let parallel_duration = parallel_start.elapsed();
-    
-    println!("   Parallel search ({} queries) completed in {:?}", 
-        parallel_results.len(), parallel_duration);
-    println!("   Average per query: {:?}", 
-        parallel_duration / parallel_results.len() as u32);
+
+    println!(
+        "   Parallel search ({} queries) completed in {:?}",
+        parallel_results.len(),
+        parallel_duration
+    );
+    println!(
+        "   Average per query: {:?}",
+        parallel_duration / parallel_results.len() as u32
+    );
 
     // Test batch function search
     println!("\n🔧 Batch Function Search:");
-    let function_nodes: Vec<_> = nodes.iter()
+    let function_nodes: Vec<_> = nodes
+        .iter()
         .filter(|n| matches!(n.node_type, Some(NodeType::Function)))
         .take(5)
         .cloned()
         .collect();
-    
+
     let batch_start = Instant::now();
-    let batch_results = engine.batch_search_similar_functions(&function_nodes, Some(config)).await?;
+    let batch_results = engine
+        .batch_search_similar_functions(&function_nodes, Some(config))
+        .await?;
     let batch_duration = batch_start.elapsed();
-    
-    println!("   Batch search for {} functions completed in {:?}",
-        function_nodes.len(), batch_duration);
+
+    println!(
+        "   Batch search for {} functions completed in {:?}",
+        function_nodes.len(),
+        batch_duration
+    );
 
     // Display performance statistics
     let stats = engine.get_performance_stats();
@@ -166,7 +191,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Show improved performance after warmup
     let query_embedding_2 = generate_sample_embedding(dimension, 1234);
     let warm_search_start = Instant::now();
-    let _warm_results = engine.single_similarity_search(query_embedding_2, SearchConfig::default()).await?;
+    let _warm_results = engine
+        .single_similarity_search(query_embedding_2, SearchConfig::default())
+        .await?;
     let warm_search_duration = warm_search_start.elapsed();
     println!("   Search after warmup: {:?}", warm_search_duration);
 
@@ -212,13 +239,13 @@ fn get_file_extension(language: &Language) -> &'static str {
 fn generate_sample_embedding(dimension: usize, seed: u64) -> Vec<f32> {
     let mut embedding = vec![0.0; dimension];
     let mut state = seed;
-    
+
     // Use a simple PRNG for reproducible embeddings
     for i in 0..dimension {
         state = state.wrapping_mul(1103515245).wrapping_add(12345);
         embedding[i] = ((state as f32 / u32::MAX as f32) - 0.5) * 2.0;
     }
-    
+
     // Normalize the embedding
     let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
     if norm > 0.0 {
@@ -226,6 +253,6 @@ fn generate_sample_embedding(dimension: usize, seed: u64) -> Vec<f32> {
             *x /= norm;
         }
     }
-    
+
     embedding
 }

@@ -1,4 +1,4 @@
-use codegraph_core::{Delta, Result, traits::GraphUpdater};
+use codegraph_core::{traits::GraphUpdater, Delta, Result};
 use crossbeam_channel::Receiver;
 
 pub struct GraphUpdaterImpl;

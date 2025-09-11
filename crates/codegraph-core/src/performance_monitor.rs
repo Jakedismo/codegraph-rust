@@ -1,8 +1,8 @@
+use parking_lot::{Mutex, RwLock};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use parking_lot::{RwLock, Mutex};
-use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
 /// Comprehensive performance monitoring system for validating 50% improvement targets
@@ -12,6 +12,7 @@ pub struct PerformanceMonitor {
     targets: PerformanceTargets,
     alerts: Arc<Mutex<Vec<PerformanceAlert>>>,
     event_broadcaster: broadcast::Sender<PerformanceEvent>,
+    #[allow(dead_code)]
     historical_data: Arc<RwLock<HistoricalMetrics>>,
 }
 
@@ -20,30 +21,30 @@ pub struct PerformanceMonitor {
 pub struct PerformanceMetrics {
     // Latency Metrics (50% reduction target)
     pub node_query_latency_ms: MovingAverage,
-    pub edge_traversal_latency_ms: MovingAverage, 
+    pub edge_traversal_latency_ms: MovingAverage,
     pub vector_search_latency_ms: MovingAverage,
     pub rag_response_latency_ms: MovingAverage,
     pub cache_lookup_latency_ms: MovingAverage,
-    
+
     // Memory Metrics (50% reduction target)
     pub graph_memory_mb: u64,
     pub cache_memory_mb: u64,
     pub embedding_memory_mb: u64,
     pub total_memory_mb: u64,
     pub memory_efficiency_ratio: f64,
-    
+
     // Throughput Metrics (2x increase target)
     pub concurrent_queries_per_sec: MovingAverage,
     pub nodes_processed_per_sec: MovingAverage,
     pub embeddings_generated_per_sec: MovingAverage,
     pub cache_operations_per_sec: MovingAverage,
-    
+
     // Efficiency Metrics
     pub cache_hit_rate: f64,
     pub compression_ratio: f64,
     pub cpu_utilization: f64,
     pub io_wait_percentage: f64,
-    
+
     // System Health Metrics
     pub error_rate: f64,
     pub availability_percentage: f64,
@@ -54,19 +55,19 @@ pub struct PerformanceMetrics {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceTargets {
     // Latency Targets (baseline → target)
-    pub node_query_latency_ms: (f64, f64),        // 100ms → 50ms
-    pub edge_traversal_latency_ms: (f64, f64),    // 50ms → 25ms  
-    pub vector_search_latency_ms: (f64, f64),     // 200ms → 100ms
-    pub rag_response_latency_ms: (f64, f64),      // 200ms → 100ms
-    
+    pub node_query_latency_ms: (f64, f64),     // 100ms → 50ms
+    pub edge_traversal_latency_ms: (f64, f64), // 50ms → 25ms
+    pub vector_search_latency_ms: (f64, f64),  // 200ms → 100ms
+    pub rag_response_latency_ms: (f64, f64),   // 200ms → 100ms
+
     // Memory Targets (baseline → target)
-    pub graph_memory_mb: (u64, u64),              // 512MB → 256MB
-    pub cache_memory_mb: (u64, u64),              // 256MB → 128MB
-    pub embedding_memory_mb: (u64, u64),          // 1024MB → 512MB
-    
-    // Throughput Targets (baseline → target)  
-    pub concurrent_queries_per_sec: (f64, f64),   // 1000 → 2000
-    pub nodes_processed_per_sec: (f64, f64),      // 10000 → 20000
+    pub graph_memory_mb: (u64, u64),     // 512MB → 256MB
+    pub cache_memory_mb: (u64, u64),     // 256MB → 128MB
+    pub embedding_memory_mb: (u64, u64), // 1024MB → 512MB
+
+    // Throughput Targets (baseline → target)
+    pub concurrent_queries_per_sec: (f64, f64), // 1000 → 2000
+    pub nodes_processed_per_sec: (f64, f64),    // 10000 → 20000
     pub embeddings_generated_per_sec: (f64, f64), // 500 → 1000
 }
 
@@ -110,7 +111,7 @@ impl MovingAverage {
                 self.sum -= old_value;
             }
         }
-        
+
         self.values.push_back(value);
         self.sum += value;
     }
@@ -184,7 +185,9 @@ pub enum PerformanceEvent {
 /// Historical metrics for trend analysis
 #[derive(Debug, Default)]
 struct HistoricalMetrics {
+    #[allow(dead_code)]
     snapshots: VecDeque<PerformanceSnapshot>,
+    #[allow(dead_code)]
     max_history: usize,
 }
 
@@ -197,7 +200,7 @@ struct PerformanceSnapshot {
 impl PerformanceMonitor {
     pub fn new(targets: PerformanceTargets) -> Self {
         let (tx, _rx) = broadcast::channel(1000);
-        
+
         Self {
             metrics: Arc::new(RwLock::new(PerformanceMetrics::default())),
             targets,
@@ -213,32 +216,42 @@ impl PerformanceMonitor {
     /// Record node query performance
     pub fn record_node_query_latency(&self, latency: Duration) {
         let latency_ms = latency.as_secs_f64() * 1000.0;
-        
+
         {
             let mut metrics = self.metrics.write();
             metrics.node_query_latency_ms.add_value(latency_ms);
             metrics.last_updated = SystemTime::now();
         }
 
-        self.check_latency_target("node_query_latency_ms", latency_ms, self.targets.node_query_latency_ms.1);
-        
-        let _ = self.event_broadcaster.send(PerformanceEvent::MetricUpdated {
-            metric_name: "node_query_latency_ms".to_string(),
-            value: latency_ms,
-            timestamp: SystemTime::now(),
-        });
+        self.check_latency_target(
+            "node_query_latency_ms",
+            latency_ms,
+            self.targets.node_query_latency_ms.1,
+        );
+
+        let _ = self
+            .event_broadcaster
+            .send(PerformanceEvent::MetricUpdated {
+                metric_name: "node_query_latency_ms".to_string(),
+                value: latency_ms,
+                timestamp: SystemTime::now(),
+            });
     }
 
     /// Record vector search performance
     pub fn record_vector_search_latency(&self, latency: Duration) {
         let latency_ms = latency.as_secs_f64() * 1000.0;
-        
+
         {
             let mut metrics = self.metrics.write();
             metrics.vector_search_latency_ms.add_value(latency_ms);
         }
 
-        self.check_latency_target("vector_search_latency_ms", latency_ms, self.targets.vector_search_latency_ms.1);
+        self.check_latency_target(
+            "vector_search_latency_ms",
+            latency_ms,
+            self.targets.vector_search_latency_ms.1,
+        );
     }
 
     /// Record memory usage
@@ -248,21 +261,34 @@ impl PerformanceMonitor {
             match component {
                 "graph" => {
                     metrics.graph_memory_mb = memory_mb;
-                    self.check_memory_target("graph_memory_mb", memory_mb, self.targets.graph_memory_mb.1);
+                    self.check_memory_target(
+                        "graph_memory_mb",
+                        memory_mb,
+                        self.targets.graph_memory_mb.1,
+                    );
                 }
                 "cache" => {
                     metrics.cache_memory_mb = memory_mb;
-                    self.check_memory_target("cache_memory_mb", memory_mb, self.targets.cache_memory_mb.1);
+                    self.check_memory_target(
+                        "cache_memory_mb",
+                        memory_mb,
+                        self.targets.cache_memory_mb.1,
+                    );
                 }
                 "embedding" => {
                     metrics.embedding_memory_mb = memory_mb;
-                    self.check_memory_target("embedding_memory_mb", memory_mb, self.targets.embedding_memory_mb.1);
+                    self.check_memory_target(
+                        "embedding_memory_mb",
+                        memory_mb,
+                        self.targets.embedding_memory_mb.1,
+                    );
                 }
                 _ => {}
             }
-            
+
             // Update total memory
-            metrics.total_memory_mb = metrics.graph_memory_mb + metrics.cache_memory_mb + metrics.embedding_memory_mb;
+            metrics.total_memory_mb =
+                metrics.graph_memory_mb + metrics.cache_memory_mb + metrics.embedding_memory_mb;
         }
     }
 
@@ -273,15 +299,27 @@ impl PerformanceMonitor {
             match metric {
                 "concurrent_queries_per_sec" => {
                     metrics.concurrent_queries_per_sec.add_value(value);
-                    self.check_throughput_target(metric, value, self.targets.concurrent_queries_per_sec.1);
+                    self.check_throughput_target(
+                        metric,
+                        value,
+                        self.targets.concurrent_queries_per_sec.1,
+                    );
                 }
                 "nodes_processed_per_sec" => {
                     metrics.nodes_processed_per_sec.add_value(value);
-                    self.check_throughput_target(metric, value, self.targets.nodes_processed_per_sec.1);
+                    self.check_throughput_target(
+                        metric,
+                        value,
+                        self.targets.nodes_processed_per_sec.1,
+                    );
                 }
                 "embeddings_generated_per_sec" => {
                     metrics.embeddings_generated_per_sec.add_value(value);
-                    self.check_throughput_target(metric, value, self.targets.embeddings_generated_per_sec.1);
+                    self.check_throughput_target(
+                        metric,
+                        value,
+                        self.targets.embeddings_generated_per_sec.1,
+                    );
                 }
                 _ => {}
             }
@@ -301,18 +339,25 @@ impl PerformanceMonitor {
         // Latency improvements (lower is better)
         let node_latency = metrics.node_query_latency_ms.average();
         if node_latency > 0.0 {
-            let improvement = ((self.targets.node_query_latency_ms.0 - node_latency) / self.targets.node_query_latency_ms.0) * 100.0;
+            let improvement = ((self.targets.node_query_latency_ms.0 - node_latency)
+                / self.targets.node_query_latency_ms.0)
+                * 100.0;
             improvements.insert("node_query_latency".to_string(), improvement);
         }
 
         // Memory improvements (lower is better)
-        let memory_improvement = ((self.targets.graph_memory_mb.0 as f64 - metrics.graph_memory_mb as f64) / self.targets.graph_memory_mb.0 as f64) * 100.0;
+        let memory_improvement = ((self.targets.graph_memory_mb.0 as f64
+            - metrics.graph_memory_mb as f64)
+            / self.targets.graph_memory_mb.0 as f64)
+            * 100.0;
         improvements.insert("graph_memory".to_string(), memory_improvement);
 
         // Throughput improvements (higher is better)
         let throughput = metrics.concurrent_queries_per_sec.average();
         if throughput > 0.0 {
-            let improvement = ((throughput - self.targets.concurrent_queries_per_sec.0) / self.targets.concurrent_queries_per_sec.0) * 100.0;
+            let improvement = ((throughput - self.targets.concurrent_queries_per_sec.0)
+                / self.targets.concurrent_queries_per_sec.0)
+                * 100.0;
             improvements.insert("concurrent_throughput".to_string(), improvement);
         }
 
@@ -325,16 +370,20 @@ impl PerformanceMonitor {
         let mut report = TargetAchievementReport::default();
 
         // Check latency targets
-        report.node_query_latency_achieved = metrics.node_query_latency_ms.average() <= self.targets.node_query_latency_ms.1;
-        report.vector_search_latency_achieved = metrics.vector_search_latency_ms.average() <= self.targets.vector_search_latency_ms.1;
+        report.node_query_latency_achieved =
+            metrics.node_query_latency_ms.average() <= self.targets.node_query_latency_ms.1;
+        report.vector_search_latency_achieved =
+            metrics.vector_search_latency_ms.average() <= self.targets.vector_search_latency_ms.1;
 
-        // Check memory targets  
+        // Check memory targets
         report.graph_memory_achieved = metrics.graph_memory_mb <= self.targets.graph_memory_mb.1;
         report.cache_memory_achieved = metrics.cache_memory_mb <= self.targets.cache_memory_mb.1;
 
         // Check throughput targets
-        report.concurrent_throughput_achieved = metrics.concurrent_queries_per_sec.average() >= self.targets.concurrent_queries_per_sec.1;
-        report.processing_throughput_achieved = metrics.nodes_processed_per_sec.average() >= self.targets.nodes_processed_per_sec.1;
+        report.concurrent_throughput_achieved = metrics.concurrent_queries_per_sec.average()
+            >= self.targets.concurrent_queries_per_sec.1;
+        report.processing_throughput_achieved =
+            metrics.nodes_processed_per_sec.average() >= self.targets.nodes_processed_per_sec.1;
 
         // Calculate overall achievement
         let total_targets = 6;
@@ -345,9 +394,13 @@ impl PerformanceMonitor {
             report.cache_memory_achieved,
             report.concurrent_throughput_achieved,
             report.processing_throughput_achieved,
-        ].iter().filter(|&&x| x).count();
+        ]
+        .iter()
+        .filter(|&&x| x)
+        .count();
 
-        report.overall_achievement_percentage = (achieved_targets as f64 / total_targets as f64) * 100.0;
+        report.overall_achievement_percentage =
+            (achieved_targets as f64 / total_targets as f64) * 100.0;
 
         report
     }
@@ -365,19 +418,29 @@ impl PerformanceMonitor {
 
     // Internal helper methods
     fn check_latency_target(&self, metric_name: &str, current_value: f64, target_value: f64) {
-        if current_value > target_value * 1.1 { // 10% tolerance
+        if current_value > target_value * 1.1 {
+            // 10% tolerance
             let alert = PerformanceAlert {
                 alert_type: AlertType::LatencyExceeded,
                 metric_name: metric_name.to_string(),
                 current_value,
                 target_value,
-                severity: if current_value > target_value * 1.5 { AlertSeverity::Critical } else { AlertSeverity::Warning },
+                severity: if current_value > target_value * 1.5 {
+                    AlertSeverity::Critical
+                } else {
+                    AlertSeverity::Warning
+                },
                 timestamp: SystemTime::now(),
-                description: format!("{} exceeded target: {:.2}ms > {:.2}ms", metric_name, current_value, target_value),
+                description: format!(
+                    "{} exceeded target: {:.2}ms > {:.2}ms",
+                    metric_name, current_value, target_value
+                ),
             };
-            
+
             self.alerts.lock().push(alert.clone());
-            let _ = self.event_broadcaster.send(PerformanceEvent::AlertTriggered(alert));
+            let _ = self
+                .event_broadcaster
+                .send(PerformanceEvent::AlertTriggered(alert));
         }
     }
 
@@ -388,30 +451,49 @@ impl PerformanceMonitor {
                 metric_name: metric_name.to_string(),
                 current_value: current_value as f64,
                 target_value: target_value as f64,
-                severity: if current_value > target_value * 2 { AlertSeverity::Critical } else { AlertSeverity::Warning },
+                severity: if current_value > target_value * 2 {
+                    AlertSeverity::Critical
+                } else {
+                    AlertSeverity::Warning
+                },
                 timestamp: SystemTime::now(),
-                description: format!("{} exceeded target: {}MB > {}MB", metric_name, current_value, target_value),
+                description: format!(
+                    "{} exceeded target: {}MB > {}MB",
+                    metric_name, current_value, target_value
+                ),
             };
-            
+
             self.alerts.lock().push(alert.clone());
-            let _ = self.event_broadcaster.send(PerformanceEvent::AlertTriggered(alert));
+            let _ = self
+                .event_broadcaster
+                .send(PerformanceEvent::AlertTriggered(alert));
         }
     }
 
     fn check_throughput_target(&self, metric_name: &str, current_value: f64, target_value: f64) {
-        if current_value < target_value * 0.9 { // 10% tolerance
+        if current_value < target_value * 0.9 {
+            // 10% tolerance
             let alert = PerformanceAlert {
                 alert_type: AlertType::ThroughputBelowTarget,
                 metric_name: metric_name.to_string(),
                 current_value,
                 target_value,
-                severity: if current_value < target_value * 0.5 { AlertSeverity::Critical } else { AlertSeverity::Warning },
+                severity: if current_value < target_value * 0.5 {
+                    AlertSeverity::Critical
+                } else {
+                    AlertSeverity::Warning
+                },
                 timestamp: SystemTime::now(),
-                description: format!("{} below target: {:.2} < {:.2}", metric_name, current_value, target_value),
+                description: format!(
+                    "{} below target: {:.2} < {:.2}",
+                    metric_name, current_value, target_value
+                ),
             };
-            
+
             self.alerts.lock().push(alert.clone());
-            let _ = self.event_broadcaster.send(PerformanceEvent::AlertTriggered(alert));
+            let _ = self
+                .event_broadcaster
+                .send(PerformanceEvent::AlertTriggered(alert));
         }
     }
 }
@@ -475,16 +557,16 @@ mod tests {
     #[test]
     fn test_moving_average() {
         let mut avg = MovingAverage::new(3);
-        
+
         avg.add_value(10.0);
         assert_eq!(avg.average(), 10.0);
-        
+
         avg.add_value(20.0);
         assert_eq!(avg.average(), 15.0);
-        
+
         avg.add_value(30.0);
         assert_eq!(avg.average(), 20.0);
-        
+
         // Should evict oldest value (10.0)
         avg.add_value(40.0);
         assert_eq!(avg.average(), 30.0); // (20 + 30 + 40) / 3
@@ -494,14 +576,14 @@ mod tests {
     fn test_performance_monitor() {
         let targets = PerformanceTargets::default();
         let monitor = PerformanceMonitor::new(targets);
-        
+
         // Test latency recording
         monitor.record_node_query_latency(Duration::from_millis(75));
         monitor.record_node_query_latency(Duration::from_millis(45));
-        
+
         let metrics = monitor.get_current_metrics();
         assert!(metrics.node_query_latency_ms.average() < 100.0);
-        
+
         // Test target achievement
         let achievements = monitor.targets_achieved();
         assert!(achievements.node_query_latency_achieved);
@@ -511,11 +593,11 @@ mod tests {
     fn test_improvement_calculation() {
         let targets = PerformanceTargets::default();
         let monitor = PerformanceMonitor::new(targets);
-        
+
         // Record performance that meets 50% improvement target
         monitor.record_node_query_latency(Duration::from_millis(50)); // Target achieved
         monitor.record_memory_usage("graph", 256); // Target achieved
-        
+
         let improvements = monitor.calculate_improvements();
         assert!(improvements.get("node_query_latency").unwrap_or(&0.0) >= &50.0);
         assert!(improvements.get("graph_memory").unwrap_or(&0.0) >= &50.0);

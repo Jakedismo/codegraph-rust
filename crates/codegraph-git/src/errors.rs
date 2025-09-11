@@ -19,12 +19,12 @@ pub enum GitIntegrationError {
     #[error("Branch not found: {0}")]
     BranchNotFound(String),
 
-    #[error("Invalid UTF-8 in path")] 
+    #[error("Invalid UTF-8 in path")]
     InvalidUtf8,
 
     #[error("Watcher error: {0}")]
     Watcher(String),
 
-    #[error("Operation not supported in bare repository")] 
+    #[error("Operation not supported in bare repository")]
     BareRepository,
 }

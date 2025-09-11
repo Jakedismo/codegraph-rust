@@ -1,11 +1,13 @@
 use crossbeam_queue::ArrayQueue;
-use thiserror::Error;
 use std::sync::Arc;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum MpmcError {
-    #[error("queue is full")] Full,
-    #[error("queue is empty")] Empty,
+    #[error("queue is full")]
+    Full,
+    #[error("queue is empty")]
+    Empty,
 }
 
 /// Lock-free bounded MPMC queue based on crossbeam's ArrayQueue.
@@ -15,12 +17,18 @@ pub struct LockFreeMpmcQueue<T> {
 }
 
 impl<T> Clone for LockFreeMpmcQueue<T> {
-    fn clone(&self) -> Self { Self { inner: self.inner.clone() } }
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
 }
 
 impl<T> LockFreeMpmcQueue<T> {
     pub fn with_capacity(capacity: usize) -> Self {
-        Self { inner: Arc::new(ArrayQueue::new(capacity)) }
+        Self {
+            inner: Arc::new(ArrayQueue::new(capacity)),
+        }
     }
 
     #[inline]
@@ -30,7 +38,7 @@ impl<T> LockFreeMpmcQueue<T> {
 
     #[inline]
     pub fn try_pop(&self) -> Result<T, MpmcError> {
-        self.inner.pop().map_err(|_| MpmcError::Empty)
+        self.inner.pop().ok_or(MpmcError::Empty)
     }
 }
 
@@ -55,20 +63,31 @@ mod tests {
         let q2 = q.clone();
         let prod = thread::spawn(move || {
             for i in 0..10_000 {
-                loop { if q1.try_push(i).is_ok() { break; } }
+                loop {
+                    if q1.try_push(i).is_ok() {
+                        break;
+                    }
+                }
             }
         });
         let prod2 = thread::spawn(move || {
             for i in 10_000..20_000 {
-                loop { if q2.try_push(i).is_ok() { break; } }
+                loop {
+                    if q2.try_push(i).is_ok() {
+                        break;
+                    }
+                }
             }
         });
         let mut seen = 0usize;
         while seen < 20_000 {
-            if let Ok(_v) = q.try_pop() { seen += 1; } else { thread::yield_now(); }
+            if let Ok(_v) = q.try_pop() {
+                seen += 1;
+            } else {
+                thread::yield_now();
+            }
         }
         prod.join().unwrap();
         prod2.join().unwrap();
     }
 }
-
