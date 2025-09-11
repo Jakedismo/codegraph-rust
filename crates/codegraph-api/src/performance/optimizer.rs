@@ -237,14 +237,14 @@ impl PerformanceOptimizer {
     ) -> std::result::Result<(), CodeGraphError> {
         let depth = max_depth.unwrap_or(self.config.max_traversal_depth as i32) as usize;
         if depth > self.config.max_traversal_depth {
-            return Err(CodeGraphError::InvalidQuery(format!(
+            return Err(CodeGraphError::Validation(format!(
                 "Traversal depth {} exceeds limit {}",
                 depth, self.config.max_traversal_depth
             )));
         }
         let limit_u = limit.unwrap_or(0).max(0) as usize;
         if limit_u > self.config.max_traversal_nodes {
-            return Err(CodeGraphError::InvalidQuery(format!(
+            return Err(CodeGraphError::Validation(format!(
                 "Traversal node limit {} exceeds max {}",
                 limit_u, self.config.max_traversal_nodes
             )));

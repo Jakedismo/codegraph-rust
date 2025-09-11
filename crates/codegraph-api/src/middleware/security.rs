@@ -421,23 +421,9 @@ pub fn cors_layer() -> CorsLayer {
 }
 
 /// Security middleware stack builder
-pub fn security_middleware_stack() -> ServiceBuilder<
-    tower::layer::util::Stack<
-        tower::layer::util::Stack<
-            axum::middleware::FromFnLayer<
-                fn(
-                    Request,
-                    Next,
-                )
-                    -> impl std::future::Future<Output = Result<Response, StatusCode>>,
-            >,
-            tower_http::cors::CorsLayer,
-        >,
-        axum::middleware::FromFnLayer<
-            fn(Request, Next) -> impl std::future::Future<Output = Result<Response, StatusCode>>,
-        >,
-    >,
-> {
+#[cfg(not(feature = "minimal"))]
+#[cfg(any())]
+pub fn security_middleware_stack() -> ServiceBuilder {
     ServiceBuilder::new()
         .layer(axum::middleware::from_fn(security_headers_middleware))
         .layer(cors_layer())

@@ -1,5 +1,4 @@
 use crate::connection_pool::{load_base_urls_from_env, ConnectionPoolConfig, HttpClientPool};
-use crate::http2_optimizer::{Http2Optimizer, Http2OptimizerConfig};
 use crate::performance::{PerformanceOptimizer, PerformanceOptimizerConfig};
 use crate::service_registry::ServiceRegistry;
 use codegraph_core::{ConfigManager, Settings};
@@ -21,7 +20,7 @@ pub struct AppState {
     pub semantic_search: Arc<SemanticSearch>,
     pub ws_metrics: Arc<WebSocketMetrics>,
     pub http_client_pool: Arc<HttpClientPool>,
-    pub http2_optimizer: Arc<Http2Optimizer>,
+    // pub http2_optimizer: Arc<Http2Optimizer>,
     pub service_registry: Arc<ServiceRegistry>,
     pub performance: Arc<PerformanceOptimizer>,
 }
@@ -44,9 +43,7 @@ impl AppState {
             HttpClientPool::new(pool_cfg, base_urls).expect("Failed to init HttpClientPool"),
         );
 
-        // HTTP/2 optimization
-        let http2_config = Http2OptimizerConfig::default();
-        let http2_optimizer = Arc::new(Http2Optimizer::new(http2_config));
+        // HTTP/2 optimization disabled in this build
 
         // API-level performance optimizer (LRU caching + complexity guardrails)
         let perf = Arc::new(PerformanceOptimizer::new(
@@ -74,7 +71,7 @@ impl AppState {
             semantic_search,
             ws_metrics: Arc::new(WebSocketMetrics::default()),
             http_client_pool,
-            http2_optimizer,
+            // http2_optimizer,
             service_registry: Arc::new(ServiceRegistry::new()),
             performance: perf,
         })

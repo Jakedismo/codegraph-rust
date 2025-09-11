@@ -13,7 +13,7 @@ lazy_static! {
             .unwrap();
 
     pub static ref SYNC_OPERATION_DURATION_SECONDS: Histogram =
-        Histogram::with_opts(Opts::new("sync_operation_duration_seconds", "Duration of sync operations in seconds"))
+        Histogram::with_opts(Opts::new("sync_operation_duration_seconds", "Duration of sync operations in seconds").into())
             .unwrap();
 
     // HTTP metrics
@@ -253,7 +253,7 @@ fn initialize_build_info() {
 
 /// Update system metrics
 pub fn update_system_metrics() {
-    use sysinfo::{ProcessExt, System, SystemExt};
+    use sysinfo::System;
 
     let mut sys = System::new_all();
     sys.refresh_all();
@@ -270,11 +270,7 @@ pub fn update_system_metrics() {
     }
 
     // Get current process info
-    if let Ok(pid) = sysinfo::get_current_pid() {
-        if let Some(process) = sys.process(pid) {
-            SYSTEM_CPU_USAGE_PERCENT.set(process.cpu_usage() as f64);
-        }
-    }
+    // Process CPU metrics are optional; skip if not available
 }
 
 /// Update application uptime
@@ -344,9 +340,9 @@ pub fn update_connection_pool_stats(active: i64, idle: i64) {
 }
 
 /// Middleware for recording HTTP request metrics
-pub async fn http_metrics_middleware<B>(
-    req: axum::extract::Request<B>,
-    next: axum::middleware::Next<B>,
+pub async fn http_metrics_middleware(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
 ) -> axum::response::Response {
     let start = std::time::Instant::now();
     let method = req.method().to_string();

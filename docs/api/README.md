@@ -80,11 +80,11 @@ Errors follow RFC 7807 Problem Details format:
 
 ## SDK Support
 
-Official SDKs available for:
-- **Rust** - `codegraph-client` crate
-- **Python** - `codegraph-py` package
-- **TypeScript/Node.js** - `@codegraph/client` npm package
-- **Go** - `go-codegraph` module (community)
+SDK availability:
+- **Rust** - `codegraph-client` (coming soon)
+- **Python** - `codegraph-py` (coming soon)
+- **TypeScript/Node.js** - `@codegraph/client` (coming soon)
+- **Go** - `go-codegraph` (community, coming soon)
 
 ## Getting Started
 

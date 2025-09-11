@@ -45,10 +45,12 @@ pub struct UpdateConfigurationInput {
     pub value: String,
 }
 
+#[cfg(not(feature = "minimal"))]
 pub struct Mutation {
     pub(crate) graph: TransactionalGraph,
 }
 
+#[cfg(not(feature = "minimal"))]
 #[Object]
 impl Mutation {
     /// Adds a new node to the graph.

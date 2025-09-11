@@ -95,16 +95,19 @@ graph TB
 <summary><b>📋 System Requirements</b></summary>
 
 **Required:**
+
 - **Rust 1.75+** - [Install via rustup](https://rustup.rs/)
 - **4GB RAM minimum** (8GB+ recommended for large codebases)
 - **2GB free disk space**
 
 **System Dependencies:**
+
 - **Linux**: `build-essential`, `clang`, `cmake`, `pkg-config`
 - **macOS**: Xcode Command Line Tools (`xcode-select --install`)
 - **Windows**: Visual Studio Build Tools 2022+ with C++ components
 
 **Quick Check:**
+
 ```bash
 # Verify Rust installation
 rustc --version  # Should be 1.75.0+
@@ -120,22 +123,18 @@ cargo --version
 git clone https://github.com/ouroboros-demo/codegraph.git
 cd codegraph
 
-# 2. Build and start server (optimized release mode)
-cargo run --release -p codegraph-api
+# 2. Build stable crates (core, vector, graph)
+cargo build -p codegraph-core -p codegraph-vector -p codegraph-graph
 
-# 3. Verify it's working (in another terminal)
-curl http://localhost:8000/health
+# 3. Optional: check API compile status (WIP)
+cargo check -p codegraph-api   # may report errors on this branch
+
+# 4. When the API compiles on your branch, you can start it with:
+# cargo run --release -p codegraph-api
+# and then verify: curl http://localhost:8000/health
 ```
 
-**✅ Success Response:**
-```json
-{
-  "status": "healthy", 
-  "version": "0.1.0", 
-  "uptime": "3s",
-  "features": ["graph", "vector", "mcp"]
-}
-```
+Note: The API server and MCP binaries are under active development and may not compile on this branch yet. Start with the stable library crates above.
 
 ### 🎯 Your First Analysis
 
@@ -369,23 +368,34 @@ Generate a new error handling middleware following the established patterns.
 `;
 ```
 
-### 🔧 CLI Integration
+### 🔧 Command‑Line Usage (no external CLI)
+
+No standalone `codegraph-cli` is published yet.
+
+- If your current branch compiles `codegraph-api`, you can use these curl examples.
+- If it does not compile, skip this section and use the library crates directly.
 
 ```bash
-# Install CodeGraph CLI
-cargo install codegraph-cli
+# Start the server (only if `cargo check -p codegraph-api` succeeds)
+cargo run --release -p codegraph-api
 
-# Analyze a project
-codegraph analyze ./my-project --output json
+# Index a project
+curl -X POST http://localhost:8000/v1/index \
+  -H "Content-Type: application/json" \
+  -d '{"path": "./my-project"}'
 
-# Generate embeddings for similarity search
-codegraph embed ./my-project --model sentence-transformers
+# Semantic search
+curl "http://localhost:8000/v1/search?q=async+fn&limit=10" | jq
 
-# Export project graph in various formats
-codegraph export ./my-project --format graphml --output project-graph.xml
+# Similar items for a node ID
+curl "http://localhost:8000/nodes/<NODE_ID>/similar" | jq
 
-# Monitor project changes in real-time
-codegraph watch ./my-project --webhook http://localhost:3000/code-changes
+# Rebuild vector index (embeddings)
+curl -X POST http://localhost:8000/vector/index/rebuild
+
+# Explore via GraphiQL
+open http://localhost:8000/graphiql  # macOS
+# xdg-open http://localhost:8000/graphiql  # Linux
 ```
 
 ---
@@ -417,6 +427,7 @@ cargo run --features=memory-profiling --example memory_demo
 ```
 
 **Sample Results** (MacBook Pro M2, 32GB RAM):
+
 ```
 test graph_traversal_10k_nodes ... bench:    1,234 ns/iter (+/- 89)
 test vector_search_1m_vectors ... bench:    8,456 ns/iter (+/- 234)
@@ -589,6 +600,7 @@ export RUST_BACKTRACE=full
 <summary><b>🚀 Quick Configuration Presets</b></summary>
 
 **Development Mode:**
+
 ```bash
 # Quick start with debug logging
 export CODEGRAPH_LOG_LEVEL=debug
@@ -598,6 +610,7 @@ codegraph-api --dev-mode
 ```
 
 **Production Mode:**
+
 ```bash
 # Optimized for production
 export CODEGRAPH_LOG_LEVEL=info
@@ -609,6 +622,7 @@ codegraph-api --config /etc/codegraph/config.toml
 ```
 
 **High-Performance Mode:**
+
 ```bash
 # Maximum performance settings
 export CODEGRAPH_WORKERS=32
@@ -762,10 +776,10 @@ enum EntityType {
 
 ### 🛠️ SDKs & Tools
 
-- **🦀 Rust**: [`codegraph-client`](https://crates.io/crates/codegraph-client)
-- **🐍 Python**: [`codegraph-py`](https://pypi.org/project/codegraph-py/)
-- **📜 TypeScript**: [`@codegraph/client`](https://www.npmjs.com/package/@codegraph/client)
-- **🔧 CLI**: [`codegraph-cli`](https://github.com/codegraph/cli)
+- **🦀 Rust**: `codegraph-client` (coming soon)
+- **🐍 Python**: `codegraph-py` (coming soon)
+- **📜 TypeScript**: `@codegraph/client` (coming soon)
+- **🔧 CLI**: Not yet published. Use the `codegraph-api` server and the curl examples above.
 
 ---
 
@@ -840,6 +854,7 @@ make profile
 <summary><b>📝 Code Standards</b></summary>
 
 **Code Quality:**
+
 - **🧪 Tests Required**: All new features must include comprehensive tests
 - **📚 Documentation**: Update docs for public APIs and significant changes
 - **🎯 Follow Conventions**: Maintain consistency with existing code style
@@ -847,6 +862,7 @@ make profile
 - **🛡️ Security**: Follow Rust security best practices, no unsafe code without justification
 
 **Git Conventions:**
+
 - Use [Conventional Commits](https://www.conventionalcommits.org/)
 - Keep commits atomic and focused
 - Write clear, descriptive commit messages
@@ -858,18 +874,21 @@ make profile
 <summary><b>🎯 Areas We Need Help With</b></summary>
 
 **High Priority:**
+
 - 🐛 **Bug Fixes**: Check our [issues](https://github.com/ouroboros-demo/issues?q=is%3Aissue+is%3Aopen+label%3Abug)
 - 📖 **Documentation**: API docs, tutorials, examples
 - 🧪 **Testing**: Increase test coverage, add integration tests
 - 🎨 **Language Support**: Add parsers for more programming languages
 
 **Medium Priority:**
+
 - ⚡ **Performance**: Optimize hot paths, reduce memory usage
 - 🔧 **Tooling**: CI/CD improvements, development tools
 - 🌐 **Integrations**: IDE plugins, editor extensions
 - 📊 **Monitoring**: Better metrics and observability
 
 **Ideas Welcome:**
+
 - 💡 **Features**: New analysis capabilities
 - 🎪 **Examples**: Real-world usage patterns
 - 🔍 **Research**: Code analysis algorithms
@@ -897,11 +916,13 @@ Look for issues labeled [`good first issue`](https://github.com/ouroboros-demo/i
 <summary><b>🤝 Getting Support</b></summary>
 
 **Questions about contributing?**
+
 - 💬 **GitHub Discussions**: Ask questions, share ideas
 - 🐛 **Issues**: Report bugs or request features  
 - 📧 **Email**: `contributors@codegraph.dev` for private questions
 
 **Development Help:**
+
 - 📖 **Architecture Guide**: `./docs/architecture/`
 - 🧪 **Testing Guide**: `./docs/testing/`
 - 📋 **Code Style**: `./docs/development/coding-standards.md`
@@ -911,6 +932,7 @@ Look for issues labeled [`good first issue`](https://github.com/ouroboros-demo/i
 ### 🏆 Recognition
 
 Contributors are recognized in:
+
 - 📊 **Contributors Graph**: GitHub automatically tracks contributions
 - 📰 **Release Notes**: Major contributions highlighted in releases
 - 💝 **Hall of Fame**: `CONTRIBUTORS.md` acknowledges all contributors
@@ -1023,16 +1045,19 @@ Production-ready documentation organized by user journey and use case:
 ### 🎯 Quick Navigation
 
 **👋 New to CodeGraph?**
+
 1. [📖 API Overview](./docs/api/README.md) - Understand the APIs
 2. [🚀 Quick Start](./docs/developer/README.md#quick-start) - Run in 30 seconds  
 3. [💡 Examples](#-usage-examples) - See it in action
 
 **🔧 Ready to Deploy?**
+
 1. [🐳 Deployment Guide](./docs/deployment/README.md) - Production deployment
 2. [📋 Operations Manual](./docs/operations/README.md) - Day-to-day operations
 3. [📊 Monitoring Setup](./docs/deployment/README.md#monitoring-and-alerting) - Observability
 
 **👩‍💻 Want to Contribute?**
+
 1. [🏗️ Developer Guide](./docs/developer/README.md) - Development setup
 2. [🧪 Testing Guide](./docs/developer/README.md#testing-guide) - Testing strategy
 3. [🤝 Contributing](./docs/developer/README.md#contributing-guidelines) - Code standards

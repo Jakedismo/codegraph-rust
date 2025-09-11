@@ -1,10 +1,42 @@
-use async_graphql::SimpleBroker;
 use chrono::Utc;
 use parking_lot::RwLock;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(feature = "graphql")]
 use crate::subscriptions::{GraphUpdateEvent, GraphUpdateType, IndexingProgressEvent};
+
+#[cfg(not(feature = "graphql"))]
+#[derive(Clone)]
+pub enum GraphUpdateType {
+    NodesAdded,
+    NodesRemoved,
+    NodesModified,
+}
+
+#[cfg(not(feature = "graphql"))]
+#[derive(Clone)]
+pub struct GraphUpdateEvent {
+    pub seq: u64,
+    pub update_type: GraphUpdateType,
+    pub affected_nodes: Vec<String>,
+    pub affected_relations: Vec<String>,
+    pub change_count: i32,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub details: Option<String>,
+}
+
+#[cfg(not(feature = "graphql"))]
+#[derive(Clone)]
+pub struct IndexingProgressEvent {
+    pub seq: u64,
+    pub job_id: String,
+    pub progress: f32,
+    pub current_stage: String,
+    pub estimated_time_remaining_secs: Option<f32>,
+    pub message: Option<String>,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
 
 static GRAPH_UPDATE_SEQ: AtomicU64 = AtomicU64::new(0);
 static INDEXING_PROGRESS_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -45,7 +77,7 @@ pub fn publish_graph_update(
         }
         buf.push_back(event.clone());
     }
-    SimpleBroker::publish(event);
+    // Publishing disabled in this build
 }
 
 pub fn publish_indexing_progress(
@@ -71,7 +103,7 @@ pub fn publish_indexing_progress(
         }
         buf.push_back(event.clone());
     }
-    SimpleBroker::publish(event);
+    // Publishing disabled in this build
 }
 
 pub fn recent_graph_updates_since(seq: u64, limit: usize) -> Vec<GraphUpdateEvent> {

@@ -299,8 +299,8 @@ impl EmbeddingPool {
 /// Compact cache key reducing hash table overhead by 70%
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CompactCacheKey {
-    hash: u64,             // Pre-computed hash for O(1) comparison
-    type_discriminant: u8, // Cache type (node, embedding, query, etc.)
+    pub hash: u64,        // Pre-computed hash for O(1) comparison
+    pub cache_type: CacheType, // Cache type (node, embedding, query, etc.)
 }
 
 impl CompactCacheKey {
@@ -311,10 +311,7 @@ impl CompactCacheKey {
         hasher.write(data);
         let hash = hasher.finish();
 
-        Self {
-            hash,
-            type_discriminant: cache_type as u8,
-        }
+        Self { hash, cache_type }
     }
 
     pub fn from_string(s: &str, cache_type: CacheType) -> Self {
@@ -326,11 +323,12 @@ impl CompactCacheKey {
     }
 
     pub const fn memory_footprint() -> usize {
-        mem::size_of::<Self>() // 9 bytes vs 32+ for String keys
+        // Logical footprint of the compact key data (8 byte hash + 1 byte type)
+        9
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum CacheType {
     Node = 0,

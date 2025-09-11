@@ -5,10 +5,6 @@ use axum::{
     Json,
 };
 use codegraph_core::{CodeParser, GraphStore, NodeId};
-use codegraph_vector::{
-    BatchOperation, BatchStats, IndexConfig, IndexStats, IndexType, SearchConfig,
-    SearchPerformanceStats,
-};
 #[cfg(feature = "persistent")]
 use codegraph_vector::{
     CompressionType, IncrementalStats, IsolationLevel, StorageStats, TransactionStats,
@@ -105,9 +101,9 @@ pub async fn parse_file(
         affected_nodes.push(id_str);
     }
 
-    // Broadcast graph update event for subscribers
+    // Broadcast graph update event for subscribers (no-op if subscriptions disabled)
     crate::event_bus::publish_graph_update(
-        crate::subscriptions::GraphUpdateType::NodesAdded,
+        crate::event_bus::GraphUpdateType::NodesAdded,
         affected_nodes,
         Vec::new(),
         nodes_count as i32,
@@ -139,7 +135,7 @@ pub async fn get_node(
 
     Ok(Json(NodeResponse {
         id: node.id.to_string(),
-        name: node.name,
+        name: node.name.to_string(),
         node_type: format!("{:?}", node.node_type),
         language: format!("{:?}", node.language),
         location: LocationDto {
@@ -149,7 +145,7 @@ pub async fn get_node(
             end_line: node.location.end_line,
             end_column: node.location.end_column,
         },
-        content: node.content,
+        content: node.content.map(|s| s.to_string()),
         has_embedding: node.embedding.is_some(),
     }))
 }
@@ -174,7 +170,7 @@ pub async fn search_nodes(
             search_results.push(SearchResultDto {
                 node_id: result.node_id.to_string(),
                 score: result.score,
-                name: node.name,
+                name: node.name.to_string(),
                 node_type: format!("{:?}", node.node_type),
                 language: format!("{:?}", node.language),
                 file_path: node.location.file_path,
@@ -220,7 +216,7 @@ pub async fn find_similar(
             search_results.push(SearchResultDto {
                 node_id: result.node_id.to_string(),
                 score: result.score,
-                name: similar_node.name,
+                name: similar_node.name.to_string(),
                 node_type: format!("{:?}", similar_node.node_type),
                 language: format!("{:?}", similar_node.language),
                 file_path: similar_node.location.file_path,

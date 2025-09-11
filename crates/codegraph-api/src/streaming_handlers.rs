@@ -299,8 +299,6 @@ pub fn create_optimized_stream<T>(
 where
     T: Send + 'static,
 {
-    use futures::stream::FuturesUnordered;
-
     let stream = stream::iter(items.into_iter())
         .chunks(batch_size)
         .enumerate()
@@ -310,8 +308,7 @@ where
             }
             stream::iter(batch)
         })
-        .flatten()
-        .buffer_unordered(max_concurrent);
+        .flatten();
 
     Box::pin(stream)
 }

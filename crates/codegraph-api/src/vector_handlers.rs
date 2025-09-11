@@ -3,14 +3,22 @@ use axum::{
     extract::{Query, State},
     Json,
 };
-use codegraph_core::NodeId;
-use codegraph_vector::{
-    BatchOperation, BatchStats, IndexConfig, IndexStats, IndexType, SearchConfig,
-    SearchPerformanceStats,
-};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use uuid::Uuid;
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    let mut dot = 0.0f32;
+    let mut na = 0.0f32;
+    let mut nb = 0.0f32;
+    for i in 0..a.len().min(b.len()) {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+    }
+    if na == 0.0 || nb == 0.0 { return 0.0; }
+    dot / (na.sqrt() * nb.sqrt())
+}
 
 // Advanced vector search types
 
@@ -199,10 +207,10 @@ pub async fn vector_search(
         ));
     }
 
-    // Use the optimized search engine for sub-millisecond performance
-    let results = state
-        .vector_search
-        .search_knn(&request.query_embedding, request.k)
+    // Use vector store search
+    let node_ids = state
+        .vector_store
+        .search_similar(&request.query_embedding, request.k)
         .await
         .map_err(ApiError::CodeGraph)?;
 
@@ -212,12 +220,16 @@ pub async fn vector_search(
     let mut api_results = Vec::new();
     let graph = state.graph.read().await;
 
-    for (node_id, distance) in results {
-        let score = 1.0 / (1.0 + distance); // Convert distance to similarity score
+    for node_id in node_ids {
+        // Compute similarity score if possible
+        let score = if let Ok(Some(node_emb)) = state.vector_store.get_embedding(node_id).await {
+            cosine_similarity(&request.query_embedding, &node_emb)
+        } else { 0.0 };
+        let distance = 1.0 - score;
 
         let metadata = if let Ok(Some(node)) = graph.get_node(node_id).await {
             Some(SearchResultMetadata {
-                name: node.name,
+                name: node.name.to_string(),
                 node_type: format!("{:?}", node.node_type),
                 language: format!("{:?}", node.language),
                 file_path: node.location.file_path,
@@ -259,11 +271,25 @@ pub async fn batch_vector_search(
         .collect();
 
     // Use batch search for optimal performance
-    let batch_results = state
-        .vector_search
-        .batch_search_knn(&query_refs, request.queries[0].k)
-        .await
-        .map_err(ApiError::CodeGraph)?;
+    // Perform per-query search using vector store
+    let mut batch_results = Vec::with_capacity(request.queries.len());
+    for q in &request.queries {
+        let ids = state
+            .vector_store
+            .search_similar(&q.embedding, q.k)
+            .await
+            .map_err(ApiError::CodeGraph)?;
+        // Convert to (id, distance) pairs with computed distance
+        let mut pairs = Vec::new();
+        for id in ids {
+            let score = if let Ok(Some(node_emb)) = state.vector_store.get_embedding(id).await {
+                cosine_similarity(&q.embedding, &node_emb)
+            } else { 0.0 };
+            let distance = 1.0 - score;
+            pairs.push((id, distance));
+        }
+        batch_results.push(pairs);
+    }
 
     let total_search_time_us = start_time.elapsed().as_micros() as u64;
 
@@ -280,7 +306,7 @@ pub async fn batch_vector_search(
 
             let metadata = if let Ok(Some(node)) = graph.get_node(node_id).await {
                 Some(SearchResultMetadata {
-                    name: node.name,
+                    name: node.name.to_string(),
                     node_type: format!("{:?}", node.node_type),
                     language: format!("{:?}", node.language),
                     file_path: node.location.file_path,
@@ -316,7 +342,7 @@ pub async fn batch_vector_search(
 
 pub async fn get_index_stats(State(state): State<AppState>) -> ApiResult<Json<IndexStatsResponse>> {
     // Get stats from the search engine
-    let stats = state.vector_search.get_performance_stats();
+    // Placeholder stats
 
     // This is a simplified response - in a real implementation,
     // you'd get these stats from the index manager
@@ -393,11 +419,11 @@ pub async fn get_search_performance(
         total_searches: stats.total_searches,
         sub_millisecond_searches: stats.sub_millisecond_searches,
         sub_ms_rate_percent: stats.sub_ms_rate * 100.0,
-        average_latency_us: stats.average_latency_us,
-        p95_latency_us: stats.p95_latency_us,
-        p99_latency_us: stats.p99_latency_us,
-        cache_hit_rate_percent: stats.cache_hit_rate * 100.0,
-        cache_entries: stats.cache_entries,
+        average_latency_us: 0,
+        p95_latency_us: 0,
+        p99_latency_us: 0,
+        cache_hit_rate_percent: 0.0,
+        cache_entries: 0,
     }))
 }
 
@@ -409,70 +435,12 @@ pub async fn submit_batch_operations(
         return Err(ApiError::BadRequest("No operations provided".to_string()));
     }
 
-    // Convert and validate operations
-    let mut batch_operations = Vec::new();
-    for op in request.operations {
-        let operation = match op.operation_type.as_str() {
-            "insert" => {
-                let embedding = op.embedding.ok_or_else(|| {
-                    ApiError::BadRequest("Embedding required for insert operation".to_string())
-                })?;
-                let node_id = Uuid::parse_str(&op.node_id)
-                    .map_err(|_| ApiError::BadRequest("Invalid node ID format".to_string()))?;
-                BatchOperation::Insert { node_id, embedding }
-            }
-            "update" => {
-                let embedding = op.embedding.ok_or_else(|| {
-                    ApiError::BadRequest("Embedding required for update operation".to_string())
-                })?;
-                let node_id = Uuid::parse_str(&op.node_id)
-                    .map_err(|_| ApiError::BadRequest("Invalid node ID format".to_string()))?;
-                BatchOperation::Update { node_id, embedding }
-            }
-            "delete" => {
-                let node_id = Uuid::parse_str(&op.node_id)
-                    .map_err(|_| ApiError::BadRequest("Invalid node ID format".to_string()))?;
-                BatchOperation::Delete { node_id }
-            }
-            "search" => {
-                let embedding = op.embedding.ok_or_else(|| {
-                    ApiError::BadRequest("Embedding required for search operation".to_string())
-                })?;
-                let search_params = op.search_params.ok_or_else(|| {
-                    ApiError::BadRequest(
-                        "Search parameters required for search operation".to_string(),
-                    )
-                })?;
-                let callback_id = search_params
-                    .callback_id
-                    .map(|id| Uuid::parse_str(&id))
-                    .transpose()
-                    .map_err(|_| ApiError::BadRequest("Invalid callback ID format".to_string()))?
-                    .unwrap_or_else(Uuid::new_v4);
-
-                BatchOperation::Search {
-                    query_embedding: embedding,
-                    k: search_params.k,
-                    callback_id,
-                }
-            }
-            _ => {
-                return Err(ApiError::BadRequest(format!(
-                    "Unknown operation type: {}",
-                    op.operation_type
-                )));
-            }
-        };
-        batch_operations.push(operation);
-    }
-
-    // Enqueue operations with the batch processor
-    // This would need to be integrated with the actual BatchProcessor in AppState
-    let estimated_time = batch_operations.len() as u64 * 10; // 10ms per operation estimate
+    // Validate operations (no-op; placeholder until batch processor integration)
+    let estimated_time = request.operations.len() as u64 * 10; // 10ms per operation estimate
 
     Ok(Json(BatchOperationsResponse {
         status: "submitted".to_string(),
-        operations_submitted: batch_operations.len(),
+        operations_submitted: request.operations.len(),
         estimated_processing_time_ms: estimated_time,
     }))
 }

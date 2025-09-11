@@ -48,6 +48,11 @@ impl EmbeddingGenerator {
         Ok(embeddings)
     }
 
+    /// Generate an embedding directly from free text. Useful for query embeddings.
+    pub async fn generate_text_embedding(&self, text: &str) -> Result<Vec<f32>> {
+        self.encode_text(text).await
+    }
+
     fn prepare_text(&self, node: &CodeNode) -> String {
         let mut text = format!(
             "{} {} {}",

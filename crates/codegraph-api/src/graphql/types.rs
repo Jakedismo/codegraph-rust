@@ -55,7 +55,7 @@ pub enum GraphQLLanguage {
     Other,
 }
 
-#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug, Serialize, Deserialize, Hash)]
 pub enum GraphQLEdgeType {
     Calls,
     Defines,
@@ -77,6 +77,20 @@ pub struct GraphQLEdge {
     pub weight: Option<f32>,
     pub attributes: HashMap<String, String>,
     pub created_at: DateTime<Utc>,
+}
+
+// GraphQL input for updating a node
+#[derive(async_graphql::InputObject, Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateNodeInput {
+    pub id: ID,
+    pub name: Option<String>,
+    pub node_type: Option<GraphQLNodeType>,
+    pub language: Option<GraphQLLanguage>,
+    pub file_path: Option<String>,
+    pub start_line: Option<i32>,
+    pub start_column: Option<i32>,
+    pub end_line: Option<i32>,
+    pub end_column: Option<i32>,
 }
 
 #[derive(SimpleObject, Clone, Debug, Serialize, Deserialize)]
@@ -232,11 +246,11 @@ impl From<CodeNode> for GraphQLCodeNode {
     fn from(node: CodeNode) -> Self {
         Self {
             id: ID(node.id.to_string()),
-            name: node.name,
+            name: node.name.to_string(),
             node_type: node.node_type.map(Into::into),
             language: node.language.map(Into::into),
             location: node.location.into(),
-            content: node.content,
+            content: node.content.map(|s| s.to_string()),
             complexity: node.complexity,
             created_at: node.metadata.created_at,
             updated_at: node.metadata.updated_at,

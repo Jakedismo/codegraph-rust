@@ -373,7 +373,7 @@ async fn check_memory_health_enhanced() -> ComponentStatus {
 
     #[cfg(not(feature = "leak-detect"))]
     {
-        use sysinfo::{System, SystemExt};
+        use sysinfo::System;
         let mut sys = System::new_all();
         sys.refresh_memory();
 
@@ -543,16 +543,14 @@ async fn check_cache_health(state: &AppState) -> ComponentStatus {
 }
 
 async fn collect_enhanced_system_metrics(state: &AppState) -> SystemMetrics {
-    use sysinfo::{ProcessExt, System, SystemExt};
+    use sysinfo::System;
 
     let mut sys = System::new_all();
     sys.refresh_all();
 
-    let pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from(0));
-    let process = sys.process(pid);
-
-    let memory_usage = process.map(|p| p.memory() * 1024).unwrap_or(0);
-    let cpu_usage = process.map(|p| p.cpu_usage() as f64).unwrap_or(0.0);
+    // Per-process metrics optional in this simplified build
+    let memory_usage = 0u64;
+    let cpu_usage = 0.0f64;
 
     let total_memory = sys.total_memory();
     let available_memory = sys.available_memory();

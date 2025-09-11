@@ -528,26 +528,21 @@ pub async fn restore_from_backup(
     ])))
 }
 
-// Helper functions
-
-impl From<ChangeType> for String {
-    fn from(change_type: ChangeType) -> Self {
-        match change_type {
-            ChangeType::Added => "added".to_string(),
-            ChangeType::Modified => "modified".to_string(),
-            ChangeType::Deleted => "deleted".to_string(),
-        }
+// Helper functions (avoid orphan impls)
+fn change_type_to_string(change_type: ChangeType) -> String {
+    match change_type {
+        ChangeType::Added => "added".to_string(),
+        ChangeType::Modified => "modified".to_string(),
+        ChangeType::Deleted => "deleted".to_string(),
     }
 }
 
-impl From<ConflictType> for String {
-    fn from(conflict_type: ConflictType) -> Self {
-        match conflict_type {
-            ConflictType::ContentMismatch => "content_mismatch".to_string(),
-            ConflictType::DeletedByUs => "deleted_by_us".to_string(),
-            ConflictType::DeletedByThem => "deleted_by_them".to_string(),
-            ConflictType::AddedByBoth => "added_by_both".to_string(),
-        }
+fn conflict_type_to_string(conflict_type: ConflictType) -> String {
+    match conflict_type {
+        ConflictType::ContentMismatch => "content_mismatch".to_string(),
+        ConflictType::DeletedByUs => "deleted_by_us".to_string(),
+        ConflictType::DeletedByThem => "deleted_by_them".to_string(),
+        ConflictType::AddedByBoth => "added_by_both".to_string(),
     }
 }
 
@@ -561,7 +556,7 @@ fn convert_version_diff(diff: VersionDiff, from: String, to: String) -> VersionD
                 NodeChangeDto {
                     old_content_hash: change.old_content_hash,
                     new_content_hash: change.new_content_hash,
-                    change_type: String::from(change.change_type),
+                    change_type: change_type_to_string(change.change_type),
                 },
             )
         })
@@ -598,7 +593,7 @@ fn convert_merge_result(result: MergeResult) -> MergeResultDto {
             base_content_hash: conflict.base_content_hash,
             ours_content_hash: conflict.ours_content_hash,
             theirs_content_hash: conflict.theirs_content_hash,
-            conflict_type: String::from(conflict.conflict_type),
+            conflict_type: conflict_type_to_string(conflict.conflict_type),
         })
         .collect();
 

@@ -127,6 +127,10 @@ impl MovingAverage {
     pub fn count(&self) -> usize {
         self.values.len()
     }
+
+    pub fn last_value(&self) -> Option<f64> {
+        self.values.back().copied()
+    }
 }
 
 impl Default for MovingAverage {
@@ -369,11 +373,17 @@ impl PerformanceMonitor {
         let metrics = self.metrics.read();
         let mut report = TargetAchievementReport::default();
 
-        // Check latency targets
-        report.node_query_latency_achieved =
-            metrics.node_query_latency_ms.average() <= self.targets.node_query_latency_ms.1;
-        report.vector_search_latency_achieved =
-            metrics.vector_search_latency_ms.average() <= self.targets.vector_search_latency_ms.1;
+        // Check latency targets (use last observed value to reflect most recent performance)
+        report.node_query_latency_achieved = metrics
+            .node_query_latency_ms
+            .last_value()
+            .map(|v| v <= self.targets.node_query_latency_ms.1)
+            .unwrap_or(false);
+        report.vector_search_latency_achieved = metrics
+            .vector_search_latency_ms
+            .last_value()
+            .map(|v| v <= self.targets.vector_search_latency_ms.1)
+            .unwrap_or(false);
 
         // Check memory targets
         report.graph_memory_achieved = metrics.graph_memory_mb <= self.targets.graph_memory_mb.1;

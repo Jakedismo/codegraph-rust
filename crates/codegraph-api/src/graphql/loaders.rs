@@ -1,6 +1,6 @@
 use async_graphql::dataloader::{DataLoader, Loader};
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
+use codegraph_core::{CodeGraphError, CodeNode, NodeId};
 use codegraph_vector::rag::{ContextRetriever, RetrievalResult};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -23,7 +23,7 @@ impl Loader<NodeId> for NodeLoader {
     type Error = CodeGraphError;
 
     #[instrument(skip(self, keys), fields(batch_size = keys.len()))]
-    async fn load(&self, keys: &[NodeId]) -> Result<HashMap<NodeId, Self::Value>, Self::Error> {
+    async fn load(&self, keys: &[NodeId]) -> std::result::Result<HashMap<NodeId, GraphQLCodeNode>, CodeGraphError> {
         let start_time = Instant::now();
         debug!("Loading batch of {} nodes", keys.len());
 
@@ -70,7 +70,7 @@ impl NodeLoader {
     async fn simulate_node_fetch(
         &self,
         node_id: NodeId,
-    ) -> Result<Option<CodeNode>, CodeGraphError> {
+    ) -> std::result::Result<Option<CodeNode>, CodeGraphError> {
         // Simulate fetching from database
         // In real implementation, this would be a RocksDB get operation
         // For demonstration, we create mock nodes
@@ -111,7 +111,7 @@ impl Loader<NodeId> for EdgesBySourceLoader {
     type Error = CodeGraphError;
 
     #[instrument(skip(self, keys), fields(batch_size = keys.len()))]
-    async fn load(&self, keys: &[NodeId]) -> Result<HashMap<NodeId, Self::Value>, Self::Error> {
+    async fn load(&self, keys: &[NodeId]) -> std::result::Result<HashMap<NodeId, Vec<GraphQLEdge>>, CodeGraphError> {
         let start_time = Instant::now();
         debug!("Loading edges for {} source nodes", keys.len());
 
@@ -150,7 +150,7 @@ impl EdgesBySourceLoader {
     async fn simulate_edge_fetch(
         &self,
         source_id: NodeId,
-    ) -> Result<Vec<GraphQLEdge>, CodeGraphError> {
+    ) -> std::result::Result<Vec<GraphQLEdge>, CodeGraphError> {
         // Simulate fetching edges from database
         let now = chrono::Utc::now();
         let edges = vec![GraphQLEdge {
@@ -177,7 +177,7 @@ impl Loader<String> for SemanticSearchLoader {
     type Error = CodeGraphError;
 
     #[instrument(skip(self, keys), fields(batch_size = keys.len()))]
-    async fn load(&self, keys: &[String]) -> Result<HashMap<String, Self::Value>, Self::Error> {
+    async fn load(&self, keys: &[String]) -> std::result::Result<HashMap<String, Vec<RetrievalResult>>, CodeGraphError> {
         let start_time = Instant::now();
         debug!("Semantic search batch for {} queries", keys.len());
 
@@ -188,22 +188,29 @@ impl Loader<String> for SemanticSearchLoader {
             let results = self
                 .state
                 .semantic_search
-                .search(query, 10)
+                .search_by_text(query, 10)
                 .await
-                .map_err(|_| CodeGraphError::SearchError("Semantic search failed".to_string()))?;
+                .map_err(|_| CodeGraphError::Vector("Semantic search failed".to_string()))?;
 
             // Convert semantic search results to retrieval results
             let retrieval_results: Vec<RetrievalResult> = results
                 .into_iter()
-                .map(|node| {
+                .map(|res| {
+                    let snippet = res
+                        .node
+                        .as_ref()
+                        .and_then(|n| n.content.as_ref())
+                        .map(|s| {
+                            let s = s.as_str();
+                            s[..100.min(s.len())].to_string()
+                        })
+                        .unwrap_or_default();
                     RetrievalResult {
-                        node: node.clone(),
-                        similarity_score: 0.8, // Mock score
-                        source_type: "semantic".to_string(),
-                        context_snippet: node.content.clone().unwrap_or_default()
-                            [..100.min(node.content.as_ref().map_or(0, |c| c.len()))]
-                            .to_string(),
-                        metadata: HashMap::new(),
+                        node_id: res.node_id,
+                        node: res.node,
+                        relevance_score: res.score,
+                        retrieval_method: codegraph_vector::rag::RetrievalMethod::SemanticSimilarity,
+                        context_snippet: snippet,
                     }
                 })
                 .collect();
@@ -256,7 +263,7 @@ impl Loader<TraversalKey> for GraphTraversalLoader {
     async fn load(
         &self,
         keys: &[TraversalKey],
-    ) -> Result<HashMap<TraversalKey, Self::Value>, Self::Error> {
+    ) -> std::result::Result<HashMap<TraversalKey, Vec<GraphQLCodeNode>>, CodeGraphError> {
         let start_time = Instant::now();
         debug!("Graph traversal batch for {} queries", keys.len());
 
@@ -294,7 +301,7 @@ impl GraphTraversalLoader {
     async fn simulate_traversal(
         &self,
         key: &TraversalKey,
-    ) -> Result<Vec<GraphQLCodeNode>, CodeGraphError> {
+    ) -> std::result::Result<Vec<GraphQLCodeNode>, CodeGraphError> {
         // Simulate graph traversal with mock data
         let now = chrono::Utc::now();
         let mut nodes = vec![];

@@ -676,3 +676,4 @@ mod tests {
         assert!(should_update);
     }
 }
+#![cfg(feature = "http2")]

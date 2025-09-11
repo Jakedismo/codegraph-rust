@@ -110,7 +110,7 @@ pub async fn post_index(
 
 // -------- Search --------
 
-#[derive(Deserialize, IntoParams)]
+#[derive(Deserialize, IntoParams, ToSchema)]
 pub struct SearchRequest {
     /// Free-text query string
     pub q: String,
@@ -172,7 +172,7 @@ pub async fn get_search(
             items.push(SearchItem {
                 node_id: r.node_id.to_string(),
                 score: r.score,
-                name: node.name,
+                name: node.name.to_string(),
                 node_type: format!("{:?}", node.node_type),
                 language: format!("{:?}", node.language),
                 file_path: node.location.file_path,
@@ -230,7 +230,7 @@ pub async fn get_node(
 
     let body = NodeResponse {
         id: node.id.to_string(),
-        name: node.name,
+        name: node.name.to_string(),
         node_type: format!("{:?}", node.node_type),
         language: format!("{:?}", node.language),
         location: LocationDto {
@@ -240,7 +240,7 @@ pub async fn get_node(
             end_line: node.location.end_line,
             end_column: node.location.end_column,
         },
-        content: node.content,
+        content: node.content.map(|s| s.to_string()),
         has_embedding: node.embedding.is_some(),
     };
 
@@ -249,7 +249,7 @@ pub async fn get_node(
 
 // -------- Neighbors --------
 
-#[derive(Deserialize, IntoParams)]
+#[derive(Deserialize, IntoParams, ToSchema)]
 pub struct NeighborsRequest {
     /// Center node UUID
     pub id: String,

@@ -1,10 +1,7 @@
 use crate::{
-    auth_middleware, create_schema, enhanced_health, handlers, health, http2_handlers, rest,
-    service_registry, streaming_handlers, vector_handlers, versioning_handlers, AppState,
-    RateLimitManager,
+    auth_middleware, enhanced_health, handlers, health, rest, service_registry, streaming_handlers,
+    vector_handlers, versioning_handlers, AppState, RateLimitManager,
 };
-use async_graphql::http::GraphiQLSource;
-use async_graphql_axum::{GraphQL, GraphQLSubscription};
 use axum::response::Html;
 use axum::{
     middleware,
@@ -12,19 +9,20 @@ use axum::{
     Router,
 };
 use http::header::{HeaderName, HeaderValue, CACHE_CONTROL, CONNECTION};
+use std::str::FromStr;
 use std::time::Duration;
-use tower::{
-    buffer::BufferLayer, limit::ConcurrencyLimitLayer, load_shed::LoadShedLayer,
-    timeout::TimeoutLayer,
-};
 use tower_http::{
-    compression::CompressionLayer, cors::CorsLayer, set_header::SetResponseHeaderLayer,
+    compression::CompressionLayer,
+    cors::CorsLayer,
+    set_header::SetResponseHeaderLayer,
     trace::TraceLayer,
 };
+#[cfg(feature = "openapi-ui")]
 use utoipa_swagger_ui::SwaggerUi;
+use utoipa::OpenApi;
 
 pub fn create_router(state: AppState) -> Router {
-    let schema = create_schema(state.clone());
+    // GraphQL schema disabled in this build
 
     let mut app = Router::new()
         // Health and readiness checks
@@ -36,26 +34,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/health/live", get(health::liveness_check))
         .route("/health/ready", get(health::readiness_check))
         .route("/metrics", get(handlers::metrics_handler))
-        // GraphQL HTTP endpoint and GraphiQL IDE
-        .route("/graphql", post(GraphQL::new(schema.clone())))
-        .route(
-            "/graphiql",
-            get(|| async {
-                Html(
-                    GraphiQLSource::build()
-                        .endpoint("/graphql")
-                        .subscription_endpoint("/graphql/ws")
-                        .finish(),
-                )
-            }),
-        )
-        // GraphQL WebSocket subscriptions (graphql-transport-ws)
-        .route("/graphql/ws", get(GraphQLSubscription::new(schema.clone())))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            auth_middleware,
-        ))
-        .layer(RateLimitManager::new())
+        // GraphQL endpoint disabled in this build to avoid version conflicts
+        // GraphiQL disabled in this build
+        // Subscriptions disabled in this build to avoid axum version mismatch
         // Node operations
         .route("/nodes/:id", get(handlers::get_node))
         .route("/nodes/:id/similar", get(handlers::find_similar))
@@ -167,24 +148,7 @@ pub fn create_router(state: AppState) -> Router {
             "/backup/:id/restore",
             post(versioning_handlers::restore_from_backup),
         )
-        // HTTP/2 Optimization and Metrics
-        .route("/http2/metrics", get(http2_handlers::get_http2_metrics))
-        .route("/http2/config", get(http2_handlers::get_http2_config))
-        .route("/http2/config", post(http2_handlers::update_http2_config))
-        .route(
-            "/http2/push/register",
-            post(http2_handlers::register_push_resources),
-        )
-        .route("/http2/health", get(http2_handlers::get_http2_health))
-        .route(
-            "/http2/analytics",
-            get(http2_handlers::get_stream_analytics),
-        )
-        .route(
-            "/http2/performance",
-            get(http2_handlers::get_performance_metrics),
-        )
-        .route("/http2/tune", post(http2_handlers::tune_http2_optimization))
+        // HTTP/2 routes disabled in this build
         // Service Discovery and Registration
         .route(
             "/services",
@@ -216,21 +180,7 @@ pub fn create_router(state: AppState) -> Router {
         )
         // Adaptive response compression (gzip, deflate, brotli, zstd)
         .layer(CompressionLayer::new())
-        // Set keep-alive headers to encourage connection reuse by clients
-        .layer({
-            let connection_value = HeaderValue::from_static("keep-alive");
-            SetResponseHeaderLayer::if_not_present(CONNECTION, connection_value)
-        })
-        .layer({
-            let keep_alive = HeaderName::from_static("keep-alive");
-            let keep_alive_value = HeaderValue::from_static("timeout=60, max=1000");
-            SetResponseHeaderLayer::if_not_present(keep_alive, keep_alive_value)
-        })
-        // Apply backpressure and timeouts
-        .layer(BufferLayer::new(1024))
-        .layer(ConcurrencyLimitLayer::new(512))
-        .layer(LoadShedLayer::new())
-        .layer(TimeoutLayer::new(Duration::from_secs(30)))
+        // Keep-alive and backpressure layers omitted in this build
         .layer(TraceLayer::new_for_http());
 
     // Versioned REST API (v1)
@@ -251,9 +201,15 @@ pub fn create_router(state: AppState) -> Router {
 
     let v1_router = Router::new().merge(v1_get).merge(v1_post);
 
-    app = app
-        .nest("/v1", v1_router)
-        .merge(SwaggerUi::new("/v1/docs").url("/v1/openapi.json", crate::rest::ApiDoc::openapi()));
+    app = app.nest("/v1", v1_router);
+
+    #[cfg(feature = "openapi-ui")]
+    {
+        app = app.merge(SwaggerUi::new("/v1/docs").url(
+            "/v1/openapi.json",
+            crate::rest::ApiDoc::openapi(),
+        ));
+    }
 
     // Memory leak detection routes (only when feature enabled)
     #[cfg(feature = "leak-detect")]

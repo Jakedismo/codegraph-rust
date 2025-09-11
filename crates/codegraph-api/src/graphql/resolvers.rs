@@ -1,6 +1,6 @@
 use async_graphql::{dataloader::DataLoader, Context, Object, Result, ID};
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, NodeId};
+use codegraph_core::{CodeGraphError, NodeId, GraphStore};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Instant;
@@ -20,7 +20,7 @@ use crate::graphql::types::{
     SemanticSearchMetadata, SemanticSearchResult, SubgraphExtractionInput, SubgraphMetadata,
     SubgraphResult, TraversalMetadata,
 };
-use crate::mutations::UpdateNodeInput;
+use crate::graphql::types::UpdateNodeInput;
 use crate::state::AppState;
 
 pub struct QueryRoot;
@@ -29,7 +29,7 @@ pub struct QueryRoot;
 impl QueryRoot {
     /// Search for code nodes with text and filters
     #[instrument(skip(self, ctx), fields(query = %input.query))]
-    async fn search_code(
+    pub async fn search_code(
         &self,
         ctx: &Context<'_>,
         input: CodeSearchInput,
@@ -38,133 +38,79 @@ impl QueryRoot {
         info!("Executing code search: {}", input.query);
 
         let state = ctx.data::<AppState>()?;
-        // Guard complexity for pathfinding by limiting depth
-        state
-            .performance
-            .guard_traversal_complexity(Some(max_depth), None)
-            .map_err(|e| {
-                async_graphql::Error::new(format!("Path query rejected by complexity guard: {}", e))
-            })?;
         let loader = ctx.data::<DataLoader<NodeLoader>>()?;
 
         // Validate input parameters
         let limit = input.limit.unwrap_or(20).max(1).min(100);
         let offset = input.offset.unwrap_or(0).max(0);
 
-        // Perform search using the semantic search system
+        // Guard complexity by limiting result size
+        state
+            .performance
+            .guard_traversal_complexity(None, Some(limit))
+            .map_err(|e| async_graphql::Error::new(format!("Search rejected: {}", e)))?;
+
+        // Perform search (vector), then load full nodes for filtering/sorting
         let search_results = state
             .semantic_search
-            .search(&input.query, limit as usize)
+            .search_by_text(&input.query, limit as usize)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Search failed: {}", e)))?;
 
-        // Apply filters
-        let mut filtered_results = search_results;
+        let node_ids: Vec<NodeId> = search_results.iter().map(|r| r.node_id).collect();
+        let loaded_nodes = loader
+            .load_many(node_ids)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Load nodes failed: {}", e)))?;
+        let mut nodes: Vec<GraphQLCodeNode> = loaded_nodes.into_values().collect();
 
+        // Apply filters on GraphQLCodeNode
         if let Some(ref language_filters) = input.language_filter {
-            filtered_results.retain(|node| {
+            nodes.retain(|node| {
                 node.language.as_ref().map_or(false, |lang| {
-                    language_filters.iter().any(|filter_lang| {
-                        matches!(
-                            (lang, filter_lang),
-                            (
-                                codegraph_core::Language::Rust,
-                                crate::graphql::types::GraphQLLanguage::Rust
-                            ) | (
-                                codegraph_core::Language::Python,
-                                crate::graphql::types::GraphQLLanguage::Python
-                            ) | (
-                                codegraph_core::Language::TypeScript,
-                                crate::graphql::types::GraphQLLanguage::TypeScript
-                            ) | (
-                                codegraph_core::Language::JavaScript,
-                                crate::graphql::types::GraphQLLanguage::JavaScript
-                            ) | (
-                                codegraph_core::Language::Go,
-                                crate::graphql::types::GraphQLLanguage::Go
-                            ) | (
-                                codegraph_core::Language::Java,
-                                crate::graphql::types::GraphQLLanguage::Java
-                            ) | (
-                                codegraph_core::Language::Cpp,
-                                crate::graphql::types::GraphQLLanguage::Cpp
-                            )
-                        )
-                    })
+                    language_filters.iter().any(|filter_lang| lang == filter_lang)
                 })
             });
         }
-
         if let Some(ref node_type_filters) = input.node_type_filter {
-            filtered_results.retain(|node| {
-                node.node_type.as_ref().map_or(false, |node_type| {
-                    node_type_filters.iter().any(|filter_type| {
-                        matches!(
-                            (node_type, filter_type),
-                            (
-                                codegraph_core::NodeType::Function,
-                                crate::graphql::types::GraphQLNodeType::Function
-                            ) | (
-                                codegraph_core::NodeType::Struct,
-                                crate::graphql::types::GraphQLNodeType::Struct
-                            ) | (
-                                codegraph_core::NodeType::Class,
-                                crate::graphql::types::GraphQLNodeType::Class
-                            ) | (
-                                codegraph_core::NodeType::Interface,
-                                crate::graphql::types::GraphQLNodeType::Interface
-                            ) | (
-                                codegraph_core::NodeType::Module,
-                                crate::graphql::types::GraphQLNodeType::Module
-                            )
-                        )
-                    })
+            nodes.retain(|node| {
+                node.node_type.as_ref().map_or(false, |nt| {
+                    node_type_filters.iter().any(|f| nt == f)
                 })
             });
         }
-
-        // Apply file path pattern filter
         if let Some(ref file_pattern) = input.file_path_pattern {
-            filtered_results.retain(|node| node.location.file_path.contains(file_pattern));
+            nodes.retain(|node| node.location.file_path.contains(file_pattern));
         }
-
-        // Apply content filter
         if let Some(ref content_filter) = input.content_filter {
-            filtered_results.retain(|node| {
-                node.content.as_ref().map_or(false, |content| {
-                    content
-                        .to_lowercase()
-                        .contains(&content_filter.to_lowercase())
-                })
-            });
+            let needle = content_filter.to_lowercase();
+            nodes.retain(|node| node
+                .content
+                .as_ref()
+                .map_or(false, |c| c.to_lowercase().contains(&needle)));
         }
 
-        // Apply sorting
+        // Sorting
         if let Some(sort_by) = input.sort_by {
             match sort_by {
-                SearchSortBy::Name => filtered_results.sort_by(|a, b| a.name.cmp(&b.name)),
-                SearchSortBy::CreatedAt => filtered_results
-                    .sort_by(|a, b| a.metadata.created_at.cmp(&b.metadata.created_at)),
-                SearchSortBy::UpdatedAt => filtered_results
-                    .sort_by(|a, b| a.metadata.updated_at.cmp(&b.metadata.updated_at)),
-                SearchSortBy::Complexity => filtered_results.sort_by(|a, b| {
+                SearchSortBy::Name => nodes.sort_by(|a, b| a.name.cmp(&b.name)),
+                SearchSortBy::CreatedAt => nodes.sort_by(|a, b| a.created_at.cmp(&b.created_at)),
+                SearchSortBy::UpdatedAt => nodes.sort_by(|a, b| a.updated_at.cmp(&b.updated_at)),
+                SearchSortBy::Complexity => nodes.sort_by(|a, b| {
                     b.complexity
                         .unwrap_or(0.0)
                         .partial_cmp(&a.complexity.unwrap_or(0.0))
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }),
-                SearchSortBy::Relevance => {} // Already sorted by relevance from semantic search
+                SearchSortBy::Relevance => {} // Already relevance-sorted by vector search
             }
         }
 
-        let total_count = filtered_results.len();
-
-        // Apply pagination
-        let paginated_results: Vec<_> = filtered_results
+        let total_count = nodes.len();
+        let paginated_results: Vec<_> = nodes
             .into_iter()
             .skip(offset as usize)
             .take(limit as usize)
-            .map(|node| node.into())
             .collect();
 
         let elapsed = start_time.elapsed();
@@ -213,8 +159,8 @@ impl QueryRoot {
     }
 
     /// Perform graph traversal from a starting node
-    #[instrument(skip(self, ctx), fields(start_node = %input.start_node_id))]
-    async fn traverse_graph(
+    #[instrument(skip(self, ctx), fields(start_node = ?input.start_node_id))]
+    pub async fn traverse_graph(
         &self,
         ctx: &Context<'_>,
         input: GraphTraversalInput,
@@ -332,7 +278,7 @@ impl QueryRoot {
 
     /// Extract a subgraph around specific nodes or from a center point
     #[instrument(skip(self, ctx))]
-    async fn extract_subgraph(
+    pub async fn extract_subgraph(
         &self,
         ctx: &Context<'_>,
         input: SubgraphExtractionInput,
@@ -450,7 +396,7 @@ impl QueryRoot {
 
     /// Perform semantic search using vector embeddings
     #[instrument(skip(self, ctx), fields(query = %input.query))]
-    async fn semantic_search(
+    pub async fn semantic_search(
         &self,
         ctx: &Context<'_>,
         input: SemanticSearchInput,
@@ -580,8 +526,8 @@ impl QueryRoot {
     }
 
     /// Get neighbor nodes for a given node (outgoing edges by default)
-    #[instrument(skip(self, ctx), fields(node_id = %id))]
-    async fn get_neighbors(
+    #[instrument(skip(self, ctx), fields(node_id = ?id))]
+    pub async fn get_neighbors(
         &self,
         ctx: &Context<'_>,
         id: ID,
@@ -634,8 +580,8 @@ impl QueryRoot {
     }
 
     /// Find a shortest path between two nodes, returning the connecting edges
-    #[instrument(skip(self, ctx), fields(from = %from, to = %to))]
-    async fn find_path(
+    #[instrument(skip(self, ctx), fields(from = ?from, to = ?to))]
+    pub async fn find_path(
         &self,
         ctx: &Context<'_>,
         from: ID,
@@ -727,7 +673,7 @@ impl QueryRoot {
     }
 
     /// Get a specific node by ID
-    async fn node(&self, ctx: &Context<'_>, id: ID) -> Result<Option<GraphQLCodeNode>> {
+    pub async fn node(&self, ctx: &Context<'_>, id: ID) -> Result<Option<GraphQLCodeNode>> {
         let node_loader = ctx.data::<DataLoader<NodeLoader>>()?;
         let node_id = NodeId::from_str(&id.to_string())
             .map_err(|_| async_graphql::Error::new("Invalid node ID format"))?;
@@ -739,7 +685,7 @@ impl QueryRoot {
     }
 
     /// Get multiple nodes by IDs (batch operation using DataLoader)
-    async fn nodes(&self, ctx: &Context<'_>, ids: Vec<ID>) -> Result<Vec<GraphQLCodeNode>> {
+    pub async fn nodes(&self, ctx: &Context<'_>, ids: Vec<ID>) -> Result<Vec<GraphQLCodeNode>> {
         let node_loader = ctx.data::<DataLoader<NodeLoader>>()?;
         let node_ids: Result<Vec<NodeId>, _> = ids
             .iter()
@@ -848,13 +794,13 @@ impl MutationRoot {
         // Apply updates
         let mut updated = current.clone();
         if let Some(name) = input.name {
-            updated.name = name;
+            updated.name = name.into();
         }
         if let Some(nt) = input.node_type {
-            updated.node_type = Some(nt);
+            updated.node_type = Some(nt.into());
         }
         if let Some(lang) = input.language {
-            updated.language = Some(lang);
+            updated.language = Some(lang.into());
         }
         if let Some(fp) = input.file_path {
             updated.location.file_path = fp;

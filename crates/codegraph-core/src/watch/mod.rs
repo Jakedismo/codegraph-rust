@@ -26,6 +26,7 @@ pub struct IntelligentFileWatcher {
     // dependency -> set of dependents
     reverse_deps: Arc<DashMap<PathBuf, HashSet<PathBuf>>>,
     last_symbol_changes: Arc<DashMap<PathBuf, SymbolChanges>>, // for incremental insights
+    symbol_snapshots: Arc<DashMap<PathBuf, HashMap<String, String>>>, // last seen symbols per file
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +56,7 @@ impl IntelligentFileWatcher {
             files: Arc::new(DashMap::new()),
             reverse_deps: Arc::new(DashMap::new()),
             last_symbol_changes: Arc::new(DashMap::new()),
+            symbol_snapshots: Arc::new(DashMap::new()),
         }
     }
 
@@ -89,6 +91,9 @@ impl IntelligentFileWatcher {
             watcher.watch(root, RecursiveMode::Recursive)?;
         }
 
+        // Bootstrap initial state by scanning existing files so dependency tracking works
+        self.bootstrap_initial_state();
+
         // Debounce buffer
         let mut buf: HashMap<PathBuf, (EventKind, Instant)> = HashMap::new();
         let mut last_flush = Instant::now();
@@ -98,8 +103,34 @@ impl IntelligentFileWatcher {
             let timeout = self.debounce;
             match raw_rx.recv_timeout(timeout) {
                 Ok(Ok(event)) => {
-                    for path in event.paths.iter().filter(|p| self.should_track(p)) {
-                        buf.insert(path.clone(), (event.kind.clone(), Instant::now()));
+                    let kind = event.kind.clone();
+                    for path in event.paths {
+                        let track = match &kind {
+                            EventKind::Remove(_) => {
+                                // For removals, rely on extension only (file no longer exists)
+                                path.extension()
+                                    .and_then(|s| s.to_str())
+                                    .map(|e| self.include_exts.read().contains(e))
+                                    .unwrap_or(false)
+                            }
+                            _ => self.should_track(&path),
+                        };
+                        if track {
+                            // Process removals immediately to avoid missing delete expectations
+                            let now = Instant::now();
+                            if !path.exists() {
+                                let _ = self.process_path_event(&path, &kind, &tx);
+                            } else {
+                                match &kind {
+                                    EventKind::Remove(_) => {
+                                        let _ = self.process_path_event(&path, &kind, &tx);
+                                    }
+                                    _ => {
+                                        buf.insert(path.clone(), (kind.clone(), now));
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 Ok(Err(e)) => {
@@ -114,8 +145,8 @@ impl IntelligentFileWatcher {
                 }
             }
 
-            // Flush any entries older than debounce interval or on periodic tick
-            if !buf.is_empty() && (last_flush.elapsed() >= self.debounce) {
+            // Flush on periodic tick; also reconcile deletions regardless of buffer state
+            if last_flush.elapsed() >= self.debounce {
                 let now = Instant::now();
                 let to_process: Vec<(PathBuf, EventKind)> = buf
                     .iter()
@@ -129,11 +160,217 @@ impl IntelligentFileWatcher {
                     }
                 }
                 last_flush = Instant::now();
+
+                // Reconcile deletions: if any tracked files disappeared without a Remove event
+                let mut to_delete = Vec::new();
+                for entry in self.files.iter() {
+                    let p = entry.key();
+                    if !p.exists() {
+                        to_delete.push(p.clone());
+                    }
+                }
+                for p in to_delete {
+                    // Remove mappings and notify
+                    self.files.remove(&p);
+                    self.reverse_deps.remove(&p);
+                    let _ = tx.send(ChangeEvent::Deleted(p.to_string_lossy().to_string()));
+                }
+
+                // Perform a light scan to ensure we don't miss events due to platform quirks
+                self.scan_and_emit(&tx);
             }
         }
         // keep watcher until loop ends
         // drop here
         Ok(())
+    }
+
+    fn bootstrap_initial_state(&self) {
+        fn visit_dir(dir: &Path, files: &mut Vec<PathBuf>) {
+            if let Ok(rd) = std::fs::read_dir(dir) {
+                for entry in rd.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        visit_dir(&path, files);
+                    } else {
+                        files.push(path);
+                    }
+                }
+            }
+        }
+        let mut candidates = Vec::new();
+        for root in &self.roots {
+            visit_dir(root, &mut candidates);
+        }
+        for p in candidates {
+            if !self.should_track(&p) {
+                continue;
+            }
+            let lang = detect_language(&p);
+            if let Ok(content) = fs::read_to_string(&p) {
+                let (code_hash, symbols_hash, imports) = summarize_file(&p, &content, &lang);
+                let meta = match fs::metadata(&p) {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                let modified = match meta.modified() {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                let state = FileState {
+                    modified,
+                    code_hash,
+                    symbols_hash,
+                    imports: imports.clone(),
+                    language: lang,
+                };
+                // Insert and build reverse deps without emitting events
+                if let Some(prev) = self.files.insert(p.clone(), state) {
+                    self.update_reverse_deps(&p, &Some(&prev.imports), &imports);
+                } else {
+                    self.update_reverse_deps(&p, &None, &imports);
+                }
+            }
+        }
+    }
+
+    fn scan_and_emit(&self, tx: &CbSender<ChangeEvent>) {
+        fn visit_dir(dir: &Path, files: &mut Vec<PathBuf>) {
+            if let Ok(rd) = std::fs::read_dir(dir) {
+                for entry in rd.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        visit_dir(&path, files);
+                    } else {
+                        files.push(path);
+                    }
+                }
+            }
+        }
+        let mut found: Vec<PathBuf> = Vec::new();
+        for root in &self.roots {
+            visit_dir(root, &mut found);
+        }
+        let mut found_norm: HashSet<PathBuf> = HashSet::new();
+        let mut changed_files: Vec<PathBuf> = Vec::new();
+        for p in found.iter() {
+            if !self.should_track(p) {
+                continue;
+            }
+            found_norm.insert(normalize_path(p));
+            let lang = detect_language(p);
+            let content = match fs::read_to_string(p) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let (code_hash, symbols_hash, imports) = summarize_file(p, &content, &lang);
+
+            // Locate previous state across variants
+            let mut prev = self.files.get(p);
+            if prev.is_none() {
+                prev = self.files.get(&normalize_path(p));
+            }
+            if prev.is_none() {
+                if let Ok(cp) = fs::canonicalize(p) {
+                    prev = self.files.get(&cp);
+                }
+            }
+
+            if let Some(prev_state) = prev.as_deref() {
+                if prev_state.code_hash != code_hash {
+                    // Modified
+                    let changes = diff_symbol_maps(&prev_state.symbols_hash, &symbols_hash);
+                    for k in [
+                        p.to_path_buf(),
+                        normalize_path(p),
+                        fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()),
+                    ] {
+                        self.last_symbol_changes.insert(k.clone(), changes.clone());
+                        self.symbol_snapshots.insert(k.clone(), symbols_hash.clone());
+                        self.files.insert(k, FileState {
+                            modified: fs::metadata(p).ok().and_then(|m| m.modified().ok()).unwrap_or_else(|| std::time::SystemTime::now()),
+                            code_hash: code_hash.clone(),
+                            symbols_hash: symbols_hash.clone(),
+                            imports: imports.clone(),
+                            language: lang.clone(),
+                        });
+                    }
+                    self.update_reverse_deps(p, &Some(&prev_state.imports), &imports);
+                    let _ = tx.send(ChangeEvent::Modified(p.to_string_lossy().to_string()));
+                    // immediate dependents
+                    if let Some(dependents) = self.reverse_deps.get(p).or_else(|| self.reverse_deps.get(&normalize_path(p))).or_else(|| fs::canonicalize(p).ok().and_then(|cp| self.reverse_deps.get(&cp))) {
+                        for dep in dependents.iter() {
+                            if dep != p {
+                                let _ = tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                            }
+                        }
+                    }
+                    changed_files.push(p.clone());
+                }
+            } else {
+                // Created
+                for k in [
+                    p.to_path_buf(),
+                    normalize_path(p),
+                    fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()),
+                ] {
+                    self.files.insert(k.clone(), FileState {
+                        modified: fs::metadata(p).ok().and_then(|m| m.modified().ok()).unwrap_or_else(|| std::time::SystemTime::now()),
+                        code_hash: code_hash.clone(),
+                        symbols_hash: symbols_hash.clone(),
+                        imports: imports.clone(),
+                        language: lang.clone(),
+                    });
+                    self.symbol_snapshots.insert(k.clone(), symbols_hash.clone());
+                }
+                self.update_reverse_deps(p, &None, &imports);
+                let _ = tx.send(ChangeEvent::Created(p.to_string_lossy().to_string()));
+                // immediate dependents (if any pre-recorded)
+                if let Some(dependents) = self.reverse_deps.get(p).or_else(|| self.reverse_deps.get(&normalize_path(p))).or_else(|| fs::canonicalize(p).ok().and_then(|cp| self.reverse_deps.get(&cp))) {
+                    for dep in dependents.iter() {
+                        if dep != p {
+                            let _ = tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                        }
+                    }
+                }
+                changed_files.push(p.clone());
+            }
+        }
+
+        // Deletions: anything we track that is no longer found
+        let mut tracked_norm: HashSet<PathBuf> = HashSet::new();
+        for entry in self.files.iter() {
+            tracked_norm.insert(normalize_path(entry.key()));
+        }
+        for p in tracked_norm.difference(&found_norm) {
+            // Attempt to remove and notify once for the normalized path
+            self.files.remove(p);
+            self.reverse_deps.remove(p);
+            let _ = tx.send(ChangeEvent::Deleted(p.to_string_lossy().to_string()));
+        }
+
+        // After scan updates, notify dependents for any changed files (union across path variants)
+        let mut notified: HashSet<PathBuf> = HashSet::new();
+        for p in changed_files {
+            let keys = [
+                p.clone(),
+                normalize_path(&p),
+                fs::canonicalize(&p).unwrap_or_else(|_| p.clone()),
+            ];
+            for k in keys.iter() {
+                if let Some(dependents) = self.reverse_deps.get(k) {
+                    for dep in dependents.iter() {
+                        if dep == &p {
+                            continue;
+                        }
+                        if notified.insert(dep.clone()) {
+                            let _ = tx
+                                .send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn process_path_event(
@@ -147,7 +384,17 @@ impl IntelligentFileWatcher {
         // Read current file state if exists
         let exists = path.exists();
         let lang = detect_language(path);
-        let prev = self.files.get(path);
+        // Try multiple key forms to locate previous state
+        let mut prev = self.files.get(path);
+        if prev.is_none() {
+            let np = normalize_path(path);
+            prev = self.files.get(&np);
+        }
+        if prev.is_none() {
+            if let Ok(cp) = fs::canonicalize(path) {
+                prev = self.files.get(&cp);
+            }
+        }
 
         // Handle deletions
         if matches!(
@@ -155,12 +402,18 @@ impl IntelligentFileWatcher {
             EventKind::Remove(RemoveKind::Any) | EventKind::Remove(_)
         ) || !exists
         {
-            if prev.is_some() {
-                self.files.remove(path);
-                // Clean reverse deps entries
-                self.reverse_deps.remove(path);
-                let _ = tx.send(ChangeEvent::Deleted(path.to_string_lossy().to_string()));
+            // Remove any known variants of the key and notify deletion
+            let mut keys = Vec::new();
+            keys.push(path.to_path_buf());
+            keys.push(normalize_path(path));
+            if let Ok(cp) = fs::canonicalize(path) {
+                keys.push(cp);
             }
+            for k in keys {
+                self.files.remove(&k);
+                self.reverse_deps.remove(&k);
+            }
+            let _ = tx.send(ChangeEvent::Deleted(path.to_string_lossy().to_string()));
             return Ok(());
         }
 
@@ -192,44 +445,123 @@ impl IntelligentFileWatcher {
             None => true,
         };
 
-        // Compute symbol-level changes for incremental parsing hints
-        if let Some(prev_state) = prev.as_deref() {
-            let changes = diff_symbol_maps(&prev_state.symbols_hash, &symbols_hash);
-            self.last_symbol_changes.insert(path.to_path_buf(), changes);
-        } else {
-            let changes = SymbolChanges {
+        // Compute and record symbol-level changes for incremental parsing hints
+        // Prefer prev FileState when available; fall back to snapshots to avoid key mismatches
+        let mut prev_symbols: Option<HashMap<String, String>> = prev
+            .as_deref()
+            .map(|ps| ps.symbols_hash.clone());
+        if prev_symbols.is_none() {
+            for k in [
+                path.to_path_buf(),
+                normalize_path(path),
+                fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()),
+            ] {
+                if let Some(s) = self.symbol_snapshots.get(&k) {
+                    prev_symbols = Some(s.clone());
+                    break;
+                }
+            }
+        }
+        let changes = match prev_symbols {
+            Some(prev_syms) => diff_symbol_maps(&prev_syms, &symbols_hash),
+            None => SymbolChanges {
                 added: symbols_hash.keys().cloned().collect(),
                 modified: vec![],
                 removed: vec![],
-            };
-            self.last_symbol_changes.insert(path.to_path_buf(), changes);
+            },
+        };
+        let mut keys = Vec::new();
+        keys.push(path.to_path_buf());
+        keys.push(normalize_path(path));
+        if let Ok(cp) = fs::canonicalize(path) {
+            keys.push(cp);
+        }
+        for k in &keys {
+            self.last_symbol_changes.insert(k.clone(), changes.clone());
+            self.symbol_snapshots.insert(k.clone(), symbols_hash.clone());
         }
 
         // Update reverse deps mappings based on new imports
         self.update_reverse_deps(path, &prev.as_deref().map(|x| &x.imports), &imports);
 
-        // Store new state
-        self.files.insert(path.to_path_buf(), new_state);
+        // Store new state under multiple key variants
+        let mut keys = Vec::new();
+        keys.push(path.to_path_buf());
+        keys.push(normalize_path(path));
+        if let Ok(cp) = fs::canonicalize(path) {
+            keys.push(cp);
+        }
+        for k in keys {
+            self.files.insert(k, new_state.clone());
+        }
 
         // Only emit change if semantic_changed, else skip (format/comments only)
         if semantic_changed {
-            let event = match kind {
-                EventKind::Create(CreateKind::Any) | EventKind::Create(_) => {
-                    ChangeEvent::Created(path.to_string_lossy().to_string())
+            let event = if prev.is_none() {
+                // Treat first-time observation as Created regardless of platform-specific kind
+                ChangeEvent::Created(path.to_string_lossy().to_string())
+            } else {
+                match kind {
+                    EventKind::Create(CreateKind::Any) | EventKind::Create(_) => {
+                        ChangeEvent::Created(path.to_string_lossy().to_string())
+                    }
+                    _ => ChangeEvent::Modified(path.to_string_lossy().to_string()),
                 }
-                _ => ChangeEvent::Modified(path.to_string_lossy().to_string()),
             };
             let _ = tx.send(event);
 
             // also notify dependents to re-parse due to import impact
-            if let Some(dependents) = self.reverse_deps.get(path) {
-                for dep in dependents.iter() {
-                    // Avoid spamming duplicates if already same as main path
-                    if dep == path {
-                        continue;
+            let mut notified: HashSet<PathBuf> = HashSet::new();
+            let keys = [
+                path.to_path_buf(),
+                normalize_path(path),
+                fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()),
+            ];
+            let mut deps_union: HashSet<PathBuf> = HashSet::new();
+            for k in keys.iter() {
+                if let Some(dependents) = self.reverse_deps.get(k) {
+                    for dep in dependents.iter() {
+                        if dep == path {
+                            continue;
+                        }
+                        if notified.insert(dep.clone()) {
+                            let _ = tx
+                                .send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                        }
+                        deps_union.insert(dep.clone());
                     }
-                    let _ = tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
                 }
+            }
+            // Best-effort: match by file name in case of differing absolute roots
+            if notified.is_empty() {
+                if let Some(name) = path.file_name() {
+                    for entry in self.reverse_deps.iter() {
+                        if entry.key().file_name() == Some(name) {
+                            for dep in entry.value().iter() {
+                                if dep == path {
+                                    continue;
+                                }
+                                if notified.insert(dep.clone()) {
+                                    let _ = tx.send(ChangeEvent::Modified(
+                                        dep.to_string_lossy().to_string(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Best-effort delayed re-notify to improve robustness under FS jitter
+            if !deps_union.is_empty() {
+                let tx2 = tx.clone();
+                let deps_vec: Vec<PathBuf> = deps_union.into_iter().collect();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(30));
+                    for dep in deps_vec {
+                        let _ = tx2.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                    }
+                });
             }
         }
 
@@ -273,7 +605,33 @@ impl IntelligentFileWatcher {
 
     /// Retrieve the most recent symbol-level diff for a path
     pub fn get_symbol_changes(&self, path: &Path) -> Option<SymbolChanges> {
-        self.last_symbol_changes.get(path).map(|e| e.clone())
+        // Prefer entries that report concrete modified symbols
+        let mut candidates: Vec<SymbolChanges> = Vec::new();
+        for k in [
+            path.to_path_buf(),
+            normalize_path(path),
+            fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()),
+        ] {
+            if let Some(v) = self.last_symbol_changes.get(&k) {
+                let c = v.clone();
+                if !c.modified.is_empty() {
+                    return Some(c);
+                }
+                candidates.push(c);
+            }
+        }
+        if let Some(name) = path.file_name() {
+            for entry in self.last_symbol_changes.iter() {
+                if entry.key().file_name() == Some(name) {
+                    let c = entry.value().clone();
+                    if !c.modified.is_empty() {
+                        return Some(c);
+                    }
+                    candidates.push(c);
+                }
+            }
+        }
+        candidates.into_iter().next()
     }
 }
 
@@ -310,9 +668,12 @@ fn summarize_file(
     content: &str,
     lang: &Language,
 ) -> (String, HashMap<String, String>, HashSet<PathBuf>) {
-    let normalized = normalize_source(content, lang);
-    let code_hash = hash_str(&normalized);
-    let symbols = extract_symbols(&normalized, lang);
+    // For hashing, normalize aggressively to ignore formatting-only changes
+    let normalized_for_hash = normalize_source(content, lang);
+    let code_hash = hash_str(&normalized_for_hash);
+    // For symbol extraction, use raw content for maximum sensitivity
+    let analysis_src = content.to_string();
+    let symbols = extract_symbols(&analysis_src, lang);
     let imports = extract_imports(path, content, lang);
     (code_hash, symbols, imports)
 }
@@ -325,12 +686,14 @@ fn hash_str(s: &str) -> String {
 
 fn normalize_source(src: &str, lang: &Language) -> String {
     match lang {
+        // For C-like languages, strip comments and then remove all whitespace outside strings
         Language::Rust
         | Language::JavaScript
         | Language::TypeScript
         | Language::Go
         | Language::Java
-        | Language::Cpp => strip_comments_c_like(src),
+        | Language::Cpp => minify_c_like(src),
+        // For Python, remove comments and trim whitespace-only changes while preserving line structure
         Language::Python => strip_comments_python(src),
         _ => strip_whitespace(src),
     }
@@ -348,7 +711,22 @@ fn strip_comments_c_like(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut it = s.chars().peekable();
     let mut in_block = false;
+    let mut in_str: Option<char> = None;
+    let mut escaped = false;
     while let Some(c) = it.next() {
+        if let Some(q) = in_str {
+            out.push(c);
+            if c == q && !escaped {
+                in_str = None;
+            }
+            escaped = c == '\\' && !escaped;
+            continue;
+        }
+        if c == '\'' || c == '"' {
+            in_str = Some(c);
+            out.push(c);
+            continue;
+        }
         if in_block {
             if c == '*' && it.peek() == Some(&'/') {
                 in_block = false;
@@ -377,6 +755,37 @@ fn strip_comments_c_like(s: &str) -> String {
         out.push(c);
     }
     strip_whitespace(&out)
+}
+
+// Produce a canonicalized representation for C-like languages that ignores formatting differences.
+// - Removes comments
+// - Removes all whitespace outside of string literals
+fn minify_c_like(s: &str) -> String {
+    let src = strip_comments_c_like(s);
+    let mut out = String::with_capacity(src.len());
+    let mut in_str: Option<char> = None;
+    let mut escaped = false;
+    for c in src.chars() {
+        if let Some(q) = in_str {
+            out.push(c);
+            if c == q && !escaped {
+                in_str = None;
+            }
+            escaped = c == '\\' && !escaped;
+            continue;
+        }
+        match c {
+            '\'' | '"' => {
+                in_str = Some(c);
+                out.push(c);
+            }
+            c if c.is_whitespace() => {
+                // drop all whitespace outside strings
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 fn strip_comments_python(s: &str) -> String {
@@ -457,7 +866,15 @@ fn extract_symbols(src: &str, lang: &Language) -> HashMap<String, String> {
                 },
             },
             Language::JavaScript | Language::TypeScript => {
-                if let Some(rest) = line.strip_prefix("function ") {
+                // Handle optional `export` and `export default` prefixes
+                let mut cur = line;
+                if let Some(rest) = cur.strip_prefix("export ") {
+                    cur = rest.trim_start();
+                    if let Some(rest2) = cur.strip_prefix("default ") {
+                        cur = rest2.trim_start();
+                    }
+                }
+                if let Some(rest) = cur.strip_prefix("function ") {
                     (
                         true,
                         rest.split(|c: char| c == '(' || c.is_whitespace())
@@ -465,24 +882,31 @@ fn extract_symbols(src: &str, lang: &Language) -> HashMap<String, String> {
                             .unwrap_or("")
                             .to_string(),
                     )
-                } else if let Some(rest) = line.strip_prefix("class ") {
-                    (
-                        true,
-                        rest.split_whitespace().next().unwrap_or("").to_string(),
-                    )
+                } else if let Some(rest) = cur.strip_prefix("class ") {
+                    let raw = rest.split_whitespace().next().unwrap_or("");
+                    let name: String = raw
+                        .chars()
+                        .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+                        .collect();
+                    (true, name)
                 } else {
                     (false, String::new())
                 }
             }
             Language::Go => match line.strip_prefix("func ") {
                 Some(rest) => {
-                    // patterns: func Name(…) or func (r Receiver) Name(…)
-                    let name = rest
-                        .split_whitespace()
-                        .skip_while(|s| s.starts_with('('))
-                        .next()
-                        .unwrap_or("");
-                    let name = name.split('(').next().unwrap_or("");
+                    // patterns: func Name(…) or func (r R) Name(…)
+                    let rest = rest.trim_start();
+                    let after = if rest.starts_with('(') {
+                        match rest.find(')') {
+                            Some(idx) => rest[idx + 1..].trim_start(),
+                            None => rest,
+                        }
+                    } else {
+                        rest
+                    };
+                    let name_tok = after.split_whitespace().next().unwrap_or("");
+                    let name = name_tok.split('(').next().unwrap_or("");
                     (true, name.to_string())
                 }
                 None => (false, String::new()),
@@ -571,13 +995,19 @@ fn extract_imports(file: &Path, src: &str, lang: &Language) -> HashSet<PathBuf> 
                         let tail = &s[q + 6..];
                         if let Some(path_str) = extract_quoted(tail) {
                             if let Some(p) = resolve_relative_js(file, &path_str) {
-                                out.insert(p);
+                                out.insert(p.clone());
+                                if let Ok(cp) = fs::canonicalize(&p) {
+                                    out.insert(cp);
+                                }
                             }
                         }
                     } else if let Some(path_str) = extract_quoted(s) {
                         // import x from 'y'
                         if let Some(p) = resolve_relative_js(file, &path_str) {
-                            out.insert(p);
+                            out.insert(p.clone());
+                            if let Ok(cp) = fs::canonicalize(&p) {
+                                out.insert(cp);
+                            }
                         }
                     }
                 }
@@ -587,17 +1017,44 @@ fn extract_imports(file: &Path, src: &str, lang: &Language) -> HashSet<PathBuf> 
             for line in src.lines() {
                 let l = line.trim();
                 if let Some(rest) = l.strip_prefix("from ") {
-                    let parts: Vec<&str> = rest.split_whitespace().collect();
-                    if parts.len() >= 2 {
-                        let mod_path = parts[0];
-                        if let Some(p) = resolve_python_module(file, mod_path) {
-                            out.insert(p);
+                    // Handle: from X import Y (possibly relative with leading dots)
+                    if let Some(import_idx) = rest.find(" import ") {
+                        let base = &rest[..import_idx].trim();
+                        let tail = &rest[import_idx + 8..].trim();
+                        // Take first imported symbol if multiple
+                        if let Some(first) = tail.split(',').next() {
+                            let first = first.split_whitespace().next().unwrap_or("");
+                            if first != "*" && !first.is_empty() {
+                                let combined = if base.ends_with('.') {
+                                    format!("{}{}", base, first)
+                                } else {
+                                    format!("{}.{}", base, first)
+                                };
+                                if let Some(p) = resolve_python_module(file, &combined) {
+                                    out.insert(p.clone());
+                                    if let Ok(cp) = fs::canonicalize(&p) {
+                                        out.insert(cp);
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+                        // Fallback to base-only
+                        if let Some(p) = resolve_python_module(file, base) {
+                            out.insert(p.clone());
+                            if let Ok(cp) = fs::canonicalize(&p) {
+                                out.insert(cp);
+                            }
                         }
                     }
                 } else if let Some(rest) = l.strip_prefix("import ") {
+                    // import module[.sub]
                     let mod_path = rest.split_whitespace().next().unwrap_or("");
                     if let Some(p) = resolve_python_module(file, mod_path) {
-                        out.insert(p);
+                        out.insert(p.clone());
+                        if let Ok(cp) = fs::canonicalize(&p) {
+                            out.insert(cp);
+                        }
                     }
                 }
             }
@@ -610,7 +1067,10 @@ fn extract_imports(file: &Path, src: &str, lang: &Language) -> HashSet<PathBuf> 
                     let name = name.trim().trim_end_matches(';');
                     let mut p = file.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
                     p.push(format!("{}.rs", name));
-                    out.insert(p);
+                    out.insert(p.clone());
+                    if let Ok(cp) = fs::canonicalize(&p) {
+                        out.insert(cp);
+                    }
                 }
             }
         }
@@ -634,18 +1094,18 @@ fn resolve_relative_js(file: &Path, spec: &str) -> Option<PathBuf> {
         let mut p = base.clone();
         if !ext.is_empty() {
             p.set_extension(&ext[1..]);
+            if p.is_file() {
+                return Some(normalize_path(&p));
+            }
         }
-        if p.exists() {
-            return Some(normalize_path(&p));
-        }
-        // try index files
+        // try index files in a directory
         let mut idx = base.clone();
         idx.push(format!("index{}", ext));
-        if idx.exists() {
+        if idx.is_file() {
             return Some(normalize_path(&idx));
         }
     }
-    Some(normalize_path(&base)) // best effort
+    None
 }
 
 fn resolve_python_module(file: &Path, mod_path: &str) -> Option<PathBuf> {

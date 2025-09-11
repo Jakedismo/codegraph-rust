@@ -992,24 +992,38 @@ results.nodes.forEach(node => {
 });
 ```
 
-### CLI Tool
+### Command-Line Usage (no external CLI)
+
+No standalone CLI is published yet. Use the API directly from your shell.
 
 ```bash
-# Install CLI
-cargo install codegraph-cli
+# Server (self‑hosted): start the API locally
+cargo run --release -p codegraph-api
 
-# Configure
-codegraph config set endpoint https://api.codegraph.example.com
-codegraph config set api-key your-api-key
+# Or target a hosted endpoint
+BASE_URL="https://api.codegraph.example.com"
 
-# Parse files
-codegraph parse /path/to/project
+# 1) Index a project (analyze)
+curl -X POST "$BASE_URL/v1/index" \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/path/to/project"}'
 
-# Search
-codegraph search "async function"
+# 2) Search
+curl "$BASE_URL/v1/search?q=async+function&limit=10" | jq
 
-# Stream results
-codegraph stream search "function" --format csv > results.csv
+# 3) Similar items for a node ID
+curl "$BASE_URL/nodes/<NODE_ID>/similar" | jq
+
+# 4) Rebuild the vector index (embeddings)
+curl -X POST "$BASE_URL/vector/index/rebuild"
+
+# 5) Stream large search results
+curl "$BASE_URL/stream/search?query=function&limit=1000&batch_size=100" \
+  --no-buffer | jq -c
+
+# 6) Stream as CSV
+curl "$BASE_URL/stream/csv?query=function&limit=1000&batch_size=100" \
+  -o results.csv
 ```
 
 ## Best Practices

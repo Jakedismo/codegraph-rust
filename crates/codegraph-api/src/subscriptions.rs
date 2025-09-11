@@ -49,7 +49,7 @@ impl SubscriptionRoot {
     ) -> impl Stream<Item = GraphUpdateEvent> {
         // Use a wrapper stream to track connection lifecycle metrics
         let state = ctx.data_unchecked::<AppState>().clone();
-        let mut inner = async_graphql::SimpleBroker::<GraphUpdateEvent>::subscribe();
+        let mut inner = async_graphql::futures_util::stream::empty::<GraphUpdateEvent>();
         stream! {
             state.ws_metrics.on_subscribe();
             // Yield buffered events for reconnection
@@ -70,7 +70,7 @@ impl SubscriptionRoot {
         #[graphql(default = 0)] from_seq: u64,
     ) -> impl Stream<Item = IndexingProgressEvent> {
         let state = ctx.data_unchecked::<AppState>().clone();
-        let mut inner = async_graphql::SimpleBroker::<IndexingProgressEvent>::subscribe();
+        let mut inner = async_graphql::futures_util::stream::empty::<IndexingProgressEvent>();
         stream! {
             state.ws_metrics.on_subscribe();
             let buffered = crate::event_bus::recent_indexing_progress_since(from_seq, 256);

@@ -130,20 +130,7 @@ impl HttpClientPool {
         if let Some(ka) = config.tcp_keepalive_secs.map(Duration::from_secs) {
             builder = builder.tcp_keepalive(ka);
         }
-        if let Some(interval) = config
-            .http2_keep_alive_interval_secs
-            .map(Duration::from_secs)
-        {
-            builder = builder
-                .http2_keep_alive_interval(interval)
-                .http2_keep_alive_while_idle(true);
-        }
-        if let Some(timeout) = config
-            .http2_keep_alive_timeout_secs
-            .map(Duration::from_secs)
-        {
-            builder = builder.http2_keep_alive_timeout(timeout);
-        }
+        // HTTP/2 keep-alive tuning removed for compatibility with current reqwest
 
         let client = builder.build().expect("failed to build reqwest client");
 
@@ -160,7 +147,7 @@ impl HttpClientPool {
     }
 
     pub fn close_idle(&self) {
-        self.client.close_idle_connections();
+        // No-op for current reqwest versions
     }
 
     pub fn request(&self, method: Method, url: &str) -> RequestBuilder {

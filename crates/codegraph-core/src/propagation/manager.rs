@@ -258,6 +258,7 @@ impl ChangePropagationManager {
         let mut impacted = HashSet::new();
         let mut impact_levels: HashMap<String, ImpactLevel> = HashMap::new();
         let mut queue: VecDeque<(String, ImpactLevel, bool)> = VecDeque::new();
+        let mut user_visible_changed: HashSet<String> = HashSet::new();
         let mut direct_changed = Vec::with_capacity(changed.len());
 
         for ch in changed.into_iter() {
@@ -266,6 +267,9 @@ impl ChangePropagationManager {
                 .entry(ch.file_path.clone())
                 .and_modify(|lvl| *lvl = std::cmp::max(*lvl, ch.impact))
                 .or_insert(ch.impact);
+            if ch.user_visible {
+                user_visible_changed.insert(ch.file_path.clone());
+            }
             queue.push_back((ch.file_path.clone(), ch.impact, ch.user_visible));
             direct_changed.push(ch.file_path);
         }
@@ -300,6 +304,10 @@ impl ChangePropagationManager {
         for file in &impacted {
             let base_level = *impact_levels.get(file).unwrap_or(&ImpactLevel::Medium);
             let mut priority = Priority::from(base_level);
+            // For files directly changed and marked as user-visible, escalate aggressively
+            if user_visible_changed.contains(file) {
+                priority = Priority::Critical;
+            }
             // Compute priority from strongest incoming prerequisite or default
             for pre in self.deps.prerequisites_of(file) {
                 if let Some((kind, _)) = self.deps.edge_info(&pre, file) {

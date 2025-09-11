@@ -219,7 +219,7 @@ codegraph/
 │   ├── codegraph-ai/         # AI/ML capabilities
 │   ├── codegraph-api/        # API servers
 │   ├── codegraph-sync/       # Synchronization
-│   ├── codegraph-cli/        # CLI interface
+│   ├── codegraph-cli/        # CLI interface (planned)
 │   └── codegraph-telemetry/  # Observability
 ├── benches/                   # Benchmarks
 ├── tests/                     # Integration tests
@@ -240,7 +240,7 @@ members = [
     "crates/codegraph-ai",
     "crates/codegraph-api",
     "crates/codegraph-sync",
-    "crates/codegraph-cli",
+    # "crates/codegraph-cli",  # planned, not in this repo
     "crates/codegraph-telemetry",
 ]
 
@@ -700,7 +700,7 @@ fn main() {
 
 2. **Configuration Management**
 ```rust
-// crates/codegraph-cli/src/config.rs
+// crates/codegraph-cli/src/config.rs (planned)
 #[derive(Deserialize, Serialize)]
 pub struct Config {
     pub database: DatabaseConfig,
