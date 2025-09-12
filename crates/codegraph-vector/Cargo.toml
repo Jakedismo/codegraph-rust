@@ -34,7 +34,7 @@ candle-core = { version = "0.8", optional = true, default-features = false, feat
 candle-nn = { version = "0.8", optional = true, default-features = false }
 candle-transformers = { version = "0.8", optional = true, default-features = false }
 tokenizers = { version = "0.15", optional = true }
-hf-hub = { version = "0.3", optional = true, default-features = true, features = ["tokio"] }
+hf-hub = { version = "0.4", optional = true, default-features = true, features = ["tokio"] }
 lru = { workspace = true }
 
 # OpenAI API client
