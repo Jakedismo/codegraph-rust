@@ -3,17 +3,17 @@
 
 # Rust/Cargo
 /target/
-**/target/
 **/*.rs.bk
 *.pdb
-Cargo.lock
+# Cargo.lock is committed to ensure reproducible builds for this application.
 
 # Build artifacts
 /build/
 /dist/
 /out/
 
-# Debug builds
+# These are not standard Rust build directories.
+# If you don't have top-level 'debug' or 'release' directories, you can remove these.
 debug/
 release/
 
@@ -64,8 +64,6 @@ perf.data*
 *.swp
 *.swo
 *~
-.DS_Store
-Thumbs.db
 
 # Environment and configuration
 .env
@@ -95,7 +93,6 @@ Thumbs.db
 /temp/
 
 # Logs
-*.log
 logs/
 /logs/
 
@@ -130,7 +127,6 @@ dev_settings.toml
 
 # Generated documentation
 /target/doc/
-/doc/
 
 # Package manager files (if using additional tools)
 node_modules/
@@ -155,19 +151,20 @@ coverage/
 # Backup files
 *.bak
 *.backup
-*~
-
-# Agent instruction files are tracked
-!CLAUDE.md
-!AGENTS.md
-!GEMINI.md
-!QWEN.md
-!OUROBOROS.md
 
 # Keep important config templates
 !config.example.toml
 !settings.template.toml
 
-# ouroboros
-.ouroboros/
-.mao/
+# Gemini CLI and agent-related files
+.gemini
+.claude
+.ouroboros
+.mao
+ouroboros-*
+QWEN.md
+GEMINI.md
+CLAUDE.md
+AGENTS.md
+CRUSH.md
+OUROBOROS.md
