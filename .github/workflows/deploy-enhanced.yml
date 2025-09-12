@@ -253,7 +253,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Generate SLSA Provenance
-        uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v1.9.0
+        uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
         with:
           image: ${{ steps.meta.outputs.image_ref }}
           digest: ${{ steps.build.outputs.digest }}
