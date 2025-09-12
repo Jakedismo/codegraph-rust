@@ -30,7 +30,7 @@ futures = { workspace = true }
 num_cpus = { workspace = true }
 
 # Local embeddings (Candle) - optional via feature
-candle-core = { version = "0.8", optional = true, default-features = false, features = ["metal"] }
+candle-core = { version = "0.9", optional = true, default-features = false, features = ["metal"] }
 candle-nn = { version = "0.8", optional = true, default-features = false }
 candle-transformers = { version = "0.8", optional = true, default-features = false }
 tokenizers = { version = "0.15", optional = true }
