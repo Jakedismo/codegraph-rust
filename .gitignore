@@ -157,11 +157,11 @@ coverage/
 !settings.template.toml
 
 # Gemini CLI and agent-related files
-.gemini
-.claude
-.ouroboros
-.mao
-ouroboros-*
+.gemini/
+.claude/
+.ouroboros/
+.mao/
+ouroboros-*/
 QWEN.md
 GEMINI.md
 CLAUDE.md
