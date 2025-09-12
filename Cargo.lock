@@ -1118,7 +1118,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "bumpalo",
- "bytecheck 0.6.12",
+ "bytecheck 0.8.1",
  "bytes",
  "chacha20poly1305",
  "chrono",
