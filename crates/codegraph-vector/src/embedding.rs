@@ -1,12 +1,12 @@
 use codegraph_core::{CodeGraphError, CodeNode, Result};
-#[cfg(any(feature = "local-embeddings", feature = "openai"))]
+#[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
 use std::sync::Arc;
-#[cfg(any(feature = "local-embeddings", feature = "openai"))]
+#[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
 use crate::embeddings::generator::TextEmbeddingEngine;
 
 pub struct EmbeddingGenerator {
     model_config: ModelConfig,
-    #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+    #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
     pub(crate) advanced: Option<Arc<crate::embeddings::generator::AdvancedEmbeddingGenerator>>,
 }
 
@@ -31,7 +31,7 @@ impl EmbeddingGenerator {
     pub fn new(config: ModelConfig) -> Self {
         Self {
             model_config: config,
-            #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+            #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
             advanced: None,
         }
     }
@@ -40,7 +40,7 @@ impl EmbeddingGenerator {
         Self::new(ModelConfig::default())
     }
 
-    #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+    #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
     pub fn set_advanced_engine(
         &mut self,
         engine: Arc<crate::embeddings::generator::AdvancedEmbeddingGenerator>,
@@ -55,15 +55,15 @@ impl EmbeddingGenerator {
     /// Construct an EmbeddingGenerator that optionally wraps the advanced engine based on env.
     /// If CODEGRAPH_EMBEDDING_PROVIDER=local, tries to initialize a local-first engine.
     pub async fn with_auto_from_env() -> Self {
-        #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+        #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
         let mut base = Self::new(ModelConfig::default());
-        #[cfg(not(any(feature = "local-embeddings", feature = "openai")))]
+        #[cfg(not(any(feature = "local-embeddings", feature = "openai", feature = "onnx")))]
         let base = Self::new(ModelConfig::default());
         let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
             .unwrap_or_default()
             .to_lowercase();
         if provider == "local" {
-            #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+            #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
             {
                 use crate::embeddings::generator::{
                     AdvancedEmbeddingGenerator, EmbeddingEngineConfig, LocalDeviceTypeCompat,
@@ -85,6 +85,22 @@ impl EmbeddingGenerator {
                     base.advanced = Some(Arc::new(engine));
                 }
             }
+        } else if provider == "onnx" {
+            #[cfg(feature = "onnx")]
+            {
+                use crate::embeddings::generator::{AdvancedEmbeddingGenerator, EmbeddingEngineConfig, OnnxConfigCompat};
+                let mut cfg = EmbeddingEngineConfig::default();
+                let model_repo = std::env::var("CODEGRAPH_LOCAL_MODEL").unwrap_or_default();
+                cfg.onnx = Some(OnnxConfigCompat {
+                    model_repo,
+                    model_file: Some("model.onnx".into()),
+                    max_sequence_length: 512,
+                    pooling: "mean".into(),
+                });
+                if let Ok(engine) = AdvancedEmbeddingGenerator::new(cfg).await {
+                    base.advanced = Some(Arc::new(engine));
+                }
+            }
         }
         base
     }
@@ -95,7 +111,7 @@ impl EmbeddingGenerator {
     }
 
     pub async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {
-        #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+        #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
         if let Some(engine) = &self.advanced {
             // Use provider's batched path when available
             let texts: Vec<String> = nodes.iter().map(|n| self.prepare_text(n)).collect();

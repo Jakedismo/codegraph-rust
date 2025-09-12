@@ -1,12 +1,12 @@
 {
   "project_path": ".",
-  "indexed_at": "2025-09-11T22:40:30.157223Z",
+  "indexed_at": "2025-09-12T05:16:15.023218Z",
   "stats": {
-    "files": 0,
-    "lines": 161517,
-    "functions": 4197,
+    "files": 315,
+    "lines": 162442,
+    "functions": 4209,
     "classes": 0,
-    "embeddings": 0,
+    "embeddings": 13509,
     "errors": 0
   },
   "config": {

@@ -104,16 +104,16 @@ How to use ONNX embeddings
 # CPU-only (default)
 export CODEGRAPH_EMBEDDING_PROVIDER=onnx
 export CODEGRAPH_ONNX_EP=cpu
-export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
+export CODEGRAPH_LOCAL_MODEL=/path/to/onnx-file
 
 # CoreML (requires CoreML-enabled ORT build)
 export CODEGRAPH_EMBEDDING_PROVIDER=onnx
 export CODEGRAPH_ONNX_EP=coreml
-export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
+export CODEGRAPH_LOCAL_MODEL=/path/to/onnx-file
 
 
 # Install codegraph
-cargo install --path crates/codegraph-mcp --features "embeddings,codegraph-vector/onnx"
+cargo install --path crates/codegraph-mcp --features "embeddings,codegraph-vector/onnx,faiss"
 ```
 
 Notes
@@ -154,9 +154,9 @@ sudo dnf install cmake clang openssl-devel
 ### Optional Dependencies
 
 - **FAISS** (for vector search acceleration)
-- **Local Embeddings (Hugging Face + Candle + ONNX osx-metal/cuda/cpu)**
+- **Local Embeddings (HuggingFace + Candle + ONNX/ORT(coreML) osx-metal/cuda/cpu)**
   - Enables on-device embedding generation (no external API calls)
-  - Downloads models from Hugging Face Hub on first run and caches them locally
+  - Downloads models from HuggingFace Hub on first run and caches them locally
   - Internet access required for the initial model download (or pre-populate cache)
   - Default runs on CPU; advanced GPU backends (CUDA/Metal) require appropriate hardware and drivers
 - **CUDA** (for GPU-accelerated embeddings)
@@ -260,7 +260,7 @@ codegraph index .
 codegraph index . --languages rust,python,typescript
 
 # Or with more options in Osx
-RUST_LOG=info,codegraph_vector=debug codegraph index . --workers 10 --batch-size 256 --device metal --max-seq-len 512 --force                                                    
+RUST_LOG=info,codegraph_vector=debug codegraph index . --workers 10 --batch-size 256 --max-seq-len 512 --force                                                    
 
 # Index with file watching
 codegraph index . --watch

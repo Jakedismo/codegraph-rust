@@ -324,6 +324,18 @@ impl AdvancedEmbeddingGenerator {
         #[allow(unused_mut)]
         let mut dimension_hint = config.dimension_hint.unwrap_or(768);
 
+        // ONNX explicit selection via env or config
+        #[cfg(feature = "onnx")]
+        {
+            let prov = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or_default().to_lowercase();
+            if prov == "onnx" || config.onnx.is_some() {
+                if let Ok(onnx) = make_onnx(&config).await {
+                    dimension_hint = onnx.embedding_dimension();
+                    primary = Some(onnx);
+                }
+            }
+        }
+
         #[cfg(all(feature = "local-embeddings", feature = "openai"))]
         {
             if config.prefer_local_first {
