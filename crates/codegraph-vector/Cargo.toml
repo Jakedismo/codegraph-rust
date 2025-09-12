@@ -33,7 +33,7 @@ num_cpus = { workspace = true }
 candle-core = { version = "0.9.1", optional = true, default-features = false, features = ["metal"] }
 candle-nn = { version = "0.9.1", optional = true, default-features = false }
 candle-transformers = { version = "0.9.1", optional = true, default-features = false }
-tokenizers = { version = "0.15", optional = true }
+tokenizers = { version = "0.22", optional = true }
 hf-hub = { version = "0.4", optional = true, default-features = true, features = ["tokio"] }
 lru = { workspace = true }
 
