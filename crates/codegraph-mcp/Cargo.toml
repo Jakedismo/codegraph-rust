@@ -29,7 +29,7 @@ fastrand = { workspace = true }
 clap = { workspace = true }
 colored = { workspace = true }
 indicatif = { workspace = true }
-which = "6.0"
+which = "8.0"
 nix = { version = "0.29", features = ["process", "signal"] }
 notify = "6.1"
 walkdir = "2.5"
