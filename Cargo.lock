@@ -1204,7 +1204,7 @@ dependencies = [
  "fastrand",
  "futures",
  "memmap2",
- "notify 6.1.1",
+ "notify 8.2.0",
  "num_cpus",
  "parking_lot",
  "rayon",

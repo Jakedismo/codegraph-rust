@@ -60,66 +60,77 @@ impl ProjectIndexer {
         let graph = CodeGraph::new()?;
         #[cfg(feature = "embeddings")]
         let embedder = {
-            use codegraph_vector::embeddings::generator::{
-                AdvancedEmbeddingGenerator, EmbeddingEngineConfig, LocalDeviceTypeCompat,
-                LocalEmbeddingConfigCompat, LocalPoolingCompat,
-            };
             use codegraph_vector::EmbeddingGenerator;
             // If local requested via env, override local config from CLI flags
             let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
                 .unwrap_or_default()
                 .to_lowercase();
             if provider == "local" {
-                let mut cfg = EmbeddingEngineConfig::default();
-                cfg.prefer_local_first = true;
-                let device = match config
-                    .device
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_lowercase()
-                    .as_str()
+                #[cfg(feature = "embeddings-local")]
                 {
-                    "metal" => LocalDeviceTypeCompat::Metal,
-                    d if d.starts_with("cuda:") => {
-                        let id = d.trim_start_matches("cuda:").parse::<usize>().unwrap_or(0);
-                        LocalDeviceTypeCompat::Cuda(id)
-                    }
-                    _ => LocalDeviceTypeCompat::Cpu,
-                };
-                let model_name = std::env::var("CODEGRAPH_LOCAL_MODEL")
-                    .unwrap_or_else(|_| "sentence-transformers/all-MiniLM-L6-v2".to_string());
-                cfg.local = Some(LocalEmbeddingConfigCompat {
-                    model_name,
-                    device,
-                    cache_dir: None,
-                    max_sequence_length: config.max_seq_len.max(32),
-                    pooling_strategy: LocalPoolingCompat::Mean,
-                });
-                // Try to construct advanced engine; fall back to simple generator on error
-                match AdvancedEmbeddingGenerator::new(cfg).await {
-                    Ok(engine) => {
-                        if !engine.has_provider() {
+                    use codegraph_vector::embeddings::generator::{
+                        AdvancedEmbeddingGenerator, EmbeddingEngineConfig, LocalDeviceTypeCompat,
+                        LocalEmbeddingConfigCompat, LocalPoolingCompat,
+                    };
+                    let mut cfg = EmbeddingEngineConfig::default();
+                    cfg.prefer_local_first = true;
+                    let device = match config
+                        .device
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .as_str()
+                    {
+                        "metal" => LocalDeviceTypeCompat::Metal,
+                        d if d.starts_with("cuda:") => {
+                            let id = d.trim_start_matches("cuda:").parse::<usize>().unwrap_or(0);
+                            LocalDeviceTypeCompat::Cuda(id)
+                        }
+                        _ => LocalDeviceTypeCompat::Cpu,
+                    };
+                    let model_name = std::env::var("CODEGRAPH_LOCAL_MODEL")
+                        .unwrap_or_else(|_| "sentence-transformers/all-MiniLM-L6-v2".to_string());
+                    cfg.local = Some(LocalEmbeddingConfigCompat {
+                        model_name,
+                        device,
+                        cache_dir: None,
+                        max_sequence_length: config.max_seq_len.max(32),
+                        pooling_strategy: LocalPoolingCompat::Mean,
+                    });
+                    // Try to construct advanced engine; fall back to simple generator on error
+                    match AdvancedEmbeddingGenerator::new(cfg).await {
+                        Ok(engine) => {
+                            if !engine.has_provider() {
+                                return Err(anyhow::anyhow!(
+                                    "Local embedding provider constructed without a backend. Ensure the model is BERT-compatible with safetensors and try --device metal or --device cpu"
+                                ));
+                            }
+                            let mut g = EmbeddingGenerator::default();
+                            g.set_advanced_engine(std::sync::Arc::new(engine));
+                            tracing::info!(
+                                target: "codegraph_mcp::indexer",
+                                "Active embeddings: Local (device: {}, max_seq_len: {}, batch_size: {})",
+                                config.device.as_deref().unwrap_or("cpu"),
+                                config.max_seq_len,
+                                config.batch_size
+                            );
+                            g
+                        }
+                        Err(e) => {
                             return Err(anyhow::anyhow!(
-                                "Local embedding provider constructed without a backend. Ensure the model is BERT-compatible with safetensors and try --device metal or --device cpu"
+                                "Failed to initialize local embedding provider: {}",
+                                e
                             ));
                         }
-                        let mut g = EmbeddingGenerator::default();
-                        g.set_advanced_engine(std::sync::Arc::new(engine));
-                        tracing::info!(
-                            target: "codegraph_mcp::indexer",
-                            "Active embeddings: Local (device: {}, max_seq_len: {}, batch_size: {})",
-                            config.device.as_deref().unwrap_or("cpu"),
-                            config.max_seq_len,
-                            config.batch_size
-                        );
-                        g
                     }
-                    Err(e) => {
-                        return Err(anyhow::anyhow!(
-                            "Failed to initialize local embedding provider: {}",
-                            e
-                        ));
-                    }
+                }
+                #[cfg(not(feature = "embeddings-local"))]
+                {
+                    tracing::warn!(
+                        target: "codegraph_mcp::indexer",
+                        "CODEGRAPH_EMBEDDING_PROVIDER=local requested but the 'embeddings-local' feature is not enabled; using auto provider"
+                    );
+                    EmbeddingGenerator::with_auto_from_env().await
                 }
             } else {
                 let g = EmbeddingGenerator::with_auto_from_env().await;

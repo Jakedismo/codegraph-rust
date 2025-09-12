@@ -104,10 +104,16 @@ How to use ONNX embeddings
 # CPU-only (default)
 export CODEGRAPH_EMBEDDING_PROVIDER=onnx
 export CODEGRAPH_ONNX_EP=cpu
+export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
 
 # CoreML (requires CoreML-enabled ORT build)
 export CODEGRAPH_EMBEDDING_PROVIDER=onnx
 export CODEGRAPH_ONNX_EP=coreml
+export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
+
+
+# Install codegraph
+cargo install --path crates/codegraph-mcp --features "embeddings,codegraph-vector/onnx"
 ```
 
 Notes
@@ -252,6 +258,9 @@ codegraph index .
 
 # Index with specific languages
 codegraph index . --languages rust,python,typescript
+
+# Or with more options in Osx
+RUST_LOG=info,codegraph_vector=debug codegraph index . --workers 10 --batch-size 256 --device metal --max-seq-len 512 --force                                                    
 
 # Index with file watching
 codegraph index . --watch

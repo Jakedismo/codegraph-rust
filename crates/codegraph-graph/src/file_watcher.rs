@@ -1,6 +1,6 @@
 use codegraph_core::{traits::FileWatcher, ChangeEvent, Result};
 use crossbeam_channel::Sender;
-use notify::{Error as NotifyError, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 
 pub struct FileWatcherImpl {
@@ -17,14 +17,16 @@ impl FileWatcherImpl {
 
 impl FileWatcher for FileWatcherImpl {
     fn watch(&self, tx: Sender<ChangeEvent>) -> Result<()> {
-        let (notify_tx, notify_rx) = std::sync::mpsc::channel();
+        let (notify_tx, notify_rx) = std::sync::mpsc::channel::<notify::Result<Event>>();
 
-        let mut watcher: RecommendedWatcher = Watcher::new(notify_tx, notify::Config::default())
-            .map_err(|e: NotifyError| codegraph_core::CodeGraphError::Notify(e))?;
+        let mut watcher: RecommendedWatcher = recommended_watcher(move |res: notify::Result<Event>| {
+            let _ = notify_tx.send(res);
+        })
+        .map_err(|e| codegraph_core::CodeGraphError::Notify(e))?;
 
         watcher
             .watch(Path::new(&self.path), RecursiveMode::Recursive)
-            .map_err(|e: NotifyError| codegraph_core::CodeGraphError::Notify(e))?;
+            .map_err(|e| codegraph_core::CodeGraphError::Notify(e))?;
 
         for res in notify_rx {
             match res {
@@ -48,7 +50,7 @@ impl FileWatcher for FileWatcherImpl {
                         })?;
                     }
                 }
-                Err(e) => return Err(codegraph_core::CodeGraphError::Notify(e.into())),
+                Err(e) => return Err(codegraph_core::CodeGraphError::Notify(e)),
             }
         }
 

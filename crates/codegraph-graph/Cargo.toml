@@ -29,7 +29,7 @@ sha2 = { workspace = true }
 memmap2 = { workspace = true }
 num_cpus = "1.16"
 crossbeam-channel = "0.5"
-notify = "6.0"
+notify = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
