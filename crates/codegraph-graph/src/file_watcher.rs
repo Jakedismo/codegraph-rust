@@ -1,6 +1,6 @@
 use codegraph_core::{traits::FileWatcher, ChangeEvent, Result};
 use crossbeam_channel::Sender;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Error as NotifyError, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 
 pub struct FileWatcherImpl {
@@ -19,9 +19,12 @@ impl FileWatcher for FileWatcherImpl {
     fn watch(&self, tx: Sender<ChangeEvent>) -> Result<()> {
         let (notify_tx, notify_rx) = std::sync::mpsc::channel();
 
-        let mut watcher: RecommendedWatcher = Watcher::new(notify_tx, notify::Config::default())?;
+        let mut watcher: RecommendedWatcher = Watcher::new(notify_tx, notify::Config::default())
+            .map_err(|e: NotifyError| codegraph_core::CodeGraphError::Notify(e))?;
 
-        watcher.watch(Path::new(&self.path), RecursiveMode::Recursive)?;
+        watcher
+            .watch(Path::new(&self.path), RecursiveMode::Recursive)
+            .map_err(|e: NotifyError| codegraph_core::CodeGraphError::Notify(e))?;
 
         for res in notify_rx {
             match res {
@@ -45,7 +48,7 @@ impl FileWatcher for FileWatcherImpl {
                         })?;
                     }
                 }
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(codegraph_core::CodeGraphError::Notify(e.into())),
             }
         }
 

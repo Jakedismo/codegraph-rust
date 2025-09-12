@@ -74,11 +74,30 @@ impl LocalEmbeddingProvider {
         info!("Loading local embedding model: {}", config.model_name);
 
         let device = match config.device {
-            DeviceType::Cpu => Device::Cpu,
-            DeviceType::Cuda(id) => Device::new_cuda(id)
-                .map_err(|e| CodeGraphError::Configuration(format!("CUDA device error: {}", e)))?,
-            DeviceType::Metal => Device::new_metal(0)
-                .map_err(|e| CodeGraphError::Configuration(format!("Metal device error: {}", e)))?,
+            DeviceType::Cpu => {
+                info!("Using CPU device for local embeddings");
+                Device::Cpu
+            }
+            DeviceType::Cuda(id) => match Device::new_cuda(id) {
+                Ok(d) => {
+                    info!("Using CUDA:{} device for local embeddings", id);
+                    d
+                }
+                Err(e) => {
+                    warn!("CUDA device error: {}. Falling back to CPU.", e);
+                    Device::Cpu
+                }
+            },
+            DeviceType::Metal => match Device::new_metal(0) {
+                Ok(d) => {
+                    info!("Using Metal device for local embeddings");
+                    d
+                }
+                Err(e) => {
+                    warn!("Metal device error: {}. Falling back to CPU.", e);
+                    Device::Cpu
+                }
+            },
         };
 
         // Download model files from HuggingFace Hub
@@ -425,14 +444,27 @@ impl LocalEmbeddingProvider {
                 .map_err(|e| CodeGraphError::External(format!("tensor new failed: {}", e)))?
                 .reshape((bsz, max_len))
                 .map_err(|e| CodeGraphError::External(format!("reshape failed: {}", e)))?;
-            let attention_mask = Tensor::new(flat_mask.as_slice(), &device)
+            // Build two masks: integer mask for model forward (indexing) and float mask for pooling
+            let attention_mask_i64 = Tensor::new(
+                flat_mask
+                    .iter()
+                    .map(|&x| if x > 0.0 { 1i64 } else { 0i64 })
+                    .collect::<Vec<i64>>()
+                    .as_slice(),
+                &device,
+            )
+            .map_err(|e| CodeGraphError::External(format!("tensor new failed: {}", e)))?
+            .reshape((bsz, max_len))
+            .map_err(|e| CodeGraphError::External(format!("reshape failed: {}", e)))?;
+
+            let attention_mask_f32 = Tensor::new(flat_mask.as_slice(), &device)
                 .map_err(|e| CodeGraphError::External(format!("tensor new failed: {}", e)))?
                 .reshape((bsz, max_len))
                 .map_err(|e| CodeGraphError::External(format!("reshape failed: {}", e)))?;
 
             // Forward pass -> [B, L, H]
             let sequence_output = model
-                .forward(&token_ids, &attention_mask, None)
+                .forward(&token_ids, &attention_mask_i64, None)
                 .map_err(|e| CodeGraphError::External(format!("model forward failed: {}", e)))?;
 
             // Pooling -> [B, H]
@@ -441,7 +473,7 @@ impl LocalEmbeddingProvider {
                     .i((.., 0, ..))
                     .map_err(|e| CodeGraphError::External(format!("Tensor index failed: {}", e)))?,
                 PoolingStrategy::Mean => {
-                    let input_mask_expanded = attention_mask
+                    let input_mask_expanded = attention_mask_f32
                         .unsqueeze(2)
                         .map_err(|e| CodeGraphError::External(format!("unsqueeze failed: {}", e)))?
                         .expand(sequence_output.shape())

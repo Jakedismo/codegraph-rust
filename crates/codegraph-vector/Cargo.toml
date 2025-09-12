@@ -9,7 +9,7 @@ description = "Vector storage and similarity search using FAISS for CodeGraph"
 [dependencies]
 codegraph-core = { workspace = true }
 faiss = { workspace = true, optional = true }
-ndarray = { workspace = true }
+ndarray = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true }
@@ -30,7 +30,7 @@ futures = { workspace = true }
 num_cpus = { workspace = true }
 
 # Local embeddings (Candle) - optional via feature
-candle-core = { version = "0.8", optional = true, default-features = false }
+candle-core = { version = "0.8", optional = true, default-features = false, features = ["metal"] }
 candle-nn = { version = "0.8", optional = true, default-features = false }
 candle-transformers = { version = "0.8", optional = true, default-features = false }
 tokenizers = { version = "0.15", optional = true }
@@ -39,6 +39,10 @@ lru = { workspace = true }
 
 # OpenAI API client
 reqwest = { workspace = true, optional = true }
+
+# ONNX Runtime provider (optional)
+onnxruntime = { version = "0.0.14", optional = true, default-features = false }
+
 
 
 [dev-dependencies]
@@ -66,6 +70,8 @@ local-embeddings = [
     "dep:tokenizers",
     "dep:hf-hub",
 ]
+onnx = ["dep:onnxruntime", "dep:tokenizers", "dep:hf-hub", "dep:ndarray"]
+onnx-coreml = ["onnx"]
 
 [[example]]
 name = "rag_demo"

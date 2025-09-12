@@ -16,6 +16,9 @@ pub mod openai_provider;
 #[cfg(feature = "local-embeddings")]
 pub mod local_provider;
 
+#[cfg(feature = "onnx")]
+pub mod onnx_provider;
+
 #[cfg(feature = "faiss")]
 pub mod faiss_manager;
 #[cfg(feature = "faiss")]
@@ -51,6 +54,9 @@ pub use openai_provider::*;
 
 #[cfg(feature = "local-embeddings")]
 pub use local_provider::*;
+
+#[cfg(feature = "onnx")]
+pub use onnx_provider::*;
 
 #[cfg(feature = "faiss")]
 pub use faiss_manager::*;

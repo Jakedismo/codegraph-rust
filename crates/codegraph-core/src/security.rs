@@ -4,7 +4,9 @@ use std::fmt;
 use thiserror::Error;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::{SaltString, rand_core::OsRng}};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::{SaltString}};
+use rand::rngs::OsRng;
+use rand::RngCore;
 use dashmap::DashMap;
 
 #[derive(Error, Debug)]
@@ -203,7 +205,9 @@ impl ApiKeyManager {
     }
     
     fn hash_api_key(&self, key: &str) -> Result<String, SecurityError> {
-        let salt = SaltString::generate(&mut OsRng);
+    let mut rng = OsRng;
+    // rand_core trait impl is available via rand; SaltString expects rand_core::CryptoRng + RngCore
+    let salt = SaltString::generate(&mut rng);
         let password_hash = self.argon2
             .hash_password(key.as_bytes(), &salt)
             .map_err(|e| SecurityError::CryptographicFailure(e.to_string()))?;

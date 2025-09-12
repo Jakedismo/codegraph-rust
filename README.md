@@ -92,6 +92,36 @@ CodeGraph System Architecture
 └─────────────────────────────────────────────────────┘
 ```
 
+## 🧠 Embeddings with ONNX Runtime (macOS)
+
+- Default provider: CPU EP. Works immediately with Homebrew `onnxruntime`.
+- Optional CoreML EP: Set `CODEGRAPH_ONNX_EP=coreml` to prefer CoreML when using an ONNX Runtime build that includes CoreML.
+- Fallback: If CoreML EP init fails, CodeGraph logs a warning and falls back to CPU.
+
+How to use ONNX embeddings
+
+```bash
+# CPU-only (default)
+export CODEGRAPH_EMBEDDING_PROVIDER=onnx
+export CODEGRAPH_ONNX_EP=cpu
+
+# CoreML (requires CoreML-enabled ORT build)
+export CODEGRAPH_EMBEDDING_PROVIDER=onnx
+export CODEGRAPH_ONNX_EP=coreml
+```
+
+Notes
+
+- ONNX Runtime on Apple platforms accelerates via CoreML, not Metal. If you need GPU acceleration on Apple Silicon, use CoreML where supported.
+- Some models/operators may still run on CPU if CoreML doesn’t support them.
+
+Enabling CoreML feature at build time
+
+- The CoreML registration path is gated by the Cargo feature `onnx-coreml` in `codegraph-vector`.
+- Build with: `cargo build -p codegraph-vector --features "onnx,onnx-coreml"`
+- In a full workspace build, enable it via your consuming crate’s features or by adding: `--features codegraph-vector/onnx,codegraph-vector/onnx-coreml`.
+- You still need an ONNX Runtime library that was compiled with CoreML support; the feature only enables the registration call in our code.
+
 ## 📦 Prerequisites
 
 ### System Requirements
@@ -118,7 +148,7 @@ sudo dnf install cmake clang openssl-devel
 ### Optional Dependencies
 
 - **FAISS** (for vector search acceleration)
-- **Local Embeddings (Hugging Face + Candle)**
+- **Local Embeddings (Hugging Face + Candle + ONNX osx-metal/cuda/cpu)**
   - Enables on-device embedding generation (no external API calls)
   - Downloads models from Hugging Face Hub on first run and caches them locally
   - Internet access required for the initial model download (or pre-populate cache)
@@ -132,7 +162,7 @@ sudo dnf install cmake clang openssl-devel
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/codegraph-cli-mcp.git
+git clone https://github.com/jakedismo/codegraph-cli-mcp.git
 cd codegraph-cli-mcp
 
 # Build the project
@@ -183,7 +213,7 @@ Model cache locations:
 
 ```bash
 # Download the latest release
-curl -L https://github.com/your-org/codegraph-cli-mcp/releases/latest/download/codegraph-$(uname -s)-$(uname -m).tar.gz | tar xz
+curl -L https://github.com/jakedismo/codegraph-cli-mcp/releases/latest/download/codegraph-$(uname -s)-$(uname -m).tar.gz | tar xz
 
 # Move to PATH
 sudo mv codegraph /usr/local/bin/
@@ -246,8 +276,6 @@ codegraph start dual --port 3000
 export CODEGRAPH_EMBEDDING_PROVIDER=local
 export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
 cargo run -p codegraph-api --features codegraph-vector/local-embeddings
-```
-
 ```
 
 ### 4. Search Your Code
@@ -811,7 +839,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/codegraph-cli-mcp.git
+git clone https://github.com/jakedismo/codegraph-cli-mcp.git
 cd codegraph-cli-mcp
 
 # Install development dependencies

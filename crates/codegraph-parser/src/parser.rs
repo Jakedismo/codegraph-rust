@@ -307,32 +307,54 @@ impl TreeSitterParser {
             // First attempt: try to parse normally
             match parser.parse(&content, None) {
                 Some(tree) => {
-                    if tree.root_node().has_error() {
-                        warn!("Parse tree has errors for file: {}", file_path);
-                        // Continue with partial parsing - we can still extract useful information
+                    let mut tree_used = tree;
+                    let mut used_content = content.clone();
+                    if tree_used.root_node().has_error() {
+                        // Tolerant cleaner: strip common noisy directives/macros and retry once
+                        let cleaned = Self::tolerant_clean(&content);
+                        if cleaned != content {
+                            if let Some(tree2) = parser.parse(&cleaned, None) {
+                                if !tree2.root_node().has_error() {
+                                    tracing::debug!(
+                                        target: "codegraph_parser::parser",
+                                        "Re-parsed successfully with tolerant cleaner: {}",
+                                        file_path
+                                    );
+                                    tree_used = tree2;
+                                    used_content = cleaned;
+                                } else {
+                                    warn!("Parse tree has errors for file: {}", file_path);
+                                }
+                            }
+                        } else {
+                            warn!("Parse tree has errors for file: {}", file_path);
+                        }
                     }
 
                     if matches!(language, Language::Rust) {
                         // Use advanced Rust extractor
                         use crate::languages::rust::RustExtractor;
-                        Ok(RustExtractor::extract(&tree, &content, &file_path))
+                        Ok(RustExtractor::extract(&tree_used, &used_content, &file_path))
                     } else if matches!(language, Language::Python) {
                         // Use Python extractor (docstrings, type hints, call graph metadata)
                         let extraction =
-                            crate::languages::python::extract_python(&file_path, &content);
+                            crate::languages::python::extract_python(&file_path, &used_content);
                         Ok(extraction.nodes)
                     } else if matches!(language, Language::JavaScript | Language::TypeScript) {
                         let nodes = crate::languages::javascript::extract_js_ts_nodes(
                             language.clone(),
                             &file_path,
-                            &content,
-                            tree.root_node(),
+                            &used_content,
+                            tree_used.root_node(),
                         );
                         Ok(nodes)
                     } else {
-                        let mut visitor =
-                            AstVisitor::new(language.clone(), file_path.clone(), content.clone());
-                        visitor.visit(tree.root_node());
+                        let mut visitor = AstVisitor::new(
+                            language.clone(),
+                            file_path.clone(),
+                            used_content.clone(),
+                        );
+                        visitor.visit(tree_used.root_node());
                         Ok(visitor.nodes)
                     }
                 }
@@ -394,6 +416,24 @@ impl TreeSitterParser {
         })
         .await
         .map_err(|e| CodeGraphError::Parse(e.to_string()))?
+    }
+
+    // Lightweight tolerant cleaner to strip common constructs that confuse grammars
+    fn tolerant_clean(src: &str) -> String {
+        let mut out = String::with_capacity(src.len());
+        for line in src.lines() {
+            let t = line.trim_start();
+            if t.starts_with("#pragma")
+                || t.starts_with("//@generated")
+                || t.starts_with("#[cfg(")
+                || t.starts_with("macro_rules!")
+            {
+                continue;
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+        out
     }
 
     pub async fn incremental_update(

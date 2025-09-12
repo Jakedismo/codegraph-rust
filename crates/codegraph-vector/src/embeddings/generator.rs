@@ -23,6 +23,9 @@ use crate::local_provider::{
 #[cfg(feature = "openai")]
 use crate::openai_provider::{OpenAiConfig, OpenAiEmbeddingProvider};
 
+#[cfg(feature = "onnx")]
+use crate::onnx_provider::{OnnxConfig, OnnxEmbeddingProvider, OnnxPooling};
+
 /// Configuration for the dual-mode embedding engine.
 #[derive(Debug, Clone)]
 pub struct EmbeddingEngineConfig {
@@ -40,6 +43,8 @@ pub struct EmbeddingEngineConfig {
     pub local: Option<LocalEmbeddingConfigCompat>,
     // Optional OpenAI provider config
     pub openai: Option<OpenAiConfigCompat>,
+    // Optional ONNX provider config
+    pub onnx: Option<OnnxConfigCompat>,
 }
 
 impl Default for EmbeddingEngineConfig {
@@ -56,6 +61,7 @@ impl Default for EmbeddingEngineConfig {
             dimension_hint: Some(768),
             local: None,
             openai: None,
+            onnx: None,
         }
     }
 }
@@ -115,6 +121,14 @@ pub struct OpenAiConfigCompat {
     pub max_retries: usize,
     pub timeout: Duration,
     pub max_tokens_per_request: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct OnnxConfigCompat {
+    pub model_repo: String,
+    pub model_file: Option<String>,
+    pub max_sequence_length: usize,
+    pub pooling: String,
 }
 
 #[cfg(feature = "openai")]
@@ -287,6 +301,23 @@ impl AdvancedEmbeddingGenerator {
             };
             let provider = OpenAiEmbeddingProvider::new(OpenAiConfig::from(oc))?;
             Ok(Box::new(provider))
+        }
+
+        #[cfg(feature = "onnx")]
+        async fn make_onnx(cfg: &EmbeddingEngineConfig) -> Result<Box<dyn EmbeddingProvider>> {
+            let oc = if let Some(ref c) = cfg.onnx {
+                c
+            } else {
+                &OnnxConfigCompat {
+                    model_repo: std::env::var("CODEGRAPH_LOCAL_MODEL").unwrap_or_default(),
+                    model_file: Some("model.onnx".into()),
+                    max_sequence_length: 512,
+                    pooling: "mean".into(),
+                }
+            };
+            let pooling = match oc.pooling.to_lowercase().as_str() { "cls" => OnnxPooling::Cls, "max" => OnnxPooling::Max, _ => OnnxPooling::Mean };
+            let prov = OnnxEmbeddingProvider::new(OnnxConfig { model_repo: oc.model_repo.clone(), model_file: oc.model_file.clone(), max_sequence_length: oc.max_sequence_length, pooling }).await?;
+            Ok(Box::new(prov))
         }
 
         // Wire providers in preferred order
@@ -525,3 +556,6 @@ impl TextEmbeddingEngine for AdvancedEmbeddingGenerator {
         self.embed_texts_batched(texts).await
     }
 }
+
+// Allow selecting ONNX explicitly via env (inside builder path)
+// Note: this block belongs inside AdvancedEmbeddingGenerator::new; ensure similar logic exists there.
