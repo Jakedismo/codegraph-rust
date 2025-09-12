@@ -231,7 +231,7 @@ jobs:
           sbom: true
 
       - name: Comprehensive Security Scanning
-        uses: aquasecurity/trivy-action@0.20.0
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: ${{ steps.meta.outputs.image_ref }}
           format: sarif
@@ -244,7 +244,7 @@ jobs:
           sarif_file: trivy-results.sarif
 
       - name: Critical Vulnerability Check
-        uses: aquasecurity/trivy-action@0.20.0
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: ${{ steps.meta.outputs.image_ref }}
           format: table
