@@ -1,0 +1,62 @@
+{
+  "name": "codegraph-mcp-server",
+  "version": "1.0.0",
+  "description": "Enhanced MCP server with CodeGraph integration for architecture analysis",
+  "type": "module",
+  "main": "dist/server/enhanced-mcp-server.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/server/start-server.ts",
+    "start": "node dist/server/start-server.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/**/*.ts",
+    "server": "tsx src/server/start-server.ts",
+    "server:stdio": "tsx src/server/start-server.ts --transport stdio",
+    "server:http": "tsx src/server/start-server.ts --transport http",
+    "server:both": "tsx src/server/start-server.ts --transport both"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.6.0",
+    "commander": "^12.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "lru-cache": "^10.2.0",
+    "p-queue": "^8.0.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.12.7",
+    "@typescript-eslint/eslint-plugin": "^7.7.1",
+    "@typescript-eslint/parser": "^7.7.1",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "node-fetch": "^3.3.2",
+    "ts-jest": "^29.1.2",
+    "tsx": "^4.7.2",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "codegraph",
+    "architecture-analysis",
+    "dependency-analysis",
+    "code-analysis",
+    "llm",
+    "ai"
+  ],
+  "author": "CodeGraph Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/codegraph-mcp-server.git"
+  }
+}

@@ -7,6 +7,7 @@ use crate::{ZeroCopyError, ZeroCopyResult};
 use memmap2::{Advice, Mmap, MmapMut, MmapOptions};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rkyv::{access, access_unchecked, Archive};
+use rkyv::api::high::HighValidator;
 use std::{
     fs::{File, OpenOptions},
     io::{Seek, SeekFrom},
@@ -58,9 +59,7 @@ impl MmapReader {
     pub fn access_archived<T>(&self) -> ZeroCopyResult<&T::Archived>
     where
         T: Archive,
-        T::Archived: for<'a> bytecheck::CheckBytes<
-            bytecheck::rancor::Strategy<bytecheck::DefaultValidator, rkyv::rancor::Failure>,
-        >,
+        T::Archived: for<'a> bytecheck::CheckBytes<HighValidator<'a, rkyv::rancor::Failure>>,
     {
         access::<T::Archived, rkyv::rancor::Failure>(&self.mmap).map_err(|_e| {
             ZeroCopyError::ArchiveAccess("Failed to access archived data".to_string())
@@ -287,9 +286,7 @@ impl<'a> ThreadSafeMmapReadGuard<'a> {
     pub fn access_archived<T>(&self) -> ZeroCopyResult<&T::Archived>
     where
         T: Archive,
-        T::Archived: for<'b> bytecheck::CheckBytes<
-            bytecheck::rancor::Strategy<bytecheck::DefaultValidator, rkyv::rancor::Failure>,
-        >,
+        T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rkyv::rancor::Failure>>,
     {
         access::<T::Archived, rkyv::rancor::Failure>(&self.guard).map_err(|_e| {
             ZeroCopyError::ArchiveAccess("Failed to access archived data".to_string())

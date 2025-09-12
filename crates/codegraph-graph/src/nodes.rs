@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
 use rocksdb::{
-    BlockBasedOptions, Cache, ColumnFamily, ColumnFamilyDescriptor, DBCompressionType,
-    DBWithThreadMode, IteratorMode, MultiThreaded, Options, ReadOptions, WriteBatch, WriteOptions,
+    BlockBasedOptions, Cache, ColumnFamilyDescriptor, DBCompressionType, DBWithThreadMode,
+    IteratorMode, MultiThreaded, Options, ReadOptions, WriteBatch, WriteOptions,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;

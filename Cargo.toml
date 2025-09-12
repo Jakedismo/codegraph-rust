@@ -8,7 +8,7 @@ members = [
     "crates/codegraph-queue",
     "crates/codegraph-git",
     "crates/codegraph-concurrent",
-    # temporarily exclude graph crate from build until transactional async issues are resolved
+    "crates/codegraph-graph",
     "crates/codegraph-zerocopy",
     "crates/codegraph-lb",
     "crates/codegraph-ai",
@@ -31,7 +31,7 @@ repository = "https://github.com/codegraph/embedding-system"
 
 [workspace.dependencies]
 fastrand = "2.0"
-governor = { version = "0.6.0" }
+governor = { version = "0.10.1" }
 lazy_static = "1.4.0"
 # Async Runtime
 tokio = { version = "1.39", features = ["full"] }
@@ -41,6 +41,7 @@ futures = "0.3"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+toml = "0.8"
 
 # Zero-copy serialization
 rkyv = { version = "0.8", features = ["alloc", "std"] }
@@ -120,7 +121,7 @@ async-graphql-axum = "7.0"
 
 # Web framework
 axum = "0.8"
-tower = "0.4"
+tower = { version = "0.4", features = ["util"] }
 tower-http = "0.5"
 hyper = "1.0"
 http = "1.1"
@@ -139,7 +140,7 @@ url = "2.5"
 
 # Tracing and logging
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 once_cell = "1.19"
 hashbrown = "0.14"
@@ -157,6 +158,11 @@ schemars = "0.8"
 secrecy = { version = "0.8", features = ["serde"] }
 chacha20poly1305 = { version = "0.10", features = ["std"] }
 base64 = "0.22"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "cargo", "env", "wrap_help"] }
+colored = "2.1"
+indicatif = "0.17"
 
 # Security
 jsonwebtoken = "9.3"

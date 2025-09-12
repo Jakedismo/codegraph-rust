@@ -8,7 +8,7 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::{CodeEdge, CodeGraph};
-use codegraph_core::{CodeGraphError, CodeNode, EdgeType, NodeId, GraphStore};
+use codegraph_core::{CodeNode, EdgeType, GraphStore, NodeId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DeltaOperation {
@@ -163,11 +163,7 @@ impl GraphDeltaProcessor {
             if !new_nodes.contains_key(old_id) {
                 operations.push(DeltaOperation::RemoveNode(old_id.clone()));
                 affected_nodes.insert(old_id.clone());
-                debug!(
-                    "Node removed: {} ({})",
-                    old_node.name.as_str(),
-                    old_id
-                );
+                debug!("Node removed: {} ({})", old_node.name.as_str(), old_id);
             }
         }
 
@@ -178,11 +174,7 @@ impl GraphDeltaProcessor {
                     // New node
                     operations.push(DeltaOperation::AddNode((*new_node).clone()));
                     affected_nodes.insert(new_id.clone());
-                    debug!(
-                        "Node added: {} ({})",
-                        new_node.name.as_str(),
-                        new_id
-                    );
+                    debug!("Node added: {} ({})", new_node.name.as_str(), new_id);
                 }
                 Some(old_node) => {
                     // Check if node changed
@@ -192,11 +184,7 @@ impl GraphDeltaProcessor {
                             (*new_node).clone(),
                         ));
                         affected_nodes.insert(new_id.clone());
-                        debug!(
-                            "Node updated: {} ({})",
-                            new_node.name.as_str(),
-                            new_id
-                        );
+                        debug!("Node updated: {} ({})", new_node.name.as_str(), new_id);
                     }
                 }
             }
@@ -330,11 +318,15 @@ impl GraphDeltaProcessor {
                 graph.add_edge(edge).await?;
             }
             DeltaOperation::RemoveEdge(from, to, edge_type) => {
-                let _ = graph.remove_edge(from.clone(), to.clone(), Some(edge_type.clone())).await?;
+                let _ = graph
+                    .remove_edge(from.clone(), to.clone(), Some(edge_type.clone()))
+                    .await?;
             }
             DeltaOperation::UpdateEdge(from, to, edge_type, metadata) => {
                 // Remove old edge and add new one with updated metadata
-                let _ = graph.remove_edge(from.clone(), to.clone(), Some(edge_type.clone())).await?;
+                let _ = graph
+                    .remove_edge(from.clone(), to.clone(), Some(edge_type.clone()))
+                    .await?;
                 let mut edge = CodeEdge::new(from.clone(), to.clone(), edge_type.clone());
                 for (key, value) in metadata {
                     edge = edge.with_metadata(key.clone(), value.clone());

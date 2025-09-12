@@ -3,6 +3,7 @@ pub mod connection_pool;
 pub mod enhanced_health;
 pub mod error;
 pub mod event_bus;
+pub mod graph_stub;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 pub mod handlers;
@@ -28,6 +29,9 @@ pub mod routes;
 #[cfg(feature = "graphql")]
 pub mod schema;
 pub mod server;
+pub mod parser_ext;
+pub mod semantic_search_ext;
+pub mod vector_store_ext;
 pub mod service_registry;
 pub mod state;
 pub mod streaming_handlers;
@@ -35,6 +39,9 @@ pub mod streaming_handlers;
 pub mod subscriptions;
 pub mod vector_handlers;
 pub mod versioning_handlers;
+
+#[cfg(test)]
+pub mod test_helpers;
 
 pub use auth::*;
 pub use connection_pool::*;

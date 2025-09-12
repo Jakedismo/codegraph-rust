@@ -29,13 +29,61 @@ pub struct ConversionPipeline {
 impl ConversionPipeline {
     pub fn new() -> Result<Self> {
         let mut parsers = HashMap::new();
-        
+        // Rust
         if let Ok(mut parser) = Parser::new() {
             let language = tree_sitter_rust::language();
-            parser.set_language(language).map_err(|e| {
-                format!("Failed to set Rust language: {:?}", e)
-            })?;
+            parser
+                .set_language(language)
+                .map_err(|e| format!("Failed to set Rust language: {:?}", e))?;
             parsers.insert(Language::Rust, parser);
+        }
+        // TypeScript
+        if let Ok(mut parser) = Parser::new() {
+            let language = tree_sitter_typescript::language_typescript();
+            parser
+                .set_language(language)
+                .map_err(|e| format!("Failed to set TypeScript language: {:?}", e))?;
+            parsers.insert(Language::TypeScript, parser);
+        }
+        // JavaScript
+        if let Ok(mut parser) = Parser::new() {
+            let language = tree_sitter_javascript::language();
+            parser
+                .set_language(language)
+                .map_err(|e| format!("Failed to set JavaScript language: {:?}", e))?;
+            parsers.insert(Language::JavaScript, parser);
+        }
+        // Python
+        if let Ok(mut parser) = Parser::new() {
+            let language = tree_sitter_python::language();
+            parser
+                .set_language(language)
+                .map_err(|e| format!("Failed to set Python language: {:?}", e))?;
+            parsers.insert(Language::Python, parser);
+        }
+        // Go
+        if let Ok(mut parser) = Parser::new() {
+            let language = tree_sitter_go::language();
+            parser
+                .set_language(language)
+                .map_err(|e| format!("Failed to set Go language: {:?}", e))?;
+            parsers.insert(Language::Go, parser);
+        }
+        // Java
+        if let Ok(mut parser) = Parser::new() {
+            let language = tree_sitter_java::language();
+            parser
+                .set_language(language)
+                .map_err(|e| format!("Failed to set Java language: {:?}", e))?;
+            parsers.insert(Language::Java, parser);
+        }
+        // C++
+        if let Ok(mut parser) = Parser::new() {
+            let language = tree_sitter_cpp::language();
+            parser
+                .set_language(language)
+                .map_err(|e| format!("Failed to set C++ language: {:?}", e))?;
+            parsers.insert(Language::Cpp, parser);
         }
 
         Ok(Self {
@@ -55,9 +103,28 @@ impl ConversionPipeline {
             return Err(format!("File already processed: {}", file_path.display()).into());
         }
 
-        let parser = self.parsers.get_mut(&language).ok_or_else(|| {
-            format!("No parser available for language: {:?}", language)
-        })?;
+        // Choose parser; use TSX grammar for .tsx files
+        let is_tsx = file_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("tsx"))
+            .unwrap_or(false);
+
+        let mut owned_tsx: Option<Parser> = None;
+        if matches!(language, Language::TypeScript) && is_tsx {
+            let mut p = Parser::new()?;
+            p.set_language(tree_sitter_typescript::language_tsx())
+                .map_err(|e| format!("Failed to set TSX language: {:?}", e))?;
+            owned_tsx = Some(p);
+        }
+
+        let parser: &mut Parser = if let Some(ref mut p) = owned_tsx {
+            p
+        } else {
+            self.parsers.get_mut(&language).ok_or_else(|| {
+                format!("No parser available for language: {:?}", language)
+            })?
+        };
 
         let tree = parser.parse(&source, None).ok_or_else(|| {
             format!("Failed to parse file: {}", file_path.display())
@@ -181,7 +248,7 @@ impl ConversionPipeline {
     fn detect_language(&self, file_path: &Path) -> Result<Language> {
         match file_path.extension().and_then(|s| s.to_str()) {
             Some("rs") => Ok(Language::Rust),
-            Some("ts") => Ok(Language::TypeScript),
+            Some("ts") | Some("tsx") => Ok(Language::TypeScript),
             Some("js") => Ok(Language::JavaScript),
             Some("py") => Ok(Language::Python),
             Some("go") => Ok(Language::Go),

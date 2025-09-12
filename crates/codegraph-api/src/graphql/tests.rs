@@ -3,6 +3,7 @@ use serde_json::json;
 use std::sync::Arc;
 use tokio_test;
 use uuid::Uuid;
+use codegraph_core::ConfigManager;
 
 use crate::graphql::types::*;
 use crate::schema::create_schema;
@@ -10,7 +11,8 @@ use crate::state::AppState;
 
 /// Helper function to create test app state
 async fn create_test_state() -> AppState {
-    AppState::new().await.expect("Failed to create test state")
+    let config = Arc::new(ConfigManager::new().expect("Failed to create test config"));
+    AppState::new(config).await.expect("Failed to create test state")
 }
 
 /// Helper function to create test schema with state

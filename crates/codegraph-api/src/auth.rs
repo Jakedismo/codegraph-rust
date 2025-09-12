@@ -83,8 +83,13 @@ pub async fn auth_middleware(
     mut req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    if let Some(api_key) = req.headers().get("X-API-KEY").and_then(|v| v.to_str().ok()) {
-        return api_key_auth(api_key, &mut req, next).await;
+    let api_key = req.headers()
+        .get("X-API-KEY")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    
+    if let Some(api_key) = api_key {
+        return api_key_auth(&api_key, req, next).await;
     }
 
     let token = req
@@ -123,7 +128,7 @@ pub async fn auth_middleware(
             } else {
                 "user"
             };
-            rate_limit_manager.check_rate_limit(user_tier)?;
+            rate_limit_manager.check_rate_limit(user_tier, "api_request")?;
 
             req.extensions_mut().insert(auth_context);
         }
@@ -134,7 +139,7 @@ pub async fn auth_middleware(
 
 async fn api_key_auth(
     api_key: &str,
-    req: &mut Request,
+    mut req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
     // In a real application, you would look up the API key in a database.

@@ -8,11 +8,11 @@ use dashmap::DashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock as AsyncRwLock;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::{CodeGraph, DeltaApplicationResult, DeltaOperation, GraphDelta, GraphDeltaProcessor};
-use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId};
+use crate::{CodeGraph, DeltaOperation, GraphDeltaProcessor};
+use codegraph_core::{CodeNode, GraphStore, NodeId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateRegion {
@@ -227,7 +227,7 @@ impl SelectiveNodeUpdater {
     ) -> Result<InternalUpdateResult> {
         let mut graph = self.graph.write().await;
 
-        let mut updated_nodes = HashSet::new();
+        let updated_nodes = HashSet::new();
         let mut added_nodes = HashSet::new();
         let mut removed_nodes = HashSet::new();
 

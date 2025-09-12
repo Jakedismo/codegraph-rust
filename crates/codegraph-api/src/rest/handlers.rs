@@ -7,6 +7,7 @@ use axum::{
     },
     Json,
 };
+use codegraph_core::GraphStore;  // Import GraphStore trait
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use utoipa::{IntoParams, ToSchema};
@@ -315,7 +316,7 @@ pub async fn get_neighbors(
         if let Ok(Some(n)) = graph.get_node(nid).await {
             out.push(NeighborItem {
                 id: n.id.to_string(),
-                name: n.name,
+                name: n.name.to_string(),
                 node_type: format!("{:?}", n.node_type),
                 language: format!("{:?}", n.language),
             });

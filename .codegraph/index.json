@@ -1,0 +1,17 @@
+{
+  "project_path": ".",
+  "indexed_at": "2025-09-11T22:40:30.157223Z",
+  "stats": {
+    "files": 0,
+    "lines": 161517,
+    "functions": 4197,
+    "classes": 0,
+    "embeddings": 0,
+    "errors": 0
+  },
+  "config": {
+    "languages": [],
+    "recursive": false,
+    "workers": 10
+  }
+}

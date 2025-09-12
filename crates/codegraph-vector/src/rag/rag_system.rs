@@ -75,7 +75,7 @@ pub struct RAGSystem {
 }
 
 #[derive(Debug, Default)]
-struct SystemMetrics {
+pub struct SystemMetrics {
     total_queries: u64,
     average_response_time_ms: f64,
     cache_hit_rate: f64,

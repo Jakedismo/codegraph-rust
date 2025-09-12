@@ -142,14 +142,17 @@ impl ServiceRegistry {
             last_heartbeat: now,
         };
 
+        let address = registration.address.clone();
+        let port = registration.port;
+        
         let mut services = self.services.write().await;
         services.insert(service_id.clone(), registration);
 
         tracing::info!(
             "Registered service: {} ({}:{})",
             service_id,
-            registration.address,
-            registration.port
+            address,
+            port
         );
 
         Ok(ServiceRegistrationResponse {

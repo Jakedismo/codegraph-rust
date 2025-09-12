@@ -2,15 +2,15 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use codegraph_core::{
     ChangeType, Checkpoint, CodeGraphError, CodeNode, CrashRecovery, IsolationLevel, NodeId,
-    NodeVersion, Result, Snapshot, SnapshotId, Transaction, TransactionId, TransactionManager,
-    TransactionStatus, Version, VersionDiff, VersionId, VersionedStore, WriteAheadLog,
-    WriteAheadLogEntry, WriteOperation,
+    Result, Snapshot, SnapshotId, Transaction, TransactionId, TransactionManager,
+    TransactionStatus, Version, VersionId, VersionedStore, WriteAheadLog, WriteAheadLogEntry,
+    WriteOperation,
 };
 use dashmap::DashMap;
 use parking_lot::{Mutex, RwLock};
 use rocksdb::{
-    BlockBasedOptions, Cache, ColumnFamily, ColumnFamilyDescriptor, DBCompressionType,
-    DBWithThreadMode, IteratorMode, MultiThreaded, Options, ReadOptions, WriteBatch, WriteOptions,
+    BlockBasedOptions, Cache, ColumnFamilyDescriptor, DBCompressionType, DBWithThreadMode,
+    IteratorMode, MultiThreaded, Options, ReadOptions, WriteBatch, WriteOptions,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -21,9 +21,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
         Arc,
     },
-    time::Duration,
 };
-use tokio::time::timeout;
 use uuid::Uuid;
 
 type DB = DBWithThreadMode<MultiThreaded>;
@@ -1007,7 +1005,7 @@ impl CrashRecovery for VersionedRocksDbStorage {
     }
 
     async fn verify_data_integrity(&self) -> Result<Vec<String>> {
-        let mut issues = Vec::new();
+        let issues = Vec::new();
 
         // TODO: Implement integrity checks
         // - Verify that all content hashes exist in content store

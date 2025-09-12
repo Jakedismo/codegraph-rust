@@ -141,21 +141,21 @@ impl Default for PerformanceConfig {
 
 impl CoreRagServerConfig {
     /// Load configuration from a file
-    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> crate::Result<Self> {
+    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> crate::CoreRagResult<Self> {
         let content = std::fs::read_to_string(path)?;
         let config: Self = serde_json::from_str(&content)?;
         Ok(config)
     }
 
     /// Save configuration to a file
-    pub fn to_file<P: AsRef<std::path::Path>>(&self, path: P) -> crate::Result<()> {
+    pub fn to_file<P: AsRef<std::path::Path>>(&self, path: P) -> crate::CoreRagResult<()> {
         let content = serde_json::to_string_pretty(self)?;
         std::fs::write(path, content)?;
         Ok(())
     }
 
     /// Validate configuration
-    pub fn validate(&self) -> crate::Result<()> {
+    pub fn validate(&self) -> crate::CoreRagResult<()> {
         if self.vector_config.max_results == 0 {
             return Err(crate::CoreRagError::config(
                 "max_results must be greater than 0",

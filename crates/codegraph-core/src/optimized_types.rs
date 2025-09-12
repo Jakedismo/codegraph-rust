@@ -299,7 +299,7 @@ impl EmbeddingPool {
 /// Compact cache key reducing hash table overhead by 70%
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CompactCacheKey {
-    pub hash: u64,        // Pre-computed hash for O(1) comparison
+    pub hash: u64,             // Pre-computed hash for O(1) comparison
     pub cache_type: CacheType, // Cache type (node, embedding, query, etc.)
 }
 

@@ -1,19 +1,100 @@
 use crate::connection_pool::{load_base_urls_from_env, ConnectionPoolConfig, HttpClientPool};
 use crate::performance::{PerformanceOptimizer, PerformanceOptimizerConfig};
 use crate::service_registry::ServiceRegistry;
-use codegraph_core::{ConfigManager, Settings};
-use codegraph_graph::CodeGraph;
+use codegraph_core::{CodeNode, ConfigManager, GraphStore, NodeId, Settings};
 use codegraph_parser::TreeSitterParser;
 use codegraph_vector::{EmbeddingGenerator, FaissVectorStore, SemanticSearch};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use async_trait::async_trait;
+
+// Simple in-memory graph implementation for now
+pub struct InMemoryGraph {
+    nodes: HashMap<NodeId, CodeNode>,
+}
+
+impl InMemoryGraph {
+    pub fn new() -> Self {
+        Self {
+            nodes: HashMap::new(),
+        }
+    }
+    
+    pub async fn get_stats(&self) -> codegraph_core::Result<GraphStats> {
+        let node_count = self.nodes.len();
+        let edge_count = 0;  // Not tracking edges in this simple implementation
+        Ok(GraphStats::new(node_count, edge_count, 0))
+    }
+    
+    pub async fn test_connection(&self) -> codegraph_core::Result<bool> {
+        // Always return true for in-memory graph
+        Ok(true)
+    }
+    
+    pub async fn get_neighbors(&self, _node_id: NodeId) -> codegraph_core::Result<Vec<NodeId>> {
+        // Simple stub - no edges tracked
+        Ok(vec![])
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GraphStats {
+    pub node_count: usize,
+    pub edge_count: usize,
+    pub total_size_bytes: usize,
+    pub total_nodes: usize,  // Alias for node_count
+    pub total_edges: usize,  // Alias for edge_count
+}
+
+impl GraphStats {
+    pub fn new(node_count: usize, edge_count: usize, total_size_bytes: usize) -> Self {
+        Self {
+            node_count,
+            edge_count,
+            total_size_bytes,
+            total_nodes: node_count,
+            total_edges: edge_count,
+        }
+    }
+}
+
+#[async_trait]
+impl GraphStore for InMemoryGraph {
+    async fn add_node(&mut self, node: CodeNode) -> codegraph_core::Result<()> {
+        self.nodes.insert(node.id, node);
+        Ok(())
+    }
+
+    async fn get_node(&self, id: NodeId) -> codegraph_core::Result<Option<CodeNode>> {
+        Ok(self.nodes.get(&id).cloned())
+    }
+
+    async fn update_node(&mut self, node: CodeNode) -> codegraph_core::Result<()> {
+        self.nodes.insert(node.id, node);
+        Ok(())
+    }
+
+    async fn remove_node(&mut self, id: NodeId) -> codegraph_core::Result<()> {
+        self.nodes.remove(&id);
+        Ok(())
+    }
+
+    async fn find_nodes_by_name(&self, name: &str) -> codegraph_core::Result<Vec<CodeNode>> {
+        Ok(self.nodes
+            .values()
+            .filter(|n| n.name.as_str() == name)
+            .cloned()
+            .collect())
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
     pub settings: Arc<RwLock<Settings>>,
     pub config: Arc<ConfigManager>,
-    pub graph: Arc<RwLock<CodeGraph>>,
+    pub graph: Arc<RwLock<InMemoryGraph>>,
     pub parser: Arc<TreeSitterParser>,
     pub vector_store: Arc<FaissVectorStore>,
     pub embedding_generator: Arc<EmbeddingGenerator>,
@@ -27,10 +108,11 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(config: Arc<ConfigManager>) -> codegraph_core::Result<Self> {
-        let graph = Arc::new(RwLock::new(CodeGraph::new()));
+        let graph = Arc::new(RwLock::new(InMemoryGraph::new()));
         let parser = Arc::new(TreeSitterParser::new());
         let vector_store = Arc::new(FaissVectorStore::new(384)?);
-        let embedding_generator = Arc::new(EmbeddingGenerator::default());
+        // Use advanced embeddings when CODEGRAPH_EMBEDDING_PROVIDER=local, otherwise fallback
+        let embedding_generator = Arc::new(EmbeddingGenerator::with_auto_from_env().await);
         let semantic_search = Arc::new(SemanticSearch::new(
             vector_store.clone(),
             embedding_generator.clone(),

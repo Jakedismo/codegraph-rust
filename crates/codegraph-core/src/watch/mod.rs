@@ -153,11 +153,13 @@ impl IntelligentFileWatcher {
                     .filter(|(_, (_kind, t))| now.duration_since(*t) >= self.debounce)
                     .map(|(k, (kind, _))| (k.clone(), kind.clone()))
                     .collect();
+                let mut processed_paths: Vec<PathBuf> = Vec::new();
                 for (path, kind) in to_process {
                     buf.remove(&path);
                     if let Err(e) = self.process_path_event(&path, &kind, &tx) {
                         warn!("process_path_event failed for {:?}: {:?}", path, e);
                     }
+                    processed_paths.push(path);
                 }
                 last_flush = Instant::now();
 
@@ -178,6 +180,11 @@ impl IntelligentFileWatcher {
 
                 // Perform a light scan to ensure we don't miss events due to platform quirks
                 self.scan_and_emit(&tx);
+
+                // After processing and scanning, re-notify dependents for paths changed this tick
+                if !processed_paths.is_empty() {
+                    self.notify_dependents_bulk(&processed_paths, &tx);
+                }
             }
         }
         // keep watcher until loop ends
@@ -286,22 +293,39 @@ impl IntelligentFileWatcher {
                         fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()),
                     ] {
                         self.last_symbol_changes.insert(k.clone(), changes.clone());
-                        self.symbol_snapshots.insert(k.clone(), symbols_hash.clone());
-                        self.files.insert(k, FileState {
-                            modified: fs::metadata(p).ok().and_then(|m| m.modified().ok()).unwrap_or_else(|| std::time::SystemTime::now()),
-                            code_hash: code_hash.clone(),
-                            symbols_hash: symbols_hash.clone(),
-                            imports: imports.clone(),
-                            language: lang.clone(),
-                        });
+                        self.symbol_snapshots
+                            .insert(k.clone(), symbols_hash.clone());
+                        self.files.insert(
+                            k,
+                            FileState {
+                                modified: fs::metadata(p)
+                                    .ok()
+                                    .and_then(|m| m.modified().ok())
+                                    .unwrap_or_else(|| std::time::SystemTime::now()),
+                                code_hash: code_hash.clone(),
+                                symbols_hash: symbols_hash.clone(),
+                                imports: imports.clone(),
+                                language: lang.clone(),
+                            },
+                        );
                     }
                     self.update_reverse_deps(p, &Some(&prev_state.imports), &imports);
                     let _ = tx.send(ChangeEvent::Modified(p.to_string_lossy().to_string()));
                     // immediate dependents
-                    if let Some(dependents) = self.reverse_deps.get(p).or_else(|| self.reverse_deps.get(&normalize_path(p))).or_else(|| fs::canonicalize(p).ok().and_then(|cp| self.reverse_deps.get(&cp))) {
+                    if let Some(dependents) = self
+                        .reverse_deps
+                        .get(p)
+                        .or_else(|| self.reverse_deps.get(&normalize_path(p)))
+                        .or_else(|| {
+                            fs::canonicalize(p)
+                                .ok()
+                                .and_then(|cp| self.reverse_deps.get(&cp))
+                        })
+                    {
                         for dep in dependents.iter() {
                             if dep != p {
-                                let _ = tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                                let _ = tx
+                                    .send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
                             }
                         }
                     }
@@ -314,22 +338,39 @@ impl IntelligentFileWatcher {
                     normalize_path(p),
                     fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()),
                 ] {
-                    self.files.insert(k.clone(), FileState {
-                        modified: fs::metadata(p).ok().and_then(|m| m.modified().ok()).unwrap_or_else(|| std::time::SystemTime::now()),
-                        code_hash: code_hash.clone(),
-                        symbols_hash: symbols_hash.clone(),
-                        imports: imports.clone(),
-                        language: lang.clone(),
-                    });
-                    self.symbol_snapshots.insert(k.clone(), symbols_hash.clone());
+                    self.files.insert(
+                        k.clone(),
+                        FileState {
+                            modified: fs::metadata(p)
+                                .ok()
+                                .and_then(|m| m.modified().ok())
+                                .unwrap_or_else(|| std::time::SystemTime::now()),
+                            code_hash: code_hash.clone(),
+                            symbols_hash: symbols_hash.clone(),
+                            imports: imports.clone(),
+                            language: lang.clone(),
+                        },
+                    );
+                    self.symbol_snapshots
+                        .insert(k.clone(), symbols_hash.clone());
                 }
                 self.update_reverse_deps(p, &None, &imports);
                 let _ = tx.send(ChangeEvent::Created(p.to_string_lossy().to_string()));
                 // immediate dependents (if any pre-recorded)
-                if let Some(dependents) = self.reverse_deps.get(p).or_else(|| self.reverse_deps.get(&normalize_path(p))).or_else(|| fs::canonicalize(p).ok().and_then(|cp| self.reverse_deps.get(&cp))) {
+                if let Some(dependents) = self
+                    .reverse_deps
+                    .get(p)
+                    .or_else(|| self.reverse_deps.get(&normalize_path(p)))
+                    .or_else(|| {
+                        fs::canonicalize(p)
+                            .ok()
+                            .and_then(|cp| self.reverse_deps.get(&cp))
+                    })
+                {
                     for dep in dependents.iter() {
                         if dep != p {
-                            let _ = tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                            let _ =
+                                tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
                         }
                     }
                 }
@@ -351,6 +392,7 @@ impl IntelligentFileWatcher {
 
         // After scan updates, notify dependents for any changed files (union across path variants)
         let mut notified: HashSet<PathBuf> = HashSet::new();
+        let mut deps_accum: HashSet<PathBuf> = HashSet::new();
         for p in changed_files {
             let keys = [
                 p.clone(),
@@ -364,12 +406,58 @@ impl IntelligentFileWatcher {
                             continue;
                         }
                         if notified.insert(dep.clone()) {
-                            let _ = tx
-                                .send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                            let _ =
+                                tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                        }
+                        deps_accum.insert(dep.clone());
+                    }
+                }
+            }
+        }
+
+        if !deps_accum.is_empty() {
+            let tx2 = tx.clone();
+            let deps: Vec<PathBuf> = deps_accum.into_iter().collect();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(100));
+                for d in deps {
+                    let _ = tx2.send(ChangeEvent::Modified(d.to_string_lossy().to_string()));
+                }
+            });
+        }
+    }
+
+    fn notify_dependents_bulk(&self, paths: &[PathBuf], tx: &CbSender<ChangeEvent>) {
+        let mut notified: HashSet<PathBuf> = HashSet::new();
+        for p in paths {
+            let keys = [
+                p.clone(),
+                normalize_path(p),
+                fs::canonicalize(p).unwrap_or_else(|_| p.clone()),
+            ];
+            for k in keys.iter() {
+                if let Some(dependents) = self.reverse_deps.get(k) {
+                    for dep in dependents.iter() {
+                        if dep == p {
+                            continue;
+                        }
+                        if notified.insert(dep.clone()) {
+                            let _ =
+                                tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
                         }
                     }
                 }
             }
+        }
+        if !notified.is_empty() {
+            let tx2 = tx.clone();
+            let deps: Vec<PathBuf> = notified.into_iter().collect();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(100));
+                for d in deps {
+                    let _ = tx2.send(ChangeEvent::Modified(d.to_string_lossy().to_string()));
+                }
+            });
         }
     }
 
@@ -447,9 +535,8 @@ impl IntelligentFileWatcher {
 
         // Compute and record symbol-level changes for incremental parsing hints
         // Prefer prev FileState when available; fall back to snapshots to avoid key mismatches
-        let mut prev_symbols: Option<HashMap<String, String>> = prev
-            .as_deref()
-            .map(|ps| ps.symbols_hash.clone());
+        let mut prev_symbols: Option<HashMap<String, String>> =
+            prev.as_deref().map(|ps| ps.symbols_hash.clone());
         if prev_symbols.is_none() {
             for k in [
                 path.to_path_buf(),
@@ -478,7 +565,8 @@ impl IntelligentFileWatcher {
         }
         for k in &keys {
             self.last_symbol_changes.insert(k.clone(), changes.clone());
-            self.symbol_snapshots.insert(k.clone(), symbols_hash.clone());
+            self.symbol_snapshots
+                .insert(k.clone(), symbols_hash.clone());
         }
 
         // Update reverse deps mappings based on new imports
@@ -525,8 +613,8 @@ impl IntelligentFileWatcher {
                             continue;
                         }
                         if notified.insert(dep.clone()) {
-                            let _ = tx
-                                .send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                            let _ =
+                                tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
                         }
                         deps_union.insert(dep.clone());
                     }
@@ -557,7 +645,7 @@ impl IntelligentFileWatcher {
                 let tx2 = tx.clone();
                 let deps_vec: Vec<PathBuf> = deps_union.into_iter().collect();
                 std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_millis(30));
+                    std::thread::sleep(Duration::from_millis(60));
                     for dep in deps_vec {
                         let _ = tx2.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
                     }
@@ -995,19 +1083,13 @@ fn extract_imports(file: &Path, src: &str, lang: &Language) -> HashSet<PathBuf> 
                         let tail = &s[q + 6..];
                         if let Some(path_str) = extract_quoted(tail) {
                             if let Some(p) = resolve_relative_js(file, &path_str) {
-                                out.insert(p.clone());
-                                if let Ok(cp) = fs::canonicalize(&p) {
-                                    out.insert(cp);
-                                }
+                                out.insert(p);
                             }
                         }
                     } else if let Some(path_str) = extract_quoted(s) {
                         // import x from 'y'
                         if let Some(p) = resolve_relative_js(file, &path_str) {
-                            out.insert(p.clone());
-                            if let Ok(cp) = fs::canonicalize(&p) {
-                                out.insert(cp);
-                            }
+                            out.insert(p);
                         }
                     }
                 }
@@ -1031,30 +1113,21 @@ fn extract_imports(file: &Path, src: &str, lang: &Language) -> HashSet<PathBuf> 
                                     format!("{}.{}", base, first)
                                 };
                                 if let Some(p) = resolve_python_module(file, &combined) {
-                                    out.insert(p.clone());
-                                    if let Ok(cp) = fs::canonicalize(&p) {
-                                        out.insert(cp);
-                                    }
+                                    out.insert(p);
                                 }
                                 continue;
                             }
                         }
                         // Fallback to base-only
                         if let Some(p) = resolve_python_module(file, base) {
-                            out.insert(p.clone());
-                            if let Ok(cp) = fs::canonicalize(&p) {
-                                out.insert(cp);
-                            }
+                            out.insert(p);
                         }
                     }
                 } else if let Some(rest) = l.strip_prefix("import ") {
                     // import module[.sub]
                     let mod_path = rest.split_whitespace().next().unwrap_or("");
                     if let Some(p) = resolve_python_module(file, mod_path) {
-                        out.insert(p.clone());
-                        if let Ok(cp) = fs::canonicalize(&p) {
-                            out.insert(cp);
-                        }
+                        out.insert(p);
                     }
                 }
             }
@@ -1067,10 +1140,7 @@ fn extract_imports(file: &Path, src: &str, lang: &Language) -> HashSet<PathBuf> 
                     let name = name.trim().trim_end_matches(';');
                     let mut p = file.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
                     p.push(format!("{}.rs", name));
-                    out.insert(p.clone());
-                    if let Ok(cp) = fs::canonicalize(&p) {
-                        out.insert(cp);
-                    }
+                    out.insert(p);
                 }
             }
         }

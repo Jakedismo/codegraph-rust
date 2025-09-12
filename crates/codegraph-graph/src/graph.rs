@@ -3,7 +3,7 @@ use crate::{
     QueryOptimizer,
 };
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId, Result};
+use codegraph_core::{CodeNode, GraphStore, NodeId, Result};
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -135,7 +135,11 @@ impl CodeGraph {
         let start = Instant::now();
         let removed = self
             .storage
-            .remove_edges(from, to, edge_type.as_ref().map(|e| e.to_string()).as_deref())
+            .remove_edges(
+                from,
+                to,
+                edge_type.as_ref().map(|e| e.to_string()).as_deref(),
+            )
             .await?;
 
         // Invalidate caches potentially impacted

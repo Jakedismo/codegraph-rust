@@ -1,10 +1,8 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
-use rocksdb::{DBWithThreadMode, IteratorMode, MultiThreaded, ReadOptions};
-use uuid::Uuid;
+use rocksdb::{DBWithThreadMode, MultiThreaded, ReadOptions};
 
 use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
 

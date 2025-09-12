@@ -1,7 +1,13 @@
 use codegraph_core::{CodeGraphError, CodeNode, Result};
+#[cfg(any(feature = "local-embeddings", feature = "openai"))]
+use std::sync::Arc;
+#[cfg(any(feature = "local-embeddings", feature = "openai"))]
+use crate::embeddings::generator::TextEmbeddingEngine;
 
 pub struct EmbeddingGenerator {
     model_config: ModelConfig,
+    #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+    pub(crate) advanced: Option<Arc<crate::embeddings::generator::AdvancedEmbeddingGenerator>>,
 }
 
 #[derive(Debug, Clone)]
@@ -25,11 +31,62 @@ impl EmbeddingGenerator {
     pub fn new(config: ModelConfig) -> Self {
         Self {
             model_config: config,
+            #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+            advanced: None,
         }
     }
 
     pub fn default() -> Self {
         Self::new(ModelConfig::default())
+    }
+
+    #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+    pub fn set_advanced_engine(
+        &mut self,
+        engine: Arc<crate::embeddings::generator::AdvancedEmbeddingGenerator>,
+    ) {
+        self.advanced = Some(engine);
+    }
+
+    pub fn dimension(&self) -> usize {
+        self.model_config.dimension
+    }
+
+    /// Construct an EmbeddingGenerator that optionally wraps the advanced engine based on env.
+    /// If CODEGRAPH_EMBEDDING_PROVIDER=local, tries to initialize a local-first engine.
+    pub async fn with_auto_from_env() -> Self {
+        #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+        let mut base = Self::new(ModelConfig::default());
+        #[cfg(not(any(feature = "local-embeddings", feature = "openai")))]
+        let base = Self::new(ModelConfig::default());
+        let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
+            .unwrap_or_default()
+            .to_lowercase();
+        if provider == "local" {
+            #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+            {
+                use crate::embeddings::generator::{
+                    AdvancedEmbeddingGenerator, EmbeddingEngineConfig, LocalDeviceTypeCompat,
+                    LocalEmbeddingConfigCompat, LocalPoolingCompat,
+                };
+                let mut cfg = EmbeddingEngineConfig::default();
+                cfg.prefer_local_first = true;
+                // Optional model override via env
+                if let Ok(model_name) = std::env::var("CODEGRAPH_LOCAL_MODEL") {
+                    cfg.local = Some(LocalEmbeddingConfigCompat {
+                        model_name,
+                        device: LocalDeviceTypeCompat::Cpu,
+                        cache_dir: None,
+                        max_sequence_length: 512,
+                        pooling_strategy: LocalPoolingCompat::Mean,
+                    });
+                }
+                if let Ok(engine) = AdvancedEmbeddingGenerator::new(cfg).await {
+                    base.advanced = Some(Arc::new(engine));
+                }
+            }
+        }
+        base
     }
 
     pub async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
@@ -38,13 +95,32 @@ impl EmbeddingGenerator {
     }
 
     pub async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {
-        let mut embeddings = Vec::with_capacity(nodes.len());
+        #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+        if let Some(engine) = &self.advanced {
+            // Use provider's batched path when available
+            let texts: Vec<String> = nodes.iter().map(|n| self.prepare_text(n)).collect();
+            tracing::info!(
+                target: "codegraph_vector::embeddings",
+                "Using advanced embedding engine for batch: {} items",
+                texts.len()
+            );
+            let embs = engine.embed_many(&texts).await?;
+            if embs.len() != texts.len() {
+                return Err(CodeGraphError::Vector(format!(
+                    "provider returned {} embeddings for {} inputs",
+                    embs.len(),
+                    texts.len()
+                )));
+            }
+            return Ok(embs);
+        }
 
+        // Fallback: sequential deterministic embeddings
+        let mut embeddings = Vec::with_capacity(nodes.len());
         for node in nodes {
             let embedding = self.generate_embedding(node).await?;
             embeddings.push(embedding);
         }
-
         Ok(embeddings)
     }
 
@@ -78,6 +154,12 @@ impl EmbeddingGenerator {
     }
 
     async fn encode_text(&self, text: &str) -> Result<Vec<f32>> {
+        // Prefer advanced engine when available
+        #[cfg(any(feature = "local-embeddings", feature = "openai"))]
+        if let Some(engine) = &self.advanced {
+            return engine.embed(text).await;
+        }
+
         tokio::task::spawn_blocking({
             let text = text.to_string();
             let dimension = self.model_config.dimension;

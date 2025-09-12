@@ -1,0 +1,87 @@
+# Example configuration for different performance modes
+
+# High Accuracy Mode - Best quality, slower processing
+[performance_high_accuracy]
+mode = "high_accuracy"
+
+[performance_high_accuracy.index]
+index_type = "Flat"
+nprobe = 50
+nlist = 200
+m = 48
+ef_construction = 500
+ef_search = 200
+use_gpu = false
+
+[performance_high_accuracy.cache]
+enabled = true
+max_size_mb = 512
+ttl_secs = 7200
+eviction_policy = "lru"
+preload_common = true
+
+[performance_high_accuracy.processing]
+batch_size = 16
+parallel_workers = 4
+chunk_size = 256
+overlap_size = 100
+max_queue_size = 500
+timeout_secs = 60
+
+# High Speed Mode - Fast processing with good accuracy
+[performance_high_speed]
+mode = "high_speed"
+
+[performance_high_speed.index]
+index_type = "IVFPQ"
+nprobe = 8
+nlist = 50
+m = 16
+ef_construction = 100
+ef_search = 32
+use_gpu = false
+quantization = "PQ8"
+
+[performance_high_speed.cache]
+enabled = true
+max_size_mb = 128
+ttl_secs = 1800
+eviction_policy = "lfu"
+preload_common = false
+
+[performance_high_speed.processing]
+batch_size = 64
+parallel_workers = 16
+chunk_size = 1024
+overlap_size = 25
+max_queue_size = 2000
+timeout_secs = 15
+
+# Ultra Fast Mode - Minimal latency, edge deployment
+[performance_ultra_fast]
+mode = "ultra_fast"
+
+[performance_ultra_fast.index]
+index_type = "IVFPQ"
+nprobe = 4
+nlist = 25
+m = 8
+ef_construction = 50
+ef_search = 16
+use_gpu = false
+quantization = "PQ4"
+
+[performance_ultra_fast.cache]
+enabled = true
+max_size_mb = 64
+ttl_secs = 900
+eviction_policy = "fifo"
+preload_common = false
+
+[performance_ultra_fast.processing]
+batch_size = 128
+parallel_workers = 24
+chunk_size = 2048
+overlap_size = 0
+max_queue_size = 5000
+timeout_secs = 10

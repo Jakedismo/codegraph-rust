@@ -192,7 +192,7 @@ impl ContextRetriever {
     async fn hybrid_search(
         &self,
         _query: &str,
-        query_embedding: &[f32],
+        _query_embedding: &[f32],
         keywords: &[String],
     ) -> Result<Vec<RetrievalResult>> {
         let mut results = Vec::new();
@@ -201,7 +201,7 @@ impl ContextRetriever {
         #[cfg(feature = "faiss")]
         let semantic_scores = if let Some(semantic_search) = &self.semantic_search {
             let search_results = semantic_search
-                .search_by_embedding(query_embedding, self.config.max_results * 3)
+                .search_by_embedding(_query_embedding, self.config.max_results * 3)
                 .await?;
             search_results
                 .into_iter()

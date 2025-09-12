@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use async_graphql::ID;
 use codegraph_core::{CodeGraphError, NodeId, Result};
-use codegraph_graph::CodeGraph;
+use crate::graph_stub::CodeGraph;
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use serde::{de::DeserializeOwned, Serialize};
@@ -321,10 +321,16 @@ impl PerformanceOptimizer {
         // Prefer A* with a lightweight admissible heuristic (0 heuristic becomes Dijkstra)
         // If weights are non-uniform, A* will help prune. If not, fallback to BFS via graph.shortest_path
         // Try A* first and fall back on failure for safety.
-        let heuristic = |_a: NodeId, _b: NodeId| -> f64 { 0.0 };
+        let heuristic = |_node: &NodeId| -> f64 { 0.0 };
         match graph.astar_shortest_path(from, to, heuristic).await {
-            Ok(opt) => Ok(opt),
-            Err(_) => graph.shortest_path(from, to).await,
+            Ok(path) => Ok(Some(path)),
+            Err(_) => {
+                // Fallback to shortest_path
+                match graph.shortest_path(from, to).await {
+                    Ok(path) => Ok(Some(path)),
+                    Err(_) => Ok(None),
+                }
+            }
         }
     }
 }

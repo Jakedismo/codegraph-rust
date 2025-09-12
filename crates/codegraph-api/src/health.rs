@@ -1,4 +1,6 @@
 use crate::{ApiError, ApiResult, AppState};
+use crate::semantic_search_ext::SemanticSearchExt;
+use crate::parser_ext::TreeSitterParserExt;
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

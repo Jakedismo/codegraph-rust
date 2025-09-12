@@ -235,6 +235,9 @@ pub struct AdvancedEmbeddingGenerator {
 }
 
 impl AdvancedEmbeddingGenerator {
+    pub fn has_provider(&self) -> bool {
+        self.pipeline.is_some()
+    }
     pub async fn new(config: EmbeddingEngineConfig) -> Result<Self> {
         let cache = Arc::new(Mutex::new(EmbeddingLruCache::new(
             config.cache_ttl,

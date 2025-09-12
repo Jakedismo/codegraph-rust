@@ -30,6 +30,7 @@ futures = { workspace = true }
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+regex = { workspace = true }
 
 # Error Handling
 thiserror = { workspace = true }
@@ -46,9 +47,10 @@ tracing-subscriber = { workspace = true }
 
 # Internal dependencies - CodeGraph functionality
 codegraph-core = { workspace = true }
-codegraph-graph = { workspace = true }
-codegraph-vector = { workspace = true }
-codegraph-cache = { workspace = true }
+# NOTE: codegraph-graph excluded due to transactional async issues
+# codegraph-graph = { workspace = true }
+codegraph-vector = { workspace = true, default-features = false }
+codegraph-cache = { workspace = true, default-features = false }
 codegraph-parser = { workspace = true }
 
 [dev-dependencies]

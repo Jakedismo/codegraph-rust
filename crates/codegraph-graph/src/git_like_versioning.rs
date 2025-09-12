@@ -1,11 +1,8 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use codegraph_core::{
-    ChangeType, CodeGraphError, NodeId, Result, SnapshotId, Version, VersionDiff, VersionId,
-};
+use codegraph_core::{ChangeType, CodeGraphError, NodeId, Result, VersionDiff, VersionId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Branch {

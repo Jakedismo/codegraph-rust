@@ -9,7 +9,7 @@ use codegraph_core::{
     ChangeType, IsolationLevel, Snapshot, SnapshotId, TransactionId, Version, VersionDiff,
     VersionId,
 };
-use codegraph_graph::{
+use crate::graph_stub::{
     Branch, ConcurrentTransactionManager, ConflictType, GitLikeVersionManager, IntegrityReport,
     MergeConflict, MergeResult, RebaseResult, RecoveryManager, RecoveryStatistics, Tag,
     TransactionStatistics, TransactionalGraph,

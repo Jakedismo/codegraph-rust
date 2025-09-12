@@ -1,10 +1,6 @@
 use core_rag_mcp_server::{CoreRagMcpServer, CoreRagServerConfig};
-use rmcp::{
-    transport::{
-        stdio,
-        streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService},
-    },
-    ServiceExt,
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpServerConfig, StreamableHttpService,
 };
 use std::{env, net::SocketAddr, sync::Arc};
 use tracing::{error, info, warn};
@@ -50,7 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create session manager (using default local session manager)
     let session_manager = Arc::new(
-        rmcp::transport::streamable_http_server::session::local::LocalSessionManager::new(),
+        rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default(),
     );
 
     // Create HTTP service
@@ -75,9 +71,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/", axum::routing::get(health_check))
         .route("/health", axum::routing::get(health_check))
         .route("/status", axum::routing::get(server_status))
-        .fallback_service(tower::service_fn(move |req| {
+        .fallback_service(tower::util::service_fn(move |req| {
             let service = http_service.clone();
-            async move { service.handle(req).await }
+            async move {
+                let resp = service.handle(req).await;
+                Ok::<_, std::convert::Infallible>(resp)
+            }
         }));
 
     // Create server

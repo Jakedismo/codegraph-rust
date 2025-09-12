@@ -73,7 +73,7 @@ impl Server {
             let _ = socket.set_reuseport(true);
 
             // Enable OS-level TCP keepalive (interval platform dependent)
-            let _ = socket.set_keepalive(Some(Duration::from_secs(60)));
+            let _ = socket.set_keepalive(true);
 
             socket
                 .bind(self.addr)

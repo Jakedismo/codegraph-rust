@@ -2,8 +2,7 @@ use codegraph_api::Server;
 use codegraph_core::ConfigManager;
 use std::net::SocketAddr;
 use std::str::FromStr;
-use std::sync::Arc;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> codegraph_core::Result<()> {
@@ -33,14 +32,15 @@ async fn main() -> codegraph_core::Result<()> {
     let _leak_guard = codegraph_api::leak_guard::LeakGuard::new();
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
+            EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "codegraph_api=debug,tower_http=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
     // Load configuration (env-aware) with hot-reload
-    let config = ConfigManager::new_watching(None)?;
+    let config = ConfigManager::new_watching(None)
+        .map_err(|e| codegraph_core::CodeGraphError::InvalidOperation(e.to_string()))?;
     let settings = config.settings().read().await.clone();
 
     // Bind address configurable via config or env override

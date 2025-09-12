@@ -1,10 +1,13 @@
 use axum_test::TestServer;
 use codegraph_api::{create_router, AppState};
+use codegraph_core::ConfigManager;
 use serde_json::json;
+use std::sync::Arc;
 
 #[tokio::test]
 async fn health_endpoint_returns_ok() {
-    let state = AppState::new().await.expect("app state");
+    let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    let state = AppState::new(config).await.expect("app state");
     let app = create_router(state);
     let server = TestServer::new(app).unwrap();
 
@@ -16,7 +19,8 @@ async fn health_endpoint_returns_ok() {
 
 #[tokio::test]
 async fn graphiql_serves_html() {
-    let state = AppState::new().await.expect("app state");
+    let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    let state = AppState::new(config).await.expect("app state");
     let app = create_router(state);
     let server = TestServer::new(app).unwrap();
 
@@ -32,7 +36,8 @@ async fn graphiql_serves_html() {
 
 #[tokio::test]
 async fn graphql_health_query() {
-    let state = AppState::new().await.expect("app state");
+    let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    let state = AppState::new(config).await.expect("app state");
     let app = create_router(state);
     let server = TestServer::new(app).unwrap();
 
@@ -49,7 +54,8 @@ async fn graphql_health_query() {
 
 #[tokio::test]
 async fn http2_config_and_health_endpoints() {
-    let state = AppState::new().await.expect("app state");
+    let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    let state = AppState::new(config).await.expect("app state");
     let app = create_router(state);
     let server = TestServer::new(app).unwrap();
 
@@ -73,7 +79,8 @@ async fn parse_endpoint_parses_temp_rust_file() {
     )
     .unwrap();
 
-    let state = AppState::new().await.expect("app state");
+    let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    let state = AppState::new(config).await.expect("app state");
     let app = create_router(state);
     let server = TestServer::new(app).unwrap();
 

@@ -1,4 +1,5 @@
 use crate::{ApiError, ApiResult, AppState};
+use crate::state::InMemoryGraph;
 use axum::{
     extract::{Path, Query, State},
     response::IntoResponse,
@@ -75,7 +76,7 @@ pub async fn stream_search_results(
 
 fn create_backpressure_stream(
     results: Vec<codegraph_vector::SearchResult>,
-    graph: tokio::sync::RwLockReadGuard<'_, Box<dyn GraphStore + Send + Sync>>,
+    graph: tokio::sync::RwLockReadGuard<'_, InMemoryGraph>,
     batch_size: usize,
     throttle_duration: Duration,
     stream_id: String,

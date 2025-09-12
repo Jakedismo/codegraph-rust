@@ -1,0 +1,150 @@
+# Example configuration with templates and presets
+
+# Main configuration
+[embedding]
+provider = "local"
+dimension = 768
+
+[performance]
+mode = "balanced"
+auto_tune = true
+profile_enabled = true
+
+[runtime]
+allow_runtime_switching = true
+hot_reload = true
+config_watch_interval_secs = 30
+fallback_configs = ["config/fallback.toml", "config/default.toml"]
+
+# Environment variable overrides mapping
+# These map environment variables to configuration paths
+[runtime.environment_overrides]
+CODEGRAPH_CACHE_SIZE = "performance.cache.max_size_mb"
+CODEGRAPH_BATCH_SIZE = "performance.processing.batch_size"
+CODEGRAPH_WORKERS = "performance.processing.parallel_workers"
+CODEGRAPH_EMBEDDING_DIM = "embedding.dimension"
+
+[monitoring]
+enabled = true
+metrics_enabled = true
+trace_enabled = true
+profile_enabled = true
+metrics_interval_secs = 30
+export_targets = ["prometheus://localhost:9090", "jaeger://localhost:14268"]
+
+# Template definitions
+[templates.quick_configs.development]
+name = "development"
+description = "Development environment with fast iteration"
+embedding_preset = "local-minilm"
+performance_profile = "research"
+monitoring_enabled = true
+
+[templates.quick_configs.staging]
+name = "staging"
+description = "Staging environment with balanced performance"
+embedding_preset = "openai-small"
+performance_profile = "production"
+monitoring_enabled = true
+
+[templates.quick_configs.production]
+name = "production"
+description = "Production environment with high performance"
+embedding_preset = "openai-large"
+performance_profile = "production"
+monitoring_enabled = true
+
+[templates.quick_configs.edge]
+name = "edge"
+description = "Edge deployment with minimal resources"
+embedding_preset = "local-minilm"
+performance_profile = "edge"
+monitoring_enabled = false
+
+# Custom embedding presets
+[templates.embedding_presets.custom_bert]
+provider = "local"
+dimension = 768
+cache_enabled = true
+cache_ttl_secs = 7200
+normalize_embeddings = true
+
+[templates.embedding_presets.custom_bert.local]
+model_path = "./models/custom-bert-base"
+model_type = "bert"
+device = "cuda"
+batch_size = 64
+max_sequence_length = 512
+
+[templates.embedding_presets.custom_openai]
+provider = "openai"
+dimension = 3072
+cache_enabled = true
+cache_ttl_secs = 3600
+normalize_embeddings = false
+
+[templates.embedding_presets.custom_openai.openai]
+model = "text-embedding-3-large"
+api_key_env = "OPENAI_API_KEY"
+api_base = "https://api.openai.com/v1"
+max_retries = 5
+timeout_secs = 60
+
+# Custom performance profiles
+[templates.performance_profiles.realtime_ai]
+mode = "custom"
+auto_tune = true
+profile_enabled = true
+
+[templates.performance_profiles.realtime_ai.index]
+index_type = "HNSW"
+nprobe = 32
+nlist = 100
+m = 32
+ef_construction = 200
+ef_search = 100
+use_gpu = true
+
+[templates.performance_profiles.realtime_ai.cache]
+enabled = true
+max_size_mb = 1024
+ttl_secs = 300
+eviction_policy = "lru"
+preload_common = true
+
+[templates.performance_profiles.realtime_ai.processing]
+batch_size = 64
+parallel_workers = 16
+chunk_size = 256
+overlap_size = 50
+max_queue_size = 10000
+timeout_secs = 5
+
+[templates.performance_profiles.batch_processing]
+mode = "custom"
+auto_tune = false
+profile_enabled = false
+
+[templates.performance_profiles.batch_processing.index]
+index_type = "IVFFlat"
+nprobe = 100
+nlist = 500
+m = 64
+ef_construction = 1000
+ef_search = 500
+use_gpu = false
+
+[templates.performance_profiles.batch_processing.cache]
+enabled = false
+max_size_mb = 0
+ttl_secs = 0
+eviction_policy = "none"
+preload_common = false
+
+[templates.performance_profiles.batch_processing.processing]
+batch_size = 256
+parallel_workers = 32
+chunk_size = 4096
+overlap_size = 200
+max_queue_size = 50000
+timeout_secs = 300

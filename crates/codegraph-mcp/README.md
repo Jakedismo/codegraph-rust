@@ -1,6 +1,6 @@
-CodeGraph MCP (Rust)
+# CodeGraph MCP
 
-An async, type-safe Rust client SDK for the Model Context Protocol (MCP).
+An async, type-safe Rust implementation for the Model Context Protocol (MCP) with a comprehensive CLI for server management and project indexing.
 
 Features
 - Async/await with Tokio
@@ -42,4 +42,105 @@ Notes
 - Supported protocol versions: 2024-11-05, 2025-03-26 (default)
 - Uses websocket ping/pong for heartbeat; integrates with HeartbeatManager
 - Requests are timed out; responses routed via in-flight map
+
+## CLI Usage
+
+The `codegraph` CLI provides comprehensive tools for managing MCP servers and indexing projects.
+
+### Installation
+
+```bash
+cargo install --path .
+```
+
+### Server Management
+
+```bash
+# Start MCP server with STDIO transport
+codegraph start stdio
+
+# Start with HTTP transport
+codegraph start http --host 127.0.0.1 --port 3000
+
+# Start with dual transport (STDIO + HTTP)
+codegraph start dual --port 3000
+
+# Check server status
+codegraph status --detailed
+
+# Stop server
+codegraph stop
+```
+
+### Project Indexing
+
+```bash
+# Index current directory
+codegraph index .
+
+# Index with specific languages
+codegraph index . --languages rust,python,typescript
+
+# Watch for changes and auto-reindex
+codegraph index . --watch
+
+# Force reindex with multiple workers
+codegraph index . --force --workers 8
+```
+
+### Code Search
+
+```bash
+# Semantic search
+codegraph search "authentication handler"
+
+# Exact match
+codegraph search "fn process_data" --search-type exact
+
+# Regex search
+codegraph search "fn \w+_handler" --search-type regex
+
+# Output as JSON
+codegraph search "database" --format json --limit 20
+```
+
+### Configuration
+
+```bash
+# Show configuration
+codegraph config show
+
+# Set configuration values
+codegraph config set embedding_model openai
+codegraph config set vector_dimension 1536
+
+# Validate configuration
+codegraph config validate
+```
+
+### Statistics
+
+```bash
+# Show all statistics
+codegraph stats
+
+# Index statistics only
+codegraph stats --index --format json
+```
+
+### Project Initialization
+
+```bash
+# Initialize new project
+codegraph init --name my-project
+```
+
+### Cleanup
+
+```bash
+# Clean all resources
+codegraph clean --all --yes
+```
+
+For more detailed documentation, run `codegraph --help` or `codegraph <command> --help`.
 

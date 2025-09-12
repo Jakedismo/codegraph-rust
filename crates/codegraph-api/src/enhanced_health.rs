@@ -1,4 +1,6 @@
 use crate::{ApiError, ApiResult, AppState};
+use crate::parser_ext::TreeSitterParserExt;
+use crate::semantic_search_ext::SemanticSearchExt;
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -137,7 +139,7 @@ async fn check_database_health_enhanced(state: &AppState) -> ComponentStatus {
 
         // Additional checks
         let connection_test = graph.test_connection().await;
-        Ok((stats, connection_test))
+        Ok::<_, codegraph_core::CodeGraphError>((stats, connection_test))
     })
     .await;
 
@@ -148,7 +150,7 @@ async fn check_database_health_enhanced(state: &AppState) -> ComponentStatus {
             let mut details = HashMap::new();
             details.insert("total_nodes".to_string(), stats.total_nodes.to_string());
             details.insert("total_edges".to_string(), stats.total_edges.to_string());
-            details.insert("connection_test".to_string(), connection_ok.to_string());
+            details.insert("connection_test".to_string(), connection_ok.unwrap_or(false).to_string());
 
             // Calculate health score based on response time and stats
             let health_score = calculate_health_score(response_time, Some(&details));
@@ -195,7 +197,7 @@ async fn check_vector_search_health_enhanced(state: &AppState) -> ComponentStatu
 
         // Test with a small search
         let test_result = state.semantic_search.test_search().await;
-        Ok((stats, test_result))
+        Ok::<_, codegraph_core::CodeGraphError>((stats, test_result))
     })
     .await;
 
@@ -210,7 +212,7 @@ async fn check_vector_search_health_enhanced(state: &AppState) -> ComponentStatu
             );
             details.insert("index_type".to_string(), format!("{:?}", stats.index_type));
             details.insert("dimension".to_string(), stats.dimension.to_string());
-            details.insert("search_test".to_string(), test_ok.to_string());
+            details.insert("search_test".to_string(), test_ok.unwrap_or(false).to_string());
 
             let health_score = calculate_health_score(response_time, Some(&details));
 

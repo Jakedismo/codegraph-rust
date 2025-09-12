@@ -55,7 +55,7 @@ impl WebSocketTransport {
         let (tx, rx) = broadcast::channel::<IncomingFrame>(128);
 
         // If not provided, create a disabled heartbeat manager
-        let mut hb = heartbeat.unwrap_or_else(HeartbeatManager::new);
+        let mut hb = heartbeat.unwrap_or_default();
         let hb_clone = hb.clone();
         let writer = Arc::new(RwLock::new(sink));
         let writer_clone = writer.clone();
@@ -86,7 +86,7 @@ impl WebSocketTransport {
                         if let Err(e) = writer_clone
                             .write()
                             .await
-                            .send(WsMessage::Pong(payload.into()))
+                            .send(WsMessage::Pong(payload))
                             .await
                         {
                             error!(?e, "Failed to send PONG");

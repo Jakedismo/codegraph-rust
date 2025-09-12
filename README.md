@@ -1,1085 +1,843 @@
----
-pdf-engine: lualatex
-mainfont: "DejaVu Serif"
-monofont: "DejaVu Sans Mono"
-header-includes: |
-  \usepackage{fontspec}
-  \directlua{
-    luaotfload.add_fallback("emojifallback", {"NotoColorEmoji:mode=harf;"})
-  }
-  \setmainfont[
-    RawFeature={fallback=emojifallback}
-  ]{DejaVu Serif}
----
+# CodeGraph CLI MCP Server
 
-<div align="center">
+🚀 **A high-performance CLI tool for managing MCP servers and indexing codebases with advanced architectural analysis capabilities.**
 
-# 🔗 CodeGraph
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
 
-**High-Performance Code Analysis & Embedding System**
+## 📋 Table of Contents
 
-*Production-ready graph-based code intelligence powered by Rust, RocksDB, FAISS, and Tree-sitter*
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [CLI Commands](#cli-commands)
+- [Configuration](#configuration)
+- [User Workflows](#user-workflows)
+- [Integration Guide](#integration-guide)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
 
-[![Rust](https://img.shields.io/badge/Rust-1.75+-black?style=for-the-badge&logo=rust&logoColor=white)](https://rustlang.org)
-[![Tokio](https://img.shields.io/badge/Tokio-Async-green?style=for-the-badge&logo=tokio&logoColor=white)](https://tokio.rs)
-[![Axum](https://img.shields.io/badge/Axum-Web_Framework-663399?style=for-the-badge)](https://github.com/tokio-rs/axum)
-[![RocksDB](https://img.shields.io/badge/RocksDB-Storage-FF6900?style=for-the-badge&logo=rocksdb&logoColor=white)](https://rocksdb.org)
-[![FAISS](https://img.shields.io/badge/FAISS-Vector_Search-4285F4?style=for-the-badge)](https://github.com/facebookresearch/faiss)
-[![MCP](https://img.shields.io/badge/MCP-Protocol_Ready-00D4AA?style=for-the-badge)](https://spec.modelcontextprotocol.io/)
+## 🎯 Overview
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/ouroboros-demo/ci.yml?branch=main&style=flat-square&label=Build)](https://github.com/ouroboros-demo/actions)
-[![Tests](https://img.shields.io/github/actions/workflow/status/ouroboros-demo/test.yml?branch=main&style=flat-square&label=Tests)](https://github.com/ouroboros-demo/actions)
-[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-brightgreen?style=flat-square)](Cargo.toml)
-[![Docs](https://img.shields.io/badge/docs-available-blue?style=flat-square)](./docs/index.md)
+CodeGraph is a powerful CLI tool that combines MCP (Model Context Protocol) server management with sophisticated code analysis capabilities. It provides a unified interface for indexing projects, managing embeddings, and running MCP servers with multiple transport options.
 
-[📖 Documentation](#-documentation) •
-[🚀 Quick Start](#-quick-start) •
-[💡 Examples](#-usage-examples) •
-[📊 Benchmarks](#-performance-benchmarks) •
-[🛠️ API Reference](#️-api-reference) •
-[🤝 Contributing](#-contributing)
+### Key Capabilities
 
-</div>
+- **🔍 Advanced Code Analysis**: Parse and analyze code across multiple languages using Tree-sitter
+- **🚄 Dual Transport Support**: Run MCP servers with STDIO, HTTP, or both simultaneously
+- **🎯 Vector Search**: Semantic code search using FAISS-powered vector embeddings
+- **📊 Graph-Based Architecture**: Navigate code relationships with RocksDB-backed graph storage
+- **⚡ High Performance**: Optimized for large codebases with parallel processing
+- **🔧 Flexible Configuration**: Extensive configuration options for embedding models and performance tuning
 
----
+## ✨ Features
 
-## 🎯 What is CodeGraph?
+### Core Features
 
-CodeGraph is a **blazingly fast, production-ready code analysis platform** that transforms source code into intelligent, queryable graph structures. Designed for modern AI-driven development workflows, it delivers **sub-50ms query performance** with seamless integration into code intelligence pipelines.
+- **Project Indexing**
+  - Multi-language support (Rust, Python, JavaScript, TypeScript, Go, Java, C++)
+  - Incremental indexing with file watching
+  - Parallel processing with configurable workers
+  - Smart caching for improved performance
 
-### 🌟 Why Choose CodeGraph?
+- **MCP Server Management**
+  - STDIO transport for direct communication
+  - HTTP streaming with SSE support
+  - Dual transport mode for maximum flexibility
+  - Background daemon mode with PID management
 
-- **🚀 Performance-First** - Sub-50ms queries, 1000+ concurrent users, 50k LOC/min indexing
-- **🧠 AI-Native** - Built-in Model Context Protocol (MCP) support for seamless AI agent integration
-- **📊 Graph Intelligence** - Rich semantic relationships between code entities with vector similarity search
-- **🌐 Universal Language Support** - Rust, Python, JavaScript, TypeScript, Go, Java, C++, and more
-- **🏗️ Production-Grade** - Memory-safe Rust implementation, battle-tested at scale
-- **🔄 Real-Time Updates** - Incremental parsing with live graph updates
-- **🔌 Developer-Friendly** - Comprehensive REST/GraphQL APIs with SDKs for all major languages
-- **📈 Observable** - Built-in metrics, tracing, and comprehensive monitoring
-- **🎯 Zero-Config** - Works out of the box with sensible defaults, scales to enterprise needs
+- **Code Search**
+  - Semantic search using embeddings
+  - Exact match and fuzzy search
+  - Regex and AST-based queries
+  - Configurable similarity thresholds
 
-### 🎭 Perfect For
+- **Architecture Analysis**
+  - Component relationship mapping
+  - Dependency analysis
+  - Code pattern detection
+  - Architecture visualization support
 
-- **AI/ML Engineers**: Building code intelligence systems and RAG applications
-- **Development Teams**: Code analysis, refactoring assistance, and technical debt monitoring  
-- **DevOps Engineers**: CI/CD integration and automated code quality assessments
-- **Researchers**: Large-scale code analysis and software engineering research
+## 🏗️ Architecture
 
-### 🏗️ Architecture Overview
-
-```mermaid
-graph TB
-    Client[Client Applications] --> API[CodeGraph API]
-    API --> Core[codegraph-core]
-    API --> Graph[codegraph-graph]
-    API --> Vector[codegraph-vector] 
-    API --> Parser[codegraph-parser]
-    
-    Graph --> RocksDB[(RocksDB)]
-    Vector --> FAISS[(FAISS Index)]
-    Parser --> TreeSitter[Tree-sitter]
-    
-    API --> MCP[MCP Server]
-    MCP --> Agents[AI Agents]
+```
+CodeGraph System Architecture
+┌─────────────────────────────────────────────────────┐
+│                   CLI Interface                     │
+│                  (codegraph CLI)                    │
+└─────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────┐
+│                   Core Engine                       │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │   Parser    │  │  Graph Store │  │   Vector   │  │ 
+│  │ (Tree-sittr)│  │  (RocksDB)   │  │   Search   │  │
+│  └─────────────┘  └──────────────┘  │  (FAISS)   │  │
+│                                     └────────────┘  │
+└─────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────┐
+│                  MCP Server Layer                   │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │    STDIO    │  │     HTTP     │  │    Dual    │  │
+│  │  Transport  │  │  Transport   │  │    Mode    │  │
+│  └─────────────┘  └──────────────┘  └────────────┘  │
+└─────────────────────────────────────────────────────┘
 ```
 
----
+## 📦 Prerequisites
 
-## 🚀 Quick Start
+### System Requirements
 
-### ✅ Prerequisites Check
+- **Operating System**: Linux, macOS, or Windows
+- **Rust**: 1.75 or higher
+- **Memory**: Minimum 4GB RAM (8GB recommended for large codebases)
+- **Disk Space**: 1GB for installation + space for indexed data
 
-<details>
-<summary><b>📋 System Requirements</b></summary>
-
-**Required:**
-
-- **Rust 1.75+** - [Install via rustup](https://rustup.rs/)
-- **4GB RAM minimum** (8GB+ recommended for large codebases)
-- **2GB free disk space**
-
-**System Dependencies:**
-
-- **Linux**: `build-essential`, `clang`, `cmake`, `pkg-config`
-- **macOS**: Xcode Command Line Tools (`xcode-select --install`)
-- **Windows**: Visual Studio Build Tools 2022+ with C++ components
-
-**Quick Check:**
+### Required Dependencies
 
 ```bash
-# Verify Rust installation
-rustc --version  # Should be 1.75.0+
-cargo --version
+# macOS
+brew install cmake clang
+
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install cmake clang libssl-dev pkg-config
+
+# Fedora/RHEL
+sudo dnf install cmake clang openssl-devel
 ```
 
-</details>
+### Optional Dependencies
 
-### ⚡ 30-Second Setup
+- **FAISS** (for vector search acceleration)
+- **Local Embeddings (Hugging Face + Candle)**
+  - Enables on-device embedding generation (no external API calls)
+  - Downloads models from Hugging Face Hub on first run and caches them locally
+  - Internet access required for the initial model download (or pre-populate cache)
+  - Default runs on CPU; advanced GPU backends (CUDA/Metal) require appropriate hardware and drivers
+- **CUDA** (for GPU-accelerated embeddings)
+- **Git** (for repository integration)
 
-```bash
-# 1. Clone and enter directory
-git clone https://github.com/ouroboros-demo/codegraph.git
-cd codegraph
+## 🚀 Installation
 
-# 2. Build stable crates (core, vector, graph)
-cargo build -p codegraph-core -p codegraph-vector -p codegraph-graph
-
-# 3. Optional: check API compile status (WIP)
-cargo check -p codegraph-api   # may report errors on this branch
-
-# 4. When the API compiles on your branch, you can start it with:
-# cargo run --release -p codegraph-api
-# and then verify: curl http://localhost:8000/health
-```
-
-Note: The API server and MCP binaries are under active development and may not compile on this branch yet. Start with the stable library crates above.
-
-### 🎯 Your First Analysis
+### Method 1: Install from Source
 
 ```bash
-# Add your first project for analysis
-curl -X POST http://localhost:8000/api/v1/projects \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "my-project",
-    "path": "/path/to/your/codebase",
-    "languages": ["rust", "python", "javascript"]
-  }'
+# Clone the repository
+git clone https://github.com/your-org/codegraph-cli-mcp.git
+cd codegraph-cli-mcp
 
-# Search for functions containing "async"
-curl "http://localhost:8000/api/v1/search?q=async+function&limit=5"
-```
-
-### 📦 Installation Options
-
-<details>
-<summary><b>🐳 Docker (Recommended for Production)</b></summary>
-
-```bash
-# Pull the latest image
-docker pull codegraph/api:latest
-
-# Run with default configuration
-docker run -p 8000:8000 codegraph/api:latest
-
-# Run with custom configuration
-docker run -p 8000:8000 \
-  -v $(pwd)/data:/app/data \
-  -e CODEGRAPH_LOG_LEVEL=info \
-  codegraph/api:latest
-```
-
-</details>
-
-<details>
-<summary><b>📝 From Source (Development)</b></summary>
-
-```bash
-# Full build with all features
-cargo build --release --all-features
-
-# Development build (faster compilation)
-cargo build
+# Build the project
+cargo build --release
 
 # Install globally
-cargo install --path crates/codegraph-api
-```
+cargo install --path crates/codegraph-mcp
 
-</details>
+# Verify installation
+codegraph --version
 
-<details>
-<summary><b>🎯 Binary Releases</b></summary>
+### Enabling Local Embeddings (Optional)
 
-Download pre-built binaries from [GitHub Releases](https://github.com/codegraph/embedding-system/releases):
+If you want to use a local embedding model (Hugging Face) instead of remote providers:
 
-```bash
-# Linux x86_64
-wget https://github.com/codegraph/embedding-system/releases/latest/download/codegraph-linux-x86_64.tar.gz
-
-# macOS (Apple Silicon)
-wget https://github.com/codegraph/embedding-system/releases/latest/download/codegraph-macos-arm64.tar.gz
-
-# Windows
-wget https://github.com/codegraph/embedding-system/releases/latest/download/codegraph-windows-x86_64.zip
-```
-
-</details>
-
----
-
-## 💡 Usage Examples
-
-### 🔥 REST API Quickstart
+1) Build with the local embeddings feature for crates that use vector search (the API and/or CLI server):
 
 ```bash
-# Health and status check
-curl http://localhost:8000/health
+# Build API with local embeddings enabled
+cargo build -p codegraph-api --features codegraph-vector/local-embeddings
 
-# List all projects
-curl http://localhost:8000/api/v1/projects
-
-# Create a new project for analysis
-curl -X POST http://localhost:8000/api/v1/projects \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "my-rust-project",
-    "path": "/path/to/project",
-    "languages": ["rust", "python"],
-    "ignore_patterns": ["target/", "*.pyc", "__pycache__/"]
-  }'
-
-# Search for async patterns
-curl "http://localhost:8000/api/v1/search?q=async+function&project=my-rust-project&limit=10"
-
-# Find similar code using vector search
-curl -X POST http://localhost:8000/api/v1/similar \
-  -H "Content-Type: application/json" \
-  -d '{
-    "code": "async fn process_data(input: Vec<String>) -> Result<()>",
-    "project_id": "my-rust-project",
-    "threshold": 0.8,
-    "limit": 5
-  }'
+# (Optional) If your CLI server crate depends on vector features, enable similarly:
+cargo build -p core-rag-mcp-server --features codegraph-vector/local-embeddings
 ```
 
-### ⚡ GraphQL API
+2) Set environment variables to switch the provider at runtime:
 
-```graphql
-# Query code entities and relationships
-query CodeAnalysis($projectId: ID!) {
-  project(id: $projectId) {
-    name
-    entities(type: FUNCTION, limit: 10) {
-      name
-      location {
-        file
-        line
-      }
-      dependencies {
-        name
-        type
+```bash
+export CODEGRAPH_EMBEDDING_PROVIDER=local
+# Optional: choose a specific HF model (must provide safetensors weights)
+export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
+```
+
+3) Run as usual (the first run will download model files from Hugging Face and cache them locally):
+
+```bash
+cargo run -p codegraph-api --features codegraph-vector/local-embeddings
+```
+
+Model cache locations:
+
+- Default Hugging Face cache: `~/.cache/huggingface` (or `$HF_HOME`) via `hf-hub`
+- You can pre-populate this cache to run offline after the first download
+
+```
+
+### Method 2: Install Pre-built Binary
+
+```bash
+# Download the latest release
+curl -L https://github.com/your-org/codegraph-cli-mcp/releases/latest/download/codegraph-$(uname -s)-$(uname -m).tar.gz | tar xz
+
+# Move to PATH
+sudo mv codegraph /usr/local/bin/
+
+# Verify installation
+codegraph --version
+```
+
+### Method 3: Using Cargo
+
+```bash
+# Install directly from crates.io (when published)
+cargo install codegraph-mcp
+
+# Verify installation
+codegraph --version
+```
+
+## 🎯 Quick Start
+
+### 1. Initialize a New Project
+
+```bash
+# Initialize CodeGraph in current directory
+codegraph init
+
+# Initialize with project name
+codegraph init --name my-project
+```
+
+### 2. Index Your Codebase
+
+```bash
+# Index current directory
+codegraph index .
+
+# Index with specific languages
+codegraph index . --languages rust,python,typescript
+
+# Index with file watching
+codegraph index . --watch
+```
+
+### 3. Start MCP Server
+
+```bash
+# Start with STDIO transport (default)
+codegraph start stdio
+
+# Start with HTTP transport
+codegraph start http --port 3000
+
+# Start with dual transport
+codegraph start dual --port 3000
+
+### (Optional) Start with Local Embeddings
+
+```bash
+# Build with the feature (see installation step above), then:
+export CODEGRAPH_EMBEDDING_PROVIDER=local
+export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
+cargo run -p codegraph-api --features codegraph-vector/local-embeddings
+```
+
+```
+
+### 4. Search Your Code
+
+```bash
+# Semantic search
+codegraph search "authentication handler"
+
+# Exact match search
+codegraph search "fn authenticate" --search-type exact
+
+# AST-based search
+codegraph search "function with async keyword" --search-type ast
+```
+
+## 📖 CLI Commands
+
+### Global Options
+
+```bash
+codegraph [OPTIONS] <COMMAND>
+
+Options:
+  -v, --verbose         Enable verbose logging
+  --config <PATH>       Configuration file path
+  -h, --help           Print help
+  -V, --version        Print version
+```
+
+### Command Reference
+
+#### `init` - Initialize CodeGraph Project
+
+```bash
+codegraph init [OPTIONS] [PATH]
+
+Arguments:
+  [PATH]               Project directory (default: current directory)
+
+Options:
+  --name <NAME>        Project name
+  --non-interactive    Skip interactive setup
+```
+
+#### `start` - Start MCP Server
+
+```bash
+codegraph start <TRANSPORT> [OPTIONS]
+
+Transports:
+  stdio                STDIO transport (default)
+  http                 HTTP streaming transport
+  dual                 Both STDIO and HTTP
+
+Options:
+  --config <PATH>      Server configuration file
+  --daemon             Run in background
+  --pid-file <PATH>    PID file location
+
+HTTP Options:
+  -h, --host <HOST>    Host to bind (default: 127.0.0.1)
+  -p, --port <PORT>    Port to bind (default: 3000)
+  --tls                Enable TLS/HTTPS
+  --cert <PATH>        TLS certificate file
+  --key <PATH>         TLS key file
+  --cors               Enable CORS
+```
+
+#### `stop` - Stop MCP Server
+
+```bash
+codegraph stop [OPTIONS]
+
+Options:
+  --pid-file <PATH>    PID file location
+  -f, --force          Force stop without graceful shutdown
+```
+
+#### `status` - Check Server Status
+
+```bash
+codegraph status [OPTIONS]
+
+Options:
+  --pid-file <PATH>    PID file location
+  -d, --detailed       Show detailed status information
+```
+
+#### `index` - Index Project
+
+```bash
+codegraph index <PATH> [OPTIONS]
+
+Arguments:
+  <PATH>               Path to project directory
+
+Options:
+  -l, --languages <LANGS>     Languages to index (comma-separated)
+  --exclude <PATTERNS>        Exclude patterns (gitignore format)
+  --include <PATTERNS>        Include only these patterns
+  -r, --recursive             Recursively index subdirectories
+  --force                     Force reindex
+  --watch                     Watch for changes
+  --workers <N>               Number of parallel workers (default: 4)
+```
+
+#### `search` - Search Indexed Code
+
+```bash
+codegraph search <QUERY> [OPTIONS]
+
+Arguments:
+  <QUERY>              Search query
+
+Options:
+  -t, --search-type <TYPE>    Search type (semantic|exact|fuzzy|regex|ast)
+  -l, --limit <N>             Maximum results (default: 10)
+  --threshold <FLOAT>         Similarity threshold 0.0-1.0 (default: 0.7)
+  -f, --format <FORMAT>       Output format (human|json|yaml|table)
+```
+
+#### `config` - Manage Configuration
+
+```bash
+codegraph config <ACTION> [OPTIONS]
+
+Actions:
+  show                 Show current configuration
+  set <KEY> <VALUE>    Set configuration value
+  get <KEY>            Get configuration value
+  reset                Reset to defaults
+  validate             Validate configuration
+
+Options:
+  --json               Output as JSON (for 'show')
+  -y, --yes            Skip confirmation (for 'reset')
+```
+
+#### `stats` - Show Statistics
+
+```bash
+codegraph stats [OPTIONS]
+
+Options:
+  --index              Show index statistics
+  --server             Show server statistics
+  --performance        Show performance metrics
+  -f, --format <FMT>   Output format (table|json|yaml|human)
+```
+
+#### `clean` - Clean Resources
+
+```bash
+codegraph clean [OPTIONS]
+
+Options:
+  --index              Clean index database
+  --vectors            Clean vector embeddings
+  --cache              Clean cache files
+  --all                Clean all resources
+  -y, --yes            Skip confirmation prompt
+```
+
+## ⚙️ Configuration
+
+### Configuration File Structure
+
+Create a `.codegraph/config.toml` file:
+
+```toml
+# General Configuration
+[general]
+project_name = "my-project"
+version = "1.0.0"
+log_level = "info"
+
+# Indexing Configuration
+[indexing]
+languages = ["rust", "python", "typescript"]
+exclude_patterns = ["**/node_modules/**", "**/target/**", "**/.git/**"]
+include_patterns = ["src/**", "lib/**"]
+recursive = true
+workers = 4
+watch_enabled = false
+incremental = true
+
+# Embedding Configuration
+[embedding]
+model = "openai"  # Options: openai, local, custom
+dimension = 1536
+batch_size = 100
+cache_enabled = true
+cache_size_mb = 500
+
+# Vector Search Configuration
+[vector]
+index_type = "flat"  # Options: flat, ivf, hnsw
+nprobe = 10
+similarity_metric = "cosine"  # Options: cosine, euclidean, inner_product
+
+# Database Configuration
+[database]
+path = "~/.codegraph/db"
+cache_size_mb = 128
+compression = true
+write_buffer_size_mb = 64
+
+# Server Configuration
+[server]
+default_transport = "stdio"
+http_host = "127.0.0.1"
+http_port = 3000
+enable_tls = false
+cors_enabled = true
+max_connections = 100
+
+# Performance Configuration
+[performance]
+max_file_size_kb = 1024
+parallel_threads = 8
+memory_limit_mb = 2048
+optimization_level = "balanced"  # Options: speed, balanced, memory
+```
+
+### Environment Variables
+
+```bash
+# Override configuration with environment variables
+export CODEGRAPH_LOG_LEVEL=debug
+export CODEGRAPH_DB_PATH=/custom/path/db
+export CODEGRAPH_EMBEDDING_MODEL=local
+export CODEGRAPH_HTTP_PORT=8080
+```
+
+### Embedding Model Configuration
+
+#### OpenAI Embeddings
+
+```toml
+[embedding.openai]
+api_key = "${OPENAI_API_KEY}"  # Use environment variable
+model = "text-embedding-3-large"
+dimension = 3072
+```
+
+#### Local Embeddings
+
+```toml
+[embedding.local]
+model_path = "~/.codegraph/models/codestral.gguf"
+device = "cpu"  # Options: cpu, cuda, metal
+context_length = 8192
+```
+
+## 📚 User Workflows
+
+### Workflow 1: Complete Project Setup and Analysis
+
+```bash
+# Step 1: Initialize project
+codegraph init --name my-awesome-project
+
+# Step 2: Configure settings
+codegraph config set embedding.model local
+codegraph config set performance.optimization_level speed
+
+# Step 3: Index the codebase
+codegraph index . --languages rust,python --recursive
+
+# Step 4: Start MCP server
+codegraph start http --port 3000 --daemon
+
+# Step 5: Search and analyze
+codegraph search "database connection" --limit 20
+codegraph stats --index --performance
+```
+
+### Workflow 2: Continuous Development with Watch Mode
+
+```bash
+# Start indexing with watch mode
+codegraph index . --watch --workers 8 &
+
+# Start MCP server in dual mode
+codegraph start dual --daemon
+
+# Monitor changes
+codegraph status --detailed
+
+# Search while developing
+codegraph search "TODO" --search-type exact
+```
+
+### Workflow 3: Integration with AI Tools
+
+```bash
+# Start MCP server for Claude Desktop or VS Code
+codegraph start stdio
+
+# Configure for AI assistant integration
+cat > ~/.codegraph/mcp-config.json << EOF
+{
+  "name": "codegraph-server",
+  "version": "1.0.0",
+  "tools": [
+    {
+      "name": "analyze_architecture",
+      "description": "Analyze codebase architecture"
+    },
+    {
+      "name": "find_patterns",
+      "description": "Find code patterns and anti-patterns"
+    }
+  ]
+}
+EOF
+```
+
+### Workflow 4: Large Codebase Optimization
+
+```bash
+# Optimize for large codebases
+codegraph config set performance.memory_limit_mb 8192
+codegraph config set vector.index_type ivf
+codegraph config set database.compression true
+
+# Index with optimizations
+codegraph index /path/to/large/project \
+  --workers 16 \
+  --exclude "**/test/**,**/vendor/**"
+
+# Use batch operations
+codegraph search "class.*Controller" --search-type regex --limit 100
+```
+
+## 🔌 Integration Guide
+
+### Integrating with Claude Desktop
+
+1. Add to Claude Desktop configuration:
+
+```json
+{
+  "mcpServers": {
+    "codegraph": {
+      "command": "codegraph",
+      "args": ["start", "stdio"],
+      "env": {
+        "CODEGRAPH_CONFIG": "~/.codegraph/config.toml"
       }
     }
   }
 }
 ```
 
-### 🦀 Rust Client
+2. Restart Claude Desktop to load the MCP server
 
-```rust
-use codegraph_client::{Client, ProjectConfig};
+### Integrating with VS Code
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize client
-    let client = Client::new("http://localhost:8000").await?;
-    
-    // Add project
-    let project = client
-        .create_project(ProjectConfig {
-            name: "my-project".to_string(),
-            path: "/path/to/code".into(),
-            languages: vec!["rust".to_string()],
-        })
-        .await?;
-    
-    // Search code
-    let results = client
-        .search("async fn", &project.id)
-        .await?;
-    
-    println!("Found {} matches", results.len());
-    Ok(())
+1. Install the MCP extension for VS Code
+2. Add to VS Code settings:
+
+```json
+{
+  "mcp.servers": {
+    "codegraph": {
+      "command": "codegraph",
+      "args": ["start", "stdio"],
+      "rootPath": "${workspaceFolder}"
+    }
+  }
 }
 ```
 
-### 🐍 Python Client
+### API Integration
 
 ```python
-import asyncio
-from codegraph import CodeGraphClient
+import requests
+import json
 
-async def main():
-    # Initialize client
-    client = CodeGraphClient("http://localhost:8000")
-    
-    # Add and analyze project
-    project = await client.create_project(
-        name="my-python-project",
-        path="/path/to/project",
-        languages=["python"]
-    )
-    
-    # Vector similarity search
-    similar_functions = await client.find_similar(
-        code="def process_data(items):",
-        project_id=project.id,
-        threshold=0.8
-    )
-    
-    print(f"Found {len(similar_functions)} similar functions")
-
-asyncio.run(main())
-```
-
-### 🤖 MCP Agent Integration
-
-```typescript
-import { MCPClient } from '@modelcontextprotocol/sdk';
-
-// Connect to CodeGraph MCP server
-const client = new MCPClient({
-  transport: {
-    type: 'streamable-http',
-    endpoint: 'http://localhost:8000/mcp'
-  }
-});
-
-// 1. Analyze code patterns for refactoring suggestions
-const patterns = await client.call('analyze_patterns', {
-  project_id: 'my-project',
-  pattern_type: 'anti-patterns',
-  language: 'rust'
-});
-
-// 2. Get contextual code for AI-assisted development
-const context = await client.call('get_code_context', {
-  query: 'error handling patterns',
-  project_id: 'my-project',
-  context_window: 10,
-  include_dependencies: true
-});
-
-// 3. Find similar implementations across the codebase
-const similar = await client.call('find_similar_functions', {
-  function_signature: 'async fn handle_request',
-  similarity_threshold: 0.75,
-  max_results: 8
-});
-
-// 4. Use with AI models for code generation
-const aiPrompt = `
-Analyze these existing patterns:
-${context.results.map(item => `${item.file}:${item.line}\n${item.code}`).join('\n\n')}
-
-Generate a new error handling middleware following the established patterns.
-`;
-```
-
-### 🔧 Command‑Line Usage (no external CLI)
-
-No standalone `codegraph-cli` is published yet.
-
-- If your current branch compiles `codegraph-api`, you can use these curl examples.
-- If it does not compile, skip this section and use the library crates directly.
-
-```bash
-# Start the server (only if `cargo check -p codegraph-api` succeeds)
-cargo run --release -p codegraph-api
+# Connect to HTTP MCP server
+base_url = "http://localhost:3000"
 
 # Index a project
-curl -X POST http://localhost:8000/v1/index \
-  -H "Content-Type: application/json" \
-  -d '{"path": "./my-project"}'
+response = requests.post(f"{base_url}/index", json={
+    "path": "/path/to/project",
+    "languages": ["python", "javascript"]
+})
 
-# Semantic search
-curl "http://localhost:8000/v1/search?q=async+fn&limit=10" | jq
+# Search code
+response = requests.post(f"{base_url}/search", json={
+    "query": "async function",
+    "limit": 10
+})
 
-# Similar items for a node ID
-curl "http://localhost:8000/nodes/<NODE_ID>/similar" | jq
-
-# Rebuild vector index (embeddings)
-curl -X POST http://localhost:8000/vector/index/rebuild
-
-# Explore via GraphiQL
-open http://localhost:8000/graphiql  # macOS
-# xdg-open http://localhost:8000/graphiql  # Linux
+results = response.json()
 ```
 
----
-
-## 📊 Performance Benchmarks
-
-| Metric | Performance | Notes |
-|--------|-------------|-------|
-| **Query Latency** | <50ms (p99) | Graph traversal + vector search |
-| **Index Size** | ~10MB/100k LOC | Compressed with zstd |
-| **Memory Usage** | <500MB | For 1M+ LOC projects |
-| **Concurrent Users** | 1000+ | With connection pooling |
-| **Indexing Speed** | 50k LOC/min | Multi-threaded parsing |
-| **Vector Search** | <10ms (p95) | FAISS HNSW index |
-
-### 🔬 Benchmark Results
-
-Run benchmarks locally:
-
-```bash
-# Performance benchmarks
-cargo bench
-
-# Load testing
-scripts/load_test.sh
-
-# Memory profiling  
-cargo run --features=memory-profiling --example memory_demo
-```
-
-**Sample Results** (MacBook Pro M2, 32GB RAM):
-
-```
-test graph_traversal_10k_nodes ... bench:    1,234 ns/iter (+/- 89)
-test vector_search_1m_vectors ... bench:    8,456 ns/iter (+/- 234)
-test concurrent_queries_100     ... bench:   45,123 ns/iter (+/- 1,234)
-```
-
----
-
-## 🏗️ Workspace Structure
-
-```
-crates/
-├── codegraph-api/          # REST & GraphQL API server
-├── codegraph-core/         # Core types, traits & shared functionality  
-├── codegraph-graph/        # Graph storage & RocksDB integration
-├── codegraph-parser/       # Tree-sitter based code parsing
-├── codegraph-vector/       # FAISS vector search & embeddings
-├── codegraph-cache/        # Caching layer & memory management
-├── codegraph-mcp/          # Model Context Protocol server
-├── codegraph-git/          # Git integration & version tracking
-├── codegraph-lb/           # Load balancing & sharding
-├── codegraph-zerocopy/     # Zero-copy serialization utilities
-├── codegraph-queue/        # Async task queue management
-├── codegraph-concurrent/   # Concurrency primitives
-└── core-rag-mcp-server/    # RAG-enabled MCP server
-```
-
----
-
-## ⚙️ Configuration
-
-CodeGraph offers flexible configuration through multiple sources:
-
-1. **Configuration File** (`config.toml`) - Structured, version-controlled settings
-2. **Environment Variables** - Container-friendly, secure for secrets
-3. **Command Line Arguments** - Quick overrides and testing
-
-### 📄 Comprehensive Configuration
-
-<details>
-<summary><b>🔧 Production config.toml</b></summary>
-
-```toml
-[server]
-host = "0.0.0.0"
-port = 8000
-workers = 8  # Optimize for your CPU cores
-max_connections = 1000
-timeout = "30s"
-cors_origins = ["https://yourdomain.com"]
-
-[database]
-path = "./data/rocks.db"
-cache_size = 2048  # MB - adjust based on available RAM
-max_open_files = 2000
-enable_statistics = true
-# Backup settings
-backup_interval = "24h"
-backup_retention = "30d"
-
-[vector]
-index_type = "hnsw"  # Options: "hnsw", "ivf", "flat"
-dimension = 768
-metric = "cosine"  # Options: "cosine", "l2", "inner_product"
-# HNSW-specific settings
-m = 16  # Number of connections
-ef_construction = 200
-ef_search = 64
-
-[parsing]
-# Supported languages
-languages = [
-  "rust", "python", "javascript", "typescript", 
-  "go", "java", "cpp", "c", "csharp"
-]
-max_file_size = "50MB"
-max_files_per_project = 100000
-# Global ignore patterns
-ignore_patterns = [
-  "target/", "node_modules/", "__pycache__/",
-  "*.pyc", "*.pyo", "*.so", "*.dll",
-  ".git/", ".svn/", ".hg/",
-  "build/", "dist/", "out/"
-]
-
-[mcp]
-enabled = true
-endpoint = "/mcp"
-max_request_size = "10MB"
-rate_limit = 100  # requests per minute per client
-
-[security]
-api_key_required = false  # Set to true in production
-rate_limiting = true
-max_requests_per_minute = 1000
-enable_cors = true
-
-[logging]
-level = "info"  # "trace", "debug", "info", "warn", "error"
-format = "json"  # "json" or "pretty"
-output = "stdout"  # "stdout", "stderr", or file path
-# Structured logging fields
-include_request_id = true
-include_user_agent = true
-
-[metrics]
-enabled = true
-endpoint = "/metrics"
-# Prometheus-compatible metrics
-include_system_metrics = true
-include_custom_metrics = true
-
-[performance]
-query_timeout = "30s"
-index_batch_size = 2000
-concurrent_limit = 200
-# Memory management
-max_memory_usage = "4GB"
-gc_interval = "5m"
-# Caching
-enable_query_cache = true
-cache_ttl = "1h"
-max_cache_entries = 10000
-```
-
-</details>
-
-<details>
-<summary><b>🌍 Environment Variables</b></summary>
-
-```bash
-# Server Configuration
-export CODEGRAPH_HOST=0.0.0.0
-export CODEGRAPH_PORT=8000
-export CODEGRAPH_WORKERS=8
-
-# Database Settings
-export CODEGRAPH_DB_PATH=/data/codegraph
-export CODEGRAPH_DB_CACHE_SIZE=2048
-export CODEGRAPH_BACKUP_ENABLED=true
-
-# Security & Authentication
-export CODEGRAPH_API_KEY=your-secret-api-key
-export CODEGRAPH_RATE_LIMIT=1000
-export CODEGRAPH_CORS_ORIGINS=https://yourdomain.com
-
-# Performance Tuning
-export CODEGRAPH_MAX_MEMORY=4GB
-export CODEGRAPH_CONCURRENT_LIMIT=200
-export CODEGRAPH_QUERY_TIMEOUT=30s
-
-# Logging & Monitoring
-export CODEGRAPH_LOG_LEVEL=info
-export CODEGRAPH_LOG_FORMAT=json
-export CODEGRAPH_METRICS_ENABLED=true
-
-# Vector Search Optimization
-export CODEGRAPH_VECTOR_INDEX_TYPE=hnsw
-export CODEGRAPH_VECTOR_DIMENSION=768
-export CODEGRAPH_VECTOR_METRIC=cosine
-
-# Development & Debug
-export RUST_LOG=codegraph=debug
-export RUST_BACKTRACE=full
-```
-
-</details>
-
-<details>
-<summary><b>🚀 Quick Configuration Presets</b></summary>
-
-**Development Mode:**
-
-```bash
-# Quick start with debug logging
-export CODEGRAPH_LOG_LEVEL=debug
-export CODEGRAPH_WORKERS=2
-export CODEGRAPH_DB_CACHE_SIZE=256
-codegraph-api --dev-mode
-```
-
-**Production Mode:**
-
-```bash
-# Optimized for production
-export CODEGRAPH_LOG_LEVEL=info
-export CODEGRAPH_LOG_FORMAT=json
-export CODEGRAPH_WORKERS=16
-export CODEGRAPH_DB_CACHE_SIZE=4096
-export CODEGRAPH_RATE_LIMIT=2000
-codegraph-api --config /etc/codegraph/config.toml
-```
-
-**High-Performance Mode:**
-
-```bash
-# Maximum performance settings
-export CODEGRAPH_WORKERS=32
-export CODEGRAPH_CONCURRENT_LIMIT=500
-export CODEGRAPH_DB_CACHE_SIZE=8192
-export CODEGRAPH_QUERY_CACHE=true
-codegraph-api --performance-mode
-```
-
-</details>
-
-### 🚀 Production Deployment
-
-<details>
-<summary><b>📦 Docker Compose</b></summary>
+### Using with CI/CD
 
 ```yaml
-version: '3.8'
-services:
-  codegraph:
-    image: codegraph/api:latest
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./data:/app/data
-      - ./config.toml:/app/config.toml
-    environment:
-      - RUST_LOG=info
-      - CODEGRAPH_CONFIG=/app/config.toml
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+# GitHub Actions example
+name: CodeGraph Analysis
+
+on: [push, pull_request]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
       
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - name: Install CodeGraph
+        run: |
+          cargo install codegraph-mcp
       
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - name: Index Codebase
+        run: |
+          codegraph init --non-interactive
+          codegraph index . --languages rust,python
+      
+      - name: Run Analysis
+        run: |
+          codegraph stats --index --format json > analysis.json
+      
+      - name: Upload Results
+        uses: actions/upload-artifact@v2
+        with:
+          name: codegraph-analysis
+          path: analysis.json
 ```
 
-</details>
+## 🔧 Troubleshooting
 
-<details>
-<summary><b>☸️ Kubernetes</b></summary>
+### Common Issues and Solutions
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: codegraph-api
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: codegraph-api
-  template:
-    metadata:
-      labels:
-        app: codegraph-api
-    spec:
-      containers:
-      - name: codegraph-api
-        image: codegraph/api:latest
-        ports:
-        - containerPort: 8000
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "250m"
-          limits:
-            memory: "2Gi"
-            cpu: "1000m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
+#### Issue: Server fails to start
+
+**Solution:**
+
+```bash
+# Check if port is already in use
+lsof -i :3000
+
+# Kill existing process
+codegraph stop --force
+
+# Start with different port
+codegraph start http --port 3001
 ```
 
-</details>
+#### Issue: Indexing is slow
 
----
+**Solution:**
 
-## 🔧 API Reference
+```bash
+# Increase workers
+codegraph index . --workers 16
 
-### 🌐 REST Endpoints
+# Exclude unnecessary files
+codegraph index . --exclude "**/node_modules/**,**/dist/**"
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/metrics` | GET | Prometheus metrics |
-| `/api/v1/projects` | GET, POST | Project management |
-| `/api/v1/projects/{id}` | GET, PUT, DELETE | Project operations |
-| `/api/v1/search` | GET | Code search |
-| `/api/v1/similar` | POST | Vector similarity search |
-| `/api/v1/graph/{id}` | GET | Graph traversal |
-
-### 📡 GraphQL Schema
-
-<details>
-<summary><b>Core Types</b></summary>
-
-```graphql
-type Project {
-  id: ID!
-  name: String!
-  path: String!
-  languages: [String!]!
-  entities(type: EntityType, limit: Int): [Entity!]!
-  createdAt: DateTime!
-  updatedAt: DateTime!
-}
-
-type Entity {
-  id: ID!
-  name: String!
-  type: EntityType!
-  location: Location!
-  dependencies: [Dependency!]!
-  metrics: EntityMetrics
-}
-
-type Location {
-  file: String!
-  line: Int!
-  column: Int!
-}
-
-enum EntityType {
-  FUNCTION
-  CLASS
-  MODULE
-  VARIABLE
-  INTERFACE
-  ENUM
-}
+# Use incremental indexing
+codegraph config set indexing.incremental true
 ```
 
-</details>
+#### Issue: Out of memory during indexing
 
-### 🛠️ SDKs & Tools
+**Solution:**
 
-- **🦀 Rust**: `codegraph-client` (coming soon)
-- **🐍 Python**: `codegraph-py` (coming soon)
-- **📜 TypeScript**: `@codegraph/client` (coming soon)
-- **🔧 CLI**: Not yet published. Use the `codegraph-api` server and the curl examples above.
+```bash
+# Reduce batch size
+codegraph config set embedding.batch_size 50
 
----
+# Limit memory usage
+codegraph config set performance.memory_limit_mb 1024
+
+# Use streaming mode
+codegraph index . --streaming
+```
+
+#### Issue: Vector search returns poor results
+
+**Solution:**
+
+```bash
+# Adjust similarity threshold
+codegraph search "query" --threshold 0.5
+
+# Re-index with better embeddings
+codegraph config set embedding.model openai
+codegraph index . --force
+
+# Use different search type
+codegraph search "query" --search-type fuzzy
+
+#### Issue: Hugging Face model fails to download
+
+**Solution:**
+```bash
+# Ensure you have internet access and the model name is correct
+export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
+
+# If the model is private, set a HF token (if required by your environment)
+export HF_TOKEN=your_hf_access_token
+
+# Clear/inspect cache (default): ~/.cache/huggingface
+ls -lah ~/.cache/huggingface
+
+# Note: models must include safetensors weights; PyTorch .bin-only models are not supported by the local loader here
+```
+
+#### Issue: Local embeddings are slow
+
+**Solution:**
+
+```bash
+# Reduce batch size via config or environment (CPU defaults prioritize stability)
+# Consider using a smaller model (e.g., all-MiniLM-L6-v2) or enabling GPU backends.
+
+# For Apple Silicon (Metal) or CUDA, additional wiring can be enabled in config.
+# Current default uses CPU; contact maintainers to enable device selectors in your environment.
+```
+
+```
+
+### Debug Mode
+
+Enable debug logging for troubleshooting:
+
+```bash
+# Set debug log level
+export RUST_LOG=debug
+codegraph --verbose index .
+
+# Check logs
+tail -f ~/.codegraph/logs/codegraph.log
+```
+
+### Health Checks
+
+```bash
+# Check system health
+codegraph status --detailed
+
+# Validate configuration
+codegraph config validate
+
+# Test database connection
+codegraph test db
+
+# Verify embeddings
+codegraph test embeddings
+```
 
 ## 🤝 Contributing
 
-We welcome contributions! CodeGraph is built by developers, for developers. Whether you're fixing bugs, adding features, improving documentation, or sharing ideas - every contribution matters.
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-### 🚀 Quick Start for Contributors
-
-1. **🍴 Fork** the repository
-2. **🌿 Create** a feature branch: `git checkout -b feature/your-feature-name`
-3. **⚙️ Set up** development environment: `make dev-setup`
-4. **✅ Test** your changes: `make test`
-5. **📝 Commit** with conventional messages: `git commit -m "feat: add amazing feature"`
-6. **🚀 Push** and create a **Pull Request**
-
-### 🧪 Development Environment Setup
-
-<details>
-<summary><b>🔧 Development Dependencies</b></summary>
+### Development Setup
 
 ```bash
-# Install Rust development tools
-cargo install cargo-watch      # Hot reload
-cargo install cargo-tarpaulin  # Code coverage
-cargo install cargo-audit      # Security scanning
-cargo install cargo-deny       # Dependency checking
-cargo install cargo-machete    # Unused dependency detection
+# Clone repository
+git clone https://github.com/your-org/codegraph-cli-mcp.git
+cd codegraph-cli-mcp
 
-# Install pre-commit hooks
-cargo install cargo-husky
-# Hooks will be automatically installed
+# Install development dependencies
+cargo install cargo-watch cargo-nextest
 
-# Optional: Install additional tools
-cargo install cargo-expand     # Macro expansion
-cargo install cargo-flamegraph # Performance profiling
+# Run tests
+cargo nextest run
+
+# Run with watch mode
+cargo watch -x check -x test
 ```
-
-</details>
-
-<details>
-<summary><b>🔄 Development Workflow</b></summary>
-
-```bash
-# Start development with hot reload
-cargo watch -c -x 'run --release -p codegraph-api'
-
-# Run comprehensive test suite
-make test-all
-
-# Format, lint, and check
-make check      # Quick checks
-make lint       # Full linting with clippy
-make fmt        # Format all code
-
-# Security and dependency audits
-make audit      # Security vulnerabilities
-make deny       # License and dependency checks
-
-# Generate code coverage report
-make coverage
-
-# Profile performance (requires flamegraph)
-make profile
-```
-
-</details>
-
-### 📋 Contribution Guidelines
-
-<details>
-<summary><b>📝 Code Standards</b></summary>
-
-**Code Quality:**
-
-- **🧪 Tests Required**: All new features must include comprehensive tests
-- **📚 Documentation**: Update docs for public APIs and significant changes
-- **🎯 Follow Conventions**: Maintain consistency with existing code style
-- **⚡ Performance**: Consider performance implications, add benchmarks for critical paths
-- **🛡️ Security**: Follow Rust security best practices, no unsafe code without justification
-
-**Git Conventions:**
-
-- Use [Conventional Commits](https://www.conventionalcommits.org/)
-- Keep commits atomic and focused
-- Write clear, descriptive commit messages
-- Reference issues when applicable
-
-</details>
-
-<details>
-<summary><b>🎯 Areas We Need Help With</b></summary>
-
-**High Priority:**
-
-- 🐛 **Bug Fixes**: Check our [issues](https://github.com/ouroboros-demo/issues?q=is%3Aissue+is%3Aopen+label%3Abug)
-- 📖 **Documentation**: API docs, tutorials, examples
-- 🧪 **Testing**: Increase test coverage, add integration tests
-- 🎨 **Language Support**: Add parsers for more programming languages
-
-**Medium Priority:**
-
-- ⚡ **Performance**: Optimize hot paths, reduce memory usage
-- 🔧 **Tooling**: CI/CD improvements, development tools
-- 🌐 **Integrations**: IDE plugins, editor extensions
-- 📊 **Monitoring**: Better metrics and observability
-
-**Ideas Welcome:**
-
-- 💡 **Features**: New analysis capabilities
-- 🎪 **Examples**: Real-world usage patterns
-- 🔍 **Research**: Code analysis algorithms
-- 🤖 **AI Integration**: Enhanced MCP features
-
-</details>
-
-### 🎓 First-Time Contributors
-
-<details>
-<summary><b>🌟 Good First Issues</b></summary>
-
-New to CodeGraph or Rust? Start here:
-
-- 📚 **Documentation**: Fix typos, improve explanations
-- 🧪 **Tests**: Add missing test cases
-- 🏗️ **Examples**: Create usage examples
-- 🐛 **Small Bugs**: Fix minor issues
-
-Look for issues labeled [`good first issue`](https://github.com/ouroboros-demo/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
-
-</details>
-
-<details>
-<summary><b>🤝 Getting Support</b></summary>
-
-**Questions about contributing?**
-
-- 💬 **GitHub Discussions**: Ask questions, share ideas
-- 🐛 **Issues**: Report bugs or request features  
-- 📧 **Email**: `contributors@codegraph.dev` for private questions
-
-**Development Help:**
-
-- 📖 **Architecture Guide**: `./docs/architecture/`
-- 🧪 **Testing Guide**: `./docs/testing/`
-- 📋 **Code Style**: `./docs/development/coding-standards.md`
-
-</details>
-
-### 🏆 Recognition
-
-Contributors are recognized in:
-
-- 📊 **Contributors Graph**: GitHub automatically tracks contributions
-- 📰 **Release Notes**: Major contributions highlighted in releases
-- 💝 **Hall of Fame**: `CONTRIBUTORS.md` acknowledges all contributors
-- 🎖️ **Special Thanks**: Outstanding contributions get special recognition
-
-### 📄 Contributor License Agreement
-
-By contributing to CodeGraph, you agree that your contributions will be licensed under the same terms as the project (MIT OR Apache-2.0).
-
----
 
 ## 📄 License
 
-This project is dual-licensed under either:
-
-- **MIT License** ([LICENSE-MIT](LICENSE-MIT))
-- **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE))
-
-at your option.
-
----
+This project is dual-licensed under MIT and Apache 2.0 licenses. See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE) for details.
 
 ## 🙏 Acknowledgments
 
-CodeGraph builds upon these amazing open-source projects:
-
-- **[Rust](https://rust-lang.org)** - Systems programming language
-- **[Tokio](https://tokio.rs)** - Asynchronous runtime  
-- **[Axum](https://github.com/tokio-rs/axum)** - Web framework
-- **[RocksDB](https://rocksdb.org)** - Persistent key-value store
-- **[FAISS](https://github.com/facebookresearch/faiss)** - Vector similarity search
-- **[Tree-sitter](https://tree-sitter.github.io)** - Incremental parser generator
+- Built with [Rust](https://www.rust-lang.org/)
+- Powered by [Tree-sitter](https://tree-sitter.github.io/)
+- Vector search by [FAISS](https://github.com/facebookresearch/faiss)
+- Graph storage with [RocksDB](https://rocksdb.org/)
+- MCP Protocol by [Anthropic](https://modelcontextprotocol.io)
 
 ---
 
-## 📚 Documentation
-
-### 📖 Complete Documentation Hub
-
-Production-ready documentation organized by user journey and use case:
-
-<details>
-<summary><b>🚀 API Documentation</b></summary>
-
-| Resource | Description |
-|----------|-------------|
-| [📋 API Overview](./docs/api/README.md) | Complete API reference guide |
-| [🌐 REST API](./docs/api/rest.md) | HTTP endpoints with OpenAPI specs |
-| [📊 GraphQL API](./docs/api/graphql.md) | Schema, queries, mutations & subscriptions |
-| [🔗 WebSocket API](./docs/api/websocket.md) | Real-time subscriptions |
-| [🔐 Authentication](./docs/api/authentication.md) | JWT, API keys & authorization |
-| [⚡ Rate Limiting](./docs/api/rate-limiting.md) | Throttling & caching policies |
-
-</details>
-
-<details>
-<summary><b>🐳 Deployment & Operations</b></summary>
-
-| Resource | Description |
-|----------|-------------|
-| [🚀 Deployment Guide](./docs/deployment/README.md) | Docker, Kubernetes & production setup |
-| [⚙️ Operations Manual](./docs/operations/README.md) | Installation, configuration & troubleshooting |
-| [📋 Environment Config](./docs/deployment/README.md#environment-configuration) | Complete configuration reference |
-| [🗂️ Database Setup](./docs/deployment/README.md#database-setup) | RocksDB optimization & persistence |
-| [🔒 SSL/TLS Setup](./docs/deployment/README.md#ssltls-configuration) | Security configuration |
-| [📊 Monitoring Setup](./docs/deployment/README.md#monitoring-and-alerting) | Prometheus, Grafana & alerts |
-
-</details>
-
-<details>
-<summary><b>👩‍💻 Developer Guide</b></summary>
-
-| Resource | Description |
-|----------|-------------|
-| [🏗️ Developer Guide](./docs/developer/README.md) | Architecture, setup & workflows |
-| [⚡ Quick Start](./docs/developer/README.md#quick-start) | 30-second setup guide |
-| [🏛️ Architecture](./docs/developer/README.md#architecture-overview) | System design & components |
-| [🔧 Dev Environment](./docs/developer/README.md#development-environment-setup) | Local setup & tooling |
-| [🧪 Testing Guide](./docs/developer/README.md#testing-guide) | Unit, integration & performance tests |
-| [🤝 Contributing](./docs/developer/README.md#contributing-guidelines) | Code standards & workflows |
-
-</details>
-
-<details>
-<summary><b>📋 System Operations</b></summary>
-
-| Resource | Description |
-|----------|-------------|
-| [⚙️ Installation](./docs/operations/README.md#installation-guide) | Binary, Docker & source installs |
-| [📝 Configuration](./docs/operations/README.md#configuration-reference) | Complete config file reference |
-| [🔧 Troubleshooting](./docs/operations/README.md#troubleshooting-guide) | Common issues & solutions |
-| [📈 Scaling](./docs/operations/README.md#scaling-strategies) | Horizontal & vertical scaling |
-| [🛠️ Maintenance](./docs/operations/README.md#maintenance-procedures) | Backup, restore & updates |
-| [📊 Monitoring](./docs/operations/README.md#monitoring-and-alerting) | Operational visibility |
-
-</details>
-
-<details>
-<summary><b>🏛️ Legacy Documentation</b></summary>
-
-| Resource | Description |
-|----------|-------------|
-| [🏛️ System Architecture](./docs/architecture/UNIFIED_ARCHITECTURE_SPECIFICATION.md) | Detailed system design |
-| [🤖 MCP Protocol](./docs/api/codegraph-mcp-spec.md) | Model Context Protocol spec |
-| [📄 Feature Inventory](./docs/specifications/FEATURE_INVENTORY.md) | Complete feature catalog |
-| [💾 Storage Optimization](./docs/specifications/rocksdb_graph_storage_optimization.md) | Database tuning |
-
-</details>
-
-### 🎯 Quick Navigation
-
-**👋 New to CodeGraph?**
-
-1. [📖 API Overview](./docs/api/README.md) - Understand the APIs
-2. [🚀 Quick Start](./docs/developer/README.md#quick-start) - Run in 30 seconds  
-3. [💡 Examples](#-usage-examples) - See it in action
-
-**🔧 Ready to Deploy?**
-
-1. [🐳 Deployment Guide](./docs/deployment/README.md) - Production deployment
-2. [📋 Operations Manual](./docs/operations/README.md) - Day-to-day operations
-3. [📊 Monitoring Setup](./docs/deployment/README.md#monitoring-and-alerting) - Observability
-
-**👩‍💻 Want to Contribute?**
-
-1. [🏗️ Developer Guide](./docs/developer/README.md) - Development setup
-2. [🧪 Testing Guide](./docs/developer/README.md#testing-guide) - Testing strategy
-3. [🤝 Contributing](./docs/developer/README.md#contributing-guidelines) - Code standards
-
-### 📄 Documentation Features
-
-- **🔍 Complete API Coverage**: 50+ endpoints with examples
-- **🧪 Tested Examples**: All code examples are verified  
-- **🐳 Production Ready**: Deployment guides tested and verified
-- **📊 Multi-Language**: Examples in Rust, Python, TypeScript, cURL
-- **🔄 Always Updated**: Documentation versioned with releases
-
----
-
-<div align="center">
-
-**Built with ❤️ by the CodeGraph Team**
-
-[⭐ Star us on GitHub](https://github.com/codegraph/embedding-system) •
-[📢 Follow updates](https://twitter.com/codegraph) •
-[💬 Join discussions](https://github.com/codegraph/embedding-system/discussions)
-
-*Making code intelligence accessible to everyone*
-
-</div>
+<p align="center">
+  Made with ❤️ by the CodeGraph Team
+</p>

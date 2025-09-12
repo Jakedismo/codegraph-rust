@@ -68,16 +68,24 @@ jobs:
 
     - name: Build
       run: cargo build --workspace --verbose
+      continue-on-error: false
 
     - name: Run tests
       run: cargo test --workspace --verbose
+      continue-on-error: false
 
     - name: Run tests with all features
       run: cargo test --workspace --all-features --verbose
+      continue-on-error: false
+
+    - name: Build codegraph-api binary
+      run: cargo build --package codegraph-api --verbose
+      continue-on-error: false
 
     - name: Verify codegraph-api binary (--version)
       run: |
         cargo run --bin codegraph-api -- -V
+      continue-on-error: false
 
   coverage:
     name: Code Coverage

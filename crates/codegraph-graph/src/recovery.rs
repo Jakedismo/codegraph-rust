@@ -1,23 +1,18 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use codegraph_core::{
-    Checkpoint, CodeGraphError, NodeId, Result, SnapshotId, TransactionId, TransactionStatus,
-    WriteAheadLogEntry, WriteOperation,
-};
-use parking_lot::{Mutex, RwLock};
+use codegraph_core::{CodeGraphError, NodeId, Result, SnapshotId, TransactionId};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use sha2::Digest;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 use tokio::{
     fs, task,
     time::{interval, timeout},
 };
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntegrityReport {
@@ -161,15 +156,10 @@ impl RecoveryManager {
                 match recovery_manager.run_integrity_check().await {
                     Ok(report) => {
                         if !report.issues.is_empty() {
-                            tracing::warn!(
-                                "Integrity check found {} issues",
-                                report.issues.len()
-                            );
+                            tracing::warn!("Integrity check found {} issues", report.issues.len());
 
                             // Attempt automatic repair for low-risk issues
-                            if let Ok(plan) =
-                                recovery_manager.create_recovery_plan(&report).await
-                            {
+                            if let Ok(plan) = recovery_manager.create_recovery_plan(&report).await {
                                 if matches!(plan.data_loss_risk, RiskLevel::Low) {
                                     if let Err(e) =
                                         recovery_manager.execute_recovery_plan(plan).await

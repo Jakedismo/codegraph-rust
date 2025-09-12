@@ -8,7 +8,8 @@ description = "Advanced AI-powered code analysis: semantic search, clone detecti
 
 [dependencies]
 codegraph-core = { workspace = true }
-codegraph-graph = { workspace = true }
+# NOTE: codegraph-graph excluded due to transactional async issues
+# codegraph-graph = { workspace = true }
 codegraph-vector = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }

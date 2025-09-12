@@ -72,8 +72,8 @@ impl PersistentStorage {
         let file = File::open(path).map_err(CodeGraphError::Io)?;
 
         let reader = BufReader::new(file);
-        let metadata: StorageMetadata = serde_json::from_reader(reader)
-            .map_err(CodeGraphError::Serialization)?;
+        let metadata: StorageMetadata =
+            serde_json::from_reader(reader).map_err(CodeGraphError::Serialization)?;
 
         if metadata.version > Self::VERSION {
             return Err(CodeGraphError::Version(format!(
@@ -100,8 +100,7 @@ impl PersistentStorage {
         let writer = BufWriter::new(file);
         let metadata = self.metadata.read();
 
-        serde_json::to_writer_pretty(writer, &*metadata)
-            .map_err(CodeGraphError::Serialization)?;
+        serde_json::to_writer_pretty(writer, &*metadata).map_err(CodeGraphError::Serialization)?;
 
         debug!("Saved storage metadata to {:?}", metadata_path);
         Ok(())
@@ -141,8 +140,9 @@ impl PersistentStorage {
     ) -> Result<()> {
         // First save to temporary uncompressed file
         let temp_path = path.with_extension("tmp");
-        write_index(index, &temp_path.to_string_lossy())
-            .map_err(|e| CodeGraphError::Vector(format!("Failed to save temporary index: {}", e)))?;
+        write_index(index, &temp_path.to_string_lossy()).map_err(|e| {
+            CodeGraphError::Vector(format!("Failed to save temporary index: {}", e))
+        })?;
 
         // Read and compress
         let input_file = File::open(&temp_path).map_err(CodeGraphError::Io)?;
@@ -217,11 +217,11 @@ impl PersistentStorage {
     pub fn save_embeddings(&self, embeddings: &HashMap<NodeId, Vec<f32>>) -> Result<()> {
         let embeddings_path = self.base_path.join(Self::EMBEDDINGS_FILE);
 
-        let serialized = bincode::serialize(embeddings)
-            .map_err(|e| CodeGraphError::Vector(format!("Failed to serialize embeddings: {}", e)))?;
+        let serialized = bincode::serialize(embeddings).map_err(|e| {
+            CodeGraphError::Vector(format!("Failed to serialize embeddings: {}", e))
+        })?;
 
-        std::fs::write(&embeddings_path, &serialized)
-            .map_err(CodeGraphError::Io)?;
+        std::fs::write(&embeddings_path, &serialized).map_err(CodeGraphError::Io)?;
 
         // Create memory map
         let file = OpenOptions::new()
@@ -229,9 +229,7 @@ impl PersistentStorage {
             .open(&embeddings_path)
             .map_err(CodeGraphError::Io)?;
 
-        let mmap = unsafe {
-            MmapOptions::new().map(&file).map_err(CodeGraphError::Io)?
-        };
+        let mmap = unsafe { MmapOptions::new().map(&file).map_err(CodeGraphError::Io)? };
 
         *self.embeddings_mmap.write() = Some(mmap);
 
@@ -263,8 +261,9 @@ impl PersistentStorage {
         let mmap = mmap_guard.as_ref().unwrap();
 
         let embeddings: HashMap<NodeId, Vec<f32>> =
-            bincode::deserialize(&mmap[..])
-                .map_err(|e| CodeGraphError::Vector(format!("Failed to deserialize embeddings: {}", e)))?;
+            bincode::deserialize(&mmap[..]).map_err(|e| {
+                CodeGraphError::Vector(format!("Failed to deserialize embeddings: {}", e))
+            })?;
 
         info!(
             "Loaded {} embeddings from memory-mapped file",
@@ -282,8 +281,9 @@ impl PersistentStorage {
         let mapping_data = (id_mapping, reverse_mapping);
         let id_mapping_path = self.base_path.join(Self::ID_MAPPING_FILE);
 
-        let serialized = bincode::serialize(&mapping_data)
-            .map_err(|e| CodeGraphError::Vector(format!("Failed to serialize ID mapping: {}", e)))?;
+        let serialized = bincode::serialize(&mapping_data).map_err(|e| {
+            CodeGraphError::Vector(format!("Failed to serialize ID mapping: {}", e))
+        })?;
 
         std::fs::write(&id_mapping_path, &serialized).map_err(CodeGraphError::Io)?;
 
@@ -293,9 +293,7 @@ impl PersistentStorage {
             .open(&id_mapping_path)
             .map_err(CodeGraphError::Io)?;
 
-        let mmap = unsafe {
-            MmapOptions::new().map(&file).map_err(CodeGraphError::Io)?
-        };
+        let mmap = unsafe { MmapOptions::new().map(&file).map_err(CodeGraphError::Io)? };
 
         *self.id_mapping_mmap.write() = Some(mmap);
 
@@ -327,8 +325,9 @@ impl PersistentStorage {
         let mmap = mmap_guard.as_ref().unwrap();
 
         let (id_mapping, reverse_mapping): (HashMap<i64, NodeId>, HashMap<NodeId, i64>) =
-            bincode::deserialize(&mmap[..])
-                .map_err(|e| CodeGraphError::Vector(format!("Failed to deserialize ID mapping: {}", e)))?;
+            bincode::deserialize(&mmap[..]).map_err(|e| {
+                CodeGraphError::Vector(format!("Failed to deserialize ID mapping: {}", e))
+            })?;
 
         info!(
             "Loaded ID mappings from memory-mapped file ({} entries)",

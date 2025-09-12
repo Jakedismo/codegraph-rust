@@ -173,8 +173,8 @@ mod tests {
     // Helper functions for testing
 
     async fn create_test_app_state() -> AppState {
-        // This would need to be implemented based on your actual AppState structure
-        // For now, we'll create a minimal mock
+        use crate::test_helpers::test_utils;
+        test_utils::create_test_config();
         AppState::new_for_testing().await
     }
 
@@ -337,6 +337,7 @@ mod integration_tests {
     }
 
     async fn create_test_router() -> Router {
+        use crate::test_helpers::test_utils;
         let state = AppState::new_for_testing().await;
 
         Router::new()

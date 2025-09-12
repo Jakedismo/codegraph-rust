@@ -1,6 +1,5 @@
 use crate::CodeGraph;
-use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, NodeId, Result};
+use codegraph_core::{NodeId, Result};
 use futures::stream::{Stream, StreamExt};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};

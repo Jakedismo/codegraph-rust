@@ -8,6 +8,9 @@ use rkyv::{
     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, rancor::Failure,
     to_bytes, Archive, Deserialize, Serialize,
 };
+use rkyv::api::high::{HighDeserializer, HighSerializer, HighValidator};
+use rkyv::ser::allocator::ArenaHandle;
+use rkyv::util::AlignedVec;
 use std::sync::Arc;
 use tracing::{debug, instrument, trace};
 
@@ -34,7 +37,10 @@ impl ZeroCopySerializer {
 
     /// Serialize data to bytes without copying
     #[instrument(skip(self, data))]
-    pub fn serialize<T>(&mut self, data: &T) -> ZeroCopyResult<Bytes> {
+    pub fn serialize(
+        &mut self,
+        data: &impl for<'a> Serialize<HighSerializer<AlignedVec, ArenaHandle<'a>, Failure>>,
+    ) -> ZeroCopyResult<Bytes> {
         self.buffer.clear();
 
         let bytes = to_bytes::<Failure>(data).map_err(ZeroCopyError::Serialization)?;
@@ -51,10 +57,8 @@ impl ZeroCopySerializer {
     #[instrument(skip(self, data))]
     pub fn serialize_validated<T>(&mut self, data: &T) -> ZeroCopyResult<Bytes>
     where
-        T: Archive,
-        T::Archived: for<'a> bytecheck::CheckBytes<
-            bytecheck::rancor::Strategy<bytecheck::DefaultValidator, Failure>,
-        >,
+        T: Archive + for<'a> Serialize<HighSerializer<AlignedVec, ArenaHandle<'a>, Failure>>,
+        T::Archived: for<'a> bytecheck::CheckBytes<HighValidator<'a, Failure>>,
     {
         let bytes = self.serialize(data)?;
 
@@ -88,12 +92,10 @@ impl ZeroCopyDeserializer {
 
     /// Access archived data directly without deserialization
     #[instrument(skip(data))]
-    pub fn access<T>(&self, data: &[u8]) -> ZeroCopyResult<&T::Archived>
+    pub fn access<'a, T>(&self, data: &'a [u8]) -> ZeroCopyResult<&'a T::Archived>
     where
         T: Archive,
-        T::Archived: for<'a> bytecheck::CheckBytes<
-            bytecheck::rancor::Strategy<bytecheck::DefaultValidator, Failure>,
-        >,
+        T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, Failure>>,
     {
         access::<T::Archived, Failure>(data)
             .map_err(|e| ZeroCopyError::ArchiveAccess(format!("Access failed: {:?}", e)))
@@ -114,9 +116,8 @@ impl ZeroCopyDeserializer {
     pub fn deserialize<T>(&self, data: &[u8]) -> ZeroCopyResult<T>
     where
         T: Archive,
-        T::Archived: for<'a> bytecheck::CheckBytes<
-            bytecheck::rancor::Strategy<bytecheck::DefaultValidator, Failure>,
-        >,
+        T::Archived: for<'a> bytecheck::CheckBytes<HighValidator<'a, Failure>>
+            + Deserialize<T, HighDeserializer<Failure>>,
     {
         from_bytes::<T, Failure>(data).map_err(ZeroCopyError::Serialization)
     }
@@ -130,12 +131,12 @@ impl Default for ZeroCopyDeserializer {
 
 /// Shared buffer pool for zero-copy operations
 #[derive(Debug)]
-pub struct BufferPool {
+pub struct BytesBufferPool {
     buffers: crossbeam_queue::SegQueue<BytesMut>,
     default_capacity: usize,
 }
 
-impl BufferPool {
+impl BytesBufferPool {
     pub fn new(default_capacity: usize) -> Self {
         Self {
             buffers: crossbeam_queue::SegQueue::new(),
@@ -183,9 +184,7 @@ where
     /// Access the data (either owned or archived)
     pub fn access(&self) -> ZeroCopyResult<ZeroCopyDataRef<'_, T>>
     where
-        T::Archived: for<'a> bytecheck::CheckBytes<
-            bytecheck::rancor::Strategy<bytecheck::DefaultValidator, Failure>,
-        >,
+        T::Archived: for<'a> bytecheck::CheckBytes<HighValidator<'a, Failure>>,
     {
         match self {
             Self::Owned(data) => Ok(ZeroCopyDataRef::Owned(data)),
@@ -199,9 +198,9 @@ where
 }
 
 /// Reference to either owned or archived data
-pub enum ZeroCopyDataRef<'a, T> {
+pub enum ZeroCopyDataRef<'a, T: Archive> {
     Owned(&'a T),
-    Archived(&'a T::Archived),
+    Archived(&'a <T as Archive>::Archived),
 }
 
 /// Helper function to align size up to boundary
@@ -228,6 +227,7 @@ impl StreamingSerializer {
     pub fn serialize_chunks<T, I>(&mut self, items: I) -> ZeroCopyResult<Vec<Bytes>>
     where
         I: IntoIterator<Item = T>,
+        T: for<'a> Serialize<HighSerializer<AlignedVec, ArenaHandle<'a>, Failure>>,
     {
         let mut chunks = Vec::new();
         let mut chunk = Vec::new();
@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn test_buffer_pool() {
-        let pool = BufferPool::new(1024);
+        let pool = BytesBufferPool::new(1024);
 
         let buf1 = pool.get();
         assert_eq!(buf1.capacity(), 1024);

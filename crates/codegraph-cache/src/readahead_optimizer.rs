@@ -3,10 +3,10 @@ use codegraph_core::{CodeGraphError, NodeId, Result};
 use crossbeam_channel::{bounded, Receiver, Sender};
 use dashmap::DashMap;
 use parking_lot::RwLock as SyncRwLock;
-use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::sync::Arc;
-use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 fn key_hash(key: &CacheKey) -> u64 {
     let mut h = DefaultHasher::new();
@@ -119,7 +119,9 @@ impl ReadAheadOptimizer {
         self.update_metrics(start_time.elapsed()).await;
 
         // For demo purposes - in practice, this would integrate with actual storage
-        Ok(Some(format!("optimized_data_for_{}", key_hash(&key)).into_bytes()))
+        Ok(Some(
+            format!("optimized_data_for_{}", key_hash(&key)).into_bytes(),
+        ))
     }
 
     /// Prefetch a batch of sequential keys

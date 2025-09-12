@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use tokio::sync::mpsc as tokio_mpsc;
 use dashmap::DashMap;
 use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
@@ -11,6 +10,7 @@ use std::hash::{Hash, Hasher};
 use std::io::{Read, Write};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::sync::mpsc as tokio_mpsc;
 use tokio::time::interval;
 use tracing::{debug, error, info, warn};
 

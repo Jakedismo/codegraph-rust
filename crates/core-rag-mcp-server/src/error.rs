@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, CoreRagError>;
+pub type CoreRagResult<T> = std::result::Result<T, CoreRagError>;
 
 #[derive(Error, Debug)]
 pub enum CoreRagError {
@@ -8,7 +8,7 @@ pub enum CoreRagError {
     Config(String),
 
     #[error("CodeGraph error: {0}")]
-    CodeGraph(#[from] codegraph_core::Error),
+    CodeGraph(#[from] codegraph_core::CodeGraphError),
 
     #[error("Vector search error: {0}")]
     VectorSearch(String),
@@ -68,10 +68,10 @@ impl CoreRagError {
 impl From<CoreRagError> for rmcp::ErrorData {
     fn from(err: CoreRagError) -> Self {
         match err {
-            CoreRagError::NotFound(msg) => rmcp::ErrorData::internal_error(msg),
-            CoreRagError::InvalidInput(msg) => rmcp::ErrorData::internal_error(msg),
-            CoreRagError::ServiceUnavailable(msg) => rmcp::ErrorData::internal_error(msg),
-            _ => rmcp::ErrorData::internal_error(err.to_string()),
+            CoreRagError::NotFound(msg) => rmcp::ErrorData::internal_error(msg, None),
+            CoreRagError::InvalidInput(msg) => rmcp::ErrorData::internal_error(msg, None),
+            CoreRagError::ServiceUnavailable(msg) => rmcp::ErrorData::internal_error(msg, None),
+            _ => rmcp::ErrorData::internal_error(err.to_string(), None),
         }
     }
 }

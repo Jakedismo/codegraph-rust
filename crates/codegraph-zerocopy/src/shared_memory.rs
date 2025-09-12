@@ -7,6 +7,7 @@ use crate::{ZeroCopyError, ZeroCopyResult};
 use memmap2::{MmapMut, MmapOptions};
 use parking_lot::{Mutex, RwLock};
 use rkyv::{access, access_unchecked, Archive};
+use rkyv::api::high::HighValidator;
 use std::{
     ffi::CString,
     fs::{File, OpenOptions},
@@ -238,9 +239,7 @@ impl<'a> SharedMemoryReader<'a> {
     pub fn access_archived<T>(&self) -> ZeroCopyResult<&T::Archived>
     where
         T: Archive,
-        T::Archived: for<'b> bytecheck::CheckBytes<
-            bytecheck::rancor::Strategy<bytecheck::DefaultValidator, rkyv::rancor::Failure>,
-        >,
+        T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rkyv::rancor::Failure>>,
     {
         let data = self.segment.data_section();
         access::<T::Archived, rkyv::rancor::Failure>(data).map_err(|e| {

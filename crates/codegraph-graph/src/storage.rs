@@ -5,7 +5,7 @@ use codegraph_core::{
 };
 use dashmap::DashMap;
 use memmap2::{Mmap, MmapOptions};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use rocksdb::{
     BlockBasedOptions, BoundColumnFamily, Cache, ColumnFamilyDescriptor, DBCompressionType,
     DBWithThreadMode, IteratorMode, MultiThreaded, Options, ReadOptions, SliceTransform,
@@ -13,7 +13,6 @@ use rocksdb::{
 };
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::time::{Duration, Instant};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -23,7 +22,7 @@ use std::{
     },
 };
 
-use crate::io_batcher::{BatchingConfig, ReadCoalescer, WriteBatchOptimizer};
+use crate::io_batcher::{BatchingConfig, ReadCoalescer};
 
 type DB = DBWithThreadMode<MultiThreaded>;
 
@@ -132,9 +131,12 @@ impl HighPerformanceRocksDbStorage {
 
         db_opts.set_compression_type(DBCompressionType::Lz4);
         db_opts.set_bottommost_compression_type(DBCompressionType::Zstd);
-        // Reduce syscall overhead where available
-        db_opts.set_use_direct_reads(true);
-        db_opts.set_use_direct_io_for_flush_and_compaction(true);
+        // Reduce syscall overhead where available, but avoid invalid combinations.
+        // RocksDB requires that if allow_mmap_reads is enabled, use_direct_reads must be disabled.
+        db_opts.set_use_direct_reads(false);
+        // Direct I/O for flush/compaction is incompatible with mmap writes.
+        // Prefer mmap for throughput; disable direct I/O here.
+        db_opts.set_use_direct_io_for_flush_and_compaction(false);
 
         db_opts.set_allow_mmap_reads(true);
         db_opts.set_allow_mmap_writes(true);

@@ -1,4 +1,4 @@
-use codegraph_core::{NodeId, Result};
+use codegraph_core::NodeId;
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};

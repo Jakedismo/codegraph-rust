@@ -1,8 +1,11 @@
 use crate::{ApiError, ApiResult, AppState};
+use crate::vector_store_ext::FaissVectorStoreExt;
+use crate::semantic_search_ext::SemanticSearchExt;
 use axum::{
     extract::{Query, State},
     Json,
 };
+use codegraph_core::{GraphStore, NodeId};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use uuid::Uuid;
@@ -413,7 +416,7 @@ pub async fn rebuild_index(
 pub async fn get_search_performance(
     State(state): State<AppState>,
 ) -> ApiResult<Json<SearchPerformanceResponse>> {
-    let stats = state.vector_search.get_performance_stats();
+    let stats = state.semantic_search.get_performance_stats();
 
     Ok(Json(SearchPerformanceResponse {
         total_searches: stats.total_searches,

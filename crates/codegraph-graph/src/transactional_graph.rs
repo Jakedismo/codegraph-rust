@@ -1,13 +1,10 @@
 use async_trait::async_trait;
 use codegraph_core::{
-    CodeGraphError, CodeNode, GraphStore, IsolationLevel, NodeId, Result, SnapshotId, Transaction,
-    TransactionId, TransactionManager, TransactionStatus, VersionId, VersionedStore,
-    WriteOperation,
+    CodeGraphError, CodeNode, GraphStore, IsolationLevel, NodeId, Result, SnapshotId,
+    TransactionId, TransactionManager, VersionId, VersionedStore, WriteOperation,
 };
 use parking_lot::RwLock;
-use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::time::timeout;
-use uuid::Uuid;
+use std::sync::Arc;
 
 use crate::VersionedRocksDbStorage;
 
@@ -171,7 +168,7 @@ impl TransactionalGraph {
 
 #[async_trait]
 impl GraphStore for TransactionalGraph {
-    async fn add_node(&mut self, mut node: CodeNode) -> Result<()> {
+    async fn add_node(&mut self, node: CodeNode) -> Result<()> {
         let transaction_id = self.get_current_transaction_id()?;
 
         // Generate content hash for the node
