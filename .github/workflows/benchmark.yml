@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
@@ -86,7 +86,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
     - name: Checkout PR branch
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
@@ -110,7 +110,7 @@ jobs:
         cargo bench --workspace > pr_benchmarks.txt 2>&1
 
     - name: Checkout main branch
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         ref: main
         path: main-branch
@@ -151,7 +151,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
