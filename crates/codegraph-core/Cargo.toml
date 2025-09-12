@@ -48,7 +48,7 @@ bytes = { workspace = true }
 # Optional arena allocator and zero-copy archiving
 bumpalo = "3.15"
 rkyv = { version = "0.7", features = ["validation"] }
-bytecheck = "0.6"
+bytecheck = "0.8"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
