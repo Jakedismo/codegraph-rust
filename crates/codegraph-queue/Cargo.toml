@@ -16,7 +16,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
-metrics = "0.22.0"
+metrics = "0.24.2"
 
 codegraph-core = { path = "../codegraph-core" }
 codegraph-concurrent = { path = "../codegraph-concurrent" }
