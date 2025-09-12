@@ -195,6 +195,48 @@ impl HighPerformanceRocksDbStorage {
         Ok(storage)
     }
 
+    pub fn new_read_only<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let mut db_opts = Options::default();
+        // Do not create missing; expect an existing DB schema
+        db_opts.set_compression_type(DBCompressionType::Lz4);
+        db_opts.set_bottommost_compression_type(DBCompressionType::Zstd);
+        db_opts.set_use_direct_reads(false);
+        db_opts.set_use_direct_io_for_flush_and_compaction(false);
+        db_opts.set_allow_mmap_reads(true);
+        db_opts.set_allow_mmap_writes(false);
+
+        // Open existing column families in read-only mode
+        let cf_names = vec![NODES_CF, EDGES_CF, INDICES_CF, METADATA_CF];
+        let db = DB::open_cf_for_read_only(&db_opts, &path, cf_names, false)
+            .map_err(|e| CodeGraphError::Database(format!("Failed to open database (read-only): {}", e)))?;
+
+        let batching_config = BatchingConfig::default();
+        let db_arc = Arc::new(db);
+        let read_cache = Arc::new(DashMap::with_capacity(100_000));
+        let read_coalescer = ReadCoalescer::new(
+            db_arc.clone(),
+            NODES_CF,
+            read_cache.clone(),
+            batching_config.clone(),
+        );
+
+        let storage = Self {
+            db: db_arc,
+            db_path: path.as_ref().to_path_buf(),
+            read_cache,
+            edge_cache: Arc::new(DashMap::with_capacity(50_000)),
+            edge_counter: AtomicU64::new(1),
+            memory_tables: Arc::new(RwLock::new(HashMap::new())),
+            batching_config: batching_config.clone(),
+            read_coalescer,
+        };
+
+        // Safe to attempt reading counters in read-only mode
+        let _ = storage.initialize_counters();
+
+        Ok(storage)
+    }
+
     pub(crate) fn add_node_inner(&self, node: &CodeNode) -> Result<()> {
         let node_id = node.id;
         let serializable_node = SerializableCodeNode::from(node.clone());

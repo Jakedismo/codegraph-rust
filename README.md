@@ -24,7 +24,7 @@
 
 ## 🎯 Overview
 
-CodeGraph is a powerful CLI tool that combines MCP (Model Context Protocol) server management with sophisticated code analysis capabilities. It provides a unified interface for indexing projects, managing embeddings, and running MCP servers with multiple transport options.
+CodeGraph is a powerful CLI tool that combines MCP (Model Context Protocol) server management with sophisticated code analysis capabilities. It provides a unified interface for indexing projects, managing embeddings, and running MCP servers with multiple transport options. All you now need is an Agent(s) to create your very own deep code and project knowledge synthehizer system!
 
 ### Key Capabilities
 
@@ -32,8 +32,17 @@ CodeGraph is a powerful CLI tool that combines MCP (Model Context Protocol) serv
 - **🚄 Dual Transport Support**: Run MCP servers with STDIO, HTTP, or both simultaneously
 - **🎯 Vector Search**: Semantic code search using FAISS-powered vector embeddings
 - **📊 Graph-Based Architecture**: Navigate code relationships with RocksDB-backed graph storage
-- **⚡ High Performance**: Optimized for large codebases with parallel processing
+- **⚡ High Performance**: Optimized for large codebases with parallel processing and batched embeddings
 - **🔧 Flexible Configuration**: Extensive configuration options for embedding models and performance tuning
+
+## RAW PERFORMANCE ✨✨✨
+
+170K lines of rust code in 0.49sec! 21024 embeddings in 3:24mins! On M3 Pro 32GB Qdrant/all-MiniLM-L6-v2-onnx on CPU no Metal acceleration used!
+
+```bash
+Parsing completed: 353/353 files, 169397 lines in 0.49s (714.5 files/s, 342852 lines/s)
+[00:03:24] [########################################] 21024/21024 Embeddings complete
+```
 
 ## ✨ Features
 

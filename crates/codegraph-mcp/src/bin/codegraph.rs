@@ -211,6 +211,7 @@ enum Commands {
         #[arg(long, default_value = "512")] max_seq_len: usize,
         #[arg(long, help = "Remove existing .codegraph before indexing")] clean: bool,
         #[arg(long, default_value = "json", value_parser = clap::builder::PossibleValuesParser::new(["human","json"]))] format: String,
+        #[arg(long, help = "Open graph in read-only mode for perf queries")] graph_readonly: bool,
     },
     #[command(about = "Serve HTTP MCP endpoint")]
     #[cfg(feature = "server-http")]
@@ -538,7 +539,7 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Perf { path, langs, warmup, trials, queries, workers, batch_size, device, max_seq_len, clean, format } => {
+        Commands::Perf { path, langs, warmup, trials, queries, workers, batch_size, device, max_seq_len, clean, format, graph_readonly } => {
             handle_perf(
                 path,
                 langs,
@@ -551,6 +552,7 @@ async fn main() -> Result<()> {
                 max_seq_len,
                 clean,
                 format,
+                graph_readonly,
             )
             .await?;
         }
@@ -1171,6 +1173,7 @@ async fn handle_perf(
     max_seq_len: usize,
     clean: bool,
     format: String,
+    graph_readonly: bool,
 ) -> Result<()> {
     use std::time::Instant;
     use serde_json::json;
@@ -1197,6 +1200,10 @@ async fn handle_perf(
     let t0 = Instant::now();
     let stats = indexer.index_project(&path).await?;
     let indexing_secs = t0.elapsed().as_secs_f64();
+    // Release RocksDB handle before running queries (which open their own graph handles)
+    drop(indexer);
+    // Give RocksDB a brief moment to release OS locks
+    tokio::time::sleep(std::time::Duration::from_millis(75)).await;
 
     let qset = if let Some(q) = queries {
         q
@@ -1236,7 +1243,30 @@ async fn handle_perf(
         latencies_ms.iter().sum::<f64>() / latencies_ms.len() as f64
     };
 
-    let graph = codegraph_graph::CodeGraph::new()?;
+    // Open graph with small retry to avoid transient lock contention
+    let graph = {
+        use std::time::Duration;
+        let mut attempts = 0;
+        loop {
+            let open_res = if graph_readonly {
+                codegraph_graph::CodeGraph::new_read_only()
+            } else {
+                codegraph_graph::CodeGraph::new()
+            };
+            match open_res {
+                Ok(g) => break g,
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("LOCK") && attempts < 10 {
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        attempts += 1;
+                        continue;
+                    }
+                    return Err(e.into());
+                }
+            }
+        }
+    };
     let mut any_node: Option<codegraph_core::NodeId> = None;
     if let Ok(ids_raw) = std::fs::read_to_string(".codegraph/faiss_ids.json") {
         if let Ok(ids) = serde_json::from_str::<Vec<codegraph_core::NodeId>>(&ids_raw) {

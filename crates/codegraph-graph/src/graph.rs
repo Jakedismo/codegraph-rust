@@ -45,6 +45,19 @@ impl CodeGraph {
         })
     }
 
+    pub fn new_read_only() -> Result<Self> {
+        let storage = Arc::new(HighPerformanceRocksDbStorage::new_read_only("./data/graph.db")?);
+
+        Ok(Self {
+            storage,
+            node_cache: Arc::new(DashMap::with_capacity(100_000)),
+            edge_cache: Arc::new(DashMap::with_capacity(50_000)),
+            query_optimizer: None,
+            query_stats: Arc::new(RwLock::new(QueryStats::default())),
+            path_cache: Arc::new(DashMap::with_capacity(10_000)),
+        })
+    }
+
     pub fn new_with_cache() -> Result<Self> {
         let cache = GraphQueryCache::new();
         let cache_manager = CacheManager::new(cache, Duration::from_secs(60));

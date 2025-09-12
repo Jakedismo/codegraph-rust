@@ -299,7 +299,24 @@ pub async fn bin_search_with_scores(
         scored.dedup_by_key(|(id, _)| *id);
         let top: Vec<(codegraph_core::NodeId, f32)> = scored.into_iter().take(limit).collect();
 
-        let graph = codegraph_graph::CodeGraph::new()?;
+    let graph = {
+        use std::time::Duration;
+        let mut attempts = 0;
+        loop {
+            match codegraph_graph::CodeGraph::new_read_only() {
+                Ok(g) => break g,
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("LOCK") && attempts < 10 {
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        attempts += 1;
+                        continue;
+                    }
+                    return Err(e.into());
+                }
+            }
+        }
+    };
         let mut out = Vec::new();
         for (id, score) in top {
             if let Some(node) = graph.get_node(id).await? {
