@@ -7,6 +7,7 @@ pub mod process;
 pub mod protocol;
 pub mod transport;
 pub mod version;
+pub mod server;
 
 pub use connection::*;
 pub use error::{McpError, Result};

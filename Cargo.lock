@@ -1276,6 +1276,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "axum",
  "chrono",
  "clap",
  "codegraph-core",
@@ -1287,6 +1288,7 @@ dependencies = [
  "faiss",
  "fastrand",
  "futures",
+ "hyper",
  "indicatif 0.18.0",
  "nix",
  "notify 6.1.1",

@@ -182,7 +182,11 @@ impl LocalEmbeddingProvider {
         // Truncate to max sequence length (approximate token count)
         let max_chars = self.config.max_sequence_length * 4;
         if text.len() > max_chars {
-            text.truncate(max_chars);
+            let mut new_len = max_chars.min(text.len());
+            while new_len > 0 && !text.is_char_boundary(new_len) {
+                new_len -= 1;
+            }
+            text.truncate(new_len);
         }
 
         text

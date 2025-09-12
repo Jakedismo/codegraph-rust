@@ -44,6 +44,9 @@ faiss = { workspace = true, optional = true }
 # codegraph-api not used directly here; avoid pulling heavy deps
 ## core-rag-mcp-server intentionally not linked to keep binary lean
 
+axum = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+
 [dev-dependencies]
 tokio-test = { workspace = true }
 tempfile = { workspace = true }
@@ -58,3 +61,4 @@ faiss = ["dep:faiss"]
 embeddings = ["dep:codegraph-vector"]
 embeddings-local = ["embeddings", "codegraph-vector/local-embeddings"]
 embeddings-openai = ["embeddings", "codegraph-vector/openai"]
+server-http = ["dep:axum", "dep:hyper"]

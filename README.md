@@ -162,6 +162,98 @@ sudo dnf install cmake clang openssl-devel
 - **CUDA** (for GPU-accelerated embeddings)
 - **Git** (for repository integration)
 
+## 🚀 Performance Benchmarks
+
+Run repeatable, end-to-end benchmarks that measure indexing speed (with local embeddings + FAISS), vector search latency, and graph traversal throughput.
+
+### Build with performance features
+
+Pick one of the local embedding backends and enable FAISS:
+
+```bash
+# Option A: ONNX Runtime (CoreML on macOS, CPU otherwise)
+cargo install --path crates/codegraph-mcp --features "embeddings,codegraph-vector/onnx,faiss"
+
+# Option B: Local HF + Candle (CPU/Metal/CUDA)
+cargo install --path crates/codegraph-mcp --features "embeddings-local,faiss"
+```
+
+### Configure local embedding backend
+
+ONNX (CoreML/CPU):
+
+```bash
+export CODEGRAPH_EMBEDDING_PROVIDER=onnx
+# macOS: use CoreML
+export CODEGRAPH_ONNX_EP=coreml   # or cpu
+export CODEGRAPH_LOCAL_MODEL=/path/to/model.onnx
+```
+
+Local HF + Candle (CPU/Metal/CUDA):
+
+```bash
+export CODEGRAPH_EMBEDDING_PROVIDER=local
+# device: cpu | metal | cuda:<id>
+export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
+```
+
+### Run the benchmark
+
+```bash
+# Cold run (cleans .codegraph), warmup queries + timed trials
+codegraph perf . \
+  --langs rust,ts,go \
+  --warmup 3 --trials 20 \
+  --batch-size 128 --device metal \
+  --clean --format json
+```
+
+What it measures
+
+- Indexing: total time to parse -> embed -> build FAISS (global + shards)
+- Embedding throughput: embeddings per second
+- Vector search: latency (avg/p50/p95) across repeated queries
+- Graph traversal: BFS depth=2 micro-benchmark
+
+Sample output (numbers will vary by machine and codebase)
+
+```json
+{
+  "env": {
+    "embedding_provider": "local",
+    "device": "metal",
+    "features": { "faiss": true, "embeddings": true }
+  },
+  "dataset": {
+    "path": "/repo/large-project",
+    "languages": ["rust","ts","go"],
+    "files": 18234,
+    "lines": 2583190
+  },
+  "indexing": {
+    "total_seconds": 186.4,
+    "embeddings": 53421,
+    "throughput_embeddings_per_sec": 286.6
+  },
+  "vector_search": {
+    "queries": 100,
+    "latency_ms": { "avg": 18.7, "p50": 12.3, "p95": 32.9 }
+  },
+  "graph": {
+    "bfs_depth": 2,
+    "visited_nodes": 1000,
+    "elapsed_ms": 41.8
+  }
+}
+```
+
+Tips for reproducibility
+
+- Use `--clean` for cold start numbers, and run a second time for warm cache numbers.
+- Close background processes that may compete for CPU/GPU.
+- Pin versions: `rustc --version`, FAISS build, and the embedding model.
+- Record the host: CPU/GPU, RAM, storage, OS version.
+
 ## 🚀 Installation
 
 ### Method 1: Install from Source

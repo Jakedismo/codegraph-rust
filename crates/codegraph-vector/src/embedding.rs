@@ -163,7 +163,12 @@ impl EmbeddingGenerator {
         }
 
         if text.len() > self.model_config.max_tokens * 4 {
-            text.truncate(self.model_config.max_tokens * 4);
+            let mut new_len = self.model_config.max_tokens * 4;
+            if new_len > text.len() { new_len = text.len(); }
+            while new_len > 0 && !text.is_char_boundary(new_len) {
+                new_len -= 1;
+            }
+            text.truncate(new_len);
         }
 
         text

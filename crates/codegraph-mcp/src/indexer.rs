@@ -11,6 +11,12 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 use walkdir::WalkDir;
 
+use std::sync::Arc;
+
+// Integrate edge derivation using parser->graph integrator
+use codegraph_core::integration::parser_graph::{EdgeSink, ParserGraphIntegrator};
+use std::collections::HashMap;
+
 pub struct IndexerConfig {
     pub languages: Vec<String>,
     pub exclude_patterns: Vec<String>,
@@ -205,6 +211,13 @@ impl ProjectIndexer {
         }
         embed_pb.finish_with_message("Embeddings complete");
 
+        // Proactively drop embedding resources (e.g., ONNX sessions) before heavy post-processing.
+        // This helps avoid late destructor ordering issues in some native backends on macOS.
+        #[cfg(feature = "embeddings")]
+        {
+            self.embedder = codegraph_vector::EmbeddingGenerator::default();
+        }
+
         #[cfg(feature = "faiss")]
         {
             use faiss::index::flat::FlatIndex;
@@ -299,6 +312,8 @@ impl ProjectIndexer {
             match n.node_type {
                 Some(NodeType::Function) => stats.functions += 1,
                 Some(NodeType::Class) => stats.classes += 1,
+                Some(NodeType::Struct) => stats.structs += 1,
+                Some(NodeType::Trait) => stats.traits += 1,
                 _ => {}
             }
             if let Some(ref c) = n.content { stats.lines += c.lines().count(); }
@@ -314,6 +329,55 @@ impl ProjectIndexer {
             main_pb.inc(1);
         }
         main_pb.finish_with_message("Indexing complete");
+
+        // Derive and persist edges using parser integrator (best-effort)
+        {
+            struct GraphEdgeSink {
+                graph: Arc<tokio::sync::Mutex<codegraph_graph::CodeGraph>>,
+            }
+            #[async_trait::async_trait]
+            impl EdgeSink for GraphEdgeSink {
+                async fn add_edge(
+                    &self,
+                    from: codegraph_core::NodeId,
+                    to: codegraph_core::NodeId,
+                    edge_type: codegraph_core::EdgeType,
+                    metadata: HashMap<String, String>,
+                ) -> codegraph_core::Result<()> {
+                    let mut e = codegraph_graph::CodeEdge::new(from, to, edge_type);
+                    for (k, v) in metadata { e = e.with_metadata(k, v); }
+                    self.graph.lock().await.add_edge(e).await?;
+                    Ok(())
+                }
+                async fn add_edges_batch(
+                    &self,
+                    edges: Vec<(
+                        codegraph_core::NodeId,
+                        codegraph_core::NodeId,
+                        codegraph_core::EdgeType,
+                        HashMap<String, String>,
+                    )>,
+                ) -> codegraph_core::Result<()> {
+                    let mut out = Vec::with_capacity(edges.len());
+                    for (from, to, t, meta) in edges.into_iter() {
+                        let mut hp = codegraph_graph::HighPerformanceEdge::new(from, to, t.to_string());
+                        for (k, v) in meta { hp = hp.with_metadata(k, v); }
+                        out.push(hp);
+                    }
+                    self.graph.lock().await.batch_add_edges(out).await?;
+                    Ok(())
+                }
+            }
+
+            let edge_pb = self.create_progress_bar(0, "Deriving graph edges");
+            let parser = std::sync::Arc::new(codegraph_parser::TreeSitterParser::new());
+            let graph_arc = Arc::new(tokio::sync::Mutex::new(codegraph_graph::CodeGraph::new()?));
+            let sink = Arc::new(GraphEdgeSink { graph: graph_arc.clone() });
+            let integrator = ParserGraphIntegrator::new(parser, graph_arc.clone(), sink);
+            // Use moderate concurrency for stability
+            let _ = integrator.process_directory(&path.to_string_lossy(), self.config.workers).await;
+            edge_pb.finish_with_message("Edges derived");
+        }
 
         // Save index metadata
         self.save_index_metadata(path, &stats).await?;
@@ -560,7 +624,11 @@ pub fn prepare_node_text(node: &CodeNode) -> String {
         text.push_str(c);
     }
     if text.len() > 2048 {
-        text.truncate(2048);
+        let mut new_len = 2048.min(text.len());
+        while new_len > 0 && !text.is_char_boundary(new_len) {
+            new_len -= 1;
+        }
+        text.truncate(new_len);
     }
     text
 }
@@ -611,6 +679,8 @@ pub struct IndexStats {
     pub lines: usize,
     pub functions: usize,
     pub classes: usize,
+    pub structs: usize,
+    pub traits: usize,
     pub embeddings: usize,
     pub errors: usize,
 }
@@ -621,6 +691,8 @@ impl IndexStats {
         self.lines += other.lines;
         self.functions += other.functions;
         self.classes += other.classes;
+        self.structs += other.structs;
+        self.traits += other.traits;
         self.embeddings += other.embeddings;
     }
 }
@@ -630,6 +702,8 @@ struct FileStats {
     lines: usize,
     functions: usize,
     classes: usize,
+    structs: usize,
+    traits: usize,
     embeddings: usize,
 }
 

@@ -241,6 +241,24 @@ where
                             meta.insert("kind".into(), "call".into());
                             meta.insert("file".into(), file.to_string_lossy().to_string());
                             edges.push((*from_id, *to_id, EdgeType::Calls, meta));
+                        } else if content.as_str().contains(other_name.as_str()) {
+                            // Reference without obvious call signature
+                            let mut meta = HashMap::new();
+                            meta.insert("kind".into(), "reference".into());
+                            meta.insert("file".into(), file.to_string_lossy().to_string());
+                            edges.push((*from_id, *to_id, EdgeType::References, meta));
+                        }
+                    }
+                    // Implements (rough heuristic for Rust/Java): "impl <Trait> for <Type>" or "implements <Iface>"
+                    let lc = content.to_lowercase();
+                    if lc.contains(" implements ") {
+                        for (other_name, to_id, _ctx2) in names_in_file.iter() {
+                            if lc.contains(&other_name.to_lowercase()) {
+                                let mut meta = HashMap::new();
+                                meta.insert("kind".into(), "implements".into());
+                                meta.insert("file".into(), file.to_string_lossy().to_string());
+                                edges.push((*from_id, *to_id, EdgeType::Implements, meta));
+                            }
                         }
                     }
                 }
