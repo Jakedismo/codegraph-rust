@@ -145,7 +145,7 @@ jobs:
         echo '```' >> performance_report.md
 
     - name: Upload performance report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: nightly-performance-report
         path: |
@@ -199,7 +199,7 @@ jobs:
         echo '```' >> memory_leak_report.md
 
     - name: Upload memory leak report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: memory-leak-report
         path: memory_leak_report.md
@@ -252,7 +252,7 @@ jobs:
         echo '```' >> dependency_audit.md
 
     - name: Upload dependency audit
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: comprehensive-dependency-audit
         path: dependency_audit.md
