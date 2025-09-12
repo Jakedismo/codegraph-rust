@@ -294,6 +294,7 @@ impl ProjectIndexer {
         // Store nodes into graph and compute stats
         let main_pb = self.create_progress_bar(nodes.len() as u64, "Storing nodes");
         let mut stats = IndexStats::default();
+        let mut seen_files = std::collections::HashSet::new();
         for n in nodes.into_iter() {
             match n.node_type {
                 Some(NodeType::Function) => stats.functions += 1,
@@ -301,6 +302,14 @@ impl ProjectIndexer {
                 _ => {}
             }
             if let Some(ref c) = n.content { stats.lines += c.lines().count(); }
+            if let Some(ref path) = n.location.file_path.as_str().into() {
+                if seen_files.insert(n.location.file_path.clone()) {
+                    stats.files += 1;
+                }
+            }
+            if n.embedding.is_some() {
+                stats.embeddings += 1;
+            }
             self.graph.add_node(n).await?;
             main_pb.inc(1);
         }
