@@ -41,7 +41,7 @@ lru = { workspace = true }
 reqwest = { workspace = true, optional = true }
 
 # ONNX Runtime provider (optional)
-onnxruntime = { version = "0.0.14", optional = true, default-features = false }
+ort = { version = "2.0.0-rc.10", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries"] }
 
 
 
@@ -70,7 +70,7 @@ local-embeddings = [
     "dep:tokenizers",
     "dep:hf-hub",
 ]
-onnx = ["dep:onnxruntime", "dep:tokenizers", "dep:hf-hub", "dep:ndarray"]
+onnx = ["dep:ort", "dep:tokenizers", "dep:hf-hub", "dep:ndarray"]
 onnx-coreml = ["onnx"]
 
 [[example]]

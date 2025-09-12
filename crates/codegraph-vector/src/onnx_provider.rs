@@ -7,11 +7,15 @@ use codegraph_core::{CodeGraphError, CodeNode, Result};
 #[cfg(feature = "onnx")]
 use hf_hub::api::tokio::Api;
 #[cfg(feature = "onnx")]
-use ndarray::{s, Array2, Axis};
+use ndarray::{s, Array, Array2, Axis};
 #[cfg(feature = "onnx")]
-use onnxruntime::{environment::Environment, session::Session, GraphOptimizationLevel, LoggingLevel};
+use ort::execution_providers::CoreMLExecutionProvider;
 #[cfg(feature = "onnx")]
-use onnxruntime::tensor::OrtOwnedTensor;
+use ort::session::builder::GraphOptimizationLevel;
+#[cfg(feature = "onnx")]
+use ort::session::Session;
+#[cfg(feature = "onnx")]
+use ort::value::Value;
 #[cfg(feature = "onnx")]
 use parking_lot::Mutex;
 #[cfg(feature = "onnx")]
@@ -36,20 +40,11 @@ pub enum OnnxPooling { Cls, Mean, Max }
 
 #[cfg(feature = "onnx")]
 pub struct OnnxEmbeddingProvider {
-    _env: std::sync::Arc<Environment>,
-    session: std::sync::Arc<Mutex<Session<'static>>>,
+    session: Arc<Mutex<Session>>,
     tokenizer: Arc<Tokenizer>,
     hidden_size: usize,
     config: OnnxConfig,
 }
-
-// Safety: All access to the inner Session is serialized via a Mutex and never moved
-// across threads without locking. onnxruntime::Session contains raw pointers that are
-// not Send/Sync, but our usage confines them to the critical section.
-#[cfg(feature = "onnx")]
-unsafe impl Send for OnnxEmbeddingProvider {}
-#[cfg(feature = "onnx")]
-unsafe impl Sync for OnnxEmbeddingProvider {}
 
 #[cfg(feature = "onnx")]
 impl OnnxEmbeddingProvider {
@@ -72,68 +67,42 @@ impl OnnxEmbeddingProvider {
 
         let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(|e| CodeGraphError::External(e.to_string()))?;
 
-        // Initialize ONNX Runtime
-        let env = Environment::builder()
-            .with_name("codegraph-onnx")
-            .with_log_level(LoggingLevel::Warning)
-            .build()
-            .map_err(|e| CodeGraphError::External(e.to_string()))?;
-
         // Decide execution providers based on env
         let ep = std::env::var("CODEGRAPH_ONNX_EP")
             .unwrap_or_else(|_| "cpu".into())
             .to_lowercase();
 
-        let env_arc = std::sync::Arc::new(env);
-        let mut builder = env_arc
-            .new_session_builder()
+        let mut session_builder = Session::builder()
+            .map_err(|e| CodeGraphError::External(e.to_string()))?
+            .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(|e| CodeGraphError::External(e.to_string()))?;
 
         // Register CoreML EP when requested, fall back to CPU if unavailable
         if ep == "coreml" {
-            #[allow(unused_mut)]
-            let mut tried_coreml = false;
             #[cfg(target_os = "macos")]
             {
-                tried_coreml = true;
-                // onnxruntime crate exposes provider registration via feature flags in some versions.
-                // We attempt to enable CoreML through provider API if available; otherwise rely on ORT defaults.
-                #[cfg(feature = "onnx-coreml")]
-                if let Err(e) = builder.register_coreml_provider() {
-                    tracing::warn!(
-                        "Failed to register CoreML EP ({}). Falling back to CPU.",
-                        e
-                    );
-                } else {
-                    tracing::info!("Using ONNX Runtime CoreML execution provider");
-                }
-                #[cfg(not(feature = "onnx-coreml"))]
-                {
-                    tracing::warn!(
-                        "CoreML requested but 'onnx-coreml' feature is not enabled; using CPU."
-                    );
-                }
+                session_builder = session_builder
+                    .with_execution_providers([CoreMLExecutionProvider::default().build()])
+                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
+                tracing::info!("Using ONNX Runtime CoreML execution provider");
             }
-            if !tried_coreml {
+            #[cfg(not(target_os = "macos"))]
+            {
                 tracing::warn!(
                     "CODEGRAPH_ONNX_EP=coreml set, but CoreML registration not supported on this platform; using CPU."
                 );
             }
         }
 
-        // Finish builder configuration
-        let session = builder
-            .with_optimization_level(GraphOptimizationLevel::All)
-            .map_err(|e| CodeGraphError::External(e.to_string()))?
-            .with_model_from_file(model_path)
+        let session = session_builder
+            .commit_from_file(&model_path)
             .map_err(|e| CodeGraphError::External(e.to_string()))?;
 
         // Hidden size discovery (fallback to 768)
         let hidden_size = 768;
 
         Ok(Self {
-            _env: env_arc,
-            session: std::sync::Arc::new(Mutex::new(session)),
+            session: Arc::new(Mutex::new(session)),
             tokenizer: Arc::new(tokenizer),
             hidden_size,
             config,
@@ -215,24 +184,24 @@ impl EmbeddingProvider for OnnxEmbeddingProvider {
         let mut all = Vec::with_capacity(nodes.len());
         for chunk in texts.chunks(config.batch_size.max(1)) {
             let (ids, mask, _l) = self.prepare_inputs(chunk)?;
-            // Run session with ndarray inputs using named tensors
-            let outputs = {
-                let mut sess = self.session.lock();
-                use onnxruntime::ndarray_tensor::NdArrayTensor;
-                let input_ids = NdArrayTensor::from_array(ids);
-                let attention_mask = NdArrayTensor::from_array(mask);
-                sess
-                    .run(vec![("input_ids", &input_ids), ("attention_mask", &attention_mask)])
-                    .map_err(|e| CodeGraphError::External(e.to_string()))?
-            };
+            // Run session with ndarray inputs using positional tensors
+            let mut sess = self.session.lock();
+            let input_ids = Value::from_array(ids.into_dyn())
+                .map_err(|e| CodeGraphError::External(e.to_string()))?;
+            let attention_mask = Value::from_array(mask.clone().into_dyn())
+                .map_err(|e| CodeGraphError::External(e.to_string()))?;
+            let outputs = sess
+                .run(ort::inputs![input_ids, attention_mask])
+                .map_err(|e| CodeGraphError::External(e.to_string()))?;
 
             // Minimal: assume the first output is [B, H]
-            let out: OrtOwnedTensor<'_, '_, f32, _> = outputs[0]
-                .try_extract()
+            let out_value: &Value = &outputs[0];
+            let (shape, data) = out_value
+                .try_extract_tensor::<f32>()
                 .map_err(|e| CodeGraphError::External(e.to_string()))?;
-            let arr: Array2<f32> = out
-                .view()
-                .to_owned()
+            let arr_dyn = ndarray::Array::from_shape_vec(shape.to_ixdyn(), data.to_vec())
+                .map_err(|e| CodeGraphError::External(e.to_string()))?;
+            let arr: Array2<f32> = arr_dyn
                 .into_dimensionality()
                 .map_err(|e| CodeGraphError::External(e.to_string()))?;
             let pooled = self
