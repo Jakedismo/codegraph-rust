@@ -226,7 +226,7 @@ echo "Provider: ONNX Runtime with optimized models"
 echo "Expected: Fast indexing, good general embeddings"
 
 export CODEGRAPH_EMBEDDING_PROVIDER=onnx
-export CODEGRAPH_LOCAL_MODEL=/Users/jokkeruokolainen/.cache/huggingface/hub/models--Qdrant--all-MiniLM-L6-v2-onnx/snapshots/5f1b8cd78bc4fb444dd171e59b18f3a3af89a079 
+export CODEGRAPH_LOCAL_MODEL=/Users/username/.cache/huggingface/hub/models--Qdrant--all-MiniLM-L6-v2-onnx/snapshots/5f1b8cd78bc4fb444dd171e59b18f3a3af89a079 
 
 echo "Starting ONNX embedding test..."
 time ../target/debug/codegraph index . --force --languages typescript --verbose 2>&1 | grep -E "(Found|embeddings|complete|ONNX)" || true
