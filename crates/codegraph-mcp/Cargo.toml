@@ -25,6 +25,7 @@ parking_lot = { workspace = true }
 tokio-util = { workspace = true }
 fastrand = { workspace = true }
 reqwest = { workspace = true }
+sha2 = { workspace = true }
 
 # CLI dependencies
 clap = { workspace = true }

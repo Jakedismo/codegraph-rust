@@ -91,6 +91,15 @@ pub fn get_tools_list() -> Value {
             }
         },
         {
+            "name": "codegraph.cache_stats",
+            "description": "Get intelligent cache statistics and performance analysis",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
             "name": "vector.search",
             "description": "Basic vector similarity search without AI analysis",
             "inputSchema": {

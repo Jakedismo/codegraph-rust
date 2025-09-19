@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 #[cfg(feature = "qwen-integration")]
 use crate::qwen::{QwenClient, QwenConfig};
+#[cfg(feature = "qwen-integration")]
+use crate::cache::{CacheConfig, init_cache};
 
 #[derive(Clone)]
 struct ServerState {
@@ -30,6 +32,8 @@ async fn dispatch(state: &ServerState, method: &str, params: Value) -> Result<Va
         "codegraph.performance_metrics" => performance_metrics(state, params).await,
         #[cfg(feature = "qwen-integration")]
         "codegraph.impact_analysis" => impact_analysis(state, params).await,
+        #[cfg(feature = "qwen-integration")]
+        "codegraph.cache_stats" => cache_stats(state, params).await,
         _ => Err(format!("Unknown method: {}", method)),
     }
 }
@@ -508,6 +512,13 @@ pub async fn serve_stdio(_buffer_size: usize) -> crate::Result<()> {
 // Qwen2.5-Coder integration functions
 #[cfg(feature = "qwen-integration")]
 async fn init_qwen_client() -> Option<QwenClient> {
+    // Initialize intelligent cache
+    let cache_config = CacheConfig::default();
+    init_cache(cache_config);
+    tracing::info!("✅ Intelligent response cache initialized");
+
+    // Note: Cache warming will happen on first requests
+
     let config = QwenConfig::default();
     let client = QwenClient::new(config);
 
@@ -554,8 +565,13 @@ async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value, St
     // 2. If Qwen analysis is requested and available, enhance results
     if include_analysis {
         if let Some(qwen_client) = &state.qwen_client {
-            // Build context from search results for Qwen analysis
+            // Check cache first
             let search_context = build_search_context(&search_results, &query);
+
+            if let Some(cached_response) = crate::cache::get_cached_response(&query, &search_context).await {
+                tracing::info!("🚀 Cache hit for enhanced search: {}", query);
+                return Ok(cached_response);
+            }
 
             // Use Qwen2.5-Coder for intelligent analysis
             match qwen_client.analyze_codebase(&query, &search_context).await {
@@ -568,8 +584,9 @@ async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value, St
                         qwen_result.completion_tokens,
                         qwen_result.confidence_score,
                     );
-                    // Combine search results with Qwen intelligence
-                    return Ok(json!({
+
+                    // Build response
+                    let response = json!({
                         "search_results": search_results["results"],
                         "ai_analysis": qwen_result.text,
                         "intelligence_metadata": {
@@ -582,7 +599,20 @@ async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value, St
                         },
                         "generation_guidance": crate::prompts::extract_enhanced_generation_guidance(&qwen_result.text),
                         "quality_assessment": crate::prompts::extract_enhanced_quality_assessment(&qwen_result.text)
-                    }));
+                    });
+
+                    // Cache the response for future use
+                    let _ = crate::cache::cache_response(
+                        &query,
+                        &search_context,
+                        response.clone(),
+                        qwen_result.confidence_score,
+                        qwen_result.processing_time,
+                        qwen_result.context_tokens,
+                        qwen_result.completion_tokens,
+                    ).await;
+
+                    return Ok(response);
                 }
                 Err(e) => {
                     tracing::error!("Qwen analysis failed: {}", e);
@@ -623,6 +653,12 @@ async fn semantic_intelligence(state: &ServerState, params: Value) -> Result<Val
     let codebase_context = build_comprehensive_context(state, &query, max_context_tokens).await
         .map_err(|e| e.to_string())?;
 
+    // Check cache first for semantic intelligence
+    if let Some(cached_response) = crate::cache::get_cached_response(&query, &codebase_context).await {
+        tracing::info!("🚀 Cache hit for semantic intelligence: {}", query);
+        return Ok(cached_response);
+    }
+
     // 2. Use Qwen2.5-Coder for comprehensive analysis
     let analysis_result = qwen_client.analyze_codebase(&query, &codebase_context).await
         .map_err(|e| e.to_string())?;
@@ -637,7 +673,7 @@ async fn semantic_intelligence(state: &ServerState, params: Value) -> Result<Val
     );
 
     // 3. Structure response for MCP-calling LLMs
-    Ok(json!({
+    let response = json!({
         "task_type": task_type,
         "user_query": query,
         "comprehensive_analysis": analysis_result.text,
@@ -657,7 +693,20 @@ async fn semantic_intelligence(state: &ServerState, params: Value) -> Result<Val
             "recommended_for": ["claude", "gpt-4", "custom-agents"],
             "context_quality": analysis_result.confidence_score
         }
-    }))
+    });
+
+    // Cache the response for future use
+    let _ = crate::cache::cache_response(
+        &query,
+        &codebase_context,
+        response.clone(),
+        analysis_result.confidence_score,
+        analysis_result.processing_time,
+        analysis_result.context_tokens,
+        analysis_result.completion_tokens,
+    ).await;
+
+    Ok(response)
 }
 
 // Helper functions for Qwen integration
@@ -754,8 +803,82 @@ fn build_context_summary(context: &str) -> Value {
 // Performance metrics MCP tool
 #[cfg(feature = "qwen-integration")]
 async fn performance_metrics(_state: &ServerState, _params: Value) -> Result<Value, String> {
-    // Return current performance metrics for monitoring
-    Ok(crate::performance::get_performance_summary())
+    let mut metrics = crate::performance::get_performance_summary();
+
+    // Add cache performance data
+    if let Some(cache_stats) = crate::cache::get_cache_stats() {
+        metrics["cache_performance"] = json!(cache_stats);
+    }
+
+    // Add cache performance analysis
+    if let Some(cache_analysis) = crate::cache::analyze_cache_performance() {
+        metrics["cache_analysis"] = json!(cache_analysis);
+    }
+
+    Ok(metrics)
+}
+
+// Cache statistics MCP tool
+#[cfg(feature = "qwen-integration")]
+async fn cache_stats(_state: &ServerState, _params: Value) -> Result<Value, String> {
+    let cache_stats = crate::cache::get_cache_stats();
+    let cache_analysis = crate::cache::analyze_cache_performance();
+
+    Ok(json!({
+        "cache_statistics": cache_stats,
+        "performance_analysis": cache_analysis,
+        "recommendations": generate_cache_recommendations(&cache_stats, &cache_analysis),
+        "cache_health": assess_cache_health(&cache_stats)
+    }))
+}
+
+#[cfg(feature = "qwen-integration")]
+fn generate_cache_recommendations(
+    stats: &Option<crate::cache::CacheStats>,
+    analysis: &Option<crate::cache::CachePerformanceReport>
+) -> Vec<String> {
+    let mut recommendations = Vec::new();
+
+    if let Some(stats) = stats {
+        if stats.hit_rate < 0.3 {
+            recommendations.push("Low cache hit rate - consider semantic similarity tuning".to_string());
+        }
+
+        if stats.memory_usage_mb > 400.0 {
+            recommendations.push("High memory usage - consider reducing cache size or TTL".to_string());
+        }
+
+        if stats.total_requests > 50 && stats.semantic_hit_rate < 0.1 {
+            recommendations.push("Low semantic matching - queries might be too varied".to_string());
+        }
+    }
+
+    if let Some(analysis) = analysis {
+        recommendations.extend(analysis.recommendations.clone());
+    }
+
+    if recommendations.is_empty() {
+        recommendations.push("Cache performance is optimal".to_string());
+    }
+
+    recommendations
+}
+
+#[cfg(feature = "qwen-integration")]
+fn assess_cache_health(stats: &Option<crate::cache::CacheStats>) -> String {
+    if let Some(stats) = stats {
+        if stats.hit_rate > 0.5 && stats.memory_usage_mb < 300.0 {
+            "excellent".to_string()
+        } else if stats.hit_rate > 0.3 && stats.memory_usage_mb < 400.0 {
+            "good".to_string()
+        } else if stats.hit_rate > 0.1 {
+            "acceptable".to_string()
+        } else {
+            "needs_optimization".to_string()
+        }
+    } else {
+        "unknown".to_string()
+    }
 }
 
 // Impact analysis MCP tool - shows what will break before changes are made
