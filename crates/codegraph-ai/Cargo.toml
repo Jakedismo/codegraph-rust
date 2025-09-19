@@ -27,3 +27,4 @@ similar = { workspace = true }
 arc-swap = { workspace = true }
 num_cpus = { workspace = true }
 prometheus = { workspace = true }
+reqwest = { workspace = true }

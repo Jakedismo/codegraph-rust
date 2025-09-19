@@ -15,6 +15,10 @@ pub mod qwen;
 pub mod prompts;
 #[cfg(feature = "qwen-integration")]
 pub mod performance;
+#[cfg(feature = "qwen-integration")]
+pub mod tools_schema;
+#[cfg(feature = "qwen-integration")]
+pub mod context_optimizer;
 
 pub use connection::*;
 pub use error::{McpError, Result};

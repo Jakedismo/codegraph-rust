@@ -21,12 +21,15 @@ async fn dispatch(state: &ServerState, method: &str, params: Value) -> Result<Va
         "code.read" => code_read(params).await,
         "code.patch" => code_patch(params).await,
         "test.run" => test_run(params).await,
+        "tools/list" => tools_list(state, params).await,
         #[cfg(feature = "qwen-integration")]
         "codegraph.semantic_intelligence" => semantic_intelligence(state, params).await,
         #[cfg(feature = "qwen-integration")]
         "codegraph.enhanced_search" => enhanced_search(state, params).await,
         #[cfg(feature = "qwen-integration")]
         "codegraph.performance_metrics" => performance_metrics(state, params).await,
+        #[cfg(feature = "qwen-integration")]
+        "codegraph.impact_analysis" => impact_analysis(state, params).await,
         _ => Err(format!("Unknown method: {}", method)),
     }
 }
@@ -224,6 +227,48 @@ async fn test_run(params: Value) -> Result<Value, String> {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     Ok(json!({"status": status, "stdout": stdout, "stderr": stderr}))
+}
+
+// MCP protocol: tools list
+async fn tools_list(_state: &ServerState, _params: Value) -> Result<Value, String> {
+    #[cfg(feature = "qwen-integration")]
+    {
+        Ok(json!({
+            "tools": crate::tools_schema::get_tools_list()
+        }))
+    }
+    #[cfg(not(feature = "qwen-integration"))]
+    {
+        // Basic tools without Qwen integration
+        Ok(json!({
+            "tools": [
+                {
+                    "name": "vector.search",
+                    "description": "Basic vector similarity search",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "limit": {"type": "integer", "default": 10}
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "graph.neighbors",
+                    "description": "Get neighboring nodes in code graph",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "node": {"type": "string"},
+                            "limit": {"type": "integer", "default": 20}
+                        },
+                        "required": ["node"]
+                    }
+                }
+            ]
+        }))
+    }
 }
 
 // Vector search helper; FAISS path if enabled, else fallback
@@ -711,4 +756,288 @@ fn build_context_summary(context: &str) -> Value {
 async fn performance_metrics(_state: &ServerState, _params: Value) -> Result<Value, String> {
     // Return current performance metrics for monitoring
     Ok(crate::performance::get_performance_summary())
+}
+
+// Impact analysis MCP tool - shows what will break before changes are made
+#[cfg(feature = "qwen-integration")]
+async fn impact_analysis(state: &ServerState, params: Value) -> Result<Value, String> {
+    let target_function = params
+        .get("target_function")
+        .and_then(|v| v.as_str())
+        .ok_or("missing target_function")?
+        .to_string();
+
+    let file_path = params
+        .get("file_path")
+        .and_then(|v| v.as_str())
+        .ok_or("missing file_path")?
+        .to_string();
+
+    let change_type = params
+        .get("change_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("modify");
+
+    // Check if Qwen is available
+    let qwen_client = state.qwen_client.as_ref()
+        .ok_or("Qwen2.5-Coder not available. Please install: ollama pull qwen2.5-coder-14b-128k")?;
+
+    // 1. Build dependency context using graph analysis
+    let dependency_context = build_dependency_context(state, &target_function, &file_path).await
+        .map_err(|e| e.to_string())?;
+
+    // 2. Use Qwen2.5-Coder for intelligent impact analysis
+    let impact_prompt = crate::prompts::build_impact_analysis_prompt(
+        &target_function,
+        &file_path,
+        &dependency_context,
+        change_type
+    );
+
+    let analysis_result = qwen_client.analyze_codebase(&impact_prompt, "").await
+        .map_err(|e| e.to_string())?;
+
+    // Record performance metrics
+    crate::performance::record_qwen_operation(
+        "impact_analysis",
+        analysis_result.processing_time,
+        analysis_result.context_tokens,
+        analysis_result.completion_tokens,
+        analysis_result.confidence_score,
+    );
+
+    // 3. Structure comprehensive impact response
+    Ok(json!({
+        "target": {
+            "function": target_function,
+            "file_path": file_path,
+            "change_type": change_type
+        },
+        "comprehensive_impact_analysis": analysis_result.text,
+        "dependency_analysis": parse_dependency_info(&dependency_context),
+        "risk_assessment": extract_risk_level(&analysis_result.text),
+        "affected_components": extract_affected_components(&analysis_result.text),
+        "testing_requirements": extract_testing_requirements(&analysis_result.text),
+        "implementation_plan": extract_implementation_plan(&analysis_result.text),
+        "model_performance": {
+            "model_used": analysis_result.model_used,
+            "processing_time_ms": analysis_result.processing_time.as_millis(),
+            "context_tokens": analysis_result.context_tokens,
+            "completion_tokens": analysis_result.completion_tokens,
+            "confidence_score": analysis_result.confidence_score
+        },
+        "safety_recommendations": extract_safety_recommendations(&analysis_result.text),
+        "mcp_metadata": {
+            "tool_version": "1.0.0",
+            "analysis_type": "impact_assessment",
+            "recommended_for": ["claude", "gpt-4", "custom-agents"]
+        }
+    }))
+}
+
+// Build dependency context for impact analysis
+#[cfg(feature = "qwen-integration")]
+async fn build_dependency_context(
+    state: &ServerState,
+    target_function: &str,
+    file_path: &str,
+) -> Result<String, String> {
+    let mut context = format!(
+        "IMPACT ANALYSIS TARGET\n\nFUNCTION: {}\nFILE: {}\n\n",
+        target_function, file_path
+    );
+
+    // 1. Find functions that might call this target function
+    let search_query = format!("{} call usage", target_function);
+    let usage_results = bin_search_with_scores(search_query, None, None, 20)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    context.push_str("FUNCTIONS THAT MAY CALL THIS TARGET:\n");
+    if let Some(results) = usage_results["results"].as_array() {
+        for (i, result) in results.iter().enumerate().take(10) {
+            context.push_str(&format!(
+                "{}. {}: {} in {}\n   Summary: {}\n   Score: {:.3}\n",
+                i + 1,
+                result["name"].as_str().unwrap_or("unknown"),
+                result["node_type"].as_str().unwrap_or("unknown"),
+                result["path"].as_str().unwrap_or("unknown"),
+                result["summary"].as_str().unwrap_or("no summary"),
+                result["score"].as_f64().unwrap_or(0.0)
+            ));
+        }
+    }
+
+    // 2. Find functions this target might depend on
+    let dependency_query = format!("{} dependencies imports", target_function);
+    let dep_results = bin_search_with_scores(dependency_query, None, None, 15)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    context.push_str("\nFUNCTIONS THIS TARGET MAY DEPEND ON:\n");
+    if let Some(results) = dep_results["results"].as_array() {
+        for (i, result) in results.iter().enumerate().take(8) {
+            context.push_str(&format!(
+                "{}. {}: {} in {}\n   Summary: {}\n",
+                i + 1,
+                result["name"].as_str().unwrap_or("unknown"),
+                result["node_type"].as_str().unwrap_or("unknown"),
+                result["path"].as_str().unwrap_or("unknown"),
+                result["summary"].as_str().unwrap_or("no summary")
+            ));
+        }
+    }
+
+    // 3. Add graph relationship analysis
+    context.push_str("\nGRAPH RELATIONSHIPS:\n");
+    let graph = state.graph.lock().await;
+
+    // Try to find the target function in the graph and get its connections
+    if let Some(results) = usage_results["results"].as_array() {
+        for result in results.iter().take(3) {
+            if let Some(id_str) = result["id"].as_str() {
+                if let Ok(node_id) = uuid::Uuid::parse_str(id_str) {
+                    if let Ok(neighbors) = graph.get_neighbors(node_id).await {
+                        context.push_str(&format!(
+                            "  {} has {} connected components\n",
+                            result["name"].as_str().unwrap_or("unknown"),
+                            neighbors.len()
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    // Truncate if too long (leave room for analysis)
+    if context.len() > 60000 * 4 { // ~60K tokens worth
+        context.truncate(60000 * 4);
+        context.push_str("\n\n[Context truncated for analysis efficiency]");
+    }
+
+    Ok(context)
+}
+
+// Helper functions for impact analysis parsing
+#[cfg(feature = "qwen-integration")]
+fn parse_dependency_info(context: &str) -> Value {
+    let callers_count = context.matches("FUNCTIONS THAT MAY CALL").count();
+    let dependencies_count = context.matches("FUNCTIONS THIS TARGET MAY DEPEND").count();
+
+    json!({
+        "potential_callers": callers_count,
+        "potential_dependencies": dependencies_count,
+        "has_graph_relationships": context.contains("connected components"),
+        "context_truncated": context.contains("[Context truncated")
+    })
+}
+
+#[cfg(feature = "qwen-integration")]
+fn extract_risk_level(analysis: &str) -> Value {
+    let risk_level = if analysis.contains("HIGH") || analysis.contains("CRITICAL") {
+        "HIGH"
+    } else if analysis.contains("MEDIUM") || analysis.contains("MODERATE") {
+        "MEDIUM"
+    } else if analysis.contains("LOW") || analysis.contains("MINIMAL") {
+        "LOW"
+    } else {
+        "UNKNOWN"
+    };
+
+    let reasoning = if let Some(start) = analysis.find("RISK_ASSESSMENT:") {
+        let risk_section = &analysis[start..];
+        if let Some(end) = risk_section.find("2.") {
+            risk_section[..end].trim()
+        } else {
+            "See comprehensive analysis for risk reasoning"
+        }
+    } else {
+        "Risk assessment included in analysis"
+    };
+
+    json!({
+        "level": risk_level,
+        "reasoning": reasoning,
+        "confidence": if risk_level == "UNKNOWN" { 0.5 } else { 0.8 }
+    })
+}
+
+#[cfg(feature = "qwen-integration")]
+fn extract_affected_components(analysis: &str) -> Value {
+    // Extract affected components section
+    let components = if let Some(start) = analysis.find("AFFECTED_COMPONENTS:") {
+        let components_section = &analysis[start..];
+        if let Some(end) = components_section.find("3.") {
+            components_section[..end].trim()
+        } else {
+            "See analysis for affected components"
+        }
+    } else {
+        "Affected components analysis included"
+    };
+
+    json!({
+        "analysis": components,
+        "has_specific_components": analysis.contains("function") || analysis.contains("class") || analysis.contains("module")
+    })
+}
+
+#[cfg(feature = "qwen-integration")]
+fn extract_testing_requirements(analysis: &str) -> Value {
+    let testing = if let Some(start) = analysis.find("TESTING_STRATEGY:") {
+        let testing_section = &analysis[start..];
+        if let Some(end) = testing_section.find("5.") {
+            testing_section[..end].trim()
+        } else {
+            "See analysis for testing strategy"
+        }
+    } else {
+        "Testing requirements included in analysis"
+    };
+
+    json!({
+        "strategy": testing,
+        "has_specific_tests": analysis.contains("test") || analysis.contains("spec") || analysis.contains("assert")
+    })
+}
+
+#[cfg(feature = "qwen-integration")]
+fn extract_implementation_plan(analysis: &str) -> Value {
+    let plan = if let Some(start) = analysis.find("IMPLEMENTATION_PLAN:") {
+        let plan_section = &analysis[start..];
+        if let Some(end) = plan_section.find("6.") {
+            plan_section[..end].trim()
+        } else {
+            "See analysis for implementation guidance"
+        }
+    } else {
+        "Implementation plan included in analysis"
+    };
+
+    json!({
+        "plan": plan,
+        "has_step_by_step": analysis.contains("step") || analysis.contains("1.") && analysis.contains("2.")
+    })
+}
+
+#[cfg(feature = "qwen-integration")]
+fn extract_safety_recommendations(analysis: &str) -> Value {
+    let safety = if let Some(start) = analysis.find("ROLLBACK_STRATEGY:") {
+        let safety_section = &analysis[start..];
+        safety_section.trim()
+    } else if analysis.contains("safe") || analysis.contains("rollback") {
+        "Safety recommendations included in analysis"
+    } else {
+        "Standard safety practices apply"
+    };
+
+    json!({
+        "recommendations": safety,
+        "has_rollback_plan": analysis.contains("rollback") || analysis.contains("undo"),
+        "safety_level": if analysis.contains("critical") || analysis.contains("dangerous") {
+            "high_attention"
+        } else {
+            "standard_precautions"
+        }
+    })
 }

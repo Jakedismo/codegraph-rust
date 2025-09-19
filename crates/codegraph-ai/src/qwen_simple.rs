@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -5,7 +6,7 @@ use std::time::{Duration, Instant};
 use tokio::time::timeout;
 use tracing::{debug, info, warn};
 
-/// Simple Qwen2.5-Coder client for MCP integration
+/// Simple Qwen2.5-Coder client for CodeGraph MCP integration
 #[derive(Debug, Clone)]
 pub struct QwenConfig {
     pub model_name: String,
@@ -30,22 +31,22 @@ impl Default for QwenConfig {
 }
 
 #[derive(Debug, Serialize)]
-struct OllamaRequest {
+struct SimpleRequest {
     model: String,
     prompt: String,
     stream: bool,
-    options: OllamaOptions,
+    options: SimpleOptions,
 }
 
 #[derive(Debug, Serialize)]
-struct OllamaOptions {
+struct SimpleOptions {
     temperature: f32,
     num_predict: usize,
     num_ctx: usize,
 }
 
 #[derive(Debug, Deserialize)]
-struct OllamaResponse {
+struct SimpleResponse {
     response: String,
     #[serde(default)]
     eval_count: Option<usize>,
@@ -63,10 +64,9 @@ pub struct QwenResult {
     pub confidence_score: f32,
 }
 
-#[derive(Clone)]
 pub struct QwenClient {
     client: Client,
-    pub config: QwenConfig,
+    config: QwenConfig,
 }
 
 impl QwenClient {
@@ -77,25 +77,29 @@ impl QwenClient {
         }
     }
 
-    /// Generate semantic analysis using Qwen2.5-Coder with optimized prompts
-    pub async fn analyze_codebase(&self, query: &str, context: &str) -> Result<QwenResult> {
+    /// Generate analysis using Qwen2.5-Coder with comprehensive context
+    pub async fn generate_analysis(&self, prompt: &str, system_prompt: Option<&str>) -> Result<QwenResult> {
         let start_time = Instant::now();
 
-        // Use optimized prompt structure for Qwen2.5-Coder
-        let prompt = crate::prompts::build_semantic_analysis_prompt(query, context);
+        // Build full prompt with system context if provided
+        let full_prompt = if let Some(sys_prompt) = system_prompt {
+            format!("{}\n\nUser: {}\n\nAssistant:", sys_prompt, prompt)
+        } else {
+            format!("You are Qwen2.5-Coder, a state-of-the-art AI specialized in comprehensive code analysis. Provide detailed, structured analysis.\n\nUser: {}\n\nAssistant:", prompt)
+        };
 
-        let request = OllamaRequest {
+        let request = SimpleRequest {
             model: self.config.model_name.clone(),
-            prompt,
+            prompt: full_prompt,
             stream: false,
-            options: OllamaOptions {
+            options: SimpleOptions {
                 temperature: self.config.temperature,
                 num_predict: self.config.max_tokens,
                 num_ctx: self.config.context_window,
             },
         };
 
-        debug!("Sending analysis request to Qwen2.5-Coder: {} context window", self.config.context_window);
+        debug!("Sending request to Qwen2.5-Coder: {} context window", self.config.context_window);
 
         let response = timeout(
             self.config.timeout,
@@ -113,12 +117,13 @@ impl QwenClient {
             return Err(CodeGraphError::External(format!("Qwen API error: {}", error_text)));
         }
 
-        let response_data: OllamaResponse = response
+        let response_data: SimpleResponse = response
             .json()
             .await
             .map_err(|e| CodeGraphError::Parse(format!("Failed to parse Qwen response: {}", e)))?;
 
         let processing_time = start_time.elapsed();
+
         let confidence_score = self.calculate_confidence(&response_data.response);
 
         let result = QwenResult {
@@ -131,11 +136,10 @@ impl QwenClient {
         };
 
         info!(
-            "Qwen analysis completed: {}ms, context: {} tokens, completion: {} tokens, confidence: {:.2}",
+            "Qwen analysis completed: {}ms, context: {} tokens, completion: {} tokens",
             processing_time.as_millis(),
             result.context_tokens,
-            result.completion_tokens,
-            result.confidence_score
+            result.completion_tokens
         );
 
         Ok(result)
@@ -168,10 +172,7 @@ impl QwenClient {
                 models.iter().any(|model| {
                     model["name"]
                         .as_str()
-                        .map(|name| {
-                            name.contains("qwen") && name.contains("coder") ||
-                            name.contains("qwen2.5-coder")
-                        })
+                        .map(|name| name.contains("qwen") && name.contains("coder"))
                         .unwrap_or(false)
                 })
             })
@@ -205,5 +206,78 @@ impl QwenClient {
         }
 
         confidence.min(0.95) // Cap at 95%
+    }
+}
+
+/// Trait for CodeGraph intelligence analysis
+#[async_trait]
+pub trait CodeIntelligenceProvider {
+    async fn analyze_semantic_context(&self, query: &str, context: &str) -> Result<String>;
+    async fn detect_patterns(&self, code_samples: &[String]) -> Result<String>;
+    async fn analyze_impact(&self, target_code: &str, dependencies: &str) -> Result<String>;
+}
+
+#[async_trait]
+impl CodeIntelligenceProvider for QwenClient {
+    async fn analyze_semantic_context(&self, query: &str, context: &str) -> Result<String> {
+        let prompt = format!(
+            "Analyze this codebase context for semantic understanding:\n\n\
+            SEARCH QUERY: {}\n\n\
+            CODEBASE CONTEXT:\n{}\n\n\
+            Provide structured semantic analysis:\n\
+            1. SEMANTIC_MATCHES: What code semantically matches the query and why\n\
+            2. ARCHITECTURAL_CONTEXT: How this functionality fits in the system\n\
+            3. USAGE_PATTERNS: How this code is typically used and integrated\n\
+            4. GENERATION_GUIDANCE: How to generate similar high-quality code\n\n\
+            Focus on actionable insights for code generation and understanding.",
+            query, context
+        );
+
+        let result = self.generate_analysis(&prompt, Some(
+            "You are providing semantic code analysis for powerful LLMs. Focus on understanding code purpose, patterns, and architectural context."
+        )).await?;
+
+        Ok(result.text)
+    }
+
+    async fn detect_patterns(&self, code_samples: &[String]) -> Result<String> {
+        let prompt = format!(
+            "Analyze these code samples for patterns and conventions:\n\n\
+            CODE SAMPLES:\n{}\n\n\
+            Provide structured pattern analysis:\n\
+            1. IDENTIFIED_PATTERNS: What consistent patterns are used\n\
+            2. QUALITY_ASSESSMENT: Quality and adherence to best practices\n\
+            3. TEAM_CONVENTIONS: Team-specific conventions and standards\n\
+            4. GENERATION_TEMPLATES: How to generate code following these patterns\n\n\
+            Focus on actionable guidance for consistent code generation.",
+            code_samples.join("\n---\n")
+        );
+
+        let result = self.generate_analysis(&prompt, Some(
+            "You are analyzing code patterns for consistency and quality. Provide actionable guidance for code generation."
+        )).await?;
+
+        Ok(result.text)
+    }
+
+    async fn analyze_impact(&self, target_code: &str, dependencies: &str) -> Result<String> {
+        let prompt = format!(
+            "Analyze the impact of modifying this code:\n\n\
+            TARGET CODE:\n{}\n\n\
+            DEPENDENCIES:\n{}\n\n\
+            Provide structured impact analysis:\n\
+            1. RISK_ASSESSMENT: Risk level and reasoning\n\
+            2. AFFECTED_COMPONENTS: What will be impacted\n\
+            3. TESTING_REQUIREMENTS: Tests that need updating\n\
+            4. SAFETY_RECOMMENDATIONS: How to make changes safely\n\n\
+            Focus on safe implementation guidance.",
+            target_code, dependencies
+        );
+
+        let result = self.generate_analysis(&prompt, Some(
+            "You are providing critical impact analysis for code changes. Prioritize safety and thoroughness."
+        )).await?;
+
+        Ok(result.text)
     }
 }

@@ -100,7 +100,7 @@ pub fn build_pattern_analysis_prompt(code_samples: &[String], focus_area: &str) 
 }
 
 /// Build optimized prompt for impact analysis
-pub fn build_impact_analysis_prompt(target_code: &str, dependencies: &str, change_description: &str) -> String {
+pub fn build_impact_analysis_prompt(target_function: &str, file_path: &str, dependencies: &str, change_type: &str) -> String {
     format!(
         "<|im_start|>system\n\
         You are Qwen2.5-Coder providing critical impact analysis for code changes.\n\n\
@@ -120,14 +120,14 @@ pub fn build_impact_analysis_prompt(target_code: &str, dependencies: &str, chang
         <|im_end|>\n\
         <|im_start|>user\n\
         IMPACT ANALYSIS REQUEST\n\n\
-        PROPOSED CHANGE: {}\n\n\
-        TARGET CODE:\n{}\n\n\
-        DEPENDENCIES:\n{}\n\n\
+        TARGET FUNCTION: {} in {}\n\
+        CHANGE TYPE: {}\n\n\
+        DEPENDENCIES AND USAGE:\n{}\n\n\
         Analyze the impact following the structured format above.\n\
         <|im_end|>\n\
         <|im_start|>assistant\n\
         I'll provide comprehensive impact analysis for this proposed change.\n\n",
-        change_description, target_code, dependencies
+        target_function, file_path, change_type, dependencies
     )
 }
 
