@@ -247,6 +247,7 @@ brew install huggingface_hub[cli]
 hf auth login
 hf download Qdrant/all-MiniLM-L6-v2
 # Check download path
+# Best to add these to your shell provider config
 export CODEGRAPH_EMBEDDING_PROVIDER=onnx
 # macOS: use CoreML
 export CODEGRAPH_ONNX_EP=coreml   # or cpu

@@ -177,13 +177,21 @@ impl ProjectIndexer {
             return Ok(IndexStats::default());
         }
 
-        // Parse project into CodeNodes
+        // Create file collection config from indexer config
+        let file_config = codegraph_parser::file_collect::FileCollectionConfig {
+            recursive: self.config.recursive,
+            languages: self.config.languages.clone(),
+            include_patterns: self.config.include_patterns.clone(),
+            exclude_patterns: self.config.exclude_patterns.clone(),
+        };
+
+        // Parse project into CodeNodes with enhanced configuration
         let parse_pb = self.create_progress_bar(0, "Parsing project");
-        let (mut nodes, _pstats) = self
+        let (mut nodes, pstats) = self
             .parser
-            .parse_directory_parallel(&path.to_string_lossy())
+            .parse_directory_parallel_with_config(&path.to_string_lossy(), &file_config)
             .await?;
-        parse_pb.finish_with_message("Parsing complete");
+        parse_pb.finish_with_message("Enhanced parsing complete");
 
         // Generate embeddings and attach (batched)
         let total = nodes.len() as u64;

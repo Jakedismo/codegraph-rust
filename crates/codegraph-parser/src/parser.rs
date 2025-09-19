@@ -4,7 +4,7 @@ use codegraph_core::{CodeGraphError, CodeNode, CodeParser, Language, Result};
 use futures::stream::{self, StreamExt};
 use sha2::Digest;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::fs;
@@ -13,7 +13,7 @@ use tracing::{debug, info, warn};
 use tree_sitter::{InputEdit, Parser, Point, Tree};
 
 use crate::fast_io::read_file_to_string;
-use crate::file_collect::collect_source_files;
+use crate::file_collect::{collect_source_files, collect_source_files_with_config, FileCollectionConfig};
 
 #[derive(Clone)]
 pub struct ParsedFile {
@@ -212,6 +212,146 @@ impl TreeSitterParser {
             files_per_second,
             lines_per_second
         );
+
+        Ok((all_nodes, stats))
+    }
+
+    /// Enhanced directory parsing with proper configuration support
+    pub async fn parse_directory_parallel_with_config(
+        &self,
+        dir_path: &str,
+        config: &FileCollectionConfig,
+    ) -> Result<(Vec<CodeNode>, ParsingStatistics)> {
+        let start_time = Instant::now();
+        let dir_path = Path::new(dir_path);
+
+        info!(
+            "Starting enhanced parallel parsing of directory: {} (recursive: {}, languages: {:?})",
+            dir_path.display(),
+            config.recursive,
+            config.languages
+        );
+
+        // Collect and size files with proper configuration
+        let sized_files = tokio::task::spawn_blocking({
+            let dir = dir_path.to_path_buf();
+            let config = config.clone();
+            let registry = self.registry.clone();
+            move || {
+                // Use new file collection with config
+                let files = collect_source_files_with_config(&dir, &config)
+                    .unwrap_or_default();
+
+                info!("Collected {} files from directory scan", files.len());
+
+                // Filter by language detection for additional safety
+                let filtered_files: Vec<(PathBuf, u64)> = files
+                    .into_iter()
+                    .filter(|(p, _)| {
+                        let detected = registry.detect_language(&p.to_string_lossy());
+                        if detected.is_none() {
+                            debug!("No language detected for: {}", p.display());
+                        }
+                        detected.is_some()
+                    })
+                    .collect();
+
+                info!("Language filtering: {} files passed detection", filtered_files.len());
+                filtered_files
+            }
+        })
+        .await
+        .unwrap_or_default();
+
+        // Sort by size desc to reduce tail latency (schedule big files first)
+        let mut sized_files = sized_files;
+        sized_files.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let files: Vec<PathBuf> = sized_files.into_iter().map(|(p, _)| p).collect();
+        let total_files = files.len();
+
+        info!("Processing {} files for parsing", total_files);
+
+        if total_files == 0 {
+            warn!("No files to parse! Check:");
+            warn!("  - Directory contains source files");
+            warn!("  - Language filters: {:?}", config.languages);
+            warn!("  - Recursive setting: {}", config.recursive);
+            warn!("  - Include patterns: {:?}", config.include_patterns);
+            warn!("  - Exclude patterns: {:?}", config.exclude_patterns);
+        }
+
+        // Create semaphore for concurrency control
+        let semaphore = Arc::new(Semaphore::new(self.max_concurrent_files));
+
+        // Process files in chunks for better memory management
+        let mut all_nodes = Vec::new();
+        let mut total_lines = 0;
+        let mut parsed_files = 0;
+        let mut failed_files = 0;
+
+        let mut stream = stream::iter(files.into_iter().map(|file_path| {
+            let semaphore = semaphore.clone();
+            async move {
+                let _permit = semaphore.acquire().await.unwrap();
+                self.parse_file_with_caching(&file_path.to_string_lossy())
+                    .await
+            }
+        }))
+        .buffer_unordered(self.max_concurrent_files);
+
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok((nodes, lines)) => {
+                    if !nodes.is_empty() {
+                        debug!("Parsed {} nodes from file", nodes.len());
+                    }
+                    all_nodes.extend(nodes);
+                    total_lines += lines;
+                    parsed_files += 1;
+                }
+                Err(e) => {
+                    failed_files += 1;
+                    warn!("Failed to parse file: {}", e);
+                }
+            }
+        }
+
+        let parsing_duration = start_time.elapsed();
+        let files_per_second = if parsing_duration.as_secs_f64() > 0.0 {
+            parsed_files as f64 / parsing_duration.as_secs_f64()
+        } else {
+            0.0
+        };
+        let lines_per_second = if parsing_duration.as_secs_f64() > 0.0 {
+            total_lines as f64 / parsing_duration.as_secs_f64()
+        } else {
+            0.0
+        };
+
+        let stats = ParsingStatistics {
+            total_files,
+            parsed_files,
+            failed_files,
+            total_lines,
+            parsing_duration,
+            files_per_second,
+            lines_per_second,
+        };
+
+        info!(
+            "Enhanced parsing completed: {}/{} files, {} lines in {:.2}s ({:.1} files/s, {:.0} lines/s)",
+            parsed_files,
+            total_files,
+            total_lines,
+            parsing_duration.as_secs_f64(),
+            files_per_second,
+            lines_per_second
+        );
+
+        if failed_files > 0 {
+            warn!("Failed to parse {} files - check logs for details", failed_files);
+        }
 
         Ok((all_nodes, stats))
     }
