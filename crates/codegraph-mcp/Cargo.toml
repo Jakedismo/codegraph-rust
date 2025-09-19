@@ -24,6 +24,7 @@ dashmap = { workspace = true }
 parking_lot = { workspace = true }
 tokio-util = { workspace = true }
 fastrand = { workspace = true }
+reqwest = { workspace = true }
 
 # CLI dependencies
 clap = { workspace = true }
@@ -40,6 +41,7 @@ codegraph-core = { workspace = true }
 codegraph-parser = { workspace = true }
 codegraph-graph = { workspace = true }
 codegraph-vector = { workspace = true, optional = true, default-features = false }
+# codegraph-ai = { workspace = true, optional = true }  # Disabled due to compilation issues
 faiss = { workspace = true, optional = true }
 # codegraph-api not used directly here; avoid pulling heavy deps
 ## core-rag-mcp-server intentionally not linked to keep binary lean
@@ -62,3 +64,4 @@ embeddings = ["dep:codegraph-vector"]
 embeddings-local = ["embeddings", "codegraph-vector/local-embeddings"]
 embeddings-openai = ["embeddings", "codegraph-vector/openai"]
 server-http = ["dep:axum", "dep:hyper"]
+qwen-integration = []

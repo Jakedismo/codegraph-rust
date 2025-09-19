@@ -2,9 +2,14 @@ use serde_json::{json, Value};
 use codegraph_core::GraphStore;
 use std::sync::Arc;
 
+#[cfg(feature = "qwen-integration")]
+use crate::qwen::{QwenClient, QwenConfig};
+
 #[derive(Clone)]
 struct ServerState {
     graph: Arc<tokio::sync::Mutex<codegraph_graph::CodeGraph>>,
+    #[cfg(feature = "qwen-integration")]
+    qwen_client: Option<QwenClient>,
 }
 
 // Shared dispatcher for both HTTP and STDIO transports
@@ -16,6 +21,10 @@ async fn dispatch(state: &ServerState, method: &str, params: Value) -> Result<Va
         "code.read" => code_read(params).await,
         "code.patch" => code_patch(params).await,
         "test.run" => test_run(params).await,
+        #[cfg(feature = "qwen-integration")]
+        "codegraph.semantic_intelligence" => semantic_intelligence(state, params).await,
+        #[cfg(feature = "qwen-integration")]
+        "codegraph.enhanced_search" => enhanced_search(state, params).await,
         _ => Err(format!("Unknown method: {}", method)),
     }
 }
@@ -375,6 +384,8 @@ pub async fn serve_http(host: String, port: u16) -> crate::Result<()> {
             codegraph_graph::CodeGraph::new()
                 .map_err(|e| crate::McpError::Transport(e.to_string()))?,
         )),
+        #[cfg(feature = "qwen-integration")]
+        qwen_client: init_qwen_client().await,
     };
     async fn handle(State(state): State<ServerState>, Json(payload): Json<Value>) -> Json<Value> {
         let id = payload.get("id").cloned().unwrap_or(json!(null));
@@ -412,6 +423,8 @@ pub async fn serve_stdio(_buffer_size: usize) -> crate::Result<()> {
             codegraph_graph::CodeGraph::new()
                 .map_err(|e| crate::McpError::Transport(e.to_string()))?,
         )),
+        #[cfg(feature = "qwen-integration")]
+        qwen_client: init_qwen_client().await,
     };
     let mut reader = BufReader::new(tokio::io::stdin());
     let mut stdout = tokio::io::stdout();
@@ -443,4 +456,297 @@ pub async fn serve_stdio(_buffer_size: usize) -> crate::Result<()> {
         stdout.flush().await.unwrap();
     }
     Ok(())
+}
+
+// Qwen2.5-Coder integration functions
+#[cfg(feature = "qwen-integration")]
+async fn init_qwen_client() -> Option<QwenClient> {
+    let config = QwenConfig::default();
+    let client = QwenClient::new(config);
+
+    match client.check_availability().await {
+        Ok(true) => {
+            tracing::info!("✅ Qwen2.5-Coder-14B-128K available for CodeGraph intelligence");
+            Some(client)
+        }
+        Ok(false) => {
+            tracing::warn!("⚠️ Qwen2.5-Coder model not found. Install with: ollama pull qwen2.5-coder-14b-128k");
+            None
+        }
+        Err(e) => {
+            tracing::error!("❌ Failed to connect to Qwen2.5-Coder: {}", e);
+            None
+        }
+    }
+}
+
+// Enhanced semantic search with Qwen2.5-Coder intelligence
+#[cfg(feature = "qwen-integration")]
+async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value, String> {
+    let query = params
+        .get("query")
+        .and_then(|v| v.as_str())
+        .ok_or("missing query")?
+        .to_string();
+
+    let include_analysis = params
+        .get("include_analysis")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let max_results = params
+        .get("max_results")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(10) as usize;
+
+    // 1. Perform standard vector search using existing functionality
+    let search_results = bin_search_with_scores(query.clone(), None, None, max_results * 2)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 2. If Qwen analysis is requested and available, enhance results
+    if include_analysis {
+        if let Some(qwen_client) = &state.qwen_client {
+            // Build context from search results for Qwen analysis
+            let search_context = build_search_context(&search_results, &query);
+
+            // Use Qwen2.5-Coder for intelligent analysis
+            match qwen_client.analyze_codebase(&query, &search_context).await {
+                Ok(qwen_result) => {
+                    // Combine search results with Qwen intelligence
+                    return Ok(json!({
+                        "search_results": search_results["results"],
+                        "ai_analysis": qwen_result.text,
+                        "intelligence_metadata": {
+                            "model_used": qwen_result.model_used,
+                            "processing_time_ms": qwen_result.processing_time.as_millis(),
+                            "context_tokens": qwen_result.context_tokens,
+                            "completion_tokens": qwen_result.completion_tokens,
+                            "confidence_score": qwen_result.confidence_score,
+                            "context_window_used": state.qwen_client.as_ref().unwrap().config.context_window
+                        },
+                        "generation_guidance": extract_generation_guidance(&qwen_result.text),
+                        "quality_assessment": extract_quality_assessment(&qwen_result.text)
+                    }));
+                }
+                Err(e) => {
+                    tracing::error!("Qwen analysis failed: {}", e);
+                    // Fall back to basic search results
+                }
+            }
+        }
+    }
+
+    // Return basic search results if no analysis or Qwen not available
+    Ok(search_results)
+}
+
+// Comprehensive semantic intelligence using Qwen2.5-Coder
+#[cfg(feature = "qwen-integration")]
+async fn semantic_intelligence(state: &ServerState, params: Value) -> Result<Value, String> {
+    let query = params
+        .get("query")
+        .and_then(|v| v.as_str())
+        .ok_or("missing query")?
+        .to_string();
+
+    let task_type = params
+        .get("task_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("semantic_search");
+
+    let max_context_tokens = params
+        .get("max_context_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(80000) as usize;
+
+    // Check if Qwen is available
+    let qwen_client = state.qwen_client.as_ref()
+        .ok_or("Qwen2.5-Coder not available. Please install: ollama pull qwen2.5-coder-14b-128k")?;
+
+    // 1. Gather comprehensive codebase context
+    let codebase_context = build_comprehensive_context(state, &query, max_context_tokens).await
+        .map_err(|e| e.to_string())?;
+
+    // 2. Use Qwen2.5-Coder for comprehensive analysis
+    let analysis_result = qwen_client.analyze_codebase(&query, &codebase_context).await
+        .map_err(|e| e.to_string())?;
+
+    // 3. Structure response for MCP-calling LLMs
+    Ok(json!({
+        "task_type": task_type,
+        "user_query": query,
+        "comprehensive_analysis": analysis_result.text,
+        "codebase_context_summary": build_context_summary(&codebase_context),
+        "model_performance": {
+            "model_used": analysis_result.model_used,
+            "processing_time_ms": analysis_result.processing_time.as_millis(),
+            "context_tokens_used": analysis_result.context_tokens,
+            "completion_tokens": analysis_result.completion_tokens,
+            "confidence_score": analysis_result.confidence_score,
+            "context_window_total": qwen_client.config.context_window
+        },
+        "generation_guidance": extract_generation_guidance(&analysis_result.text),
+        "structured_insights": extract_structured_insights(&analysis_result.text),
+        "mcp_metadata": {
+            "tool_version": "1.0.0",
+            "recommended_for": ["claude", "gpt-4", "custom-agents"],
+            "context_quality": analysis_result.confidence_score
+        }
+    }))
+}
+
+// Helper functions for Qwen integration
+#[cfg(feature = "qwen-integration")]
+fn build_search_context(search_results: &Value, query: &str) -> String {
+    let empty_vec = vec![];
+    let results = search_results["results"].as_array().unwrap_or(&empty_vec);
+
+    let mut context = format!("SEARCH QUERY: {}\n\nSEARCH RESULTS:\n", query);
+
+    for (i, result) in results.iter().enumerate().take(10) {
+        context.push_str(&format!(
+            "{}. File: {}\n   Function: {}\n   Summary: {}\n   Score: {}\n\n",
+            i + 1,
+            result["path"].as_str().unwrap_or("unknown"),
+            result["name"].as_str().unwrap_or("unknown"),
+            result["summary"].as_str().unwrap_or("no summary"),
+            result["score"].as_f64().unwrap_or(0.0)
+        ));
+    }
+
+    context
+}
+
+#[cfg(feature = "qwen-integration")]
+async fn build_comprehensive_context(
+    state: &ServerState,
+    query: &str,
+    max_tokens: usize,
+) -> Result<String, String> {
+    let mut context = format!("COMPREHENSIVE CODEBASE ANALYSIS REQUEST\n\nQUERY: {}\n\n", query);
+
+    // Add basic search results
+    let search_results = bin_search_with_scores(query.to_string(), None, None, 15)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    context.push_str("SEMANTIC MATCHES:\n");
+    if let Some(results) = search_results["results"].as_array() {
+        for (i, result) in results.iter().enumerate().take(10) {
+            context.push_str(&format!(
+                "{}. {}: {} ({})\n   Summary: {}\n   Score: {:.3}\n\n",
+                i + 1,
+                result["path"].as_str().unwrap_or("unknown"),
+                result["name"].as_str().unwrap_or("unknown"),
+                result["node_type"].as_str().unwrap_or("unknown"),
+                result["summary"].as_str().unwrap_or("no summary"),
+                result["score"].as_f64().unwrap_or(0.0)
+            ));
+        }
+    }
+
+    // Add graph relationship context
+    context.push_str("GRAPH RELATIONSHIPS:\n");
+    if let Some(results) = search_results["results"].as_array() {
+        for result in results.iter().take(5) {
+            if let Some(id_str) = result["id"].as_str() {
+                if let Ok(node_id) = uuid::Uuid::parse_str(id_str) {
+                    let graph = state.graph.lock().await;
+                    if let Ok(neighbors) = graph.get_neighbors(node_id).await {
+                        context.push_str(&format!("  {} has {} connected nodes\n",
+                            result["name"].as_str().unwrap_or("unknown"),
+                            neighbors.len()
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    // Truncate context if too long (rough token estimation: ~4 chars per token)
+    if context.len() > max_tokens * 4 {
+        context.truncate(max_tokens * 4);
+        context.push_str("\n\n[Context truncated to fit within token limits]");
+    }
+
+    Ok(context)
+}
+
+#[cfg(feature = "qwen-integration")]
+fn build_context_summary(context: &str) -> Value {
+    let lines = context.lines().count();
+    let chars = context.len();
+    let estimated_tokens = chars / 4; // Rough estimate
+
+    json!({
+        "context_lines": lines,
+        "context_characters": chars,
+        "estimated_tokens": estimated_tokens,
+        "truncated": context.contains("[Context truncated"),
+    })
+}
+
+#[cfg(feature = "qwen-integration")]
+fn extract_generation_guidance(analysis: &str) -> Value {
+    // Simple extraction of generation guidance from Qwen analysis
+    let guidance = if let Some(start) = analysis.find("GENERATION_GUIDANCE:") {
+        let guidance_section = &analysis[start..];
+        if let Some(end) = guidance_section.find("\n\n") {
+            guidance_section[..end].trim()
+        } else {
+            guidance_section.trim()
+        }
+    } else if analysis.contains("generation") || analysis.contains("generate") {
+        "See comprehensive analysis for generation guidance"
+    } else {
+        "No specific generation guidance provided"
+    };
+
+    json!({
+        "guidance": guidance,
+        "extracted_from_analysis": !guidance.is_empty()
+    })
+}
+
+#[cfg(feature = "qwen-integration")]
+fn extract_quality_assessment(analysis: &str) -> Value {
+    // Simple extraction of quality assessment from Qwen analysis
+    let assessment = if let Some(start) = analysis.find("QUALITY_ASSESSMENT:") {
+        let quality_section = &analysis[start..];
+        if let Some(end) = quality_section.find("\n\n") {
+            quality_section[..end].trim()
+        } else {
+            quality_section.trim()
+        }
+    } else {
+        "Quality assessment included in comprehensive analysis"
+    };
+
+    json!({
+        "assessment": assessment,
+        "has_quality_analysis": analysis.contains("quality") || analysis.contains("best practices")
+    })
+}
+
+#[cfg(feature = "qwen-integration")]
+fn extract_structured_insights(analysis: &str) -> Value {
+    let mut insights = json!({});
+
+    // Extract numbered sections
+    for i in 1..=6 {
+        let section_marker = format!("{}.", i);
+        if let Some(start) = analysis.find(&section_marker) {
+            let section_content = &analysis[start..];
+            if let Some(end) = section_content.find(&format!("{}.", i + 1)) {
+                let content = section_content[..end].trim();
+                insights[format!("section_{}", i)] = json!(content);
+            } else if i == 6 {
+                // Last section, take rest of content
+                insights[format!("section_{}", i)] = json!(section_content.trim());
+            }
+        }
+    }
+
+    insights
 }

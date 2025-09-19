@@ -9,6 +9,9 @@ pub mod transport;
 pub mod version;
 pub mod server;
 
+#[cfg(feature = "qwen-integration")]
+pub mod qwen;
+
 pub use connection::*;
 pub use error::{McpError, Result};
 pub use heartbeat::*;
@@ -18,3 +21,6 @@ pub use process::{ProcessInfo, ProcessManager, ProcessStatus};
 pub use protocol::*;
 pub use transport::*;
 pub use version::*;
+
+#[cfg(feature = "qwen-integration")]
+pub use qwen::{QwenClient, QwenConfig, QwenResult};
