@@ -25,6 +25,8 @@ async fn dispatch(state: &ServerState, method: &str, params: Value) -> Result<Va
         "codegraph.semantic_intelligence" => semantic_intelligence(state, params).await,
         #[cfg(feature = "qwen-integration")]
         "codegraph.enhanced_search" => enhanced_search(state, params).await,
+        #[cfg(feature = "qwen-integration")]
+        "codegraph.performance_metrics" => performance_metrics(state, params).await,
         _ => Err(format!("Unknown method: {}", method)),
     }
 }
@@ -513,6 +515,14 @@ async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value, St
             // Use Qwen2.5-Coder for intelligent analysis
             match qwen_client.analyze_codebase(&query, &search_context).await {
                 Ok(qwen_result) => {
+                    // Record performance metrics
+                    crate::performance::record_qwen_operation(
+                        "enhanced_search",
+                        qwen_result.processing_time,
+                        qwen_result.context_tokens,
+                        qwen_result.completion_tokens,
+                        qwen_result.confidence_score,
+                    );
                     // Combine search results with Qwen intelligence
                     return Ok(json!({
                         "search_results": search_results["results"],
@@ -525,8 +535,8 @@ async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value, St
                             "confidence_score": qwen_result.confidence_score,
                             "context_window_used": state.qwen_client.as_ref().unwrap().config.context_window
                         },
-                        "generation_guidance": extract_generation_guidance(&qwen_result.text),
-                        "quality_assessment": extract_quality_assessment(&qwen_result.text)
+                        "generation_guidance": crate::prompts::extract_enhanced_generation_guidance(&qwen_result.text),
+                        "quality_assessment": crate::prompts::extract_enhanced_quality_assessment(&qwen_result.text)
                     }));
                 }
                 Err(e) => {
@@ -572,6 +582,15 @@ async fn semantic_intelligence(state: &ServerState, params: Value) -> Result<Val
     let analysis_result = qwen_client.analyze_codebase(&query, &codebase_context).await
         .map_err(|e| e.to_string())?;
 
+    // Record performance metrics
+    crate::performance::record_qwen_operation(
+        "semantic_intelligence",
+        analysis_result.processing_time,
+        analysis_result.context_tokens,
+        analysis_result.completion_tokens,
+        analysis_result.confidence_score,
+    );
+
     // 3. Structure response for MCP-calling LLMs
     Ok(json!({
         "task_type": task_type,
@@ -586,8 +605,8 @@ async fn semantic_intelligence(state: &ServerState, params: Value) -> Result<Val
             "confidence_score": analysis_result.confidence_score,
             "context_window_total": qwen_client.config.context_window
         },
-        "generation_guidance": extract_generation_guidance(&analysis_result.text),
-        "structured_insights": extract_structured_insights(&analysis_result.text),
+        "generation_guidance": crate::prompts::extract_enhanced_generation_guidance(&analysis_result.text),
+        "structured_insights": crate::prompts::extract_enhanced_structured_insights(&analysis_result.text),
         "mcp_metadata": {
             "tool_version": "1.0.0",
             "recommended_for": ["claude", "gpt-4", "custom-agents"],
@@ -687,66 +706,9 @@ fn build_context_summary(context: &str) -> Value {
     })
 }
 
+// Performance metrics MCP tool
 #[cfg(feature = "qwen-integration")]
-fn extract_generation_guidance(analysis: &str) -> Value {
-    // Simple extraction of generation guidance from Qwen analysis
-    let guidance = if let Some(start) = analysis.find("GENERATION_GUIDANCE:") {
-        let guidance_section = &analysis[start..];
-        if let Some(end) = guidance_section.find("\n\n") {
-            guidance_section[..end].trim()
-        } else {
-            guidance_section.trim()
-        }
-    } else if analysis.contains("generation") || analysis.contains("generate") {
-        "See comprehensive analysis for generation guidance"
-    } else {
-        "No specific generation guidance provided"
-    };
-
-    json!({
-        "guidance": guidance,
-        "extracted_from_analysis": !guidance.is_empty()
-    })
-}
-
-#[cfg(feature = "qwen-integration")]
-fn extract_quality_assessment(analysis: &str) -> Value {
-    // Simple extraction of quality assessment from Qwen analysis
-    let assessment = if let Some(start) = analysis.find("QUALITY_ASSESSMENT:") {
-        let quality_section = &analysis[start..];
-        if let Some(end) = quality_section.find("\n\n") {
-            quality_section[..end].trim()
-        } else {
-            quality_section.trim()
-        }
-    } else {
-        "Quality assessment included in comprehensive analysis"
-    };
-
-    json!({
-        "assessment": assessment,
-        "has_quality_analysis": analysis.contains("quality") || analysis.contains("best practices")
-    })
-}
-
-#[cfg(feature = "qwen-integration")]
-fn extract_structured_insights(analysis: &str) -> Value {
-    let mut insights = json!({});
-
-    // Extract numbered sections
-    for i in 1..=6 {
-        let section_marker = format!("{}.", i);
-        if let Some(start) = analysis.find(&section_marker) {
-            let section_content = &analysis[start..];
-            if let Some(end) = section_content.find(&format!("{}.", i + 1)) {
-                let content = section_content[..end].trim();
-                insights[format!("section_{}", i)] = json!(content);
-            } else if i == 6 {
-                // Last section, take rest of content
-                insights[format!("section_{}", i)] = json!(section_content.trim());
-            }
-        }
-    }
-
-    insights
+async fn performance_metrics(_state: &ServerState, _params: Value) -> Result<Value, String> {
+    // Return current performance metrics for monitoring
+    Ok(crate::performance::get_performance_summary())
 }
