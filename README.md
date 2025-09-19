@@ -331,12 +331,13 @@ codegraph --version
 
 # Install Qwen2.5-Coder model (can run in background)
 ollama pull hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M
-
+export CODEGRAPH_MODEL="hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M"
 ### Enabling Local Embeddings (Optional)
 
 If you want to use a local embedding model (Hugging Face) instead of remote providers:
 
 1) Build with the local embeddings feature for crates that use vector search (the API and/or CLI server):
+! Recommended to use the onnx version for better performance, see the begginning of the README for installation instructions
 
 ```bash
 # Build API with local embeddings enabled
@@ -350,8 +351,8 @@ cargo build -p core-rag-mcp-server --features codegraph-vector/local-embeddings
 
 ```bash
 export CODEGRAPH_EMBEDDING_PROVIDER=local
-# Optional: choose a specific HF model (must provide safetensors weights)
-export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
+# Optional: choose a specific HF model (must provide onnx model)
+export CODEGRAPH_LOCAL_MODEL=path/to/Qdrant/all-MiniLM-L6-v2
 ```
 
 3) Run as usual (the first run will download model files from Hugging Face and cache them locally):
@@ -435,7 +436,7 @@ codegraph start dual --port 3000
 ```bash
 # Build with the feature (see installation step above), then:
 export CODEGRAPH_EMBEDDING_PROVIDER=local
-export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
+export CODEGRAPH_LOCAL_MODEL=Qdrant/all-MiniLM-L6-v2
 cargo run -p codegraph-api --features codegraph-vector/local-embeddings
 ```
 
@@ -938,7 +939,7 @@ codegraph search "query" --search-type fuzzy
 **Solution:**
 ```bash
 # Ensure you have internet access and the model name is correct
-export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
+export CODEGRAPH_LOCAL_MODEL=Qdrant/all-MiniLM-L6-v2
 
 # If the model is private, set a HF token (if required by your environment)
 export HF_TOKEN=your_hf_access_token

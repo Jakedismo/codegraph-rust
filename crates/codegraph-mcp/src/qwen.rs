@@ -171,7 +171,9 @@ impl QwenClient {
                         .as_str()
                         .map(|name| {
                             name.contains("qwen") && name.contains("coder") ||
-                            name.contains("qwen2.5-coder")
+                            name.contains("qwen2.5-coder") ||
+                            name.contains("Qwen2.5-Coder") ||
+                            name == self.config.model_name // Exact match
                         })
                         .unwrap_or(false)
                 })
