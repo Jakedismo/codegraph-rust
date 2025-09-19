@@ -230,7 +230,7 @@ impl VersionedRocksDbStorage {
             ref_count: 1,
         };
 
-        let serialized = bincode::serialize(&content_block)
+        let serialized = bincode::encode_to_vec(&content_block, bincode::config::standard())
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.db
@@ -252,8 +252,9 @@ impl VersionedRocksDbStorage {
 
         match self.db.get_cf(&content_cf, hash) {
             Ok(Some(data)) => {
-                let content_block: ContentBlock = bincode::deserialize(&data)
-                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                let content_block: ContentBlock = serde_json::from_slice(&data)
+                    .map_err(|e| CodeGraphError::Database(e.to_string()))?
+                    .0;
 
                 let content_arc = Arc::new(content_block.data.clone());
                 self.content_cache.insert(hash.to_string(), content_arc);
@@ -293,7 +294,8 @@ impl VersionedRocksDbStorage {
         };
 
         let node: CodeNode =
-            bincode::deserialize(&content).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            bincode::decode_from_slice(&content, bincode::config::standard()).map_err(|e| CodeGraphError::Database(e.to_string()))?
+            .0;
 
         Ok(Some(node))
     }
@@ -357,7 +359,7 @@ impl VersionedStore for VersionedRocksDbStorage {
             content_hashes: snapshot.node_versions.clone(),
         };
 
-        let serialized = bincode::serialize(&stored_snapshot)
+        let serialized = bincode::encode_to_vec(&stored_snapshot)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.db
@@ -379,8 +381,9 @@ impl VersionedStore for VersionedRocksDbStorage {
 
         match self.db.get_cf(&snapshots_cf, snapshot_id.as_bytes()) {
             Ok(Some(data)) => {
-                let stored_snapshot: StoredSnapshot = bincode::deserialize(&data)
-                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                let stored_snapshot: StoredSnapshot = serde_json::from_slice(&data)
+                    .map_err(|e| CodeGraphError::Database(e.to_string()))?
+                    .0;
 
                 let snapshot_arc = Arc::new(stored_snapshot.snapshot.clone());
                 self.snapshot_cache.insert(snapshot_id, snapshot_arc);
@@ -416,7 +419,7 @@ impl VersionedStore for VersionedRocksDbStorage {
 
         let versions_cf = self.get_cf_handle(VERSIONS_CF)?;
         let serialized =
-            bincode::serialize(&version).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            serde_json::to_vec(&version).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.db
             .put_cf(&versions_cf, version_id.as_bytes(), serialized)
@@ -437,8 +440,9 @@ impl VersionedStore for VersionedRocksDbStorage {
 
         match self.db.get_cf(&versions_cf, version_id.as_bytes()) {
             Ok(Some(data)) => {
-                let version: Version = bincode::deserialize(&data)
-                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                let version: Version = serde_json::from_slice(&data)
+                    .map_err(|e| CodeGraphError::Database(e.to_string()))?
+                    .0;
 
                 let version_arc = Arc::new(version.clone());
                 self.version_cache.insert(version_id, version_arc);
@@ -459,7 +463,7 @@ impl VersionedStore for VersionedRocksDbStorage {
 
         for item in iter.take(limit) {
             let (_, value) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            let version: Version = bincode::deserialize(&value)
+            let version: Version = bincode::decode_from_slice(&value, bincode::config::standard())
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?;
             versions.push(version);
         }
@@ -479,7 +483,7 @@ impl VersionedStore for VersionedRocksDbStorage {
         if let Some(mut version) = self.get_version(version_id).await? {
             version.tags.push(tag);
             let versions_cf = self.get_cf_handle(VERSIONS_CF)?;
-            let serialized = bincode::serialize(&version)
+            let serialized = serde_json::to_vec(&version)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?;
             self.db
                 .put_cf(&versions_cf, version_id.as_bytes(), serialized)
@@ -652,7 +656,7 @@ impl TransactionManager for VersionedRocksDbStorage {
         };
 
         let transactions_cf = self.get_cf_handle(TRANSACTIONS_CF)?;
-        let serialized = bincode::serialize(&transaction)
+        let serialized = serde_json::to_vec(&transaction)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.db
@@ -720,7 +724,7 @@ impl TransactionManager for VersionedRocksDbStorage {
 
                 let wal_cf = self.get_cf_handle(WAL_CF)?;
                 let wal_key = format!("{:020}", wal_entry.sequence_number);
-                let wal_serialized = bincode::serialize(&wal_entry)
+                let wal_serialized = serde_json::to_vec(&wal_entry)
                     .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
                 batch.put_cf(&wal_cf, wal_key.as_bytes(), wal_serialized);
@@ -731,7 +735,7 @@ impl TransactionManager for VersionedRocksDbStorage {
 
             let transactions_cf = self.get_cf_handle(TRANSACTIONS_CF)?;
             let tx_serialized =
-                bincode::serialize(&*tx).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                serde_json::to_vec(&*tx).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
             batch.put_cf(&transactions_cf, transaction_id.as_bytes(), tx_serialized);
         }
@@ -752,7 +756,7 @@ impl TransactionManager for VersionedRocksDbStorage {
 
             let transactions_cf = self.get_cf_handle(TRANSACTIONS_CF)?;
             let serialized =
-                bincode::serialize(&*tx).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                serde_json::to_vec(&*tx).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
             self.db
                 .put_cf(&transactions_cf, transaction_id.as_bytes(), serialized)
@@ -773,8 +777,9 @@ impl TransactionManager for VersionedRocksDbStorage {
 
         match self.db.get_cf(&transactions_cf, transaction_id.as_bytes()) {
             Ok(Some(data)) => {
-                let transaction: Transaction = bincode::deserialize(&data)
-                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                let transaction: Transaction = serde_json::from_slice(&data)
+                    .map_err(|e| CodeGraphError::Database(e.to_string()))?
+                    .0;
                 Ok(Some(transaction))
             }
             Ok(None) => Ok(None),
@@ -862,7 +867,7 @@ impl WriteAheadLog for VersionedRocksDbStorage {
         let wal_cf = self.get_cf_handle(WAL_CF)?;
         let key = format!("{:020}", sequence);
         let serialized =
-            bincode::serialize(&entry).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            serde_json::to_vec(&entry).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.db
             .put_cf(&wal_cf, key.as_bytes(), serialized)
@@ -887,7 +892,7 @@ impl WriteAheadLog for VersionedRocksDbStorage {
 
         for item in iter {
             let (_, value) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
-            let entry: WriteAheadLogEntry = bincode::deserialize(&value)
+            let entry: WriteAheadLogEntry = serde_json::from_slice(&value)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?;
             entries.push(entry);
         }
@@ -945,7 +950,7 @@ impl WriteAheadLog for VersionedRocksDbStorage {
 
         let checkpoints_cf = self.get_cf_handle(CHECKPOINTS_CF)?;
         let serialized =
-            bincode::serialize(&checkpoint).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            serde_json::to_vec(&checkpoint).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.db
             .put_cf(&checkpoints_cf, checkpoint_id.as_bytes(), serialized)
@@ -959,7 +964,7 @@ impl WriteAheadLog for VersionedRocksDbStorage {
         let mut iter = self.db.iterator_cf(&checkpoints_cf, IteratorMode::End);
 
         if let Some(Ok((_, value))) = iter.next() {
-            let checkpoint: Checkpoint = bincode::deserialize(&value)
+            let checkpoint: Checkpoint = serde_json::from_slice(&value)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?;
             Ok(Some(checkpoint))
         } else {

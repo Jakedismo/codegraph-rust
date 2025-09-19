@@ -69,8 +69,9 @@ impl ReadCoalescer {
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
         if let Some(bytes) = data {
             // SerializableCodeNode is defined in storage.rs module; mimic fields via serde
-            let s: crate::storage::SerializableCodeNode = bincode::deserialize(&bytes)
-                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            let s: crate::storage::SerializableCodeNode = bincode::decode_from_slice(&bytes, bincode::config::standard())
+                .map_err(|e| CodeGraphError::Database(e.to_string()))?
+                .0;
             let node: CodeNode = s.into();
             self.cache.insert(id, Arc::new(node.clone()));
             Ok(Some(node))

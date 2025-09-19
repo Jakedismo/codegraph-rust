@@ -1459,17 +1459,32 @@ fn estimate_available_memory_gb() -> usize {
     16 // Default assumption if detection fails
 }
 
-/// Optimize batch size and workers based on available memory
+/// Optimize batch size and workers based on available memory and embedding provider
 fn optimize_for_memory(memory_gb: usize, default_batch_size: usize, default_workers: usize) -> (usize, usize) {
+    let embedding_provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or_default();
+
     let optimized_batch_size = if default_batch_size == 100 { // Default value
-        match memory_gb {
-            128.. => 20480,    // 128GB+: Ultra-high batch size (20K embeddings)
-            96..=127 => 15360, // 96-127GB: Very high batch size (15K embeddings)
-            64..=95 => 10240,  // 64-95GB: High batch size (10K embeddings)
-            48..=63 => 5120,   // 48-63GB: Medium-high batch size (5K embeddings)
-            32..=47 => 2048,   // 32-47GB: Medium batch size (2K embeddings)
-            16..=31 => 512,    // 16-31GB: Conservative batch size
-            _ => 100,          // <16GB: Keep default
+        if embedding_provider == "ollama" {
+            // Ollama models work better with smaller batches for stability
+            match memory_gb {
+                128.. => 1024,     // 128GB+: Large but stable batch size
+                96..=127 => 768,   // 96-127GB: Medium-large batch
+                64..=95 => 512,    // 64-95GB: Medium batch
+                32..=63 => 256,    // 32-63GB: Small batch
+                16..=31 => 128,    // 16-31GB: Very small batch
+                _ => 64,           // <16GB: Minimal batch
+            }
+        } else {
+            // ONNX/OpenAI can handle much larger batches
+            match memory_gb {
+                128.. => 20480,    // 128GB+: Ultra-high batch size
+                96..=127 => 15360, // 96-127GB: Very high batch size
+                64..=95 => 10240,  // 64-95GB: High batch size
+                48..=63 => 5120,   // 48-63GB: Medium-high batch size
+                32..=47 => 2048,   // 32-47GB: Medium batch size
+                16..=31 => 512,    // 16-31GB: Conservative batch size
+                _ => 100,          // <16GB: Keep default
+            }
         }
     } else {
         default_batch_size // User specified - respect their choice

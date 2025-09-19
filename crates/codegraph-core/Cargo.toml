@@ -39,6 +39,7 @@ tikv-jemallocator = { workspace = true }
 hashbrown = { workspace = true }
 rustc-hash = { workspace = true }
 sha2 = { workspace = true }
+bincode = { workspace = true }
 
 memmap2 = { workspace = true }
 
