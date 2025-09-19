@@ -27,7 +27,7 @@
 
 ## 🎯 Revolutionary Overview
 
-CodeGraph is the **first MCP-based codebase intelligence platform** that transforms any compatible LLM (Claude, GPT-4, custom agents) into a codebase expert through advanced semantic analysis enhanced by **Qwen2.5-Coder-14B-128K**.
+CodeGraph is the **first MCP-based codebase intelligence platform** that transforms any compatible LLM (Claude-4[1m], GPT-5, custom agents) into a codebase expert through advanced semantic analysis enhanced by **Qwen2.5-Coder-14B-128K**.
 
 ### 🧠 **Core Innovation: MCP-First Intelligence**
 
@@ -46,7 +46,7 @@ Any MCP-compatible AI agent can now:
 - **🎯 Team Intelligence**: Learns and shares your team's coding patterns and conventions
 - **💾 Intelligent Caching**: Semantic similarity matching for 50-80% cache hit rates
 - **📊 Pattern Detection**: Analyzes team conventions using existing 90K+ lines of semantic analysis
-- **🔗 MCP Protocol**: Works with Claude Desktop, GPT-4, and any MCP-compatible agent
+- **🔗 MCP Protocol**: Works with Claude Code, Codex CLI, Gemini CLi, Crush, Qwen-Code, and any MCP-compatible agent
 
 ## 🎯 **Revolutionary MCP Tools (6 Available)**
 
@@ -84,7 +84,7 @@ Memory Usage: ~24GB VRAM (fits 32GB MacBook Pro perfectly)
 ### **Complete Local Stack Performance**
 ```bash
 Qwen2.5-Coder-14B-128K: SOTA code analysis (294-540 context tokens used)
-nomic-embed-code: Code-specialized embeddings (768 dimensions)
+nomic-embed-code: Code-specialized embeddings (3584 dimensions)
 FAISS Indexing: High-performance vector search
 Intelligent Caching: Semantic similarity matching for speed
 Zero External Dependencies: 100% local processing

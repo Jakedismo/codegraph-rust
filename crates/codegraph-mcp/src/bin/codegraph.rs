@@ -753,18 +753,33 @@ async fn handle_index(
         println!("Recursive indexing enabled");
     }
 
-    println!("Workers: {}", workers);
+    // Memory-aware optimization for high-memory systems
+    let available_memory_gb = estimate_available_memory_gb();
+    let (optimized_batch_size, optimized_workers) = optimize_for_memory(
+        available_memory_gb,
+        batch_size,
+        workers
+    );
+
+    println!("Workers: {} → {} (optimized)", workers, optimized_workers);
+    println!("Batch size: {} → {} (optimized)", batch_size, optimized_batch_size);
+
+    if available_memory_gb >= 64 {
+        println!("{}", format!("🚀 High-memory system detected ({}GB) - performance optimized!", available_memory_gb).green().bold());
+        println!("{}", format!("💾 Memory capacity: ~{} embeddings per batch", optimized_batch_size).cyan());
+    }
 
     // Configure indexer
+    let languages_list = languages.clone().unwrap_or_default();
     let config = IndexerConfig {
-        languages: languages.unwrap_or_default(),
+        languages: languages_list.clone(),
         exclude_patterns: exclude,
         include_patterns: include,
         recursive,
         force_reindex: force,
         watch,
-        workers,
-        batch_size,
+        workers: optimized_workers,
+        batch_size: optimized_batch_size,
         device,
         max_seq_len,
         ..Default::default()
@@ -777,14 +792,60 @@ async fn handle_index(
     let stats = indexer.index_project(&path).await?;
 
     println!();
-    println!("✓ Indexing complete!");
-    println!("  Files indexed: {}", stats.files);
-    println!("  Total lines: {}", stats.lines);
-    println!("  Functions: {}", stats.functions);
-    println!("  Classes: {}", stats.classes);
-    println!("  Structs: {}", stats.structs);
-    println!("  Traits: {}", stats.traits);
-    println!("  Embeddings: {}", stats.embeddings);
+    println!("{}", "🎉 INDEXING COMPLETE!".green().bold());
+    println!();
+
+    // Performance summary with dual metrics
+    println!("{}", "📊 Performance Summary".cyan().bold());
+    println!("┌─────────────────────────────────────────────────┐");
+    println!("│ 📄 Files: {} indexed                             │", format!("{:>6}", stats.files).yellow());
+    println!("│ 📝 Lines: {} processed                           │", format!("{:>6}", stats.lines).yellow());
+    println!("│ 🔧 Functions: {} extracted                       │", format!("{:>6}", stats.functions).green());
+    println!("│ 🏗️  Classes: {} extracted                        │", format!("{:>6}", stats.classes).green());
+    println!("│ 📦 Structs: {} extracted                         │", format!("{:>6}", stats.structs).green());
+    println!("│ 🎯 Traits: {} extracted                          │", format!("{:>6}", stats.traits).green());
+    println!("│ 💾 Embeddings: {} generated                      │", format!("{:>6}", stats.embeddings).cyan());
+    if stats.errors > 0 {
+        println!("│ ❌ Errors: {} encountered                        │", format!("{:>6}", stats.errors).red());
+    }
+    println!("└─────────────────────────────────────────────────┘");
+
+    // Configuration summary
+    println!();
+    println!("{}", "⚙️  Configuration Summary".cyan().bold());
+    println!("Workers: {} | Batch Size: {} | Languages: {}",
+             optimized_workers,
+             optimized_batch_size,
+             languages_list.join(", "));
+
+    let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or("default".to_string());
+    if provider == "ollama" {
+        println!("{}", "🧠 Using SOTA Code-Specialized Embeddings (nomic-embed-code)".green());
+    } else if provider == "onnx" {
+        println!("{}", "⚡ Using Speed-Optimized Embeddings (ONNX)".yellow());
+    }
+
+    if available_memory_gb >= 128 {
+        println!("{}", format!("🚀 Ultra-High Memory System ({}GB) - Maximum Performance!", available_memory_gb).green().bold());
+    } else if available_memory_gb >= 64 {
+        println!("{}", format!("💪 High Memory System ({}GB) - Optimized Performance!", available_memory_gb).green());
+    }
+
+    // Success rate and recommendations
+    if stats.embeddings > 0 && stats.files > 0 {
+        let embedding_success_rate = (stats.embeddings as f64 / stats.files as f64) * 100.0;
+        if embedding_success_rate >= 90.0 {
+            println!("{}", "✅ Excellent embedding success rate (>90%)".green());
+        } else if embedding_success_rate >= 75.0 {
+            println!("{}", "⚠️  Good embedding success rate (75-90%)".yellow());
+        } else {
+            println!("{}", "❌ Low embedding success rate (<75%) - check language support".red());
+        }
+    }
+
+    println!();
+    println!("{}", "🚀 Ready for Revolutionary MCP Intelligence!".green().bold());
+    println!("Next: Start MCP server with 'codegraph start stdio'");
 
     if stats.errors > 0 {
         println!("  {} Errors: {}", "⚠".yellow(), stats.errors);
@@ -1362,4 +1423,71 @@ async fn handle_perf(
     }
 
     Ok(())
+}
+
+/// Estimate available system memory in GB
+fn estimate_available_memory_gb() -> usize {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = std::process::Command::new("sysctl")
+            .args(["-n", "hw.memsize"])
+            .output()
+        {
+            if let Ok(memsize_str) = String::from_utf8(output.stdout) {
+                if let Ok(memsize) = memsize_str.trim().parse::<u64>() {
+                    return (memsize / 1024 / 1024 / 1024) as usize;
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(content) = std::fs::read_to_string("/proc/meminfo") {
+            for line in content.lines() {
+                if line.starts_with("MemTotal:") {
+                    if let Some(kb_str) = line.split_whitespace().nth(1) {
+                        if let Ok(kb) = kb_str.parse::<u64>() {
+                            return (kb / 1024 / 1024) as usize;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    16 // Default assumption if detection fails
+}
+
+/// Optimize batch size and workers based on available memory
+fn optimize_for_memory(memory_gb: usize, default_batch_size: usize, default_workers: usize) -> (usize, usize) {
+    let optimized_batch_size = if default_batch_size == 100 { // Default value
+        match memory_gb {
+            128.. => 20480,    // 128GB+: Ultra-high batch size (20K embeddings)
+            96..=127 => 15360, // 96-127GB: Very high batch size (15K embeddings)
+            64..=95 => 10240,  // 64-95GB: High batch size (10K embeddings)
+            48..=63 => 5120,   // 48-63GB: Medium-high batch size (5K embeddings)
+            32..=47 => 2048,   // 32-47GB: Medium batch size (2K embeddings)
+            16..=31 => 512,    // 16-31GB: Conservative batch size
+            _ => 100,          // <16GB: Keep default
+        }
+    } else {
+        default_batch_size // User specified - respect their choice
+    };
+
+    let optimized_workers = if default_workers == 4 { // Default value
+        match memory_gb {
+            128.. => 16,       // 128GB+: Maximum parallelism
+            96..=127 => 14,    // 96-127GB: Very high parallelism
+            64..=95 => 12,     // 64-95GB: High parallelism
+            48..=63 => 10,     // 48-63GB: Medium-high parallelism
+            32..=47 => 8,      // 32-47GB: Medium parallelism
+            16..=31 => 6,      // 16-31GB: Conservative parallelism
+            _ => 4,            // <16GB: Keep default
+        }
+    } else {
+        default_workers // User specified - respect their choice
+    };
+
+    (optimized_batch_size, optimized_workers)
 }

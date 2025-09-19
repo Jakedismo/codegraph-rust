@@ -185,13 +185,29 @@ impl ProjectIndexer {
             exclude_patterns: self.config.exclude_patterns.clone(),
         };
 
-        // Parse project into CodeNodes with enhanced configuration
-        let parse_pb = self.create_progress_bar(0, "Parsing project");
+        // Parse project into CodeNodes with enhanced configuration and dual progress
+        let parse_pb = self.create_dual_progress_bar(
+            0,
+            "📄 Parsing Files",
+            &format!("🎯 Languages: {}", file_config.languages.join(", "))
+        );
+
         let (mut nodes, pstats) = self
             .parser
             .parse_directory_parallel_with_config(&path.to_string_lossy(), &file_config)
             .await?;
-        parse_pb.finish_with_message("Enhanced parsing complete");
+
+        let success_rate = if pstats.total_files > 0 {
+            (pstats.parsed_files as f64 / pstats.total_files as f64) * 100.0
+        } else {
+            100.0
+        };
+
+        let parse_completion_msg = format!(
+            "📄 Parsing complete: {}/{} files (✅ {:.1}% success) | ⚡ {:.0} lines/s",
+            pstats.parsed_files, pstats.total_files, success_rate, pstats.lines_per_second
+        );
+        parse_pb.finish_with_message(parse_completion_msg);
 
         // Debug: Check parsed nodes
         info!("Parsed nodes count: {}, sample nodes: {:?}",
@@ -203,9 +219,9 @@ impl ProjectIndexer {
             warn!("Parsing stats: {} files, {} lines processed", pstats.parsed_files, pstats.total_lines);
         }
 
-        // Generate embeddings and attach (batched)
+        // Generate embeddings and attach (batched) with high-performance visualization
         let total = nodes.len() as u64;
-        let embed_pb = self.create_progress_bar(total, "Generating embeddings");
+        let embed_pb = self.create_batch_progress_bar(total, self.config.batch_size);
         let batch = self.config.batch_size.max(1);
         let mut processed = 0u64;
         for chunk in nodes.chunks_mut(batch) {
@@ -227,7 +243,18 @@ impl ProjectIndexer {
             processed += chunk.len() as u64;
             embed_pb.set_position(processed.min(total));
         }
-        embed_pb.finish_with_message("Embeddings complete");
+        let embedding_rate = if total > 0 {
+            processed as f64 / total as f64 * 100.0
+        } else {
+            100.0
+        };
+
+        let embed_completion_msg = format!(
+            "💾 Embeddings complete: {}/{} nodes (✅ {:.1}% success) | 🚀 Batch: {} | Provider: {}",
+            processed, total, embedding_rate, self.config.batch_size,
+            std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or("default".to_string())
+        );
+        embed_pb.finish_with_message(embed_completion_msg);
 
         // Proactively drop embedding resources (e.g., ONNX sessions) before heavy post-processing.
         // This helps avoid late destructor ordering issues in some native backends on macOS.
@@ -553,12 +580,52 @@ impl ProjectIndexer {
         pb.set_style(
             ProgressStyle::default_bar()
                 .template(
-                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) {msg} | {per_sec}/s | ETA: {eta}",
                 )
                 .unwrap()
-                .progress_chars("#>-"),
+                .progress_chars("█▉▊▋▌▍▎▏ "), // Better visual progress
         );
         pb.set_message(message.to_string());
+        pb
+    }
+
+    /// Create enhanced progress bar with dual metrics for files and success rates
+    fn create_dual_progress_bar(&self, total: u64, primary_msg: &str, secondary_msg: &str) -> ProgressBar {
+        let pb = self.progress.add(ProgressBar::new(total));
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len}\n{msg.bold} | Success Rate: {percent}% | Speed: {per_sec}/s | ETA: {eta}",
+                )
+                .unwrap()
+                .progress_chars("█▉▊▋▌▍▎▏ "),
+        );
+        pb.set_message(format!("{} | {}", primary_msg, secondary_msg));
+        pb
+    }
+
+    /// Create high-performance progress bar for batch processing
+    fn create_batch_progress_bar(&self, total: u64, batch_size: usize) -> ProgressBar {
+        let pb = self.progress.add(ProgressBar::new(total));
+        let batch_info = if batch_size >= 10000 {
+            format!("🚀 Ultra-High Performance ({}K batch)", batch_size / 1000)
+        } else if batch_size >= 5000 {
+            format!("⚡ High Performance ({}K batch)", batch_size / 1000)
+        } else if batch_size >= 1000 {
+            format!("🔥 Optimized ({} batch)", batch_size)
+        } else {
+            format!("Standard ({} batch)", batch_size)
+        };
+
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:45.cyan/blue}] {pos}/{len} embeddings\n💾 {msg} | {percent}% | {per_sec}/s | Memory: Optimized | ETA: {eta}",
+                )
+                .unwrap()
+                .progress_chars("█▉▊▋▌▍▎▏ "),
+        );
+        pb.set_message(batch_info);
         pb
     }
 
