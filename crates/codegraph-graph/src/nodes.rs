@@ -20,7 +20,7 @@ const LABEL_INDEX_CF: &str = "cg_label_idx";
 const PROP_INDEX_CF: &str = "cg_prop_idx";
 const HISTORY_CF: &str = "cg_history";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Node {
     pub id: Uuid,
     pub properties: HashMap<String, JsonValue>,
@@ -253,7 +253,7 @@ impl NodeStore for RocksNodeStore {
 
         let node_key = Self::id_key(node.id);
         let node_bytes =
-            bincode::encode_to_vec(&node, bincode::config::standard()).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         let mut batch = WriteBatch::default();
         batch.put_cf(&nodes_cf, node_key, &node_bytes);
@@ -285,9 +285,8 @@ impl NodeStore for RocksNodeStore {
             .get_cf_opt(&nodes_cf, &key, &self.read_options)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
         if let Some(bytes) = data {
-            let node: Node = bincode::decode_from_slice(&bytes, bincode::config::standard())
-                .map_err(|e| CodeGraphError::Database(e.to_string()))?
-                .0;
+            let node: Node = serde_json::from_slice::<Node>(&bytes)
+                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
             self.read_cache.insert(id, Arc::new(node.clone()));
             Ok(Some(node))
         } else {
@@ -310,7 +309,7 @@ impl NodeStore for RocksNodeStore {
 
         let node_key = Self::id_key(node.id);
         let node_bytes =
-            bincode::encode_to_vec(&node, bincode::config::standard()).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         let mut batch = WriteBatch::default();
         // Update main record
@@ -372,7 +371,7 @@ impl NodeStore for RocksNodeStore {
             }
             let key = Self::id_key(node.id);
             let bytes =
-                bincode::encode_to_vec(&*node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                serde_json::to_vec(&*node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
             batch.put_cf(&nodes_cf, key, &bytes);
             Self::write_node_indices(&mut batch, &labels_cf, &props_cf, node);
             batch.put_cf(
@@ -408,7 +407,7 @@ impl NodeStore for RocksNodeStore {
 
             let key = Self::id_key(node.id);
             let bytes =
-                bincode::encode_to_vec(&node, bincode::config::standard()).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
             batch.put_cf(&nodes_cf, key, &bytes);
             Self::delete_node_indices(&mut batch, &labels_cf, &props_cf, &prev);
             Self::write_node_indices(&mut batch, &labels_cf, &props_cf, &node);
@@ -522,8 +521,7 @@ impl NodeStore for RocksNodeStore {
                 break;
             }
             let node: Node =
-                bincode::decode_from_slice(&val, bincode::config::standard()).map_err(|e| CodeGraphError::Database(e.to_string()))?
-                .0;
+                serde_json::from_slice::<Node>(&val).map_err(|e| CodeGraphError::Database(e.to_string()))?;
             out.push(node);
         }
         // Already ordered by version due to suffix

@@ -31,7 +31,7 @@ const EDGES_CF: &str = "edges";
 const INDICES_CF: &str = "indices";
 const METADATA_CF: &str = "metadata";
 
-#[derive(Serialize, Deserialize, Clone, Debug, bincode::Encode, bincode::Decode)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SerializableCodeNode {
     pub id: NodeId,
     pub name: String,
@@ -42,7 +42,7 @@ pub struct SerializableCodeNode {
     pub metadata: HashMap<String, String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, bincode::Encode, bincode::Decode)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SerializableEdge {
     pub id: u64,
     pub from: NodeId,
@@ -241,7 +241,7 @@ impl HighPerformanceRocksDbStorage {
         let node_id = node.id;
         let serializable_node = SerializableCodeNode::from(node.clone());
         let node_key = Self::node_key(node_id);
-        let node_bytes = bincode::encode_to_vec(&serializable_node, bincode::config::standard())
+        let node_bytes = serde_json::to_vec(&serializable_node)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
         let name_index_key = Self::index_key(b"name:", node.name.as_str(), node_id);
         self.with_batch(None, |batch| {
@@ -438,7 +438,7 @@ impl HighPerformanceRocksDbStorage {
 
         let edge_key = Self::edge_key(edge_id);
         let edge_bytes =
-            bincode::encode_to_vec(&edge, bincode::config::standard()).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            serde_json::to_vec(&edge).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         let from_index_key = Self::index_edge_key(b"from:", &edge.from.to_string(), edge_id);
         let to_index_key = Self::index_edge_key(b"to:", &edge.to.to_string(), edge_id);
@@ -462,7 +462,7 @@ impl HighPerformanceRocksDbStorage {
         let indices_cf = self.get_cf_handle(INDICES_CF)?;
         let edge_key = Self::edge_key(edge_id);
         let edge_bytes =
-            bincode::encode_to_vec(&edge, bincode::config::standard()).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            serde_json::to_vec(&edge).map_err(|e| CodeGraphError::Database(e.to_string()))?;
         let from_index_key = Self::index_edge_key(b"from:", &edge.from.to_string(), edge_id);
         let to_index_key = Self::index_edge_key(b"to:", &edge.to.to_string(), edge_id);
 
@@ -514,9 +514,8 @@ impl HighPerformanceRocksDbStorage {
                 .get_cf(&edges_cf, edge_key)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?
             {
-                let edge: SerializableEdge = bincode::decode_from_slice(&edge_data, bincode::config::standard())
-                    .map_err(|e| CodeGraphError::Database(e.to_string()))?
-                    .0;
+                let edge: SerializableEdge = serde_json::from_slice::<SerializableEdge>(&edge_data)
+                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
                 edges.push(edge);
             }
         }
@@ -564,9 +563,8 @@ impl HighPerformanceRocksDbStorage {
                 .get_cf(&edges_cf, edge_key)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?
             {
-                let edge: SerializableEdge = bincode::decode_from_slice(&edge_data, bincode::config::standard())
-                    .map_err(|e| CodeGraphError::Database(e.to_string()))?
-                    .0;
+                let edge: SerializableEdge = serde_json::from_slice::<SerializableEdge>(&edge_data)
+                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
                 edges.push(edge);
             }
         }
@@ -611,9 +609,8 @@ impl HighPerformanceRocksDbStorage {
                     .get_cf(&edges_cf, Self::edge_key(edge_id))
                     .map_err(|e| CodeGraphError::Database(e.to_string()))?
                 {
-                    let edge: SerializableEdge = bincode::decode_from_slice(&edge_data, bincode::config::standard())
-                        .map_err(|e| CodeGraphError::Database(e.to_string()))?
-                    .0;
+                    let edge: SerializableEdge = serde_json::from_slice::<SerializableEdge>(&edge_data)
+                        .map_err(|e| CodeGraphError::Database(e.to_string()))?;
                     let type_match = match edge_type {
                         Some(t) => edge.edge_type == t,
                         None => true,
@@ -682,7 +679,7 @@ impl HighPerformanceRocksDbStorage {
         let indices_cf = self.get_cf_handle(INDICES_CF)?;
 
         let node_key = Self::node_key(node_id);
-        let node_bytes = bincode::encode_to_vec(&serializable_node, bincode::config::standard())
+        let node_bytes = serde_json::to_vec(&serializable_node)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         let name_index_key = Self::index_key(b"name:", node.name.as_str(), node_id);
@@ -709,7 +706,7 @@ impl HighPerformanceRocksDbStorage {
             let node_id = node.id;
             let serializable_node = SerializableCodeNode::from(node.clone());
             let node_key = Self::node_key(node_id);
-            let node_bytes = bincode::encode_to_vec(&serializable_node, bincode::config::standard())
+            let node_bytes = serde_json::to_vec(&serializable_node)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?;
             let name_index_key = Self::index_key(b"name:", node.name.as_str(), node_id);
 
@@ -742,7 +739,7 @@ impl HighPerformanceRocksDbStorage {
         for edge in edges.into_iter() {
             let edge_key = Self::edge_key(edge.id);
             let edge_bytes =
-                bincode::encode_to_vec(&edge, bincode::config::standard()).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                serde_json::to_vec(&edge).map_err(|e| CodeGraphError::Database(e.to_string()))?;
             let from_index_key = Self::index_edge_key(b"from:", &edge.from.to_string(), edge.id);
             let to_index_key = Self::index_edge_key(b"to:", &edge.to.to_string(), edge.id);
             self.with_batch(None, |batch| {
