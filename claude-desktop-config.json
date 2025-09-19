@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "codegraph": {
+      "command": "/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-next-gen-version-control-system/codegraph-rust/target/debug/codegraph",
+      "args": ["start", "stdio"],
+      "cwd": "/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-next-gen-version-control-system/codegraph-rust",
+      "env": {
+        "RUST_LOG": "error",
+        "CODEGRAPH_MODEL": "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M"
+      }
+    }
+  }
+}

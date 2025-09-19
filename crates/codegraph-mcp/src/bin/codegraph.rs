@@ -1120,13 +1120,62 @@ async fn handle_init(path: PathBuf, name: Option<String>, _non_interactive: bool
         println!("Project name: {}", name);
     }
 
-    // TODO: Implement initialization logic
+    // Create .codegraph directory structure
+    let codegraph_dir = path.join(".codegraph");
+    std::fs::create_dir_all(&codegraph_dir)?;
+
+    // Create subdirectories
+    std::fs::create_dir_all(codegraph_dir.join("db"))?;
+    std::fs::create_dir_all(codegraph_dir.join("vectors"))?;
+    std::fs::create_dir_all(codegraph_dir.join("cache"))?;
+
+    // Create basic config.toml
+    let config_content = r#"# CodeGraph Project Configuration
+[project]
+name = "codegraph-project"
+version = "1.0.0"
+
+[indexing]
+languages = ["rust", "python", "typescript", "javascript", "go", "java", "cpp"]
+exclude_patterns = ["**/node_modules/**", "**/target/**", "**/.git/**", "**/build/**"]
+include_patterns = ["src/**", "lib/**", "**/*.rs", "**/*.py", "**/*.ts", "**/*.js"]
+
+[mcp]
+enable_qwen_integration = true
+enable_caching = true
+enable_pattern_detection = true
+
+[database]
+path = "./.codegraph/db"
+cache_path = "./.codegraph/cache"
+vectors_path = "./.codegraph/vectors"
+"#;
+
+    std::fs::write(codegraph_dir.join("config.toml"), config_content)?;
+
+    // Create .gitignore for CodeGraph files
+    let gitignore_content = r#"# CodeGraph generated files
+.codegraph/db/
+.codegraph/cache/
+.codegraph/vectors/
+.codegraph/logs/
+"#;
+
+    std::fs::write(path.join(".gitignore.codegraph"), gitignore_content)?;
+
     println!("✓ Created .codegraph/config.toml");
     println!("✓ Created .codegraph/db/");
     println!("✓ Created .codegraph/vectors/");
+    println!("✓ Created .codegraph/cache/");
+    println!("✓ Created .gitignore.codegraph");
     println!();
     println!("Project initialized successfully!");
-    println!("Run 'codegraph index .' to start indexing");
+    println!();
+    println!("{}", "Next steps:".yellow().bold());
+    println!("1. Run 'codegraph index .' to index your codebase");
+    println!("2. Start MCP server: 'codegraph start stdio'");
+    println!("3. Configure Claude Desktop with CodeGraph MCP");
+    println!("4. Experience revolutionary AI codebase intelligence!");
 
     Ok(())
 }

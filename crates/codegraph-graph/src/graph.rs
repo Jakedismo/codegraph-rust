@@ -33,7 +33,7 @@ struct QueryStats {
 
 impl CodeGraph {
     pub fn new() -> Result<Self> {
-        let storage = Arc::new(HighPerformanceRocksDbStorage::new("./data/graph.db")?);
+        let storage = Arc::new(HighPerformanceRocksDbStorage::new("./.codegraph/db")?);
 
         Ok(Self {
             storage,
@@ -46,7 +46,7 @@ impl CodeGraph {
     }
 
     pub fn new_read_only() -> Result<Self> {
-        let storage = Arc::new(HighPerformanceRocksDbStorage::new_read_only("./data/graph.db")?);
+        let storage = Arc::new(HighPerformanceRocksDbStorage::new_read_only("./.codegraph/db")?);
 
         Ok(Self {
             storage,
