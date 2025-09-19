@@ -131,7 +131,8 @@ impl QwenClient {
             confidence_score,
         };
 
-        info!(
+        // Log to stderr to avoid polluting STDIO MCP transport
+        eprintln!(
             "Qwen analysis completed: {}ms, context: {} tokens, completion: {} tokens, confidence: {:.2}",
             processing_time.as_millis(),
             result.context_tokens,

@@ -516,24 +516,25 @@ async fn init_qwen_client() -> Option<QwenClient> {
     // Initialize intelligent cache
     let cache_config = CacheConfig::default();
     init_cache(cache_config);
-    tracing::info!("✅ Intelligent response cache initialized");
+    // Use eprintln for STDIO to avoid polluting stdout
+    eprintln!("✅ Intelligent response cache initialized");
 
     // Note: Cache warming will happen on first requests
 
     let config = QwenConfig::default();
-    let client = QwenClient::new(config);
+    let client = QwenClient::new(config.clone());
 
     match client.check_availability().await {
         Ok(true) => {
-            tracing::info!("✅ Qwen2.5-Coder-14B-128K available for CodeGraph intelligence");
+            eprintln!("✅ Qwen2.5-Coder-14B-128K available for CodeGraph intelligence");
             Some(client)
         }
         Ok(false) => {
-            tracing::warn!("⚠️ Qwen2.5-Coder model not found. Install with: ollama pull qwen2.5-coder-14b-128k");
+            eprintln!("⚠️ Qwen2.5-Coder model not found. Install with: ollama pull {}", config.model_name);
             None
         }
         Err(e) => {
-            tracing::error!("❌ Failed to connect to Qwen2.5-Coder: {}", e);
+            eprintln!("❌ Failed to connect to Qwen2.5-Coder: {}", e);
             None
         }
     }

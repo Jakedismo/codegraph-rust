@@ -601,20 +601,16 @@ async fn handle_start(
     daemon: bool,
     pid_file: Option<PathBuf>,
 ) -> Result<()> {
-    println!("{}", "Starting CodeGraph MCP Server...".green().bold());
-
     let manager = ProcessManager::new();
 
     match transport {
         TransportType::Stdio { buffer_size } => {
-            info!(
-                "Starting with STDIO transport (buffer size: {})",
-                buffer_size
-            );
-            let pid = manager
-                .start_stdio_server(config, daemon, pid_file.clone(), buffer_size)
-                .await?;
-            println!("✓ MCP server started with STDIO transport (PID: {})", pid);
+            // For STDIO transport, we need clean JSON-RPC only on stdout
+            // All logs must go to stderr to avoid polluting the MCP protocol
+            eprintln!("{}", "Starting CodeGraph MCP Server...".green().bold());
+
+            // Use serve_stdio directly for clean MCP protocol
+            codegraph_mcp::server::serve_stdio(buffer_size).await?;
         }
         TransportType::Http {
             host,
