@@ -567,36 +567,9 @@ impl AstVisitor {
     }
 
     fn create_code_node(&self, node: &Node) -> Option<CodeNode> {
-        // Debug: Log all node types we encounter for TypeScript with more detail
-        if matches!(self.language, Language::TypeScript) {
-            let content_preview = node.utf8_text(self.source.as_bytes())
-                .ok()
-                .unwrap_or("no content")
-                .lines()
-                .next()
-                .unwrap_or("")
-                .trim();
-
-            eprintln!("🔍 TypeScript AST: kind='{}', content='{}'", node.kind(), content_preview);
-        }
-
-        let node_type = self.map_node_type(node.kind());
-        if node_type.is_none() && matches!(self.language, Language::TypeScript) {
-            eprintln!("❌ TypeScript node type '{}' not mapped - will skip", node.kind());
-            return None;
-        }
-        let node_type = node_type?;
-
-        let name = self.extract_name(node);
-        if name.is_none() && matches!(self.language, Language::TypeScript) {
-            eprintln!("❌ TypeScript node '{}' name extraction failed - will skip", node.kind());
-            return None;
-        }
-        let name = name?;
-
-        if matches!(self.language, Language::TypeScript) {
-            eprintln!("✅ TypeScript node created: type={:?}, name='{}'", node_type, name);
-        }
+        // Clean implementation without debug logging for better user experience
+        let node_type = self.map_node_type(node.kind())?;
+        let name = self.extract_name(node)?;
 
         let location = Location {
             file_path: self.file_path.clone(),

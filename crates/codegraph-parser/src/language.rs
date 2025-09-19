@@ -77,22 +77,10 @@ impl LanguageRegistry {
     pub fn detect_language(&self, file_path: &str) -> Option<Language> {
         let extension = std::path::Path::new(file_path).extension()?.to_str()?;
 
-        // Debug: Log language detection for TypeScript files
-        if extension == "ts" || extension == "tsx" {
-            eprintln!("🔍 Language detection: file='{}', extension='{}'", file_path, extension);
-        }
-
         for (lang, config) in &self.configs {
             if config.file_extensions.contains(&extension) {
-                if extension == "ts" || extension == "tsx" {
-                    eprintln!("✅ Language detected: {:?} for '{}'", lang, file_path);
-                }
                 return Some(lang.clone());
             }
-        }
-
-        if extension == "ts" || extension == "tsx" {
-            eprintln!("❌ No language config found for extension '{}'", extension);
         }
 
         None

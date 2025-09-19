@@ -358,12 +358,6 @@ impl TreeSitterParser {
 
     async fn parse_file_with_caching(&self, file_path: &str) -> Result<(Vec<CodeNode>, usize)> {
         let path = Path::new(file_path);
-
-        // Debug: Log file parsing attempts for TypeScript
-        if file_path.ends_with(".ts") || file_path.ends_with(".tsx") {
-            eprintln!("🔍 Parsing TypeScript file: {}", file_path);
-        }
-
         let metadata = fs::metadata(path)
             .await
             .map_err(|e| CodeGraphError::Io(e))?;
@@ -387,18 +381,7 @@ impl TreeSitterParser {
         }
 
         // Parse file
-        if file_path.ends_with(".ts") || file_path.ends_with(".tsx") {
-            eprintln!("🔍 Calling parse_file_internal for: {}", file_path);
-        }
-
         let result = self.parse_file_internal(file_path).await;
-
-        if file_path.ends_with(".ts") || file_path.ends_with(".tsx") {
-            match &result {
-                Ok((nodes, _, _)) => eprintln!("✅ parse_file_internal success: {} nodes for {}", nodes.len(), file_path),
-                Err(e) => eprintln!("❌ parse_file_internal failed for {}: {}", file_path, e),
-            }
-        }
 
         match &result {
             Ok((_, _, content)) => {
@@ -567,14 +550,12 @@ impl TreeSitterParser {
                         Ok(nodes)
                     } else if matches!(language, Language::TypeScript) {
                         // Use generic AstVisitor for TypeScript (bypassing stub)
-                        eprintln!("🔍 Using AstVisitor for TypeScript file: {}", file_path);
                         let mut visitor = AstVisitor::new(
                             language.clone(),
                             file_path.clone(),
                             used_content.clone(),
                         );
                         visitor.visit(tree_used.root_node());
-                        eprintln!("✅ TypeScript AstVisitor generated {} nodes", visitor.nodes.len());
                         Ok(visitor.nodes)
                     } else {
                         let mut visitor = AstVisitor::new(
@@ -821,11 +802,7 @@ impl TreeSitterParser {
                 .ok_or_else(|| CodeGraphError::Parse("Failed to incremental parse".to_string()))?;
 
             let mut visitor = AstVisitor::new(language.clone(), file_path.clone(), new_content.clone());
-
-            eprintln!("🔍 About to visit AST for {} (language: {:?})", file_path, language);
             visitor.visit(new_tree.root_node());
-            eprintln!("✅ AST visit complete for {}, generated {} nodes", file_path, visitor.nodes.len());
-
             Ok(visitor.nodes)
         })
         .await
