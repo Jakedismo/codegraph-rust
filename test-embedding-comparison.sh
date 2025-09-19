@@ -231,7 +231,7 @@ export CODEGRAPH_LOCAL_MODEL=/Users/username/.cache/huggingface/hub/models--Qdra
 echo "Starting ONNX embedding test..."
 time ../target/debug/codegraph index . --force --languages typescript --verbose 2>&1 | grep -E "(Found|embeddings|complete|ONNX)" || true
 
-echo ""
+echo ""a
 
 # Test 2: Ollama Embeddings (Code-specialized)
 if [ "$OLLAMA_AVAILABLE" = true ]; then
