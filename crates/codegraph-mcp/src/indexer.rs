@@ -193,6 +193,16 @@ impl ProjectIndexer {
             .await?;
         parse_pb.finish_with_message("Enhanced parsing complete");
 
+        // Debug: Check parsed nodes
+        info!("Parsed nodes count: {}, sample nodes: {:?}",
+              nodes.len(),
+              nodes.iter().take(3).map(|n| &n.name).collect::<Vec<_>>());
+
+        if nodes.is_empty() {
+            warn!("No nodes generated from parsing! Check parser implementation.");
+            warn!("Parsing stats: {} files, {} lines processed", pstats.parsed_files, pstats.total_lines);
+        }
+
         // Generate embeddings and attach (batched)
         let total = nodes.len() as u64;
         let embed_pb = self.create_progress_bar(total, "Generating embeddings");
