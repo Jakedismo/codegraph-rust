@@ -1,5 +1,5 @@
 use codegraph_core::{CodeGraphError, CodeNode, Result};
-#[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
+#[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx", feature = "ollama"))]
 use std::sync::Arc;
 #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
 use crate::embeddings::generator::TextEmbeddingEngine;
@@ -8,6 +8,8 @@ pub struct EmbeddingGenerator {
     model_config: ModelConfig,
     #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
     pub(crate) advanced: Option<Arc<crate::embeddings::generator::AdvancedEmbeddingGenerator>>,
+    #[cfg(feature = "ollama")]
+    ollama_provider: Option<crate::ollama_embedding_provider::OllamaEmbeddingProvider>,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +35,8 @@ impl EmbeddingGenerator {
             model_config: config,
             #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
             advanced: None,
+            #[cfg(feature = "ollama")]
+            ollama_provider: None,
         }
     }
 
@@ -55,9 +59,9 @@ impl EmbeddingGenerator {
     /// Construct an EmbeddingGenerator that optionally wraps the advanced engine based on env.
     /// If CODEGRAPH_EMBEDDING_PROVIDER=local, tries to initialize a local-first engine.
     pub async fn with_auto_from_env() -> Self {
-        #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
+        #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx", feature = "ollama"))]
         let mut base = Self::new(ModelConfig::default());
-        #[cfg(not(any(feature = "local-embeddings", feature = "openai", feature = "onnx")))]
+        #[cfg(not(any(feature = "local-embeddings", feature = "openai", feature = "onnx", feature = "ollama")))]
         let base = Self::new(ModelConfig::default());
         let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
             .unwrap_or_default()
@@ -101,6 +105,29 @@ impl EmbeddingGenerator {
                     base.advanced = Some(Arc::new(engine));
                 }
             }
+        } else if provider == "ollama" {
+            #[cfg(feature = "ollama")]
+            {
+                // Create Ollama embedding provider
+                let ollama_config = crate::ollama_embedding_provider::OllamaEmbeddingConfig::default();
+                let ollama_provider = crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(ollama_config);
+
+                // Check if model is available
+                match ollama_provider.check_availability().await {
+                    Ok(true) => {
+                        tracing::info!("✅ Ollama nomic-embed-code available for embeddings");
+                        base.ollama_provider = Some(ollama_provider);
+                        // Update dimension to match nomic-embed-code
+                        base.model_config.dimension = 768;
+                    }
+                    Ok(false) => {
+                        tracing::warn!("⚠️ nomic-embed-code model not found. Install with: ollama pull hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M");
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to connect to Ollama for embeddings: {}", e);
+                    }
+                }
+            }
         }
         base
     }
@@ -111,6 +138,26 @@ impl EmbeddingGenerator {
     }
 
     pub async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {
+        // Prefer Ollama provider for batch processing (code-specialized embeddings)
+        #[cfg(feature = "ollama")]
+        if let Some(ollama) = &self.ollama_provider {
+            tracing::info!(
+                target: "codegraph_vector::embeddings",
+                "Using Ollama nomic-embed-code for batch: {} items",
+                nodes.len()
+            );
+            use crate::providers::EmbeddingProvider;
+            let embs = ollama.generate_embeddings(nodes).await?;
+            if embs.len() != nodes.len() {
+                return Err(CodeGraphError::Vector(format!(
+                    "Ollama provider returned {} embeddings for {} inputs",
+                    embs.len(),
+                    nodes.len()
+                )));
+            }
+            return Ok(embs);
+        }
+
         #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
         if let Some(engine) = &self.advanced {
             // Use provider's batched path when available
@@ -175,6 +222,12 @@ impl EmbeddingGenerator {
     }
 
     async fn encode_text(&self, text: &str) -> Result<Vec<f32>> {
+        // Prefer Ollama provider when available (code-specialized embeddings)
+        #[cfg(feature = "ollama")]
+        if let Some(ollama) = &self.ollama_provider {
+            return ollama.generate_single_embedding(text).await;
+        }
+
         // Prefer advanced engine when available
         #[cfg(any(feature = "local-embeddings", feature = "openai"))]
         if let Some(engine) = &self.advanced {

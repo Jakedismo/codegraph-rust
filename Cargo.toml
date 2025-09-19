@@ -72,7 +72,7 @@ num_cpus = "1.16"
 sysinfo = "0.37.0"
 
 # Database
-rocksdb = "0.22"
+rocksdb = "0.24"
 
 # Vector Search (FAISS bindings and scientific computing)
 faiss = "0.12"
@@ -187,8 +187,8 @@ rmcp = { version = "0.6.4", features = ["server", "transport-io", "transport-str
 codegraph-core = { path = "crates/codegraph-core" }
 codegraph-graph = { path = "crates/codegraph-graph" }
 codegraph-parser = { path = "crates/codegraph-parser" }
-codegraph-vector = { path = "crates/codegraph-vector" }
-codegraph-cache = { path = "crates/codegraph-cache" }
+codegraph-vector = { path = "crates/codegraph-vector", default-features = false }
+codegraph-cache = { path = "crates/codegraph-cache", default-features = false }
 codegraph-api = { path = "crates/codegraph-api" }
 codegraph-mcp = { path = "crates/codegraph-mcp" }
 codegraph-git = { path = "crates/codegraph-git" }

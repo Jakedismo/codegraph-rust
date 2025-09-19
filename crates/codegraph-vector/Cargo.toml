@@ -72,6 +72,7 @@ local-embeddings = [
 ]
 onnx = ["dep:ort", "dep:tokenizers", "dep:hf-hub", "dep:ndarray"]
 onnx-coreml = ["onnx"]
+ollama = ["dep:reqwest"]
 
 [[example]]
 name = "rag_demo"

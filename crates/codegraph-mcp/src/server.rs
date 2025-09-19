@@ -293,8 +293,8 @@ pub async fn bin_search_with_scores(
         let emb = {
             #[cfg(feature = "embeddings")]
             {
-                let gen = codegraph_vector::EmbeddingGenerator::with_auto_from_env().await;
-                let e = gen.generate_text_embedding(&query).await?;
+                let embedding_gen = codegraph_vector::EmbeddingGenerator::with_auto_from_env().await;
+                let e = embedding_gen.generate_text_embedding(&query).await?;
                 crate::indexer::normalize(&e)
             }
             #[cfg(not(feature = "embeddings"))]
