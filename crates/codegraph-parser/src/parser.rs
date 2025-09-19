@@ -252,11 +252,37 @@ impl TreeSitterParser {
                     .unwrap_or(Language::Other("unknown".to_string()));
                 let content_hash = format!("{:x}", sha2::Sha256::digest(&content));
 
+                // Enable tree caching for better performance
+                let cached_tree = if content.len() < 500_000 { // Only cache smaller files to avoid memory issues
+                    // Re-parse to get a tree we can cache
+                    if let Ok((nodes, _, _)) = &result {
+                        if !nodes.is_empty() {
+                            // Parse again just for caching (small performance cost for future gains)
+                            let mut cache_parser = self.registry.create_parser(&language).unwrap_or_else(|| tree_sitter::Parser::new());
+                            if let Some(config) = self.registry.get_config(&language) {
+                                if cache_parser.set_language(&config.language).is_ok() {
+                                    cache_parser.parse(&content, None)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 let parsed_file = ParsedFile {
                     file_path: file_path.to_string(),
                     language,
                     content: content.clone(),
-                    tree: None, // We'd need to clone the tree here for full caching
+                    tree: cached_tree, // Now caching trees for better performance
                     last_modified,
                     content_hash,
                 };
@@ -296,16 +322,49 @@ impl TreeSitterParser {
         language: Language,
     ) -> Result<Vec<CodeNode>> {
         let registry = self.registry.clone();
-        let content = content.to_string();
-        let file_path = file_path.to_string();
+        let content_string = content.to_string();
+        let file_path_string = file_path.to_string();
+        let parser_pool = self.parser_pool.clone();
 
-        tokio::task::spawn_blocking(move || {
-            let mut parser = registry.create_parser(&language).ok_or_else(|| {
-                CodeGraphError::Parse(format!("Unsupported language: {:?}", language))
-            })?;
+        // Clone for timeout message
+        let content_len = content.len();
+        let file_path_for_timeout = file_path.to_string();
+
+        // Add timeout protection for problematic files
+        let parsing_task = tokio::task::spawn_blocking(move || {
+            let content = content_string;
+            let file_path = file_path_string;
+            // Try to get parser from pool first, create new one if pool is empty
+            let mut parser = {
+                let mut pool = parser_pool.lock();
+                let mut found_parser = None;
+
+                for parser_set in pool.iter_mut() {
+                    if let Some(p) = parser_set.remove(&language) {
+                        found_parser = Some(p);
+                        break;
+                    }
+                }
+
+                found_parser.unwrap_or_else(|| {
+                    registry.create_parser(&language).unwrap_or_else(|| {
+                        // Fallback: create a default parser
+                        tree_sitter::Parser::new()
+                    })
+                })
+            };
+
+            // Ensure parser has correct language set
+            if let Some(config) = registry.get_config(&language) {
+                if parser.set_language(&config.language).is_err() {
+                    return Err(CodeGraphError::Parse(format!("Failed to set language for: {:?}", language)));
+                }
+            } else {
+                return Err(CodeGraphError::Parse(format!("Unsupported language: {:?}", language)));
+            }
 
             // First attempt: try to parse normally
-            match parser.parse(&content, None) {
+            let result = match parser.parse(&content, None) {
                 Some(tree) => {
                     let mut tree_used = tree;
                     let mut used_content = content.clone();
@@ -412,25 +471,108 @@ impl TreeSitterParser {
                         Ok(recovered_nodes)
                     }
                 }
+            };
+
+            // Return parser to pool for reuse
+            {
+                let mut pool = parser_pool.lock();
+                if let Some(parser_set) = pool.first_mut() {
+                    parser_set.insert(language, parser);
+                } else {
+                    let mut new_set = std::collections::HashMap::new();
+                    new_set.insert(language, parser);
+                    pool.push(new_set);
+                }
             }
-        })
-        .await
-        .map_err(|e| CodeGraphError::Parse(e.to_string()))?
+
+            result
+        });
+
+        // Apply timeout protection - fail fast for problematic files
+        let timeout_duration = if content_len > 1_000_000 {
+            Duration::from_secs(60) // Large files get more time
+        } else if content_len > 100_000 {
+            Duration::from_secs(30) // Medium files get moderate time
+        } else {
+            Duration::from_secs(10) // Small files should parse quickly
+        };
+
+        match tokio::time::timeout(timeout_duration, parsing_task).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(e)) => Err(CodeGraphError::Parse(e.to_string())),
+            Err(_) => {
+                warn!("Parsing timeout for file: {} ({}s)", file_path_for_timeout, timeout_duration.as_secs());
+                Err(CodeGraphError::Parse(format!(
+                    "Parsing timeout for file: {} ({}s)",
+                    file_path_for_timeout,
+                    timeout_duration.as_secs()
+                )))
+            }
+        }
     }
 
-    // Lightweight tolerant cleaner to strip common constructs that confuse grammars
+    // Enhanced tolerant cleaner to strip common constructs that confuse grammars
     fn tolerant_clean(src: &str) -> String {
         let mut out = String::with_capacity(src.len());
+        let mut in_block_comment = false;
+        let mut in_multiline_macro = false;
+
         for line in src.lines() {
-            let t = line.trim_start();
-            if t.starts_with("#pragma")
-                || t.starts_with("//@generated")
-                || t.starts_with("#[cfg(")
-                || t.starts_with("macro_rules!")
-            {
+            let trimmed = line.trim_start();
+
+            // Handle block comments
+            if trimmed.contains("/*") && !in_block_comment {
+                in_block_comment = true;
+            }
+            if in_block_comment {
+                if trimmed.contains("*/") {
+                    in_block_comment = false;
+                }
                 continue;
             }
-            out.push_str(line);
+
+            // Handle multi-line macros
+            if trimmed.starts_with("macro_rules!") || in_multiline_macro {
+                in_multiline_macro = true;
+                if trimmed.ends_with("}") && !trimmed.ends_with("\\}") {
+                    in_multiline_macro = false;
+                }
+                continue;
+            }
+
+            // Skip problematic lines that commonly cause parse errors
+            if trimmed.starts_with("#pragma")
+                || trimmed.starts_with("//@generated")
+                || trimmed.starts_with("//!") // Doc comments that can be complex
+                || trimmed.starts_with("#[cfg(")
+                || trimmed.starts_with("#[derive(")
+                || trimmed.starts_with("#[allow(")
+                || trimmed.starts_with("#[warn(")
+                || trimmed.starts_with("#[deny(")
+                || trimmed.starts_with("#[forbid(")
+                || trimmed.starts_with("extern crate")
+                || trimmed.starts_with("use std::mem::transmute") // Unsafe constructs
+                || trimmed.contains("unsafe {") // Skip unsafe blocks that often have complex syntax
+                || trimmed.starts_with("pub use") && trimmed.contains("::*") // Complex re-exports
+                || trimmed.contains("__asm__") // Assembly code
+                || trimmed.contains("asm!") // Rust inline assembly
+            {
+                // Replace with empty line to maintain line numbers for debugging
+                out.push('\n');
+                continue;
+            }
+
+            // Clean up complex generic syntax that can confuse parsers
+            let cleaned_line = if trimmed.contains('<') && trimmed.contains('>') {
+                // Simplify complex generic bounds that often cause issues
+                line.replace("where T: Clone + Send + Sync + 'static", "")
+                    .replace("impl<T>", "impl")
+                    .replace("for<'a>", "")
+            } else {
+                line.to_string()
+            };
+
+            out.push_str(&cleaned_line);
             out.push('\n');
         }
         out

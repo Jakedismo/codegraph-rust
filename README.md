@@ -220,6 +220,7 @@ sudo dnf install cmake clang openssl-devel
 
 Run repeatable, end-to-end benchmarks that measure indexing speed (with local embeddings + FAISS), vector search latency, and graph traversal throughput.
 
+For reference indexing this repository with the example configuration yields the following:
 ```bash
 2025-09-19T14:27:46.632335Z  INFO codegraph_parser::parser: Parsing completed: 361/361 files, 119401 lines in 0.08s (4485.7 files/s, 1483642 lines/s)
 [00:00:51] [########################################] 14096/14096 Embeddings complete
@@ -267,7 +268,7 @@ export CODEGRAPH_LOCAL_MODEL=Qdrant/all-MiniLM-L6-v2
 codegraph perf . \
   --langs rust,ts,go \
   --warmup 3 --trials 20 \
-  --batch-size 128 --device metal \
+  --batch-size 512 --device metal \
   --clean --format json
 ```
 
@@ -614,19 +615,19 @@ log_level = "info"
 
 # Indexing Configuration
 [indexing]
-languages = ["rust", "python", "typescript"]
+languages = ["rust", "python", "typescript", "javascript", "go"]
 exclude_patterns = ["**/node_modules/**", "**/target/**", "**/.git/**"]
 include_patterns = ["src/**", "lib/**"]
 recursive = true
-workers = 4
+workers = 10
 watch_enabled = false
 incremental = true
 
 # Embedding Configuration
 [embedding]
-model = "openai"  # Options: openai, local, custom
+model = "local"  # Options: openai, local, custom
 dimension = 1536
-batch_size = 100
+batch_size = 512
 cache_enabled = true
 cache_size_mb = 500
 
@@ -647,7 +648,7 @@ write_buffer_size_mb = 64
 [server]
 default_transport = "stdio"
 http_host = "127.0.0.1"
-http_port = 3000
+http_port = 3005
 enable_tls = false
 cors_enabled = true
 max_connections = 100
