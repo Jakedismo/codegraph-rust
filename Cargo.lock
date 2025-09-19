@@ -1136,6 +1136,7 @@ dependencies = [
  "config",
  "crossbeam-channel",
  "dashmap",
+ "faiss",
  "futures",
  "hashbrown 0.16.0",
  "indicatif 0.18.0",

@@ -34,6 +34,7 @@ async fn dispatch(state: &ServerState, method: &str, params: Value) -> Result<Va
         "codegraph.impact_analysis" => impact_analysis(state, params).await,
         #[cfg(feature = "qwen-integration")]
         "codegraph.cache_stats" => cache_stats(state, params).await,
+        "codegraph.pattern_detection" => pattern_detection(state, params).await,
         _ => Err(format!("Unknown method: {}", method)),
     }
 }
@@ -1163,4 +1164,194 @@ fn extract_safety_recommendations(analysis: &str) -> Value {
             "standard_precautions"
         }
     })
+}
+
+// Pattern detection MCP tool - works without external models using semantic analysis
+async fn pattern_detection(state: &ServerState, params: Value) -> Result<Value, String> {
+    let scope = params
+        .get("scope")
+        .and_then(|v| v.as_str())
+        .unwrap_or("project");
+
+    let focus_area = params
+        .get("focus_area")
+        .and_then(|v| v.as_str())
+        .unwrap_or("all_patterns");
+
+    let max_results = params
+        .get("max_results")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(50) as usize;
+
+    // 1. Gather code samples for pattern analysis using existing search
+    let search_query = match focus_area {
+        "naming" => "function class variable naming",
+        "error_handling" => "try catch throw error exception",
+        "imports" => "import require use from",
+        "architecture" => "service component module class",
+        "testing" => "test spec assert expect describe",
+        _ => "function class method", // General pattern detection
+    };
+
+    let search_results = bin_search_with_scores(search_query.to_string(), None, None, max_results)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 2. Use existing semantic analysis for pattern detection (no external model needed)
+    let pattern_detector = crate::pattern_detector::PatternDetector::new(
+        crate::pattern_detector::PatternConfig::default()
+    );
+
+    let team_intelligence = pattern_detector
+        .detect_patterns_from_search(&search_results)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 3. Structure response for MCP-calling LLMs
+    let response = json!({
+        "scope": scope,
+        "focus_area": focus_area,
+        "team_intelligence": crate::pattern_detector::team_intelligence_to_json(&team_intelligence),
+        "pattern_summary": {
+            "total_patterns_detected": team_intelligence.patterns.len(),
+            "high_confidence_patterns": team_intelligence.patterns.iter().filter(|p| p.confidence > 0.8).count(),
+            "team_conventions_identified": team_intelligence.conventions.len(),
+            "overall_quality_score": team_intelligence.quality_metrics.overall_score,
+            "consistency_score": team_intelligence.quality_metrics.consistency_score
+        },
+        "actionable_insights": generate_pattern_insights(&team_intelligence),
+        "generation_guidance": {
+            "recommended_patterns": team_intelligence.patterns.iter()
+                .filter(|p| p.quality_score > 0.7)
+                .map(|p| json!({
+                    "pattern": p.name,
+                    "description": p.description,
+                    "usage_frequency": p.frequency,
+                    "recommended": true
+                }))
+                .collect::<Vec<_>>(),
+            "avoid_patterns": team_intelligence.patterns.iter()
+                .filter(|p| p.quality_score < 0.5)
+                .map(|p| json!({
+                    "pattern": p.name,
+                    "reason": "Low quality or inconsistent usage",
+                    "frequency": p.frequency,
+                    "recommended": false
+                }))
+                .collect::<Vec<_>>()
+        },
+        "mcp_metadata": {
+            "tool_version": "1.0.0",
+            "analysis_method": "semantic_analysis_without_external_model",
+            "uses_existing_codegraph_infrastructure": true,
+            "recommended_for": ["claude", "gpt-4", "custom-agents"]
+        }
+    });
+
+    Ok(response)
+}
+
+// Generate actionable insights from pattern analysis
+fn generate_pattern_insights(intelligence: &crate::pattern_detector::TeamIntelligence) -> Value {
+    let mut insights = Vec::new();
+
+    // Quality insights
+    if intelligence.quality_metrics.overall_score > 0.8 {
+        insights.push("High-quality codebase with consistent patterns");
+    } else if intelligence.quality_metrics.overall_score < 0.6 {
+        insights.push("Codebase could benefit from more consistent patterns");
+    }
+
+    // Consistency insights
+    if intelligence.quality_metrics.consistency_score > 0.8 {
+        insights.push("Excellent consistency in coding conventions");
+    } else if intelligence.quality_metrics.consistency_score < 0.6 {
+        insights.push("Consider establishing and enforcing coding standards");
+    }
+
+    // Pattern-specific insights
+    let naming_patterns = intelligence.patterns.iter()
+        .filter(|p| matches!(p.pattern_type, crate::pattern_detector::PatternType::NamingConvention))
+        .count();
+
+    if naming_patterns > 0 {
+        insights.push("Strong naming conventions detected - good for maintainability");
+    } else {
+        insights.push("Consider establishing consistent naming conventions");
+    }
+
+    let error_patterns = intelligence.patterns.iter()
+        .filter(|p| matches!(p.pattern_type, crate::pattern_detector::PatternType::ErrorHandling))
+        .count();
+
+    if error_patterns > 0 {
+        insights.push("Good error handling patterns - promotes reliability");
+    } else {
+        insights.push("Consider standardizing error handling approaches");
+    }
+
+    json!({
+        "insights": insights,
+        "priority_recommendations": generate_priority_recommendations(intelligence),
+        "team_strengths": identify_team_strengths(intelligence),
+        "improvement_opportunities": identify_improvements(intelligence)
+    })
+}
+
+fn generate_priority_recommendations(intelligence: &crate::pattern_detector::TeamIntelligence) -> Vec<String> {
+    let mut recommendations = Vec::new();
+
+    if intelligence.quality_metrics.consistency_score < 0.7 {
+        recommendations.push("Priority: Establish and document coding standards".to_string());
+    }
+
+    if intelligence.patterns.iter().filter(|p| matches!(p.pattern_type, crate::pattern_detector::PatternType::ErrorHandling)).count() < 2 {
+        recommendations.push("Priority: Standardize error handling patterns".to_string());
+    }
+
+    if intelligence.conventions.len() < 3 {
+        recommendations.push("Priority: Define and enforce team conventions".to_string());
+    }
+
+    recommendations
+}
+
+fn identify_team_strengths(intelligence: &crate::pattern_detector::TeamIntelligence) -> Vec<String> {
+    let mut strengths = Vec::new();
+
+    if intelligence.quality_metrics.overall_score > 0.8 {
+        strengths.push("High overall code quality".to_string());
+    }
+
+    if intelligence.quality_metrics.consistency_score > 0.8 {
+        strengths.push("Excellent consistency in coding style".to_string());
+    }
+
+    if intelligence.patterns.len() > 10 {
+        strengths.push("Rich set of established patterns".to_string());
+    }
+
+    strengths
+}
+
+fn identify_improvements(intelligence: &crate::pattern_detector::TeamIntelligence) -> Vec<String> {
+    let mut improvements = Vec::new();
+
+    if intelligence.quality_metrics.overall_score < 0.6 {
+        improvements.push("Focus on improving overall code quality".to_string());
+    }
+
+    if intelligence.conventions.len() < 5 {
+        improvements.push("Develop more comprehensive coding conventions".to_string());
+    }
+
+    let low_quality_patterns = intelligence.patterns.iter()
+        .filter(|p| p.quality_score < 0.6)
+        .count();
+
+    if low_quality_patterns > 2 {
+        improvements.push("Review and improve low-quality patterns".to_string());
+    }
+
+    improvements
 }

@@ -21,6 +21,7 @@ pub mod tools_schema;
 pub mod context_optimizer;
 #[cfg(feature = "qwen-integration")]
 pub mod cache;
+pub mod pattern_detector;
 
 pub use connection::*;
 pub use error::{McpError, Result};

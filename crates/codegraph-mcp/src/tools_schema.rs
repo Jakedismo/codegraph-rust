@@ -100,6 +100,34 @@ pub fn get_tools_list() -> Value {
             }
         },
         {
+            "name": "codegraph.pattern_detection",
+            "description": "Detect team patterns and conventions using existing semantic analysis (no external model required)",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "scope": {
+                        "type": "string",
+                        "enum": ["project", "directory", "file"],
+                        "default": "project",
+                        "description": "Scope of pattern detection analysis"
+                    },
+                    "focus_area": {
+                        "type": "string",
+                        "enum": ["all_patterns", "naming", "error_handling", "imports", "architecture", "testing"],
+                        "default": "all_patterns",
+                        "description": "Specific area to focus pattern detection on"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "default": 50,
+                        "minimum": 10,
+                        "maximum": 200,
+                        "description": "Maximum code samples to analyze for patterns"
+                    }
+                }
+            }
+        },
+        {
             "name": "vector.search",
             "description": "Basic vector similarity search without AI analysis",
             "inputSchema": {
