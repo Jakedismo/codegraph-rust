@@ -19,7 +19,8 @@ pub struct QwenConfig {
 impl Default for QwenConfig {
     fn default() -> Self {
         Self {
-            model_name: "qwen2.5-coder-14b-128k".to_string(),
+            model_name: std::env::var("CODEGRAPH_MODEL")
+                .unwrap_or_else(|_| "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M".to_string()),
             base_url: "http://localhost:11434".to_string(),
             context_window: 128000,
             max_tokens: 8192,

@@ -216,9 +216,15 @@ sudo dnf install cmake clang openssl-devel
 - **CUDA** (for GPU-accelerated embeddings)
 - **Git** (for repository integration)
 
-## 🚀 Performance Benchmarks
+## 🚀 Performance Benchmarks - pure raw speed!
 
 Run repeatable, end-to-end benchmarks that measure indexing speed (with local embeddings + FAISS), vector search latency, and graph traversal throughput.
+
+```bash
+2025-09-19T14:27:46.632335Z  INFO codegraph_parser::parser: Parsing completed: 361/361 files, 119401 lines in 0.08s (4485.7 files/s, 1483642 lines/s)
+[00:00:51] [########################################] 14096/14096 Embeddings complete
+```
+Apple Macbook Pro M4 Max 128Gb 2025 onnx
 
 ### Build with performance features
 
@@ -235,12 +241,15 @@ cargo install --path crates/codegraph-mcp --features "embeddings-local,faiss"
 ### Configure local embedding backend
 
 ONNX (CoreML/CPU):
-
 ```bash
+brew install huggingface_hub[cli]
+hf auth login
+hf download Qdrant/all-MiniLM-L6-v2
+# Check download path
 export CODEGRAPH_EMBEDDING_PROVIDER=onnx
 # macOS: use CoreML
 export CODEGRAPH_ONNX_EP=coreml   # or cpu
-export CODEGRAPH_LOCAL_MODEL=/path/to/model.onnx
+export CODEGRAPH_LOCAL_MODEL=/path/to/model/(not directly to .onnx)
 ```
 
 Local HF + Candle (CPU/Metal/CUDA):
@@ -248,7 +257,7 @@ Local HF + Candle (CPU/Metal/CUDA):
 ```bash
 export CODEGRAPH_EMBEDDING_PROVIDER=local
 # device: cpu | metal | cuda:<id>
-export CODEGRAPH_LOCAL_MODEL=sentence-transformers/all-MiniLM-L6-v2
+export CODEGRAPH_LOCAL_MODEL=Qdrant/all-MiniLM-L6-v2
 ```
 
 ### Run the benchmark

@@ -980,7 +980,7 @@ checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
 
 [[package]]
 name = "codegraph-ai"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -1005,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "codegraph-api"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -1054,7 +1054,7 @@ dependencies = [
 
 [[package]]
 name = "codegraph-cache"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "approx",
@@ -1121,7 +1121,7 @@ dependencies = [
 
 [[package]]
 name = "codegraph-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1169,7 +1169,7 @@ dependencies = [
 
 [[package]]
 name = "codegraph-git"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1193,7 +1193,7 @@ dependencies = [
 
 [[package]]
 name = "codegraph-graph"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1245,7 +1245,7 @@ dependencies = [
 
 [[package]]
 name = "codegraph-lb"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1274,7 +1274,7 @@ dependencies = [
 
 [[package]]
 name = "codegraph-mcp"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1317,7 +1317,7 @@ dependencies = [
 
 [[package]]
 name = "codegraph-parser"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1378,7 +1378,7 @@ dependencies = [
 
 [[package]]
 name = "codegraph-vector"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "approx",
@@ -1418,7 +1418,7 @@ dependencies = [
 
 [[package]]
 name = "codegraph-zerocopy"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -1606,7 +1606,7 @@ dependencies = [
 
 [[package]]
 name = "core-rag-mcp-server"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3622,7 +3622,7 @@ dependencies = [
 
 [[package]]
 name = "measure_baseline_performance"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "chrono",

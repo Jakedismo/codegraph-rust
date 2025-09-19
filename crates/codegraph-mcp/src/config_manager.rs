@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
+#[cfg(feature = "qwen-integration")]
 use std::time::Duration;
 use codegraph_core::Result;
 use tracing::{info, warn, debug};
@@ -551,6 +552,7 @@ impl ConfigManager {
 }
 
 /// Convert configuration to runtime types
+#[cfg(feature = "qwen-integration")]
 impl From<CodeGraphConfig> for crate::qwen::QwenConfig {
     fn from(config: CodeGraphConfig) -> Self {
         Self {
@@ -564,6 +566,7 @@ impl From<CodeGraphConfig> for crate::qwen::QwenConfig {
     }
 }
 
+#[cfg(feature = "qwen-integration")]
 impl From<CodeGraphConfig> for crate::cache::CacheConfig {
     fn from(config: CodeGraphConfig) -> Self {
         Self {

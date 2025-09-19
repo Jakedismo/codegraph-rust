@@ -53,7 +53,7 @@ pub struct ProjectIndexer {
     config: IndexerConfig,
     progress: MultiProgress,
     parser: TreeSitterParser,
-    graph: CodeGraph,
+    graph: Option<CodeGraph>,
     vector_dim: usize,
     #[cfg(feature = "embeddings")]
     embedder: codegraph_vector::EmbeddingGenerator,
@@ -160,7 +160,7 @@ impl ProjectIndexer {
             config,
             progress,
             parser,
-            graph,
+            graph: Some(graph),
             vector_dim,
             #[cfg(feature = "embeddings")]
             embedder,
@@ -325,12 +325,13 @@ impl ProjectIndexer {
             if n.embedding.is_some() {
                 stats.embeddings += 1;
             }
-            self.graph.add_node(n).await?;
+            self.graph.as_mut().unwrap().add_node(n).await?;
             main_pb.inc(1);
         }
         main_pb.finish_with_message("Indexing complete");
 
         // Derive and persist edges using parser integrator (best-effort)
+        // FIXED: Use Option to cleanly move graph ownership and avoid RocksDB lock conflict
         {
             struct GraphEdgeSink {
                 graph: Arc<tokio::sync::Mutex<codegraph_graph::CodeGraph>>,
@@ -371,12 +372,29 @@ impl ProjectIndexer {
 
             let edge_pb = self.create_progress_bar(0, "Deriving graph edges");
             let parser = std::sync::Arc::new(codegraph_parser::TreeSitterParser::new());
-            let graph_arc = Arc::new(tokio::sync::Mutex::new(codegraph_graph::CodeGraph::new()?));
-            let sink = Arc::new(GraphEdgeSink { graph: graph_arc.clone() });
-            let integrator = ParserGraphIntegrator::new(parser, graph_arc.clone(), sink);
-            // Use moderate concurrency for stability
-            let _ = integrator.process_directory(&path.to_string_lossy(), self.config.workers).await;
-            edge_pb.finish_with_message("Edges derived");
+
+            // FIXED: Clean solution using Option to temporarily take ownership
+            // This ensures only one CodeGraph instance exists at any time
+            if let Some(graph) = self.graph.take() {
+                let graph_arc = Arc::new(tokio::sync::Mutex::new(graph));
+                let sink = Arc::new(GraphEdgeSink { graph: graph_arc.clone() });
+                let integrator = ParserGraphIntegrator::new(parser, graph_arc.clone(), sink);
+
+                // Use moderate concurrency for stability
+                let _ = integrator.process_directory(&path.to_string_lossy(), self.config.workers).await;
+
+                // Extract the graph back from Arc<Mutex<>> to self.graph
+                let recovered_graph = Arc::try_unwrap(graph_arc)
+                    .map_err(|_| anyhow::anyhow!("Failed to unwrap graph Arc - multiple references still exist"))?
+                    .into_inner();
+
+                // Restore the graph back to self.graph
+                self.graph = Some(recovered_graph);
+
+                edge_pb.finish_with_message("Edges derived");
+            } else {
+                edge_pb.finish_with_message("No graph available for edge processing");
+            }
         }
 
         // Save index metadata
