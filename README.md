@@ -163,6 +163,16 @@ sudo dnf install cmake clang openssl-devel
 ### Optional Dependencies
 
 - **FAISS** (for vector search acceleration)
+  ```bash
+  # macOS (required for FAISS feature)
+  brew install faiss
+
+  # Ubuntu/Debian
+  sudo apt-get install libfaiss-dev
+
+  # Fedora/RHEL
+  sudo dnf install faiss-devel
+  ```
 - **Local Embeddings (HuggingFace + Candle + ONNX/ORT(coreML) osx-metal/cuda/cpu)**
   - Enables on-device embedding generation (no external API calls)
   - Downloads models from HuggingFace Hub on first run and caches them locally
@@ -908,6 +918,38 @@ ls -lah ~/.cache/huggingface
 
 # For Apple Silicon (Metal) or CUDA, additional wiring can be enabled in config.
 # Current default uses CPU; contact maintainers to enable device selectors in your environment.
+```
+
+#### Issue: FAISS linking error during cargo install
+
+**Error:** `ld: library 'faiss_c' not found`
+
+**Solution:**
+
+```bash
+# On macOS: Install FAISS via Homebrew
+brew install faiss
+
+# Set library paths and retry installation
+export LIBRARY_PATH="/opt/homebrew/opt/faiss/lib:$LIBRARY_PATH"
+export LD_LIBRARY_PATH="/opt/homebrew/opt/faiss/lib:$LD_LIBRARY_PATH"
+
+# Retry the cargo install command
+cargo install --path crates/codegraph-mcp --features "embeddings,codegraph-vector/onnx,faiss"
+```
+
+**Alternative Solution:**
+
+```bash
+# On Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install libfaiss-dev
+
+# On Fedora/RHEL
+sudo dnf install faiss-devel
+
+# Then retry cargo install
+cargo install --path crates/codegraph-mcp --features "embeddings,codegraph-vector/onnx,faiss"
 ```
 
 ```
