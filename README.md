@@ -90,6 +90,51 @@ Intelligent Caching: Semantic similarity matching for speed
 Zero External Dependencies: 100% local processing
 ```
 
+## 📊 **Performance Benchmarking (M4 Max 128GB)**
+
+### **Production Codebase Results (1,505 files, 2.5M lines)**
+
+```
+🎉 INDEXING COMPLETE!
+
+📊 Performance Summary
+┌─────────────────────────────────────────────────┐
+│ 📄 Files:   1,505 indexed                       │
+│ 📝 Lines: 2,477,824 processed                   │
+│ 🔧 Functions:  30,669 extracted                 │
+│ 🏗️  Classes:      880 extracted                 │
+│ 💾 Embeddings: 538,972 generated                │
+└─────────────────────────────────────────────────┘
+```
+
+### **Embedding Provider Performance Comparison**
+
+| Provider | Time | Quality | Use Case |
+|----------|------|---------|----------|
+| **🧠 Ollama nomic-embed-code** | ~15-18h | **SOTA retrieval accuracy** | Production, smaller codebases |
+| **⚡ ONNX all-MiniLM-L6-v2** | **32m 22s** | Good general embeddings | **Large codebases, lunch-break indexing** |
+| **📚 LEANN** | ~4h | Usable accuracy | No incremental updates |
+
+### **CodeGraph Advantages**
+- ✅ **Incremental Updates**: Only reprocess changed files (LEANN can't do this)
+- ✅ **Provider Choice**: Speed vs. quality optimization based on needs
+- ✅ **Memory Optimization**: Automatic 128GB M4 Max scaling
+- ✅ **Production Ready**: Index 2.5M lines while having lunch
+- ✅ **Revolutionary MCP**: Any LLM becomes codebase expert
+
+### **Recommended Strategy**
+```bash
+# Daily development: Speed-optimized for quick iterations
+export CODEGRAPH_EMBEDDING_PROVIDER=onnx
+./target/release/codegraph index . --recursive
+
+# Production deployment: Code-specialized for maximum quality
+export CODEGRAPH_EMBEDDING_PROVIDER=ollama
+./target/release/codegraph index . --recursive
+
+# Best of both: Switch providers based on task urgency
+```
+
 ## 🎯 **Success Indicators**
 
 ### ✅ **Working Correctly When You See:**

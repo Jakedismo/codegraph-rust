@@ -27,6 +27,7 @@ fastrand = { workspace = true }
 reqwest = { workspace = true }
 sha2 = { workspace = true }
 toml = { workspace = true }
+rmcp = { workspace = true }
 
 # CLI dependencies
 clap = { workspace = true }
@@ -58,6 +59,10 @@ tempfile = { workspace = true }
 [[bin]]
 name = "codegraph"
 path = "src/bin/codegraph.rs"
+
+[[bin]]
+name = "codegraph-official"
+path = "src/bin/codegraph-official.rs"
 
 [features]
 default = []

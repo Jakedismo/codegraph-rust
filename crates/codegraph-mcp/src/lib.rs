@@ -8,6 +8,7 @@ pub mod protocol;
 pub mod transport;
 pub mod version;
 pub mod server;
+pub mod official_server;
 
 #[cfg(feature = "qwen-integration")]
 pub mod qwen;

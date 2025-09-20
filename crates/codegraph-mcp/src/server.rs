@@ -713,7 +713,7 @@ async fn semantic_intelligence(state: &ServerState, params: Value) -> Result<Val
 
 // Helper functions for Qwen integration
 #[cfg(feature = "qwen-integration")]
-fn build_search_context(search_results: &Value, query: &str) -> String {
+pub fn build_search_context(search_results: &Value, query: &str) -> String {
     let empty_vec = vec![];
     let results = search_results["results"].as_array().unwrap_or(&empty_vec);
 
@@ -734,7 +734,7 @@ fn build_search_context(search_results: &Value, query: &str) -> String {
 }
 
 #[cfg(feature = "qwen-integration")]
-async fn build_comprehensive_context(
+pub async fn build_comprehensive_context(
     state: &ServerState,
     query: &str,
     max_tokens: usize,
@@ -789,7 +789,7 @@ async fn build_comprehensive_context(
 }
 
 #[cfg(feature = "qwen-integration")]
-fn build_context_summary(context: &str) -> Value {
+pub fn build_context_summary(context: &str) -> Value {
     let lines = context.lines().count();
     let chars = context.len();
     let estimated_tokens = chars / 4; // Rough estimate
@@ -835,7 +835,7 @@ async fn cache_stats(_state: &ServerState, _params: Value) -> Result<Value, Stri
 }
 
 #[cfg(feature = "qwen-integration")]
-fn generate_cache_recommendations(
+pub fn generate_cache_recommendations(
     stats: &Option<crate::cache::CacheStats>,
     analysis: &Option<crate::cache::CachePerformanceReport>
 ) -> Vec<String> {
@@ -867,7 +867,7 @@ fn generate_cache_recommendations(
 }
 
 #[cfg(feature = "qwen-integration")]
-fn assess_cache_health(stats: &Option<crate::cache::CacheStats>) -> String {
+pub fn assess_cache_health(stats: &Option<crate::cache::CacheStats>) -> String {
     if let Some(stats) = stats {
         if stats.hit_rate > 0.5 && stats.memory_usage_mb < 300.0 {
             "excellent".to_string()
@@ -962,7 +962,7 @@ async fn impact_analysis(state: &ServerState, params: Value) -> Result<Value, St
 
 // Build dependency context for impact analysis
 #[cfg(feature = "qwen-integration")]
-async fn build_dependency_context(
+pub async fn build_dependency_context(
     state: &ServerState,
     target_function: &str,
     file_path: &str,
@@ -1045,7 +1045,7 @@ async fn build_dependency_context(
 
 // Helper functions for impact analysis parsing
 #[cfg(feature = "qwen-integration")]
-fn parse_dependency_info(context: &str) -> Value {
+pub fn parse_dependency_info(context: &str) -> Value {
     let callers_count = context.matches("FUNCTIONS THAT MAY CALL").count();
     let dependencies_count = context.matches("FUNCTIONS THIS TARGET MAY DEPEND").count();
 
@@ -1058,7 +1058,7 @@ fn parse_dependency_info(context: &str) -> Value {
 }
 
 #[cfg(feature = "qwen-integration")]
-fn extract_risk_level(analysis: &str) -> Value {
+pub fn extract_risk_level(analysis: &str) -> Value {
     let risk_level = if analysis.contains("HIGH") || analysis.contains("CRITICAL") {
         "HIGH"
     } else if analysis.contains("MEDIUM") || analysis.contains("MODERATE") {
@@ -1088,7 +1088,7 @@ fn extract_risk_level(analysis: &str) -> Value {
 }
 
 #[cfg(feature = "qwen-integration")]
-fn extract_affected_components(analysis: &str) -> Value {
+pub fn extract_affected_components(analysis: &str) -> Value {
     // Extract affected components section
     let components = if let Some(start) = analysis.find("AFFECTED_COMPONENTS:") {
         let components_section = &analysis[start..];
@@ -1108,7 +1108,7 @@ fn extract_affected_components(analysis: &str) -> Value {
 }
 
 #[cfg(feature = "qwen-integration")]
-fn extract_testing_requirements(analysis: &str) -> Value {
+pub fn extract_testing_requirements(analysis: &str) -> Value {
     let testing = if let Some(start) = analysis.find("TESTING_STRATEGY:") {
         let testing_section = &analysis[start..];
         if let Some(end) = testing_section.find("5.") {
@@ -1127,7 +1127,7 @@ fn extract_testing_requirements(analysis: &str) -> Value {
 }
 
 #[cfg(feature = "qwen-integration")]
-fn extract_implementation_plan(analysis: &str) -> Value {
+pub fn extract_implementation_plan(analysis: &str) -> Value {
     let plan = if let Some(start) = analysis.find("IMPLEMENTATION_PLAN:") {
         let plan_section = &analysis[start..];
         if let Some(end) = plan_section.find("6.") {
@@ -1146,7 +1146,7 @@ fn extract_implementation_plan(analysis: &str) -> Value {
 }
 
 #[cfg(feature = "qwen-integration")]
-fn extract_safety_recommendations(analysis: &str) -> Value {
+pub fn extract_safety_recommendations(analysis: &str) -> Value {
     let safety = if let Some(start) = analysis.find("ROLLBACK_STRATEGY:") {
         let safety_section = &analysis[start..];
         safety_section.trim()
@@ -1253,7 +1253,7 @@ async fn pattern_detection(state: &ServerState, params: Value) -> Result<Value, 
 }
 
 // Generate actionable insights from pattern analysis
-fn generate_pattern_insights(intelligence: &crate::pattern_detector::TeamIntelligence) -> Value {
+pub fn generate_pattern_insights(intelligence: &crate::pattern_detector::TeamIntelligence) -> Value {
     let mut insights = Vec::new();
 
     // Quality insights
