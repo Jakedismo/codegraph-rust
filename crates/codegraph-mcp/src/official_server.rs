@@ -11,7 +11,6 @@ use rmcp::{
     ServerHandler,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -151,20 +150,16 @@ impl CodeGraphMCPServer {
     }
 
     /// Revolutionary enhanced search with Qwen2.5-Coder intelligence
-    #[tool(
-        description = "Enhanced semantic search with Qwen2.5-Coder intelligence analysis",
-        annotations(
-            title = "🔍 Enhanced Search",
-            category = "search"
-        )
-    )]
+    #[tool(description = "Enhanced semantic search with Qwen2.5-Coder intelligence analysis")]
     pub async fn enhanced_search(
         &self,
-        params: rmcp::model::Parameters<EnhancedSearchParams>,
+        query: String,
+        #[serde(default = "default_include_analysis")]
+        include_analysis: bool,
+        #[serde(default = "default_max_results")]
+        max_results: usize,
     ) -> Result<CallToolResult, McpError> {
-        let query = &params.query;
-        let include_analysis = params.include_analysis;
-        let max_results = params.max_results.min(50); // Cap at 50
+        let max_results = max_results.min(50); // Cap at 50
 
         // Use existing revolutionary search logic
         let search_results = match crate::server::bin_search_with_scores(
@@ -246,19 +241,16 @@ impl CodeGraphMCPServer {
     }
 
     /// Revolutionary semantic intelligence with 128K context analysis
-    #[tool(
-        description = "Comprehensive codebase analysis using Qwen2.5-Coder's 128K context window",
-        annotations(
-            title = "🧠 Semantic Intelligence",
-            category = "analysis"
-        )
-    )]
+    #[tool(description = "Comprehensive codebase analysis using Qwen2.5-Coder's 128K context window")]
     pub async fn semantic_intelligence(
         &self,
-        params: rmcp::model::Parameters<SemanticIntelligenceParams>,
+        query: String,
+        #[serde(default = "default_task_type")]
+        task_type: String,
+        #[serde(default = "default_max_context_tokens")]
+        max_context_tokens: usize,
     ) -> Result<CallToolResult, McpError> {
-        let query = &params.query;
-        let max_context_tokens = params.max_context_tokens.min(120000); // Cap at 120K
+        let max_context_tokens = max_context_tokens.min(120000); // Cap at 120K
 
         #[cfg(feature = "qwen-integration")]
         if let Some(qwen_client) = &self.qwen_client {
@@ -272,11 +264,19 @@ impl CodeGraphMCPServer {
             }
 
             // Build comprehensive context using existing revolutionary logic
+            // Create temporary ServerState for function call compatibility
+            #[cfg(feature = "qwen-integration")]
+            let temp_state = crate::server::ServerState {
+                graph: self.graph.clone(),
+                qwen_client: self.qwen_client.clone(),
+            };
+            #[cfg(not(feature = "qwen-integration"))]
+            let temp_state = crate::server::ServerState {
+                graph: self.graph.clone(),
+            };
+
             let codebase_context = match crate::server::build_comprehensive_context(
-                &crate::server::ServerState {
-                    graph: self.graph.clone(),
-                    qwen_client: self.qwen_client.clone(),
-                },
+                &temp_state,
                 query,
                 max_context_tokens,
             ).await {
@@ -302,7 +302,7 @@ impl CodeGraphMCPServer {
 
                     // Build comprehensive response
                     let response = serde_json::json!({
-                        "task_type": params.task_type,
+                        "task_type": task_type,
                         "user_query": query,
                         "comprehensive_analysis": analysis_result.text,
                         "codebase_context_summary": crate::server::build_context_summary(&codebase_context),
@@ -360,16 +360,13 @@ impl CodeGraphMCPServer {
     }
 
     /// Revolutionary impact analysis - predict what breaks before changes
-    #[tool(
-        description = "Analyze impact of proposed code changes using dependency mapping and Qwen intelligence",
-        annotations(
-            title = "⚡ Impact Analysis",
-            category = "analysis"
-        )
-    )]
+    #[tool(description = "Analyze impact of proposed code changes using dependency mapping and Qwen intelligence")]
     pub async fn impact_analysis(
         &self,
-        params: rmcp::model::Parameters<ImpactAnalysisParams>,
+        target_function: String,
+        file_path: String,
+        #[serde(default = "default_change_type")]
+        change_type: String,
     ) -> Result<CallToolResult, McpError> {
         #[cfg(feature = "qwen-integration")]
         {
@@ -381,13 +378,20 @@ impl CodeGraphMCPServer {
                 })?;
 
             // Build dependency context using existing revolutionary logic
+            #[cfg(feature = "qwen-integration")]
+            let temp_state = crate::server::ServerState {
+                graph: self.graph.clone(),
+                qwen_client: self.qwen_client.clone(),
+            };
+            #[cfg(not(feature = "qwen-integration"))]
+            let temp_state = crate::server::ServerState {
+                graph: self.graph.clone(),
+            };
+
             let dependency_context = match crate::server::build_dependency_context(
-                &crate::server::ServerState {
-                    graph: self.graph.clone(),
-                    qwen_client: self.qwen_client.clone(),
-                },
-                &params.target_function,
-                &params.file_path,
+                &temp_state,
+                &target_function,
+                &file_path,
             ).await {
                 Ok(context) => context,
                 Err(e) => return Err(McpError {
@@ -399,10 +403,10 @@ impl CodeGraphMCPServer {
 
             // Use revolutionary Qwen2.5-Coder for impact analysis
             let impact_prompt = crate::prompts::build_impact_analysis_prompt(
-                &params.target_function,
-                &params.file_path,
+                &target_function,
+                &file_path,
                 &dependency_context,
-                &params.change_type
+                &change_type
             );
 
             match qwen_client.analyze_codebase(&impact_prompt, "").await {
@@ -419,9 +423,9 @@ impl CodeGraphMCPServer {
                     // Build comprehensive impact response
                     let response = serde_json::json!({
                         "target": {
-                            "function": params.target_function,
-                            "file_path": params.file_path,
-                            "change_type": params.change_type
+                            "function": target_function,
+                            "file_path": file_path,
+                            "change_type": change_type
                         },
                         "comprehensive_impact_analysis": analysis_result.text,
                         "dependency_analysis": crate::server::parse_dependency_info(&dependency_context),
@@ -467,19 +471,18 @@ impl CodeGraphMCPServer {
     }
 
     /// Team intelligence and pattern detection
-    #[tool(
-        description = "Detect team patterns and conventions using existing semantic analysis",
-        annotations(
-            title = "🎯 Pattern Detection",
-            category = "intelligence"
-        )
-    )]
+    #[tool(description = "Detect team patterns and conventions using existing semantic analysis")]
     pub async fn pattern_detection(
         &self,
-        params: rmcp::model::Parameters<PatternDetectionParams>,
+        #[serde(default = "default_scope")]
+        scope: String,
+        #[serde(default = "default_focus_area")]
+        focus_area: String,
+        #[serde(default = "default_max_results")]
+        max_results: usize,
     ) -> Result<CallToolResult, McpError> {
         // Use existing revolutionary pattern detection logic
-        let search_query = match params.focus_area.as_str() {
+        let search_query = match focus_area.as_str() {
             "naming" => "function class variable naming",
             "error_handling" => "try catch throw error exception",
             "imports" => "import require use from",
@@ -492,7 +495,7 @@ impl CodeGraphMCPServer {
             search_query.to_string(),
             None,
             None,
-            params.max_results
+            max_results
         ).await {
             Ok(results) => results,
             Err(e) => return Err(McpError {
@@ -521,8 +524,8 @@ impl CodeGraphMCPServer {
 
         // Build response using existing logic
         let response = serde_json::json!({
-            "scope": params.scope,
-            "focus_area": params.focus_area,
+            "scope": scope,
+            "focus_area": focus_area,
             "team_intelligence": crate::pattern_detector::team_intelligence_to_json(&team_intelligence),
             "pattern_summary": {
                 "total_patterns_detected": team_intelligence.patterns.len(),
@@ -547,22 +550,20 @@ impl CodeGraphMCPServer {
     }
 
     /// High-performance vector search
-    #[tool(
-        description = "Basic vector similarity search using FAISS + 90K lines of analysis",
-        annotations(
-            title = "📊 Vector Search",
-            category = "search"
-        )
-    )]
+    #[tool(description = "Basic vector similarity search using FAISS + 90K lines of analysis")]
     pub async fn vector_search(
         &self,
-        params: rmcp::model::Parameters<VectorSearchParams>,
+        query: String,
+        paths: Option<Vec<String>>,
+        langs: Option<Vec<String>>,
+        #[serde(default = "default_max_results")]
+        limit: usize,
     ) -> Result<CallToolResult, McpError> {
         let res = match crate::server::bin_search_with_scores(
-            params.query.clone(),
-            params.paths.clone(),
-            params.langs.clone(),
-            params.limit
+            query.clone(),
+            paths.clone(),
+            langs.clone(),
+            limit
         ).await {
             Ok(results) => results,
             Err(e) => return Err(McpError {
@@ -579,13 +580,7 @@ impl CodeGraphMCPServer {
     }
 
     /// Performance monitoring and metrics
-    #[tool(
-        description = "Get real-time performance metrics for Qwen2.5-Coder operations",
-        annotations(
-            title = "📈 Performance Metrics",
-            category = "monitoring"
-        )
-    )]
+    #[tool(description = "Get real-time performance metrics for Qwen2.5-Coder operations")]
     pub async fn performance_metrics(&self) -> Result<CallToolResult, McpError> {
         let mut metrics = crate::performance::get_performance_summary();
 
@@ -606,13 +601,7 @@ impl CodeGraphMCPServer {
     }
 
     /// Intelligent cache statistics and optimization
-    #[tool(
-        description = "Get intelligent cache statistics and performance analysis",
-        annotations(
-            title = "💾 Cache Statistics",
-            category = "monitoring"
-        )
-    )]
+    #[tool(description = "Get intelligent cache statistics and performance analysis")]
     pub async fn cache_stats(&self) -> Result<CallToolResult, McpError> {
         let cache_stats = crate::cache::get_cache_stats();
         let cache_analysis = crate::cache::analyze_cache_performance();
