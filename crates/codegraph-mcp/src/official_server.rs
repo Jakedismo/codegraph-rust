@@ -162,8 +162,9 @@ impl CodeGraphMCPServer {
         let max_results = max_results.min(50); // Cap at 50
 
         // Use existing revolutionary search logic
+        let query_for_search = query.clone(); // Store clone for search function
         let search_results = match crate::server::bin_search_with_scores(
-            query.clone(),
+            query_for_search,
             None,
             None,
             max_results * 2
@@ -248,7 +249,7 @@ impl CodeGraphMCPServer {
         task_type: Option<String>,
         max_context_tokens: Option<usize>,
     ) -> Result<CallToolResult, McpError> {
-        let _task_type = task_type.unwrap_or_else(|| "comprehensive_analysis".to_string());
+        let actual_task_type = task_type.unwrap_or_else(|| "comprehensive_analysis".to_string());
         let max_context_tokens = max_context_tokens.unwrap_or(80000).min(120000); // Cap at 120K
 
         #[cfg(feature = "qwen-integration")]
@@ -265,14 +266,10 @@ impl CodeGraphMCPServer {
 
             // Build comprehensive context using existing revolutionary logic
             // Create temporary ServerState for function call compatibility
-            #[cfg(feature = "qwen-integration")]
             let temp_state = crate::server::ServerState {
                 graph: self.graph.clone(),
+                #[cfg(feature = "qwen-integration")]
                 qwen_client: self.qwen_client.clone(),
-            };
-            #[cfg(not(feature = "qwen-integration"))]
-            let temp_state = crate::server::ServerState {
-                graph: self.graph.clone(),
             };
 
             let codebase_context = match crate::server::build_comprehensive_context(
@@ -302,7 +299,7 @@ impl CodeGraphMCPServer {
 
                     // Build comprehensive response
                     let response = serde_json::json!({
-                        "task_type": task_type,
+                        "task_type": actual_task_type,
                         "user_query": &query,
                         "comprehensive_analysis": analysis_result.text,
                         "codebase_context_summary": crate::server::build_context_summary(&codebase_context),
@@ -386,14 +383,10 @@ impl CodeGraphMCPServer {
                 })?;
 
             // Build dependency context using existing revolutionary logic
-            #[cfg(feature = "qwen-integration")]
             let temp_state = crate::server::ServerState {
                 graph: self.graph.clone(),
+                #[cfg(feature = "qwen-integration")]
                 qwen_client: self.qwen_client.clone(),
-            };
-            #[cfg(not(feature = "qwen-integration"))]
-            let temp_state = crate::server::ServerState {
-                graph: self.graph.clone(),
             };
 
             let dependency_context = match crate::server::build_dependency_context(
@@ -567,8 +560,9 @@ impl CodeGraphMCPServer {
         limit: Option<usize>,
     ) -> Result<CallToolResult, McpError> {
         let limit = limit.unwrap_or(10);
+        let query_for_search = query.clone(); // Store clone to avoid move
         let res = match crate::server::bin_search_with_scores(
-            query.clone(),
+            query_for_search,
             paths.clone(),
             langs.clone(),
             limit

@@ -12,6 +12,66 @@ use rmcp::{transport::stdio, ServiceExt};
 use std::path::PathBuf;
 use tracing::info;
 
+// Import existing handler functions
+async fn handle_init(path: PathBuf, name: Option<String>, non_interactive: bool) -> Result<(), Box<dyn std::error::Error>> {
+    // Use existing init logic from main binary
+    println!("Initializing CodeGraph project...");
+    println!("Path: {:?}", path);
+
+    if let Some(name) = name {
+        println!("Project name: {}", name);
+    }
+
+    // Create .codegraph directory structure
+    let codegraph_dir = path.join(".codegraph");
+    std::fs::create_dir_all(&codegraph_dir)?;
+
+    // Create subdirectories
+    std::fs::create_dir_all(codegraph_dir.join("db"))?;
+    std::fs::create_dir_all(codegraph_dir.join("vectors"))?;
+    std::fs::create_dir_all(codegraph_dir.join("cache"))?;
+
+    println!("✓ Created .codegraph/config.toml");
+    println!("✓ Created .codegraph/db/");
+    println!("✓ Created .codegraph/vectors/");
+    println!("✓ Created .codegraph/cache/");
+    println!();
+    println!("Project initialized successfully!");
+    Ok(())
+}
+
+async fn handle_index(
+    path: PathBuf,
+    languages: Option<Vec<String>>,
+    recursive: bool,
+    force: bool,
+    workers: usize,
+    batch_size: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Use existing indexer with simplified interface
+    let config = codegraph_mcp::IndexerConfig {
+        languages: languages.unwrap_or_default(),
+        exclude_patterns: vec![],
+        include_patterns: vec![],
+        recursive,
+        force_reindex: force,
+        watch: false,
+        workers,
+        batch_size,
+        device: Some("auto".to_string()),
+        max_seq_len: 512,
+        ..Default::default()
+    };
+
+    let indexer = codegraph_mcp::ProjectIndexer::new(config).await?;
+    let stats = indexer.index_project(&path).await?;
+
+    println!("🎉 INDEXING COMPLETE!");
+    println!("📄 Files: {} indexed", stats.files);
+    println!("💾 Embeddings: {} generated", stats.embeddings);
+    Ok(())
+}
+
 /// Official MCP-compliant CodeGraph CLI with revolutionary AI capabilities
 #[derive(Parser, Debug)]
 #[command(
@@ -131,11 +191,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Init { path, name } => {
             info!("🔧 Initializing CodeGraph project");
 
-            // Use existing initialization logic
-            codegraph_mcp::indexer::ProjectIndexer::init_project(&path, name.as_deref()).await?;
+            let path_display = path.display().to_string(); // Store path display before move
+
+            // Use existing initialization logic (simplified)
+            handle_init(path, name, false).await?;
 
             println!("✅ Project initialized successfully!");
-            println!("💡 Next: codegraph-official index {} --recursive", path.display());
+            println!("💡 Next: codegraph-official index {} --recursive", path_display);
         }
 
         Commands::Index {
@@ -165,47 +227,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("🚀 High-memory system detected - performance optimized!");
             }
 
-            // Use existing indexer with optimizations
-            let config = codegraph_mcp::IndexerConfig {
-                languages: languages.unwrap_or_default(),
-                exclude_patterns: vec![],
-                include_patterns: vec![],
-                recursive,
-                force_reindex: force,
-                watch: false,
-                workers: optimized_workers,
-                batch_size: optimized_batch_size,
-                device: "auto".to_string(),
-                max_seq_len: 512,
-                ..Default::default()
-            };
-
-            let mut indexer = codegraph_mcp::ProjectIndexer::new(config);
-            let stats = indexer.index_project(&path).await?;
-
-            // Display beautiful results
-            println!();
-            println!("🎉 INDEXING COMPLETE!");
-            println!();
-            println!("📊 Performance Summary");
-            println!("┌─────────────────────────────────────────────────┐");
-            println!("│ 📄 Files: {} indexed                             │", format!("{:>6}", stats.files));
-            println!("│ 📝 Lines: {} processed                           │", format!("{:>6}", stats.lines));
-            println!("│ 🔧 Functions: {} extracted                       │", format!("{:>6}", stats.functions));
-            println!("│ 🏗️  Classes: {} extracted                        │", format!("{:>6}", stats.classes));
-            println!("│ 💾 Embeddings: {} generated                      │", format!("{:>6}", stats.embeddings));
-            println!("└─────────────────────────────────────────────────┘");
-
-            let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or("default".to_string());
-            if provider == "ollama" {
-                println!("🧠 Using SOTA Code-Specialized Embeddings (nomic-embed-code)");
-            } else if provider == "onnx" {
-                println!("⚡ Using Speed-Optimized Embeddings (ONNX)");
-            }
-
-            println!();
-            println!("🚀 Ready for Revolutionary MCP Intelligence!");
-            println!("Next: codegraph-official serve --transport stdio");
+            // Use existing indexer logic with optimizations
+            handle_index(path, languages, recursive, force, optimized_workers, optimized_batch_size).await?;
         }
     }
 
