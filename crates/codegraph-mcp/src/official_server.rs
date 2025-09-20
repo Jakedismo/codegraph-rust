@@ -22,8 +22,8 @@ use crate::cache::{CacheConfig, init_cache};
 /// Official MCP-compliant CodeGraph server with revolutionary capabilities
 #[derive(Clone)]
 pub struct CodeGraphMCPServer {
-    /// Graph state for semantic analysis
-    graph: Arc<Mutex<codegraph_graph::CodeGraph>>,
+    /// Graph state for semantic analysis (lazy initialization)
+    graph: Option<Arc<Mutex<codegraph_graph::CodeGraph>>>,
 
     /// Revolutionary Qwen2.5-Coder-14B-128K integration
     #[cfg(feature = "qwen-integration")]
@@ -113,13 +113,29 @@ pub struct VectorSearchParams {
 impl CodeGraphMCPServer {
     pub fn new() -> Self {
         Self {
-            graph: Arc::new(Mutex::new(
-                codegraph_graph::CodeGraph::new().expect("Failed to initialize CodeGraph")
-            )),
+            graph: None, // Lazy initialization
             #[cfg(feature = "qwen-integration")]
             qwen_client: None, // Will be initialized async
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// Lazy initialization of database - only when needed
+    async fn ensure_graph_initialized(&mut self) -> Result<(), String> {
+        if self.graph.is_none() {
+            match codegraph_graph::CodeGraph::new() {
+                Ok(graph) => {
+                    self.graph = Some(Arc::new(Mutex::new(graph)));
+                    tracing::info!("✅ CodeGraph database initialized successfully");
+                }
+                Err(e) => {
+                    tracing::warn!("⚠️ CodeGraph database not available: {}. MCP server will work with limited functionality.", e);
+                    // Don't fail - just note that database features won't work
+                    return Err(format!("Database not available: {}. Please run 'codegraph init .' and 'codegraph index .' first.", e));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Initialize the revolutionary Qwen2.5-Coder integration
@@ -152,7 +168,7 @@ impl CodeGraphMCPServer {
     /// Revolutionary enhanced search with Qwen2.5-Coder intelligence
     #[tool(description = "Enhanced semantic search with Qwen2.5-Coder intelligence analysis")]
     pub async fn enhanced_search(
-        &self,
+        &mut self,
         query: String,
         include_analysis: Option<bool>,
         max_results: Option<usize>,
@@ -160,6 +176,20 @@ impl CodeGraphMCPServer {
         let include_analysis = include_analysis.unwrap_or(true);
         let max_results = max_results.unwrap_or(10);
         let max_results = max_results.min(50); // Cap at 50
+
+        // Check if database is available for search (need mutable self for lazy init)
+        if self.graph.is_none() {
+            // Database not available - provide helpful error with setup instructions
+            return Ok(CallToolResult::success(vec![Content::text(format!(
+                "CodeGraph database not available in this directory.\n\n\
+                To use enhanced search:\n\
+                1. Navigate to your project directory\n\
+                2. Run: codegraph init .\n\
+                3. Run: codegraph index . --recursive\n\
+                4. Restart the MCP server from the project directory\n\n\
+                Error: Database not found in current directory."
+            ))]));
+        }
 
         // Use existing revolutionary search logic
         let query_for_search = query.clone(); // Store clone for search function
@@ -244,7 +274,7 @@ impl CodeGraphMCPServer {
     /// Revolutionary semantic intelligence with 128K context analysis
     #[tool(description = "Comprehensive codebase analysis using Qwen2.5-Coder's 128K context window")]
     pub async fn semantic_intelligence(
-        &self,
+        &mut self,
         query: String,
         task_type: Option<String>,
         max_context_tokens: Option<usize>,
@@ -266,10 +296,18 @@ impl CodeGraphMCPServer {
 
             // Build comprehensive context using existing revolutionary logic
             // Create temporary ServerState for function call compatibility
-            let temp_state = crate::server::ServerState {
-                graph: self.graph.clone(),
-                #[cfg(feature = "qwen-integration")]
-                qwen_client: self.qwen_client.clone(),
+            let temp_state = if let Some(ref graph_arc) = self.graph {
+                crate::server::ServerState {
+                    graph: graph_arc.clone(),
+                    #[cfg(feature = "qwen-integration")]
+                    qwen_client: self.qwen_client.clone(),
+                }
+            } else {
+                return Err(McpError {
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: "Database not initialized".into(),
+                    data: None,
+                });
             };
 
             let codebase_context = match crate::server::build_comprehensive_context(
@@ -383,10 +421,18 @@ impl CodeGraphMCPServer {
                 })?;
 
             // Build dependency context using existing revolutionary logic
-            let temp_state = crate::server::ServerState {
-                graph: self.graph.clone(),
-                #[cfg(feature = "qwen-integration")]
-                qwen_client: self.qwen_client.clone(),
+            let temp_state = if let Some(ref graph_arc) = self.graph {
+                crate::server::ServerState {
+                    graph: graph_arc.clone(),
+                    #[cfg(feature = "qwen-integration")]
+                    qwen_client: self.qwen_client.clone(),
+                }
+            } else {
+                return Err(McpError {
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: "Database not initialized for impact analysis".into(),
+                    data: None,
+                });
             };
 
             let dependency_context = match crate::server::build_dependency_context(
@@ -474,7 +520,7 @@ impl CodeGraphMCPServer {
     /// Team intelligence and pattern detection
     #[tool(description = "Detect team patterns and conventions using existing semantic analysis")]
     pub async fn pattern_detection(
-        &self,
+        &mut self,
         scope: Option<String>,
         focus_area: Option<String>,
         max_results: Option<usize>,
@@ -482,6 +528,27 @@ impl CodeGraphMCPServer {
         let scope = scope.unwrap_or_else(|| "project".to_string());
         let focus_area = focus_area.unwrap_or_else(|| "all_patterns".to_string());
         let max_results = max_results.unwrap_or(50);
+        // Pattern detection can work without database by analyzing basic patterns
+        // If database is available, use enhanced search; otherwise provide basic analysis
+        let has_database = self.graph.is_some();
+
+        if !has_database {
+            // Provide basic pattern guidance without database
+            return Ok(CallToolResult::success(vec![Content::text(format!(
+                "CodeGraph Pattern Detection (Basic Mode)\n\n\
+                Database not available in this directory for enhanced pattern detection.\n\n\
+                For full pattern analysis:\n\
+                1. Navigate to your project directory\n\
+                2. Run: codegraph init .\n\
+                3. Run: codegraph index . --recursive\n\
+                4. Restart MCP server from project directory\n\n\
+                Scope: {}\n\
+                Focus Area: {}\n\
+                Status: Ready for enhanced analysis once database is available",
+                scope, focus_area
+            ))]));
+        }
+
         // Use existing revolutionary pattern detection logic
         let search_query = match focus_area.as_str() {
             "naming" => "function class variable naming",
@@ -560,6 +627,20 @@ impl CodeGraphMCPServer {
         limit: Option<usize>,
     ) -> Result<CallToolResult, McpError> {
         let limit = limit.unwrap_or(10);
+
+        // Check if database is available for vector search
+        if let Err(db_error) = self.ensure_graph_initialized().await {
+            return Ok(CallToolResult::success(vec![Content::text(format!(
+                "CodeGraph database not available for vector search.\n\n\
+                To use vector search:\n\
+                1. Navigate to your project directory\n\
+                2. Run: codegraph init .\n\
+                3. Run: codegraph index . --recursive\n\
+                4. Restart the MCP server from the project directory\n\n\
+                Error: Database not found in current directory."
+            ))]));
+        }
+
         let query_for_search = query.clone(); // Store clone to avoid move
         let res = match crate::server::bin_search_with_scores(
             query_for_search,
@@ -581,9 +662,10 @@ impl CodeGraphMCPServer {
         )]))
     }
 
-    /// Performance monitoring and metrics
+    /// Performance monitoring and metrics (works without database)
     #[tool(description = "Get real-time performance metrics for Qwen2.5-Coder operations")]
     pub async fn performance_metrics(&self) -> Result<CallToolResult, McpError> {
+        // Performance metrics work without database
         let mut metrics = crate::performance::get_performance_summary();
 
         // Add cache performance data
@@ -602,9 +684,10 @@ impl CodeGraphMCPServer {
         )]))
     }
 
-    /// Intelligent cache statistics and optimization
+    /// Intelligent cache statistics and optimization (works without database)
     #[tool(description = "Get intelligent cache statistics and performance analysis")]
     pub async fn cache_stats(&self) -> Result<CallToolResult, McpError> {
+        // Cache stats work without database
         let cache_stats = crate::cache::get_cache_stats();
         let cache_analysis = crate::cache::analyze_cache_performance();
 
