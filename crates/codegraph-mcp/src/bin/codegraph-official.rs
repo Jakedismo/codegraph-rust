@@ -63,7 +63,7 @@ async fn handle_index(
         ..Default::default()
     };
 
-    let indexer = codegraph_mcp::ProjectIndexer::new(config).await?;
+    let mut indexer = codegraph_mcp::ProjectIndexer::new(config).await?;
     let stats = indexer.index_project(&path).await?;
 
     println!("🎉 INDEXING COMPLETE!");
