@@ -6,6 +6,7 @@ use colored::*;
 use rmcp::{transport::stdio, ServiceExt};
 use std::path::PathBuf;
 use tracing::info;
+use tracing_subscriber;
 
 #[derive(Parser)]
 #[command(
@@ -606,7 +607,13 @@ async fn handle_start(
 
     match transport {
         TransportType::Stdio { buffer_size: _ } => {
-            // Use 100% official MCP SDK implementation for perfect protocol compliance
+            // For STDIO transport, reconfigure tracing to use stderr only
+            tracing_subscriber::fmt()
+                .with_writer(std::io::stderr)
+                .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+                .try_init()
+                .ok(); // Ignore if already initialized
+
             eprintln!("{}", "Starting CodeGraph MCP Server with 100% Official SDK...".green().bold());
 
             // Create and initialize the revolutionary CodeGraph server with official SDK
