@@ -8,10 +8,10 @@ use crate::qwen::{QwenClient, QwenConfig};
 use crate::cache::{CacheConfig, init_cache};
 
 #[derive(Clone)]
-struct ServerState {
-    graph: Arc<tokio::sync::Mutex<codegraph_graph::CodeGraph>>,
+pub struct ServerState {
+    pub graph: Arc<tokio::sync::Mutex<codegraph_graph::CodeGraph>>,
     #[cfg(feature = "qwen-integration")]
-    qwen_client: Option<QwenClient>,
+    pub qwen_client: Option<QwenClient>,
 }
 
 // Shared dispatcher for both HTTP and STDIO transports

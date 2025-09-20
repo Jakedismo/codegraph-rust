@@ -154,11 +154,11 @@ impl CodeGraphMCPServer {
     pub async fn enhanced_search(
         &self,
         query: String,
-        #[serde(default = "default_include_analysis")]
-        include_analysis: bool,
-        #[serde(default = "default_max_results")]
-        max_results: usize,
+        include_analysis: Option<bool>,
+        max_results: Option<usize>,
     ) -> Result<CallToolResult, McpError> {
+        let include_analysis = include_analysis.unwrap_or(true);
+        let max_results = max_results.unwrap_or(10);
         let max_results = max_results.min(50); // Cap at 50
 
         // Use existing revolutionary search logic
@@ -170,8 +170,8 @@ impl CodeGraphMCPServer {
         ).await {
             Ok(results) => results,
             Err(e) => return Err(McpError {
-                code: -32603,
-                message: format!("Search failed: {}", e),
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Search failed: {}", e).into(),
                 data: None,
             }),
         };
@@ -179,10 +179,10 @@ impl CodeGraphMCPServer {
         #[cfg(feature = "qwen-integration")]
         if include_analysis && self.qwen_client.is_some() {
             // Use revolutionary Qwen analysis
-            let search_context = crate::server::build_search_context(&search_results, query);
+            let search_context = crate::server::build_search_context(&search_results, &query);
 
             if let Some(qwen_client) = &self.qwen_client {
-                match qwen_client.analyze_codebase(query, &search_context).await {
+                match qwen_client.analyze_codebase(&query, &search_context).await {
                     Ok(qwen_result) => {
                         // Record performance metrics
                         crate::performance::record_qwen_operation(
@@ -211,7 +211,7 @@ impl CodeGraphMCPServer {
 
                         // Cache the response
                         let _ = crate::cache::cache_response(
-                            query,
+                            &query,
                             &search_context,
                             enhanced_response.clone(),
                             qwen_result.confidence_score,
@@ -245,23 +245,23 @@ impl CodeGraphMCPServer {
     pub async fn semantic_intelligence(
         &self,
         query: String,
-        #[serde(default = "default_task_type")]
-        task_type: String,
-        #[serde(default = "default_max_context_tokens")]
-        max_context_tokens: usize,
+        task_type: Option<String>,
+        max_context_tokens: Option<usize>,
     ) -> Result<CallToolResult, McpError> {
-        let max_context_tokens = max_context_tokens.min(120000); // Cap at 120K
+        let _task_type = task_type.unwrap_or_else(|| "comprehensive_analysis".to_string());
+        let max_context_tokens = max_context_tokens.unwrap_or(80000).min(120000); // Cap at 120K
 
         #[cfg(feature = "qwen-integration")]
-        if let Some(qwen_client) = &self.qwen_client {
-            // Check cache first
-            if let Some(cached_response) = crate::cache::get_cached_response(query, "semantic_intelligence").await {
-                tracing::info!("🚀 Cache hit for semantic intelligence: {}", query);
-                return Ok(CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&cached_response)
-                        .unwrap_or_else(|_| "Error formatting cached response".to_string())
-                )]));
-            }
+        {
+            if let Some(qwen_client) = &self.qwen_client {
+                // Check cache first
+                if let Some(cached_response) = crate::cache::get_cached_response(&query, "semantic_intelligence").await {
+                    tracing::info!("🚀 Cache hit for semantic intelligence: {}", query);
+                    return Ok(CallToolResult::success(vec![Content::text(
+                        serde_json::to_string_pretty(&cached_response)
+                            .unwrap_or_else(|_| "Error formatting cached response".to_string())
+                    )]));
+                }
 
             // Build comprehensive context using existing revolutionary logic
             // Create temporary ServerState for function call compatibility
@@ -277,19 +277,19 @@ impl CodeGraphMCPServer {
 
             let codebase_context = match crate::server::build_comprehensive_context(
                 &temp_state,
-                query,
+                &query,
                 max_context_tokens,
             ).await {
                 Ok(context) => context,
                 Err(e) => return Err(McpError {
-                    code: -32603,
-                    message: format!("Context building failed: {}", e),
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: format!("Context building failed: {}", e).into(),
                     data: None,
                 }),
             };
 
             // Use revolutionary Qwen2.5-Coder analysis
-            match qwen_client.analyze_codebase(query, &codebase_context).await {
+            match qwen_client.analyze_codebase(&query, &codebase_context).await {
                 Ok(analysis_result) => {
                     // Record performance metrics
                     crate::performance::record_qwen_operation(
@@ -303,7 +303,7 @@ impl CodeGraphMCPServer {
                     // Build comprehensive response
                     let response = serde_json::json!({
                         "task_type": task_type,
-                        "user_query": query,
+                        "user_query": &query,
                         "comprehensive_analysis": analysis_result.text,
                         "codebase_context_summary": crate::server::build_context_summary(&codebase_context),
                         "model_performance": {
@@ -325,7 +325,7 @@ impl CodeGraphMCPServer {
 
                     // Cache the response
                     let _ = crate::cache::cache_response(
-                        query,
+                        &query,
                         &codebase_context,
                         response.clone(),
                         analysis_result.confidence_score,
@@ -341,21 +341,29 @@ impl CodeGraphMCPServer {
                 }
                 Err(e) => {
                     return Err(McpError {
-                        code: -32603,
-                        message: format!("Analysis failed: {}", e),
+                        code: rmcp::model::ErrorCode(-32603),
+                        message: format!("Analysis failed: {}", e).into(),
                         data: None,
                     });
                 }
             }
+            } // Close qwen_client if statement
+
+            // Fallback if qwen_client is None
+            Err(McpError {
+                code: rmcp::model::ErrorCode(-32601),
+                message: "Qwen2.5-Coder not available".into(),
+                data: None,
+            })
         }
 
         #[cfg(not(feature = "qwen-integration"))]
         {
-            return Err(McpError {
-                code: -32601,
-                message: "Qwen integration not available".to_string(),
+            Err(McpError {
+                code: rmcp::model::ErrorCode(-32601),
+                message: "Qwen integration not available".into(),
                 data: None,
-            });
+            })
         }
     }
 
@@ -365,15 +373,15 @@ impl CodeGraphMCPServer {
         &self,
         target_function: String,
         file_path: String,
-        #[serde(default = "default_change_type")]
-        change_type: String,
+        change_type: Option<String>,
     ) -> Result<CallToolResult, McpError> {
+        let change_type = change_type.unwrap_or_else(|| "modify".to_string());
         #[cfg(feature = "qwen-integration")]
         {
             let qwen_client = self.qwen_client.as_ref()
                 .ok_or_else(|| McpError {
-                    code: -32601,
-                    message: "Qwen2.5-Coder not available. Please install: ollama pull qwen2.5-coder-14b-128k".to_string(),
+                    code: rmcp::model::ErrorCode(-32601),
+                    message: "Qwen2.5-Coder not available. Please install: ollama pull qwen2.5-coder-14b-128k".into(),
                     data: None,
                 })?;
 
@@ -395,8 +403,8 @@ impl CodeGraphMCPServer {
             ).await {
                 Ok(context) => context,
                 Err(e) => return Err(McpError {
-                    code: -32603,
-                    message: format!("Dependency analysis failed: {}", e),
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: format!("Dependency analysis failed: {}", e).into(),
                     data: None,
                 }),
             };
@@ -454,8 +462,8 @@ impl CodeGraphMCPServer {
                     )]))
                 }
                 Err(e) => Err(McpError {
-                    code: -32603,
-                    message: format!("Impact analysis failed: {}", e),
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: format!("Impact analysis failed: {}", e).into(),
                     data: None,
                 })
             }
@@ -463,7 +471,7 @@ impl CodeGraphMCPServer {
         #[cfg(not(feature = "qwen-integration"))]
         {
             Err(McpError {
-                code: -32601,
+                code: rmcp::model::ErrorCode(-32601),
                 message: "Qwen integration not available".to_string(),
                 data: None,
             })
@@ -474,13 +482,13 @@ impl CodeGraphMCPServer {
     #[tool(description = "Detect team patterns and conventions using existing semantic analysis")]
     pub async fn pattern_detection(
         &self,
-        #[serde(default = "default_scope")]
-        scope: String,
-        #[serde(default = "default_focus_area")]
-        focus_area: String,
-        #[serde(default = "default_max_results")]
-        max_results: usize,
+        scope: Option<String>,
+        focus_area: Option<String>,
+        max_results: Option<usize>,
     ) -> Result<CallToolResult, McpError> {
+        let scope = scope.unwrap_or_else(|| "project".to_string());
+        let focus_area = focus_area.unwrap_or_else(|| "all_patterns".to_string());
+        let max_results = max_results.unwrap_or(50);
         // Use existing revolutionary pattern detection logic
         let search_query = match focus_area.as_str() {
             "naming" => "function class variable naming",
@@ -499,8 +507,8 @@ impl CodeGraphMCPServer {
         ).await {
             Ok(results) => results,
             Err(e) => return Err(McpError {
-                code: -32603,
-                message: format!("Pattern search failed: {}", e),
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Pattern search failed: {}", e).into(),
                 data: None,
             }),
         };
@@ -516,8 +524,8 @@ impl CodeGraphMCPServer {
         {
             Ok(intelligence) => intelligence,
             Err(e) => return Err(McpError {
-                code: -32603,
-                message: format!("Pattern detection failed: {}", e),
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Pattern detection failed: {}", e).into(),
                 data: None,
             }),
         };
@@ -556,9 +564,9 @@ impl CodeGraphMCPServer {
         query: String,
         paths: Option<Vec<String>>,
         langs: Option<Vec<String>>,
-        #[serde(default = "default_max_results")]
-        limit: usize,
+        limit: Option<usize>,
     ) -> Result<CallToolResult, McpError> {
+        let limit = limit.unwrap_or(10);
         let res = match crate::server::bin_search_with_scores(
             query.clone(),
             paths.clone(),
@@ -567,8 +575,8 @@ impl CodeGraphMCPServer {
         ).await {
             Ok(results) => results,
             Err(e) => return Err(McpError {
-                code: -32603,
-                message: format!("Vector search failed: {}", e),
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Vector search failed: {}", e).into(),
                 data: None,
             }),
         };
