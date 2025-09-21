@@ -620,7 +620,7 @@ impl CodeGraphMCPServer {
     /// High-performance vector search
     #[tool(description = "Basic vector similarity search using FAISS + 90K lines of analysis")]
     pub async fn vector_search(
-        &self,
+        &mut self,
         query: String,
         paths: Option<Vec<String>>,
         langs: Option<Vec<String>>,
