@@ -606,32 +606,12 @@ async fn handle_start(
     let manager = ProcessManager::new();
 
     match transport {
-        TransportType::Stdio { buffer_size: _ } => {
-            // For STDIO transport, reconfigure tracing to use stderr only
-            tracing_subscriber::fmt()
-                .with_writer(std::io::stderr)
-                .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-                .try_init()
-                .ok(); // Ignore if already initialized
+        TransportType::Stdio { buffer_size } => {
+            // Use the proven working legacy server with revolutionary capabilities
+            eprintln!("{}", "Starting CodeGraph MCP Server...".green().bold());
 
-            eprintln!("{}", "Starting CodeGraph MCP Server with 100% Official SDK...".green().bold());
-
-            // Create and initialize the revolutionary CodeGraph server with official SDK
-            let mut server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
-            server.initialize_qwen().await;
-
-            eprintln!("✅ Revolutionary CodeGraph MCP server ready with 100% protocol compliance");
-
-            // Use official rmcp STDIO transport for perfect compliance
-            let service = server.serve(rmcp::transport::stdio()).await.map_err(|e| {
-                eprintln!("❌ Failed to start official MCP server: {}", e);
-                anyhow::anyhow!("MCP server startup failed: {}", e)
-            })?;
-
-            eprintln!("🚀 Official MCP server started with revolutionary capabilities");
-
-            // Wait for the server to complete
-            service.waiting().await.map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
+            // Use serve_stdio directly for proven MCP protocol
+            codegraph_mcp::server::serve_stdio(buffer_size).await?;
         }
         TransportType::Http {
             host,

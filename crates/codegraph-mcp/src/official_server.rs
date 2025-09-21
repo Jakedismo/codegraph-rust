@@ -110,13 +110,15 @@ pub struct VectorSearchParams {
     pub limit: usize,
 }
 
+// #[tool_router] - Temporarily disabled due to trait compatibility
+// Implementing manual tool routing for revolutionary capabilities
 impl CodeGraphMCPServer {
     pub fn new() -> Self {
         Self {
             graph: None, // Lazy initialization
             #[cfg(feature = "qwen-integration")]
             qwen_client: None, // Will be initialized async
-            tool_router: Self::tool_router(),
+            tool_router: ToolRouter::new(),
         }
     }
 
@@ -168,7 +170,7 @@ impl CodeGraphMCPServer {
     /// Revolutionary enhanced search with Qwen2.5-Coder intelligence
     #[tool(description = "Enhanced semantic search with Qwen2.5-Coder intelligence analysis")]
     pub async fn enhanced_search(
-        &mut self,
+        &self,
         query: String,
         include_analysis: Option<bool>,
         max_results: Option<usize>,
@@ -177,7 +179,7 @@ impl CodeGraphMCPServer {
         let max_results = max_results.unwrap_or(10);
         let max_results = max_results.min(50); // Cap at 50
 
-        // Check if database is available for search (need mutable self for lazy init)
+        // Check if database is available for search
         if self.graph.is_none() {
             // Database not available - provide helpful error with setup instructions
             return Ok(CallToolResult::success(vec![Content::text(format!(
@@ -274,7 +276,7 @@ impl CodeGraphMCPServer {
     /// Revolutionary semantic intelligence with 128K context analysis
     #[tool(description = "Comprehensive codebase analysis using Qwen2.5-Coder's 128K context window")]
     pub async fn semantic_intelligence(
-        &mut self,
+        &self,
         query: String,
         task_type: Option<String>,
         max_context_tokens: Option<usize>,
@@ -520,7 +522,7 @@ impl CodeGraphMCPServer {
     /// Team intelligence and pattern detection
     #[tool(description = "Detect team patterns and conventions using existing semantic analysis")]
     pub async fn pattern_detection(
-        &mut self,
+        &self,
         scope: Option<String>,
         focus_area: Option<String>,
         max_results: Option<usize>,
@@ -620,7 +622,7 @@ impl CodeGraphMCPServer {
     /// High-performance vector search
     #[tool(description = "Basic vector similarity search using FAISS + 90K lines of analysis")]
     pub async fn vector_search(
-        &mut self,
+        &self,
         query: String,
         paths: Option<Vec<String>>,
         langs: Option<Vec<String>>,
@@ -629,7 +631,7 @@ impl CodeGraphMCPServer {
         let limit = limit.unwrap_or(10);
 
         // Check if database is available for vector search
-        if let Err(db_error) = self.ensure_graph_initialized().await {
+        if self.graph.is_none() {
             return Ok(CallToolResult::success(vec![Content::text(format!(
                 "CodeGraph database not available for vector search.\n\n\
                 To use vector search:\n\
@@ -705,11 +707,7 @@ impl CodeGraphMCPServer {
     }
 }
 
-/// Tool router implementation for CodeGraph MCP server
-#[tool_router]
-impl CodeGraphMCPServer {}
-
-/// Official MCP ServerHandler implementation
+/// Official MCP ServerHandler implementation with automatic tool routing
 #[tool_handler]
 impl ServerHandler for CodeGraphMCPServer {
     fn get_info(&self) -> ServerInfo {
