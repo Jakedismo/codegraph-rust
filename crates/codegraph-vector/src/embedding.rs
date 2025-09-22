@@ -280,6 +280,13 @@ fn language_to_string(lang: &codegraph_core::Language) -> String {
         codegraph_core::Language::Go => "go".to_string(),
         codegraph_core::Language::Java => "java".to_string(),
         codegraph_core::Language::Cpp => "cpp".to_string(),
+        // Revolutionary universal language support
+        codegraph_core::Language::Swift => "swift".to_string(),
+        codegraph_core::Language::Kotlin => "kotlin".to_string(),
+        codegraph_core::Language::CSharp => "csharp".to_string(),
+        codegraph_core::Language::Ruby => "ruby".to_string(),
+        codegraph_core::Language::Php => "php".to_string(),
+        codegraph_core::Language::Dart => "dart".to_string(),
         codegraph_core::Language::Other(name) => name.clone(),
     }
 }

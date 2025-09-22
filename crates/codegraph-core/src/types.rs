@@ -16,6 +16,13 @@ pub enum Language {
     Go,
     Java,
     Cpp,
+    // Revolutionary universal language support
+    Swift,
+    Kotlin,
+    CSharp,
+    Ruby,
+    Php,
+    Dart,
     Other(String),
 }
 

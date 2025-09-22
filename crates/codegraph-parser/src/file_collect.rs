@@ -186,17 +186,41 @@ fn get_supported_extensions(languages: &[String]) -> HashSet<&'static str> {
                 extensions.insert("c");
                 extensions.insert("h");
             }
+            // Revolutionary universal language support
+            "swift" => { extensions.insert("swift"); }
+            "csharp" | "c#" => { extensions.insert("cs"); }
+            "ruby" => {
+                extensions.insert("rb");
+                extensions.insert("rake");
+                extensions.insert("gemspec");
+            }
+            "php" => {
+                extensions.insert("php");
+                extensions.insert("phtml");
+                extensions.insert("php3");
+                extensions.insert("php4");
+                extensions.insert("php5");
+            }
+            "kotlin" => {
+                extensions.insert("kt");
+                extensions.insert("kts");
+            }
+            "dart" => { extensions.insert("dart"); }
             _ => {
                 warn!("Unknown language: {}", lang);
             }
         }
     }
 
-    // If no languages specified, support all known extensions
+    // If no languages specified, support all known extensions (universal auto-detection)
     if extensions.is_empty() {
         extensions.extend(&[
             "rs", "ts", "tsx", "js", "jsx", "py", "pyi",
-            "go", "java", "cpp", "cxx", "cc", "hpp", "hxx", "h", "c"
+            "go", "java", "cpp", "cxx", "cc", "hpp", "hxx", "h", "c",
+            // Revolutionary universal language support
+            "swift", "cs", "rb", "rake", "gemspec",
+            "php", "phtml", "php3", "php4", "php5",
+            "kt", "kts", "dart"
         ]);
     }
 

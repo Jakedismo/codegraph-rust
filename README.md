@@ -27,7 +27,7 @@
 
 ## 🎯 Revolutionary Overview
 
-CodeGraph is the **first MCP-based codebase intelligence platform** that transforms any compatible LLM (Claude-4[1m], GPT-5, custom agents) into a codebase expert through advanced semantic analysis enhanced by **Qwen2.5-Coder-14B-128K**.
+CodeGraph is the **a MCP-based codebase intelligence platform** that transforms any compatible LLM (Claude-4[1m], GPT-5, custom agents) into a codebase expert through advanced semantic analysis enhanced by **Qwen2.5-Coder-14B-128K**.
 
 ### 🧠 **Core Innovation: MCP-First Intelligence**
 
@@ -42,13 +42,50 @@ Any MCP-compatible AI agent can now:
 ### 🚀 **Revolutionary Capabilities**
 
 - **🧠 Semantic Intelligence**: Qwen2.5-Coder-14B with 128K context for complete codebase understanding
-- **⚡ Impact Prediction**: Shows what breaks BEFORE you make changes (revolutionary!)
+- **⚡ Impact Prediction**: Shows what breaks BEFORE you make changes
 - **🎯 Team Intelligence**: Learns and shares your team's coding patterns and conventions
 - **💾 Intelligent Caching**: Semantic similarity matching for 50-80% cache hit rates
-- **📊 Pattern Detection**: Analyzes team conventions using existing 90K+ lines of semantic analysis
+- **📊 Pattern Detection**: Analyzes team conventions with semantic analysis
 - **🔗 MCP Protocol**: Works with Claude Code, Codex CLI, Gemini CLi, Crush, Qwen-Code, and any MCP-compatible agent
 
-## 🎯 **Revolutionary MCP Tools (6 Available)**
+## 🌍 **Universal Programming Language Support**
+
+CodeGraph provides **revolutionary AI intelligence** across **11 programming languages**, making it the most comprehensive local-first AI development platform available.
+
+### 🚀 **Tier 1: Advanced Semantic Analysis (8 Languages)**
+
+**Complete framework-aware semantic extractors with language-specific intelligence:**
+
+- **🦀 Rust** - Complete ownership/borrowing analysis, trait relationships, async patterns, lifetimes
+- **🐍 Python** - Type hints, docstrings, dynamic analysis, framework detection
+- **⚡ JavaScript** - Modern ES6+, async/await, functional patterns, React/Node.js intelligence
+- **📘 TypeScript** - Type system analysis, generics, interface relationships, Angular/React patterns
+- **🍎 Swift** - iOS/macOS development, SwiftUI patterns, protocol-oriented programming, Combine
+- **🔷 C#** - .NET patterns, LINQ analysis, async/await, dependency injection, Entity Framework
+- **💎 Ruby** - Rails patterns, metaprogramming, dynamic typing, gem analysis
+- **🐘 PHP** - Laravel/Symfony patterns, namespace analysis, modern PHP features, Composer
+
+### 🛠 **Tier 2: Basic Semantic Analysis (3 Languages)**
+
+**Tree-sitter parsing with generic semantic extraction:**
+
+- **🐹 Go** - Goroutines, interfaces, package management, concurrency patterns
+- **☕ Java** - OOP patterns, annotations, Spring framework detection, Maven/Gradle
+- **⚙️ C++** - Modern C++, templates, memory management patterns, CMake
+
+### 🔮 **Future Language Roadmap**
+
+**Note**: The gap between Tier 1 and Tier 2 will be eliminated in future updates. We're actively working on advanced semantic extractors for:
+
+- **Kotlin** (Android/JVM development) - *In progress, version compatibility being resolved*
+- **Dart** (Flutter/mobile development) - *In progress, version compatibility being resolved*
+- **Zig** (Systems programming)
+- **Elixir** (Functional/concurrent programming)
+- **Haskell** (Pure functional programming)
+
+**Adding new languages is now streamlined** - each new language takes approximately 1-4 hours to implement with full semantic analysis.
+
+## 🎯 **Revolutionary MCP Tools (11 Available)**
 
 ### **✅ Available Immediately (No Model Required)**
 - **`codegraph.pattern_detection`**: Team intelligence and coding convention analysis
@@ -113,7 +150,7 @@ Zero External Dependencies: 100% local processing
 |----------|------|---------|----------|
 | **🧠 Ollama nomic-embed-code** | ~15-18h | **SOTA retrieval accuracy** | Production, smaller codebases |
 | **⚡ ONNX all-MiniLM-L6-v2** | **32m 22s** | Good general embeddings | **Large codebases, lunch-break indexing** |
-| **📚 LEANN** | ~4h | Usable accuracy | No incremental updates |
+| **📚 LEANN** | ~4h | Next best thing I could find in Github | No incremental updates |
 
 ### **CodeGraph Advantages**
 - ✅ **Incremental Updates**: Only reprocess changed files (LEANN can't do this)
@@ -170,8 +207,11 @@ export CODEGRAPH_EMBEDDING_PROVIDER=ollama
 
 ### Core Features
 
-- **Project Indexing**
-  - Multi-language support (Rust, Python, JavaScript, TypeScript, Go, Java, C++)
+- **Universal Language Intelligence**
+  - **11 programming languages** with revolutionary semantic analysis
+  - **Tier 1 Advanced Analysis**: Rust, Python, JavaScript, TypeScript, Swift, C#, Ruby, PHP
+  - **Tier 2 Basic Analysis**: Go, Java, C++
+  - Framework-specific intelligence (SwiftUI, Rails, Laravel, .NET, etc.)
   - Incremental indexing with file watching
   - Parallel processing with configurable workers
   - Smart caching for improved performance
@@ -449,7 +489,7 @@ LIBRARY_PATH="/opt/homebrew/opt/faiss/lib:$LIBRARY_PATH" \
 LD_LIBRARY_PATH="/opt/homebrew/opt/faiss/lib:$LD_LIBRARY_PATH" \
 MACOSX_DEPLOYMENT_TARGET=11.0 \
 cargo build --release -p codegraph-mcp \
-  --features "qwen-integration,faiss,embeddings,embeddings-ollama"
+  --features "qwen-integration,faiss,embeddings,embeddings-ollama,codegraph-vector/onnx"
 
 # Verify build
 ./target/release/codegraph --version
@@ -457,14 +497,22 @@ cargo build --release -p codegraph-mcp \
 
 ### **Step 4: Environment Configuration**
 
+SOTA accuracy for small code-bases:
 ```bash
 # Configure for complete local stack
 export CODEGRAPH_MODEL="hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M"
 export CODEGRAPH_EMBEDDING_PROVIDER=ollama
 export CODEGRAPH_EMBEDDING_MODEL=nomic-embed-code
-export RUST_LOG=info
+export RUST_LOG=off
 ```
-
+Blazing speed for large-codebases:
+```bash
+# Configure for complete local stack
+export CODEGRAPH_MODEL="hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M"
+export CODEGRAPH_EMBEDDING_PROVIDER=onnx
+export CODEGRAPH_EMBEDDING_MODEL=path/to/your/embedding_model_onnx_folder
+export RUST_LOG=off
+```
 ---
 
 ## 🚀 **Revolutionary Quick Start**
@@ -724,8 +772,8 @@ codegraph init --name my-project
 # Index current directory
 codegraph index .
 
-# Index with specific languages
-codegraph index . --languages rust,python,typescript
+# Index with specific languages (expanded support)
+codegraph index . --languages rust,python,typescript,swift,csharp,ruby,php
 
 # Or with more options in Osx
 RUST_LOG=info,codegraph_vector=debug codegraph index . --workers 10 --batch-size 256 --max-seq-len 512 --force                                                    
@@ -931,7 +979,7 @@ log_level = "info"
 
 # Indexing Configuration
 [indexing]
-languages = ["rust", "python", "typescript", "javascript", "go"]
+languages = ["rust", "python", "typescript", "javascript", "go", "swift", "csharp", "ruby", "php"]
 exclude_patterns = ["**/node_modules/**", "**/target/**", "**/.git/**"]
 include_patterns = ["src/**", "lib/**"]
 recursive = true
@@ -1019,8 +1067,8 @@ codegraph init --name my-awesome-project
 codegraph config set embedding.model local
 codegraph config set performance.optimization_level speed
 
-# Step 3: Index the codebase
-codegraph index . --languages rust,python --recursive
+# Step 3: Index the codebase (universal language support)
+codegraph index . --languages rust,python,swift,csharp,ruby,php --recursive
 
 # Step 4: Start MCP server
 codegraph start http --port 3000 --daemon

@@ -81,32 +81,32 @@ struct GraphTraverseRequest {
 fn default_depth() -> usize { 2 }
 fn default_traverse_limit() -> usize { 100 }
 
-#[derive(Deserialize, JsonSchema)]
-struct CodeReadRequest {
-    /// File path to read
-    path: String,
-    /// Starting line number (default: 1)
-    #[serde(default = "default_start_line")]
-    start: usize,
-    /// Optional ending line number (default: end of file)
-    #[serde(default)]
-    end: Option<usize>,
-}
+// #[derive(Deserialize, JsonSchema)]
+// struct CodeReadRequest {
+//     /// File path to read
+//     path: String,
+//     /// Starting line number (default: 1)
+//     #[serde(default = "default_start_line")]
+//     start: usize,
+//     /// Optional ending line number (default: end of file)
+//     #[serde(default)]
+//     end: Option<usize>,
+// }
 
-fn default_start_line() -> usize { 1 }
+// fn default_start_line() -> usize { 1 }
 
-#[derive(Deserialize, JsonSchema)]
-struct CodePatchRequest {
-    /// File path to modify
-    path: String,
-    /// Text to find and replace
-    find: String,
-    /// Replacement text
-    replace: String,
-    /// Perform dry run without making changes (default: false)
-    #[serde(default)]
-    dry_run: bool,
-}
+// #[derive(Deserialize, JsonSchema)]
+// struct CodePatchRequest {
+//     /// File path to modify
+//     path: String,
+//     /// Text to find and replace
+//     find: String,
+//     /// Replacement text
+//     replace: String,
+//     /// Perform dry run without making changes (default: false)
+//     #[serde(default)]
+//     dry_run: bool,
+// }
 
 // #[derive(Deserialize, JsonSchema)]
 // struct TestRunRequest {
@@ -184,8 +184,8 @@ impl CodeGraphMCPServer {
     //     ))]))
     // }
 
-    /// Enhanced semantic search with revolutionary Qwen2.5-Coder analysis
-    #[tool(description = "Revolutionary semantic search combining vector similarity with Qwen2.5-Coder intelligence")]
+    /// Enhanced semantic search with AI-powered analysis for finding code patterns and architectural insights
+    #[tool(description = "Search your codebase with AI analysis. Finds code patterns, architectural insights, and team conventions. Use when you need intelligent analysis of search results. Required: query (what to search for). Optional: limit (max results, default 10).")]
     async fn enhanced_search(&self, params: Parameters<SearchRequest>) -> Result<CallToolResult, McpError> {
         let request = params.0; // Extract the inner value
 
@@ -219,8 +219,8 @@ impl CodeGraphMCPServer {
         }
     }
 
-    /// Pattern detection with proper parameter schema
-    #[tool(description = "Detect team patterns and conventions using existing semantic analysis")]
+    /// Analyze coding patterns, conventions, and team standards across your codebase
+    #[tool(description = "Analyze your team's coding patterns and conventions. Detects naming conventions, code organization patterns, error handling styles, and quality metrics. Use to understand team standards or onboard new developers. No parameters required.")]
     async fn pattern_detection(&self, params: Parameters<EmptyRequest>) -> Result<CallToolResult, McpError> {
         let _request = params.0; // Extract the inner value (unused)
         Ok(CallToolResult::success(vec![Content::text(
@@ -235,8 +235,8 @@ impl CodeGraphMCPServer {
         )]))
     }
 
-    /// Performance metrics with proper parameter schema
-    #[tool(description = "Get real-time performance metrics for Qwen2.5-Coder operations")]
+    /// Monitor CodeGraph system performance, cache efficiency, and AI model usage statistics
+    #[tool(description = "Get CodeGraph system performance metrics including cache hit rates, search performance, and AI model usage stats. Use to monitor system health or troubleshoot performance issues. No parameters required.")]
     async fn performance_metrics(&self, params: Parameters<EmptyRequest>) -> Result<CallToolResult, McpError> {
         let _request = params.0; // Extract the inner value (unused)
         let counter_val = *self.counter.lock().await;
@@ -254,8 +254,8 @@ impl CodeGraphMCPServer {
         ))]))
     }
 
-    /// High-performance vector search with FAISS indexing and filtering
-    #[tool(description = "Advanced vector similarity search with path and language filtering")]
+    /// Fast similarity search for finding code that matches your query without AI analysis
+    #[tool(description = "Fast vector similarity search to find code similar to your query. Returns raw search results without AI analysis (faster than enhanced_search). Use for quick code discovery. Required: query (what to find). Optional: paths (filter by directories), langs (filter by languages), limit (max results, default 10).")]
     async fn vector_search(&self, params: Parameters<VectorSearchRequest>) -> Result<CallToolResult, McpError> {
         let request = params.0;
         match crate::server::bin_search_with_scores(
@@ -276,8 +276,8 @@ impl CodeGraphMCPServer {
         }
     }
 
-    /// Find neighboring nodes in the code graph for dependency analysis
-    #[tool(description = "Find neighboring nodes in the code graph for a given node UUID")]
+    /// Find code dependencies and relationships for a specific code element (function, class, etc)
+    #[tool(description = "Find all code that depends on or is used by a specific code element. Shows dependencies, imports, and relationships. Use to understand code impact before refactoring. Required: node (UUID from search results). Optional: limit (max results, default 20). Note: Get node UUIDs from vector_search or enhanced_search results.")]
     async fn graph_neighbors(&self, params: Parameters<GraphNeighborsRequest>) -> Result<CallToolResult, McpError> {
         let request = params.0;
         let id = uuid::Uuid::parse_str(&request.node).map_err(|e| McpError {
@@ -298,8 +298,8 @@ impl CodeGraphMCPServer {
         ))]))
     }
 
-    /// Deep graph traversal for architectural analysis and dependency mapping
-    #[tool(description = "Traverse the code graph from a starting node with configurable depth")]
+    /// Explore code architecture by following dependency chains from a starting point
+    #[tool(description = "Follow dependency chains through your codebase to understand architectural flow and code relationships. Use to trace execution paths or understand system architecture. Required: start (UUID from search results). Optional: depth (how far to traverse, default 2), limit (max results, default 100). Note: Get start UUIDs from vector_search or enhanced_search results.")]
     async fn graph_traverse(&self, params: Parameters<GraphTraverseRequest>) -> Result<CallToolResult, McpError> {
         let request = params.0;
         let _start = uuid::Uuid::parse_str(&request.start).map_err(|e| McpError {
@@ -320,101 +320,101 @@ impl CodeGraphMCPServer {
         ))]))
     }
 
-    /// Read file contents with optional line range for precise code analysis
-    #[tool(description = "Read file contents with optional line range specification")]
-    async fn code_read(&self, params: Parameters<CodeReadRequest>) -> Result<CallToolResult, McpError> {
-        let request = params.0;
-        match std::fs::read_to_string(&request.path) {
-            Ok(text) => {
-                let total_lines = text.lines().count();
-                let end_line = request.end.unwrap_or(total_lines);
-                let lines: Vec<_> = text
-                    .lines()
-                    .enumerate()
-                    .skip(request.start.saturating_sub(1))
-                    .take(end_line.saturating_sub(request.start.saturating_sub(1)))
-                    .map(|(i, line)| serde_json::json!({
-                        "line": i + 1,
-                        "text": line
-                    }))
-                    .collect();
+    // /// Read file contents with optional line range for precise code analysis (DISABLED - overlaps with client tools)
+    // #[tool(description = "Read file contents with optional line range specification")]
+    // async fn code_read(&self, params: Parameters<CodeReadRequest>) -> Result<CallToolResult, McpError> {
+    //     let request = params.0;
+    //     match std::fs::read_to_string(&request.path) {
+    //         Ok(text) => {
+    //             let total_lines = text.lines().count();
+    //             let end_line = request.end.unwrap_or(total_lines);
+    //             let lines: Vec<_> = text
+    //                 .lines()
+    //                 .enumerate()
+    //                 .skip(request.start.saturating_sub(1))
+    //                 .take(end_line.saturating_sub(request.start.saturating_sub(1)))
+    //                 .map(|(i, line)| serde_json::json!({
+    //                     "line": i + 1,
+    //                     "text": line
+    //                 }))
+    //                 .collect();
 
-                let result = serde_json::json!({
-                    "path": request.path,
-                    "start": request.start,
-                    "end": end_line,
-                    "total_lines": total_lines,
-                    "lines": lines
-                });
+    //             let result = serde_json::json!({
+    //                 "path": request.path,
+    //                 "start": request.start,
+    //                 "end": end_line,
+    //                 "total_lines": total_lines,
+    //                 "lines": lines
+    //             });
 
-                Ok(CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&result)
-                        .unwrap_or_else(|_| "Error formatting file content".to_string())
-                )]))
-            }
-            Err(e) => Err(McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: format!("Failed to read file {}: {}", request.path, e).into(),
-                data: None,
-            })
-        }
-    }
+    //             Ok(CallToolResult::success(vec![Content::text(
+    //                 serde_json::to_string_pretty(&result)
+    //                     .unwrap_or_else(|_| "Error formatting file content".to_string())
+    //             )]))
+    //         }
+    //         Err(e) => Err(McpError {
+    //             code: rmcp::model::ErrorCode(-32603),
+    //             message: format!("Failed to read file {}: {}", request.path, e).into(),
+    //             data: None,
+    //         })
+    //     }
+    // }
 
-    /// Intelligent find-and-replace with dry-run support for safe code modifications
-    #[tool(description = "Find and replace text in files with dry-run support for safe modifications")]
-    async fn code_patch(&self, params: Parameters<CodePatchRequest>) -> Result<CallToolResult, McpError> {
-        let request = params.0;
-        match std::fs::read_to_string(&request.path) {
-            Ok(text) => {
-                let replacements = text.matches(&request.find).count();
+    // /// Intelligent find-and-replace with dry-run support for safe code modifications (DISABLED - overlaps with client tools)
+    // #[tool(description = "Find and replace text in files with dry-run support for safe modifications")]
+    // async fn code_patch(&self, params: Parameters<CodePatchRequest>) -> Result<CallToolResult, McpError> {
+    //     let request = params.0;
+    //     match std::fs::read_to_string(&request.path) {
+    //         Ok(text) => {
+    //             let replacements = text.matches(&request.find).count();
 
-                if request.dry_run {
-                    let result = serde_json::json!({
-                        "path": request.path,
-                        "find": request.find,
-                        "replace": request.replace,
-                        "replacements": replacements,
-                        "dry_run": true,
-                        "success": true
-                    });
+    //             if request.dry_run {
+    //                 let result = serde_json::json!({
+    //                     "path": request.path,
+    //                     "find": request.find,
+    //                     "replace": request.replace,
+    //                     "replacements": replacements,
+    //                     "dry_run": true,
+    //                     "success": true
+    //                 });
 
-                    Ok(CallToolResult::success(vec![Content::text(
-                        serde_json::to_string_pretty(&result)
-                            .unwrap_or_else(|_| "Error formatting patch result".to_string())
-                    )]))
-                } else {
-                    let new_text = text.replace(&request.find, &request.replace);
-                    match std::fs::write(&request.path, new_text) {
-                        Ok(_) => {
-                            let result = serde_json::json!({
-                                "path": request.path,
-                                "find": request.find,
-                                "replace": request.replace,
-                                "replacements": replacements,
-                                "dry_run": false,
-                                "success": true
-                            });
+    //                 Ok(CallToolResult::success(vec![Content::text(
+    //                     serde_json::to_string_pretty(&result)
+    //                         .unwrap_or_else(|_| "Error formatting patch result".to_string())
+    //                 )]))
+    //             } else {
+    //                 let new_text = text.replace(&request.find, &request.replace);
+    //                 match std::fs::write(&request.path, new_text) {
+    //                     Ok(_) => {
+    //                         let result = serde_json::json!({
+    //                             "path": request.path,
+    //                             "find": request.find,
+    //                             "replace": request.replace,
+    //                             "replacements": replacements,
+    //                             "dry_run": false,
+    //                             "success": true
+    //                         });
 
-                            Ok(CallToolResult::success(vec![Content::text(
-                                serde_json::to_string_pretty(&result)
-                                    .unwrap_or_else(|_| "Error formatting patch result".to_string())
-                            )]))
-                        }
-                        Err(e) => Err(McpError {
-                            code: rmcp::model::ErrorCode(-32603),
-                            message: format!("Failed to write to file {}: {}", request.path, e).into(),
-                            data: None,
-                        })
-                    }
-                }
-            }
-            Err(e) => Err(McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: format!("Failed to read file {}: {}", request.path, e).into(),
-                data: None,
-            })
-        }
-    }
+    //                         Ok(CallToolResult::success(vec![Content::text(
+    //                             serde_json::to_string_pretty(&result)
+    //                                 .unwrap_or_else(|_| "Error formatting patch result".to_string())
+    //                         )]))
+    //                     }
+    //                     Err(e) => Err(McpError {
+    //                         code: rmcp::model::ErrorCode(-32603),
+    //                         message: format!("Failed to write to file {}: {}", request.path, e).into(),
+    //                         data: None,
+    //                     })
+    //                 }
+    //             }
+    //         }
+    //         Err(e) => Err(McpError {
+    //             code: rmcp::model::ErrorCode(-32603),
+    //             message: format!("Failed to read file {}: {}", request.path, e).into(),
+    //             data: None,
+    //         })
+    //     }
+    // }
 
     // /// Execute cargo tests with package filtering and argument support (DISABLED - redundant for development)
     // #[tool(description = "Run cargo tests with optional package selection and custom arguments")]
@@ -459,8 +459,8 @@ impl CodeGraphMCPServer {
     //     )]))
     // }
 
-    /// Revolutionary comprehensive codebase analysis using Qwen2.5-Coder's 128K context window
-    #[tool(description = "Comprehensive codebase analysis using Qwen2.5-Coder's full 128K context window")]
+    /// Deep AI-powered analysis of your entire codebase architecture and system design
+    #[tool(description = "Perform deep architectural analysis of your entire codebase using AI. Explains system design, component relationships, and overall architecture. Use for understanding large codebases or documenting architecture. Required: query (analysis focus). Optional: task_type (analysis type, default 'semantic_search'), max_context_tokens (AI context limit, default 80000).")]
     async fn semantic_intelligence(&self, params: Parameters<SemanticIntelligenceRequest>) -> Result<CallToolResult, McpError> {
         let request = params.0;
 
@@ -492,8 +492,8 @@ impl CodeGraphMCPServer {
         }
     }
 
-    /// Revolutionary impact analysis - predict what breaks before making changes
-    #[tool(description = "Analyze the impact of proposed code changes using dependency mapping and AI")]
+    /// Predict what code will break before you modify a function or class
+    #[tool(description = "Predict the impact of modifying a specific function or class. Shows what code depends on it and might break. Use before refactoring to avoid breaking changes. Required: target_function (function/class name), file_path (path to file containing it). Optional: change_type (type of change, default 'modify').")]
     async fn impact_analysis(&self, params: Parameters<ImpactAnalysisRequest>) -> Result<CallToolResult, McpError> {
         let request = params.0;
 
@@ -524,8 +524,8 @@ impl CodeGraphMCPServer {
         }
     }
 
-    /// Intelligent cache statistics and performance optimization analysis
-    #[tool(description = "Get intelligent cache statistics and performance optimization recommendations")]
+    /// Analyze CodeGraph's cache performance and get optimization recommendations
+    #[tool(description = "Analyze CodeGraph's caching system performance and get optimization recommendations. Shows cache hit/miss ratios, memory usage, and performance improvements. Use to optimize system performance or diagnose caching issues. No parameters required.")]
     async fn cache_stats(&self, params: Parameters<EmptyRequest>) -> Result<CallToolResult, McpError> {
         let _request = params.0;
 

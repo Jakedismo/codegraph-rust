@@ -118,6 +118,14 @@ tree-sitter-go = "0.25.0"
 tree-sitter-java = "0.23"
 tree-sitter-cpp = "0.23"
 
+# Additional language support - Revolutionary universal programming language coverage
+tree-sitter-swift = "0.7.1"
+tree-sitter-kotlin = "0.3.1"
+tree-sitter-c-sharp = "0.23.0"
+tree-sitter-ruby = "0.23.0"
+tree-sitter-php = "0.24.2"
+tree-sitter-dart = "0.0.4"
+
 # GraphQL
 async-graphql = "7.0"
 async-graphql-axum = "7.0"
