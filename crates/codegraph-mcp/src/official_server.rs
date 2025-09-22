@@ -524,38 +524,38 @@ impl CodeGraphMCPServer {
         }
     }
 
-    /// Analyze CodeGraph's cache performance and get optimization recommendations
-    #[tool(description = "Analyze CodeGraph's caching system performance and get optimization recommendations. Shows cache hit/miss ratios, memory usage, and performance improvements. Use to optimize system performance or diagnose caching issues. No parameters required.")]
-    async fn cache_stats(&self, params: Parameters<EmptyRequest>) -> Result<CallToolResult, McpError> {
-        let _request = params.0;
+    // /// Analyze CodeGraph's cache performance and get optimization recommendations (DISABLED - not useful for coding agents)
+    // #[tool(description = "Analyze CodeGraph's caching system performance and get optimization recommendations. Shows cache hit/miss ratios, memory usage, and performance improvements. Use to optimize system performance or diagnose caching issues. No parameters required.")]
+    // async fn cache_stats(&self, params: Parameters<EmptyRequest>) -> Result<CallToolResult, McpError> {
+    //     let _request = params.0;
 
-        #[cfg(feature = "qwen-integration")]
-        {
-            // This would use the cache analysis from the original server
-            Ok(CallToolResult::success(vec![Content::text(
-                "Intelligent Cache Performance Analysis\n\n\
-                📈 Revolutionary Cache Intelligence:\n\
-                • Semantic similarity matching effectiveness\n\
-                • Response time improvements from caching\n\
-                • Memory usage and optimization suggestions\n\
-                • Performance trend analysis\n\n\
-                🚀 Features:\n\
-                • Hit/miss ratio optimization\n\
-                • Cache health assessment\n\
-                • Intelligent cache recommendations\n\n\
-                💡 Status: Cache analytics ready!\n\
-                💡 Note: Detailed statistics available with active cache usage".to_string()
-            )]))
-        }
-        #[cfg(not(feature = "qwen-integration"))]
-        {
-            Ok(CallToolResult::success(vec![Content::text(
-                "Cache Statistics\n\n\
-                📈 Basic cache information available\n\
-                💡 Note: Enable qwen-integration for advanced analytics".to_string()
-            )]))
-        }
-    }
+    //     #[cfg(feature = "qwen-integration")]
+    //     {
+    //         // This would use the cache analysis from the original server
+    //         Ok(CallToolResult::success(vec![Content::text(
+    //             "Intelligent Cache Performance Analysis\n\n\
+    //             📈 Revolutionary Cache Intelligence:\n\
+    //             • Semantic similarity matching effectiveness\n\
+    //             • Response time improvements from caching\n\
+    //             • Memory usage and optimization suggestions\n\
+    //             • Performance trend analysis\n\n\
+    //             🚀 Features:\n\
+    //             • Hit/miss ratio optimization\n\
+    //             • Cache health assessment\n\
+    //             • Intelligent cache recommendations\n\n\
+    //             💡 Status: Cache analytics ready!\n\
+    //             💡 Note: Detailed statistics available with active cache usage".to_string()
+    //         )]))
+    //     }
+    //     #[cfg(not(feature = "qwen-integration"))]
+    //     {
+    //         Ok(CallToolResult::success(vec![Content::text(
+    //             "Cache Statistics\n\n\
+    //             📈 Basic cache information available\n\
+    //             💡 Note: Enable qwen-integration for advanced analytics".to_string()
+    //         )]))
+    //     }
+    // }
 }
 
 impl CodeGraphMCPServer {
