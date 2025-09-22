@@ -20,14 +20,14 @@ use crate::qwen::{QwenClient, QwenConfig};
 use crate::cache::{CacheConfig, init_cache};
 
 /// Parameter structs following official rmcp SDK pattern
-#[derive(Deserialize, JsonSchema)]
-struct IncrementRequest {
-    /// Optional amount to increment (defaults to 1)
-    #[serde(default = "default_increment")]
-    amount: i32,
-}
+// #[derive(Deserialize, JsonSchema)]
+// struct IncrementRequest {
+//     /// Optional amount to increment (defaults to 1)
+//     #[serde(default = "default_increment")]
+//     amount: i32,
+// }
 
-fn default_increment() -> i32 { 1 }
+// fn default_increment() -> i32 { 1 }
 
 #[derive(Deserialize, JsonSchema)]
 struct SearchRequest {
@@ -108,15 +108,15 @@ struct CodePatchRequest {
     dry_run: bool,
 }
 
-#[derive(Deserialize, JsonSchema)]
-struct TestRunRequest {
-    /// Optional package name to test (e.g., "codegraph-core")
-    #[serde(default)]
-    package: Option<String>,
-    /// Additional cargo test arguments
-    #[serde(default)]
-    args: Option<Vec<String>>,
-}
+// #[derive(Deserialize, JsonSchema)]
+// struct TestRunRequest {
+//     /// Optional package name to test (e.g., "codegraph-core")
+//     #[serde(default)]
+//     package: Option<String>,
+//     /// Additional cargo test arguments
+//     #[serde(default)]
+//     args: Option<Vec<String>>,
+// }
 
 #[derive(Deserialize, JsonSchema)]
 struct SemanticIntelligenceRequest {
@@ -171,18 +171,18 @@ impl CodeGraphMCPServer {
         }
     }
 
-    /// Increment counter with proper parameter schema
-    #[tool(description = "Increment the counter by a specified amount")]
-    async fn increment(&self, params: Parameters<IncrementRequest>) -> Result<CallToolResult, McpError> {
-        let request = params.0; // Extract the inner value
-        let mut counter = self.counter.lock().await;
-        *counter += request.amount;
-        Ok(CallToolResult::success(vec![Content::text(format!(
-            "Counter incremented by {} to: {}",
-            request.amount,
-            *counter
-        ))]))
-    }
+    // /// Increment counter with proper parameter schema (DISABLED - redundant for development)
+    // #[tool(description = "Increment the counter by a specified amount")]
+    // async fn increment(&self, params: Parameters<IncrementRequest>) -> Result<CallToolResult, McpError> {
+    //     let request = params.0; // Extract the inner value
+    //     let mut counter = self.counter.lock().await;
+    //     *counter += request.amount;
+    //     Ok(CallToolResult::success(vec![Content::text(format!(
+    //         "Counter incremented by {} to: {}",
+    //         request.amount,
+    //         *counter
+    //     ))]))
+    // }
 
     /// Enhanced semantic search with revolutionary Qwen2.5-Coder analysis
     #[tool(description = "Revolutionary semantic search combining vector similarity with Qwen2.5-Coder intelligence")]
@@ -416,48 +416,48 @@ impl CodeGraphMCPServer {
         }
     }
 
-    /// Execute cargo tests with package filtering and argument support
-    #[tool(description = "Run cargo tests with optional package selection and custom arguments")]
-    async fn test_run(&self, params: Parameters<TestRunRequest>) -> Result<CallToolResult, McpError> {
-        let request = params.0;
-        use tokio::process::Command;
+    // /// Execute cargo tests with package filtering and argument support (DISABLED - redundant for development)
+    // #[tool(description = "Run cargo tests with optional package selection and custom arguments")]
+    // async fn test_run(&self, params: Parameters<TestRunRequest>) -> Result<CallToolResult, McpError> {
+    //     let request = params.0;
+    //     use tokio::process::Command;
 
-        let mut args = vec!["test".to_string()];
-        if let Some(pkg) = &request.package {
-            args.push("-p".to_string());
-            args.push(pkg.clone());
-        }
-        if let Some(extra_args) = &request.args {
-            args.extend(extra_args.clone());
-        }
+    //     let mut args = vec!["test".to_string()];
+    //     if let Some(pkg) = &request.package {
+    //         args.push("-p".to_string());
+    //         args.push(pkg.clone());
+    //     }
+    //     if let Some(extra_args) = &request.args {
+    //         args.extend(extra_args.clone());
+    //     }
 
-        let output = Command::new("cargo")
-            .args(&args)
-            .output()
-            .await
-            .map_err(|e| McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: format!("Failed to execute cargo test: {}", e).into(),
-                data: None,
-            })?;
+    //     let output = Command::new("cargo")
+    //         .args(&args)
+    //         .output()
+    //         .await
+    //         .map_err(|e| McpError {
+    //             code: rmcp::model::ErrorCode(-32603),
+    //             message: format!("Failed to execute cargo test: {}", e).into(),
+    //             data: None,
+    //         })?;
 
-        let status = output.status.code().unwrap_or(-1);
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    //     let status = output.status.code().unwrap_or(-1);
+    //     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    //     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-        let result = serde_json::json!({
-            "command": format!("cargo {}", args.join(" ")),
-            "status": status,
-            "success": status == 0,
-            "stdout": stdout,
-            "stderr": stderr
-        });
+    //     let result = serde_json::json!({
+    //         "command": format!("cargo {}", args.join(" ")),
+    //         "status": status,
+    //         "success": status == 0,
+    //         "stdout": stdout,
+    //         "stderr": stderr
+    //     });
 
-        Ok(CallToolResult::success(vec![Content::text(
-            serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|_| "Error formatting test result".to_string())
-        )]))
-    }
+    //     Ok(CallToolResult::success(vec![Content::text(
+    //         serde_json::to_string_pretty(&result)
+    //             .unwrap_or_else(|_| "Error formatting test result".to_string())
+    //     )]))
+    // }
 
     /// Revolutionary comprehensive codebase analysis using Qwen2.5-Coder's 128K context window
     #[tool(description = "Comprehensive codebase analysis using Qwen2.5-Coder's full 128K context window")]
