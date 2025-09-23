@@ -49,6 +49,31 @@ impl Default for IndexerConfig {
     }
 }
 
+/// EdgeSink implementation that bridges to CodeGraph for dependency analysis
+struct CodeGraphEdgeSink {
+    graph: Arc<tokio::sync::Mutex<CodeGraph>>,
+}
+
+impl CodeGraphEdgeSink {
+    fn new(graph: Arc<tokio::sync::Mutex<CodeGraph>>) -> Self {
+        Self { graph }
+    }
+}
+
+#[async_trait::async_trait]
+impl EdgeSink for CodeGraphEdgeSink {
+    async fn add_edge(
+        &self,
+        from: codegraph_core::NodeId,
+        to: codegraph_core::NodeId,
+        edge_type: codegraph_core::EdgeType,
+        metadata: std::collections::HashMap<String, String>,
+    ) -> codegraph_core::Result<()> {
+        let mut graph = self.graph.lock().await;
+        graph.add_edge_from_params(from, to, edge_type, metadata).await
+    }
+}
+
 pub struct ProjectIndexer {
     config: IndexerConfig,
     progress: MultiProgress,
@@ -375,24 +400,44 @@ impl ProjectIndexer {
         }
         main_pb.finish_with_message("Indexing complete");
 
-        // Derive and persist edges using parser integrator (best-effort)
-        // FINAL FIX: Skip edge processing for now since it requires architectural changes
-        // The core functionality (parsing, embedding, indexing) works perfectly
-        // Edge processing can be re-enabled once we refactor the shared graph architecture
+        // Derive and persist edges using parser integrator for complete graph analysis
         {
             let edge_pb = self.create_progress_bar(0, "Deriving graph edges");
 
-            // Skip edge processing to avoid Arc unwrap complexity
-            // All nodes and embeddings are already stored in the graph database
-            // Edge processing can be done as a separate post-processing step
-            info!("Edge processing skipped - architectural refactor needed for shared graph patterns");
-
-            // Ensure graph is available for future operations
+            // Ensure graph is available for edge processing
             if self.graph.is_none() {
                 return Err(anyhow::anyhow!("Graph instance lost during indexing"));
             }
 
-            edge_pb.finish_with_message("Edges skipped (nodes and embeddings indexed)");
+            // Create Arc wrapper for edge processing
+            let graph_arc = Arc::new(tokio::sync::Mutex::new(self.graph.take().unwrap()));
+            let edge_sink = Arc::new(CodeGraphEdgeSink::new(graph_arc.clone()));
+            let parser_arc = Arc::new(TreeSitterParser::new());
+
+            // Create ParserGraphIntegrator for sophisticated edge derivation
+            let integrator = ParserGraphIntegrator::new(
+                parser_arc,
+                graph_arc.clone(),
+                edge_sink
+            );
+
+            // Process all files to derive cross-file edges (imports, calls, dependencies)
+            match integrator.process_directory(".", 4).await {
+                Ok(summary) => {
+                    info!("Edge processing complete: {} files processed, {} skipped",
+                          summary.processed, summary.skipped);
+                    edge_pb.finish_with_message("✅ Edges derived (complete dependency graph)");
+                },
+                Err(e) => {
+                    warn!("Edge processing failed: {}", e);
+                    edge_pb.finish_with_message("⚠️  Edge processing failed");
+                }
+            }
+
+            // Restore graph reference from Arc wrapper
+            self.graph = Some(Arc::try_unwrap(graph_arc)
+                .map_err(|_| anyhow::anyhow!("Failed to unwrap graph Arc"))?
+                .into_inner());
         }
 
         // Save index metadata

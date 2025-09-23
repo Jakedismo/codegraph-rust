@@ -3,7 +3,7 @@ use crate::{
     QueryOptimizer,
 };
 use async_trait::async_trait;
-use codegraph_core::{CodeNode, GraphStore, NodeId, Result};
+use codegraph_core::{CodeNode, EdgeType, GraphStore, NodeId, Result};
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -376,6 +376,28 @@ pub struct QueryStatsSnapshot {
     pub cache_misses: u64,
     pub avg_query_time_ns: u64,
     pub cache_size: usize,
+}
+
+impl CodeGraph {
+    /// Add edge to the graph for complete dependency analysis using individual parameters
+    pub async fn add_edge_from_params(
+        &mut self,
+        from: NodeId,
+        to: NodeId,
+        edge_type: EdgeType,
+        metadata: HashMap<String, String>
+    ) -> Result<()> {
+        // Create CodeEdge and use existing add_edge method
+        let edge = CodeEdge {
+            id: uuid::Uuid::new_v4(),
+            from,
+            to,
+            edge_type,
+            weight: 1.0,
+            metadata,
+        };
+        self.add_edge(edge).await
+    }
 }
 
 #[async_trait]

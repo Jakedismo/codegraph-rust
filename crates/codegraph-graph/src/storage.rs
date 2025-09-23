@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono;
 use codegraph_core::{
-    CodeGraphError, CodeNode, GraphStore, Language, Location, NodeId, NodeType, Result,
+    CodeGraphError, CodeNode, EdgeType, GraphStore, Language, Location, NodeId, NodeType, Result,
 };
 use dashmap::DashMap;
 use memmap2::{Mmap, MmapOptions};
@@ -254,6 +254,7 @@ impl HighPerformanceRocksDbStorage {
         // writes committed immediately
         Ok(())
     }
+
 
     pub(crate) fn remove_node_inner(&self, id: NodeId) -> Result<()> {
         if let Some(node) = self.read_coalescer.get_node(id)? {
