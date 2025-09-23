@@ -1,4 +1,4 @@
-use codegraph_core::{CodeGraphError, Language, Result};
+use codegraph_core::{CodeGraphError, Result};
 use ignore::{overrides::OverrideBuilder, WalkBuilder};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

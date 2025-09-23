@@ -645,7 +645,7 @@ fn has_child_kind(node: Node, kind: &str) -> bool {
 }
 
 fn subtree_contains_kind(node: &Node, kind: &str) -> bool {
-    let mut c = node.walk();
+    let c = node.walk();
     // DFS
     let mut stack = vec![*node];
     while let Some(n) = stack.pop() {

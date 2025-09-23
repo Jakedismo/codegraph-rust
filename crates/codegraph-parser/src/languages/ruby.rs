@@ -1,6 +1,4 @@
 use codegraph_core::{CodeNode, Language, Location, NodeType};
-use serde_json::json;
-use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
 
 /// Advanced Ruby AST extractor for dynamic programming intelligence.
