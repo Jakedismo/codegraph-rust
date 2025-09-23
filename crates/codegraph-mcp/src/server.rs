@@ -338,7 +338,11 @@ pub async fn bin_search_with_scores(
                 }
                 let idx = Path::new(".codegraph/shards/path").join(format!("{}.index", seg));
                 let ids = Path::new(".codegraph/shards/path").join(format!("{}_ids.json", seg));
-                let _ = search_index(&idx, &ids, limit * 5)?;
+                if let Err(e) = search_index(&idx, &ids, limit * 5) {
+                    eprintln!("Failed to search path filter shard {}: {}", seg, e);
+                } else {
+                    eprintln!("Successfully searched path shard: {}", seg);
+                }
                 shard_count += 1;
             }
         }
@@ -347,14 +351,61 @@ pub async fn bin_search_with_scores(
                 let norm = lang.to_lowercase();
                 let idx = Path::new(".codegraph/shards/lang").join(format!("{}.index", norm));
                 let ids = Path::new(".codegraph/shards/lang").join(format!("{}_ids.json", norm));
-                let _ = search_index(&idx, &ids, limit * 5)?;
+                if let Err(e) = search_index(&idx, &ids, limit * 5) {
+                    eprintln!("Failed to search language filter shard {}: {}", norm, e);
+                } else {
+                    eprintln!("Successfully searched language shard: {}", norm);
+                }
                 shard_count += 1;
             }
         }
         if shard_count == 0 {
-            let idx = Path::new(".codegraph/faiss.index");
-            let ids = Path::new(".codegraph/faiss_ids.json");
-            let _ = search_index(idx, ids, limit * 5)?;
+            // Search all available shards instead of empty main index
+            eprintln!("No filters provided - searching all available shards");
+
+            // Search all language shards
+            let lang_dir = Path::new(".codegraph/shards/lang");
+            if lang_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(lang_dir) {
+                    for entry in entries {
+                        if let Ok(entry) = entry {
+                            let path = entry.path();
+                            if path.extension().and_then(|s| s.to_str()) == Some("index") {
+                                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                                    let ids_path = lang_dir.join(format!("{}_ids.json", stem));
+                                    if let Err(e) = search_index(&path, &ids_path, limit * 2) {
+                                        eprintln!("Failed to search language shard {}: {}", stem, e);
+                                    } else {
+                                        eprintln!("Successfully searched language shard: {}", stem);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Search all path shards
+            let path_dir = Path::new(".codegraph/shards/path");
+            if path_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(path_dir) {
+                    for entry in entries {
+                        if let Ok(entry) = entry {
+                            let path = entry.path();
+                            if path.extension().and_then(|s| s.to_str()) == Some("index") {
+                                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                                    let ids_path = path_dir.join(format!("{}_ids.json", stem));
+                                    if let Err(e) = search_index(&path, &ids_path, limit * 2) {
+                                        eprintln!("Failed to search path shard {}: {}", stem, e);
+                                    } else {
+                                        eprintln!("Successfully searched path shard: {}", stem);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.dedup_by_key(|(id, _)| *id);
