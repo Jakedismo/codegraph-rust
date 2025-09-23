@@ -1,0 +1,3 @@
+{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {"roots": {"listChanged": true}, "sampling": {}}, "clientInfo": {"name": "claude-test", "version": "1.0.0"}}}
+{"jsonrpc": "2.0", "id": 2, "method": "notifications/initialized", "params": {}}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "enhanced_search", "arguments": {"query": "Find authentication patterns in the codebase", "limit": 3}}}

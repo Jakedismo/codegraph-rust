@@ -434,9 +434,12 @@ impl ProjectIndexer {
                 }
             }
 
+            // Drop integrator to release Arc references
+            drop(integrator);
+
             // Restore graph reference from Arc wrapper
             self.graph = Some(Arc::try_unwrap(graph_arc)
-                .map_err(|_| anyhow::anyhow!("Failed to unwrap graph Arc"))?
+                .map_err(|arc| anyhow::anyhow!("Failed to unwrap graph Arc - {} references remain", Arc::strong_count(&arc)))?
                 .into_inner());
         }
 

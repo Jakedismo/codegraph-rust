@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "enhanced_search",
+    "arguments": {
+      "query": "Find authentication patterns in the codebase",
+      "limit": 3
+    }
+  }
+}

@@ -66,7 +66,7 @@ echo "⏱️  This may take 5-10 minutes depending on your system..."
 echo ""
 
 cargo install --path crates/codegraph-mcp \
-    --features "embeddings,codegraph-vector/onnx,faiss,embeddings-ollama,qwen-integration" \
+    --features "embeddings,codegraph-vector/onnx,faiss,qwen-integration" \
     --force
 
 if [ $? -eq 0 ]; then
