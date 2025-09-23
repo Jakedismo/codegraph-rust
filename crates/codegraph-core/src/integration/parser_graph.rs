@@ -128,6 +128,7 @@ where
     /// Process a directory recursively with bounded concurrency (batch-ready for 100+ files).
     pub async fn process_directory(&self, dir: &str, max_concurrent: usize) -> Result<DirSummary> {
         let start = std::time::Instant::now();
+
         let files = collect_source_files(dir).await?;
         let total = files.len();
         let semaphore = Arc::new(Semaphore::new(max_concurrent.max(1)));
@@ -160,6 +161,74 @@ where
         let elapsed = start.elapsed();
         info!(
             "Processed {} files ({} skipped) in {:.2}s",
+            processed,
+            skipped,
+            elapsed.as_secs_f64()
+        );
+        Ok(DirSummary {
+            total,
+            processed,
+            skipped,
+            duration: elapsed,
+        })
+    }
+
+    /// Process directory with specific file filtering configuration (optimized for edge processing).
+    pub async fn process_directory_with_config(
+        &self,
+        dir: &str,
+        max_concurrent: usize,
+        exclude_generated: bool
+    ) -> Result<DirSummary> {
+        let start = std::time::Instant::now();
+
+        // Use basic file collection but filter out massive generated files for performance
+        let mut all_files = collect_source_files(dir).await?;
+
+        if exclude_generated {
+            all_files.retain(|path| {
+                let path_str = path.to_string_lossy();
+                !path_str.contains("/target/") &&
+                !path_str.contains("/build/") &&
+                !path_str.contains("_generated") &&
+                !path_str.contains("bindings.rs")
+            });
+        }
+
+        let files = all_files;
+        let total = files.len();
+        let semaphore = Arc::new(Semaphore::new(max_concurrent.max(1)));
+
+        let mut processed = 0usize;
+        let mut skipped = 0usize;
+
+        info!("Processing {} files for edge derivation (all languages supported)", total);
+
+        // Two-phase approach for better linking: first ingest nodes, then edges.
+        // Phase 1: parse + add nodes for all files (incremental aware)
+        for chunk in files.chunks(64) {
+            for file in chunk.iter().cloned() {
+                // Bound concurrency using semaphore, but avoid spawning to keep non-Send futures acceptable
+                let _permit = semaphore.clone().acquire_owned().await.unwrap();
+                match self.process_file(file.to_string_lossy().as_ref()).await {
+                    Ok(sum) => match sum.status {
+                        ProcessStatus::Processed => processed += 1,
+                        ProcessStatus::Skipped => skipped += 1,
+                    },
+                    Err(e) => warn!("process_file error: {}", e),
+                }
+            }
+        }
+
+        // Phase 2: cross-file edges (imports/calls) using global symbol index
+        let cross_edges = self.derive_cross_file_edges().await?;
+        if !cross_edges.is_empty() {
+            self.edges.add_edges_batch(cross_edges).await?;
+        }
+
+        let elapsed = start.elapsed();
+        info!(
+            "Edge processing completed: {} files ({} skipped) in {:.2}s",
             processed,
             skipped,
             elapsed.as_secs_f64()

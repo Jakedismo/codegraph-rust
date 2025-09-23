@@ -402,17 +402,26 @@ impl ProjectIndexer {
 
         // Derive and persist edges using parser integrator for complete graph analysis
         {
+            eprintln!("🔍 DEBUG: Starting edge processing phase");
             let edge_pb = self.create_progress_bar(0, "Deriving graph edges");
+            eprintln!("🔍 DEBUG: Created edge progress bar");
 
             // Ensure graph is available for edge processing
             if self.graph.is_none() {
                 return Err(anyhow::anyhow!("Graph instance lost during indexing"));
             }
+            eprintln!("🔍 DEBUG: Graph exists, proceeding with edge processing");
 
             // Create Arc wrapper for edge processing
+            eprintln!("🔍 DEBUG: Creating Arc wrapper for graph");
             let graph_arc = Arc::new(tokio::sync::Mutex::new(self.graph.take().unwrap()));
+            eprintln!("🔍 DEBUG: Created graph Arc, creating EdgeSink");
+
             let edge_sink = Arc::new(CodeGraphEdgeSink::new(graph_arc.clone()));
+            eprintln!("🔍 DEBUG: Created EdgeSink, creating parser Arc");
+
             let parser_arc = Arc::new(TreeSitterParser::new());
+            eprintln!("🔍 DEBUG: Created parser Arc, creating ParserGraphIntegrator");
 
             // Create ParserGraphIntegrator for sophisticated edge derivation
             let integrator = ParserGraphIntegrator::new(
@@ -420,27 +429,35 @@ impl ProjectIndexer {
                 graph_arc.clone(),
                 edge_sink
             );
+            eprintln!("🔍 DEBUG: Created ParserGraphIntegrator, starting process_directory");
 
             // Process all files to derive cross-file edges (imports, calls, dependencies)
-            match integrator.process_directory(".", 4).await {
+            // PROPER FIX: Filter generated files for performance while supporting all languages
+            eprintln!("🔍 DEBUG: Calling integrator.process_directory_with_config (all languages, filtered)");
+            match integrator.process_directory_with_config(".", 4, true).await {
                 Ok(summary) => {
+                    eprintln!("🔍 DEBUG: Edge processing completed successfully");
                     info!("Edge processing complete: {} files processed, {} skipped",
                           summary.processed, summary.skipped);
                     edge_pb.finish_with_message("✅ Edges derived (complete dependency graph)");
                 },
                 Err(e) => {
+                    eprintln!("🔍 DEBUG: Edge processing failed with error: {}", e);
                     warn!("Edge processing failed: {}", e);
                     edge_pb.finish_with_message("⚠️  Edge processing failed");
                 }
             }
 
             // Drop integrator to release Arc references
+            eprintln!("🔍 DEBUG: Dropping integrator");
             drop(integrator);
 
             // Restore graph reference from Arc wrapper
+            eprintln!("🔍 DEBUG: Attempting Arc unwrap");
             self.graph = Some(Arc::try_unwrap(graph_arc)
                 .map_err(|arc| anyhow::anyhow!("Failed to unwrap graph Arc - {} references remain", Arc::strong_count(&arc)))?
                 .into_inner());
+            eprintln!("🔍 DEBUG: Arc unwrap successful");
         }
 
         // Save index metadata
