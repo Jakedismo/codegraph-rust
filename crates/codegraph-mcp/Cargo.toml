@@ -56,6 +56,8 @@ hyper = { workspace = true, optional = true }
 [dev-dependencies]
 tokio-test = { workspace = true }
 tempfile = { workspace = true }
+anyhow = { workspace = true }
+# rmcp already available through main dependencies for testing
 
 [[bin]]
 name = "codegraph"

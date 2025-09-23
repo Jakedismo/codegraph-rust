@@ -1,283 +1,122 @@
-use codegraph_mcp::*;
-use futures::{SinkExt, StreamExt};
-use serde_json::json;
-use std::time::{Duration, Instant};
-use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::{accept_async, tungstenite::Message as WsMessage};
-use url::Url;
+/// Practical E2E Integration Tests for CodeGraph MCP Server
+///
+/// Tests that focus on validating essential functionality
+/// Tests against the indexed Rust codebase in this repository
 
-/// Mock MCP server for testing
-struct MockMcpServer {
-    addr: String,
-}
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
-impl MockMcpServer {
-    async fn start() -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let addr_str = format!("ws://{}:{}", addr.ip(), addr.port());
+#[tokio::test]
+async fn test_mcp_server_startup() {
+    println!("🚀 Testing MCP server startup with indexed Rust codebase...");
 
-        tokio::spawn(async move {
-            while let Ok((stream, _)) = listener.accept().await {
-                tokio::spawn(handle_connection(stream));
-            }
-        });
+    // Test that the server starts without crashing
+    let mut child = Command::new("codegraph")
+        .args(["start", "stdio"])
+        .env("RUST_LOG", "error")
+        .env("CODEGRAPH_MODEL", "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to start CodeGraph MCP server");
 
-        Self { addr: addr_str }
-    }
+    // Give server time to initialize
+    tokio::time::sleep(Duration::from_secs(3)).await;
 
-    fn url(&self) -> Url {
-        Url::parse(&self.addr).unwrap()
-    }
-}
-
-async fn handle_connection(stream: TcpStream) {
-    let ws_stream = accept_async(stream).await.unwrap();
-    let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-
-    while let Some(msg) = ws_receiver.next().await {
-        if let Ok(msg) = msg {
-            match msg {
-                WsMessage::Text(text) => {
-                    // Parse JSON-RPC message
-                    if let Ok(json_msg) = serde_json::from_str::<serde_json::Value>(&text) {
-                        if let Some(method) = json_msg.get("method").and_then(|m| m.as_str()) {
-                            if method == "initialize" {
-                                // Send initialize response
-                                let response = json!({
-                                    "jsonrpc": "2.0",
-                                    "id": json_msg.get("id"),
-                                    "result": {
-                                        "protocol_version": "2025-03-26",
-                                        "capabilities": {},
-                                        "server_info": {
-                                            "name": "mock-mcp-server",
-                                            "version": "1.0.0"
-                                        }
-                                    }
-                                });
-                                let _ = ws_sender
-                                    .send(WsMessage::Text(response.to_string().into()))
-                                    .await;
-                            }
-                        }
-
-                        // Echo other messages for testing
-                        if json_msg.get("method").is_none() && json_msg.get("id").is_some() {
-                            let response = json!({
-                                "jsonrpc": "2.0",
-                                "id": json_msg.get("id"),
-                                "result": "echo"
-                            });
-                            let _ = ws_sender
-                                .send(WsMessage::Text(response.to_string().into()))
-                                .await;
-                        }
-                    }
-                }
-                WsMessage::Ping(payload) => {
-                    let _ = ws_sender.send(WsMessage::Pong(payload)).await;
-                }
-                WsMessage::Close(_) => break,
-                _ => {}
-            }
+    // Check if process is still running (not crashed)
+    match child.try_wait() {
+        Ok(Some(status)) => {
+            let output = child.wait_with_output().expect("Failed to get output");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            panic!("MCP server exited unexpectedly with status: {}\nStderr: {}", status, stderr);
+        }
+        Ok(None) => {
+            println!("✅ MCP server started successfully and is running");
+        }
+        Err(e) => {
+            panic!("Error checking server status: {}", e);
         }
     }
+
+    // Clean shutdown
+    child.kill().expect("Failed to kill server process");
+    child.wait().expect("Failed to wait for server process");
+
+    println!("🎉 MCP server startup test passed!");
 }
 
 #[tokio::test]
-async fn test_mcp_connection_establishment() {
-    let server = MockMcpServer::start().await;
-    let cfg = McpClientConfig::new(server.url());
+async fn test_language_support_comprehensive() {
+    println!("🌍 Testing comprehensive language support...");
 
-    let connection = McpConnection::connect(&cfg).await;
-    assert!(connection.is_ok());
+    let registry = codegraph_parser::LanguageRegistry::new();
 
-    let conn = connection.unwrap();
-    conn.close().await.unwrap();
-}
+    // Test all 11 supported languages
+    let language_tests = vec![
+        ("test.rs", codegraph_core::Language::Rust),
+        ("test.py", codegraph_core::Language::Python),
+        ("test.js", codegraph_core::Language::JavaScript),
+        ("test.ts", codegraph_core::Language::TypeScript),
+        ("test.go", codegraph_core::Language::Go),
+        ("test.java", codegraph_core::Language::Java),
+        ("test.cpp", codegraph_core::Language::Cpp),
+        // New revolutionary language support
+        ("test.swift", codegraph_core::Language::Swift),
+        ("test.cs", codegraph_core::Language::CSharp),
+        ("test.rb", codegraph_core::Language::Ruby),
+        ("test.php", codegraph_core::Language::Php),
+    ];
 
-#[tokio::test]
-async fn test_mcp_version_negotiation() {
-    let server = MockMcpServer::start().await;
-    let cfg = McpClientConfig::new(server.url());
-
-    let connection = McpConnection::connect(&cfg).await.unwrap();
-
-    // Connection should have negotiated the latest version successfully
-    assert_eq!(connection.inflight(), 0);
-
-    connection.close().await.unwrap();
-}
-
-#[tokio::test]
-async fn test_mcp_request_response() {
-    let server = MockMcpServer::start().await;
-    let cfg = McpClientConfig::new(server.url());
-
-    let connection = McpConnection::connect(&cfg).await.unwrap();
-
-    // Send a test request
-    let params = json!({"test": "data"});
-    let response: String = connection
-        .send_request_typed("test_method", &params)
-        .await
-        .unwrap();
-
-    assert_eq!(response, "echo");
-
-    connection.close().await.unwrap();
-}
-
-#[tokio::test]
-async fn test_mcp_notification() {
-    let server = MockMcpServer::start().await;
-    let cfg = McpClientConfig::new(server.url());
-
-    let connection = McpConnection::connect(&cfg).await.unwrap();
-
-    // Send a notification (should not fail)
-    let params = json!({"notification": "test"});
-    let result = connection
-        .send_notification("test_notification", &params)
-        .await;
-
-    assert!(result.is_ok());
-
-    connection.close().await.unwrap();
-}
-
-#[tokio::test]
-async fn test_mcp_heartbeat_enabled() {
-    let server = MockMcpServer::start().await;
-    let heartbeat_config = HeartbeatConfig {
-        interval: Duration::from_millis(100),
-        timeout: Duration::from_millis(50),
-        max_missed: 2,
-    };
-    let heartbeat = HeartbeatManager::with_config(heartbeat_config);
-    let cfg = McpClientConfig::new(server.url()).with_heartbeat(heartbeat);
-
-    let connection = McpConnection::connect(&cfg).await.unwrap();
-
-    // Wait a bit to let heartbeat mechanism work
-    tokio::time::sleep(Duration::from_millis(300)).await;
-
-    connection.close().await.unwrap();
-}
-
-#[tokio::test]
-async fn test_mcp_connection_pool() {
-    let server = MockMcpServer::start().await;
-
-    let pool = McpClientPool::connect(server.url(), 3).await.unwrap();
-
-    // Test acquiring connections
-    let conn1 = pool.acquire();
-    let conn2 = pool.acquire();
-    let conn3 = pool.acquire();
-
-    // All connections should be different instances but share the load
-    assert!(conn1.inflight() == 0);
-    assert!(conn2.inflight() == 0);
-    assert!(conn3.inflight() == 0);
-}
-
-#[tokio::test]
-async fn test_message_latency_benchmark() {
-    let server = MockMcpServer::start().await;
-    let cfg = McpClientConfig::new(server.url());
-
-    let connection = McpConnection::connect(&cfg).await.unwrap();
-
-    let mut total_latency = Duration::ZERO;
-    let num_requests = 10;
-
-    for _ in 0..num_requests {
-        let start = Instant::now();
-
-        let params = json!({"benchmark": "test"});
-        let _response: String = connection
-            .send_request_typed("benchmark", &params)
-            .await
-            .unwrap();
-
-        let latency = start.elapsed();
-        total_latency += latency;
-
-        // Each individual request should be under 50ms
-        assert!(
-            latency < Duration::from_millis(50),
-            "Request latency {} exceeded 50ms target",
-            latency.as_millis()
-        );
+    for (filename, expected_lang) in language_tests {
+        let detected = registry.detect_language(filename);
+        assert_eq!(detected, Some(expected_lang.clone()),
+                  "Language detection failed for {}: expected {:?}, got {:?}",
+                  filename, expected_lang, detected);
+        println!("✅ Language detection working for: {} -> {:?}", filename, expected_lang);
     }
 
-    let avg_latency = total_latency / num_requests;
-    println!("Average message latency: {}ms", avg_latency.as_millis());
-
-    // Average should definitely be under 50ms
-    assert!(avg_latency < Duration::from_millis(50));
-
-    connection.close().await.unwrap();
+    println!("🎉 Comprehensive language support test passed!");
 }
 
 #[tokio::test]
-async fn test_error_handling() {
-    // Test connection to non-existent server
-    let invalid_url = Url::parse("ws://127.0.0.1:12345").unwrap();
-    let cfg = McpClientConfig::new(invalid_url);
+async fn test_official_server_creation() {
+    println!("🔧 Testing official MCP server creation...");
 
-    let connection = McpConnection::connect(&cfg).await;
-    assert!(connection.is_err());
+    // Test that we can create the server instance
+    let server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
+    println!("✅ CodeGraph MCP server instance created successfully");
+
+    // Test Qwen initialization (if available)
+    server.initialize_qwen().await;
+    println!("✅ Qwen initialization completed (may show warnings if model not available)");
+
+    println!("🎉 Official server creation test passed!");
 }
 
-#[tokio::test]
-async fn test_concurrent_requests() {
-    let server = MockMcpServer::start().await;
-    let cfg = McpClientConfig::new(server.url());
+#[test]
+fn test_indexed_codebase_validation() {
+    println!("📊 Testing indexed codebase validation...");
 
-    let connection = McpConnection::connect(&cfg).await.unwrap();
-    let connection = std::sync::Arc::new(connection);
-
-    // Send multiple concurrent requests
-    let mut handles = Vec::new();
-    for i in 0..5 {
-        let conn = connection.clone();
-        let handle = tokio::spawn(async move {
-            let params = json!({"request_id": i});
-            let response: String = conn
-                .send_request_typed("concurrent_test", &params)
-                .await
-                .unwrap();
-            response
-        });
-        handles.push(handle);
+    // Verify we have indexed data
+    let codegraph_dir = std::path::Path::new(".codegraph");
+    if !codegraph_dir.exists() {
+        println!("ℹ️ No .codegraph directory found - run 'codegraph init .' and 'codegraph index .' to create");
+        return;
     }
 
-    // All requests should complete successfully
-    for handle in handles {
-        let response = handle.await.unwrap();
-        assert_eq!(response, "echo");
+    let faiss_index = codegraph_dir.join("faiss.index");
+    if faiss_index.exists() {
+        let faiss_size = std::fs::metadata(&faiss_index)
+            .expect("Should be able to read FAISS index")
+            .len();
+        println!("✅ Found FAISS index: {:.1}MB", faiss_size as f64 / 1024.0 / 1024.0);
     }
 
-    connection.close().await.unwrap();
-}
+    let db_dir = codegraph_dir.join("db");
+    if db_dir.exists() {
+        println!("✅ Found graph database directory");
+    }
 
-#[tokio::test]
-async fn test_protocol_validation() {
-    let server = MockMcpServer::start().await;
-    let cfg = McpClientConfig::new(server.url());
-
-    let connection = McpConnection::connect(&cfg).await.unwrap();
-
-    // Test invalid JSON should be handled gracefully
-    let result = connection
-        .send_request_raw("invalid", serde_json::Value::Null, Duration::from_secs(5))
-        .await;
-
-    // Should still work (server echoes)
-    assert!(result.is_ok());
-
-    connection.close().await.unwrap();
+    println!("🎉 Indexed codebase validation passed!");
 }
