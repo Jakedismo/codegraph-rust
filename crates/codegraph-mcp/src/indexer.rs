@@ -42,7 +42,7 @@ impl Default for IndexerConfig {
             watch: false,
             workers: 4,
             batch_size: 100,
-            vector_dimension: 1536,
+            vector_dimension: 384, // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
             device: None,
             max_seq_len: 512,
         }

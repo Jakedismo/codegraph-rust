@@ -888,7 +888,7 @@ async fn handle_search(
     };
     #[cfg(not(feature = "embeddings"))]
     let emb = {
-        let dimension = 1536; // fallback default
+        let dimension = 384; // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
         let e = codegraph_mcp::indexer::simple_text_embedding(&query, dimension);
         codegraph_mcp::indexer::normalize(&e)
     };
@@ -1109,11 +1109,11 @@ async fn handle_config(action: ConfigAction) -> Result<()> {
     match action {
         ConfigAction::Show { json } => {
             if json {
-                println!(r#"{{"embedding_model": "openai", "vector_dimension": 1536}}"#);
+                println!(r#"{{"embedding_model": "all-MiniLM-L6-v2", "vector_dimension": 384}}"#);
             } else {
                 println!("{}", "Current Configuration:".blue().bold());
-                println!("  Embedding Model: openai");
-                println!("  Vector Dimension: 1536");
+                println!("  Embedding Model: all-MiniLM-L6-v2");
+                println!("  Vector Dimension: 384");
                 println!("  Database Path: ~/.codegraph/db");
             }
         }
@@ -1302,7 +1302,7 @@ async fn handle_perf(
         watch: false,
         workers,
         batch_size,
-        vector_dimension: 1536,
+        vector_dimension: 384, // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
         device: device.clone(),
         max_seq_len,
     };

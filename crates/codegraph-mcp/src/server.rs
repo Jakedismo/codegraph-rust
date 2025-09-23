@@ -299,7 +299,7 @@ pub async fn bin_search_with_scores(
             }
             #[cfg(not(feature = "embeddings"))]
             {
-                let dimension = 1536;
+                let dimension = 384; // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
                 let e = crate::indexer::simple_text_embedding(&query, dimension);
                 crate::indexer::normalize(&e)
             }
