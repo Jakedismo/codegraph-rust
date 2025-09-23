@@ -191,22 +191,59 @@ impl CodeGraphMCPServer {
 
         #[cfg(feature = "qwen-integration")]
         {
-            // This would integrate with the full enhanced search logic from original server
-            Ok(CallToolResult::success(vec![Content::text(format!(
-                "CodeGraph Enhanced Search Results for: '{}'\n\n\
-                🔍 Revolutionary Analysis:\n\
-                • Query processed through Qwen2.5-Coder-14B-128K\n\
-                • Vector similarity matching with nomic-embed-code\n\
-                • Semantic analysis with 128K context window\n\
-                • Team intelligence pattern matching\n\n\
-                📊 Search Configuration:\n\
-                • Query: '{}'\n\
-                • Results Limit: {}\n\
-                • AI Analysis: Enabled\n\n\
-                🚀 Status: Revolutionary semantic search ready!\n\
-                💡 Note: Full functionality requires indexed codebase",
-                request.query, request.query, request.limit
-            ))]))
+            // 1. Perform vector search first
+            match crate::server::bin_search_with_scores(
+                request.query.clone(),
+                None, // No path filtering for enhanced search
+                None, // No language filtering for enhanced search
+                request.limit * 2 // Get more results for AI analysis
+            ).await {
+                Ok(search_results) => {
+                    // 2. Create a basic server state for enhanced search
+                    let graph = match codegraph_graph::CodeGraph::new() {
+                        Ok(g) => g,
+                        Err(_) => return Err(McpError {
+                            code: rmcp::model::ErrorCode(-32603),
+                            message: "Failed to create code graph".into(),
+                            data: None,
+                        })
+                    };
+
+                    let state = crate::server::ServerState {
+                        graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+                        qwen_client: crate::server::init_qwen_client().await,
+                    };
+
+                    // 3. Call enhanced search with Qwen analysis
+                    match crate::server::enhanced_search(&state, serde_json::json!({
+                        "query": request.query,
+                        "limit": request.limit
+                    })).await {
+                        Ok(enhanced_results) => Ok(CallToolResult::success(vec![Content::text(
+                            serde_json::to_string_pretty(&enhanced_results)
+                                .unwrap_or_else(|_| "Error formatting enhanced search results".to_string())
+                        )])),
+                        Err(e) => {
+                            // Fallback to basic search results if AI fails
+                            let fallback = serde_json::json!({
+                                "search_results": search_results["results"],
+                                "ai_analysis": format!("AI analysis failed: {}", e),
+                                "query": request.query,
+                                "fallback_mode": true
+                            });
+                            Ok(CallToolResult::success(vec![Content::text(
+                                serde_json::to_string_pretty(&fallback)
+                                    .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                            )]))
+                        }
+                    }
+                },
+                Err(e) => Err(McpError {
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: format!("Vector search failed: {}. Ensure codebase is indexed.", e).into(),
+                    data: None,
+                })
+            }
         }
         #[cfg(not(feature = "qwen-integration"))]
         {
@@ -286,16 +323,45 @@ impl CodeGraphMCPServer {
             data: None,
         })?;
 
-        // This requires graph state - implement when available
-        Ok(CallToolResult::success(vec![Content::text(format!(
-            "Graph Neighbors Analysis\n\n\
-            🔗 Node: {}\n\
-            📊 Requested Limit: {}\n\n\
-            💡 Feature: Find all neighboring nodes in the code dependency graph\n\
-            💡 Status: Requires indexed codebase for full functionality\n\
-            💡 Usage: Analyze code dependencies and relationships",
-            request.node, request.limit
-        ))]))
+        // Create server state for graph neighbors analysis
+        let graph = match codegraph_graph::CodeGraph::new() {
+            Ok(g) => g,
+            Err(_) => return Err(McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: "Failed to create code graph".into(),
+                data: None,
+            })
+        };
+
+        let state = crate::server::ServerState {
+            graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+            qwen_client: crate::server::init_qwen_client().await,
+        };
+
+        // Call graph neighbors with dependency analysis
+        match crate::server::graph_neighbors(&state, serde_json::json!({
+            "node": request.node,
+            "limit": request.limit
+        })).await {
+            Ok(neighbors_results) => Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&neighbors_results)
+                    .unwrap_or_else(|_| "Error formatting graph neighbors results".to_string())
+            )])),
+            Err(e) => {
+                // Fallback if graph analysis fails
+                let fallback = serde_json::json!({
+                    "node": request.node,
+                    "limit": request.limit,
+                    "error": format!("Graph neighbors analysis failed: {}", e),
+                    "fallback_mode": true,
+                    "note": "Ensure codebase is indexed and node UUID is valid"
+                });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&fallback)
+                        .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                )]))
+            }
+        }
     }
 
     /// Explore code architecture by following dependency chains from a starting point
@@ -308,16 +374,47 @@ impl CodeGraphMCPServer {
             data: None,
         })?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
-            "Graph Traversal Analysis\n\n\
-            🎯 Start Node: {}\n\
-            📊 Max Depth: {}\n\
-            📈 Result Limit: {}\n\n\
-            🔍 Feature: Deep traversal of code dependency relationships\n\
-            🏗️ Usage: Understand architectural impact and code flow\n\
-            💡 Status: Requires indexed codebase for full functionality",
-            request.start, request.depth, request.limit
-        ))]))
+        // Create server state for graph traversal
+        let graph = match codegraph_graph::CodeGraph::new() {
+            Ok(g) => g,
+            Err(_) => return Err(McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: "Failed to create code graph".into(),
+                data: None,
+            })
+        };
+
+        let state = crate::server::ServerState {
+            graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+            qwen_client: crate::server::init_qwen_client().await,
+        };
+
+        // Call graph traverse with architectural flow analysis
+        match crate::server::graph_traverse(&state, serde_json::json!({
+            "start": request.start,
+            "depth": request.depth,
+            "limit": request.limit
+        })).await {
+            Ok(traverse_results) => Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&traverse_results)
+                    .unwrap_or_else(|_| "Error formatting graph traverse results".to_string())
+            )])),
+            Err(e) => {
+                // Fallback if graph traversal fails
+                let fallback = serde_json::json!({
+                    "start": request.start,
+                    "depth": request.depth,
+                    "limit": request.limit,
+                    "error": format!("Graph traversal failed: {}", e),
+                    "fallback_mode": true,
+                    "note": "Ensure codebase is indexed and start node UUID is valid"
+                });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&fallback)
+                        .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                )]))
+            }
+        }
     }
 
     // /// Read file contents with optional line range for precise code analysis (DISABLED - overlaps with client tools)
@@ -466,21 +563,47 @@ impl CodeGraphMCPServer {
 
         #[cfg(feature = "qwen-integration")]
         {
-            // This would use the full revolutionary Qwen analysis from the original server
-            Ok(CallToolResult::success(vec![Content::text(format!(
-                "Revolutionary Semantic Intelligence Analysis\n\n\
-                🧠 Query: '{}'\n\
-                🎯 Task Type: {}\n\
-                📊 Max Context: {} tokens (out of 128K available)\n\n\
-                🚀 Revolutionary Features:\n\
-                • Complete codebase understanding with 128K context\n\
-                • Architectural insights from 90K+ lines of analysis\n\
-                • Qwen2.5-Coder-14B-128K intelligence integration\n\
-                • Intelligent caching for 4-6 second responses\n\n\
-                💡 Status: Ready for revolutionary AI-assisted development!\n\
-                💡 Note: Full analysis requires Qwen2.5-Coder model availability",
-                request.query, request.task_type, request.max_context_tokens
-            ))]))
+            // Create server state for semantic intelligence
+            let graph = match codegraph_graph::CodeGraph::new() {
+                Ok(g) => g,
+                Err(_) => return Err(McpError {
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: "Failed to create code graph".into(),
+                    data: None,
+                })
+            };
+
+            let state = crate::server::ServerState {
+                graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+                qwen_client: crate::server::init_qwen_client().await,
+            };
+
+            // Call semantic intelligence with Qwen analysis
+            match crate::server::semantic_intelligence(&state, serde_json::json!({
+                "query": request.query,
+                "task_type": request.task_type,
+                "max_context_tokens": request.max_context_tokens
+            })).await {
+                Ok(intelligence_results) => Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&intelligence_results)
+                        .unwrap_or_else(|_| "Error formatting semantic intelligence results".to_string())
+                )])),
+                Err(e) => {
+                    // Fallback if AI analysis fails
+                    let fallback = serde_json::json!({
+                        "query": request.query,
+                        "task_type": request.task_type,
+                        "max_context_tokens": request.max_context_tokens,
+                        "error": format!("Semantic intelligence failed: {}", e),
+                        "fallback_mode": true,
+                        "note": "Ensure codebase is indexed and Qwen2.5-Coder is available"
+                    });
+                    Ok(CallToolResult::success(vec![Content::text(
+                        serde_json::to_string_pretty(&fallback)
+                            .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                    )]))
+                }
+            }
         }
         #[cfg(not(feature = "qwen-integration"))]
         {
@@ -499,20 +622,47 @@ impl CodeGraphMCPServer {
 
         #[cfg(feature = "qwen-integration")]
         {
-            Ok(CallToolResult::success(vec![Content::text(format!(
-                "Revolutionary Impact Analysis\n\n\
-                🎯 Target Function: {}\n\
-                📁 File Path: {}\n\
-                🔄 Change Type: {}\n\n\
-                🚀 Revolutionary Capabilities:\n\
-                • Dependency cascade analysis\n\
-                • Breaking change prediction\n\
-                • Safe implementation recommendations\n\
-                • Risk assessment with confidence scoring\n\n\
-                💡 Status: Impact analysis ready!\n\
-                💡 Note: Full analysis requires indexed codebase and Qwen2.5-Coder",
-                request.target_function, request.file_path, request.change_type
-            ))]))
+            // Create server state for impact analysis
+            let graph = match codegraph_graph::CodeGraph::new() {
+                Ok(g) => g,
+                Err(_) => return Err(McpError {
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: "Failed to create code graph".into(),
+                    data: None,
+                })
+            };
+
+            let state = crate::server::ServerState {
+                graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+                qwen_client: crate::server::init_qwen_client().await,
+            };
+
+            // Call impact analysis with Qwen-powered dependency analysis
+            match crate::server::impact_analysis(&state, serde_json::json!({
+                "target_function": request.target_function,
+                "file_path": request.file_path,
+                "change_type": request.change_type
+            })).await {
+                Ok(impact_results) => Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&impact_results)
+                        .unwrap_or_else(|_| "Error formatting impact analysis results".to_string())
+                )])),
+                Err(e) => {
+                    // Fallback if impact analysis fails
+                    let fallback = serde_json::json!({
+                        "target_function": request.target_function,
+                        "file_path": request.file_path,
+                        "change_type": request.change_type,
+                        "error": format!("Impact analysis failed: {}", e),
+                        "fallback_mode": true,
+                        "note": "Ensure codebase is indexed and target function exists"
+                    });
+                    Ok(CallToolResult::success(vec![Content::text(
+                        serde_json::to_string_pretty(&fallback)
+                            .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                    )]))
+                }
+            }
         }
         #[cfg(not(feature = "qwen-integration"))]
         {

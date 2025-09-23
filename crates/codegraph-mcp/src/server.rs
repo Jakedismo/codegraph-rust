@@ -64,7 +64,7 @@ async fn vector_search(_state: &ServerState, params: Value) -> Result<Value, Str
     Ok(res)
 }
 
-async fn graph_neighbors(state: &ServerState, params: Value) -> Result<Value, String> {
+pub async fn graph_neighbors(state: &ServerState, params: Value) -> Result<Value, String> {
     let node_str = params
         .get("node")
         .and_then(|v| v.as_str())
@@ -99,7 +99,7 @@ async fn graph_neighbors(state: &ServerState, params: Value) -> Result<Value, St
     Ok(json!({"neighbors": out}))
 }
 
-async fn graph_traverse(state: &ServerState, params: Value) -> Result<Value, String> {
+pub async fn graph_traverse(state: &ServerState, params: Value) -> Result<Value, String> {
     use std::collections::{HashSet, VecDeque};
     let start_str = params
         .get("start")
@@ -512,7 +512,7 @@ pub async fn serve_stdio(_buffer_size: usize) -> crate::Result<()> {
 
 // Qwen2.5-Coder integration functions
 #[cfg(feature = "qwen-integration")]
-async fn init_qwen_client() -> Option<QwenClient> {
+pub async fn init_qwen_client() -> Option<QwenClient> {
     // Initialize intelligent cache
     let cache_config = CacheConfig::default();
     init_cache(cache_config);
@@ -542,7 +542,7 @@ async fn init_qwen_client() -> Option<QwenClient> {
 
 // Enhanced semantic search with Qwen2.5-Coder intelligence
 #[cfg(feature = "qwen-integration")]
-async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value, String> {
+pub async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value, String> {
     let query = params
         .get("query")
         .and_then(|v| v.as_str())
@@ -630,7 +630,7 @@ async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value, St
 
 // Comprehensive semantic intelligence using Qwen2.5-Coder
 #[cfg(feature = "qwen-integration")]
-async fn semantic_intelligence(state: &ServerState, params: Value) -> Result<Value, String> {
+pub async fn semantic_intelligence(state: &ServerState, params: Value) -> Result<Value, String> {
     let query = params
         .get("query")
         .and_then(|v| v.as_str())
@@ -885,7 +885,7 @@ pub fn assess_cache_health(stats: &Option<crate::cache::CacheStats>) -> String {
 
 // Impact analysis MCP tool - shows what will break before changes are made
 #[cfg(feature = "qwen-integration")]
-async fn impact_analysis(state: &ServerState, params: Value) -> Result<Value, String> {
+pub async fn impact_analysis(state: &ServerState, params: Value) -> Result<Value, String> {
     let target_function = params
         .get("target_function")
         .and_then(|v| v.as_str())
