@@ -260,36 +260,61 @@ impl CodeGraphMCPServer {
     #[tool(description = "Analyze your team's coding patterns and conventions. Detects naming conventions, code organization patterns, error handling styles, and quality metrics. Use to understand team standards or onboard new developers. No parameters required.")]
     async fn pattern_detection(&self, params: Parameters<EmptyRequest>) -> Result<CallToolResult, McpError> {
         let _request = params.0; // Extract the inner value (unused)
-        Ok(CallToolResult::success(vec![Content::text(
-            "CodeGraph Pattern Detection\n\n\
-            🎯 Revolutionary Team Intelligence:\n\
-            • Coding convention analysis\n\
-            • Architectural pattern detection\n\
-            • Quality metrics and improvement recommendations\n\
-            • Team convention adherence scoring\n\n\
-            📊 Status: Pattern detection ready!\n\
-            💡 Note: Enhanced analysis available with indexed codebase".to_string()
-        )]))
+
+        // Create server state for pattern detection
+        let graph = match codegraph_graph::CodeGraph::new() {
+            Ok(g) => g,
+            Err(_) => return Err(McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: "Failed to create code graph".into(),
+                data: None,
+            })
+        };
+
+        let state = crate::server::ServerState {
+            graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+            qwen_client: crate::server::init_qwen_client().await,
+        };
+
+        // Call pattern detection with team intelligence analysis
+        match crate::server::pattern_detection(&state, serde_json::json!({})).await {
+            Ok(pattern_results) => Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&pattern_results)
+                    .unwrap_or_else(|_| "Error formatting pattern detection results".to_string())
+            )])),
+            Err(e) => {
+                // Fallback if pattern analysis fails
+                let fallback = serde_json::json!({
+                    "error": format!("Pattern detection failed: {}", e),
+                    "fallback_mode": true,
+                    "note": "Enhanced pattern analysis requires indexed codebase"
+                });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&fallback)
+                        .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                )]))
+            }
+        }
     }
 
-    /// Monitor CodeGraph system performance, cache efficiency, and AI model usage statistics
-    #[tool(description = "Get CodeGraph system performance metrics including cache hit rates, search performance, and AI model usage stats. Use to monitor system health or troubleshoot performance issues. No parameters required.")]
-    async fn performance_metrics(&self, params: Parameters<EmptyRequest>) -> Result<CallToolResult, McpError> {
-        let _request = params.0; // Extract the inner value (unused)
-        let counter_val = *self.counter.lock().await;
-        Ok(CallToolResult::success(vec![Content::text(format!(
-            "CodeGraph Performance Metrics\n\n\
-            📈 Revolutionary System Status:\n\
-            • Qwen2.5-Coder-14B-128K: Available\n\
-            • nomic-embed-code embeddings: Available\n\
-            • FAISS vector indexing: Ready\n\
-            • 128K context window: Ready\n\
-            • Complete local stack: Operational\n\
-            • Tool calls: {}\n\n\
-            🚀 Status: World's most advanced AI development platform ready!",
-            counter_val
-        ))]))
-    }
+    // /// Monitor CodeGraph system performance, cache efficiency, and AI model usage statistics
+    // #[tool(description = "Get CodeGraph system performance metrics including cache hit rates, search performance, and AI model usage stats. Use to monitor system health or troubleshoot performance issues. No parameters required.")]
+    // async fn performance_metrics(&self, params: Parameters<EmptyRequest>) -> Result<CallToolResult, McpError> {
+    //     let _request = params.0; // Extract the inner value (unused)
+    //     let counter_val = *self.counter.lock().await;
+    //     Ok(CallToolResult::success(vec![Content::text(format!(
+    //         "CodeGraph Performance Metrics\n\n\
+    //         📈 Revolutionary System Status:\n\
+    //         • Qwen2.5-Coder-14B-128K: Available\n\
+    //         • nomic-embed-code embeddings: Available\n\
+    //         • FAISS vector indexing: Ready\n\
+    //         • 128K context window: Ready\n\
+    //         • Complete local stack: Operational\n\
+    //         • Tool calls: {}\n\n\
+    //         🚀 Status: World's most advanced AI development platform ready!",
+    //         counter_val
+    //     ))]))
+    // }
 
     /// Fast similarity search for finding code that matches your query without AI analysis
     #[tool(description = "Fast vector similarity search to find code similar to your query. Returns raw search results without AI analysis (faster than enhanced_search). Use for quick code discovery. Required: query (what to find). Optional: paths (filter by directories), langs (filter by languages), limit (max results, default 10).")]

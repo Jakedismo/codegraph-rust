@@ -40,7 +40,7 @@ async fn dispatch(state: &ServerState, method: &str, params: Value) -> Result<Va
 }
 
 // Handlers
-async fn vector_search(_state: &ServerState, params: Value) -> Result<Value, String> {
+pub async fn vector_search(_state: &ServerState, params: Value) -> Result<Value, String> {
     let query = params
         .get("query")
         .and_then(|v| v.as_str())
@@ -1168,7 +1168,7 @@ pub fn extract_safety_recommendations(analysis: &str) -> Value {
 }
 
 // Pattern detection MCP tool - works without external models using semantic analysis
-async fn pattern_detection(state: &ServerState, params: Value) -> Result<Value, String> {
+pub async fn pattern_detection(state: &ServerState, params: Value) -> Result<Value, String> {
     let scope = params
         .get("scope")
         .and_then(|v| v.as_str())
