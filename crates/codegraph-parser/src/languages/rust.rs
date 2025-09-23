@@ -1,4 +1,4 @@
-use codegraph_core::{CodeNode, Language, Location, NodeType};
+use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeType, NodeId};
 use serde_json::json;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
@@ -24,11 +24,17 @@ struct WalkContext {
 }
 
 impl RustExtractor {
+    /// Extract only nodes for backward compatibility
     pub fn extract(tree: &Tree, content: &str, file_path: &str) -> Vec<CodeNode> {
+        Self::extract_with_edges(tree, content, file_path).nodes
+    }
+
+    /// REVOLUTIONARY: Extract BOTH nodes and edges in single AST traversal for maximum speed
+    pub fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
         let mut collector = Collector::new(content, file_path);
         let mut cursor = tree.walk();
         collector.walk(&mut cursor, WalkContext::default());
-        collector.into_nodes()
+        collector.into_result()
     }
 }
 
@@ -36,6 +42,8 @@ struct Collector<'a> {
     content: &'a str,
     file_path: &'a str,
     nodes: Vec<CodeNode>,
+    edges: Vec<EdgeRelationship>,
+    current_node_id: Option<NodeId>, // Track current context for edge relationships
 }
 
 impl<'a> Collector<'a> {
@@ -44,11 +52,21 @@ impl<'a> Collector<'a> {
             content,
             file_path,
             nodes: Vec::new(),
+            edges: Vec::new(),
+            current_node_id: None,
         }
     }
 
     fn into_nodes(self) -> Vec<CodeNode> {
         self.nodes
+    }
+
+    /// REVOLUTIONARY: Return both nodes and edges from single AST traversal
+    fn into_result(self) -> ExtractionResult {
+        ExtractionResult {
+            nodes: self.nodes,
+            edges: self.edges,
+        }
     }
 
     fn walk(&mut self, cursor: &mut TreeCursor, mut ctx: WalkContext) {
@@ -117,6 +135,24 @@ impl<'a> Collector<'a> {
                     "qualified_name".into(),
                     self.qname(&ctx.module_path, code.name.as_str()),
                 );
+
+                // REVOLUTIONARY: Extract import edges during same AST traversal
+                let import_node_id = code.id;
+                for import in &imports {
+                    let edge = EdgeRelationship {
+                        from: import_node_id,
+                        to: import.full_path.clone(),
+                        edge_type: EdgeType::Imports,
+                        metadata: {
+                            let mut meta = HashMap::new();
+                            meta.insert("import_type".to_string(), "use_declaration".to_string());
+                            meta.insert("source_file".to_string(), self.file_path.to_string());
+                            meta
+                        },
+                    };
+                    self.edges.push(edge);
+                }
+
                 self.nodes.push(code);
             }
 
@@ -298,6 +334,11 @@ impl<'a> Collector<'a> {
                     code.metadata
                         .attributes
                         .insert("qualified_name".into(), self.qname_with_impl(&ctx, &name));
+
+                    // REVOLUTIONARY: Set function context for edge extraction during AST traversal
+                    let function_node_id = code.id;
+                    self.current_node_id = Some(function_node_id);
+
                     self.nodes.push(code);
                 }
             }
@@ -324,6 +365,46 @@ impl<'a> Collector<'a> {
                     self.qname(&ctx.module_path, code.name.as_str()),
                 );
                 self.nodes.push(code);
+            }
+
+            // Function calls (extract edges during AST traversal for MAXIMUM SPEED)
+            "call_expression" => {
+                if let Some(current_fn) = self.current_node_id {
+                    if let Some(function_name) = self.extract_call_target(&node) {
+                        let edge = EdgeRelationship {
+                            from: current_fn,
+                            to: function_name.clone(),
+                            edge_type: EdgeType::Calls,
+                            metadata: {
+                                let mut meta = HashMap::new();
+                                meta.insert("call_type".to_string(), "function_call".to_string());
+                                meta.insert("source_file".to_string(), self.file_path.to_string());
+                                meta
+                            },
+                        };
+                        self.edges.push(edge);
+                    }
+                }
+            }
+
+            // Method calls (method.function() syntax)
+            "method_call_expression" => {
+                if let Some(current_fn) = self.current_node_id {
+                    if let Some(method_name) = self.child_text_by_kinds(node, &["field_identifier"]) {
+                        let edge = EdgeRelationship {
+                            from: current_fn,
+                            to: method_name.clone(),
+                            edge_type: EdgeType::Calls,
+                            metadata: {
+                                let mut meta = HashMap::new();
+                                meta.insert("call_type".to_string(), "method_call".to_string());
+                                meta.insert("source_file".to_string(), self.file_path.to_string());
+                                meta
+                            },
+                        };
+                        self.edges.push(edge);
+                    }
+                }
             }
 
             _ => {}
@@ -453,6 +534,30 @@ impl<'a> Collector<'a> {
             (Some(t), None) => format!("{}::impl<{}>::{}", self.file_path, t, name),
             _ => self.qname(&ctx.module_path, name),
         }
+    }
+
+    /// Extract function call target for edge relationships (FASTEST edge extraction)
+    fn extract_call_target(&self, node: &Node) -> Option<String> {
+        // Try different patterns for function calls
+        if let Some(function_node) = node.child_by_field_name("function") {
+            // Direct function call: func_name()
+            if function_node.kind() == "identifier" {
+                return Some(self.node_text(&function_node));
+            }
+            // Scoped call: mod::func_name()
+            if function_node.kind() == "scoped_identifier" {
+                return Some(self.node_text(&function_node));
+            }
+            // Field access: obj.method()
+            if function_node.kind() == "field_expression" {
+                if let Some(field) = function_node.child_by_field_name("field") {
+                    return Some(self.node_text(&field));
+                }
+            }
+        }
+
+        // Fallback: extract any identifier from the call
+        self.child_text_by_kinds(*node, &["identifier", "scoped_identifier", "field_identifier"])
     }
 }
 

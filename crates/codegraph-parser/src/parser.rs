@@ -1,6 +1,6 @@
 use crate::{AstVisitor, LanguageRegistry};
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, CodeNode, CodeParser, Language, Result};
+use codegraph_core::{CodeGraphError, CodeNode, CodeParser, ExtractionResult, Language, Result};
 use futures::stream::{self, StreamExt};
 use sha2::Digest;
 use std::collections::HashMap;
@@ -531,9 +531,10 @@ impl TreeSitterParser {
                     }
 
                     if matches!(language, Language::Rust) {
-                        // Use advanced Rust extractor
+                        // REVOLUTIONARY: Use unified Rust extractor for nodes + edges in single pass
                         use crate::languages::rust::RustExtractor;
-                        Ok(RustExtractor::extract(&tree_used, &used_content, &file_path))
+                        let result = RustExtractor::extract_with_edges(&tree_used, &used_content, &file_path);
+                        Ok(result.nodes) // Return only nodes for backward compatibility
                     } else if matches!(language, Language::Python) {
                         // Use Python extractor (docstrings, type hints, call graph metadata)
                         let extraction =
@@ -865,6 +866,161 @@ impl TreeSitterParser {
         let cache_size = self.parsed_cache.len();
         let estimated_memory = cache_size * 1024; // Rough estimate
         (cache_size, estimated_memory)
+    }
+
+    /// REVOLUTIONARY: Parse file with unified node+edge extraction for maximum speed
+    pub async fn parse_file_with_edges(&self, file_path: &str) -> Result<ExtractionResult> {
+        let language = self
+            .registry
+            .detect_language(file_path)
+            .ok_or_else(|| CodeGraphError::Parse(format!("Unknown file type: {}", file_path)))?;
+
+        let content = read_file_to_string(file_path)
+            .await
+            .map_err(|e| CodeGraphError::Io(e))?;
+
+        self.parse_content_with_unified_extraction(&content, file_path, language).await
+    }
+
+    /// FASTEST: Parse content with unified node+edge extraction in single AST traversal
+    async fn parse_content_with_unified_extraction(
+        &self,
+        content: &str,
+        file_path: &str,
+        language: Language,
+    ) -> Result<ExtractionResult> {
+        let registry = self.registry.clone();
+        let content_string = content.to_string();
+        let file_path_string = file_path.to_string();
+        let parser_pool = self.parser_pool.clone();
+
+        // Clone for timeout message
+        let content_len = content.len();
+        let file_path_for_timeout = file_path.to_string();
+
+        // Add timeout protection for problematic files
+        let parsing_task = tokio::task::spawn_blocking(move || {
+            let content = content_string;
+            let file_path = file_path_string;
+
+            // Try to get parser from pool first, create new one if pool is empty
+            let mut parser = {
+                let mut pool = parser_pool.lock();
+                let mut found_parser = None;
+
+                for parser_set in pool.iter_mut() {
+                    if let Some(p) = parser_set.remove(&language) {
+                        found_parser = Some(p);
+                        break;
+                    }
+                }
+
+                found_parser.unwrap_or_else(|| {
+                    registry.create_parser(&language).unwrap_or_else(|| {
+                        tree_sitter::Parser::new()
+                    })
+                })
+            };
+
+            // Ensure parser has correct language set
+            if let Some(config) = registry.get_config(&language) {
+                if parser.set_language(&config.language).is_err() {
+                    return Err(CodeGraphError::Parse(format!("Failed to set language for: {:?}", language)));
+                }
+            } else {
+                return Err(CodeGraphError::Parse(format!("Unsupported language: {:?}", language)));
+            }
+
+            // Parse with tolerance and retry
+            let result = match parser.parse(&content, None) {
+                Some(tree) => {
+                    let mut tree_used = tree;
+                    let mut used_content = content.clone();
+                    if tree_used.root_node().has_error() {
+                        let cleaned = Self::tolerant_clean(&content);
+                        if cleaned != content {
+                            if let Some(tree2) = parser.parse(&cleaned, None) {
+                                if !tree2.root_node().has_error() {
+                                    tree_used = tree2;
+                                    used_content = cleaned;
+                                }
+                            }
+                        }
+                    }
+
+                    // REVOLUTIONARY: Use unified extractors for MAXIMUM SPEED
+                    if matches!(language, Language::Rust) {
+                        use crate::languages::rust::RustExtractor;
+                        Ok(RustExtractor::extract_with_edges(&tree_used, &used_content, &file_path))
+                    } else if matches!(language, Language::TypeScript) {
+                        use crate::languages::javascript::TypeScriptExtractor;
+                        Ok(TypeScriptExtractor::extract_with_edges(&tree_used, &used_content, &file_path, language.clone()))
+                    } else if matches!(language, Language::JavaScript) {
+                        use crate::languages::javascript::TypeScriptExtractor;
+                        Ok(TypeScriptExtractor::extract_with_edges(&tree_used, &used_content, &file_path, language.clone()))
+                    } else if matches!(language, Language::Python) {
+                        use crate::languages::python::PythonExtractor;
+                        Ok(PythonExtractor::extract_with_edges(&tree_used, &used_content, &file_path))
+                    } else {
+                        // Fallback: use AstVisitor for other languages (no edges yet)
+                        let mut visitor = crate::AstVisitor::new(
+                            language.clone(),
+                            file_path.clone(),
+                            used_content.clone(),
+                        );
+                        visitor.visit(tree_used.root_node());
+                        Ok(ExtractionResult {
+                            nodes: visitor.nodes,
+                            edges: Vec::new(), // No edges for unsupported languages yet
+                        })
+                    }
+                }
+                None => {
+                    // Fallback: return empty result
+                    warn!("Complete parsing failed for {}", file_path);
+                    Ok(ExtractionResult {
+                        nodes: Vec::new(),
+                        edges: Vec::new(),
+                    })
+                }
+            };
+
+            // Return parser to pool
+            {
+                let mut pool = parser_pool.lock();
+                if let Some(parser_set) = pool.first_mut() {
+                    parser_set.insert(language, parser);
+                } else {
+                    let mut new_set = std::collections::HashMap::new();
+                    new_set.insert(language, parser);
+                    pool.push(new_set);
+                }
+            }
+
+            result
+        });
+
+        // Apply timeout protection
+        let timeout_duration = if content_len > 1_000_000 {
+            Duration::from_secs(60)
+        } else if content_len > 100_000 {
+            Duration::from_secs(30)
+        } else {
+            Duration::from_secs(10)
+        };
+
+        match tokio::time::timeout(timeout_duration, parsing_task).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(e)) => Err(CodeGraphError::Parse(e.to_string())),
+            Err(_) => {
+                warn!("Parsing timeout for file: {} ({}s)", file_path_for_timeout, timeout_duration.as_secs());
+                Err(CodeGraphError::Parse(format!(
+                    "Parsing timeout for file: {} ({}s)",
+                    file_path_for_timeout,
+                    timeout_duration.as_secs()
+                )))
+            }
+        }
     }
 }
 

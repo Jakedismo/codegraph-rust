@@ -111,6 +111,22 @@ pub struct Metadata {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Universal extraction result for single-pass node + edge generation (FASTEST approach)
+#[derive(Debug, Clone)]
+pub struct ExtractionResult {
+    pub nodes: Vec<crate::CodeNode>,
+    pub edges: Vec<EdgeRelationship>,
+}
+
+/// Represents a relationship between code entities extracted during AST traversal
+#[derive(Debug, Clone)]
+pub struct EdgeRelationship {
+    pub from: NodeId,
+    pub to: String, // Symbol name to be resolved to NodeId later
+    pub edge_type: EdgeType,
+    pub metadata: HashMap<String, String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChangeEvent {
     Created(String),  // file path
