@@ -154,7 +154,7 @@ struct EmptyRequest {
 }
 
 /// REVOLUTIONARY: Request for intelligent codebase Q&A using RAG
-#[cfg(feature = "ai-enhanced")]
+#[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
 #[derive(Deserialize, JsonSchema)]
 struct CodebaseQaRequest {
     /// Natural language question about the codebase
@@ -168,7 +168,7 @@ struct CodebaseQaRequest {
 }
 
 /// REVOLUTIONARY: Request for intelligent code documentation generation
-#[cfg(feature = "ai-enhanced")]
+#[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
 #[derive(Deserialize, JsonSchema)]
 struct CodeDocumentationRequest {
     /// Function, class, or module name to document
@@ -181,12 +181,14 @@ struct CodeDocumentationRequest {
     style: String,
 }
 
-#[cfg(feature = "ai-enhanced")]
+#[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
 fn default_doc_style() -> String { "comprehensive".to_string() }
 
 /// Clean CodeGraph MCP server following official Counter pattern
 #[derive(Clone)]
 pub struct CodeGraphMCPServer {
+    /// Graph database for revolutionary AI tools
+    graph: Arc<tokio::sync::Mutex<codegraph_graph::CodeGraph>>,
     /// Simple counter for demonstration
     counter: Arc<Mutex<i32>>,
     /// Official MCP tool router (required by macros)
@@ -196,10 +198,28 @@ pub struct CodeGraphMCPServer {
 #[tool_router]
 impl CodeGraphMCPServer {
     pub fn new() -> Self {
+        // Create a simple graph for basic functionality
+        let graph = codegraph_graph::CodeGraph::new()
+            .unwrap_or_else(|_| panic!("Failed to initialize CodeGraph database"));
+
         Self {
+            graph: Arc::new(tokio::sync::Mutex::new(graph)),
             counter: Arc::new(Mutex::new(0)),
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// Initialize with existing graph database from working directory
+    pub async fn new_with_graph() -> Result<Self, String> {
+        // Try to open existing database first, create new if needed
+        let graph = codegraph_graph::CodeGraph::new()
+            .map_err(|e| format!("Failed to initialize CodeGraph database: {}", e))?;
+
+        Ok(Self {
+            graph: Arc::new(tokio::sync::Mutex::new(graph)),
+            counter: Arc::new(Mutex::new(0)),
+            tool_router: Self::tool_router(),
+        })
     }
 
     // /// Increment counter with proper parameter schema (DISABLED - redundant for development)
@@ -230,18 +250,9 @@ impl CodeGraphMCPServer {
                 request.limit * 2 // Get more results for AI analysis
             ).await {
                 Ok(search_results) => {
-                    // 2. Create a basic server state for enhanced search
-                    let graph = match codegraph_graph::CodeGraph::new() {
-                        Ok(g) => g,
-                        Err(_) => return Err(McpError {
-                            code: rmcp::model::ErrorCode(-32603),
-                            message: "Failed to create code graph".into(),
-                            data: None,
-                        })
-                    };
-
+                    // 2. Use the existing graph database from the server
                     let state = crate::server::ServerState {
-                        graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+                        graph: self.graph.clone(),
                         qwen_client: crate::server::init_qwen_client().await,
                     };
 
@@ -279,8 +290,10 @@ impl CodeGraphMCPServer {
         #[cfg(not(feature = "qwen-integration"))]
         {
             Ok(CallToolResult::success(vec![Content::text(format!(
-                "Basic Enhanced Search for: '{}'\n\n\
-                📊 Results Limit: {}\n\
+                "Basic Enhanced Search for: '{}'
+    \n\
+                📊 Results Limit: {}
+    \
                 💡 Note: Enable qwen-integration for revolutionary AI analysis",
                 request.query, request.limit
             ))]))
@@ -292,18 +305,10 @@ impl CodeGraphMCPServer {
     async fn pattern_detection(&self, params: Parameters<EmptyRequest>) -> Result<CallToolResult, McpError> {
         let _request = params.0; // Extract the inner value (unused)
 
-        // Create server state for pattern detection
-        let graph = match codegraph_graph::CodeGraph::new() {
-            Ok(g) => g,
-            Err(_) => return Err(McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: "Failed to create code graph".into(),
-                data: None,
-            })
-        };
-
+        // Use the existing graph database from the server
         let state = crate::server::ServerState {
-            graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+            graph: self.graph.clone(),
+            #[cfg(feature = "qwen-integration")]
             qwen_client: crate::server::init_qwen_client().await,
         };
 
@@ -334,14 +339,14 @@ impl CodeGraphMCPServer {
     //     let _request = params.0; // Extract the inner value (unused)
     //     let counter_val = *self.counter.lock().await;
     //     Ok(CallToolResult::success(vec![Content::text(format!(
-    //         "CodeGraph Performance Metrics\n\n\
+    //         "CodeGraph Performance Metrics\n\
     //         📈 Revolutionary System Status:\n\
     //         • Qwen2.5-Coder-14B-128K: Available\n\
     //         • nomic-embed-code embeddings: Available\n\
     //         • FAISS vector indexing: Ready\n\
     //         • 128K context window: Ready\n\
     //         • Complete local stack: Operational\n\
-    //         • Tool calls: {}\n\n\
+    //         • Tool calls: {}\n\
     //         🚀 Status: World's most advanced AI development platform ready!",
     //         counter_val
     //     ))]))
@@ -379,18 +384,10 @@ impl CodeGraphMCPServer {
             data: None,
         })?;
 
-        // Create server state for graph neighbors analysis
-        let graph = match codegraph_graph::CodeGraph::new() {
-            Ok(g) => g,
-            Err(_) => return Err(McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: "Failed to create code graph".into(),
-                data: None,
-            })
-        };
-
+        // Use the existing graph database from the server
         let state = crate::server::ServerState {
-            graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+            graph: self.graph.clone(),
+            #[cfg(feature = "qwen-integration")]
             qwen_client: crate::server::init_qwen_client().await,
         };
 
@@ -430,18 +427,10 @@ impl CodeGraphMCPServer {
             data: None,
         })?;
 
-        // Create server state for graph traversal
-        let graph = match codegraph_graph::CodeGraph::new() {
-            Ok(g) => g,
-            Err(_) => return Err(McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: "Failed to create code graph".into(),
-                data: None,
-            })
-        };
-
+        // Use the existing graph database from the server
         let state = crate::server::ServerState {
-            graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+            graph: self.graph.clone(),
+            #[cfg(feature = "qwen-integration")]
             qwen_client: crate::server::init_qwen_client().await,
         };
 
@@ -474,21 +463,12 @@ impl CodeGraphMCPServer {
     }
 
     /// REVOLUTIONARY: Intelligent codebase Q&A using RAG (Retrieval-Augmented Generation)
-    #[cfg(feature = "ai-enhanced")]
+    #[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
     #[tool(description = "Ask natural language questions about the codebase and get intelligent, cited responses. Uses hybrid retrieval (vector search + graph traversal + keyword matching) with AI generation. Provides streaming responses with source citations and confidence scoring. Examples: 'How does authentication work?', 'Explain the data flow', 'What would break if I change this function?'. Required: question (natural language query). Optional: max_results (default 10), streaming (default false).")]
     async fn codebase_qa(&self, params: Parameters<CodebaseQaRequest>) -> Result<CallToolResult, McpError> {
         let request = params.0;
 
-        // Create RAG engine with current graph state
-        let graph = match codegraph_graph::CodeGraph::new() {
-            Ok(g) => g,
-            Err(_) => return Err(McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: "Failed to create code graph".into(),
-                data: None,
-            })
-        };
-
+        // Use the existing graph database from the server
         let config = codegraph_ai::rag::engine::RAGEngineConfig {
             max_results: request.max_results.unwrap_or(10),
             graph_neighbor_expansion: true,
@@ -497,8 +477,16 @@ impl CodeGraphMCPServer {
             streaming_min_delay_ms: 10,
         };
 
+        // Create a new graph instance for RAG (the RAG engine manages its own synchronization)
+        let graph_instance = Arc::new(codegraph_graph::CodeGraph::new()
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Failed to create code graph for RAG: {}", e).into(),
+                data: None,
+            })?);
+
         let rag_engine = codegraph_ai::rag::engine::RAGEngine::new(
-            std::sync::Arc::new(graph),
+            graph_instance,
             config
         );
 
@@ -545,21 +533,12 @@ impl CodeGraphMCPServer {
     }
 
     /// REVOLUTIONARY: AI-powered code documentation generation with graph context
-    #[cfg(feature = "ai-enhanced")]
+    #[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
     #[tool(description = "Generate comprehensive documentation for functions, classes, or modules using AI analysis with graph context. Analyzes dependencies, usage patterns, and architectural relationships to create intelligent documentation with source citations. Required: target_name (function/class/module name). Optional: file_path (focus scope), style (comprehensive/concise/tutorial).")]
     async fn code_documentation(&self, params: Parameters<CodeDocumentationRequest>) -> Result<CallToolResult, McpError> {
         let request = params.0;
 
-        // Create RAG engine for documentation generation
-        let graph = match codegraph_graph::CodeGraph::new() {
-            Ok(g) => g,
-            Err(_) => return Err(McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: "Failed to create code graph".into(),
-                data: None,
-            })
-        };
-
+        // Use the existing graph database from the server
         let config = codegraph_ai::rag::engine::RAGEngineConfig {
             max_results: 15, // More context for comprehensive documentation
             graph_neighbor_expansion: true,
@@ -568,8 +547,16 @@ impl CodeGraphMCPServer {
             streaming_min_delay_ms: 5,
         };
 
+        // Create a new graph instance for RAG (the RAG engine manages its own synchronization)
+        let graph_instance = Arc::new(codegraph_graph::CodeGraph::new()
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Failed to create code graph for RAG: {}", e).into(),
+                data: None,
+            })?);
+
         let rag_engine = codegraph_ai::rag::engine::RAGEngine::new(
-            std::sync::Arc::new(graph),
+            graph_instance,
             config
         );
 
@@ -766,18 +753,9 @@ impl CodeGraphMCPServer {
 
         #[cfg(feature = "qwen-integration")]
         {
-            // Create server state for semantic intelligence
-            let graph = match codegraph_graph::CodeGraph::new() {
-                Ok(g) => g,
-                Err(_) => return Err(McpError {
-                    code: rmcp::model::ErrorCode(-32603),
-                    message: "Failed to create code graph".into(),
-                    data: None,
-                })
-            };
-
+            // Use the existing graph database from the server
             let state = crate::server::ServerState {
-                graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+                graph: self.graph.clone(),
                 qwen_client: crate::server::init_qwen_client().await,
             };
 
@@ -812,7 +790,7 @@ impl CodeGraphMCPServer {
         {
             Err(McpError {
                 code: rmcp::model::ErrorCode(-32601),
-                message: "Semantic intelligence requires qwen-integration feature".to_string(),
+                message: "Semantic intelligence requires qwen-integration feature".into(),
                 data: None,
             })
         }
@@ -825,18 +803,9 @@ impl CodeGraphMCPServer {
 
         #[cfg(feature = "qwen-integration")]
         {
-            // Create server state for impact analysis
-            let graph = match codegraph_graph::CodeGraph::new() {
-                Ok(g) => g,
-                Err(_) => return Err(McpError {
-                    code: rmcp::model::ErrorCode(-32603),
-                    message: "Failed to create code graph".into(),
-                    data: None,
-                })
-            };
-
+            // Use the existing graph database from the server
             let state = crate::server::ServerState {
-                graph: std::sync::Arc::new(tokio::sync::Mutex::new(graph)),
+                graph: self.graph.clone(),
                 qwen_client: crate::server::init_qwen_client().await,
             };
 
@@ -871,7 +840,7 @@ impl CodeGraphMCPServer {
         {
             Err(McpError {
                 code: rmcp::model::ErrorCode(-32601),
-                message: "Impact analysis requires qwen-integration feature".to_string(),
+                message: "Impact analysis requires qwen-integration feature".into(),
                 data: None,
             })
         }
@@ -886,16 +855,16 @@ impl CodeGraphMCPServer {
     //     {
     //         // This would use the cache analysis from the original server
     //         Ok(CallToolResult::success(vec![Content::text(
-    //             "Intelligent Cache Performance Analysis\n\n\
+    //             "Intelligent Cache Performance Analysis\n\
     //             📈 Revolutionary Cache Intelligence:\n\
     //             • Semantic similarity matching effectiveness\n\
     //             • Response time improvements from caching\n\
     //             • Memory usage and optimization suggestions\n\
-    //             • Performance trend analysis\n\n\
+    //             • Performance trend analysis\n\
     //             🚀 Features:\n\
     //             • Hit/miss ratio optimization\n\
     //             • Cache health assessment\n\
-    //             • Intelligent cache recommendations\n\n\
+    //             • Intelligent cache recommendations\n\
     //             💡 Status: Cache analytics ready!\n\
     //             💡 Note: Detailed statistics available with active cache usage".to_string()
     //         )]))
@@ -903,7 +872,7 @@ impl CodeGraphMCPServer {
     //     #[cfg(not(feature = "qwen-integration"))]
     //     {
     //         Ok(CallToolResult::success(vec![Content::text(
-    //             "Cache Statistics\n\n\
+    //             "Cache Statistics\n\
     //             📈 Basic cache information available\n\
     //             💡 Note: Enable qwen-integration for advanced analytics".to_string()
     //         )]))
@@ -948,19 +917,32 @@ impl ServerHandler for CodeGraphMCPServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(
-                "CodeGraph provides revolutionary AI codebase intelligence through local SOTA models.\n\n\
-                🚀 Revolutionary Features:\n\
-                • Enhanced semantic search with Qwen2.5-Coder-14B-128K analysis\n\
-                • Revolutionary impact prediction before code changes\n\
-                • Team intelligence and pattern detection\n\
-                • 128K context window comprehensive analysis\n\
-                • Complete local-first processing with zero external dependencies\n\
-                • Performance optimized for high-memory systems\n\n\
-                This is the world's most advanced local-first AI development platform.\n\n\
-                💡 Getting Started:\n\
-                1. Navigate to your project directory\n\
-                2. Run: codegraph init .\n\
-                3. Run: codegraph index . --recursive\n\
+                "CodeGraph provides revolutionary AI codebase intelligence through local SOTA models.
+    \n\
+                🚀 Revolutionary Features:
+    \
+                • Enhanced semantic search with Qwen2.5-Coder-14B-128K analysis
+    \
+                • Revolutionary impact prediction before code changes
+    \
+                • Team intelligence and pattern detection
+    \
+                • 128K context window comprehensive analysis
+    \
+                • Complete local-first processing with zero external dependencies
+    \
+                • Performance optimized for high-memory systems
+    \n\
+                This is the world's most advanced local-first AI development platform.
+    \n\
+                💡 Getting Started:
+    \
+                1. Navigate to your project directory
+    \
+                2. Run: codegraph init .
+    \
+                3. Run: codegraph index . --recursive
+    \
                 4. Experience revolutionary AI codebase intelligence!".into()
             ),
             capabilities: ServerCapabilities::builder()

@@ -1011,7 +1011,7 @@ async fn handle_search(
             match format {
                 OutputFormat::Human => {
                     println!("Results ({}):", results_with_depth.len());
-                    for (i, (id, node, depth)) in results_with_depth.iter().enumerate() {
+                    for (i, (_id, node, depth)) in results_with_depth.iter().enumerate() {
                         let summary = node
                             .content
                             .as_deref()
@@ -1021,7 +1021,8 @@ async fn handle_search(
                                 t
                             })
                             .unwrap_or_else(|| "".to_string());
-                        println!("{}. [d={}] {}\n   {}", i + 1, depth, node.location.file_path, summary);
+                        println!("{}. [d={}] {}
+                           {}", i + 1, depth, node.location.file_path, summary);
                     }
                 }
                 OutputFormat::Json => {
@@ -1069,13 +1070,13 @@ async fn handle_search(
                             t
                         })
                         .unwrap_or_else(|| "".to_string());
-                    println!("{}. [d=0] {}\n   {}", i + 1, node.location.file_path, summary);
+                    println!("{}. [d=0] {}
+                   {}", i + 1, node.location.file_path, summary);
                 }
             }
             OutputFormat::Json => {
                 let j = serde_json::json!({
-                    "results": base_scored.iter().map(|(id, node, score)| serde_json::json!({
-                        "id": id,
+                    "results": base_scored.iter().map(|(_id, node, score)| serde_json::json!({
                         "name": node.name,
                         "path": node.location.file_path,
                         "node_type": node.node_type.as_ref().map(|t| format!("{:?}", t)).unwrap_or_else(|| "unknown".into()),
@@ -1100,7 +1101,8 @@ async fn handle_search(
 
     #[cfg(not(feature = "faiss"))]
     {
-        println!("Vector search requires FAISS support. Reinstall with:\n  cargo install --path crates/codegraph-mcp --features faiss");
+        println!("Vector search requires FAISS support. Reinstall with:
+                  cargo install --path crates/codegraph-mcp --features faiss");
         Ok(())
     }
 }
@@ -1418,7 +1420,8 @@ async fn handle_perf(
     });
 
     if format == "human" {
-        println!("Performance Results\n====================");
+        println!("Performance Results
+                ====================");
         println!("Dataset: {:?} ({} files, {} lines)", out["dataset"]["path"], out["dataset"]["files"], out["dataset"]["lines"]);
         println!("Indexing: {:.2}s ({} embeddings, {:.1} emb/s)", out["indexing"]["total_seconds"], out["indexing"]["embeddings"], out["indexing"]["throughput_embeddings_per_sec"]);
         println!("Vector Search: avg={:.1}ms p50={:.1}ms p95={:.1}ms ({} queries)", out["vector_search"]["latency_ms"]["avg"], out["vector_search"]["latency_ms"]["p50"], out["vector_search"]["latency_ms"]["p95"], out["vector_search"]["queries"]);
