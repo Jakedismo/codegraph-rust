@@ -175,7 +175,7 @@ Platform: M3 Pro 32GB (optimal for Qwen2.5-Coder-14B)
 | **⚡ ONNX all-MiniLM-L6-v2** | **32m 22s** | Good general embeddings | **Large codebases, lunch-break indexing** |
 | **📚 LEANN** | ~4h | Next best thing I could find in Github | No incremental updates |
 
-### *Graph Generation Performance** - the codegraph-rust repository
+### **Graph Generation Performance** - the codegraph-rust repository
 
 
 
