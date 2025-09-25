@@ -271,9 +271,7 @@ impl RAGEngine {
                     quick_intro_sent = true;
 
                     // Proceed with retrieval
-                    if let Err(e) = send_progress("retrieving context").await {
-                        let _ = e; // ignore
-                    }
+                    send_progress("retrieving context").await;
 
                     // Run hybrid retrieval now that we already emitted a first token
                     match this.retrieve_hybrid_context(&query_string).await {
@@ -285,9 +283,7 @@ impl RAGEngine {
                                 let _ = tx.send(StreamEvent::Context { snippet }).await;
                             }
 
-                            if let Err(e) = send_progress("ranking results").await {
-                                let _ = e;
-                            }
+                            send_progress("ranking results").await;
 
                             // Rank
                             let ranked = {
@@ -312,9 +308,7 @@ impl RAGEngine {
                                 }
                             };
 
-                            if let Err(e) = send_progress("generating response").await {
-                                let _ = e;
-                            }
+                            send_progress("generating response").await;
 
                             // Generate response
                             match this
@@ -412,8 +406,8 @@ impl RAGEngine {
                     node_id: node.id,
                     name: node.name.as_str().to_string(),
                     file_path: node.location.file_path.clone(),
-                    line: node.location.line,
-                    end_line: node.location.end_line,
+                    line: node.location.line as i64,
+                    end_line: node.location.end_line.map(|l| l as i64),
                     relevance: r.final_score,
                 });
             }

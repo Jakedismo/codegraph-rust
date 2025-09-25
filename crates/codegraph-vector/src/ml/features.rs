@@ -128,7 +128,7 @@ impl FeatureExtractor {
     /// Extract features from a single code node
     pub async fn extract_features(&self, node: &CodeNode) -> Result<CodeFeatures> {
         let mut features = CodeFeatures {
-            node_id: node.id.clone(),
+            node_id: node.id.to_string(),
             syntactic: None,
             semantic: None,
             complexity: None,
@@ -172,8 +172,8 @@ impl FeatureExtractor {
 
     /// Extract syntactic features from AST structure
     async fn extract_syntactic_features(&self, node: &CodeNode) -> Result<SyntacticFeatures> {
-        // Count child nodes and calculate depth
-        let child_count = node.children.as_ref().map_or(0, |children| children.len());
+        // Count child nodes (approximated from content complexity)
+        let child_count = self.estimate_child_count(node);
         let depth = self.calculate_ast_depth(node);
         
         // Analyze node type distribution
@@ -257,29 +257,46 @@ impl FeatureExtractor {
     }
 
     /// Calculate AST depth recursively
-    fn calculate_ast_depth(&self, node: &CodeNode) -> usize {
-        if let Some(children) = &node.children {
-            1 + children.iter()
-                .map(|child| self.calculate_ast_depth(child))
-                .max()
-                .unwrap_or(0)
-        } else {
-            1
-        }
+    /// Estimate child count from content complexity (since CodeNode doesn't have children field)
+    fn estimate_child_count(&self, node: &CodeNode) -> usize {
+        let content = node.content.as_deref().unwrap_or("");
+        // Simple heuristic: count braces, semicolons, and line breaks as child indicators
+        let brace_count = content.matches('{').count();
+        let semicolon_count = content.matches(';').count();
+        let line_count = content.lines().count();
+        (brace_count + semicolon_count / 3 + line_count / 5).min(20) // Cap at reasonable max
     }
 
-    /// Collect node types in subtree
+    fn calculate_ast_depth(&self, node: &CodeNode) -> usize {
+        // Estimate depth from nesting in content (since no children field)
+        let content = node.content.as_deref().unwrap_or("");
+        let mut max_depth = 1;
+        let mut current_depth: usize = 0;
+
+        for ch in content.chars() {
+            match ch {
+                '{' | '(' | '[' => {
+                    current_depth += 1;
+                    max_depth = max_depth.max(current_depth);
+                }
+                '}' | ')' | ']' => {
+                    if current_depth > 0 {
+                        current_depth -= 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+        max_depth
+    }
+
+    /// Collect node types in subtree (simplified since no children field)
     fn collect_node_types(&self, node: &CodeNode, distribution: &mut HashMap<String, usize>) {
         if let Some(ref node_type) = node.node_type {
             let type_name = format!("{:?}", node_type);
             *distribution.entry(type_name).or_insert(0) += 1;
         }
-
-        if let Some(children) = &node.children {
-            for child in children {
-                self.collect_node_types(child, distribution);
-            }
-        }
+        // Note: Can't traverse children since CodeNode doesn't have children field
     }
 
     /// Calculate pattern similarities using cached common patterns
@@ -323,7 +340,7 @@ impl FeatureExtractor {
     fn calculate_cognitive_complexity(&self, content: &str) -> usize {
         // Simplified cognitive complexity calculation
         let mut complexity = 0;
-        let mut nesting_level = 0;
+        let mut nesting_level: usize = 0;
 
         for line in content.lines() {
             let trimmed = line.trim();
@@ -347,7 +364,7 @@ impl FeatureExtractor {
     /// Calculate maximum nesting depth
     fn calculate_nesting_depth(&self, content: &str) -> usize {
         let mut max_depth = 0;
-        let mut current_depth = 0;
+        let mut current_depth: usize = 0;
 
         for ch in content.chars() {
             match ch {

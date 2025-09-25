@@ -281,7 +281,7 @@ pub struct ModelTrainer {
 }
 
 /// Trained model container
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrainedModel {
     /// Model type
     pub model_type: ModelType,

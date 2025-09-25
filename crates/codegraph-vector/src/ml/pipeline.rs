@@ -570,7 +570,7 @@ impl MLPipeline {
 
         // Check time since last training
         if let Some(last_training) = context.training_history.last() {
-            let training_age = last_training.model_metadata.timestamp.elapsed();
+            let training_age = chrono::Utc::now().signed_duration_since(last_training.model_metadata.timestamp);
             if training_age.num_seconds() as u64 > context.config.pipeline_settings.retrain_interval.as_secs() {
                 return Ok(true);
             }

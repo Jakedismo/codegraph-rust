@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use codegraph_core::{CodeGraphError, CodeNode, Language, NodeId, NodeType, Result};
+use codegraph_core::{CodeGraphError, CodeNode, GraphStore, Language, NodeId, NodeType, Result};
 use codegraph_graph::CodeGraph;
-use codegraph_vector::{EmbeddingGenerator, SemanticSearch};
+use codegraph_vector::{EmbeddingGenerator, search::SemanticSearch};
 use futures::future::try_join_all;
 use tokio::sync::RwLock;
 
@@ -66,7 +66,6 @@ impl SemanticSearchEngine {
             cfg: cfg.unwrap_or_default(),
         }
     }
-
     /// Find similar functions given a node as a seed.
     pub async fn similar_functions(
         &self,

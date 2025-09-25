@@ -41,6 +41,7 @@ pub mod persistent;
 pub mod storage;
 
 pub mod rag;
+pub mod ml;
 
 pub use embedding::*;
 pub use embeddings::generator::AdvancedEmbeddingGenerator;

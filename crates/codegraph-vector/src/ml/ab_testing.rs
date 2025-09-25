@@ -560,7 +560,7 @@ impl ABTestingFramework {
 
         // Group data by variant
         let mut variant_data: HashMap<String, Vec<&ExperimentDataPoint>> = HashMap::new();
-        for data_point in experiment_data {
+        for data_point in &experiment_data {
             variant_data.entry(data_point.variant.clone()).or_default().push(data_point);
         }
 

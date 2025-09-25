@@ -45,7 +45,7 @@ codegraph-core = { workspace = true }
 codegraph-parser = { workspace = true }
 codegraph-graph = { workspace = true }
 codegraph-vector = { workspace = true, optional = true, default-features = false }
-# codegraph-ai = { workspace = true, optional = true }  # Disabled due to compilation issues
+codegraph-ai = { workspace = true, optional = true }  # Re-enabled for AI-powered symbol resolution
 faiss = { workspace = true, optional = true }
 # codegraph-api not used directly here; avoid pulling heavy deps
 ## core-rag-mcp-server intentionally not linked to keep binary lean
@@ -76,3 +76,4 @@ embeddings-openai = ["embeddings", "codegraph-vector/openai"]
 embeddings-ollama = ["embeddings", "codegraph-vector/ollama"]
 server-http = ["dep:axum", "dep:hyper"]
 qwen-integration = []
+ai-enhanced = ["dep:codegraph-ai", "faiss", "embeddings"]
