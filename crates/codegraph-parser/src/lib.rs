@@ -11,6 +11,7 @@ pub mod parallel_language_processor;
 // pub mod semantic_caching; // Temporarily disabled for speed optimization"
 pub mod speed_optimized_cache;
 pub mod differential_ast_processor;
+pub mod rust_advanced_extractor;
 pub mod parser;
 #[cfg(feature = "experimental")]
 pub mod semantic;
@@ -41,5 +42,6 @@ pub use parallel_language_processor::*;
 // pub use semantic_caching::*; // Temporarily disabled for speed optimization"
 pub use speed_optimized_cache::*;
 pub use differential_ast_processor::*;
+pub use rust_advanced_extractor::*;
 #[cfg(feature = "experimental")]
 pub use watcher::*;
