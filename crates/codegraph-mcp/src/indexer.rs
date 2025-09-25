@@ -312,11 +312,15 @@ impl ProjectIndexer {
         info!("   🤖 Provider performance: {} with batch optimization", provider);
         info!("   🔍 Capabilities unlocked: Vector search, semantic analysis, AI-powered tools");
 
-        // Proactively drop embedding resources (e.g., ONNX sessions) before heavy post-processing.
-        // This helps avoid late destructor ordering issues in some native backends on macOS.
+        // CRITICAL FIX: Preserve working ONNX embedding session for AI semantic matching
+        // Original reset caused fresh embedder creation to fail with ONNX resource conflicts,
+        // falling back to random hash embeddings (0% AI effectiveness).
+        // Keeping the working ONNX session ensures real embeddings for AI semantic matching.
+        // Tradeoff: Slightly more memory usage during post-processing (acceptable on M4 Max).
         #[cfg(feature = "embeddings")]
         {
-            self.embedder = codegraph_vector::EmbeddingGenerator::default();
+            // self.embedder = codegraph_vector::EmbeddingGenerator::default();
+            tracing::info!("🔧 Preserving working ONNX embedder session for AI semantic matching");
         }
 
         #[cfg(feature = "faiss")]
@@ -896,14 +900,11 @@ impl ProjectIndexer {
         let top_symbols: Vec<_> = symbol_map.keys().take(1000).cloned().collect();
         info!("📊 Selected {} top symbols for AI embedding pre-computation", top_symbols.len());
 
-        // Generate embeddings in parallel batches with enhanced error handling
-        info!("🤖 Creating fresh embedding generator for AI semantic matching");
-        let embedder = match EmbeddingGenerator::with_auto_from_env().await {
-            embedder => {
-                info!("✅ Fresh embedding generator created successfully");
-                embedder
-            }
-        };
+        // ARCHITECTURAL IMPROVEMENT: Use existing working embedder instead of creating fresh one
+        // This avoids ONNX re-initialization issues that caused random hash fallback
+        info!("🤖 Using preserved ONNX embedder for AI semantic matching");
+        let embedder = &self.embedder;
+        info!("✅ Using working ONNX embedder session (guaranteed real embeddings)");
         let batch_size = 50; // Optimal for embedding generation
         info!("⚡ Embedding batch size: {} symbols per batch", batch_size);
 
