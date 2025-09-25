@@ -1271,7 +1271,8 @@ impl ProjectIndexer {
         pb.set_style(
             ProgressStyle::default_bar()
                 .template(
-                    "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len}\n{msg.bold} | Success Rate: {percent}% | Speed: {per_sec}/s | ETA: {eta}",
+                    "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len}
+                {msg.bold} | Success Rate: {percent}% | Speed: {per_sec}/s | ETA: {eta}",
                 )
                 .unwrap()
                 .progress_chars("█▉▊▋▌▍▎▏ "),
@@ -1296,7 +1297,8 @@ impl ProjectIndexer {
         pb.set_style(
             ProgressStyle::default_bar()
                 .template(
-                    "{spinner:.green} [{elapsed_precise}] [{bar:45.cyan/blue}] {pos}/{len} embeddings\n💾 {msg} | {percent}% | {per_sec}/s | Memory: Optimized | ETA: {eta}",
+                    "{spinner:.green} [{elapsed_precise}] [{bar:45.cyan/blue}] {pos}/{len} embeddings
+                💾 {msg} | {percent}% | {per_sec}/s | Memory: Optimized | ETA: {eta}",
                 )
                 .unwrap()
                 .progress_chars("█▉▊▋▌▍▎▏ "),
