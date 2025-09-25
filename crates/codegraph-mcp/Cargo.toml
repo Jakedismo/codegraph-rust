@@ -39,6 +39,8 @@ nix = { version = "0.29", features = ["process", "signal"] }
 notify = "6.1"
 walkdir = "2.5"
 regex = { workspace = true }
+rayon = { workspace = true }
+num_cpus = { workspace = true }
 
 # Internal dependencies
 codegraph-core = { workspace = true }
