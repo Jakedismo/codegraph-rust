@@ -76,7 +76,7 @@ impl AIPatternLearner {
             original_symbol: original_symbol.to_string(),
             resolved_symbol: resolved_symbol.to_string(),
             confidence,
-            language,
+            language: language.clone(),
             pattern_type: pattern_type.clone(),
             frequency: 1,
         };
