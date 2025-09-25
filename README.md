@@ -177,10 +177,21 @@ Platform: M3 Pro 32GB (optimal for Qwen2.5-Coder-14B)
 
 ### **Graph Generation Performance** - the codegraph-rust repository
 
-
+[00:03:34] [████████████████████████████████████████] 50666/50666 (100%) 🔗 Dependencies resolved: 47486/50666 relationships (93.7% success) | ⚡ 65.5s | 235.9194/s/s | ETA: 0s 
+📊 Performance Summary
+┌───────────────────────────────────────────────────────────────────────┐
+│ 📊 COMPREHENSIVE INDEXING STATISTICS                                  │
+├───────────────────────────────────────────────────────────────────────┤
+│ 📄 Files processed: 341 (1 languages supported)                       │
+│ 📝 Lines analyzed: 185163 (TreeSitter AST parsing)                    │
+│ 🌳 Semantic nodes: 15087 (functions: 4609, structs: 1222, traits: 55) │
+│ 🔗 Code relationships: 50666 extracted (calls, imports, deps)         │
+│ 💾 Vector embeddings: 15087 (384-dim onnx)                            │
+│ 🎯 Dependency resolution: 93.7% success (47486/50666 edges stored)    │
+│───────────────────────────────────────────────────────────────────────│
 
 ### **CodeGraph Advantages**
-- ✅ **Incremental Updates**: Only reprocess changed files (LEANN can't do this)
+- ✅ **Incremental Updates**: Can only reprocess changed files (LEANN can't do this)
 - ✅ **Provider Choice**: Speed vs. quality optimization based on needs
 - ✅ **Memory Optimization**: Automatic 128GB M4 Max scaling
 - ✅ **Production Ready**: Index 2.5M lines while having lunch

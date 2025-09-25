@@ -501,27 +501,64 @@ impl ProjectIndexer {
 
             info!("⚡ Parallel processing: {} edge chunks across {} cores", total_chunks, num_cpus::get());
 
-            // Pre-generate AI embeddings for frequently used symbols (M4 Max memory optimization)
+            // REVOLUTIONARY: Pre-generate AI embeddings for BOTH known symbols AND unresolved edge targets
             #[cfg(feature = "ai-enhanced")]
-            let symbol_embeddings = {
-                info!("🚀 INITIALIZING AI SEMANTIC MATCHING: {} symbols in resolution map", symbol_map.len());
-                info!("🔧 DEBUG: About to call precompute_symbol_embeddings with ai-enhanced feature");
-                match self.precompute_symbol_embeddings(&symbol_map).await {
+            let (symbol_embeddings, unresolved_embeddings) = {
+                info!("🚀 INITIALIZING REVOLUTIONARY 2-PHASE AI SEMANTIC MATCHING");
+                info!("🔧 Phase 1: Pre-computing embeddings for {} known symbols", symbol_map.len());
+
+                // Phase 1: Known symbol embeddings
+                let known_embeddings = match self.precompute_symbol_embeddings(&symbol_map).await {
                     embeddings if !embeddings.is_empty() => {
-                        info!("✅ AI semantic matching ready: {} embeddings pre-computed", embeddings.len());
+                        info!("✅ Known symbol embeddings ready: {} pre-computed", embeddings.len());
                         embeddings
                     },
                     _ => {
-                        warn!("⚠️ AI semantic matching initialization failed - falling back to empty embeddings");
-                        warn!("🔍 Debug info: symbol_map.len()={}, ai-enhanced feature enabled", symbol_map.len());
+                        warn!("⚠️ Known symbol embedding failed - falling back to empty embeddings");
                         std::collections::HashMap::new()
                     }
-                }
+                };
+
+                // Phase 2: Pre-compute embeddings for ALL unresolved edge targets
+                info!("🔧 Phase 2: Pre-computing embeddings for unresolved edge targets");
+                let unresolved_symbols: std::collections::HashSet<String> = edges
+                    .iter()
+                    .filter_map(|edge| {
+                        if symbol_map.contains_key(&edge.to) {
+                            None // Already resolved
+                        } else {
+                            Some(edge.to.clone()) // Unresolved - needs embedding
+                        }
+                    })
+                    .collect();
+
+                info!("📊 Discovered {} unique unresolved symbols for AI embedding", unresolved_symbols.len());
+                let unresolved_embeddings = if !unresolved_symbols.is_empty() {
+                    // PROFESSIONAL: Direct embedding generation for unresolved symbols (no fake NodeIds needed)
+                    match self.precompute_unresolved_symbol_embeddings(&unresolved_symbols).await {
+                        embeddings if !embeddings.is_empty() => {
+                            info!("✅ Unresolved symbol embeddings ready: {} pre-computed", embeddings.len());
+                            embeddings
+                        },
+                        _ => {
+                            warn!("⚠️ Unresolved symbol embedding failed - AI matching will be limited");
+                            std::collections::HashMap::new()
+                        }
+                    }
+                } else {
+                    std::collections::HashMap::new()
+                };
+
+                info!("🤖 REVOLUTIONARY AI READY: {} known + {} unresolved = {} total embeddings",
+                      known_embeddings.len(), unresolved_embeddings.len(),
+                      known_embeddings.len() + unresolved_embeddings.len());
+
+                (known_embeddings, unresolved_embeddings)
             };
             #[cfg(not(feature = "ai-enhanced"))]
-            let symbol_embeddings: std::collections::HashMap<String, Vec<f32>> = {
+            let (symbol_embeddings, unresolved_embeddings): (std::collections::HashMap<String, Vec<f32>>, std::collections::HashMap<String, Vec<f32>>) = {
                 info!("🚀 Pattern-only resolution: AI semantic matching disabled (ai-enhanced feature not enabled)");
-                std::collections::HashMap::new()
+                (std::collections::HashMap::new(), std::collections::HashMap::new())
             };
 
             let mut stored_edges_local = 0;
@@ -580,10 +617,10 @@ impl ProjectIndexer {
                             // Collect resolved edge for bulk storage
                             chunk_resolved.push((edge_rel.from, target_id, edge_rel.edge_type.clone(), edge_rel.metadata.clone()));
                         } else {
-                            // REVOLUTIONARY: Real AI semantic matching using pre-computed embeddings
+                            // REVOLUTIONARY: Real AI semantic matching using BOTH known + unresolved embeddings
                             #[cfg(feature = "ai-enhanced")]
                             {
-                                if let Some(best_match) = Self::ai_semantic_match_sync(&edge_rel.to, &symbol_map, &symbol_embeddings) {
+                                if let Some(best_match) = Self::ai_semantic_match_sync(&edge_rel.to, &symbol_map, &symbol_embeddings, &unresolved_embeddings) {
                                     chunk_stats.2 += 1; // AI match count
                                     chunk_resolved.push((edge_rel.from, best_match, edge_rel.edge_type.clone(), edge_rel.metadata.clone()));
                                 } else {
@@ -939,6 +976,57 @@ impl ProjectIndexer {
         embeddings
     }
 
+    /// REVOLUTIONARY: Pre-compute embeddings directly for unresolved symbols (professional batching)
+    #[cfg(feature = "ai-enhanced")]
+    async fn precompute_unresolved_symbol_embeddings(
+        &self,
+        unresolved_symbols: &std::collections::HashSet<String>
+    ) -> std::collections::HashMap<String, Vec<f32>> {
+        use codegraph_vector::EmbeddingGenerator;
+
+        info!("🧠 Pre-computing unresolved symbol embeddings for professional-grade AI");
+        info!("🔧 Processing {} unique unresolved symbols", unresolved_symbols.len());
+        let mut embeddings = std::collections::HashMap::new();
+
+        if unresolved_symbols.is_empty() {
+            return embeddings;
+        }
+
+        let symbols_vec: Vec<_> = unresolved_symbols.iter().cloned().collect();
+        let embedder = &self.embedder;
+        let batch_size = 50; // Professional batch size for unresolved symbols
+
+        info!("⚡ Unresolved embedding batch size: {} symbols per batch", batch_size);
+
+        for batch in symbols_vec.chunks(batch_size) {
+            info!("🔧 Processing unresolved symbol batch of {} items sequentially", batch.len());
+            for symbol in batch {
+                match embedder.generate_text_embedding(symbol).await {
+                    Ok(embedding) => {
+                        embeddings.insert(symbol.clone(), embedding);
+                        if embeddings.len() % 100 == 0 {
+                            info!("✅ Generated {} unresolved embeddings so far", embeddings.len());
+                        }
+                    },
+                    Err(e) => {
+                        warn!("⚠️ Failed to generate embedding for unresolved symbol '{}': {}", symbol, e);
+                    }
+                }
+            }
+        }
+
+        info!("🧠 Pre-computed {} unresolved symbol embeddings for professional AI matching", embeddings.len());
+        if embeddings.is_empty() {
+            warn!("⚠️ No unresolved symbol embeddings were generated - AI matching will be limited");
+        } else {
+            info!("✅ Professional AI semantic matching ready with {:.1}% unresolved coverage ({}/{})",
+                  embeddings.len() as f64 / unresolved_symbols.len() as f64 * 100.0,
+                  embeddings.len(), unresolved_symbols.len());
+        }
+
+        embeddings
+    }
+
     /// REVOLUTIONARY: AI-powered symbol resolution using semantic similarity
     #[cfg(feature = "ai-enhanced")]
     async fn ai_resolve_symbol(
@@ -1000,12 +1088,13 @@ impl ProjectIndexer {
         }
     }
 
-    /// REVOLUTIONARY: AI semantic matching with hybrid fuzzy + real AI embeddings
+    /// REVOLUTIONARY: AI semantic matching with hybrid fuzzy + real AI embeddings (batched)
     #[cfg(feature = "ai-enhanced")]
     fn ai_semantic_match_sync(
         target_symbol: &str,
         symbol_map: &std::collections::HashMap<String, NodeId>,
-        symbol_embeddings: &std::collections::HashMap<String, Vec<f32>>
+        symbol_embeddings: &std::collections::HashMap<String, Vec<f32>>,
+        unresolved_embeddings: &std::collections::HashMap<String, Vec<f32>>
     ) -> Option<NodeId> {
         // DIAGNOSTIC: Track AI matching usage
         static AI_MATCH_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -1028,7 +1117,6 @@ impl ProjectIndexer {
 
         let mut best_match: Option<(NodeId, f32)> = None;
         let fuzzy_threshold = 0.5;
-        let ai_threshold = 0.65;
 
         // PHASE 1: Fast fuzzy string similarity matching
         for (symbol_name, _) in symbol_embeddings.iter() {
@@ -1068,16 +1156,51 @@ impl ProjectIndexer {
             }
         }
 
-        // PHASE 2: For now, skip real AI embedding to avoid complexity - fuzzy matching covers most cases
-        // TODO: Implement proper async context for real AI embeddings
-        if call_count < 3 {
-            info!("📝 Note: Real AI embedding generation deferred - fuzzy matching active");
+        // PHASE 2: Real AI embedding semantic similarity using pre-computed unresolved embeddings
+        let mut ai_best_match: Option<(NodeId, f32)> = None;
+        if let Some(target_embedding) = unresolved_embeddings.get(target_symbol) {
+            if call_count < 5 {
+                info!("🔍 Using pre-computed embedding for unresolved symbol: '{}'", target_symbol);
+            }
+
+            let ai_threshold = 0.75; // Higher threshold for real AI embeddings
+
+            // Compare target embedding with ALL known symbol embeddings
+            for (symbol_name, symbol_embedding) in symbol_embeddings.iter() {
+                if let Some(&node_id) = symbol_map.get(symbol_name) {
+                    let similarity = Self::cosine_similarity_static(target_embedding, symbol_embedding);
+
+                    if similarity > ai_threshold {
+                        if let Some((_, best_score)) = ai_best_match {
+                            if similarity > best_score {
+                                ai_best_match = Some((node_id, similarity));
+                            }
+                        } else {
+                            ai_best_match = Some((node_id, similarity));
+                        }
+                    }
+                }
+            }
         }
 
-        // Return the best fuzzy match if found
-        if let Some((node_id, confidence)) = best_match {
+        // REVOLUTIONARY: Choose the best match between fuzzy and real AI embeddings
+        let final_match = match (best_match, ai_best_match) {
+            (Some((fuzzy_node, fuzzy_score)), Some((ai_node, ai_score))) => {
+                // AI embeddings are more accurate than fuzzy when both exist
+                if ai_score > 0.8 || (ai_score > fuzzy_score && ai_score > 0.7) {
+                    Some((ai_node, ai_score, "AI EMBEDDING"))
+                } else {
+                    Some((fuzzy_node, fuzzy_score, "FUZZY"))
+                }
+            },
+            (Some((fuzzy_node, fuzzy_score)), None) => Some((fuzzy_node, fuzzy_score, "FUZZY")),
+            (None, Some((ai_node, ai_score))) => Some((ai_node, ai_score, "AI EMBEDDING")),
+            (None, None) => None,
+        };
+
+        if let Some((node_id, confidence, match_type)) = final_match {
             if call_count < 10 {
-                info!("🎯 AI FUZZY MATCH: '{}' → known symbol with {:.1}% confidence", target_symbol, confidence * 100.0);
+                info!("🎯 {} MATCH: '{}' → known symbol with {:.1}% confidence", match_type, target_symbol, confidence * 100.0);
             }
             return Some(node_id);
         }
