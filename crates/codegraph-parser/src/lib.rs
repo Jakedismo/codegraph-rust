@@ -12,6 +12,7 @@ pub mod parallel_language_processor;
 pub mod speed_optimized_cache;
 pub mod differential_ast_processor;
 pub mod rust_advanced_extractor;
+pub mod real_ai_integration;
 pub mod parser;
 #[cfg(feature = "experimental")]
 pub mod semantic;
@@ -43,5 +44,6 @@ pub use parallel_language_processor::*;
 pub use speed_optimized_cache::*;
 pub use differential_ast_processor::*;
 pub use rust_advanced_extractor::*;
+pub use real_ai_integration::*;
 #[cfg(feature = "experimental")]
 pub use watcher::*;

@@ -1457,9 +1457,10 @@ This project is dual-licensed under MIT and Apache 2.0 licenses. See [LICENSE-MI
 - Vector search by [FAISS](https://github.com/facebookresearch/faiss)
 - Graph storage with [RocksDB](https://rocksdb.org/)
 - MCP Protocol by [Anthropic](https://modelcontextprotocol.io)
+- Ouroboros the ever evolving newer ending agent system
 
 ---
 
 <p align="center">
-  Made with ❤️ by the CodeGraph Team
+  Completely built with Ouroboros - The next-generation of coding agent systems
 </p>
