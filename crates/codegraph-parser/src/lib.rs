@@ -5,6 +5,7 @@ pub mod fast_io;
 pub mod file_collect;
 pub mod language;
 pub mod languages;
+pub mod ai_pattern_learning;
 pub mod parser;
 #[cfg(feature = "experimental")]
 pub mod semantic;
@@ -29,5 +30,6 @@ pub use parser::*;
 pub use semantic::*;
 pub use text_processor::*;
 pub use visitor::*;
+pub use ai_pattern_learning::*;
 #[cfg(feature = "experimental")]
 pub use watcher::*;

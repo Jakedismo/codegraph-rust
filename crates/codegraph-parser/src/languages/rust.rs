@@ -1,4 +1,5 @@
 use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeType, NodeId};
+use crate::ai_pattern_learning::{AIEnhancedExtractor, extract_with_ai_enhancement};
 use serde_json::json;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
@@ -16,6 +17,9 @@ use tree_sitter::{Node, Tree, TreeCursor};
 /// - Names are kept simple; qualified names and contexts are added as metadata.
 pub struct RustExtractor;
 
+/// REVOLUTIONARY: Implement AI-enhanced extraction for Rust
+impl AIEnhancedExtractor for RustExtractor {}
+
 #[derive(Default, Clone)]
 struct WalkContext {
     module_path: Vec<String>,
@@ -30,11 +34,21 @@ impl RustExtractor {
     }
 
     /// REVOLUTIONARY: Extract BOTH nodes and edges in single AST traversal for maximum speed
+    /// ENHANCED: Now includes AI pattern learning for improved accuracy
     pub fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
-        let mut collector = Collector::new(content, file_path);
-        let mut cursor = tree.walk();
-        collector.walk(&mut cursor, WalkContext::default());
-        collector.into_result()
+        // Traditional high-speed extraction
+        let base_result = {
+            let mut collector = Collector::new(content, file_path);
+            let mut cursor = tree.walk();
+            collector.walk(&mut cursor, WalkContext::default());
+            collector.into_result()
+        };
+
+        // REVOLUTIONARY: AI-enhanced extraction using learned patterns
+        extract_with_ai_enhancement(
+            || base_result.clone(),
+            Language::Rust,
+        )
     }
 }
 

@@ -4,7 +4,7 @@ use codegraph_graph::{CodeGraph, edge::CodeEdge};
 #[cfg(feature = "ai-enhanced")]
 use codegraph_ai::SemanticSearchEngine;
 use rayon::prelude::*;
-use codegraph_parser::TreeSitterParser;
+use codegraph_parser::{TreeSitterParser, get_ai_pattern_learner};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use regex::Regex;
 use std::ffi::OsStr;
