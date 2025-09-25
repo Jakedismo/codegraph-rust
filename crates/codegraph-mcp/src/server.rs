@@ -40,7 +40,7 @@ async fn dispatch(state: &ServerState, method: &str, params: Value) -> Result<Va
 }
 
 // Handlers
-pub async fn vector_search(_state: &ServerState, params: Value) -> Result<Value, String> {
+pub async fn vector_search(state: &ServerState, params: Value) -> Result<Value, String> {
     let query = params
         .get("query")
         .and_then(|v| v.as_str())
@@ -58,7 +58,9 @@ pub async fn vector_search(_state: &ServerState, params: Value) -> Result<Value,
     });
     let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
-    let res = bin_search_with_scores(query, paths, langs, limit)
+    // REVOLUTIONARY: Use shared database connection to prevent lock conflicts
+    let graph = state.graph.lock().await;
+    let res = bin_search_with_scores_shared(query, paths, langs, limit, &graph)
         .await
         .map_err(|e| e.to_string())?;
     Ok(res)
@@ -276,12 +278,13 @@ async fn tools_list(_state: &ServerState, _params: Value) -> Result<Value, Strin
     }
 }
 
-// Vector search helper; FAISS path if enabled, else fallback
-pub async fn bin_search_with_scores(
+// REVOLUTIONARY: Vector search using shared database connection (no lock conflicts)
+pub async fn bin_search_with_scores_shared(
     query: String,
     paths: Option<Vec<String>>,
     langs: Option<Vec<String>>,
     limit: usize,
+    graph: &codegraph_graph::CodeGraph,
 ) -> anyhow::Result<Value> {
     #[cfg(feature = "faiss")]
     {
@@ -394,24 +397,7 @@ pub async fn bin_search_with_scores(
         scored.dedup_by_key(|(id, _)| *id);
         let top: Vec<(codegraph_core::NodeId, f32)> = scored.into_iter().take(limit).collect();
 
-    let graph = {
-        use std::time::Duration;
-        let mut attempts = 0;
-        loop {
-            match codegraph_graph::CodeGraph::new_read_only() {
-                Ok(g) => break g,
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("LOCK") && attempts < 10 {
-                        tokio::time::sleep(Duration::from_millis(50)).await;
-                        attempts += 1;
-                        continue;
-                    }
-                    return Err(e.into());
-                }
-            }
-        }
-    };
+    // REVOLUTIONARY: Use shared database connection (no lock conflicts)
         let mut out = Vec::new();
         for (id, score) in top {
             if let Some(node) = graph.get_node(id).await? {
@@ -593,8 +579,9 @@ pub async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value
         .and_then(|v| v.as_u64())
         .unwrap_or(10) as usize;
 
-    // 1. Perform standard vector search using existing functionality
-    let search_results = bin_search_with_scores(query.clone(), None, None, max_results * 2)
+    // 1. Perform standard vector search using shared database connection
+    let graph = state.graph.lock().await;
+    let search_results = bin_search_with_scores_shared(query.clone(), None, None, max_results * 2, &graph)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -775,8 +762,9 @@ pub async fn build_comprehensive_context(
 ) -> Result<String, String> {
     let mut context = format!("COMPREHENSIVE CODEBASE ANALYSIS REQUEST\n\nQUERY: {}\n\n", query);
 
-    // Add basic search results
-    let search_results = bin_search_with_scores(query.to_string(), None, None, 15)
+    // Add basic search results using shared database connection
+    let graph = state.graph.lock().await;
+    let search_results = bin_search_with_scores_shared(query.to_string(), None, None, 15, &graph)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1006,9 +994,10 @@ pub async fn build_dependency_context(
         target_function, file_path
     );
 
-    // 1. Find functions that might call this target function
+    // 1. Find functions that might call this target function using shared database
+    let graph = state.graph.lock().await;
     let search_query = format!("{} call usage", target_function);
-    let usage_results = bin_search_with_scores(search_query, None, None, 20)
+    let usage_results = bin_search_with_scores_shared(search_query, None, None, 20, &graph)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1027,9 +1016,9 @@ pub async fn build_dependency_context(
         }
     }
 
-    // 2. Find functions this target might depend on
+    // 2. Find functions this target might depend on using same shared database
     let dependency_query = format!("{} dependencies imports", target_function);
-    let dep_results = bin_search_with_scores(dependency_query, None, None, 15)
+    let dep_results = bin_search_with_scores_shared(dependency_query, None, None, 15, &graph)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1228,7 +1217,8 @@ pub async fn pattern_detection(state: &ServerState, params: Value) -> Result<Val
         _ => "function class method", // General pattern detection
     };
 
-    let search_results = bin_search_with_scores(search_query.to_string(), None, None, max_results)
+    let graph = state.graph.lock().await;
+    let search_results = bin_search_with_scores_shared(search_query.to_string(), None, None, max_results, &graph)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1389,4 +1379,16 @@ fn identify_improvements(intelligence: &crate::pattern_detector::TeamIntelligenc
     }
 
     improvements
+}
+
+// COMPATIBILITY: Legacy function for benchmarks (creates separate connection)
+pub async fn bin_search_with_scores(
+    query: String,
+    paths: Option<Vec<String>>,
+    langs: Option<Vec<String>>,
+    limit: usize,
+) -> anyhow::Result<Value> {
+    // Create temporary graph for legacy compatibility
+    let graph = codegraph_graph::CodeGraph::new_read_only()?;
+    bin_search_with_scores_shared(query, paths, langs, limit, &graph).await
 }

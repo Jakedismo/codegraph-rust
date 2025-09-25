@@ -242,12 +242,14 @@ impl CodeGraphMCPServer {
 
         #[cfg(feature = "qwen-integration")]
         {
-            // 1. Perform vector search first
-            match crate::server::bin_search_with_scores(
+            // 1. Perform vector search first using shared database connection
+            let graph = self.graph.lock().await;
+            match crate::server::bin_search_with_scores_shared(
                 request.query.clone(),
                 None, // No path filtering for enhanced search
                 None, // No language filtering for enhanced search
-                request.limit * 2 // Get more results for AI analysis
+                request.limit * 2, // Get more results for AI analysis
+                &graph
             ).await {
                 Ok(search_results) => {
                     // 2. Use the existing graph database from the server
@@ -356,11 +358,13 @@ impl CodeGraphMCPServer {
     #[tool(description = "Fast vector similarity search to find code similar to your query. Returns raw search results without AI analysis (faster than enhanced_search). Use for quick code discovery. Required: query (what to find). Optional: paths (filter by directories), langs (filter by languages), limit (max results, default 10).")]
     async fn vector_search(&self, params: Parameters<VectorSearchRequest>) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        match crate::server::bin_search_with_scores(
+        let graph = self.graph.lock().await;
+        match crate::server::bin_search_with_scores_shared(
             request.query.clone(),
             request.paths,
             request.langs,
-            request.limit
+            request.limit,
+            &graph
         ).await {
             Ok(results) => Ok(CallToolResult::success(vec![Content::text(
                 serde_json::to_string_pretty(&results)

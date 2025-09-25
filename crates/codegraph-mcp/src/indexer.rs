@@ -277,9 +277,12 @@ impl ProjectIndexer {
             #[cfg(feature = "embeddings")]
             {
                 let embs = self.embedder.generate_embeddings(&chunk).await?;
+                info!("🔍 EMBEDDING DEBUG: Generated {} embeddings for {} nodes", embs.len(), chunk.len());
                 for (n, e) in chunk.iter_mut().zip(embs.into_iter()) {
                     n.embedding = Some(e);
                 }
+                let attached_count = chunk.iter().filter(|n| n.embedding.is_some()).count();
+                info!("🔍 EMBEDDING DEBUG: {}/{} nodes now have embeddings attached", attached_count, chunk.len());
             }
             #[cfg(not(feature = "embeddings"))]
             {
@@ -340,9 +343,13 @@ impl ProjectIndexer {
                 Ok(())
             };
 
-            // Global index
+            // Global index with DEBUGGING
             let mut global_vecs: Vec<f32> = Vec::new();
             let mut global_ids: Vec<codegraph_core::NodeId> = Vec::new();
+
+            // CRITICAL DEBUG: Check how many nodes actually have embeddings
+            let nodes_with_embeddings = nodes.iter().filter(|n| n.embedding.is_some()).count();
+            info!("🔍 CRITICAL DEBUG: {}/{} nodes have embeddings before FAISS creation", nodes_with_embeddings, nodes.len());
 
             // Path shard (first segment)
             let mut path_shards: HashMap<String, (Vec<f32>, Vec<codegraph_core::NodeId>)> = HashMap::new();
@@ -381,9 +388,18 @@ impl ProjectIndexer {
 
             let out_dir = Path::new(".codegraph");
             tokio::fs::create_dir_all(out_dir).await?;
-            // Global
-            write_shard(&global_vecs, &global_ids, &out_dir.join("faiss.index"))?;
-            tokio::fs::write(out_dir.join("faiss_ids.json"), serde_json::to_vec(&global_ids)?).await?;
+            // Global FAISS index creation with DEBUGGING
+            info!("🔍 CRITICAL DEBUG: Creating FAISS index with {} vectors ({} total f32 values)", global_ids.len(), global_vecs.len());
+
+            if global_vecs.is_empty() {
+                warn!("❌ CRITICAL ISSUE: global_vecs is empty - no FAISS index will be created!");
+                warn!("🔍 This means nodes don't have embeddings attached - check embedding generation!");
+            } else {
+                info!("✅ Creating FAISS index with {} nodes", global_ids.len());
+                write_shard(&global_vecs, &global_ids, &out_dir.join("faiss.index"))?;
+                tokio::fs::write(out_dir.join("faiss_ids.json"), serde_json::to_vec(&global_ids)?).await?;
+                info!("✅ FAISS index files created successfully");
+            }
 
             // Path shards
             let path_dir = out_dir.join("shards/path");
