@@ -522,7 +522,7 @@ LIBRARY_PATH="/opt/homebrew/opt/faiss/lib:$LIBRARY_PATH" \
 LD_LIBRARY_PATH="/opt/homebrew/opt/faiss/lib:$LD_LIBRARY_PATH" \
 MACOSX_DEPLOYMENT_TARGET=11.0 \
 cargo build --release -p codegraph-mcp \
-  --features "qwen-integration,faiss,embeddings,embeddings-ollama,codegraph-vector/onnx"
+  --features "qwen-integration,faiss,embeddings,embeddings-ollama,codegraph-vector/onnx,ai-enhanced"
 
 # Verify build
 ./target/release/codegraph --version
