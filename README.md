@@ -148,21 +148,21 @@ Platform: M3 Pro 32GB (optimal for Qwen2.5-Coder-14B)
 ```
 🎉 INDEXING COMPLETE - REVOLUTIONARY AI DEVELOPMENT PLATFORM READY!
 ┌─────────────────────────────────────────────────────────────────┐
-│ 📊 COMPREHENSIVE INDEXING STATISTICS                           │
+│ 📊 COMPREHENSIVE INDEXING STATISTICS                            │
 ├─────────────────────────────────────────────────────────────────┤
-│ 📄 Files processed: 1,505 (11 languages supported)            │
-│ 📝 Lines analyzed: 2,477,824 (TreeSitter AST parsing)         │
-│ 🌳 Semantic nodes: 538,972 (functions: 30,669, classes: 880)  │
-│ 🔗 Code relationships: 1,250,000+ extracted (calls, imports)  │
-│ 💾 Vector embeddings: 538,972 (384-dim ONNX)                 │
-│ 🎯 Dependency resolution: 87.3% success (1,091,250+ edges)    │
+│ 📄 Files processed: 1,505 (11 languages supported)              │
+│ 📝 Lines analyzed: 2,477,824 (TreeSitter AST parsing)           │
+│ 🌳 Semantic nodes: 538,972 (functions: 30,669, classes: 880)    │
+│ 🔗 Code relationships: 1,250,000+ extracted (calls, imports)    │
+│ 💾 Vector embeddings: 538,972 (384-dim ONNX)                    │
+│ 🎯 Dependency resolution: 87.3% success (1,091,250+ edges)      │
 ├─────────────────────────────────────────────────────────────────┤
-│ 🚀 CAPABILITIES UNLOCKED                                       │
-│ ✅ Vector similarity search across 538K+ embedded entities    │
-│ ✅ Graph traversal with 1M+ real dependency relationships     │
-│ ✅ AI-powered semantic analysis with Qwen2.5-Coder integration │
-│ ✅ Revolutionary edge processing with single-pass extraction   │
-│ ✅ Conversational AI: codebase_qa and code_documentation tools │
+│ 🚀 CAPABILITIES UNLOCKED                                        │
+│ ✅ Vector similarity search across 538K+ embedded entities      │
+│ ✅ Graph traversal with 1M+ real dependency relationships       │
+│ ✅ AI-powered semantic analysis with Qwen2.5-Coder integration  │
+│ ✅ Revolutionary edge processing with single-pass extraction    │
+│ ✅ Conversational AI: codebase_qa and code_documentation tools  │
 └─────────────────────────────────────────────────────────────────┘
 🚀 CodeGraph Universal AI Development Platform: FULLY OPERATIONAL
 ```
@@ -174,6 +174,10 @@ Platform: M3 Pro 32GB (optimal for Qwen2.5-Coder-14B)
 | **🧠 Ollama nomic-embed-code** | ~15-18h | **SOTA retrieval accuracy** | Production, smaller codebases |
 | **⚡ ONNX all-MiniLM-L6-v2** | **32m 22s** | Good general embeddings | **Large codebases, lunch-break indexing** |
 | **📚 LEANN** | ~4h | Next best thing I could find in Github | No incremental updates |
+
+### *Graph Generation Performance** - the codegraph-rust repository
+
+
 
 ### **CodeGraph Advantages**
 - ✅ **Incremental Updates**: Only reprocess changed files (LEANN can't do this)
