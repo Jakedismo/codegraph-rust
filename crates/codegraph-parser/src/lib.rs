@@ -8,6 +8,8 @@ pub mod languages;
 pub mod ai_pattern_learning;
 pub mod ai_context_enhancement;
 pub mod parallel_language_processor;
+// pub mod semantic_caching; // Temporarily disabled for speed optimization"
+pub mod speed_optimized_cache;
 pub mod parser;
 #[cfg(feature = "experimental")]
 pub mod semantic;
@@ -35,5 +37,7 @@ pub use visitor::*;
 pub use ai_pattern_learning::*;
 pub use ai_context_enhancement::*;
 pub use parallel_language_processor::*;
+// pub use semantic_caching::*; // Temporarily disabled for speed optimization"
+pub use speed_optimized_cache::*;
 #[cfg(feature = "experimental")]
 pub use watcher::*;
