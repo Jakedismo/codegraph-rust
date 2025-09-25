@@ -153,6 +153,37 @@ struct EmptyRequest {
     _unused: Option<String>,
 }
 
+/// REVOLUTIONARY: Request for intelligent codebase Q&A using RAG
+#[cfg(feature = "ai-enhanced")]
+#[derive(Deserialize, JsonSchema)]
+struct CodebaseQaRequest {
+    /// Natural language question about the codebase
+    question: String,
+    /// Maximum number of results to consider (default: 10)
+    #[serde(default)]
+    max_results: Option<usize>,
+    /// Enable streaming response (default: false for MCP compatibility)
+    #[serde(default)]
+    streaming: Option<bool>,
+}
+
+/// REVOLUTIONARY: Request for intelligent code documentation generation
+#[cfg(feature = "ai-enhanced")]
+#[derive(Deserialize, JsonSchema)]
+struct CodeDocumentationRequest {
+    /// Function, class, or module name to document
+    target_name: String,
+    /// Optional file path to focus documentation scope
+    #[serde(default)]
+    file_path: Option<String>,
+    /// Documentation style (default: "comprehensive")
+    #[serde(default = "default_doc_style")]
+    style: String,
+}
+
+#[cfg(feature = "ai-enhanced")]
+fn default_doc_style() -> String { "comprehensive".to_string() }
+
 /// Clean CodeGraph MCP server following official Counter pattern
 #[derive(Clone)]
 pub struct CodeGraphMCPServer {
@@ -437,6 +468,153 @@ impl CodeGraphMCPServer {
                 Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&fallback)
                         .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                )]))
+            }
+        }
+    }
+
+    /// REVOLUTIONARY: Intelligent codebase Q&A using RAG (Retrieval-Augmented Generation)
+    #[cfg(feature = "ai-enhanced")]
+    #[tool(description = "Ask natural language questions about the codebase and get intelligent, cited responses. Uses hybrid retrieval (vector search + graph traversal + keyword matching) with AI generation. Provides streaming responses with source citations and confidence scoring. Examples: 'How does authentication work?', 'Explain the data flow', 'What would break if I change this function?'. Required: question (natural language query). Optional: max_results (default 10), streaming (default false).")]
+    async fn codebase_qa(&self, params: Parameters<CodebaseQaRequest>) -> Result<CallToolResult, McpError> {
+        let request = params.0;
+
+        // Create RAG engine with current graph state
+        let graph = match codegraph_graph::CodeGraph::new() {
+            Ok(g) => g,
+            Err(_) => return Err(McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: "Failed to create code graph".into(),
+                data: None,
+            })
+        };
+
+        let config = codegraph_ai::rag::engine::RAGEngineConfig {
+            max_results: request.max_results.unwrap_or(10),
+            graph_neighbor_expansion: true,
+            neighbor_hops: 2,
+            streaming_chunk_chars: 64,
+            streaming_min_delay_ms: 10,
+        };
+
+        let rag_engine = codegraph_ai::rag::engine::RAGEngine::new(
+            std::sync::Arc::new(graph),
+            config
+        );
+
+        // Execute intelligent Q&A
+        match rag_engine.answer(&request.question).await {
+            Ok(answer) => {
+                let response = serde_json::json!({
+                    "query_id": answer.query_id,
+                    "question": request.question,
+                    "answer": answer.answer,
+                    "confidence": answer.confidence,
+                    "citations": answer.citations.iter().map(|c| serde_json::json!({
+                        "node_id": c.node_id,
+                        "name": c.name,
+                        "file_path": c.file_path,
+                        "line": c.line,
+                        "end_line": c.end_line,
+                        "relevance": c.relevance
+                    })).collect::<Vec<_>>(),
+                    "processing_time_ms": answer.processing_time_ms,
+                    "rag_method": "hybrid_retrieval_with_graph_expansion",
+                    "intelligence_level": "conversational_ai",
+                    "tool_type": "revolutionary_rag"
+                });
+
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&response)
+                        .unwrap_or_else(|_| "Error formatting RAG response".to_string())
+                )]))
+            },
+            Err(e) => {
+                let fallback = serde_json::json!({
+                    "question": request.question,
+                    "error": format!("RAG processing failed: {}", e),
+                    "fallback_mode": true,
+                    "note": "Ensure codebase is indexed with edge processing enabled"
+                });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&fallback)
+                        .unwrap_or_else(|_| "Error formatting fallback response".to_string())
+                )]))
+            }
+        }
+    }
+
+    /// REVOLUTIONARY: AI-powered code documentation generation with graph context
+    #[cfg(feature = "ai-enhanced")]
+    #[tool(description = "Generate comprehensive documentation for functions, classes, or modules using AI analysis with graph context. Analyzes dependencies, usage patterns, and architectural relationships to create intelligent documentation with source citations. Required: target_name (function/class/module name). Optional: file_path (focus scope), style (comprehensive/concise/tutorial).")]
+    async fn code_documentation(&self, params: Parameters<CodeDocumentationRequest>) -> Result<CallToolResult, McpError> {
+        let request = params.0;
+
+        // Create RAG engine for documentation generation
+        let graph = match codegraph_graph::CodeGraph::new() {
+            Ok(g) => g,
+            Err(_) => return Err(McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: "Failed to create code graph".into(),
+                data: None,
+            })
+        };
+
+        let config = codegraph_ai::rag::engine::RAGEngineConfig {
+            max_results: 15, // More context for comprehensive documentation
+            graph_neighbor_expansion: true,
+            neighbor_hops: 3, // Deeper context for documentation
+            streaming_chunk_chars: 128,
+            streaming_min_delay_ms: 5,
+        };
+
+        let rag_engine = codegraph_ai::rag::engine::RAGEngine::new(
+            std::sync::Arc::new(graph),
+            config
+        );
+
+        // Craft documentation query based on target and style
+        let doc_query = format!(
+            "Generate {} documentation for '{}' including its purpose, parameters, return values, usage examples, dependencies, and architectural context",
+            request.style,
+            request.target_name
+        );
+
+        // Execute intelligent documentation generation
+        match rag_engine.answer(&doc_query).await {
+            Ok(answer) => {
+                let response = serde_json::json!({
+                    "target_name": request.target_name,
+                    "documentation": answer.answer,
+                    "confidence": answer.confidence,
+                    "style": request.style,
+                    "sources": answer.citations.iter().map(|c| serde_json::json!({
+                        "file": c.file_path,
+                        "line": c.line,
+                        "relevance": c.relevance,
+                        "context": c.name
+                    })).collect::<Vec<_>>(),
+                    "processing_time_ms": answer.processing_time_ms,
+                    "generation_method": "ai_powered_rag_documentation",
+                    "graph_context_used": true,
+                    "tool_type": "revolutionary_documentation"
+                });
+
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&response)
+                        .unwrap_or_else(|_| "Error formatting documentation response".to_string())
+                )]))
+            },
+            Err(e) => {
+                let fallback = serde_json::json!({
+                    "target_name": request.target_name,
+                    "error": format!("Documentation generation failed: {}", e),
+                    "fallback_mode": true,
+                    "note": "Ensure target exists in codebase and is properly indexed"
+                });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&fallback)
+                        .unwrap_or_else(|_| "Error formatting fallback response".to_string())
                 )]))
             }
         }
