@@ -208,6 +208,9 @@ codegraph-ai = { path = "crates/codegraph-ai" }
 # Development dependencies
 
 
+[patch.crates-io]
+rmcp = { path = "vendor/rmcp" }
+
 [profile.release]
 # Performance-oriented release (kept as-is for general builds)
 opt-level = 3
