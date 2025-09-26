@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, RwLock, Mutex};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
@@ -77,7 +77,7 @@ pub struct StreamResponseMeta {
 /// RAGEngine orchestrates hybrid retrieval (graph + vector), ranking, prompting, and streaming.
 pub struct RAGEngine {
     config: RAGEngineConfig,
-    graph: Arc<CodeGraph>,
+    graph: Arc<Mutex<CodeGraph>>,
     query_processor: Arc<QueryProcessor>,
     context_retriever: Arc<RwLock<ContextRetriever>>, // uses in-memory cache of candidate nodes
     ranker: Arc<RwLock<ResultRanker>>,
@@ -85,7 +85,7 @@ pub struct RAGEngine {
 }
 
 impl RAGEngine {
-    pub fn new(graph: Arc<CodeGraph>, config: RAGEngineConfig) -> Self {
+    pub fn new(graph: Arc<Mutex<CodeGraph>>, config: RAGEngineConfig) -> Self {
         Self {
             config,
             graph,
@@ -121,7 +121,8 @@ impl RAGEngine {
             let mut fetched: Vec<CodeNode> = Vec::new();
             // Keep it tight for perf: try top 5 keywords
             for kw in keywords.iter().take(5) {
-                match self.graph.find_nodes_by_name(kw).await {
+                let graph_guard = self.graph.lock().await;
+                match graph_guard.find_nodes_by_name(kw).await {
                     Ok(nodes) => {
                         fetched.extend(nodes);
                     }
@@ -157,10 +158,11 @@ impl RAGEngine {
                 if self.config.neighbor_hops == 0 {
                     continue;
                 }
-                match self.graph.get_neighbors(seed).await {
+                let graph_guard = self.graph.lock().await;
+                match graph_guard.get_neighbors(seed).await {
                     Ok(neighbors) => {
                         for nb in neighbors.into_iter().take(8) {
-                            if let Ok(Some(node)) = self.graph.get_node(nb).await {
+                            if let Ok(Some(node)) = graph_guard.get_node(nb).await {
                                 // Lightweight context snippet
                                 let snippet = node
                                     .content

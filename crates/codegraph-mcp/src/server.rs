@@ -393,11 +393,20 @@ pub async fn bin_search_with_scores_shared(
                 }
             }
         }
+
+        // CRITICAL FIX: Also search the main comprehensive FAISS index
+        // The main index contains all embeddings and provides the most complete results
+        let main_index_path = Path::new(".codegraph/faiss.index");
+        let main_ids_path = Path::new(".codegraph/faiss_ids.json");
+        if main_index_path.exists() && main_ids_path.exists() {
+            let _ = search_index(&main_index_path, &main_ids_path, limit * 3);
+        }
+
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.dedup_by_key(|(id, _)| *id);
         let top: Vec<(codegraph_core::NodeId, f32)> = scored.into_iter().take(limit).collect();
 
-    // REVOLUTIONARY: Use shared database connection (no lock conflicts)
+    // Use the shared graph parameter passed to this function (fixes lock conflict)
         let mut out = Vec::new();
         for (id, score) in top {
             if let Some(node) = graph.get_node(id).await? {

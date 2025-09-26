@@ -48,7 +48,7 @@ bytes = { workspace = true }
 
 # Optional arena allocator and zero-copy archiving
 bumpalo = "3.15"
-rkyv = { version = "0.7", features = ["validation"] }
+rkyv = { version = "0.7.45", features = ["validation"] }
 bytecheck = "0.8"
 faiss.workspace = true
 
