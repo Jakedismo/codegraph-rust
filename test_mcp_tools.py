@@ -61,11 +61,11 @@ TESTS = [
 WAIT_OVERRIDE = {
     101: 4.0,
     102: 4.0,
-    103: 12.0,
-    104: 15.0,
+    103: 20.0,
+    104: 25.0,
     105: 6.0,
-    106: 12.0,
-    107: 12.0,
+    106: 20.0,
+    107: 25.0,
 }
 
 def drain(proc, seconds=2.0):
@@ -218,16 +218,16 @@ def run():
                 }
             }
 
-        wait_time = WAIT_OVERRIDE.get(payload["id"], 3.0)
-        out = send(proc, payload, wait=wait_time)
+        wait_time = WAIT_OVERRIDE.get(payload["id"], 5.0)
+        out = send(proc, payload, wait=wait_time) + drain(proc, wait_time)
 
-        if not out.strip():
-            # Some tools (especially ones calling local LLMs) can take longer than
-            # our initial wait window. Give them more time and capture any output.
-            extra_wait = max(5.0, wait_time)
-            extra = drain(proc, extra_wait)
-            if extra:
-                out += extra
+        # If the tool still hasn't produced output (possible for long-running AI calls),
+        # keep waiting in generous chunks until we see something or the process exits.
+        while not out.strip():
+            extra = drain(proc, wait_time)
+            if not extra.strip():
+                break
+            out += extra
 
         if payload["id"] == 102:
             vec2_output = out
