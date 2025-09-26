@@ -1,5 +1,7 @@
-use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeType, NodeId};
 use crate::real_ai_integration::extract_with_real_ai_enhancement;
+use codegraph_core::{
+    CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
@@ -45,11 +47,7 @@ impl RustExtractor {
         };
 
         // REVOLUTIONARY: AI-enhanced extraction using learned patterns
-        extract_with_real_ai_enhancement(
-            || base_result,
-            Language::Rust,
-                        file_path,
-        )
+        extract_with_real_ai_enhancement(|| base_result, Language::Rust, file_path)
     }
 }
 
@@ -405,7 +403,8 @@ impl<'a> Collector<'a> {
             // Method calls (method.function() syntax)
             "method_call_expression" => {
                 if let Some(current_fn) = self.current_node_id {
-                    if let Some(method_name) = self.child_text_by_kinds(node, &["field_identifier"]) {
+                    if let Some(method_name) = self.child_text_by_kinds(node, &["field_identifier"])
+                    {
                         let edge = EdgeRelationship {
                             from: current_fn,
                             to: method_name.clone(),
@@ -572,7 +571,10 @@ impl<'a> Collector<'a> {
         }
 
         // Fallback: extract any identifier from the call
-        self.child_text_by_kinds(*node, &["identifier", "scoped_identifier", "field_identifier"])
+        self.child_text_by_kinds(
+            *node,
+            &["identifier", "scoped_identifier", "field_identifier"],
+        )
     }
 }
 

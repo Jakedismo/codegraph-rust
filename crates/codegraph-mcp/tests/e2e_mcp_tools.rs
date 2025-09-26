@@ -2,7 +2,6 @@
 ///
 /// Tests all 8 essential MCP tools against the indexed Rust codebase
 /// using the official rmcp client library for authentic protocol testing.
-
 use anyhow::Result;
 use rmcp::{model::CallToolRequestParam, service::ServiceExt, transport::TokioChildProcess};
 use serde_json::json;
@@ -30,7 +29,10 @@ async fn start_mcp_server() -> Result<impl ServiceExt> {
     let mut cmd = Command::new("codegraph");
     cmd.args(["start", "stdio"])
         .env("RUST_LOG", "error") // Minimize log noise during testing
-        .env("CODEGRAPH_MODEL", "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M");
+        .env(
+            "CODEGRAPH_MODEL",
+            "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M",
+        );
 
     let service = ().serve(TokioChildProcess::new(cmd)?).await?;
     Ok(service)
@@ -53,14 +55,18 @@ async fn test_tool_discovery() -> Result<()> {
         "vector_search",
         "graph_neighbors",
         "graph_traverse",
-        "performance_metrics"
+        "performance_metrics",
     ];
 
     println!("📋 Discovered {} tools", tools.tools.len());
 
     for expected_tool in &expected_tools {
         let found = tools.tools.iter().any(|tool| tool.name == *expected_tool);
-        assert!(found, "Tool '{}' not found in discovered tools", expected_tool);
+        assert!(
+            found,
+            "Tool '{}' not found in discovered tools",
+            expected_tool
+        );
         println!("✅ Tool '{}' discovered", expected_tool);
     }
 
@@ -85,7 +91,10 @@ async fn test_enhanced_search() -> Result<()> {
 
     // Test searching for common Rust patterns in this codebase
     let test_cases = vec![
-        ("async function", "Should find async functions in the codebase"),
+        (
+            "async function",
+            "Should find async functions in the codebase",
+        ),
         ("trait implementation", "Should find trait impls"),
         ("error handling", "Should find Result and Error patterns"),
         ("MCP tool", "Should find tool definitions"),
@@ -98,15 +107,25 @@ async fn test_enhanced_search() -> Result<()> {
             config.tool_timeout,
             service.call_tool(CallToolRequestParam {
                 name: "enhanced_search".into(),
-                arguments: Some(json!({
-                    "query": query,
-                    "limit": 5
-                }).as_object().unwrap().clone()),
-            })
-        ).await??;
+                arguments: Some(
+                    json!({
+                        "query": query,
+                        "limit": 5
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                ),
+            }),
+        )
+        .await??;
 
         // Verify we got a response
-        assert!(!result.content.is_empty(), "No content returned for query: {}", query);
+        assert!(
+            !result.content.is_empty(),
+            "No content returned for query: {}",
+            query
+        );
 
         // Check that response contains relevant information
         let response_text = if let Some(content) = result.content.first() {
@@ -118,9 +137,15 @@ async fn test_enhanced_search() -> Result<()> {
             panic!("No content in response");
         };
 
-        assert!(response_text.contains("CodeGraph"), "Response should mention CodeGraph");
-        assert!(response_text.contains(query) || response_text.to_lowercase().contains(&query.to_lowercase()),
-               "Response should reference the query");
+        assert!(
+            response_text.contains("CodeGraph"),
+            "Response should mention CodeGraph"
+        );
+        assert!(
+            response_text.contains(query)
+                || response_text.to_lowercase().contains(&query.to_lowercase()),
+            "Response should reference the query"
+        );
 
         println!("✅ Query '{}' returned valid response", query);
     }
@@ -139,10 +164,22 @@ async fn test_vector_search() -> Result<()> {
 
     // Test vector search with different parameters
     let test_cases = vec![
-        (json!({"query": "async fn", "limit": 3}), "Basic async function search"),
-        (json!({"query": "struct", "limit": 5}), "Struct definitions search"),
-        (json!({"query": "impl", "langs": ["rust"], "limit": 4}), "Implementation blocks with language filter"),
-        (json!({"query": "error", "paths": ["crates/"], "limit": 2}), "Error handling with path filter"),
+        (
+            json!({"query": "async fn", "limit": 3}),
+            "Basic async function search",
+        ),
+        (
+            json!({"query": "struct", "limit": 5}),
+            "Struct definitions search",
+        ),
+        (
+            json!({"query": "impl", "langs": ["rust"], "limit": 4}),
+            "Implementation blocks with language filter",
+        ),
+        (
+            json!({"query": "error", "paths": ["crates/"], "limit": 2}),
+            "Error handling with path filter",
+        ),
     ];
 
     for (params, description) in test_cases {
@@ -153,10 +190,14 @@ async fn test_vector_search() -> Result<()> {
             service.call_tool(CallToolRequestParam {
                 name: "vector_search".into(),
                 arguments: params.as_object().cloned(),
-            })
-        ).await??;
+            }),
+        )
+        .await??;
 
-        assert!(!result.content.is_empty(), "No content returned for vector search");
+        assert!(
+            !result.content.is_empty(),
+            "No content returned for vector search"
+        );
 
         // Verify JSON response structure
         let response_text = if let Some(content) = result.content.first() {
@@ -186,19 +227,28 @@ async fn test_semantic_intelligence() -> Result<()> {
 
     // Test comprehensive analysis queries relevant to this Rust codebase
     let test_cases = vec![
-        (json!({
-            "query": "Explain the MCP server architecture",
-            "task_type": "architectural_analysis",
-            "max_context_tokens": 40000
-        }), "MCP server architecture analysis"),
-        (json!({
-            "query": "How does the semantic analysis work?",
-            "task_type": "semantic_search"
-        }), "Semantic analysis explanation"),
-        (json!({
-            "query": "Describe the parser pipeline",
-            "max_context_tokens": 60000
-        }), "Parser pipeline analysis"),
+        (
+            json!({
+                "query": "Explain the MCP server architecture",
+                "task_type": "architectural_analysis",
+                "max_context_tokens": 40000
+            }),
+            "MCP server architecture analysis",
+        ),
+        (
+            json!({
+                "query": "How does the semantic analysis work?",
+                "task_type": "semantic_search"
+            }),
+            "Semantic analysis explanation",
+        ),
+        (
+            json!({
+                "query": "Describe the parser pipeline",
+                "max_context_tokens": 60000
+            }),
+            "Parser pipeline analysis",
+        ),
     ];
 
     for (params, description) in test_cases {
@@ -209,10 +259,14 @@ async fn test_semantic_intelligence() -> Result<()> {
             service.call_tool(CallToolRequestParam {
                 name: "semantic_intelligence".into(),
                 arguments: params.as_object().cloned(),
-            })
-        ).await??;
+            }),
+        )
+        .await??;
 
-        assert!(!result.content.is_empty(), "No content returned for semantic intelligence");
+        assert!(
+            !result.content.is_empty(),
+            "No content returned for semantic intelligence"
+        );
 
         let response_text = if let Some(content) = result.content.first() {
             content.text.as_ref().expect("Expected text content")
@@ -221,9 +275,16 @@ async fn test_semantic_intelligence() -> Result<()> {
         };
 
         // Verify response quality
-        assert!(response_text.len() > 100, "Response too short for semantic intelligence");
-        assert!(response_text.contains("Qwen") || response_text.contains("Analysis") ||
-               response_text.contains("CodeGraph"), "Response should be relevant to the platform");
+        assert!(
+            response_text.len() > 100,
+            "Response too short for semantic intelligence"
+        );
+        assert!(
+            response_text.contains("Qwen")
+                || response_text.contains("Analysis")
+                || response_text.contains("CodeGraph"),
+            "Response should be relevant to the platform"
+        );
 
         println!("✅ Semantic intelligence test passed: {}", description);
     }
@@ -242,16 +303,22 @@ async fn test_impact_analysis() -> Result<()> {
 
     // Test impact analysis on real functions in this codebase
     let test_cases = vec![
-        (json!({
-            "target_function": "CodeGraphMCPServer",
-            "file_path": "crates/codegraph-mcp/src/official_server.rs",
-            "change_type": "modify"
-        }), "MCP server structure impact"),
-        (json!({
-            "target_function": "enhanced_search",
-            "file_path": "crates/codegraph-mcp/src/official_server.rs",
-            "change_type": "refactor"
-        }), "Tool function refactor impact"),
+        (
+            json!({
+                "target_function": "CodeGraphMCPServer",
+                "file_path": "crates/codegraph-mcp/src/official_server.rs",
+                "change_type": "modify"
+            }),
+            "MCP server structure impact",
+        ),
+        (
+            json!({
+                "target_function": "enhanced_search",
+                "file_path": "crates/codegraph-mcp/src/official_server.rs",
+                "change_type": "refactor"
+            }),
+            "Tool function refactor impact",
+        ),
     ];
 
     for (params, description) in test_cases {
@@ -262,10 +329,14 @@ async fn test_impact_analysis() -> Result<()> {
             service.call_tool(CallToolRequestParam {
                 name: "impact_analysis".into(),
                 arguments: params.as_object().cloned(),
-            })
-        ).await??;
+            }),
+        )
+        .await??;
 
-        assert!(!result.content.is_empty(), "No content returned for impact analysis");
+        assert!(
+            !result.content.is_empty(),
+            "No content returned for impact analysis"
+        );
 
         let response_text = if let Some(content) = result.content.first() {
             content.text.as_ref().expect("Expected text content")
@@ -275,8 +346,11 @@ async fn test_impact_analysis() -> Result<()> {
 
         // Verify response mentions the target function
         let target_function = params["target_function"].as_str().unwrap();
-        assert!(response_text.contains(target_function),
-               "Response should mention target function: {}", target_function);
+        assert!(
+            response_text.contains(target_function),
+            "Response should mention target function: {}",
+            target_function
+        );
 
         println!("✅ Impact analysis test passed: {}", description);
     }
@@ -299,10 +373,14 @@ async fn test_pattern_detection() -> Result<()> {
         service.call_tool(CallToolRequestParam {
             name: "pattern_detection".into(),
             arguments: None,
-        })
-    ).await??;
+        }),
+    )
+    .await??;
 
-    assert!(!result.content.is_empty(), "No content returned for pattern detection");
+    assert!(
+        !result.content.is_empty(),
+        "No content returned for pattern detection"
+    );
 
     let response_text = match &result.content[0] {
         content if content.text.is_some() => content.text.as_ref().unwrap(),
@@ -310,8 +388,10 @@ async fn test_pattern_detection() -> Result<()> {
     };
 
     // Verify response contains pattern analysis
-    assert!(response_text.contains("Pattern") || response_text.contains("Convention"),
-           "Response should mention patterns or conventions");
+    assert!(
+        response_text.contains("Pattern") || response_text.contains("Convention"),
+        "Response should mention patterns or conventions"
+    );
 
     service.cancel().await?;
     println!("🎉 Pattern detection test passed!");
@@ -331,10 +411,14 @@ async fn test_performance_metrics() -> Result<()> {
         service.call_tool(CallToolRequestParam {
             name: "performance_metrics".into(),
             arguments: None,
-        })
-    ).await??;
+        }),
+    )
+    .await??;
 
-    assert!(!result.content.is_empty(), "No content returned for performance metrics");
+    assert!(
+        !result.content.is_empty(),
+        "No content returned for performance metrics"
+    );
 
     let response_text = match &result.content[0] {
         content if content.text.is_some() => content.text.as_ref().unwrap(),
@@ -342,8 +426,10 @@ async fn test_performance_metrics() -> Result<()> {
     };
 
     // Verify response contains performance information
-    assert!(response_text.contains("Performance") || response_text.contains("Metrics"),
-           "Response should mention performance or metrics");
+    assert!(
+        response_text.contains("Performance") || response_text.contains("Metrics"),
+        "Response should mention performance or metrics"
+    );
 
     service.cancel().await?;
     println!("🎉 Performance metrics test passed!");
@@ -363,12 +449,18 @@ async fn test_workflow_integration() -> Result<()> {
         config.tool_timeout,
         service.call_tool(CallToolRequestParam {
             name: "vector_search".into(),
-            arguments: Some(json!({
-                "query": "pub struct",
-                "limit": 3
-            }).as_object().unwrap().clone()),
-        })
-    ).await??;
+            arguments: Some(
+                json!({
+                    "query": "pub struct",
+                    "limit": 3
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        }),
+    )
+    .await??;
 
     let search_response = match &search_result.content[0] {
         content if content.text.is_some() => content.text.as_ref().unwrap(),
@@ -376,7 +468,10 @@ async fn test_workflow_integration() -> Result<()> {
     };
 
     // Parse response to extract potential UUIDs (this is a demo of the workflow)
-    println!("✅ Vector search completed, response length: {}", search_response.len());
+    println!(
+        "✅ Vector search completed, response length: {}",
+        search_response.len()
+    );
 
     // Step 2: Test enhanced_search with AI analysis
     println!("🧪 Step 2: Enhanced search with AI analysis");
@@ -384,19 +479,28 @@ async fn test_workflow_integration() -> Result<()> {
         config.tool_timeout,
         service.call_tool(CallToolRequestParam {
             name: "enhanced_search".into(),
-            arguments: Some(json!({
-                "query": "trait implementation patterns",
-                "limit": 2
-            }).as_object().unwrap().clone()),
-        })
-    ).await??;
+            arguments: Some(
+                json!({
+                    "query": "trait implementation patterns",
+                    "limit": 2
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        }),
+    )
+    .await??;
 
     let enhanced_response = match &enhanced_result.content[0] {
         content if content.text.is_some() => content.text.as_ref().unwrap(),
         _ => panic!("Expected text content"),
     };
 
-    println!("✅ Enhanced search completed, response length: {}", enhanced_response.len());
+    println!(
+        "✅ Enhanced search completed, response length: {}",
+        enhanced_response.len()
+    );
 
     // Step 3: Test semantic intelligence for architectural understanding
     println!("🧪 Step 3: Architectural analysis with semantic_intelligence");
@@ -404,19 +508,28 @@ async fn test_workflow_integration() -> Result<()> {
         config.tool_timeout,
         service.call_tool(CallToolRequestParam {
             name: "semantic_intelligence".into(),
-            arguments: Some(json!({
-                "query": "How are the MCP tools organized in the codebase?",
-                "task_type": "architectural_analysis"
-            }).as_object().unwrap().clone()),
-        })
-    ).await??;
+            arguments: Some(
+                json!({
+                    "query": "How are the MCP tools organized in the codebase?",
+                    "task_type": "architectural_analysis"
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        }),
+    )
+    .await??;
 
     let intel_response = match &intel_result.content[0] {
         content if content.text.is_some() => content.text.as_ref().unwrap(),
         _ => panic!("Expected text content"),
     };
 
-    println!("✅ Semantic intelligence completed, response length: {}", intel_response.len());
+    println!(
+        "✅ Semantic intelligence completed, response length: {}",
+        intel_response.len()
+    );
 
     service.cancel().await?;
     println!("🎉 Workflow integration test passed!");
@@ -432,13 +545,20 @@ async fn test_error_conditions() -> Result<()> {
 
     // Test 1: Invalid parameters
     println!("🧪 Testing invalid parameters...");
-    let result = service.call_tool(CallToolRequestParam {
-        name: "enhanced_search".into(),
-        arguments: Some(json!({
-            "invalid_param": "test"
-            // Missing required "query" parameter
-        }).as_object().unwrap().clone()),
-    }).await;
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "enhanced_search".into(),
+            arguments: Some(
+                json!({
+                    "invalid_param": "test"
+                    // Missing required "query" parameter
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        })
+        .await;
 
     // Should handle gracefully (either error or empty response)
     match result {
@@ -446,29 +566,41 @@ async fn test_error_conditions() -> Result<()> {
             println!("✅ Tool handled invalid parameters gracefully");
         }
         Err(e) => {
-            println!("✅ Tool properly returned error for invalid parameters: {}", e);
+            println!(
+                "✅ Tool properly returned error for invalid parameters: {}",
+                e
+            );
         }
     }
 
     // Test 2: Non-existent tool
     println!("🧪 Testing non-existent tool...");
-    let result = service.call_tool(CallToolRequestParam {
-        name: "non_existent_tool".into(),
-        arguments: None,
-    }).await;
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "non_existent_tool".into(),
+            arguments: None,
+        })
+        .await;
 
     assert!(result.is_err(), "Should error for non-existent tool");
     println!("✅ Properly rejected non-existent tool");
 
     // Test 3: Invalid graph node UUID (when we add graph tools)
     println!("🧪 Testing invalid UUID for graph tools...");
-    let result = service.call_tool(CallToolRequestParam {
-        name: "graph_neighbors".into(),
-        arguments: Some(json!({
-            "node": "invalid-uuid-format",
-            "limit": 5
-        }).as_object().unwrap().clone()),
-    }).await;
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "graph_neighbors".into(),
+            arguments: Some(
+                json!({
+                    "node": "invalid-uuid-format",
+                    "limit": 5
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        })
+        .await;
 
     // Should handle invalid UUID gracefully
     match result {
@@ -479,12 +611,17 @@ async fn test_error_conditions() -> Result<()> {
                 panic!("No content in response");
             };
             // Should mention the error or provide guidance
-            assert!(response_text.contains("UUID") || response_text.contains("invalid"),
-                   "Should provide helpful error message");
+            assert!(
+                response_text.contains("UUID") || response_text.contains("invalid"),
+                "Should provide helpful error message"
+            );
             println!("✅ Graph neighbors handled invalid UUID gracefully");
         }
         Err(e) => {
-            println!("✅ Graph neighbors properly returned error for invalid UUID: {}", e);
+            println!(
+                "✅ Graph neighbors properly returned error for invalid UUID: {}",
+                e
+            );
         }
     }
 
@@ -517,14 +654,24 @@ async fn test_rust_specific_patterns() -> Result<()> {
             config.tool_timeout,
             service.call_tool(CallToolRequestParam {
                 name: "enhanced_search".into(),
-                arguments: Some(json!({
-                    "query": query,
-                    "limit": 3
-                }).as_object().unwrap().clone()),
-            })
-        ).await??;
+                arguments: Some(
+                    json!({
+                        "query": query,
+                        "limit": 3
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                ),
+            }),
+        )
+        .await??;
 
-        assert!(!result.content.is_empty(), "No content returned for Rust query: {}", query);
+        assert!(
+            !result.content.is_empty(),
+            "No content returned for Rust query: {}",
+            query
+        );
         println!("✅ Rust pattern search successful: {}", query);
     }
 
@@ -542,14 +689,29 @@ async fn test_comprehensive_tool_suite() -> Result<()> {
 
     // Test each tool with appropriate parameters
     let tool_tests = vec![
-        ("enhanced_search", json!({"query": "semantic analysis", "limit": 2})),
+        (
+            "enhanced_search",
+            json!({"query": "semantic analysis", "limit": 2}),
+        ),
         ("vector_search", json!({"query": "parser", "limit": 3})),
         ("pattern_detection", json!({})),
         ("performance_metrics", json!({})),
-        ("semantic_intelligence", json!({"query": "codebase architecture overview"})),
-        ("impact_analysis", json!({"target_function": "extract", "file_path": "crates/codegraph-parser/src/languages/rust.rs"})),
-        ("graph_neighbors", json!({"node": "550e8400-e29b-41d4-a716-446655440000", "limit": 5})), // Test UUID
-        ("graph_traverse", json!({"start": "550e8400-e29b-41d4-a716-446655440000", "depth": 2})), // Test UUID
+        (
+            "semantic_intelligence",
+            json!({"query": "codebase architecture overview"}),
+        ),
+        (
+            "impact_analysis",
+            json!({"target_function": "extract", "file_path": "crates/codegraph-parser/src/languages/rust.rs"}),
+        ),
+        (
+            "graph_neighbors",
+            json!({"node": "550e8400-e29b-41d4-a716-446655440000", "limit": 5}),
+        ), // Test UUID
+        (
+            "graph_traverse",
+            json!({"start": "550e8400-e29b-41d4-a716-446655440000", "depth": 2}),
+        ), // Test UUID
     ];
 
     let mut passed_tools = 0;
@@ -562,19 +724,31 @@ async fn test_comprehensive_tool_suite() -> Result<()> {
             config.tool_timeout,
             service.call_tool(CallToolRequestParam {
                 name: tool_name.into(),
-                arguments: if params.as_object().unwrap().is_empty() { None } else { params.as_object().cloned() },
-            })
-        ).await;
+                arguments: if params.as_object().unwrap().is_empty() {
+                    None
+                } else {
+                    params.as_object().cloned()
+                },
+            }),
+        )
+        .await;
 
         match result {
             Ok(Ok(response)) => {
-                assert!(!response.content.is_empty(), "Tool {} returned empty content", tool_name);
+                assert!(
+                    !response.content.is_empty(),
+                    "Tool {} returned empty content",
+                    tool_name
+                );
                 println!("✅ Tool '{}' working correctly", tool_name);
                 passed_tools += 1;
             }
             Ok(Err(e)) => {
                 // Some tools might return errors for test data (like invalid UUIDs) - that's expected
-                println!("⚠️ Tool '{}' returned error (expected for some test data): {}", tool_name, e);
+                println!(
+                    "⚠️ Tool '{}' returned error (expected for some test data): {}",
+                    tool_name, e
+                );
                 passed_tools += 1; // Still counts as working if it handles errors properly
             }
             Err(e) => {
@@ -585,8 +759,14 @@ async fn test_comprehensive_tool_suite() -> Result<()> {
 
     service.cancel().await?;
 
-    println!("📊 Test Results: {}/{} tools passed", passed_tools, total_tools);
-    assert!(passed_tools >= 6, "At least 6/8 tools should pass (some may have expected errors with test data)");
+    println!(
+        "📊 Test Results: {}/{} tools passed",
+        passed_tools, total_tools
+    );
+    assert!(
+        passed_tools >= 6,
+        "At least 6/8 tools should pass (some may have expected errors with test data)"
+    );
 
     println!("🎉 Comprehensive tool suite test passed!");
     Ok(())
@@ -622,20 +802,29 @@ async fn test_performance_benchmarks() -> Result<()> {
     // Test response times for different tools
     let start_time = std::time::Instant::now();
 
-    let _result = service.call_tool(CallToolRequestParam {
-        name: "vector_search".into(),
-        arguments: Some(json!({
-            "query": "quick test",
-            "limit": 1
-        }).as_object().unwrap().clone()),
-    }).await?;
+    let _result = service
+        .call_tool(CallToolRequestParam {
+            name: "vector_search".into(),
+            arguments: Some(
+                json!({
+                    "query": "quick test",
+                    "limit": 1
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        })
+        .await?;
 
     let vector_search_time = start_time.elapsed();
     println!("⏱️ Vector search time: {:?}", vector_search_time);
 
     // Vector search should be fast (< 5 seconds for indexed data)
-    assert!(vector_search_time < Duration::from_secs(5),
-           "Vector search should be fast with indexed data");
+    assert!(
+        vector_search_time < Duration::from_secs(5),
+        "Vector search should be fast with indexed data"
+    );
 
     service.cancel().await?;
     println!("🎉 Performance benchmark test passed!");

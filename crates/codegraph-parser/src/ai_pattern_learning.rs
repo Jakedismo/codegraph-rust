@@ -5,11 +5,10 @@
 ///
 /// Core Principle: Use the 2,534+ successful AI matches to identify patterns that
 /// improve initial symbol extraction, reducing the need for expensive AI resolution.
-
-use codegraph_core::{CodeNode, EdgeRelationship, NodeId, Language, ExtractionResult};
+use codegraph_core::{CodeNode, EdgeRelationship, ExtractionResult, Language, NodeId};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
-use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 /// Learned pattern from successful AI semantic matches
@@ -53,7 +52,7 @@ impl AIPatternLearner {
         Self {
             learned_patterns: Arc::new(RwLock::new(HashMap::new())),
             transformation_rules: Arc::new(RwLock::new(HashMap::new())),
-            confidence_threshold: 0.75, // 75% confidence threshold
+            confidence_threshold: 0.75,      // 75% confidence threshold
             max_patterns_per_language: 1000, // Memory optimization for M4 Max
         }
     }
@@ -87,8 +86,9 @@ impl AIPatternLearner {
             let lang_patterns = patterns.entry(language).or_insert_with(Vec::new);
 
             // Check if pattern already exists and increment frequency
-            if let Some(existing) = lang_patterns.iter_mut()
-                .find(|p| p.original_symbol == original_symbol && p.resolved_symbol == resolved_symbol) {
+            if let Some(existing) = lang_patterns.iter_mut().find(|p| {
+                p.original_symbol == original_symbol && p.resolved_symbol == resolved_symbol
+            }) {
                 existing.frequency += 1;
                 existing.confidence = existing.confidence.max(confidence); // Keep highest confidence
             } else if lang_patterns.len() < self.max_patterns_per_language {
@@ -146,8 +146,11 @@ impl AIPatternLearner {
             return result;
         }
 
-        info!("🤖 AI PATTERN ENHANCEMENT: Applying {} learned patterns for {:?}",
-              lang_patterns.len(), language);
+        info!(
+            "🤖 AI PATTERN ENHANCEMENT: Applying {} learned patterns for {:?}",
+            lang_patterns.len(),
+            language
+        );
 
         let mut enhanced_edges = Vec::new();
         let mut enhancement_count = 0;
@@ -159,14 +162,18 @@ impl AIPatternLearner {
             // Generate additional edge variants based on learned patterns
             if let Some(variants) = self.generate_symbol_variants(&edge.to, &rules) {
                 for variant in variants {
-                    if variant != edge.to { // Avoid duplicates
+                    if variant != edge.to {
+                        // Avoid duplicates
                         enhanced_edges.push(EdgeRelationship {
                             from: edge.from,
                             to: variant,
                             edge_type: edge.edge_type.clone(),
                             metadata: {
                                 let mut meta = edge.metadata.clone();
-                                meta.insert("ai_enhancement".to_string(), "learned_pattern".to_string());
+                                meta.insert(
+                                    "ai_enhancement".to_string(),
+                                    "learned_pattern".to_string(),
+                                );
                                 meta
                             },
                         });
@@ -179,19 +186,30 @@ impl AIPatternLearner {
         result.edges = enhanced_edges;
 
         if enhancement_count > 0 {
-            info!("✅ AI ENHANCEMENT: Generated {} additional symbol variants using learned patterns",
-                  enhancement_count);
+            info!(
+                "✅ AI ENHANCEMENT: Generated {} additional symbol variants using learned patterns",
+                enhancement_count
+            );
         }
 
         result
     }
 
     /// Generate symbol variants based on learned transformation rules
-    fn generate_symbol_variants(&self, symbol: &str, rules: &HashMap<String, Vec<String>>) -> Option<Vec<String>> {
+    fn generate_symbol_variants(
+        &self,
+        symbol: &str,
+        rules: &HashMap<String, Vec<String>>,
+    ) -> Option<Vec<String>> {
         let mut variants = Vec::new();
 
         // Apply transformation rules based on pattern types
-        for pattern_type in &["qualified_name", "abbreviation", "case_variant", "substring_match"] {
+        for pattern_type in &[
+            "qualified_name",
+            "abbreviation",
+            "case_variant",
+            "substring_match",
+        ] {
             let rule_key = format!("{}:{}", pattern_type, symbol);
             if let Some(pattern_variants) = rules.get(&rule_key) {
                 variants.extend(pattern_variants.clone());
@@ -222,9 +240,9 @@ impl AIPatternLearner {
         let symbol2_lower = symbol2.to_lowercase();
 
         // Check for substring similarity
-        symbol1_lower.contains(&symbol2_lower) ||
-        symbol2_lower.contains(&symbol1_lower) ||
-        self.levenshtein_similarity(&symbol1_lower, &symbol2_lower) > 0.7
+        symbol1_lower.contains(&symbol2_lower)
+            || symbol2_lower.contains(&symbol1_lower)
+            || self.levenshtein_similarity(&symbol1_lower, &symbol2_lower) > 0.7
     }
 
     /// Calculate Levenshtein similarity between two strings
@@ -248,20 +266,28 @@ impl AIPatternLearner {
         let len1 = chars1.len();
         let len2 = chars2.len();
 
-        if len1 == 0 { return len2; }
-        if len2 == 0 { return len1; }
+        if len1 == 0 {
+            return len2;
+        }
+        if len2 == 0 {
+            return len1;
+        }
 
         let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
 
-        for i in 0..=len1 { matrix[i][0] = i; }
-        for j in 0..=len2 { matrix[0][j] = j; }
+        for i in 0..=len1 {
+            matrix[i][0] = i;
+        }
+        for j in 0..=len2 {
+            matrix[0][j] = j;
+        }
 
         for i in 1..=len1 {
             for j in 1..=len2 {
-                let cost = if chars1[i-1] == chars2[j-1] { 0 } else { 1 };
-                matrix[i][j] = (matrix[i-1][j] + 1)
-                    .min(matrix[i][j-1] + 1)
-                    .min(matrix[i-1][j-1] + cost);
+                let cost = if chars1[i - 1] == chars2[j - 1] { 0 } else { 1 };
+                matrix[i][j] = (matrix[i - 1][j] + 1)
+                    .min(matrix[i][j - 1] + 1)
+                    .min(matrix[i - 1][j - 1] + cost);
             }
         }
 
@@ -280,7 +306,9 @@ impl AIPatternLearner {
 
         for lang_patterns in patterns.values() {
             for pattern in lang_patterns {
-                *patterns_by_type.entry(pattern.pattern_type.clone()).or_insert(0) += 1;
+                *patterns_by_type
+                    .entry(pattern.pattern_type.clone())
+                    .or_insert(0) += 1;
                 average_confidence += pattern.confidence;
                 total_frequency += pattern.frequency;
             }
@@ -308,8 +336,11 @@ impl AIPatternLearner {
         let json_data = serde_json::to_string_pretty(&*patterns)?;
         tokio::fs::write(cache_file, json_data).await?;
 
-        info!("💾 AI patterns saved: {} languages, {} total patterns",
-              patterns.len(), patterns.values().map(|v| v.len()).sum::<usize>());
+        info!(
+            "💾 AI patterns saved: {} languages, {} total patterns",
+            patterns.len(),
+            patterns.values().map(|v| v.len()).sum::<usize>()
+        );
 
         Ok(())
     }
@@ -324,7 +355,8 @@ impl AIPatternLearner {
         }
 
         let json_data = tokio::fs::read_to_string(cache_file).await?;
-        let loaded_patterns: HashMap<Language, Vec<AILearnedPattern>> = serde_json::from_str(&json_data)?;
+        let loaded_patterns: HashMap<Language, Vec<AILearnedPattern>> =
+            serde_json::from_str(&json_data)?;
 
         {
             let mut patterns = self.learned_patterns.write().unwrap();
@@ -334,11 +366,19 @@ impl AIPatternLearner {
         // Rebuild transformation rules from loaded patterns
         self.rebuild_transformation_rules();
 
-        let total_loaded: usize = self.learned_patterns.read().unwrap()
-            .values().map(|v| v.len()).sum();
+        let total_loaded: usize = self
+            .learned_patterns
+            .read()
+            .unwrap()
+            .values()
+            .map(|v| v.len())
+            .sum();
 
-        info!("🧠 AI patterns loaded: {} patterns across {} languages",
-              total_loaded, self.learned_patterns.read().unwrap().len());
+        info!(
+            "🧠 AI patterns loaded: {} patterns across {} languages",
+            total_loaded,
+            self.learned_patterns.read().unwrap().len()
+        );
 
         Ok(())
     }
@@ -354,7 +394,7 @@ impl AIPatternLearner {
                 self.update_transformation_rules(
                     &pattern.original_symbol,
                     &pattern.resolved_symbol,
-                    &pattern.pattern_type
+                    &pattern.pattern_type,
                 );
             }
         }
@@ -396,10 +436,7 @@ pub fn get_ai_pattern_learner() -> &'static AIPatternLearner {
 }
 
 /// REVOLUTIONARY: Enhanced extraction function that learns from AI matches
-pub fn extract_with_ai_enhancement<F>(
-    base_extraction: F,
-    language: Language,
-) -> ExtractionResult
+pub fn extract_with_ai_enhancement<F>(base_extraction: F, language: Language) -> ExtractionResult
 where
     F: FnOnce() -> ExtractionResult,
 {
@@ -413,7 +450,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegraph_core::{EdgeType, NodeType, Location, Metadata};
+    use codegraph_core::{EdgeType, Location, Metadata, NodeType};
 
     #[tokio::test]
     async fn test_ai_pattern_learning() {
@@ -421,9 +458,9 @@ mod tests {
 
         // Simulate learning from successful AI match
         learner.learn_from_ai_match(
-            "Vec", // Original symbol that couldn't be resolved
+            "Vec",           // Original symbol that couldn't be resolved
             "std::vec::Vec", // AI found this as semantically similar
-            0.85, // High confidence
+            0.85,            // High confidence
             Language::Rust,
         );
 

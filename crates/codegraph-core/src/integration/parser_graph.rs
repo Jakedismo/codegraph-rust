@@ -178,7 +178,7 @@ where
         &self,
         dir: &str,
         max_concurrent: usize,
-        exclude_generated: bool
+        exclude_generated: bool,
     ) -> Result<DirSummary> {
         let start = std::time::Instant::now();
 
@@ -259,7 +259,10 @@ where
         let mut processed = 0usize;
         let mut skipped = 0usize;
 
-        info!("Processing {} files for edge derivation (all languages supported)", total);
+        info!(
+            "Processing {} files for edge derivation (all languages supported)",
+            total
+        );
 
         // Two-phase approach for better linking: first ingest nodes, then edges.
         // Phase 1: parse + add nodes for all files (incremental aware) with progress tracking
@@ -273,9 +276,12 @@ where
                             processed += 1;
                             // Simple progress logging every 10 files
                             if processed % 10 == 0 {
-                                info!("Edge analysis progress: {}/{} files processed", processed, total);
+                                info!(
+                                    "Edge analysis progress: {}/{} files processed",
+                                    processed, total
+                                );
                             }
-                        },
+                        }
                         ProcessStatus::Skipped => skipped += 1,
                     },
                     Err(e) => warn!("process_file error: {}", e),

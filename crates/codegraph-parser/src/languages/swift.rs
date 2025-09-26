@@ -67,14 +67,19 @@ impl<'a> SwiftCollector<'a> {
                         Some(NodeType::Class),
                         Some(Language::Swift),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
                     // Detect inheritance and protocol conformance
                     if let Some(inheritance) = self.child_text_by_field(node, "inheritance") {
-                        code.metadata.attributes.insert("inheritance".into(), inheritance);
+                        code.metadata
+                            .attributes
+                            .insert("inheritance".into(), inheritance);
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "class".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "class".into());
                     self.nodes.push(code);
                     ctx.current_type = Some(name);
                 }
@@ -90,17 +95,22 @@ impl<'a> SwiftCollector<'a> {
                         Some(NodeType::Struct),
                         Some(Language::Swift),
                         loc,
-                    ).with_content(content_text.clone());
+                    )
+                    .with_content(content_text.clone());
 
                     // Detect SwiftUI Views
-                    ctx.is_swiftui_view = content_text.contains(": View") ||
-                                         content_text.contains("var body: some View");
+                    ctx.is_swiftui_view = content_text.contains(": View")
+                        || content_text.contains("var body: some View");
 
                     if ctx.is_swiftui_view {
-                        code.metadata.attributes.insert("swiftui_view".into(), "true".into());
+                        code.metadata
+                            .attributes
+                            .insert("swiftui_view".into(), "true".into());
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "struct".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "struct".into());
                     self.nodes.push(code);
                     ctx.current_type = Some(name);
                 }
@@ -115,9 +125,12 @@ impl<'a> SwiftCollector<'a> {
                         Some(NodeType::Interface), // Protocols are similar to interfaces
                         Some(Language::Swift),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
-                    code.metadata.attributes.insert("kind".into(), "protocol".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "protocol".into());
                     self.nodes.push(code);
                     ctx.current_protocol = Some(name);
                 }
@@ -132,9 +145,12 @@ impl<'a> SwiftCollector<'a> {
                         Some(NodeType::Module), // Extensions add functionality
                         Some(Language::Swift),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
-                    code.metadata.attributes.insert("kind".into(), "extension".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "extension".into());
                     code.metadata.attributes.insert("extends".into(), name);
                     self.nodes.push(code);
                 }
@@ -150,28 +166,39 @@ impl<'a> SwiftCollector<'a> {
                         Some(NodeType::Function),
                         Some(Language::Swift),
                         loc,
-                    ).with_content(content_text.clone());
+                    )
+                    .with_content(content_text.clone());
 
                     // Detect async functions
                     if content_text.contains("async ") {
-                        code.metadata.attributes.insert("async".into(), "true".into());
+                        code.metadata
+                            .attributes
+                            .insert("async".into(), "true".into());
                     }
 
                     // Detect throwing functions
                     if content_text.contains("throws") {
-                        code.metadata.attributes.insert("throws".into(), "true".into());
+                        code.metadata
+                            .attributes
+                            .insert("throws".into(), "true".into());
                     }
 
                     // Detect property wrappers
                     for wrapper in &ctx.property_wrappers {
                         if content_text.contains(&format!("@{}", wrapper)) {
-                            code.metadata.attributes.insert("property_wrapper".into(), wrapper.clone());
+                            code.metadata
+                                .attributes
+                                .insert("property_wrapper".into(), wrapper.clone());
                         }
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "function".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "function".into());
                     if let Some(ref current_type) = ctx.current_type {
-                        code.metadata.attributes.insert("parent_type".into(), current_type.clone());
+                        code.metadata
+                            .attributes
+                            .insert("parent_type".into(), current_type.clone());
                     }
                     self.nodes.push(code);
                 }
@@ -187,14 +214,19 @@ impl<'a> SwiftCollector<'a> {
                         Some(NodeType::Enum),
                         Some(Language::Swift),
                         loc,
-                    ).with_content(content_text.clone());
+                    )
+                    .with_content(content_text.clone());
 
                     // Detect if enum has associated values
                     if content_text.contains("case ") && content_text.contains("(") {
-                        code.metadata.attributes.insert("has_associated_values".into(), "true".into());
+                        code.metadata
+                            .attributes
+                            .insert("has_associated_values".into(), "true".into());
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "enum".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "enum".into());
                     self.nodes.push(code);
                     ctx.current_type = Some(name);
                 }
@@ -216,10 +248,15 @@ impl<'a> SwiftCollector<'a> {
                         Some(NodeType::Import),
                         Some(Language::Swift),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
-                    code.metadata.attributes.insert("kind".into(), "import".into());
-                    code.metadata.attributes.insert("module".into(), module.clone());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "import".into());
+                    code.metadata
+                        .attributes
+                        .insert("module".into(), module.clone());
 
                     // Detect framework imports
                     if module == "SwiftUI" || module == "UIKit" || module == "Foundation" {
@@ -251,7 +288,9 @@ impl<'a> SwiftCollector<'a> {
     }
 
     fn node_text(&self, node: &Node) -> String {
-        node.utf8_text(self.content.as_bytes()).unwrap_or("").to_string()
+        node.utf8_text(self.content.as_bytes())
+            .unwrap_or("")
+            .to_string()
     }
 
     fn location(&self, node: &Node) -> Location {

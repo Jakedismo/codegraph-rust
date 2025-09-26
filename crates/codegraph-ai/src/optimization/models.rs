@@ -310,7 +310,8 @@ impl<I: Send + 'static, O: Send + 'static> DynamicBatcher<I, O> {
             .send(req)
             .await
             .map_err(|_| anyhow::anyhow!("dynamic batch queue full or closed"))?;
-        rx.await.map_err(|_| anyhow::anyhow!("inference canceled"))?
+        rx.await
+            .map_err(|_| anyhow::anyhow!("inference canceled"))?
     }
 }
 

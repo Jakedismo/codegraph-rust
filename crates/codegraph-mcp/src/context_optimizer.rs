@@ -2,7 +2,6 @@
 ///
 /// This module optimizes how we use the massive 128K context window
 /// to provide the most relevant and comprehensive context for analysis.
-
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -16,11 +15,11 @@ pub struct ContextConfig {
 
 #[derive(Debug, Clone)]
 pub struct ContextPriorities {
-    pub semantic_matches: f32,      // 40% - direct code matches
-    pub graph_relationships: f32,   // 25% - dependency relationships
-    pub usage_patterns: f32,        // 20% - how code is used
-    pub team_conventions: f32,      // 10% - team patterns
-    pub historical_context: f32,    // 5% - git history and changes
+    pub semantic_matches: f32,    // 40% - direct code matches
+    pub graph_relationships: f32, // 25% - dependency relationships
+    pub usage_patterns: f32,      // 20% - how code is used
+    pub team_conventions: f32,    // 10% - team patterns
+    pub historical_context: f32,  // 5% - git history and changes
 }
 
 impl Default for ContextConfig {
@@ -117,7 +116,10 @@ impl ContextOptimizer {
             }
         }
 
-        compressed.push_str(&format!("\n[Context optimized for {}K tokens]", target_tokens / 1000));
+        compressed.push_str(&format!(
+            "\n[Context optimized for {}K tokens]",
+            target_tokens / 1000
+        ));
         compressed
     }
 
@@ -128,10 +130,17 @@ impl ContextOptimizer {
         let mut current_section_name = "INTRODUCTION".to_string();
 
         for line in lines {
-            if line.ends_with(':') && line.chars().all(|c| c.is_uppercase() || c.is_whitespace() || c == ':') {
+            if line.ends_with(':')
+                && line
+                    .chars()
+                    .all(|c| c.is_uppercase() || c.is_whitespace() || c == ':')
+            {
                 // New section detected
                 if !current_section.is_empty() {
-                    sections.push((current_section_name.clone(), current_section.trim().to_string()));
+                    sections.push((
+                        current_section_name.clone(),
+                        current_section.trim().to_string(),
+                    ));
                 }
                 current_section_name = line.trim_end_matches(':').to_string();
                 current_section = String::new();
@@ -152,7 +161,9 @@ impl ContextOptimizer {
     fn get_section_weight(&self, section_name: &str) -> f32 {
         match section_name.to_uppercase().as_str() {
             "SEMANTIC MATCHES" | "SEARCH RESULTS" => self.config.priority_weights.semantic_matches,
-            "GRAPH RELATIONSHIPS" | "DEPENDENCIES" => self.config.priority_weights.graph_relationships,
+            "GRAPH RELATIONSHIPS" | "DEPENDENCIES" => {
+                self.config.priority_weights.graph_relationships
+            }
             "USAGE PATTERNS" | "PATTERNS" => self.config.priority_weights.usage_patterns,
             "TEAM CONVENTIONS" | "CONVENTIONS" => self.config.priority_weights.team_conventions,
             _ => 0.05, // Default low priority
@@ -217,7 +228,8 @@ impl PriorityContextBuilder {
             }
         }
 
-        self.sections.insert("SEMANTIC_MATCHES".to_string(), section);
+        self.sections
+            .insert("SEMANTIC_MATCHES".to_string(), section);
     }
 
     fn add_graph_relationships(&mut self, graph_data: &Value) {
@@ -226,7 +238,8 @@ impl PriorityContextBuilder {
         // Add graph relationship information
         section.push_str("Component connections and dependencies from graph analysis.\n");
 
-        self.sections.insert("GRAPH_RELATIONSHIPS".to_string(), section);
+        self.sections
+            .insert("GRAPH_RELATIONSHIPS".to_string(), section);
     }
 
     fn add_usage_patterns(&mut self, patterns: &Value) {
@@ -243,7 +256,8 @@ impl PriorityContextBuilder {
         // Extract conventions from code patterns
         section.push_str("Team coding conventions and standards observed in the codebase.\n");
 
-        self.sections.insert("TEAM_CONVENTIONS".to_string(), section);
+        self.sections
+            .insert("TEAM_CONVENTIONS".to_string(), section);
     }
 
     fn build(self) -> String {
@@ -270,8 +284,7 @@ impl PriorityContextBuilder {
             Estimated tokens: {}\n\
             Max tokens available: {}\n\
             Optimization: Prioritized for Qwen2.5-Coder 128K context window\n",
-            self.estimated_tokens,
-            self.config.max_tokens
+            self.estimated_tokens, self.config.max_tokens
         ));
 
         final_context
@@ -284,7 +297,7 @@ pub fn create_optimizer_for_task(task_type: &str) -> ContextOptimizer {
         "enhanced_search" => ContextConfig {
             max_tokens: 60000, // Faster analysis with smaller context
             priority_weights: ContextPriorities {
-                semantic_matches: 0.6,   // Higher priority for search results
+                semantic_matches: 0.6, // Higher priority for search results
                 graph_relationships: 0.2,
                 usage_patterns: 0.15,
                 team_conventions: 0.05,
@@ -296,7 +309,7 @@ pub fn create_optimizer_for_task(task_type: &str) -> ContextOptimizer {
             max_tokens: 110000, // Use almost full 128K context
             priority_weights: ContextPriorities {
                 semantic_matches: 0.3,
-                graph_relationships: 0.3,  // Higher for architectural analysis
+                graph_relationships: 0.3, // Higher for architectural analysis
                 usage_patterns: 0.25,
                 team_conventions: 0.1,
                 historical_context: 0.05,
@@ -307,7 +320,7 @@ pub fn create_optimizer_for_task(task_type: &str) -> ContextOptimizer {
             max_tokens: 80000, // Balance detail with response time
             priority_weights: ContextPriorities {
                 semantic_matches: 0.35,
-                graph_relationships: 0.4,  // Highest for dependency analysis
+                graph_relationships: 0.4, // Highest for dependency analysis
                 usage_patterns: 0.2,
                 team_conventions: 0.05,
                 historical_context: 0.0,

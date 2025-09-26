@@ -7,7 +7,9 @@ use uuid::Uuid;
 pub type NodeId = Uuid;
 pub type EdgeId = Uuid;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode,
+)]
 pub enum Language {
     Rust,
     TypeScript,
@@ -26,7 +28,9 @@ pub enum Language {
     Other(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode,
+)]
 pub enum NodeType {
     Function,
     Struct,

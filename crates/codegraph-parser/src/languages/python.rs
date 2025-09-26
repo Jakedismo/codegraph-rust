@@ -1,4 +1,6 @@
-use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeType, NodeId};
+use codegraph_core::{
+    CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
+};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
 
@@ -51,12 +53,9 @@ impl<'a> PythonCollector<'a> {
             "function_definition" => {
                 if let Some(name) = self.child_text_by_kinds(node, &["identifier"]) {
                     let loc = self.location(&node);
-                    let code = CodeNode::new(
-                        name,
-                        Some(NodeType::Function),
-                        Some(Language::Python),
-                        loc,
-                    ).with_content(self.node_text(&node));
+                    let code =
+                        CodeNode::new(name, Some(NodeType::Function), Some(Language::Python), loc)
+                            .with_content(self.node_text(&node));
 
                     self.current_function_id = Some(code.id);
                     self.nodes.push(code);
@@ -67,12 +66,9 @@ impl<'a> PythonCollector<'a> {
             "class_definition" => {
                 if let Some(name) = self.child_text_by_kinds(node, &["identifier"]) {
                     let loc = self.location(&node);
-                    let code = CodeNode::new(
-                        name,
-                        Some(NodeType::Class),
-                        Some(Language::Python),
-                        loc,
-                    ).with_content(self.node_text(&node));
+                    let code =
+                        CodeNode::new(name, Some(NodeType::Class), Some(Language::Python), loc)
+                            .with_content(self.node_text(&node));
 
                     self.current_class_id = Some(code.id);
                     self.nodes.push(code);
@@ -88,7 +84,8 @@ impl<'a> PythonCollector<'a> {
                         Some(NodeType::Import),
                         Some(Language::Python),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
                     // Extract import edge
                     let edge = EdgeRelationship {

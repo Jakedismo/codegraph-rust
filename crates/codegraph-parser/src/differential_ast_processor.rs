@@ -1,17 +1,16 @@
+use crate::speed_optimized_cache::get_speed_cache;
 /// REVOLUTIONARY: Differential AST Processing for Incremental Parsing
 ///
 /// COMPLETE IMPLEMENTATION: Smart incremental parsing that only processes
 /// semantically changed regions while preserving cached results for unchanged areas.
-
 use codegraph_core::{ExtractionResult, Language, Result};
-use crate::speed_optimized_cache::get_speed_cache;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tracing::{debug, info};
 use tree_sitter::{Parser, Tree};
-use sha2::{Sha256, Digest};
 
 /// Revolutionary differential AST processor for incremental parsing
 pub struct DifferentialASTProcessor {
@@ -83,8 +82,14 @@ pub struct DifferentialMetrics {
 impl DifferentialASTProcessor {
     pub fn new(config: DifferentialConfig) -> Self {
         info!("🚀 Initializing Differential AST Processor");
-        info!("   🔍 Min change threshold: {} bytes", config.min_change_threshold);
-        info!("   📊 Max differential regions: {}", config.max_differential_regions);
+        info!(
+            "   🔍 Min change threshold: {} bytes",
+            config.min_change_threshold
+        );
+        info!(
+            "   📊 Max differential regions: {}",
+            config.max_differential_regions
+        );
 
         Self {
             parsers: HashMap::new(),
@@ -107,11 +112,10 @@ impl DifferentialASTProcessor {
 
         match cached_tree {
             Some(cached_info) => {
-                self.process_incremental_changes(file_path, language, cached_info).await
+                self.process_incremental_changes(file_path, language, cached_info)
+                    .await
             }
-            None => {
-                self.process_initial_parse(file_path, language).await
-            }
+            None => self.process_initial_parse(file_path, language).await,
         }
     }
 
@@ -125,14 +129,15 @@ impl DifferentialASTProcessor {
 
         let current_content = tokio::fs::read_to_string(file_path).await?;
 
-        let change_regions = self.detect_semantic_changes(
-            file_path,
-            &cached_info,
-            &current_content,
-        ).await?;
+        let change_regions = self
+            .detect_semantic_changes(file_path, &cached_info, &current_content)
+            .await?;
 
         if change_regions.is_empty() {
-            info!("⚡ NO CHANGES: {} (returning cached result)", file_path.display());
+            info!(
+                "⚡ NO CHANGES: {} (returning cached result)",
+                file_path.display()
+            );
 
             let cache = get_speed_cache();
             if let Some(cached_result) = cache.get(file_path, &language).await {
@@ -140,13 +145,15 @@ impl DifferentialASTProcessor {
             }
         }
 
-        let result = self.process_changed_regions(
-            file_path,
-            &current_content,
-            language,
-            &change_regions,
-            &cached_info,
-        ).await?;
+        let result = self
+            .process_changed_regions(
+                file_path,
+                &current_content,
+                language,
+                &change_regions,
+                &cached_info,
+            )
+            .await?;
 
         let processing_time = start_time.elapsed();
 
@@ -157,8 +164,12 @@ impl DifferentialASTProcessor {
             metrics.time_saved_ms += (processing_time.as_millis() as f64) * 0.8;
         }
 
-        info!("🔄 DIFFERENTIAL: {} processed {} changed regions in {:.2}ms",
-              file_path.display(), change_regions.len(), processing_time.as_millis());
+        info!(
+            "🔄 DIFFERENTIAL: {} processed {} changed regions in {:.2}ms",
+            file_path.display(),
+            change_regions.len(),
+            processing_time.as_millis()
+        );
 
         Ok(result)
     }
@@ -168,10 +179,15 @@ impl DifferentialASTProcessor {
         file_path: &Path,
         language: Language,
     ) -> Result<ExtractionResult> {
-        info!("🆕 INITIAL PARSE: {} (caching for future differential processing)", file_path.display());
+        info!(
+            "🆕 INITIAL PARSE: {} (caching for future differential processing)",
+            file_path.display()
+        );
 
         let parser = crate::TreeSitterParser::new();
-        let result = parser.parse_file_with_edges(&file_path.to_string_lossy()).await?;
+        let result = parser
+            .parse_file_with_edges(&file_path.to_string_lossy())
+            .await?;
 
         self.cache_tree_info(file_path, language, &result).await?;
 
@@ -189,8 +205,11 @@ impl DifferentialASTProcessor {
 
         let mut parser = self.get_or_create_parser(&cached_info.language)?;
 
-        let new_tree = parser.parse(current_content, Some(&cached_info.tree))
-            .ok_or_else(|| codegraph_core::CodeGraphError::Parse("Failed to parse current content".to_string()))?;
+        let new_tree = parser
+            .parse(current_content, Some(&cached_info.tree))
+            .ok_or_else(|| {
+                codegraph_core::CodeGraphError::Parse("Failed to parse current content".to_string())
+            })?;
 
         let changed_ranges = cached_info.tree.changed_ranges(&new_tree);
 
@@ -201,15 +220,24 @@ impl DifferentialASTProcessor {
                 end_line: range.end_point.row,
                 end_column: range.end_point.column,
                 change_type: self.classify_change_type(&range, current_content),
-                affected_node_types: self.get_affected_node_types(&range, &new_tree, current_content),
+                affected_node_types: self.get_affected_node_types(
+                    &range,
+                    &new_tree,
+                    current_content,
+                ),
             };
 
             regions.push(change_region);
         }
 
-        self.update_cached_tree(file_path, new_tree, current_content.to_string()).await?;
+        self.update_cached_tree(file_path, new_tree, current_content.to_string())
+            .await?;
 
-        debug!("🔍 CHANGE DETECTION: {} regions detected in {}", regions.len(), file_path.display());
+        debug!(
+            "🔍 CHANGE DETECTION: {} regions detected in {}",
+            regions.len(),
+            file_path.display()
+        );
 
         Ok(regions)
     }
@@ -223,19 +251,20 @@ impl DifferentialASTProcessor {
         _cached_info: &CachedTreeInfo,
     ) -> Result<ExtractionResult> {
         let cache = get_speed_cache();
-        let mut base_result = cache.get(file_path, &language).await
-            .unwrap_or_else(|| ExtractionResult {
-                nodes: Vec::new(),
-                edges: Vec::new(),
-            });
+        let mut base_result =
+            cache
+                .get(file_path, &language)
+                .await
+                .unwrap_or_else(|| ExtractionResult {
+                    nodes: Vec::new(),
+                    edges: Vec::new(),
+                });
 
         for region in change_regions {
             if region.change_type != ChangeType::Cosmetic {
-                let region_result = self.extract_region(
-                    content,
-                    language.clone(),
-                    region,
-                ).await?;
+                let region_result = self
+                    .extract_region(content, language.clone(), region)
+                    .await?;
 
                 base_result = self.merge_extraction_results(base_result, region_result, region)?;
             }
@@ -256,8 +285,10 @@ impl DifferentialASTProcessor {
         let start_line = region.start_line.min(lines.len().saturating_sub(1));
         let end_line = (region.end_line + 1).min(lines.len());
 
-        let _region_content = lines[start_line..end_line].join("
-");
+        let _region_content = lines[start_line..end_line].join(
+            "
+",
+        );
 
         Ok(ExtractionResult {
             nodes: Vec::new(),
@@ -306,19 +337,29 @@ impl DifferentialASTProcessor {
     fn classify_change_type(&self, range: &tree_sitter::Range, content: &str) -> ChangeType {
         let changed_content = &content[range.start_byte..range.end_byte];
 
-        if changed_content.contains("fn ") || changed_content.contains("struct ") ||
-           changed_content.contains("class ") || changed_content.contains("def ") {
+        if changed_content.contains("fn ")
+            || changed_content.contains("struct ")
+            || changed_content.contains("class ")
+            || changed_content.contains("def ")
+        {
             ChangeType::Addition
         } else if changed_content.contains("use ") || changed_content.contains("import ") {
             ChangeType::Dependency
-        } else if changed_content.trim().starts_with("//") || changed_content.trim().starts_with("/*") {
+        } else if changed_content.trim().starts_with("//")
+            || changed_content.trim().starts_with("/*")
+        {
             ChangeType::Cosmetic
         } else {
             ChangeType::Modification
         }
     }
 
-    fn get_affected_node_types(&self, range: &tree_sitter::Range, tree: &Tree, _content: &str) -> Vec<String> {
+    fn get_affected_node_types(
+        &self,
+        range: &tree_sitter::Range,
+        tree: &Tree,
+        _content: &str,
+    ) -> Vec<String> {
         let mut node_types = Vec::new();
 
         let mut cursor = tree.walk();
@@ -347,7 +388,10 @@ impl DifferentialASTProcessor {
         _language: Language,
         _result: &ExtractionResult,
     ) -> Result<()> {
-        debug!("💾 Caching tree info for differential processing: {}", file_path.display());
+        debug!(
+            "💾 Caching tree info for differential processing: {}",
+            file_path.display()
+        );
         Ok(())
     }
 
@@ -367,7 +411,9 @@ impl DifferentialASTProcessor {
         };
 
         let mut detector = self.change_detector.write().unwrap();
-        detector.cached_trees.insert(file_path.to_path_buf(), cached_info);
+        detector
+            .cached_trees
+            .insert(file_path.to_path_buf(), cached_info);
 
         Ok(())
     }
@@ -377,11 +423,14 @@ impl DifferentialASTProcessor {
     }
 }
 
-static DIFFERENTIAL_PROCESSOR: std::sync::OnceLock<Arc<RwLock<DifferentialASTProcessor>>> = std::sync::OnceLock::new();
+static DIFFERENTIAL_PROCESSOR: std::sync::OnceLock<Arc<RwLock<DifferentialASTProcessor>>> =
+    std::sync::OnceLock::new();
 
 pub fn get_differential_processor() -> &'static Arc<RwLock<DifferentialASTProcessor>> {
     DIFFERENTIAL_PROCESSOR.get_or_init(|| {
         info!("🚀 Initializing Global Differential AST Processor");
-        Arc::new(RwLock::new(DifferentialASTProcessor::new(DifferentialConfig::default())))
+        Arc::new(RwLock::new(DifferentialASTProcessor::new(
+            DifferentialConfig::default(),
+        )))
     })
 }

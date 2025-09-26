@@ -1,4 +1,6 @@
-use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeType, NodeId};
+use codegraph_core::{
+    CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
+};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
 
@@ -7,7 +9,12 @@ pub struct TypeScriptExtractor;
 
 impl TypeScriptExtractor {
     /// Extract nodes and edges in single AST traversal for maximum speed
-    pub fn extract_with_edges(tree: &Tree, content: &str, file_path: &str, language: Language) -> ExtractionResult {
+    pub fn extract_with_edges(
+        tree: &Tree,
+        content: &str,
+        file_path: &str,
+        language: Language,
+    ) -> ExtractionResult {
         let mut collector = TypeScriptCollector::new(content, file_path, language);
         let mut cursor = tree.walk();
         collector.walk(&mut cursor);
@@ -56,7 +63,8 @@ impl<'a> TypeScriptCollector<'a> {
                         Some(NodeType::Function),
                         Some(self.language.clone()),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
                     self.current_function_id = Some(code.id);
                     self.nodes.push(code);
@@ -72,7 +80,8 @@ impl<'a> TypeScriptCollector<'a> {
                         Some(NodeType::Import),
                         Some(self.language.clone()),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
                     // Extract import edge
                     let edge = EdgeRelationship {
@@ -113,14 +122,17 @@ impl<'a> TypeScriptCollector<'a> {
 
             // Classes
             "class_declaration" => {
-                if let Some(name) = self.child_text_by_kinds(node, &["type_identifier", "identifier"]) {
+                if let Some(name) =
+                    self.child_text_by_kinds(node, &["type_identifier", "identifier"])
+                {
                     let loc = self.location(&node);
                     let code = CodeNode::new(
                         name,
                         Some(NodeType::Class),
                         Some(self.language.clone()),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
                     self.nodes.push(code);
                 }

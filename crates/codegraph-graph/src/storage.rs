@@ -207,8 +207,9 @@ impl HighPerformanceRocksDbStorage {
 
         // Open existing column families in read-only mode
         let cf_names = vec![NODES_CF, EDGES_CF, INDICES_CF, METADATA_CF];
-        let db = DB::open_cf_for_read_only(&db_opts, &path, cf_names, false)
-            .map_err(|e| CodeGraphError::Database(format!("Failed to open database (read-only): {}", e)))?;
+        let db = DB::open_cf_for_read_only(&db_opts, &path, cf_names, false).map_err(|e| {
+            CodeGraphError::Database(format!("Failed to open database (read-only): {}", e))
+        })?;
 
         let batching_config = BatchingConfig::default();
         let db_arc = Arc::new(db);
@@ -254,7 +255,6 @@ impl HighPerformanceRocksDbStorage {
         // writes committed immediately
         Ok(())
     }
-
 
     pub(crate) fn remove_node_inner(&self, id: NodeId) -> Result<()> {
         if let Some(node) = self.read_coalescer.get_node(id)? {
@@ -365,7 +365,10 @@ impl HighPerformanceRocksDbStorage {
             .get_cf(&metadata_cf, b"edge_counter")
             .map_err(|e| CodeGraphError::Database(e.to_string()))?
         {
-            if let Ok(count) = bincode::decode_from_slice(&edge_count_bytes, bincode::config::standard()).map(|(count, _)| count) {
+            if let Ok(count) =
+                bincode::decode_from_slice(&edge_count_bytes, bincode::config::standard())
+                    .map(|(count, _)| count)
+            {
                 self.edge_counter.store(count, Ordering::Relaxed);
             }
         }
@@ -610,8 +613,9 @@ impl HighPerformanceRocksDbStorage {
                     .get_cf(&edges_cf, Self::edge_key(edge_id))
                     .map_err(|e| CodeGraphError::Database(e.to_string()))?
                 {
-                    let edge: SerializableEdge = serde_json::from_slice::<SerializableEdge>(&edge_data)
-                        .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                    let edge: SerializableEdge =
+                        serde_json::from_slice::<SerializableEdge>(&edge_data)
+                            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
                     let type_match = match edge_type {
                         Some(t) => edge.edge_type == t,
                         None => true,

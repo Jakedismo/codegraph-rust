@@ -57,10 +57,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { transport, port: _port, host: _host, config: _config } => {
+        Commands::Serve {
+            transport,
+            port: _port,
+            host: _host,
+            config: _config,
+        } => {
             info!("Starting CodeGraph MCP server with official SDK");
 
-            let mut server = codegraph_mcp::official_server::CodeGraphMCPServer::new_with_graph().await
+            let mut server = codegraph_mcp::official_server::CodeGraphMCPServer::new_with_graph()
+                .await
                 .map_err(|e| anyhow::anyhow!("Failed to initialize server with graph: {}", e))?;
             server.initialize_qwen().await;
 
@@ -102,7 +108,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Project initialized successfully!");
         }
 
-        Commands::Index { path, languages, force, recursive, batch_size, workers } => {
+        Commands::Index {
+            path,
+            languages,
+            force,
+            recursive,
+            batch_size,
+            workers,
+        } => {
             info!("Starting revolutionary indexing with official MCP backend");
 
             let config = codegraph_mcp::IndexerConfig {

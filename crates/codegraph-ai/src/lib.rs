@@ -1,8 +1,8 @@
 pub mod ml;
 pub mod optimization;
+pub mod qwen_simple;
 pub mod rag;
 pub mod semantic;
-pub mod qwen_simple;
 
+pub use qwen_simple::{CodeIntelligenceProvider, QwenClient, QwenConfig, QwenResult};
 pub use semantic::search::*;
-pub use qwen_simple::{QwenClient, QwenConfig, QwenResult, CodeIntelligenceProvider};

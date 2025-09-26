@@ -1,10 +1,9 @@
+use crate::ai_context_enhancement::SemanticContext;
 /// REVOLUTIONARY: Parallel Language Architecture for M4 Max Performance
 ///
 /// COMPLETE IMPLEMENTATION: True multi-language parallel processing where different
 /// programming languages are processed on dedicated CPU cores simultaneously.
-
 use codegraph_core::{ExtractionResult, Language, Result};
-use crate::ai_context_enhancement::SemanticContext;
 use futures::stream::{self, StreamExt};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -88,17 +87,41 @@ impl ParallelLanguageProcessor {
         let core_strategy = CoreAssignmentStrategy::default();
 
         info!("🚀 Initializing Parallel Language Architecture for M4 Max");
-        info!("   🦀 Rust cores: {} (high complexity)", core_strategy.rust_cores);
-        info!("   📜 TypeScript cores: {} (type inference)", core_strategy.typescript_cores);
-        info!("   🐍 Python cores: {} (dynamic analysis)", core_strategy.python_cores);
-        info!("   🌐 Shared cores: {} (other languages)", core_strategy.shared_cores);
+        info!(
+            "   🦀 Rust cores: {} (high complexity)",
+            core_strategy.rust_cores
+        );
+        info!(
+            "   📜 TypeScript cores: {} (type inference)",
+            core_strategy.typescript_cores
+        );
+        info!(
+            "   🐍 Python cores: {} (dynamic analysis)",
+            core_strategy.python_cores
+        );
+        info!(
+            "   🌐 Shared cores: {} (other languages)",
+            core_strategy.shared_cores
+        );
 
         let mut language_pools = HashMap::new();
 
-        language_pools.insert(Language::Rust, Arc::new(Semaphore::new(core_strategy.rust_cores)));
-        language_pools.insert(Language::TypeScript, Arc::new(Semaphore::new(core_strategy.typescript_cores)));
-        language_pools.insert(Language::JavaScript, Arc::new(Semaphore::new(core_strategy.typescript_cores)));
-        language_pools.insert(Language::Python, Arc::new(Semaphore::new(core_strategy.python_cores)));
+        language_pools.insert(
+            Language::Rust,
+            Arc::new(Semaphore::new(core_strategy.rust_cores)),
+        );
+        language_pools.insert(
+            Language::TypeScript,
+            Arc::new(Semaphore::new(core_strategy.typescript_cores)),
+        );
+        language_pools.insert(
+            Language::JavaScript,
+            Arc::new(Semaphore::new(core_strategy.typescript_cores)),
+        );
+        language_pools.insert(
+            Language::Python,
+            Arc::new(Semaphore::new(core_strategy.python_cores)),
+        );
 
         let shared_semaphore = Arc::new(Semaphore::new(core_strategy.shared_cores));
         for lang in [Language::Go, Language::Java, Language::Cpp] {
@@ -120,24 +143,34 @@ impl ParallelLanguageProcessor {
     ) -> Result<ExtractionResult> {
         let start_time = std::time::Instant::now();
 
-        info!("🚀 PARALLEL LANGUAGE PROCESSING: {} languages detected", files_by_language.len());
+        info!(
+            "🚀 PARALLEL LANGUAGE PROCESSING: {} languages detected",
+            files_by_language.len()
+        );
 
         {
             let mut tracker = self.performance_tracker.lock().unwrap();
             tracker.languages_processed_simultaneously = files_by_language.len();
-            tracker.core_utilization_percentage = self.calculate_core_utilization(&files_by_language);
+            tracker.core_utilization_percentage =
+                self.calculate_core_utilization(&files_by_language);
         }
 
-        let language_tasks: Vec<_> = files_by_language.into_iter().map(|(language, files)| {
-            let semaphore = self.language_pools.get(&language)
-                .cloned()
-                .unwrap_or_else(|| self.language_pools.get(&Language::Rust).unwrap().clone());
-            let aggregator = self.results_aggregator.clone();
+        let language_tasks: Vec<_> = files_by_language
+            .into_iter()
+            .map(|(language, files)| {
+                let semaphore = self
+                    .language_pools
+                    .get(&language)
+                    .cloned()
+                    .unwrap_or_else(|| self.language_pools.get(&Language::Rust).unwrap().clone());
+                let aggregator = self.results_aggregator.clone();
 
-            async move {
-                self.process_language_files(language, files, semaphore, aggregator).await
-            }
-        }).collect();
+                async move {
+                    self.process_language_files(language, files, semaphore, aggregator)
+                        .await
+                }
+            })
+            .collect();
 
         let language_results = futures::future::join_all(language_tasks).await;
 
@@ -173,8 +206,12 @@ impl ParallelLanguageProcessor {
     ) -> Result<()> {
         let start_time = std::time::Instant::now();
 
-        info!("⚡ {:?} processing: {} files on {} dedicated cores",
-              language, files.len(), semaphore.available_permits());
+        info!(
+            "⚡ {:?} processing: {} files on {} dedicated cores",
+            language,
+            files.len(),
+            semaphore.available_permits()
+        );
 
         let file_stream = stream::iter(files.into_iter().map(|file_path| {
             let semaphore = semaphore.clone();
@@ -220,22 +257,27 @@ impl ParallelLanguageProcessor {
             agg.all_edges.extend(language_edges);
             agg.total_files_processed += files_processed;
 
-            agg.language_metrics.insert(language.clone(), LanguagePerformanceMetrics {
-                files_processed,
-                nodes_extracted: nodes_count,
-                edges_extracted: edges_count,
-                processing_time,
-                files_per_second,
-                nodes_per_second: if processing_time.as_secs_f64() > 0.0 {
-                    nodes_count as f64 / processing_time.as_secs_f64()
-                } else {
-                    0.0
+            agg.language_metrics.insert(
+                language.clone(),
+                LanguagePerformanceMetrics {
+                    files_processed,
+                    nodes_extracted: nodes_count,
+                    edges_extracted: edges_count,
+                    processing_time,
+                    files_per_second,
+                    nodes_per_second: if processing_time.as_secs_f64() > 0.0 {
+                        nodes_count as f64 / processing_time.as_secs_f64()
+                    } else {
+                        0.0
+                    },
                 },
-            });
+            );
         }
 
-        info!("✅ {:?} complete: {} files, {:.1} files/s, {} nodes, {} edges",
-              language, files_processed, files_per_second, nodes_count, edges_count);
+        info!(
+            "✅ {:?} complete: {} files, {:.1} files/s, {} nodes, {} edges",
+            language, files_processed, files_per_second, nodes_count, edges_count
+        );
 
         Ok(())
     }
@@ -249,21 +291,32 @@ impl ParallelLanguageProcessor {
 
         match language {
             Language::Rust => {
-                parser.parse_file_with_edges(&file_path.to_string_lossy()).await
+                parser
+                    .parse_file_with_edges(&file_path.to_string_lossy())
+                    .await
             }
             Language::TypeScript | Language::JavaScript => {
-                parser.parse_file_with_edges(&file_path.to_string_lossy()).await
+                parser
+                    .parse_file_with_edges(&file_path.to_string_lossy())
+                    .await
             }
             Language::Python => {
-                parser.parse_file_with_edges(&file_path.to_string_lossy()).await
+                parser
+                    .parse_file_with_edges(&file_path.to_string_lossy())
+                    .await
             }
             _ => {
-                parser.parse_file_with_edges(&file_path.to_string_lossy()).await
+                parser
+                    .parse_file_with_edges(&file_path.to_string_lossy())
+                    .await
             }
         }
     }
 
-    fn calculate_core_utilization(&self, files_by_language: &HashMap<Language, Vec<PathBuf>>) -> f64 {
+    fn calculate_core_utilization(
+        &self,
+        files_by_language: &HashMap<Language, Vec<PathBuf>>,
+    ) -> f64 {
         let total_cores = num_cpus::get();
         let mut utilized_cores = 0;
 
@@ -271,7 +324,9 @@ impl ParallelLanguageProcessor {
             if !files.is_empty() {
                 utilized_cores += match language {
                     Language::Rust => self.core_assignment.rust_cores,
-                    Language::TypeScript | Language::JavaScript => self.core_assignment.typescript_cores,
+                    Language::TypeScript | Language::JavaScript => {
+                        self.core_assignment.typescript_cores
+                    }
                     Language::Python => self.core_assignment.python_cores,
                     _ => 1,
                 };
@@ -286,21 +341,40 @@ impl ParallelLanguageProcessor {
         let tracker = self.performance_tracker.lock().unwrap();
 
         info!("🎉 PARALLEL PROCESSING COMPLETE:");
-        info!("   📊 Total extracted: {} nodes, {} edges", result.nodes.len(), result.edges.len());
+        info!(
+            "   📊 Total extracted: {} nodes, {} edges",
+            result.nodes.len(),
+            result.edges.len()
+        );
         info!("   ⏱️  Total time: {:.2}s", total_time.as_secs_f64());
-        info!("   🔥 Overall rate: {:.1} files/s, {:.1} nodes/s",
-              aggregator.total_files_processed as f64 / total_time.as_secs_f64(),
-              result.nodes.len() as f64 / total_time.as_secs_f64());
-        info!("   💪 Core utilization: {:.1}%", tracker.core_utilization_percentage);
-        info!("   🎯 Languages processed: {}", tracker.languages_processed_simultaneously);
+        info!(
+            "   🔥 Overall rate: {:.1} files/s, {:.1} nodes/s",
+            aggregator.total_files_processed as f64 / total_time.as_secs_f64(),
+            result.nodes.len() as f64 / total_time.as_secs_f64()
+        );
+        info!(
+            "   💪 Core utilization: {:.1}%",
+            tracker.core_utilization_percentage
+        );
+        info!(
+            "   🎯 Languages processed: {}",
+            tracker.languages_processed_simultaneously
+        );
 
         for (language, metrics) in &aggregator.language_metrics {
-            info!("   {:?}: {} files, {:.1} files/s, {} nodes, {} edges",
-                  language, metrics.files_processed, metrics.files_per_second,
-                  metrics.nodes_extracted, metrics.edges_extracted);
+            info!(
+                "   {:?}: {} files, {:.1} files/s, {} nodes, {} edges",
+                language,
+                metrics.files_processed,
+                metrics.files_per_second,
+                metrics.nodes_extracted,
+                metrics.edges_extracted
+            );
         }
 
-        let sequential_estimate = aggregator.language_metrics.values()
+        let sequential_estimate = aggregator
+            .language_metrics
+            .values()
             .map(|m| m.processing_time.as_secs_f64())
             .sum::<f64>();
         let parallel_efficiency = if total_time.as_secs_f64() > 0.0 {
@@ -309,7 +383,10 @@ impl ParallelLanguageProcessor {
             1.0
         };
 
-        info!("🚀 PARALLEL EFFICIENCY: {:.1}× speedup vs sequential processing", parallel_efficiency);
+        info!(
+            "🚀 PARALLEL EFFICIENCY: {:.1}× speedup vs sequential processing",
+            parallel_efficiency
+        );
     }
 }
 
@@ -323,7 +400,8 @@ pub fn collect_files_by_language(
 
     for (file_path, _) in all_files {
         if let Some(language) = detect_language_from_path(&file_path) {
-            files_by_language.entry(language)
+            files_by_language
+                .entry(language)
                 .or_insert_with(Vec::new)
                 .push(file_path);
         }
@@ -352,7 +430,8 @@ fn detect_language_from_path(path: &PathBuf) -> Option<Language> {
     }
 }
 
-static PARALLEL_PROCESSOR: std::sync::OnceLock<ParallelLanguageProcessor> = std::sync::OnceLock::new();
+static PARALLEL_PROCESSOR: std::sync::OnceLock<ParallelLanguageProcessor> =
+    std::sync::OnceLock::new();
 
 pub fn get_parallel_language_processor() -> &'static ParallelLanguageProcessor {
     PARALLEL_PROCESSOR.get_or_init(|| {

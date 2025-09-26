@@ -19,8 +19,9 @@ pub struct QwenConfig {
 impl Default for QwenConfig {
     fn default() -> Self {
         Self {
-            model_name: std::env::var("CODEGRAPH_MODEL")
-                .unwrap_or_else(|_| "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M".to_string()),
+            model_name: std::env::var("CODEGRAPH_MODEL").unwrap_or_else(|_| {
+                "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M".to_string()
+            }),
             base_url: "http://localhost:11434".to_string(),
             context_window: 128000,
             max_tokens: 8192,
@@ -33,9 +34,15 @@ impl Default for QwenConfig {
 #[derive(Debug, Serialize)]
 struct OllamaRequest {
     model: String,
-    prompt: String,
+    messages: Vec<Message>,
     stream: bool,
     options: OllamaOptions,
+}
+
+#[derive(Debug, Serialize)]
+struct Message {
+    role: String,
+    content: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,11 +54,18 @@ struct OllamaOptions {
 
 #[derive(Debug, Deserialize)]
 struct OllamaResponse {
-    response: String,
+    #[serde(default)]
+    message: Option<MessageResponse>,
     #[serde(default)]
     eval_count: Option<usize>,
     #[serde(default)]
     prompt_eval_count: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MessageResponse {
+    role: String,
+    content: String,
 }
 
 #[derive(Debug, Clone)]
@@ -85,9 +99,21 @@ impl QwenClient {
         // Use optimized prompt structure for Qwen2.5-Coder
         let prompt = crate::prompts::build_semantic_analysis_prompt(query, context);
 
+        // Build messages array for chat endpoint
+        let messages = vec![
+            Message {
+                role: "system".to_string(),
+                content: "You are a code analysis expert using Qwen2.5-Coder. Provide detailed, structured analysis of codebases with specific examples and insights.".to_string(),
+            },
+            Message {
+                role: "user".to_string(),
+                content: prompt,
+            },
+        ];
+
         let request = OllamaRequest {
             model: self.config.model_name.clone(),
-            prompt,
+            messages,
             stream: false,
             options: OllamaOptions {
                 temperature: self.config.temperature,
@@ -96,22 +122,36 @@ impl QwenClient {
             },
         };
 
-        debug!("Sending analysis request to Qwen2.5-Coder: {} context window", self.config.context_window);
+        debug!(
+            "Sending analysis request to Qwen2.5-Coder: {} context window",
+            self.config.context_window
+        );
 
         let response = timeout(
             self.config.timeout,
             self.client
-                .post(&format!("{}/api/generate", self.config.base_url))
+                .post(&format!("{}/api/chat", self.config.base_url))
                 .json(&request)
-                .send()
+                .send(),
         )
         .await
-        .map_err(|_| CodeGraphError::Timeout(format!("Qwen request timeout after {:?}", self.config.timeout)))?
+        .map_err(|_| {
+            CodeGraphError::Timeout(format!(
+                "Qwen request timeout after {:?}",
+                self.config.timeout
+            ))
+        })?
         .map_err(|e| CodeGraphError::Network(format!("Qwen request failed: {}", e)))?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(CodeGraphError::External(format!("Qwen API error: {}", error_text)));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(CodeGraphError::External(format!(
+                "Qwen API error: {}",
+                error_text
+            )));
         }
 
         let response_data: OllamaResponse = response
@@ -120,10 +160,17 @@ impl QwenClient {
             .map_err(|e| CodeGraphError::Parse(format!("Failed to parse Qwen response: {}", e)))?;
 
         let processing_time = start_time.elapsed();
-        let confidence_score = self.calculate_confidence(&response_data.response);
+
+        // Extract response text from message
+        let response_text = response_data
+            .message
+            .map(|msg| msg.content)
+            .unwrap_or_else(|| "No response generated".to_string());
+
+        let confidence_score = self.calculate_confidence(&response_text);
 
         let result = QwenResult {
-            text: response_data.response,
+            text: response_text,
             model_used: self.config.model_name.clone(),
             processing_time,
             context_tokens: response_data.prompt_eval_count.unwrap_or(0),
@@ -145,11 +192,16 @@ impl QwenClient {
 
     /// Check if Qwen2.5-Coder model is available
     pub async fn check_availability(&self) -> Result<bool> {
-        debug!("Checking Qwen2.5-Coder availability at {}", self.config.base_url);
+        debug!(
+            "Checking Qwen2.5-Coder availability at {}",
+            self.config.base_url
+        );
 
         let response = timeout(
             Duration::from_secs(5),
-            self.client.get(&format!("{}/api/tags", self.config.base_url)).send()
+            self.client
+                .get(&format!("{}/api/tags", self.config.base_url))
+                .send(),
         )
         .await
         .map_err(|_| CodeGraphError::Timeout("Qwen availability check timeout".to_string()))?
@@ -171,10 +223,10 @@ impl QwenClient {
                     model["name"]
                         .as_str()
                         .map(|name| {
-                            name.contains("qwen") && name.contains("coder") ||
-                            name.contains("qwen2.5-coder") ||
-                            name.contains("Qwen2.5-Coder") ||
-                            name == self.config.model_name // Exact match
+                            name.contains("qwen") && name.contains("coder")
+                                || name.contains("qwen2.5-coder")
+                                || name.contains("Qwen2.5-Coder")
+                                || name == self.config.model_name // Exact match
                         })
                         .unwrap_or(false)
                 })
@@ -204,7 +256,10 @@ impl QwenClient {
         }
 
         // Technical terminology indicates code understanding
-        if response.contains("function") || response.contains("class") || response.contains("module") {
+        if response.contains("function")
+            || response.contains("class")
+            || response.contains("module")
+        {
             confidence += 0.1;
         }
 

@@ -40,8 +40,8 @@ pub mod persistent;
 #[cfg(feature = "persistent")]
 pub mod storage;
 
-pub mod rag;
 pub mod ml;
+pub mod rag;
 
 pub use embedding::*;
 pub use embeddings::generator::AdvancedEmbeddingGenerator;

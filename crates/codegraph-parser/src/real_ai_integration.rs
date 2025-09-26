@@ -1,12 +1,11 @@
+use crate::ai_pattern_learning::get_ai_pattern_learner;
 /// REVOLUTIONARY: Real AI Integration for Actual Transforming Capabilities
 ///
 /// This module provides ACTUAL working integration with the AI semantic matching
 /// system to deliver real improvements to parsing accuracy and speed.
 ///
 /// NO TODOs - Only full implementations that transform the parsing capabilities.
-
-use codegraph_core::{ExtractionResult, Language, CodeNode, EdgeRelationship, EdgeType, NodeId};
-use crate::ai_pattern_learning::get_ai_pattern_learner;
+use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, NodeId};
 use std::collections::HashMap;
 use tracing::info;
 
@@ -23,7 +22,8 @@ impl RealAIIntegration {
         let ai_learner = get_ai_pattern_learner();
 
         // Get the actual enhanced result using real AI patterns
-        let mut enhanced_result = ai_learner.enhance_extraction_result(base_result, language.clone());
+        let mut enhanced_result =
+            ai_learner.enhance_extraction_result(base_result, language.clone());
 
         // REAL FUNCTIONALITY: Apply additional Rust-specific transformations
         if language == Language::Rust {
@@ -51,7 +51,10 @@ impl RealAIIntegration {
 
         let enhancement_count = result.edges.len() - original_edge_count;
         if enhancement_count > 0 {
-            info!("🦀 REAL RUST TRANSFORMATION: {} additional relationships from actual analysis", enhancement_count);
+            info!(
+                "🦀 REAL RUST TRANSFORMATION: {} additional relationships from actual analysis",
+                enhancement_count
+            );
         }
 
         result
@@ -72,7 +75,10 @@ impl RealAIIntegration {
                         edge_type: EdgeType::Implements,
                         metadata: {
                             let mut meta = HashMap::new();
-                            meta.insert("transformation_type".to_string(), "rust_trait_impl".to_string());
+                            meta.insert(
+                                "transformation_type".to_string(),
+                                "rust_trait_impl".to_string(),
+                            );
                             meta.insert("impl_for_type".to_string(), impl_for.clone());
                             meta.insert("real_ai_enhancement".to_string(), "true".to_string());
                             meta
@@ -86,7 +92,10 @@ impl RealAIIntegration {
                         edge_type: EdgeType::Uses,
                         metadata: {
                             let mut meta = HashMap::new();
-                            meta.insert("transformation_type".to_string(), "rust_impl_target".to_string());
+                            meta.insert(
+                                "transformation_type".to_string(),
+                                "rust_impl_target".to_string(),
+                            );
                             meta.insert("trait_name".to_string(), impl_trait.clone());
                             meta.insert("real_ai_enhancement".to_string(), "true".to_string());
                             meta
@@ -97,7 +106,10 @@ impl RealAIIntegration {
         }
 
         if !new_edges.is_empty() {
-            info!("🔗 REAL TRAIT ENHANCEMENT: {} trait implementation relationships added", new_edges.len());
+            info!(
+                "🔗 REAL TRAIT ENHANCEMENT: {} trait implementation relationships added",
+                new_edges.len()
+            );
             result.edges.extend(new_edges);
         }
 
@@ -105,11 +117,16 @@ impl RealAIIntegration {
     }
 
     /// ACTUAL IMPLEMENTATION: Enhance macro relationships in Rust code
-    fn enhance_rust_macro_relationships(mut result: ExtractionResult, file_path: &str) -> ExtractionResult {
+    fn enhance_rust_macro_relationships(
+        mut result: ExtractionResult,
+        file_path: &str,
+    ) -> ExtractionResult {
         let mut new_edges = Vec::new();
 
         // Find function nodes that might use macros
-        let function_nodes: Vec<_> = result.nodes.iter()
+        let function_nodes: Vec<_> = result
+            .nodes
+            .iter()
             .filter(|n| n.node_type == Some(codegraph_core::NodeType::Function))
             .collect();
 
@@ -126,7 +143,10 @@ impl RealAIIntegration {
                         edge_type: EdgeType::Calls,
                         metadata: {
                             let mut meta = HashMap::new();
-                            meta.insert("transformation_type".to_string(), "rust_macro_usage".to_string());
+                            meta.insert(
+                                "transformation_type".to_string(),
+                                "rust_macro_usage".to_string(),
+                            );
                             meta.insert("call_type".to_string(), "macro_invocation".to_string());
                             meta.insert("source_file".to_string(), file_path.to_string());
                             meta.insert("real_ai_enhancement".to_string(), "true".to_string());
@@ -138,7 +158,10 @@ impl RealAIIntegration {
         }
 
         if !new_edges.is_empty() {
-            info!("📦 REAL MACRO ENHANCEMENT: {} macro usage relationships added", new_edges.len());
+            info!(
+                "📦 REAL MACRO ENHANCEMENT: {} macro usage relationships added",
+                new_edges.len()
+            );
             result.edges.extend(new_edges);
         }
 
@@ -151,13 +174,29 @@ impl RealAIIntegration {
 
         // Common Rust macros with exclamation mark pattern
         let macro_patterns = [
-            "println!", "print!", "eprintln!", "eprint!",
-            "format!", "write!", "writeln!",
-            "vec!", "hashmap!", "btreemap!",
-            "panic!", "assert!", "assert_eq!", "assert_ne!",
-            "debug!", "info!", "warn!", "error!",
-            "include!", "include_str!", "include_bytes!",
-            "concat!", "stringify!",
+            "println!",
+            "print!",
+            "eprintln!",
+            "eprint!",
+            "format!",
+            "write!",
+            "writeln!",
+            "vec!",
+            "hashmap!",
+            "btreemap!",
+            "panic!",
+            "assert!",
+            "assert_eq!",
+            "assert_ne!",
+            "debug!",
+            "info!",
+            "warn!",
+            "error!",
+            "include!",
+            "include_str!",
+            "include_bytes!",
+            "concat!",
+            "stringify!",
         ];
 
         for pattern in &macro_patterns {
@@ -209,16 +248,27 @@ impl RealAIIntegration {
                     if let Ok(imports) = serde_json::from_str::<serde_json::Value>(imports_json) {
                         if let Some(imports_array) = imports.as_array() {
                             for import_item in imports_array {
-                                if let Some(full_path) = import_item.get("full_path").and_then(|v| v.as_str()) {
+                                if let Some(full_path) =
+                                    import_item.get("full_path").and_then(|v| v.as_str())
+                                {
                                     new_edges.push(EdgeRelationship {
                                         from: node.id,
                                         to: full_path.to_string(),
                                         edge_type: EdgeType::Uses,
                                         metadata: {
                                             let mut meta = HashMap::new();
-                                            meta.insert("transformation_type".to_string(), "rust_dependency".to_string());
-                                            meta.insert("import_type".to_string(), "use_statement".to_string());
-                                            meta.insert("real_ai_enhancement".to_string(), "true".to_string());
+                                            meta.insert(
+                                                "transformation_type".to_string(),
+                                                "rust_dependency".to_string(),
+                                            );
+                                            meta.insert(
+                                                "import_type".to_string(),
+                                                "use_statement".to_string(),
+                                            );
+                                            meta.insert(
+                                                "real_ai_enhancement".to_string(),
+                                                "true".to_string(),
+                                            );
                                             meta
                                         },
                                     });
@@ -231,7 +281,10 @@ impl RealAIIntegration {
         }
 
         if !new_edges.is_empty() {
-            info!("📦 REAL USE ENHANCEMENT: {} dependency relationships added", new_edges.len());
+            info!(
+                "📦 REAL USE ENHANCEMENT: {} dependency relationships added",
+                new_edges.len()
+            );
             result.edges.extend(new_edges);
         }
 

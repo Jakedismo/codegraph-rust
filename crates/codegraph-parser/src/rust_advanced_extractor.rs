@@ -2,11 +2,12 @@
 ///
 /// COMPLETE IMPLEMENTATION: Deep Rust-specific semantic analysis that goes far beyond
 /// basic AST extraction to understand Rust's unique language features.
-
-use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, NodeType, Result};
+use codegraph_core::{
+    CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, NodeType, Result,
+};
 use std::collections::{HashMap, HashSet};
-use tree_sitter::{Node, Tree, TreeCursor};
 use tracing::{debug, info};
+use tree_sitter::{Node, Tree, TreeCursor};
 
 /// Revolutionary Rust advanced extractor with deep language understanding
 pub struct RustAdvancedExtractor {
@@ -49,7 +50,8 @@ impl RustAdvancedExtractor {
     ) -> ExtractionResult {
         let start_time = std::time::Instant::now();
 
-        let mut result = crate::languages::rust::RustExtractor::extract_with_edges(tree, content, file_path);
+        let mut result =
+            crate::languages::rust::RustExtractor::extract_with_edges(tree, content, file_path);
 
         result = self.enhance_with_trait_analysis(result, tree, content);
         result = self.enhance_with_macro_analysis(result, tree, content);
@@ -58,9 +60,15 @@ impl RustAdvancedExtractor {
         self.metrics.total_files_processed += 1;
         self.metrics.total_processing_time += processing_time;
 
-        info!("🦀 RUST ADVANCED: {} enhanced in {:.2}ms with {} additional relationships",
-              file_path, processing_time.as_millis(),
-              result.edges.len().saturating_sub(self.metrics.base_edges_count));
+        info!(
+            "🦀 RUST ADVANCED: {} enhanced in {:.2}ms with {} additional relationships",
+            file_path,
+            processing_time.as_millis(),
+            result
+                .edges
+                .len()
+                .saturating_sub(self.metrics.base_edges_count)
+        );
 
         result
     }
@@ -71,14 +79,19 @@ impl RustAdvancedExtractor {
         tree: &Tree,
         content: &str,
     ) -> ExtractionResult {
-        let additional_edges = self.trait_analyzer.analyze_trait_bounds(tree, content, &result.nodes);
+        let additional_edges =
+            self.trait_analyzer
+                .analyze_trait_bounds(tree, content, &result.nodes);
         let trait_edges_count = additional_edges.len();
 
         result.edges.extend(additional_edges);
         self.metrics.trait_relationships_found += trait_edges_count;
 
         if trait_edges_count > 0 {
-            debug!("🔗 Trait analysis: {} additional relationships", trait_edges_count);
+            debug!(
+                "🔗 Trait analysis: {} additional relationships",
+                trait_edges_count
+            );
         }
 
         result
@@ -90,14 +103,19 @@ impl RustAdvancedExtractor {
         tree: &Tree,
         content: &str,
     ) -> ExtractionResult {
-        let additional_edges = self.macro_analyzer.analyze_macro_relationships(tree, content, &result.nodes);
+        let additional_edges =
+            self.macro_analyzer
+                .analyze_macro_relationships(tree, content, &result.nodes);
         let macro_edges_count = additional_edges.len();
 
         result.edges.extend(additional_edges);
         self.metrics.macro_relationships_found += macro_edges_count;
 
         if macro_edges_count > 0 {
-            debug!("📦 Macro analysis: {} additional relationships", macro_edges_count);
+            debug!(
+                "📦 Macro analysis: {} additional relationships",
+                macro_edges_count
+            );
         }
 
         result
@@ -131,7 +149,10 @@ impl TraitBoundAnalyzer {
         let mut cursor = tree.walk();
         self.walk_for_trait_analysis(&mut cursor, content, nodes, &mut edges);
 
-        debug!("🔗 Trait bound analysis: {} relationships detected", edges.len());
+        debug!(
+            "🔗 Trait bound analysis: {} relationships detected",
+            edges.len()
+        );
         edges
     }
 
@@ -183,7 +204,10 @@ impl TraitBoundAnalyzer {
                     edge_type: EdgeType::Implements,
                     metadata: {
                         let mut meta = HashMap::new();
-                        meta.insert("relationship_type".to_string(), "trait_implementation".to_string());
+                        meta.insert(
+                            "relationship_type".to_string(),
+                            "trait_implementation".to_string(),
+                        );
                         meta.insert("rust_specific".to_string(), "true".to_string());
                         meta
                     },
@@ -197,12 +221,16 @@ impl TraitBoundAnalyzer {
         }
     }
 
-    fn find_impl_node<'a>(&self, impl_ast_node: &Node, nodes: &'a [CodeNode]) -> Option<&'a CodeNode> {
+    fn find_impl_node<'a>(
+        &self,
+        impl_ast_node: &Node,
+        nodes: &'a [CodeNode],
+    ) -> Option<&'a CodeNode> {
         let start_line = impl_ast_node.start_position().row as u32 + 1;
 
         nodes.iter().find(|node| {
-            node.node_type == Some(NodeType::Other("impl".to_string())) &&
-            node.location.line == start_line
+            node.node_type == Some(NodeType::Other("impl".to_string()))
+                && node.location.line == start_line
         })
     }
 
@@ -290,7 +318,10 @@ impl MacroRelationshipAnalyzer {
                     edge_type: EdgeType::Uses,
                     metadata: {
                         let mut meta = HashMap::new();
-                        meta.insert("relationship_type".to_string(), "macro_invocation".to_string());
+                        meta.insert(
+                            "relationship_type".to_string(),
+                            "macro_invocation".to_string(),
+                        );
                         meta.insert("rust_specific".to_string(), "true".to_string());
                         meta
                     },
@@ -344,7 +375,10 @@ impl MacroRelationshipAnalyzer {
                             edge_type: EdgeType::Implements,
                             metadata: {
                                 let mut meta = HashMap::new();
-                                meta.insert("relationship_type".to_string(), "derive_macro".to_string());
+                                meta.insert(
+                                    "relationship_type".to_string(),
+                                    "derive_macro".to_string(),
+                                );
                                 meta.insert("rust_specific".to_string(), "true".to_string());
                                 meta.insert("trait_source".to_string(), "derived".to_string());
                                 meta
@@ -358,14 +392,20 @@ impl MacroRelationshipAnalyzer {
 
     fn extract_macro_name(&self, node: Node, content: &str) -> Option<String> {
         if let Some(macro_node) = node.child_by_field_name("macro") {
-            macro_node.utf8_text(content.as_bytes()).ok().map(|s| s.to_string())
+            macro_node
+                .utf8_text(content.as_bytes())
+                .ok()
+                .map(|s| s.to_string())
         } else {
             let mut cursor = node.walk();
             if cursor.goto_first_child() {
                 loop {
                     let child = cursor.node();
                     if child.kind() == "identifier" || child.kind() == "scoped_identifier" {
-                        return child.utf8_text(content.as_bytes()).ok().map(|s| s.to_string());
+                        return child
+                            .utf8_text(content.as_bytes())
+                            .ok()
+                            .map(|s| s.to_string());
                     }
                     if !cursor.goto_next_sibling() {
                         break;
@@ -380,18 +420,25 @@ impl MacroRelationshipAnalyzer {
         let line = ast_node.start_position().row as u32 + 1;
 
         nodes.iter().find(|node| {
-            matches!(node.node_type, Some(NodeType::Function)) &&
-            node.location.line <= line &&
-            node.location.end_line.unwrap_or(node.location.line) >= line
+            matches!(node.node_type, Some(NodeType::Function))
+                && node.location.line <= line
+                && node.location.end_line.unwrap_or(node.location.line) >= line
         })
     }
 
-    fn find_next_item_node<'a>(&self, ast_node: Node, nodes: &'a [CodeNode]) -> Option<&'a CodeNode> {
+    fn find_next_item_node<'a>(
+        &self,
+        ast_node: Node,
+        nodes: &'a [CodeNode],
+    ) -> Option<&'a CodeNode> {
         let line = ast_node.end_position().row as u32 + 1;
 
         nodes.iter().find(|node| {
-            matches!(node.node_type, Some(NodeType::Struct) | Some(NodeType::Enum) | Some(NodeType::Function)) &&
-            node.location.line > line && node.location.line <= line + 5
+            matches!(
+                node.node_type,
+                Some(NodeType::Struct) | Some(NodeType::Enum) | Some(NodeType::Function)
+            ) && node.location.line > line
+                && node.location.line <= line + 5
         })
     }
 }
@@ -459,16 +506,17 @@ impl AdvancedExtractionMetrics {
             return 0.0;
         }
 
-        let additional_relationships = self.trait_relationships_found +
-                                     self.macro_relationships_found +
-                                     self.lifetime_relationships_found +
-                                     self.generic_relationships_found;
+        let additional_relationships = self.trait_relationships_found
+            + self.macro_relationships_found
+            + self.lifetime_relationships_found
+            + self.generic_relationships_found;
 
         (additional_relationships as f32 / self.base_edges_count as f32) * 100.0
     }
 }
 
-static RUST_ADVANCED_EXTRACTOR: std::sync::OnceLock<std::sync::Mutex<RustAdvancedExtractor>> = std::sync::OnceLock::new();
+static RUST_ADVANCED_EXTRACTOR: std::sync::OnceLock<std::sync::Mutex<RustAdvancedExtractor>> =
+    std::sync::OnceLock::new();
 
 pub fn get_rust_advanced_extractor() -> &'static std::sync::Mutex<RustAdvancedExtractor> {
     RUST_ADVANCED_EXTRACTOR.get_or_init(|| {

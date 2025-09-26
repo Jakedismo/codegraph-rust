@@ -520,8 +520,8 @@ impl NodeStore for RocksNodeStore {
             if !key.starts_with(&prefix) {
                 break;
             }
-            let node: Node =
-                serde_json::from_slice::<Node>(&val).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            let node: Node = serde_json::from_slice::<Node>(&val)
+                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
             out.push(node);
         }
         // Already ordered by version due to suffix

@@ -30,7 +30,10 @@ pub fn collect_source_files_with_config(
     config: &FileCollectionConfig,
 ) -> Result<Vec<(PathBuf, u64)>> {
     info!("Collecting source files from: {:?}", dir);
-    debug!("Collection config: recursive={}, languages={:?}", config.recursive, config.languages);
+    debug!(
+        "Collection config: recursive={}, languages={:?}",
+        config.recursive, config.languages
+    );
 
     let mut ovr = OverrideBuilder::new(dir);
 
@@ -159,7 +162,9 @@ fn get_supported_extensions(languages: &[String]) -> HashSet<&'static str> {
 
     for lang in languages {
         match lang.to_lowercase().as_str() {
-            "rust" => { extensions.insert("rs"); }
+            "rust" => {
+                extensions.insert("rs");
+            }
             "typescript" => {
                 extensions.insert("ts");
                 extensions.insert("tsx"); // ← Critical: .tsx support
@@ -172,8 +177,12 @@ fn get_supported_extensions(languages: &[String]) -> HashSet<&'static str> {
                 extensions.insert("py");
                 extensions.insert("pyi");
             }
-            "go" => { extensions.insert("go"); }
-            "java" => { extensions.insert("java"); }
+            "go" => {
+                extensions.insert("go");
+            }
+            "java" => {
+                extensions.insert("java");
+            }
             "cpp" | "c++" => {
                 extensions.insert("cpp");
                 extensions.insert("cxx");
@@ -187,8 +196,12 @@ fn get_supported_extensions(languages: &[String]) -> HashSet<&'static str> {
                 extensions.insert("h");
             }
             // Revolutionary universal language support
-            "swift" => { extensions.insert("swift"); }
-            "csharp" | "c#" => { extensions.insert("cs"); }
+            "swift" => {
+                extensions.insert("swift");
+            }
+            "csharp" | "c#" => {
+                extensions.insert("cs");
+            }
             "ruby" => {
                 extensions.insert("rb");
                 extensions.insert("rake");
@@ -205,7 +218,9 @@ fn get_supported_extensions(languages: &[String]) -> HashSet<&'static str> {
                 extensions.insert("kt");
                 extensions.insert("kts");
             }
-            "dart" => { extensions.insert("dart"); }
+            "dart" => {
+                extensions.insert("dart");
+            }
             _ => {
                 warn!("Unknown language: {}", lang);
             }
@@ -215,12 +230,10 @@ fn get_supported_extensions(languages: &[String]) -> HashSet<&'static str> {
     // If no languages specified, support all known extensions (universal auto-detection)
     if extensions.is_empty() {
         extensions.extend(&[
-            "rs", "ts", "tsx", "js", "jsx", "py", "pyi",
-            "go", "java", "cpp", "cxx", "cc", "hpp", "hxx", "h", "c",
-            // Revolutionary universal language support
-            "swift", "cs", "rb", "rake", "gemspec",
-            "php", "phtml", "php3", "php4", "php5",
-            "kt", "kts", "dart"
+            "rs", "ts", "tsx", "js", "jsx", "py", "pyi", "go", "java", "cpp", "cxx", "cc", "hpp",
+            "hxx", "h", "c", // Revolutionary universal language support
+            "swift", "cs", "rb", "rake", "gemspec", "php", "phtml", "php3", "php4", "php5", "kt",
+            "kts", "dart",
         ]);
     }
 

@@ -39,7 +39,7 @@ async fn main() -> codegraph_mcp::Result<()> {
 ```
 
 Notes
-- Supported protocol versions: 2024-11-05, 2025-03-26 (default)
+- Supported protocol versions: 2024-11-05, 2025-03-26, 2025-06-18 (default)
 - Uses websocket ping/pong for heartbeat; integrates with HeartbeatManager
 - Requests are timed out; responses routed via in-flight map
 
@@ -143,4 +143,3 @@ codegraph clean --all --yes
 ```
 
 For more detailed documentation, run `codegraph --help` or `codegraph <command> --help`.
-

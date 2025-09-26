@@ -1,6 +1,6 @@
-use std::time::{Duration, Instant};
-use std::collections::HashMap;
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
 /// Performance monitor for Qwen2.5-Coder MCP operations
@@ -80,24 +80,30 @@ impl QwenPerformanceMonitor {
             }
 
             let total_ops = metrics.len();
-            let avg_duration = metrics.iter()
+            let avg_duration = metrics
+                .iter()
                 .map(|m| m.duration.as_millis() as f64)
-                .sum::<f64>() / total_ops as f64;
+                .sum::<f64>()
+                / total_ops as f64;
 
-            let avg_context_tokens = metrics.iter()
-                .map(|m| m.context_tokens as f64)
-                .sum::<f64>() / total_ops as f64;
+            let avg_context_tokens =
+                metrics.iter().map(|m| m.context_tokens as f64).sum::<f64>() / total_ops as f64;
 
-            let avg_completion_tokens = metrics.iter()
+            let avg_completion_tokens = metrics
+                .iter()
                 .map(|m| m.completion_tokens as f64)
-                .sum::<f64>() / total_ops as f64;
+                .sum::<f64>()
+                / total_ops as f64;
 
-            let avg_confidence = metrics.iter()
+            let avg_confidence = metrics
+                .iter()
                 .map(|m| m.confidence_score as f64)
-                .sum::<f64>() / total_ops as f64;
+                .sum::<f64>()
+                / total_ops as f64;
 
             // Calculate performance rating
-            let performance_rating = self.calculate_performance_rating(operation_type, avg_duration);
+            let performance_rating =
+                self.calculate_performance_rating(operation_type, avg_duration);
 
             summary[operation_type] = json!({
                 "total_operations": total_ops,
@@ -141,8 +147,7 @@ impl QwenPerformanceMonitor {
         if confidence < 0.8 {
             warn!(
                 "⚠️ Low confidence for {}: {:.2} < 0.8",
-                operation_type,
-                confidence
+                operation_type, confidence
             );
         }
     }
@@ -167,7 +172,12 @@ impl QwenPerformanceMonitor {
         }
     }
 
-    fn meets_performance_targets(&self, operation_type: &str, avg_duration: f64, avg_confidence: f64) -> bool {
+    fn meets_performance_targets(
+        &self,
+        operation_type: &str,
+        avg_duration: f64,
+        avg_confidence: f64,
+    ) -> bool {
         let targets = get_performance_targets();
 
         if let Some(target_duration) = targets.get(operation_type) {
@@ -183,10 +193,10 @@ fn get_performance_targets() -> HashMap<String, u64> {
     let mut targets = HashMap::new();
 
     // Target response times in milliseconds
-    targets.insert("enhanced_search".to_string(), 3000);      // 3 seconds
+    targets.insert("enhanced_search".to_string(), 3000); // 3 seconds
     targets.insert("semantic_intelligence".to_string(), 5000); // 5 seconds
-    targets.insert("pattern_analysis".to_string(), 4000);     // 4 seconds
-    targets.insert("impact_analysis".to_string(), 4000);      // 4 seconds
+    targets.insert("pattern_analysis".to_string(), 4000); // 4 seconds
+    targets.insert("impact_analysis".to_string(), 4000); // 4 seconds
 
     targets
 }

@@ -1,14 +1,13 @@
+use codegraph_core::Result;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
 /// Intelligent caching layer for Qwen2.5-Coder responses
 ///
 /// This module implements semantic-aware caching that understands when queries
 /// are similar enough to reuse previous analysis, dramatically improving performance.
-
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use sha2::{Sha256, Digest};
-use codegraph_core::Result;
 use tracing::{debug, info, warn};
 
 /// Cache configuration
@@ -26,7 +25,7 @@ impl Default for CacheConfig {
         Self {
             max_entries: 1000,
             default_ttl: Duration::from_secs(30 * 60), // 30 minutes
-            semantic_similarity_threshold: 0.85, // 85% similarity to reuse
+            semantic_similarity_threshold: 0.85,       // 85% similarity to reuse
             enable_semantic_matching: true,
             max_memory_mb: 500, // 500MB cache limit
         }
@@ -106,8 +105,11 @@ impl QwenResponseCache {
             entry.last_accessed = current_timestamp();
 
             self.stats.cache_hits += 1;
-            info!("Cache hit (exact): {} chars, confidence: {:.2}",
-                  query.len(), entry.confidence_score);
+            info!(
+                "Cache hit (exact): {} chars, confidence: {:.2}",
+                query.len(),
+                entry.confidence_score
+            );
 
             return Some(entry.clone());
         }
@@ -116,7 +118,10 @@ impl QwenResponseCache {
         if self.config.enable_semantic_matching {
             if let Some(similar_entry) = self.find_semantically_similar(query, context).await {
                 self.stats.semantic_hits += 1;
-                info!("Cache hit (semantic): {} chars, similarity above threshold", query.len());
+                info!(
+                    "Cache hit (semantic): {} chars, similarity above threshold",
+                    query.len()
+                );
                 return Some(similar_entry);
             }
         }
@@ -171,8 +176,12 @@ impl QwenResponseCache {
         self.entries.insert(query_hash, entry);
         self.stats.total_entries = self.entries.len();
 
-        info!("Cached response: {} chars, confidence: {:.2}, total entries: {}",
-              query.len(), confidence_score, self.entries.len());
+        info!(
+            "Cached response: {} chars, confidence: {:.2}, total entries: {}",
+            query.len(),
+            confidence_score,
+            self.entries.len()
+        );
 
         Ok(())
     }
@@ -206,7 +215,10 @@ impl QwenResponseCache {
         }
 
         if let Some((entry, similarity)) = best_match {
-            debug!("Found semantically similar cached response: similarity {:.3}", similarity);
+            debug!(
+                "Found semantically similar cached response: similarity {:.3}",
+                similarity
+            );
             Some(entry.clone())
         } else {
             None
@@ -271,7 +283,9 @@ impl QwenResponseCache {
                 let is_old = age > self.config.default_ttl.as_secs();
                 let is_low_confidence = entry.confidence_score < 0.7;
 
-                if is_old || (is_low_confidence && self.entries.len() > self.config.max_entries * 3 / 4) {
+                if is_old
+                    || (is_low_confidence && self.entries.len() > self.config.max_entries * 3 / 4)
+                {
                     entries_to_remove.push(key.clone());
                 }
             }
@@ -282,8 +296,11 @@ impl QwenResponseCache {
                 self.stats.evictions += 1;
             }
 
-            info!("Cache eviction: removed {} entries, {} remaining",
-                  self.stats.evictions, self.entries.len());
+            info!(
+                "Cache eviction: removed {} entries, {} remaining",
+                self.stats.evictions,
+                self.entries.len()
+            );
         }
     }
 
@@ -291,7 +308,8 @@ impl QwenResponseCache {
     fn update_hit_rates(&mut self) {
         if self.stats.total_requests > 0 {
             self.stats.hit_rate = self.stats.cache_hits as f32 / self.stats.total_requests as f32;
-            self.stats.semantic_hit_rate = self.stats.semantic_hits as f32 / self.stats.total_requests as f32;
+            self.stats.semantic_hit_rate =
+                self.stats.semantic_hits as f32 / self.stats.total_requests as f32;
         }
     }
 
@@ -307,12 +325,21 @@ impl QwenResponseCache {
 
     /// Estimate current memory usage
     fn estimate_memory_usage(&self) -> usize {
-        self.entries.iter().map(|(_, entry)| {
-            entry.query.len() +
-            serde_json::to_string(&entry.response).unwrap_or_default().len() +
-            entry.semantic_embedding.as_ref().map(|e| e.len() * 4).unwrap_or(0) +
-            200 // Overhead estimate
-        }).sum()
+        self.entries
+            .iter()
+            .map(|(_, entry)| {
+                entry.query.len()
+                    + serde_json::to_string(&entry.response)
+                        .unwrap_or_default()
+                        .len()
+                    + entry
+                        .semantic_embedding
+                        .as_ref()
+                        .map(|e| e.len() * 4)
+                        .unwrap_or(0)
+                    + 200 // Overhead estimate
+            })
+            .sum()
     }
 
     /// Clear cache (for testing or memory pressure)
@@ -362,9 +389,9 @@ fn current_timestamp() -> u64 {
         .as_secs()
 }
 
+use std::sync::Once;
 /// Global cache instance (thread-safe)
 use std::sync::{Arc, Mutex};
-use std::sync::Once;
 
 static mut GLOBAL_CACHE: Option<Arc<Mutex<QwenResponseCache>>> = None;
 static CACHE_INIT: Once = Once::new();
@@ -480,7 +507,9 @@ pub async fn warm_cache() {
     unsafe {
         if let Some(cache) = &GLOBAL_CACHE {
             if let Ok(mut cache_guard) = cache.lock() {
-                cache_guard.warm_cache_with_common_queries(&common_queries).await;
+                cache_guard
+                    .warm_cache_with_common_queries(&common_queries)
+                    .await;
             }
         }
     }
@@ -489,9 +518,9 @@ pub async fn warm_cache() {
 /// Cache performance analysis
 #[derive(Debug, Serialize)]
 pub struct CachePerformanceReport {
-    pub cache_effectiveness: f32, // 0.0 to 1.0
+    pub cache_effectiveness: f32,     // 0.0 to 1.0
     pub performance_improvement: f32, // Response time improvement ratio
-    pub memory_efficiency: f32, // MB per cached response
+    pub memory_efficiency: f32,       // MB per cached response
     pub recommendations: Vec<String>,
 }
 
@@ -518,15 +547,19 @@ pub fn analyze_cache_performance() -> Option<CachePerformanceReport> {
         let mut recommendations = Vec::new();
 
         if cache_effectiveness < 0.3 {
-            recommendations.push("Consider increasing semantic similarity threshold for more cache hits".to_string());
+            recommendations.push(
+                "Consider increasing semantic similarity threshold for more cache hits".to_string(),
+            );
         }
 
         if stats.memory_usage_mb > 400.0 {
-            recommendations.push("High memory usage - consider reducing cache size or TTL".to_string());
+            recommendations
+                .push("High memory usage - consider reducing cache size or TTL".to_string());
         }
 
         if stats.semantic_hit_rate < 0.1 && stats.total_requests > 20 {
-            recommendations.push("Low semantic hit rate - consider improving query normalization".to_string());
+            recommendations
+                .push("Low semantic hit rate - consider improving query normalization".to_string());
         }
 
         Some(CachePerformanceReport {

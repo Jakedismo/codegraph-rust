@@ -68,9 +68,12 @@ impl<'a> CSharpCollector<'a> {
                         Some(NodeType::Module),
                         Some(Language::CSharp),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
-                    code.metadata.attributes.insert("kind".into(), "namespace".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "namespace".into());
                     self.nodes.push(code);
                     ctx.namespace_path.push(name);
                 }
@@ -86,24 +89,33 @@ impl<'a> CSharpCollector<'a> {
                         Some(NodeType::Class),
                         Some(Language::CSharp),
                         loc,
-                    ).with_content(content_text.clone());
+                    )
+                    .with_content(content_text.clone());
 
                     // Detect inheritance and interfaces
                     if let Some(base_list) = self.child_text_by_field(node, "base_list") {
-                        code.metadata.attributes.insert("inheritance".into(), base_list);
+                        code.metadata
+                            .attributes
+                            .insert("inheritance".into(), base_list);
                     }
 
                     // Detect controller pattern (ASP.NET)
                     if name.ends_with("Controller") {
-                        code.metadata.attributes.insert("pattern".into(), "controller".into());
+                        code.metadata
+                            .attributes
+                            .insert("pattern".into(), "controller".into());
                     }
 
                     // Detect service pattern (dependency injection)
                     if name.ends_with("Service") {
-                        code.metadata.attributes.insert("pattern".into(), "service".into());
+                        code.metadata
+                            .attributes
+                            .insert("pattern".into(), "service".into());
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "class".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "class".into());
                     self.nodes.push(code);
                     ctx.current_class = Some(name);
                 }
@@ -118,9 +130,12 @@ impl<'a> CSharpCollector<'a> {
                         Some(NodeType::Interface),
                         Some(Language::CSharp),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
-                    code.metadata.attributes.insert("kind".into(), "interface".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "interface".into());
                     self.nodes.push(code);
                     ctx.current_interface = Some(name);
                 }
@@ -135,9 +150,12 @@ impl<'a> CSharpCollector<'a> {
                         Some(NodeType::Struct), // Records are value-type-like
                         Some(Language::CSharp),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
-                    code.metadata.attributes.insert("kind".into(), "record".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "record".into());
                     self.nodes.push(code);
                 }
             }
@@ -152,27 +170,40 @@ impl<'a> CSharpCollector<'a> {
                         Some(NodeType::Function),
                         Some(Language::CSharp),
                         loc,
-                    ).with_content(content_text.clone());
+                    )
+                    .with_content(content_text.clone());
 
                     // Detect async methods
                     if content_text.contains("async ") {
-                        code.metadata.attributes.insert("async".into(), "true".into());
+                        code.metadata
+                            .attributes
+                            .insert("async".into(), "true".into());
                     }
 
                     // Detect return types
                     if content_text.contains("Task<") {
-                        code.metadata.attributes.insert("returns_task".into(), "true".into());
+                        code.metadata
+                            .attributes
+                            .insert("returns_task".into(), "true".into());
                     }
 
                     // Detect LINQ usage
-                    if content_text.contains(".Where(") || content_text.contains(".Select(") ||
-                       content_text.contains(".FirstOrDefault(") {
-                        code.metadata.attributes.insert("uses_linq".into(), "true".into());
+                    if content_text.contains(".Where(")
+                        || content_text.contains(".Select(")
+                        || content_text.contains(".FirstOrDefault(")
+                    {
+                        code.metadata
+                            .attributes
+                            .insert("uses_linq".into(), "true".into());
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "method".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "method".into());
                     if let Some(ref current_class) = ctx.current_class {
-                        code.metadata.attributes.insert("parent_class".into(), current_class.clone());
+                        code.metadata
+                            .attributes
+                            .insert("parent_class".into(), current_class.clone());
                     }
                     self.nodes.push(code);
                 }
@@ -188,19 +219,26 @@ impl<'a> CSharpCollector<'a> {
                         Some(NodeType::Variable), // Properties are variable-like
                         Some(Language::CSharp),
                         loc,
-                    ).with_content(content_text.clone());
+                    )
+                    .with_content(content_text.clone());
 
                     // Detect auto-properties
                     if content_text.contains("{ get; set; }") {
-                        code.metadata.attributes.insert("auto_property".into(), "true".into());
+                        code.metadata
+                            .attributes
+                            .insert("auto_property".into(), "true".into());
                     }
 
                     // Detect computed properties
                     if content_text.contains("=>") {
-                        code.metadata.attributes.insert("computed_property".into(), "true".into());
+                        code.metadata
+                            .attributes
+                            .insert("computed_property".into(), "true".into());
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "property".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "property".into());
                     self.nodes.push(code);
                 }
             }
@@ -214,10 +252,15 @@ impl<'a> CSharpCollector<'a> {
                         Some(NodeType::Import),
                         Some(Language::CSharp),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
-                    code.metadata.attributes.insert("kind".into(), "using".into());
-                    code.metadata.attributes.insert("namespace".into(), namespace.clone());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "using".into());
+                    code.metadata
+                        .attributes
+                        .insert("namespace".into(), namespace.clone());
                     ctx.using_statements.push(namespace);
                     self.nodes.push(code);
                 }
@@ -244,7 +287,9 @@ impl<'a> CSharpCollector<'a> {
     }
 
     fn node_text(&self, node: &Node) -> String {
-        node.utf8_text(self.content.as_bytes()).unwrap_or("").to_string()
+        node.utf8_text(self.content.as_bytes())
+            .unwrap_or("")
+            .to_string()
     }
 
     fn location(&self, node: &Node) -> Location {

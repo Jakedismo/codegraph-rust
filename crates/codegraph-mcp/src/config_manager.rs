@@ -1,3 +1,4 @@
+use codegraph_core::Result;
 /// Configuration management for CodeGraph MCP server
 ///
 /// Handles configuration from multiple sources:
@@ -5,14 +6,12 @@
 /// - Configuration files
 /// - Command line arguments
 /// - Runtime validation and optimization
-
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
 #[cfg(feature = "qwen-integration")]
 use std::time::Duration;
-use codegraph_core::Result;
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 
 /// Complete configuration for CodeGraph MCP server
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,10 +148,10 @@ impl Default for PerformanceConfig {
 impl Default for PerformanceTargets {
     fn default() -> Self {
         Self {
-            enhanced_search_ms: 3000,      // 3 seconds
+            enhanced_search_ms: 3000,       // 3 seconds
             semantic_intelligence_ms: 6000, // 6 seconds
-            impact_analysis_ms: 5000,      // 5 seconds
-            pattern_detection_ms: 2000,    // 2 seconds
+            impact_analysis_ms: 5000,       // 5 seconds
+            pattern_detection_ms: 2000,     // 2 seconds
         }
     }
 }
@@ -183,7 +182,10 @@ impl ConfigManager {
                 config = Self::load_from_file(&config_path)?;
                 info!("Configuration loaded from file: {:?}", config_path);
             } else {
-                warn!("Configuration file not found: {:?}, using defaults", config_path);
+                warn!(
+                    "Configuration file not found: {:?}, using defaults",
+                    config_path
+                );
             }
         }
 
@@ -201,11 +203,12 @@ impl ConfigManager {
 
     /// Load configuration from TOML file
     fn load_from_file(path: &PathBuf) -> Result<CodeGraphConfig> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| codegraph_core::CodeGraphError::Io(e))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| codegraph_core::CodeGraphError::Io(e))?;
 
-        let config: CodeGraphConfig = toml::from_str(&content)
-            .map_err(|e| codegraph_core::CodeGraphError::Parse(format!("Invalid TOML config: {}", e)))?;
+        let config: CodeGraphConfig = toml::from_str(&content).map_err(|e| {
+            codegraph_core::CodeGraphError::Parse(format!("Invalid TOML config: {}", e))
+        })?;
 
         Ok(config)
     }
@@ -288,46 +291,67 @@ impl ConfigManager {
     fn validate_config(config: &CodeGraphConfig) -> Result<()> {
         // Validate server configuration
         if config.server.port == 0 {
-            return Err(codegraph_core::CodeGraphError::Configuration("Invalid port: 0".to_string()));
+            return Err(codegraph_core::CodeGraphError::Configuration(
+                "Invalid port: 0".to_string(),
+            ));
         }
 
         if config.server.host.is_empty() {
-            return Err(codegraph_core::CodeGraphError::Configuration("Empty host configuration".to_string()));
+            return Err(codegraph_core::CodeGraphError::Configuration(
+                "Empty host configuration".to_string(),
+            ));
         }
 
         // Validate Qwen configuration
         if config.qwen.context_window == 0 {
-            return Err(codegraph_core::CodeGraphError::Configuration("Invalid context window: 0".to_string()));
+            return Err(codegraph_core::CodeGraphError::Configuration(
+                "Invalid context window: 0".to_string(),
+            ));
         }
 
         if config.qwen.context_window > 200000 {
-            warn!("Very large context window: {} tokens, may cause memory issues", config.qwen.context_window);
+            warn!(
+                "Very large context window: {} tokens, may cause memory issues",
+                config.qwen.context_window
+            );
         }
 
         if config.qwen.temperature < 0.0 || config.qwen.temperature > 2.0 {
-            return Err(codegraph_core::CodeGraphError::Configuration(
-                format!("Invalid temperature: {} (must be 0.0-2.0)", config.qwen.temperature)
-            ));
+            return Err(codegraph_core::CodeGraphError::Configuration(format!(
+                "Invalid temperature: {} (must be 0.0-2.0)",
+                config.qwen.temperature
+            )));
         }
 
         // Validate cache configuration
         if config.cache.max_memory_mb > 2048 {
-            warn!("Large cache memory allocation: {}MB", config.cache.max_memory_mb);
+            warn!(
+                "Large cache memory allocation: {}MB",
+                config.cache.max_memory_mb
+            );
         }
 
-        if config.cache.semantic_similarity_threshold < 0.1 || config.cache.semantic_similarity_threshold > 1.0 {
-            return Err(codegraph_core::CodeGraphError::Configuration(
-                format!("Invalid similarity threshold: {} (must be 0.1-1.0)", config.cache.semantic_similarity_threshold)
-            ));
+        if config.cache.semantic_similarity_threshold < 0.1
+            || config.cache.semantic_similarity_threshold > 1.0
+        {
+            return Err(codegraph_core::CodeGraphError::Configuration(format!(
+                "Invalid similarity threshold: {} (must be 0.1-1.0)",
+                config.cache.semantic_similarity_threshold
+            )));
         }
 
         // Validate performance configuration
         if config.performance.max_concurrent_requests == 0 {
-            return Err(codegraph_core::CodeGraphError::Configuration("Invalid max concurrent requests: 0".to_string()));
+            return Err(codegraph_core::CodeGraphError::Configuration(
+                "Invalid max concurrent requests: 0".to_string(),
+            ));
         }
 
         if config.performance.max_concurrent_requests > 100 {
-            warn!("High concurrent request limit: {}, may cause resource contention", config.performance.max_concurrent_requests);
+            warn!(
+                "High concurrent request limit: {}, may cause resource contention",
+                config.performance.max_concurrent_requests
+            );
         }
 
         info!("✅ Configuration validation passed");
@@ -395,10 +419,22 @@ impl ConfigManager {
             example_config.cache.max_memory_mb,
             example_config.performance.max_concurrent_requests,
             example_config.performance.enable_performance_logging,
-            example_config.performance.performance_targets.enhanced_search_ms,
-            example_config.performance.performance_targets.semantic_intelligence_ms,
-            example_config.performance.performance_targets.impact_analysis_ms,
-            example_config.performance.performance_targets.pattern_detection_ms,
+            example_config
+                .performance
+                .performance_targets
+                .enhanced_search_ms,
+            example_config
+                .performance
+                .performance_targets
+                .semantic_intelligence_ms,
+            example_config
+                .performance
+                .performance_targets
+                .impact_analysis_ms,
+            example_config
+                .performance
+                .performance_targets
+                .pattern_detection_ms,
             example_config.features.enable_qwen_integration,
             example_config.features.enable_caching,
             example_config.features.enable_pattern_detection,
@@ -424,11 +460,31 @@ impl ConfigManager {
             config.cache.max_entries,
             config.cache.max_memory_mb,
             config.performance.max_concurrent_requests,
-            if config.performance.enable_performance_logging { "enabled" } else { "disabled" },
-            if config.features.enable_qwen_integration { "✅" } else { "❌" },
-            if config.features.enable_caching { "✅" } else { "❌" },
-            if config.features.enable_pattern_detection { "✅" } else { "❌" },
-            if config.features.enable_performance_monitoring { "✅" } else { "❌" }
+            if config.performance.enable_performance_logging {
+                "enabled"
+            } else {
+                "disabled"
+            },
+            if config.features.enable_qwen_integration {
+                "✅"
+            } else {
+                "❌"
+            },
+            if config.features.enable_caching {
+                "✅"
+            } else {
+                "❌"
+            },
+            if config.features.enable_pattern_detection {
+                "✅"
+            } else {
+                "❌"
+            },
+            if config.features.enable_performance_monitoring {
+                "✅"
+            } else {
+                "❌"
+            }
         )
     }
 
@@ -437,31 +493,34 @@ impl ConfigManager {
         // Get system memory
         let system_memory_gb = Self::get_system_memory_gb();
 
-        info!("Optimizing configuration for system with {}GB memory", system_memory_gb);
+        info!(
+            "Optimizing configuration for system with {}GB memory",
+            system_memory_gb
+        );
 
         // Optimize based on available memory
         if system_memory_gb >= 32 {
             // Optimal configuration for 32GB+ systems
-            config.qwen.context_window = 128000;  // Full context window
-            config.cache.max_memory_mb = 800;     // Larger cache
+            config.qwen.context_window = 128000; // Full context window
+            config.cache.max_memory_mb = 800; // Larger cache
             config.performance.max_concurrent_requests = 5; // More concurrent requests
             info!("✅ Optimized for high-memory system (32GB+)");
         } else if system_memory_gb >= 24 {
             // Good configuration for 24-31GB systems
-            config.qwen.context_window = 100000;  // Reduced context window
-            config.cache.max_memory_mb = 500;     // Standard cache
+            config.qwen.context_window = 100000; // Reduced context window
+            config.cache.max_memory_mb = 500; // Standard cache
             config.performance.max_concurrent_requests = 3; // Moderate concurrency
             info!("⚠️ Optimized for medium-memory system (24-31GB)");
         } else if system_memory_gb >= 16 {
             // Minimal configuration for 16-23GB systems
-            config.qwen.context_window = 64000;   // Half context window
-            config.cache.max_memory_mb = 256;     // Smaller cache
+            config.qwen.context_window = 64000; // Half context window
+            config.cache.max_memory_mb = 256; // Smaller cache
             config.performance.max_concurrent_requests = 2; // Low concurrency
             warn!("⚠️ Optimized for low-memory system (16-23GB) - reduced performance");
         } else {
             // Very constrained configuration
             config.features.enable_qwen_integration = false; // Disable Qwen
-            config.cache.max_memory_mb = 128;     // Minimal cache
+            config.cache.max_memory_mb = 128; // Minimal cache
             config.performance.max_concurrent_requests = 1; // Single request
             warn!("❌ Insufficient memory (<16GB) - Qwen integration disabled");
         }
@@ -509,8 +568,7 @@ impl ConfigManager {
     pub fn create_default_config_file(path: &PathBuf) -> Result<()> {
         let config_content = Self::generate_example_config();
 
-        std::fs::write(path, config_content)
-            .map_err(|e| codegraph_core::CodeGraphError::Io(e))?;
+        std::fs::write(path, config_content).map_err(|e| codegraph_core::CodeGraphError::Io(e))?;
 
         info!("Created default configuration file: {:?}", path);
         Ok(())

@@ -3,27 +3,27 @@ pub mod error;
 pub mod heartbeat;
 pub mod indexer;
 pub mod message;
+pub mod official_server;
 pub mod process;
 pub mod protocol;
+pub mod server;
 pub mod transport;
 pub mod version;
-pub mod server;
-pub mod official_server;
 
 #[cfg(feature = "qwen-integration")]
-pub mod qwen;
+pub mod cache;
+pub mod config_manager;
 #[cfg(feature = "qwen-integration")]
-pub mod prompts;
+pub mod context_optimizer;
+pub mod pattern_detector;
 #[cfg(feature = "qwen-integration")]
 pub mod performance;
 #[cfg(feature = "qwen-integration")]
+pub mod prompts;
+#[cfg(feature = "qwen-integration")]
+pub mod qwen;
+#[cfg(feature = "qwen-integration")]
 pub mod tools_schema;
-#[cfg(feature = "qwen-integration")]
-pub mod context_optimizer;
-#[cfg(feature = "qwen-integration")]
-pub mod cache;
-pub mod pattern_detector;
-pub mod config_manager;
 
 pub use connection::*;
 pub use error::{McpError, Result};

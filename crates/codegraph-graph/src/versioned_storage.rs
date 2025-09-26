@@ -292,8 +292,8 @@ impl VersionedRocksDbStorage {
             None => return Ok(None),
         };
 
-        let node: CodeNode =
-            serde_json::from_slice::<CodeNode>(&content).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        let node: CodeNode = serde_json::from_slice::<CodeNode>(&content)
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         Ok(Some(node))
     }
@@ -379,8 +379,9 @@ impl VersionedStore for VersionedRocksDbStorage {
 
         match self.db.get_cf(&snapshots_cf, snapshot_id.as_bytes()) {
             Ok(Some(data)) => {
-                let stored_snapshot: StoredSnapshot = serde_json::from_slice::<StoredSnapshot>(&data)
-                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                let stored_snapshot: StoredSnapshot =
+                    serde_json::from_slice::<StoredSnapshot>(&data)
+                        .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
                 let snapshot_arc = Arc::new(stored_snapshot.snapshot.clone());
                 self.snapshot_cache.insert(snapshot_id, snapshot_arc);

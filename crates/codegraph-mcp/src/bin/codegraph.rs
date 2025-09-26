@@ -95,7 +95,11 @@ enum Commands {
         #[arg(long, help = "Local embedding device: cpu | metal | cuda:<id>")]
         device: Option<String>,
 
-        #[arg(long, help = "Max sequence length for local embeddings", default_value = "512")]
+        #[arg(
+            long,
+            help = "Max sequence length for local embeddings",
+            default_value = "512"
+        )]
         max_seq_len: usize,
     },
 
@@ -116,13 +120,25 @@ enum Commands {
         #[arg(short, long, help = "Output format", default_value = "human")]
         format: OutputFormat,
 
-        #[arg(long, help = "Restrict to path prefixes (comma-separated)", value_delimiter = ',')]
+        #[arg(
+            long,
+            help = "Restrict to path prefixes (comma-separated)",
+            value_delimiter = ','
+        )]
         paths: Option<Vec<String>>,
 
-        #[arg(long, help = "Restrict to languages (comma-separated)", value_delimiter = ',')]
+        #[arg(
+            long,
+            help = "Restrict to languages (comma-separated)",
+            value_delimiter = ','
+        )]
         langs: Option<Vec<String>>,
 
-        #[arg(long, help = "Expand graph neighbors to this depth (0 to disable)", default_value = "0")]
+        #[arg(
+            long,
+            help = "Expand graph neighbors to this depth (0 to disable)",
+            default_value = "0"
+        )]
         expand_graph: usize,
     },
 
@@ -202,28 +218,43 @@ enum Commands {
     },
     #[command(about = "Run performance benchmarks (index + query)")]
     Perf {
-        #[arg(help = "Path to project directory")] path: PathBuf,
-        #[arg(long, value_delimiter = ',')] langs: Option<Vec<String>>,
-        #[arg(long, default_value = "3", help = "Warmup runs before timing")] warmup: usize,
-        #[arg(long, default_value = "10", help = "Timed query trials")] trials: usize,
-        #[arg(long, value_delimiter = ',', help = "Queries to benchmark")] queries: Option<Vec<String>>,
-        #[arg(long, default_value = "4")] workers: usize,
-        #[arg(long, default_value = "100")] batch_size: usize,
-        #[arg(long, help = "Local embedding device: cpu | metal | cuda:<id>")] device: Option<String>,
-        #[arg(long, default_value = "512")] max_seq_len: usize,
-        #[arg(long, help = "Remove existing .codegraph before indexing")] clean: bool,
-        #[arg(long, default_value = "json", value_parser = clap::builder::PossibleValuesParser::new(["human","json"]))] format: String,
-        #[arg(long, help = "Open graph in read-only mode for perf queries")] graph_readonly: bool,
+        #[arg(help = "Path to project directory")]
+        path: PathBuf,
+        #[arg(long, value_delimiter = ',')]
+        langs: Option<Vec<String>>,
+        #[arg(long, default_value = "3", help = "Warmup runs before timing")]
+        warmup: usize,
+        #[arg(long, default_value = "10", help = "Timed query trials")]
+        trials: usize,
+        #[arg(long, value_delimiter = ',', help = "Queries to benchmark")]
+        queries: Option<Vec<String>>,
+        #[arg(long, default_value = "4")]
+        workers: usize,
+        #[arg(long, default_value = "100")]
+        batch_size: usize,
+        #[arg(long, help = "Local embedding device: cpu | metal | cuda:<id>")]
+        device: Option<String>,
+        #[arg(long, default_value = "512")]
+        max_seq_len: usize,
+        #[arg(long, help = "Remove existing .codegraph before indexing")]
+        clean: bool,
+        #[arg(long, default_value = "json", value_parser = clap::builder::PossibleValuesParser::new(["human","json"]))]
+        format: String,
+        #[arg(long, help = "Open graph in read-only mode for perf queries")]
+        graph_readonly: bool,
     },
     #[command(about = "Serve HTTP MCP endpoint")]
     #[cfg(feature = "server-http")]
     ServeHttp {
-        #[arg(long, default_value = "127.0.0.1")] host: String,
-        #[arg(long, default_value = "3000")] port: u16,
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        #[arg(long, default_value = "3000")]
+        port: u16,
     },
     #[command(about = "Serve STDIO MCP endpoint")]
     ServeStdio {
-        #[arg(long, default_value = "8192")] buffer_size: usize,
+        #[arg(long, default_value = "8192")]
+        buffer_size: usize,
     },
 }
 
@@ -231,14 +262,19 @@ enum Commands {
 enum GraphAction {
     #[command(about = "Get neighbors of a node")]
     Neighbors {
-        #[arg(long, help = "Node UUID")] node: String,
-        #[arg(long, help = "Limit", default_value = "20")] limit: usize,
+        #[arg(long, help = "Node UUID")]
+        node: String,
+        #[arg(long, help = "Limit", default_value = "20")]
+        limit: usize,
     },
     #[command(about = "Traverse graph breadth-first")]
     Traverse {
-        #[arg(long, help = "Start node UUID")] start: String,
-        #[arg(long, help = "Depth", default_value = "2")] depth: usize,
-        #[arg(long, help = "Limit nodes", default_value = "100")] limit: usize,
+        #[arg(long, help = "Start node UUID")]
+        start: String,
+        #[arg(long, help = "Depth", default_value = "2")]
+        depth: usize,
+        #[arg(long, help = "Limit nodes", default_value = "100")]
+        limit: usize,
     },
 }
 
@@ -246,10 +282,14 @@ enum GraphAction {
 enum VectorAction {
     #[command(about = "Semantic vector search (FAISS)")]
     Search {
-        #[arg(help = "Query string")] query: String,
-        #[arg(long, value_delimiter = ',')] paths: Option<Vec<String>>,
-        #[arg(long, value_delimiter = ',')] langs: Option<Vec<String>>,
-        #[arg(long, default_value = "10")] limit: usize,
+        #[arg(help = "Query string")]
+        query: String,
+        #[arg(long, value_delimiter = ',')]
+        paths: Option<Vec<String>>,
+        #[arg(long, value_delimiter = ',')]
+        langs: Option<Vec<String>>,
+        #[arg(long, default_value = "10")]
+        limit: usize,
     },
 }
 
@@ -257,16 +297,23 @@ enum VectorAction {
 enum CodeAction {
     #[command(about = "Read a file or range")]
     Read {
-        #[arg(help = "File path")] path: String,
-        #[arg(long)] start: Option<usize>,
-        #[arg(long)] end: Option<usize>,
+        #[arg(help = "File path")]
+        path: String,
+        #[arg(long)]
+        start: Option<usize>,
+        #[arg(long)]
+        end: Option<usize>,
     },
     #[command(about = "Patch a file (find/replace)")]
     Patch {
-        #[arg(help = "File path")] path: String,
-        #[arg(long, help = "Find text")] find: String,
-        #[arg(long, help = "Replace with")] replace: String,
-        #[arg(long, help = "Dry run")] dry_run: bool,
+        #[arg(help = "File path")]
+        path: String,
+        #[arg(long, help = "Find text")]
+        find: String,
+        #[arg(long, help = "Replace with")]
+        replace: String,
+        #[arg(long, help = "Dry run")]
+        dry_run: bool,
     },
 }
 
@@ -274,8 +321,10 @@ enum CodeAction {
 enum TestAction {
     #[command(about = "Run tests (cargo test)")]
     Run {
-        #[arg(long)] package: Option<String>,
-        #[arg(trailing_var_arg = true)] args: Vec<String>,
+        #[arg(long)]
+        package: Option<String>,
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
     },
 }
 
@@ -448,100 +497,149 @@ async fn main() -> Result<()> {
             langs,
             expand_graph,
         } => {
-            handle_search(query, search_type, limit, threshold, format, paths, langs, expand_graph).await?;
+            handle_search(
+                query,
+                search_type,
+                limit,
+                threshold,
+                format,
+                paths,
+                langs,
+                expand_graph,
+            )
+            .await?;
         }
-        Commands::Graph { action } => {
-            match action {
-                GraphAction::Neighbors { node, limit } => {
-                    let id = uuid::Uuid::parse_str(&node)?;
-                    let graph = codegraph_graph::CodeGraph::new()?;
-                    let neighbors = graph.get_neighbors(id).await?;
-                    println!("Neighbors ({}):", neighbors.len().min(limit));
-                    for n in neighbors.into_iter().take(limit) {
-                        if let Some(nn) = graph.get_node(n).await? {
-                            println!("- {}  {}", n, nn.name);
-                        } else {
-                            println!("- {}", n);
-                        }
-                    }
-                }
-                GraphAction::Traverse { start, depth, limit } => {
-                    use std::collections::{HashSet, VecDeque};
-                    let start_id = uuid::Uuid::parse_str(&start)?;
-                    let graph = codegraph_graph::CodeGraph::new()?;
-                    let mut seen: HashSet<codegraph_core::NodeId> = HashSet::new();
-                    let mut q: VecDeque<(codegraph_core::NodeId, usize)> = VecDeque::new();
-                    q.push_back((start_id, 0));
-                    seen.insert(start_id);
-                    let mut out = Vec::new();
-                    while let Some((nid, d)) = q.pop_front() {
-                        out.push((nid, d));
-                        if out.len() >= limit { break; }
-                        if d >= depth { continue; }
-                        for nb in graph.get_neighbors(nid).await.unwrap_or_default() {
-                            if seen.insert(nb) {
-                                q.push_back((nb, d + 1));
-                            }
-                        }
-                    }
-                    println!("Traversal (visited {}):", out.len());
-                    for (nid, d) in out {
-                        if let Some(nn) = graph.get_node(nid).await? {
-                            println!("{} {}  {}", d, nid, nn.name);
-                        } else {
-                            println!("{} {}", d, nid);
-                        }
-                    }
-                }
-            }
-        }
-        Commands::Vector { action } => {
-            match action {
-                VectorAction::Search { query, paths, langs, limit } => {
-                    handle_search(query, SearchType::Semantic, limit, 0.7, OutputFormat::Human, paths, langs, 0).await?;
-                }
-            }
-        }
-        Commands::Code { action } => {
-            match action {
-                CodeAction::Read { path, start, end } => {
-                    let text = std::fs::read_to_string(&path)?;
-                    let total = text.lines().count();
-                    let s = start.unwrap_or(1).max(1);
-                    let e = end.unwrap_or(total).min(total);
-                    for (i, line) in text.lines().enumerate() {
-                        let ln = i + 1;
-                        if ln >= s && ln <= e {
-                            println!("{:>6} | {}", ln, line);
-                        }
-                    }
-                }
-                CodeAction::Patch { path, find, replace, dry_run } => {
-                    let text = std::fs::read_to_string(&path)?;
-                    let patched = text.replace(&find, &replace);
-                    if dry_run {
-                        println!("--- DRY RUN: changes not written ---");
-                        println!("Replacements: {}", text.matches(&find).count());
+        Commands::Graph { action } => match action {
+            GraphAction::Neighbors { node, limit } => {
+                let id = uuid::Uuid::parse_str(&node)?;
+                let graph = codegraph_graph::CodeGraph::new()?;
+                let neighbors = graph.get_neighbors(id).await?;
+                println!("Neighbors ({}):", neighbors.len().min(limit));
+                for n in neighbors.into_iter().take(limit) {
+                    if let Some(nn) = graph.get_node(n).await? {
+                        println!("- {}  {}", n, nn.name);
                     } else {
-                        std::fs::write(&path, patched)?;
-                        println!("Patched '{}'", path);
+                        println!("- {}", n);
                     }
                 }
             }
-        }
-        Commands::Test { action } => {
-            match action {
-                TestAction::Run { package, args } => {
-                    let mut cmd = std::process::Command::new("cargo");
-                    cmd.arg("test");
-                    if let Some(p) = package { cmd.arg("-p").arg(p); }
-                    if !args.is_empty() { cmd.args(args); }
-                    let status = cmd.status()?;
-                    if !status.success() { anyhow::bail!("tests failed"); }
+            GraphAction::Traverse {
+                start,
+                depth,
+                limit,
+            } => {
+                use std::collections::{HashSet, VecDeque};
+                let start_id = uuid::Uuid::parse_str(&start)?;
+                let graph = codegraph_graph::CodeGraph::new()?;
+                let mut seen: HashSet<codegraph_core::NodeId> = HashSet::new();
+                let mut q: VecDeque<(codegraph_core::NodeId, usize)> = VecDeque::new();
+                q.push_back((start_id, 0));
+                seen.insert(start_id);
+                let mut out = Vec::new();
+                while let Some((nid, d)) = q.pop_front() {
+                    out.push((nid, d));
+                    if out.len() >= limit {
+                        break;
+                    }
+                    if d >= depth {
+                        continue;
+                    }
+                    for nb in graph.get_neighbors(nid).await.unwrap_or_default() {
+                        if seen.insert(nb) {
+                            q.push_back((nb, d + 1));
+                        }
+                    }
+                }
+                println!("Traversal (visited {}):", out.len());
+                for (nid, d) in out {
+                    if let Some(nn) = graph.get_node(nid).await? {
+                        println!("{} {}  {}", d, nid, nn.name);
+                    } else {
+                        println!("{} {}", d, nid);
+                    }
                 }
             }
-        }
-        Commands::Perf { path, langs, warmup, trials, queries, workers, batch_size, device, max_seq_len, clean, format, graph_readonly } => {
+        },
+        Commands::Vector { action } => match action {
+            VectorAction::Search {
+                query,
+                paths,
+                langs,
+                limit,
+            } => {
+                handle_search(
+                    query,
+                    SearchType::Semantic,
+                    limit,
+                    0.7,
+                    OutputFormat::Human,
+                    paths,
+                    langs,
+                    0,
+                )
+                .await?;
+            }
+        },
+        Commands::Code { action } => match action {
+            CodeAction::Read { path, start, end } => {
+                let text = std::fs::read_to_string(&path)?;
+                let total = text.lines().count();
+                let s = start.unwrap_or(1).max(1);
+                let e = end.unwrap_or(total).min(total);
+                for (i, line) in text.lines().enumerate() {
+                    let ln = i + 1;
+                    if ln >= s && ln <= e {
+                        println!("{:>6} | {}", ln, line);
+                    }
+                }
+            }
+            CodeAction::Patch {
+                path,
+                find,
+                replace,
+                dry_run,
+            } => {
+                let text = std::fs::read_to_string(&path)?;
+                let patched = text.replace(&find, &replace);
+                if dry_run {
+                    println!("--- DRY RUN: changes not written ---");
+                    println!("Replacements: {}", text.matches(&find).count());
+                } else {
+                    std::fs::write(&path, patched)?;
+                    println!("Patched '{}'", path);
+                }
+            }
+        },
+        Commands::Test { action } => match action {
+            TestAction::Run { package, args } => {
+                let mut cmd = std::process::Command::new("cargo");
+                cmd.arg("test");
+                if let Some(p) = package {
+                    cmd.arg("-p").arg(p);
+                }
+                if !args.is_empty() {
+                    cmd.args(args);
+                }
+                let status = cmd.status()?;
+                if !status.success() {
+                    anyhow::bail!("tests failed");
+                }
+            }
+        },
+        Commands::Perf {
+            path,
+            langs,
+            warmup,
+            trials,
+            queries,
+            workers,
+            batch_size,
+            device,
+            max_seq_len,
+            clean,
+            format,
+            graph_readonly,
+        } => {
             handle_perf(
                 path,
                 langs,
@@ -614,7 +712,12 @@ async fn handle_start(
                 .try_init()
                 .ok(); // Ignore if already initialized
 
-            eprintln!("{}", "Starting CodeGraph MCP Server with 100% Official SDK...".green().bold());
+            eprintln!(
+                "{}",
+                "Starting CodeGraph MCP Server with 100% Official SDK..."
+                    .green()
+                    .bold()
+            );
 
             // Create and initialize the revolutionary CodeGraph server with official SDK
             let mut server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
@@ -631,7 +734,10 @@ async fn handle_start(
             eprintln!("🚀 Official MCP server started with revolutionary capabilities");
 
             // Wait for the server to complete
-            service.waiting().await.map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
+            service
+                .waiting()
+                .await
+                .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
         }
         TransportType::Http {
             host,
@@ -647,7 +753,9 @@ async fn handle_start(
             eprintln!("💡 Or use legacy HTTP server:");
             eprintln!("   codegraph start http --legacy");
 
-            return Err(anyhow::anyhow!("HTTP transport requires legacy mode or official SDK implementation"));
+            return Err(anyhow::anyhow!(
+                "HTTP transport requires legacy mode or official SDK implementation"
+            ));
         }
         TransportType::Dual {
             host,
@@ -760,18 +868,33 @@ async fn handle_index(
 
     // Memory-aware optimization for high-memory systems
     let available_memory_gb = estimate_available_memory_gb();
-    let (optimized_batch_size, optimized_workers) = optimize_for_memory(
-        available_memory_gb,
-        batch_size,
-        workers
-    );
+    let (optimized_batch_size, optimized_workers) =
+        optimize_for_memory(available_memory_gb, batch_size, workers);
 
     println!("Workers: {} → {} (optimized)", workers, optimized_workers);
-    println!("Batch size: {} → {} (optimized)", batch_size, optimized_batch_size);
+    println!(
+        "Batch size: {} → {} (optimized)",
+        batch_size, optimized_batch_size
+    );
 
     if available_memory_gb >= 64 {
-        println!("{}", format!("🚀 High-memory system detected ({}GB) - performance optimized!", available_memory_gb).green().bold());
-        println!("{}", format!("💾 Memory capacity: ~{} embeddings per batch", optimized_batch_size).cyan());
+        println!(
+            "{}",
+            format!(
+                "🚀 High-memory system detected ({}GB) - performance optimized!",
+                available_memory_gb
+            )
+            .green()
+            .bold()
+        );
+        println!(
+            "{}",
+            format!(
+                "💾 Memory capacity: ~{} embeddings per batch",
+                optimized_batch_size
+            )
+            .cyan()
+        );
     }
 
     // Configure indexer
@@ -803,37 +926,81 @@ async fn handle_index(
     // Performance summary with dual metrics
     println!("{}", "📊 Performance Summary".cyan().bold());
     println!("┌─────────────────────────────────────────────────┐");
-    println!("│ 📄 Files: {} indexed                             │", format!("{:>6}", stats.files).yellow());
-    println!("│ 📝 Lines: {} processed                           │", format!("{:>6}", stats.lines).yellow());
-    println!("│ 🔧 Functions: {} extracted                       │", format!("{:>6}", stats.functions).green());
-    println!("│ 🏗️  Classes: {} extracted                        │", format!("{:>6}", stats.classes).green());
-    println!("│ 📦 Structs: {} extracted                         │", format!("{:>6}", stats.structs).green());
-    println!("│ 🎯 Traits: {} extracted                          │", format!("{:>6}", stats.traits).green());
-    println!("│ 💾 Embeddings: {} generated                      │", format!("{:>6}", stats.embeddings).cyan());
+    println!(
+        "│ 📄 Files: {} indexed                             │",
+        format!("{:>6}", stats.files).yellow()
+    );
+    println!(
+        "│ 📝 Lines: {} processed                           │",
+        format!("{:>6}", stats.lines).yellow()
+    );
+    println!(
+        "│ 🔧 Functions: {} extracted                       │",
+        format!("{:>6}", stats.functions).green()
+    );
+    println!(
+        "│ 🏗️  Classes: {} extracted                        │",
+        format!("{:>6}", stats.classes).green()
+    );
+    println!(
+        "│ 📦 Structs: {} extracted                         │",
+        format!("{:>6}", stats.structs).green()
+    );
+    println!(
+        "│ 🎯 Traits: {} extracted                          │",
+        format!("{:>6}", stats.traits).green()
+    );
+    println!(
+        "│ 💾 Embeddings: {} generated                      │",
+        format!("{:>6}", stats.embeddings).cyan()
+    );
     if stats.errors > 0 {
-        println!("│ ❌ Errors: {} encountered                        │", format!("{:>6}", stats.errors).red());
+        println!(
+            "│ ❌ Errors: {} encountered                        │",
+            format!("{:>6}", stats.errors).red()
+        );
     }
     println!("└─────────────────────────────────────────────────┘");
 
     // Configuration summary
     println!();
     println!("{}", "⚙️  Configuration Summary".cyan().bold());
-    println!("Workers: {} | Batch Size: {} | Languages: {}",
-             optimized_workers,
-             optimized_batch_size,
-             languages_list.join(", "));
+    println!(
+        "Workers: {} | Batch Size: {} | Languages: {}",
+        optimized_workers,
+        optimized_batch_size,
+        languages_list.join(", ")
+    );
 
     let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or("default".to_string());
     if provider == "ollama" {
-        println!("{}", "🧠 Using SOTA Code-Specialized Embeddings (nomic-embed-code)".green());
+        println!(
+            "{}",
+            "🧠 Using SOTA Code-Specialized Embeddings (nomic-embed-code)".green()
+        );
     } else if provider == "onnx" {
         println!("{}", "⚡ Using Speed-Optimized Embeddings (ONNX)".yellow());
     }
 
     if available_memory_gb >= 128 {
-        println!("{}", format!("🚀 Ultra-High Memory System ({}GB) - Maximum Performance!", available_memory_gb).green().bold());
+        println!(
+            "{}",
+            format!(
+                "🚀 Ultra-High Memory System ({}GB) - Maximum Performance!",
+                available_memory_gb
+            )
+            .green()
+            .bold()
+        );
     } else if available_memory_gb >= 64 {
-        println!("{}", format!("💪 High Memory System ({}GB) - Optimized Performance!", available_memory_gb).green());
+        println!(
+            "{}",
+            format!(
+                "💪 High Memory System ({}GB) - Optimized Performance!",
+                available_memory_gb
+            )
+            .green()
+        );
     }
 
     // Success rate and recommendations
@@ -844,12 +1011,20 @@ async fn handle_index(
         } else if embedding_success_rate >= 75.0 {
             println!("{}", "⚠️  Good embedding success rate (75-90%)".yellow());
         } else {
-            println!("{}", "❌ Low embedding success rate (<75%) - check language support".red());
+            println!(
+                "{}",
+                "❌ Low embedding success rate (<75%) - check language support".red()
+            );
         }
     }
 
     println!();
-    println!("{}", "🚀 Ready for Revolutionary MCP Intelligence!".green().bold());
+    println!(
+        "{}",
+        "🚀 Ready for Revolutionary MCP Intelligence!"
+            .green()
+            .bold()
+    );
     println!("Next: Start MCP server with 'codegraph start stdio'");
 
     if stats.errors > 0 {
@@ -904,11 +1079,7 @@ async fn handle_search(
         let mut used_any_shard = false;
 
         // Helper to search a specific index file + mapping file
-        let mut search_index = |
-            index_path: &Path,
-            ids_path: &Path,
-            topk: usize,
-        | -> Result<()> {
+        let mut search_index = |index_path: &Path, ids_path: &Path, topk: usize| -> Result<()> {
             if !index_path.exists() || !ids_path.exists() {
                 return Ok(());
             }
@@ -916,7 +1087,9 @@ async fn handle_search(
                 .map_err(|e| anyhow::anyhow!(e.to_string()))?;
             let mapping_raw = std::fs::read_to_string(ids_path)?;
             let mapping: Vec<codegraph_core::NodeId> = serde_json::from_str(&mapping_raw)?;
-            let res = index.search(&emb, topk).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            let res = index
+                .search(&emb, topk)
+                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
             for (i, label) in res.labels.into_iter().enumerate() {
                 if let Some(idx_val) = label.get() {
                     let idx = idx_val as usize;
@@ -933,7 +1106,9 @@ async fn handle_search(
         if let Some(prefs) = &paths {
             for p in prefs {
                 let seg = p.trim_start_matches("./").split('/').next().unwrap_or("");
-                if seg.is_empty() { continue; }
+                if seg.is_empty() {
+                    continue;
+                }
                 let idx = Path::new(".codegraph/shards/path").join(format!("{}.index", seg));
                 let ids = Path::new(".codegraph/shards/path").join(format!("{}_ids.json", seg));
                 search_index(&idx, &ids, limit * 5)?;
@@ -956,7 +1131,9 @@ async fn handle_search(
             let idx = Path::new(".codegraph/faiss.index");
             let ids = Path::new(".codegraph/faiss_ids.json");
             if !idx.exists() || !ids.exists() {
-                println!("FAISS index not found. Run 'codegraph index .' first (with --features faiss).");
+                println!(
+                    "FAISS index not found. Run 'codegraph index .' first (with --features faiss)."
+                );
                 return Ok(());
             }
             search_index(idx, ids, limit * 5)?;
@@ -969,11 +1146,16 @@ async fn handle_search(
 
         // Optionally enrich results from graph; keep scores with nodes
         let graph = codegraph_graph::CodeGraph::new()?;
-        let mut base_scored: Vec<(codegraph_core::NodeId, codegraph_core::CodeNode, f32)> = Vec::new();
+        let mut base_scored: Vec<(codegraph_core::NodeId, codegraph_core::CodeNode, f32)> =
+            Vec::new();
         let path_filters = paths.unwrap_or_default();
         for (id, score) in top {
             if let Some(node) = graph.get_node(id).await? {
-                if path_filters.is_empty() || path_filters.iter().any(|p| node.location.file_path.starts_with(p)) {
+                if path_filters.is_empty()
+                    || path_filters
+                        .iter()
+                        .any(|p| node.location.file_path.starts_with(p))
+                {
                     base_scored.push((id, node, score));
                 }
             }
@@ -982,16 +1164,25 @@ async fn handle_search(
         // Expand graph neighbors if requested (depth-weighted)
         if expand_graph > 0 {
             use std::collections::{HashSet, VecDeque};
-            let mut seen: HashSet<codegraph_core::NodeId> = base_scored.iter().map(|(id, _, _)| *id).collect();
-            let mut q: VecDeque<(codegraph_core::NodeId, usize)> = base_scored.iter().map(|(id, _, _)| (*id, 0usize)).collect();
-            let mut extra: Vec<(codegraph_core::NodeId, codegraph_core::CodeNode, usize)> = Vec::new();
+            let mut seen: HashSet<codegraph_core::NodeId> =
+                base_scored.iter().map(|(id, _, _)| *id).collect();
+            let mut q: VecDeque<(codegraph_core::NodeId, usize)> =
+                base_scored.iter().map(|(id, _, _)| (*id, 0usize)).collect();
+            let mut extra: Vec<(codegraph_core::NodeId, codegraph_core::CodeNode, usize)> =
+                Vec::new();
             while let Some((nid, depth)) = q.pop_front() {
-                if depth >= expand_graph { continue; }
+                if depth >= expand_graph {
+                    continue;
+                }
                 let neighbors = graph.get_neighbors(nid).await.unwrap_or_default();
                 for nb in neighbors {
                     if seen.insert(nb) {
                         if let Some(nnode) = graph.get_node(nb).await? {
-                            if path_filters.is_empty() || path_filters.iter().any(|p| nnode.location.file_path.starts_with(p)) {
+                            if path_filters.is_empty()
+                                || path_filters
+                                    .iter()
+                                    .any(|p| nnode.location.file_path.starts_with(p))
+                            {
                                 extra.push((nb, nnode, depth + 1));
                                 q.push_back((nb, depth + 1));
                             }
@@ -1002,7 +1193,11 @@ async fn handle_search(
             // Shallow neighbors first; cap to avoid explosion
             extra.sort_by_key(|(_, _, d)| *d);
             // Build final results with depth field
-            let mut results_with_depth: Vec<(codegraph_core::NodeId, codegraph_core::CodeNode, usize)> = base_scored
+            let mut results_with_depth: Vec<(
+                codegraph_core::NodeId,
+                codegraph_core::CodeNode,
+                usize,
+            )> = base_scored
                 .iter()
                 .map(|(id, node, _)| (*id, node.clone(), 0usize))
                 .collect();
@@ -1017,17 +1212,29 @@ async fn handle_search(
                             .as_deref()
                             .map(|s| {
                                 let mut t = s.trim().replace('\n', " ");
-                                if t.len() > 160 { t.truncate(160); t.push_str("..."); }
+                                if t.len() > 160 {
+                                    t.truncate(160);
+                                    t.push_str("...");
+                                }
                                 t
                             })
                             .unwrap_or_else(|| "".to_string());
-                        println!("{}. [d={}] {}
-                           {}", i + 1, depth, node.location.file_path, summary);
+                        println!(
+                            "{}. [d={}] {}
+                           {}",
+                            i + 1,
+                            depth,
+                            node.location.file_path,
+                            summary
+                        );
                     }
                 }
                 OutputFormat::Json => {
                     use std::collections::HashMap;
-                    let score_map: HashMap<codegraph_core::NodeId, f32> = base_scored.iter().map(|(id, _node, score)| (*id, *score)).collect();
+                    let score_map: HashMap<codegraph_core::NodeId, f32> = base_scored
+                        .iter()
+                        .map(|(id, _node, score)| (*id, *score))
+                        .collect();
                     let j = serde_json::json!({
                         "results": results_with_depth.iter().map(|(id, node, depth)| {
                             let score = score_map.get(id).copied();
@@ -1066,12 +1273,20 @@ async fn handle_search(
                         .as_deref()
                         .map(|s| {
                             let mut t = s.trim().replace('\n', " ");
-                            if t.len() > 160 { t.truncate(160); t.push_str("..."); }
+                            if t.len() > 160 {
+                                t.truncate(160);
+                                t.push_str("...");
+                            }
                             t
                         })
                         .unwrap_or_else(|| "".to_string());
-                    println!("{}. [d=0] {}
-                   {}", i + 1, node.location.file_path, summary);
+                    println!(
+                        "{}. [d=0] {}
+                   {}",
+                        i + 1,
+                        node.location.file_path,
+                        summary
+                    );
                 }
             }
             OutputFormat::Json => {
@@ -1101,8 +1316,10 @@ async fn handle_search(
 
     #[cfg(not(feature = "faiss"))]
     {
-        println!("Vector search requires FAISS support. Reinstall with:
-                  cargo install --path crates/codegraph-mcp --features faiss");
+        println!(
+            "Vector search requires FAISS support. Reinstall with:
+                  cargo install --path crates/codegraph-mcp --features faiss"
+        );
         Ok(())
     }
 }
@@ -1288,8 +1505,8 @@ async fn handle_perf(
     format: String,
     graph_readonly: bool,
 ) -> Result<()> {
-    use std::time::Instant;
     use serde_json::json;
+    use std::time::Instant;
 
     if clean && std::path::Path::new(".codegraph").exists() {
         let _ = std::fs::remove_dir_all(".codegraph");
@@ -1345,7 +1562,10 @@ async fn handle_perf(
         }
     }
     latencies_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let p50 = latencies_ms.get(latencies_ms.len() / 2).copied().unwrap_or(0.0);
+    let p50 = latencies_ms
+        .get(latencies_ms.len() / 2)
+        .copied()
+        .unwrap_or(0.0);
     let p95 = latencies_ms
         .get(((latencies_ms.len() as f64) * 0.95).floor() as usize)
         .copied()
@@ -1397,14 +1617,22 @@ async fn handle_perf(
         while let Some((nid, d)) = q.pop_front() {
             let _ = graph.get_node(nid).await; // load
             visited += 1;
-            if d >= 2 { continue; }
-            for nb in graph.get_neighbors(nid).await.unwrap_or_default() {
-                if seen.insert(nb) { q.push_back((nb, d + 1)); }
+            if d >= 2 {
+                continue;
             }
-            if visited >= 1000 { break; }
+            for nb in graph.get_neighbors(nid).await.unwrap_or_default() {
+                if seen.insert(nb) {
+                    q.push_back((nb, d + 1));
+                }
+            }
+            if visited >= 1000 {
+                break;
+            }
         }
         (t.elapsed().as_secs_f64() * 1000.0, visited)
-    } else { (0.0, 0) };
+    } else {
+        (0.0, 0)
+    };
 
     let out = json!({
         "env": {
@@ -1420,12 +1648,31 @@ async fn handle_perf(
     });
 
     if format == "human" {
-        println!("Performance Results
-                ====================");
-        println!("Dataset: {:?} ({} files, {} lines)", out["dataset"]["path"], out["dataset"]["files"], out["dataset"]["lines"]);
-        println!("Indexing: {:.2}s ({} embeddings, {:.1} emb/s)", out["indexing"]["total_seconds"], out["indexing"]["embeddings"], out["indexing"]["throughput_embeddings_per_sec"]);
-        println!("Vector Search: avg={:.1}ms p50={:.1}ms p95={:.1}ms ({} queries)", out["vector_search"]["latency_ms"]["avg"], out["vector_search"]["latency_ms"]["p50"], out["vector_search"]["latency_ms"]["p95"], out["vector_search"]["queries"]);
-        println!("Graph BFS depth=2: visited {} nodes in {:.1}ms", out["graph"]["visited_nodes"], out["graph"]["elapsed_ms"]);
+        println!(
+            "Performance Results
+                ===================="
+        );
+        println!(
+            "Dataset: {:?} ({} files, {} lines)",
+            out["dataset"]["path"], out["dataset"]["files"], out["dataset"]["lines"]
+        );
+        println!(
+            "Indexing: {:.2}s ({} embeddings, {:.1} emb/s)",
+            out["indexing"]["total_seconds"],
+            out["indexing"]["embeddings"],
+            out["indexing"]["throughput_embeddings_per_sec"]
+        );
+        println!(
+            "Vector Search: avg={:.1}ms p50={:.1}ms p95={:.1}ms ({} queries)",
+            out["vector_search"]["latency_ms"]["avg"],
+            out["vector_search"]["latency_ms"]["p50"],
+            out["vector_search"]["latency_ms"]["p95"],
+            out["vector_search"]["queries"]
+        );
+        println!(
+            "Graph BFS depth=2: visited {} nodes in {:.1}ms",
+            out["graph"]["visited_nodes"], out["graph"]["elapsed_ms"]
+        );
     } else {
         println!("{}", serde_json::to_string_pretty(&out)?);
     }
@@ -1468,19 +1715,24 @@ fn estimate_available_memory_gb() -> usize {
 }
 
 /// Optimize batch size and workers based on available memory and embedding provider
-fn optimize_for_memory(memory_gb: usize, default_batch_size: usize, default_workers: usize) -> (usize, usize) {
+fn optimize_for_memory(
+    memory_gb: usize,
+    default_batch_size: usize,
+    default_workers: usize,
+) -> (usize, usize) {
     let embedding_provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or_default();
 
-    let optimized_batch_size = if default_batch_size == 100 { // Default value
+    let optimized_batch_size = if default_batch_size == 100 {
+        // Default value
         if embedding_provider == "ollama" {
             // Ollama models work better with smaller batches for stability
             match memory_gb {
-                128.. => 1024,     // 128GB+: Large but stable batch size
-                96..=127 => 768,   // 96-127GB: Medium-large batch
-                64..=95 => 512,    // 64-95GB: Medium batch
-                32..=63 => 256,    // 32-63GB: Small batch
-                16..=31 => 128,    // 16-31GB: Very small batch
-                _ => 64,           // <16GB: Minimal batch
+                128.. => 1024,   // 128GB+: Large but stable batch size
+                96..=127 => 768, // 96-127GB: Medium-large batch
+                64..=95 => 512,  // 64-95GB: Medium batch
+                32..=63 => 256,  // 32-63GB: Small batch
+                16..=31 => 128,  // 16-31GB: Very small batch
+                _ => 64,         // <16GB: Minimal batch
             }
         } else {
             // ONNX/OpenAI can handle much larger batches
@@ -1498,15 +1750,16 @@ fn optimize_for_memory(memory_gb: usize, default_batch_size: usize, default_work
         default_batch_size // User specified - respect their choice
     };
 
-    let optimized_workers = if default_workers == 4 { // Default value
+    let optimized_workers = if default_workers == 4 {
+        // Default value
         match memory_gb {
-            128.. => 16,       // 128GB+: Maximum parallelism
-            96..=127 => 14,    // 96-127GB: Very high parallelism
-            64..=95 => 12,     // 64-95GB: High parallelism
-            48..=63 => 10,     // 48-63GB: Medium-high parallelism
-            32..=47 => 8,      // 32-47GB: Medium parallelism
-            16..=31 => 6,      // 16-31GB: Conservative parallelism
-            _ => 4,            // <16GB: Keep default
+            128.. => 16,    // 128GB+: Maximum parallelism
+            96..=127 => 14, // 96-127GB: Very high parallelism
+            64..=95 => 12,  // 64-95GB: High parallelism
+            48..=63 => 10,  // 48-63GB: Medium-high parallelism
+            32..=47 => 8,   // 32-47GB: Medium parallelism
+            16..=31 => 6,   // 16-31GB: Conservative parallelism
+            _ => 4,         // <16GB: Keep default
         }
     } else {
         default_workers // User specified - respect their choice

@@ -393,7 +393,7 @@ impl CodeGraph {
         from: NodeId,
         to: NodeId,
         edge_type: EdgeType,
-        metadata: HashMap<String, String>
+        metadata: HashMap<String, String>,
     ) -> Result<()> {
         // Create CodeEdge and use existing add_edge method
         let edge = CodeEdge {

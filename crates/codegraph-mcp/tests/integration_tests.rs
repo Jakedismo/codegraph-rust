@@ -2,7 +2,6 @@
 ///
 /// Tests that focus on validating essential functionality
 /// Tests against the indexed Rust codebase in this repository
-
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -14,7 +13,10 @@ async fn test_mcp_server_startup() {
     let mut child = Command::new("codegraph")
         .args(["start", "stdio"])
         .env("RUST_LOG", "error")
-        .env("CODEGRAPH_MODEL", "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M")
+        .env(
+            "CODEGRAPH_MODEL",
+            "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M",
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -29,7 +31,10 @@ async fn test_mcp_server_startup() {
         Ok(Some(status)) => {
             let output = child.wait_with_output().expect("Failed to get output");
             let stderr = String::from_utf8_lossy(&output.stderr);
-            panic!("MCP server exited unexpectedly with status: {}\nStderr: {}", status, stderr);
+            panic!(
+                "MCP server exited unexpectedly with status: {}\nStderr: {}",
+                status, stderr
+            );
         }
         Ok(None) => {
             println!("✅ MCP server started successfully and is running");
@@ -70,10 +75,18 @@ async fn test_language_support_comprehensive() {
 
     for (filename, expected_lang) in language_tests {
         let detected = registry.detect_language(filename);
-        assert_eq!(detected, Some(expected_lang.clone()),
-                  "Language detection failed for {}: expected {:?}, got {:?}",
-                  filename, expected_lang, detected);
-        println!("✅ Language detection working for: {} -> {:?}", filename, expected_lang);
+        assert_eq!(
+            detected,
+            Some(expected_lang.clone()),
+            "Language detection failed for {}: expected {:?}, got {:?}",
+            filename,
+            expected_lang,
+            detected
+        );
+        println!(
+            "✅ Language detection working for: {} -> {:?}",
+            filename, expected_lang
+        );
     }
 
     println!("🎉 Comprehensive language support test passed!");
@@ -110,7 +123,10 @@ fn test_indexed_codebase_validation() {
         let faiss_size = std::fs::metadata(&faiss_index)
             .expect("Should be able to read FAISS index")
             .len();
-        println!("✅ Found FAISS index: {:.1}MB", faiss_size as f64 / 1024.0 / 1024.0);
+        println!(
+            "✅ Found FAISS index: {:.1}MB",
+            faiss_size as f64 / 1024.0 / 1024.0
+        );
     }
 
     let db_dir = codegraph_dir.join("db");

@@ -2,8 +2,7 @@
 ///
 /// COMPLETE IMPLEMENTATION: AI-guided parsing where semantic context is provided
 /// DURING AST traversal, dramatically improving both speed and accuracy.
-
-use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, Language, NodeType, Location, NodeId};
+use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, Language, Location, NodeId, NodeType};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tracing::info;
@@ -47,33 +46,29 @@ impl AIContextProvider {
         let mut language_rules = HashMap::new();
 
         // Rust-specific context rules
-        language_rules.insert(Language::Rust, ContextRules {
-            type_indicators: {
-                let mut map = HashMap::new();
-                map.insert("fn ".to_string(), NodeType::Function);
-                map.insert("struct ".to_string(), NodeType::Struct);
-                map.insert("trait ".to_string(), NodeType::Trait);
-                map.insert("impl ".to_string(), NodeType::Other("impl".to_string()));
-                map.insert("mod ".to_string(), NodeType::Module);
-                map.insert("use ".to_string(), NodeType::Import);
-                map
+        language_rules.insert(
+            Language::Rust,
+            ContextRules {
+                type_indicators: {
+                    let mut map = HashMap::new();
+                    map.insert("fn ".to_string(), NodeType::Function);
+                    map.insert("struct ".to_string(), NodeType::Struct);
+                    map.insert("trait ".to_string(), NodeType::Trait);
+                    map.insert("impl ".to_string(), NodeType::Other("impl".to_string()));
+                    map.insert("mod ".to_string(), NodeType::Module);
+                    map.insert("use ".to_string(), NodeType::Import);
+                    map
+                },
+                namespace_patterns: vec![
+                    "crate::".to_string(),
+                    "std::".to_string(),
+                    "super::".to_string(),
+                    "self::".to_string(),
+                ],
+                call_patterns: vec!["()".to_string(), "!(".to_string(), ".".to_string()],
+                import_patterns: vec!["use ".to_string(), "extern crate ".to_string()],
             },
-            namespace_patterns: vec![
-                "crate::".to_string(),
-                "std::".to_string(),
-                "super::".to_string(),
-                "self::".to_string(),
-            ],
-            call_patterns: vec![
-                "()".to_string(),
-                "!(".to_string(),
-                ".".to_string(),
-            ],
-            import_patterns: vec![
-                "use ".to_string(),
-                "extern crate ".to_string(),
-            ],
-        });
+        );
 
         Self {
             semantic_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -154,7 +149,7 @@ impl AIContextProvider {
         &self,
         symbol: &str,
         _context: &SemanticContext,
-        rules: &ContextRules
+        rules: &ContextRules,
     ) -> Vec<RelationshipHint> {
         let mut hints = Vec::new();
 
@@ -228,7 +223,9 @@ fn extract_enhanced_node(
 ) -> Option<CodeNode> {
     let node_text = node.utf8_text(content.as_bytes()).unwrap_or("").to_string();
 
-    let node_type = hints.predicted_node_type.clone()
+    let node_type = hints
+        .predicted_node_type
+        .clone()
         .or_else(|| classify_node_type_traditional(node));
 
     if let Some(nt) = node_type {
@@ -245,7 +242,8 @@ fn extract_enhanced_node(
             Some(nt),
             Some(context.language.clone()),
             location,
-        ).with_content(node_text);
+        )
+        .with_content(node_text);
 
         if !hints.symbol_variants.is_empty() {
             code_node.metadata.attributes.insert(
@@ -259,7 +257,10 @@ fn extract_enhanced_node(
         } else {
             code_node.name.to_string()
         };
-        code_node.metadata.attributes.insert("qualified_name".to_string(), qualified_name);
+        code_node
+            .metadata
+            .attributes
+            .insert("qualified_name".to_string(), qualified_name);
 
         Some(code_node)
     } else {
@@ -288,7 +289,10 @@ fn extract_enhanced_edges(
                         let mut meta = HashMap::new();
                         meta.insert("ai_predicted".to_string(), "true".to_string());
                         meta.insert("ai_confidence".to_string(), hint.confidence.to_string());
-                        meta.insert("enhancement_type".to_string(), "real_time_context".to_string());
+                        meta.insert(
+                            "enhancement_type".to_string(),
+                            "real_time_context".to_string(),
+                        );
                         meta
                     },
                 });
@@ -299,7 +303,11 @@ fn extract_enhanced_edges(
     edges
 }
 
-fn extract_traditional_edges(node: &Node, content: &str, from_node: NodeId) -> Vec<EdgeRelationship> {
+fn extract_traditional_edges(
+    node: &Node,
+    content: &str,
+    from_node: NodeId,
+) -> Vec<EdgeRelationship> {
     let mut edges = Vec::new();
 
     match node.kind() {
@@ -355,7 +363,8 @@ fn extract_node_name(node: &Node, content: &str) -> Option<String> {
         loop {
             let child = cursor.node();
             if child.kind() == "identifier" || child.kind() == "type_identifier" {
-                return child.utf8_text(content.as_bytes())
+                return child
+                    .utf8_text(content.as_bytes())
                     .ok()
                     .map(|s| s.to_string());
             }
@@ -369,7 +378,8 @@ fn extract_node_name(node: &Node, content: &str) -> Option<String> {
 
 fn extract_call_target(node: &Node, content: &str) -> Option<String> {
     if let Some(function_node) = node.child_by_field_name("function") {
-        return function_node.utf8_text(content.as_bytes())
+        return function_node
+            .utf8_text(content.as_bytes())
             .ok()
             .map(|s| s.to_string());
     }
@@ -378,7 +388,8 @@ fn extract_call_target(node: &Node, content: &str) -> Option<String> {
 
 fn extract_method_target(node: &Node, content: &str) -> Option<String> {
     if let Some(method_node) = node.child_by_field_name("name") {
-        return method_node.utf8_text(content.as_bytes())
+        return method_node
+            .utf8_text(content.as_bytes())
             .ok()
             .map(|s| s.to_string());
     }

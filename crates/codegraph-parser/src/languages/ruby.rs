@@ -33,9 +33,9 @@ impl RubyExtractor {
         let mut cursor = tree.walk();
 
         // Detect Rails patterns from file path
-        let is_rails = file_path.contains("/app/") ||
-                      file_path.contains("/config/") ||
-                      file_path.contains("/db/migrate");
+        let is_rails = file_path.contains("/app/")
+            || file_path.contains("/config/")
+            || file_path.contains("/db/migrate");
 
         let mut ctx = RubyContext::default();
         ctx.is_rails_file = is_rails;
@@ -78,25 +78,36 @@ impl<'a> RubyCollector<'a> {
                         Some(NodeType::Class),
                         Some(Language::Ruby),
                         loc,
-                    ).with_content(content_text.clone());
+                    )
+                    .with_content(content_text.clone());
 
                     // Detect inheritance
                     if let Some(superclass) = self.child_text_by_field(node, "superclass") {
-                        code.metadata.attributes.insert("superclass".into(), superclass);
+                        code.metadata
+                            .attributes
+                            .insert("superclass".into(), superclass);
                     }
 
                     // Detect Rails patterns
                     if ctx.is_rails_file {
                         if name.ends_with("Controller") {
-                            code.metadata.attributes.insert("rails_pattern".into(), "controller".into());
+                            code.metadata
+                                .attributes
+                                .insert("rails_pattern".into(), "controller".into());
                         } else if content_text.contains("< ApplicationRecord") {
-                            code.metadata.attributes.insert("rails_pattern".into(), "model".into());
+                            code.metadata
+                                .attributes
+                                .insert("rails_pattern".into(), "model".into());
                         } else if content_text.contains("< ActiveRecord::Migration") {
-                            code.metadata.attributes.insert("rails_pattern".into(), "migration".into());
+                            code.metadata
+                                .attributes
+                                .insert("rails_pattern".into(), "migration".into());
                         }
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "class".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "class".into());
                     self.nodes.push(code);
                     ctx.current_class = Some(name);
                 }
@@ -111,9 +122,12 @@ impl<'a> RubyCollector<'a> {
                         Some(NodeType::Module),
                         Some(Language::Ruby),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
-                    code.metadata.attributes.insert("kind".into(), "module".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "module".into());
                     self.nodes.push(code);
                     ctx.module_path.push(name.clone());
                     ctx.current_module = Some(name);
@@ -130,30 +144,51 @@ impl<'a> RubyCollector<'a> {
                         Some(NodeType::Function),
                         Some(Language::Ruby),
                         loc,
-                    ).with_content(content_text.clone());
+                    )
+                    .with_content(content_text.clone());
 
                     // Detect class vs instance methods
                     if content_text.starts_with("def self.") {
-                        code.metadata.attributes.insert("method_type".into(), "class".into());
+                        code.metadata
+                            .attributes
+                            .insert("method_type".into(), "class".into());
                     } else {
-                        code.metadata.attributes.insert("method_type".into(), "instance".into());
+                        code.metadata
+                            .attributes
+                            .insert("method_type".into(), "instance".into());
                     }
 
                     // Detect Rails action methods
-                    if ctx.is_rails_file && ctx.current_class.as_ref().map_or(false, |c| c.ends_with("Controller")) {
-                        if matches!(name.as_str(), "index" | "show" | "new" | "create" | "edit" | "update" | "destroy") {
-                            code.metadata.attributes.insert("rails_action".into(), "true".into());
+                    if ctx.is_rails_file
+                        && ctx
+                            .current_class
+                            .as_ref()
+                            .map_or(false, |c| c.ends_with("Controller"))
+                    {
+                        if matches!(
+                            name.as_str(),
+                            "index" | "show" | "new" | "create" | "edit" | "update" | "destroy"
+                        ) {
+                            code.metadata
+                                .attributes
+                                .insert("rails_action".into(), "true".into());
                         }
                     }
 
                     // Detect metaprogramming patterns
                     if content_text.contains("define_method") {
-                        code.metadata.attributes.insert("metaprogramming".into(), "define_method".into());
+                        code.metadata
+                            .attributes
+                            .insert("metaprogramming".into(), "define_method".into());
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "method".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "method".into());
                     if let Some(ref current_class) = ctx.current_class {
-                        code.metadata.attributes.insert("parent_class".into(), current_class.clone());
+                        code.metadata
+                            .attributes
+                            .insert("parent_class".into(), current_class.clone());
                     }
                     self.nodes.push(code);
                 }
@@ -168,9 +203,12 @@ impl<'a> RubyCollector<'a> {
                     Some(NodeType::Variable),
                     Some(Language::Ruby),
                     loc,
-                ).with_content(name.clone());
+                )
+                .with_content(name.clone());
 
-                code.metadata.attributes.insert("kind".into(), "constant".into());
+                code.metadata
+                    .attributes
+                    .insert("kind".into(), "constant".into());
                 self.nodes.push(code);
             }
 
@@ -184,18 +222,27 @@ impl<'a> RubyCollector<'a> {
                         Some(NodeType::Variable),
                         Some(Language::Ruby),
                         loc,
-                    ).with_content(call_text.clone());
+                    )
+                    .with_content(call_text.clone());
 
                     // Detect specific attr types
                     if call_text.starts_with("attr_accessor") {
-                        code.metadata.attributes.insert("attr_type".into(), "accessor".into());
+                        code.metadata
+                            .attributes
+                            .insert("attr_type".into(), "accessor".into());
                     } else if call_text.starts_with("attr_reader") {
-                        code.metadata.attributes.insert("attr_type".into(), "reader".into());
+                        code.metadata
+                            .attributes
+                            .insert("attr_type".into(), "reader".into());
                     } else if call_text.starts_with("attr_writer") {
-                        code.metadata.attributes.insert("attr_type".into(), "writer".into());
+                        code.metadata
+                            .attributes
+                            .insert("attr_type".into(), "writer".into());
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "attribute".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "attribute".into());
                     self.nodes.push(code);
                 }
             }
@@ -209,13 +256,18 @@ impl<'a> RubyCollector<'a> {
                     Some(NodeType::Import),
                     Some(Language::Ruby),
                     loc,
-                ).with_content(require_text.clone());
+                )
+                .with_content(require_text.clone());
 
-                code.metadata.attributes.insert("kind".into(), "require".into());
+                code.metadata
+                    .attributes
+                    .insert("kind".into(), "require".into());
 
                 // Extract required gem/file name
                 if let Some(arg) = self.extract_string_argument(&node) {
-                    code.metadata.attributes.insert("required_module".into(), arg);
+                    code.metadata
+                        .attributes
+                        .insert("required_module".into(), arg);
                 }
 
                 self.nodes.push(code);
@@ -255,7 +307,9 @@ impl<'a> RubyCollector<'a> {
     }
 
     fn node_text(&self, node: &Node) -> String {
-        node.utf8_text(self.content.as_bytes()).unwrap_or("").to_string()
+        node.utf8_text(self.content.as_bytes())
+            .unwrap_or("")
+            .to_string()
     }
 
     fn location(&self, node: &Node) -> Location {

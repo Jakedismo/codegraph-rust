@@ -1,11 +1,11 @@
-use serde_json::{json, Value};
 use codegraph_core::GraphStore;
+use serde_json::{json, Value};
 use std::sync::Arc;
 
 #[cfg(feature = "qwen-integration")]
-use crate::qwen::{QwenClient, QwenConfig};
+use crate::cache::{init_cache, CacheConfig};
 #[cfg(feature = "qwen-integration")]
-use crate::cache::{CacheConfig, init_cache};
+use crate::qwen::{QwenClient, QwenConfig};
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -187,7 +187,10 @@ async fn code_patch(params: Value) -> Result<Value, String> {
         .get("replace")
         .and_then(|v| v.as_str())
         .ok_or("missing replace")?;
-    let dry = params.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
+    let dry = params
+        .get("dry_run")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let replacements = text.matches(find).count();
     if dry {
@@ -296,7 +299,8 @@ pub async fn bin_search_with_scores_shared(
         let emb = {
             #[cfg(feature = "embeddings")]
             {
-                let embedding_gen = codegraph_vector::EmbeddingGenerator::with_auto_from_env().await;
+                let embedding_gen =
+                    codegraph_vector::EmbeddingGenerator::with_auto_from_env().await;
                 let e = embedding_gen.generate_text_embedding(&query).await?;
                 crate::indexer::normalize(&e)
             }
@@ -309,29 +313,26 @@ pub async fn bin_search_with_scores_shared(
         };
 
         let mut scored: Vec<(codegraph_core::NodeId, f32)> = Vec::new();
-        let mut search_index = |
-            index_path: &Path,
-            ids_path: &Path,
-            topk: usize,
-        | -> anyhow::Result<()> {
-            if !index_path.exists() || !ids_path.exists() {
-                return Ok(());
-            }
-            let mut index = read_index(index_path.to_string_lossy())?;
-            let mapping_raw = std::fs::read_to_string(ids_path)?;
-            let mapping: Vec<codegraph_core::NodeId> = serde_json::from_str(&mapping_raw)?;
-            let res = index.search(&emb, topk)?;
-            for (i, label) in res.labels.into_iter().enumerate() {
-                if let Some(idx_val) = label.get() {
-                    let idx = idx_val as usize;
-                    if idx < mapping.len() {
-                        let score = res.distances[i];
-                        scored.push((mapping[idx], score));
+        let mut search_index =
+            |index_path: &Path, ids_path: &Path, topk: usize| -> anyhow::Result<()> {
+                if !index_path.exists() || !ids_path.exists() {
+                    return Ok(());
+                }
+                let mut index = read_index(index_path.to_string_lossy())?;
+                let mapping_raw = std::fs::read_to_string(ids_path)?;
+                let mapping: Vec<codegraph_core::NodeId> = serde_json::from_str(&mapping_raw)?;
+                let res = index.search(&emb, topk)?;
+                for (i, label) in res.labels.into_iter().enumerate() {
+                    if let Some(idx_val) = label.get() {
+                        let idx = idx_val as usize;
+                        if idx < mapping.len() {
+                            let score = res.distances[i];
+                            scored.push((mapping[idx], score));
+                        }
                     }
                 }
-            }
-            Ok(())
-        };
+                Ok(())
+            };
         let mut shard_count = 0usize;
         if let Some(prefs) = &paths {
             for p in prefs {
@@ -406,7 +407,7 @@ pub async fn bin_search_with_scores_shared(
         scored.dedup_by_key(|(id, _)| *id);
         let top: Vec<(codegraph_core::NodeId, f32)> = scored.into_iter().take(limit).collect();
 
-    // Use the shared graph parameter passed to this function (fixes lock conflict)
+        // Use the shared graph parameter passed to this function (fixes lock conflict)
         let mut out = Vec::new();
         for (id, score) in top {
             if let Some(node) = graph.get_node(id).await? {
@@ -526,10 +527,14 @@ pub async fn serve_stdio(_buffer_size: usize) -> crate::Result<()> {
                 let params = v.get("params").cloned().unwrap_or(json!({}));
                 match dispatch(&state, method, params).await {
                     Ok(r) => json!({"jsonrpc":"2.0","id": id, "result": r}),
-                    Err(e) => json!({"jsonrpc":"2.0","id": id, "error": {"code": -32000, "message": e}}),
+                    Err(e) => {
+                        json!({"jsonrpc":"2.0","id": id, "error": {"code": -32000, "message": e}})
+                    }
                 }
             }
-            Err(e) => json!({"jsonrpc":"2.0","id": null, "error": {"code": -32700, "message": format!("parse error: {}", e)}}),
+            Err(e) => {
+                json!({"jsonrpc":"2.0","id": null, "error": {"code": -32700, "message": format!("parse error: {}", e)}})
+            }
         };
         let line = serde_json::to_string(&response).unwrap();
         stdout.write_all(line.as_bytes()).await.unwrap();
@@ -559,7 +564,10 @@ pub async fn init_qwen_client() -> Option<QwenClient> {
             Some(client)
         }
         Ok(false) => {
-            eprintln!("⚠️ Qwen2.5-Coder model not found. Install with: ollama pull {}", config.model_name);
+            eprintln!(
+                "⚠️ Qwen2.5-Coder model not found. Install with: ollama pull {}",
+                config.model_name
+            );
             None
         }
         Err(e) => {
@@ -590,9 +598,10 @@ pub async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value
 
     // 1. Perform standard vector search using shared database connection
     let graph = state.graph.lock().await;
-    let search_results = bin_search_with_scores_shared(query.clone(), None, None, max_results * 2, &graph)
-        .await
-        .map_err(|e| e.to_string())?;
+    let search_results =
+        bin_search_with_scores_shared(query.clone(), None, None, max_results * 2, &graph)
+            .await
+            .map_err(|e| e.to_string())?;
 
     // 2. If Qwen analysis is requested and available, enhance results
     if include_analysis {
@@ -600,7 +609,9 @@ pub async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value
             // Check cache first
             let search_context = build_search_context(&search_results, &query);
 
-            if let Some(cached_response) = crate::cache::get_cached_response(&query, &search_context).await {
+            if let Some(cached_response) =
+                crate::cache::get_cached_response(&query, &search_context).await
+            {
                 tracing::info!("🚀 Cache hit for enhanced search: {}", query);
                 return Ok(cached_response);
             }
@@ -642,7 +653,8 @@ pub async fn enhanced_search(state: &ServerState, params: Value) -> Result<Value
                         qwen_result.processing_time,
                         qwen_result.context_tokens,
                         qwen_result.completion_tokens,
-                    ).await;
+                    )
+                    .await;
 
                     return Ok(response);
                 }
@@ -678,21 +690,28 @@ pub async fn semantic_intelligence(state: &ServerState, params: Value) -> Result
         .unwrap_or(80000) as usize;
 
     // Check if Qwen is available
-    let qwen_client = state.qwen_client.as_ref()
+    let qwen_client = state
+        .qwen_client
+        .as_ref()
         .ok_or("Qwen2.5-Coder not available. Please install: ollama pull qwen2.5-coder-14b-128k")?;
 
     // 1. Gather comprehensive codebase context
-    let codebase_context = build_comprehensive_context(state, &query, max_context_tokens).await
+    let codebase_context = build_comprehensive_context(state, &query, max_context_tokens)
+        .await
         .map_err(|e| e.to_string())?;
 
     // Check cache first for semantic intelligence
-    if let Some(cached_response) = crate::cache::get_cached_response(&query, &codebase_context).await {
+    if let Some(cached_response) =
+        crate::cache::get_cached_response(&query, &codebase_context).await
+    {
         tracing::info!("🚀 Cache hit for semantic intelligence: {}", query);
         return Ok(cached_response);
     }
 
     // 2. Use Qwen2.5-Coder for comprehensive analysis
-    let analysis_result = qwen_client.analyze_codebase(&query, &codebase_context).await
+    let analysis_result = qwen_client
+        .analyze_codebase(&query, &codebase_context)
+        .await
         .map_err(|e| e.to_string())?;
 
     // Record performance metrics
@@ -736,7 +755,8 @@ pub async fn semantic_intelligence(state: &ServerState, params: Value) -> Result
         analysis_result.processing_time,
         analysis_result.context_tokens,
         analysis_result.completion_tokens,
-    ).await;
+    )
+    .await;
 
     Ok(response)
 }
@@ -769,7 +789,10 @@ pub async fn build_comprehensive_context(
     query: &str,
     max_tokens: usize,
 ) -> Result<String, String> {
-    let mut context = format!("COMPREHENSIVE CODEBASE ANALYSIS REQUEST\n\nQUERY: {}\n\n", query);
+    let mut context = format!(
+        "COMPREHENSIVE CODEBASE ANALYSIS REQUEST\n\nQUERY: {}\n\n",
+        query
+    );
 
     // Add basic search results using shared database connection
     let graph = state.graph.lock().await;
@@ -800,7 +823,8 @@ pub async fn build_comprehensive_context(
                 if let Ok(node_id) = uuid::Uuid::parse_str(id_str) {
                     let graph = state.graph.lock().await;
                     if let Ok(neighbors) = graph.get_neighbors(node_id).await {
-                        context.push_str(&format!("  {} has {} connected nodes\n",
+                        context.push_str(&format!(
+                            "  {} has {} connected nodes\n",
                             result["name"].as_str().unwrap_or("unknown"),
                             neighbors.len()
                         ));
@@ -868,17 +892,19 @@ async fn cache_stats(_state: &ServerState, _params: Value) -> Result<Value, Stri
 #[cfg(feature = "qwen-integration")]
 pub fn generate_cache_recommendations(
     stats: &Option<crate::cache::CacheStats>,
-    analysis: &Option<crate::cache::CachePerformanceReport>
+    analysis: &Option<crate::cache::CachePerformanceReport>,
 ) -> Vec<String> {
     let mut recommendations = Vec::new();
 
     if let Some(stats) = stats {
         if stats.hit_rate < 0.3 {
-            recommendations.push("Low cache hit rate - consider semantic similarity tuning".to_string());
+            recommendations
+                .push("Low cache hit rate - consider semantic similarity tuning".to_string());
         }
 
         if stats.memory_usage_mb > 400.0 {
-            recommendations.push("High memory usage - consider reducing cache size or TTL".to_string());
+            recommendations
+                .push("High memory usage - consider reducing cache size or TTL".to_string());
         }
 
         if stats.total_requests > 50 && stats.semantic_hit_rate < 0.1 {
@@ -935,11 +961,14 @@ pub async fn impact_analysis(state: &ServerState, params: Value) -> Result<Value
         .unwrap_or("modify");
 
     // Check if Qwen is available
-    let qwen_client = state.qwen_client.as_ref()
+    let qwen_client = state
+        .qwen_client
+        .as_ref()
         .ok_or("Qwen2.5-Coder not available. Please install: ollama pull qwen2.5-coder-14b-128k")?;
 
     // 1. Build dependency context using graph analysis
-    let dependency_context = build_dependency_context(state, &target_function, &file_path).await
+    let dependency_context = build_dependency_context(state, &target_function, &file_path)
+        .await
         .map_err(|e| e.to_string())?;
 
     // 2. Use Qwen2.5-Coder for intelligent impact analysis
@@ -947,10 +976,12 @@ pub async fn impact_analysis(state: &ServerState, params: Value) -> Result<Value
         &target_function,
         &file_path,
         &dependency_context,
-        change_type
+        change_type,
     );
 
-    let analysis_result = qwen_client.analyze_codebase(&impact_prompt, "").await
+    let analysis_result = qwen_client
+        .analyze_codebase(&impact_prompt, "")
+        .await
         .map_err(|e| e.to_string())?;
 
     // Record performance metrics
@@ -1067,7 +1098,8 @@ pub async fn build_dependency_context(
     }
 
     // Truncate if too long (leave room for analysis)
-    if context.len() > 60000 * 4 { // ~60K tokens worth
+    if context.len() > 60000 * 4 {
+        // ~60K tokens worth
         context.truncate(60000 * 4);
         context.push_str("\n\n[Context truncated for analysis efficiency]");
     }
@@ -1227,13 +1259,14 @@ pub async fn pattern_detection(state: &ServerState, params: Value) -> Result<Val
     };
 
     let graph = state.graph.lock().await;
-    let search_results = bin_search_with_scores_shared(search_query.to_string(), None, None, max_results, &graph)
-        .await
-        .map_err(|e| e.to_string())?;
+    let search_results =
+        bin_search_with_scores_shared(search_query.to_string(), None, None, max_results, &graph)
+            .await
+            .map_err(|e| e.to_string())?;
 
     // 2. Use existing semantic analysis for pattern detection (no external model needed)
     let pattern_detector = crate::pattern_detector::PatternDetector::new(
-        crate::pattern_detector::PatternConfig::default()
+        crate::pattern_detector::PatternConfig::default(),
     );
 
     let team_intelligence = pattern_detector
@@ -1286,7 +1319,9 @@ pub async fn pattern_detection(state: &ServerState, params: Value) -> Result<Val
 }
 
 // Generate actionable insights from pattern analysis
-pub fn generate_pattern_insights(intelligence: &crate::pattern_detector::TeamIntelligence) -> Value {
+pub fn generate_pattern_insights(
+    intelligence: &crate::pattern_detector::TeamIntelligence,
+) -> Value {
     let mut insights = Vec::new();
 
     // Quality insights
@@ -1304,8 +1339,15 @@ pub fn generate_pattern_insights(intelligence: &crate::pattern_detector::TeamInt
     }
 
     // Pattern-specific insights
-    let naming_patterns = intelligence.patterns.iter()
-        .filter(|p| matches!(p.pattern_type, crate::pattern_detector::PatternType::NamingConvention))
+    let naming_patterns = intelligence
+        .patterns
+        .iter()
+        .filter(|p| {
+            matches!(
+                p.pattern_type,
+                crate::pattern_detector::PatternType::NamingConvention
+            )
+        })
         .count();
 
     if naming_patterns > 0 {
@@ -1314,8 +1356,15 @@ pub fn generate_pattern_insights(intelligence: &crate::pattern_detector::TeamInt
         insights.push("Consider establishing consistent naming conventions");
     }
 
-    let error_patterns = intelligence.patterns.iter()
-        .filter(|p| matches!(p.pattern_type, crate::pattern_detector::PatternType::ErrorHandling))
+    let error_patterns = intelligence
+        .patterns
+        .iter()
+        .filter(|p| {
+            matches!(
+                p.pattern_type,
+                crate::pattern_detector::PatternType::ErrorHandling
+            )
+        })
         .count();
 
     if error_patterns > 0 {
@@ -1332,14 +1381,27 @@ pub fn generate_pattern_insights(intelligence: &crate::pattern_detector::TeamInt
     })
 }
 
-fn generate_priority_recommendations(intelligence: &crate::pattern_detector::TeamIntelligence) -> Vec<String> {
+fn generate_priority_recommendations(
+    intelligence: &crate::pattern_detector::TeamIntelligence,
+) -> Vec<String> {
     let mut recommendations = Vec::new();
 
     if intelligence.quality_metrics.consistency_score < 0.7 {
         recommendations.push("Priority: Establish and document coding standards".to_string());
     }
 
-    if intelligence.patterns.iter().filter(|p| matches!(p.pattern_type, crate::pattern_detector::PatternType::ErrorHandling)).count() < 2 {
+    if intelligence
+        .patterns
+        .iter()
+        .filter(|p| {
+            matches!(
+                p.pattern_type,
+                crate::pattern_detector::PatternType::ErrorHandling
+            )
+        })
+        .count()
+        < 2
+    {
         recommendations.push("Priority: Standardize error handling patterns".to_string());
     }
 
@@ -1350,7 +1412,9 @@ fn generate_priority_recommendations(intelligence: &crate::pattern_detector::Tea
     recommendations
 }
 
-fn identify_team_strengths(intelligence: &crate::pattern_detector::TeamIntelligence) -> Vec<String> {
+fn identify_team_strengths(
+    intelligence: &crate::pattern_detector::TeamIntelligence,
+) -> Vec<String> {
     let mut strengths = Vec::new();
 
     if intelligence.quality_metrics.overall_score > 0.8 {
@@ -1379,7 +1443,9 @@ fn identify_improvements(intelligence: &crate::pattern_detector::TeamIntelligenc
         improvements.push("Develop more comprehensive coding conventions".to_string());
     }
 
-    let low_quality_patterns = intelligence.patterns.iter()
+    let low_quality_patterns = intelligence
+        .patterns
+        .iter()
         .filter(|p| p.quality_score < 0.6)
         .count();
 

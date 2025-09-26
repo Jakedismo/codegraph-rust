@@ -4,7 +4,6 @@
 /// - 128K context window for comprehensive codebase analysis
 /// - SOTA code understanding and pattern recognition
 /// - Structured output for MCP-calling LLMs
-
 use serde_json::Value;
 
 /// Build optimized prompt for comprehensive semantic analysis
@@ -100,7 +99,12 @@ pub fn build_pattern_analysis_prompt(code_samples: &[String], focus_area: &str) 
 }
 
 /// Build optimized prompt for impact analysis
-pub fn build_impact_analysis_prompt(target_function: &str, file_path: &str, dependencies: &str, change_type: &str) -> String {
+pub fn build_impact_analysis_prompt(
+    target_function: &str,
+    file_path: &str,
+    dependencies: &str,
+    change_type: &str,
+) -> String {
     format!(
         "<|im_start|>system\n\
         You are Qwen2.5-Coder providing critical impact analysis for code changes.\n\n\
@@ -230,7 +234,10 @@ fn extract_patterns_from_analysis(analysis: &str) -> Value {
 }
 
 fn extract_imports_from_analysis(analysis: &str) -> Value {
-    let imports = if analysis.contains("import") || analysis.contains("require") || analysis.contains("use") {
+    let imports = if analysis.contains("import")
+        || analysis.contains("require")
+        || analysis.contains("use")
+    {
         "Import requirements mentioned in analysis"
     } else {
         "No specific import requirements"
@@ -239,20 +246,23 @@ fn extract_imports_from_analysis(analysis: &str) -> Value {
 }
 
 fn extract_error_handling_from_analysis(analysis: &str) -> Value {
-    let error_handling = if analysis.contains("error") || analysis.contains("exception") || analysis.contains("try") {
-        "Error handling patterns identified"
-    } else {
-        "No specific error handling guidance"
-    };
+    let error_handling =
+        if analysis.contains("error") || analysis.contains("exception") || analysis.contains("try")
+        {
+            "Error handling patterns identified"
+        } else {
+            "No specific error handling guidance"
+        };
     serde_json::json!(error_handling)
 }
 
 fn extract_testing_from_analysis(analysis: &str) -> Value {
-    let testing = if analysis.contains("test") || analysis.contains("spec") || analysis.contains("assert") {
-        "Testing approach mentioned in analysis"
-    } else {
-        "No specific testing guidance"
-    };
+    let testing =
+        if analysis.contains("test") || analysis.contains("spec") || analysis.contains("assert") {
+            "Testing approach mentioned in analysis"
+        } else {
+            "No specific testing guidance"
+        };
     serde_json::json!(testing)
 }
 
@@ -270,7 +280,8 @@ fn extract_quality_score(analysis: &str) -> Value {
 }
 
 fn extract_best_practices(analysis: &str) -> Value {
-    let practices = if analysis.contains("best practice") || analysis.contains("follows standards") {
+    let practices = if analysis.contains("best practice") || analysis.contains("follows standards")
+    {
         "Best practices identified in analysis"
     } else {
         "Best practices analysis included"
@@ -279,7 +290,10 @@ fn extract_best_practices(analysis: &str) -> Value {
 }
 
 fn extract_anti_patterns(analysis: &str) -> Value {
-    let anti_patterns = if analysis.contains("anti-pattern") || analysis.contains("avoid") || analysis.contains("problematic") {
+    let anti_patterns = if analysis.contains("anti-pattern")
+        || analysis.contains("avoid")
+        || analysis.contains("problematic")
+    {
         "Anti-patterns or issues identified"
     } else {
         "No significant anti-patterns detected"
@@ -288,7 +302,10 @@ fn extract_anti_patterns(analysis: &str) -> Value {
 }
 
 fn extract_improvements(analysis: &str) -> Value {
-    let improvements = if analysis.contains("improve") || analysis.contains("optimize") || analysis.contains("enhance") {
+    let improvements = if analysis.contains("improve")
+        || analysis.contains("optimize")
+        || analysis.contains("enhance")
+    {
         "Improvement opportunities identified"
     } else {
         "Code appears well-implemented"

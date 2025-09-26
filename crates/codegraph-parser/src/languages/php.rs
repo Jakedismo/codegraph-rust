@@ -34,10 +34,10 @@ impl PhpExtractor {
         let mut cursor = tree.walk();
 
         // Detect framework patterns from file structure
-        let is_framework = file_path.contains("/app/") ||
-                          file_path.contains("/src/") ||
-                          file_path.contains("Controller.php") ||
-                          file_path.contains("Model.php");
+        let is_framework = file_path.contains("/app/")
+            || file_path.contains("/src/")
+            || file_path.contains("Controller.php")
+            || file_path.contains("Model.php");
 
         let mut ctx = PhpContext::default();
         ctx.is_framework_file = is_framework;
@@ -79,9 +79,12 @@ impl<'a> PhpCollector<'a> {
                         Some(NodeType::Module),
                         Some(Language::Php),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
-                    code.metadata.attributes.insert("kind".into(), "namespace".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "namespace".into());
                     self.nodes.push(code);
                     ctx.namespace_path.push(name);
                 }
@@ -97,25 +100,36 @@ impl<'a> PhpCollector<'a> {
                         Some(NodeType::Class),
                         Some(Language::Php),
                         loc,
-                    ).with_content(content_text.clone());
+                    )
+                    .with_content(content_text.clone());
 
                     // Detect extends/implements
                     if let Some(base_clause) = self.child_text_by_field(node, "base_clause") {
-                        code.metadata.attributes.insert("inheritance".into(), base_clause);
+                        code.metadata
+                            .attributes
+                            .insert("inheritance".into(), base_clause);
                     }
 
                     // Detect Laravel patterns
                     if ctx.is_framework_file {
                         if name.ends_with("Controller") {
-                            code.metadata.attributes.insert("laravel_pattern".into(), "controller".into());
+                            code.metadata
+                                .attributes
+                                .insert("laravel_pattern".into(), "controller".into());
                         } else if content_text.contains("extends Model") {
-                            code.metadata.attributes.insert("laravel_pattern".into(), "model".into());
+                            code.metadata
+                                .attributes
+                                .insert("laravel_pattern".into(), "model".into());
                         } else if content_text.contains("extends Migration") {
-                            code.metadata.attributes.insert("laravel_pattern".into(), "migration".into());
+                            code.metadata
+                                .attributes
+                                .insert("laravel_pattern".into(), "migration".into());
                         }
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "class".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "class".into());
                     self.nodes.push(code);
                     ctx.current_class = Some(name);
                 }
@@ -130,9 +144,12 @@ impl<'a> PhpCollector<'a> {
                         Some(NodeType::Interface),
                         Some(Language::Php),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
-                    code.metadata.attributes.insert("kind".into(), "interface".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "interface".into());
                     self.nodes.push(code);
                 }
             }
@@ -146,9 +163,12 @@ impl<'a> PhpCollector<'a> {
                         Some(NodeType::Trait),
                         Some(Language::Php),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
-                    code.metadata.attributes.insert("kind".into(), "trait".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "trait".into());
                     self.nodes.push(code);
                     ctx.current_trait = Some(name);
                 }
@@ -164,35 +184,52 @@ impl<'a> PhpCollector<'a> {
                         Some(NodeType::Function),
                         Some(Language::Php),
                         loc,
-                    ).with_content(content_text.clone());
+                    )
+                    .with_content(content_text.clone());
 
                     // Detect visibility modifiers
                     if content_text.contains("private ") {
-                        code.metadata.attributes.insert("visibility".into(), "private".into());
+                        code.metadata
+                            .attributes
+                            .insert("visibility".into(), "private".into());
                     } else if content_text.contains("protected ") {
-                        code.metadata.attributes.insert("visibility".into(), "protected".into());
+                        code.metadata
+                            .attributes
+                            .insert("visibility".into(), "protected".into());
                     } else if content_text.contains("public ") {
-                        code.metadata.attributes.insert("visibility".into(), "public".into());
+                        code.metadata
+                            .attributes
+                            .insert("visibility".into(), "public".into());
                     }
 
                     // Detect static methods
                     if content_text.contains("static ") {
-                        code.metadata.attributes.insert("static".into(), "true".into());
+                        code.metadata
+                            .attributes
+                            .insert("static".into(), "true".into());
                     }
 
                     // Detect magic methods
                     if name.starts_with("__") {
-                        code.metadata.attributes.insert("magic_method".into(), "true".into());
+                        code.metadata
+                            .attributes
+                            .insert("magic_method".into(), "true".into());
                     }
 
                     // Detect return types (PHP 7+)
                     if let Some(return_type) = self.child_text_by_field(node, "return_type") {
-                        code.metadata.attributes.insert("return_type".into(), return_type);
+                        code.metadata
+                            .attributes
+                            .insert("return_type".into(), return_type);
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "function".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "function".into());
                     if let Some(ref current_class) = ctx.current_class {
-                        code.metadata.attributes.insert("parent_class".into(), current_class.clone());
+                        code.metadata
+                            .attributes
+                            .insert("parent_class".into(), current_class.clone());
                     }
                     self.nodes.push(code);
                 }
@@ -208,23 +245,34 @@ impl<'a> PhpCollector<'a> {
                         Some(NodeType::Variable),
                         Some(Language::Php),
                         loc,
-                    ).with_content(content_text.clone());
+                    )
+                    .with_content(content_text.clone());
 
                     // Detect visibility
                     if content_text.contains("private ") {
-                        code.metadata.attributes.insert("visibility".into(), "private".into());
+                        code.metadata
+                            .attributes
+                            .insert("visibility".into(), "private".into());
                     } else if content_text.contains("protected ") {
-                        code.metadata.attributes.insert("visibility".into(), "protected".into());
+                        code.metadata
+                            .attributes
+                            .insert("visibility".into(), "protected".into());
                     } else if content_text.contains("public ") {
-                        code.metadata.attributes.insert("visibility".into(), "public".into());
+                        code.metadata
+                            .attributes
+                            .insert("visibility".into(), "public".into());
                     }
 
                     // Detect static properties
                     if content_text.contains("static ") {
-                        code.metadata.attributes.insert("static".into(), "true".into());
+                        code.metadata
+                            .attributes
+                            .insert("static".into(), "true".into());
                     }
 
-                    code.metadata.attributes.insert("kind".into(), "property".into());
+                    code.metadata
+                        .attributes
+                        .insert("kind".into(), "property".into());
                     self.nodes.push(code);
                 }
             }
@@ -238,10 +286,13 @@ impl<'a> PhpCollector<'a> {
                         Some(NodeType::Import),
                         Some(Language::Php),
                         loc,
-                    ).with_content(self.node_text(&node));
+                    )
+                    .with_content(self.node_text(&node));
 
                     code.metadata.attributes.insert("kind".into(), "use".into());
-                    code.metadata.attributes.insert("namespace".into(), name.clone());
+                    code.metadata
+                        .attributes
+                        .insert("namespace".into(), name.clone());
                     ctx.use_statements.push(name);
                     self.nodes.push(code);
                 }
@@ -268,7 +319,9 @@ impl<'a> PhpCollector<'a> {
     }
 
     fn node_text(&self, node: &Node) -> String {
-        node.utf8_text(self.content.as_bytes()).unwrap_or("").to_string()
+        node.utf8_text(self.content.as_bytes())
+            .unwrap_or("")
+            .to_string()
     }
 
     fn location(&self, node: &Node) -> Location {

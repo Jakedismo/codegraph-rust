@@ -1,3 +1,4 @@
+use codegraph_core::{CodeNode, Result};
 /// Pattern detection using existing CodeGraph semantic analysis
 ///
 /// This module uses your 90K+ lines of Rust semantic analysis to detect:
@@ -7,10 +8,8 @@
 /// - Naming conventions and style patterns
 ///
 /// Works without external models by leveraging existing graph and vector analysis.
-
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
-use codegraph_core::{CodeNode, Result};
 use tracing::{debug, info};
 
 /// Pattern detection configuration
@@ -25,10 +24,10 @@ pub struct PatternConfig {
 impl Default for PatternConfig {
     fn default() -> Self {
         Self {
-            min_pattern_frequency: 3,    // Pattern must appear 3+ times to be significant
-            similarity_threshold: 0.7,   // 70% similarity to group patterns
+            min_pattern_frequency: 3,  // Pattern must appear 3+ times to be significant
+            similarity_threshold: 0.7, // 70% similarity to group patterns
             max_patterns_per_category: 20, // Limit patterns per category
-            quality_threshold: 0.6,      // Minimum quality score for patterns
+            quality_threshold: 0.6,    // Minimum quality score for patterns
         }
     }
 }
@@ -110,7 +109,10 @@ impl PatternDetector {
     }
 
     /// Detect patterns from search results (doesn't require external model)
-    pub async fn detect_patterns_from_search(&self, search_results: &Value) -> Result<TeamIntelligence> {
+    pub async fn detect_patterns_from_search(
+        &self,
+        search_results: &Value,
+    ) -> Result<TeamIntelligence> {
         info!("Detecting patterns from search results using CodeGraph semantic analysis");
 
         let mut patterns = Vec::new();
@@ -153,7 +155,8 @@ impl PatternDetector {
             if let Some(name) = result["name"].as_str() {
                 // Analyze naming conventions
                 let naming_style = self.analyze_naming_style(name);
-                naming_examples.entry(naming_style.clone())
+                naming_examples
+                    .entry(naming_style.clone())
                     .or_insert_with(Vec::new)
                     .push(name.to_string());
             }
@@ -187,7 +190,8 @@ impl PatternDetector {
                 if result["node_type"].as_str() == Some("Function") {
                     // Analyze function structure patterns
                     let structure = self.analyze_function_structure(summary);
-                    function_structures.entry(structure.clone())
+                    function_structures
+                        .entry(structure.clone())
                         .or_insert_with(Vec::new)
                         .push(summary.to_string());
                 }
@@ -200,7 +204,10 @@ impl PatternDetector {
                 patterns.push(CodePattern {
                     pattern_type: PatternType::FunctionStructure,
                     name: format!("{} Function Pattern", structure),
-                    description: format!("Team commonly uses {} function structure", structure.to_lowercase()),
+                    description: format!(
+                        "Team commonly uses {} function structure",
+                        structure.to_lowercase()
+                    ),
                     frequency: examples.len(),
                     quality_score: self.calculate_structure_quality(&examples),
                     examples: self.build_function_examples(&examples, results),
@@ -247,9 +254,13 @@ impl PatternDetector {
 
         for result in results {
             if let Some(summary) = result["summary"].as_str() {
-                if summary.contains("import") || summary.contains("require") || summary.contains("use") {
+                if summary.contains("import")
+                    || summary.contains("require")
+                    || summary.contains("use")
+                {
                     let import_style = self.analyze_import_style(summary);
-                    import_styles.entry(import_style.clone())
+                    import_styles
+                        .entry(import_style.clone())
                         .or_insert_with(Vec::new)
                         .push(summary.to_string());
                 }
@@ -261,7 +272,10 @@ impl PatternDetector {
                 patterns.push(CodePattern {
                     pattern_type: PatternType::ImportPattern,
                     name: format!("{} Import Pattern", style),
-                    description: format!("Team consistently uses {} import style", style.to_lowercase()),
+                    description: format!(
+                        "Team consistently uses {} import style",
+                        style.to_lowercase()
+                    ),
                     frequency: examples.len(),
                     quality_score: 0.7,
                     examples: self.build_import_examples(&examples, results),
@@ -278,14 +292,21 @@ impl PatternDetector {
         let mut conventions = Vec::new();
 
         // Function naming convention
-        let function_names: Vec<&str> = results.iter()
+        let function_names: Vec<&str> = results
+            .iter()
             .filter(|r| r["node_type"].as_str() == Some("Function"))
             .filter_map(|r| r["name"].as_str())
             .collect();
 
         if function_names.len() > 5 {
-            let camel_case_count = function_names.iter().filter(|name| self.is_camel_case(name)).count();
-            let snake_case_count = function_names.iter().filter(|name| self.is_snake_case(name)).count();
+            let camel_case_count = function_names
+                .iter()
+                .filter(|name| self.is_camel_case(name))
+                .count();
+            let snake_case_count = function_names
+                .iter()
+                .filter(|name| self.is_snake_case(name))
+                .count();
 
             let adherence_rate = if camel_case_count > snake_case_count {
                 camel_case_count as f32 / function_names.len() as f32
@@ -302,16 +323,18 @@ impl PatternDetector {
                         "Use snake_case for function names".to_string()
                     },
                     adherence_rate,
-                    examples: function_names.iter().take(5).map(|s| s.to_string()).collect(),
+                    examples: function_names
+                        .iter()
+                        .take(5)
+                        .map(|s| s.to_string())
+                        .collect(),
                     violations: Vec::new(),
                 });
             }
         }
 
         // File organization convention
-        let file_paths: Vec<&str> = results.iter()
-            .filter_map(|r| r["path"].as_str())
-            .collect();
+        let file_paths: Vec<&str> = results.iter().filter_map(|r| r["path"].as_str()).collect();
 
         if file_paths.len() > 10 {
             let organized_rate = self.calculate_organization_score(&file_paths);
@@ -330,7 +353,11 @@ impl PatternDetector {
     }
 
     /// Calculate overall quality metrics
-    fn calculate_quality_metrics(&self, patterns: &[CodePattern], conventions: &[TeamConvention]) -> QualityMetrics {
+    fn calculate_quality_metrics(
+        &self,
+        patterns: &[CodePattern],
+        conventions: &[TeamConvention],
+    ) -> QualityMetrics {
         let overall_score = if patterns.is_empty() {
             0.5
         } else {
@@ -353,7 +380,8 @@ impl PatternDetector {
 
     /// Analyze architectural patterns
     fn analyze_architectural_patterns(&self, patterns: &[CodePattern]) -> ArchitecturalInsights {
-        let dominant_patterns: Vec<String> = patterns.iter()
+        let dominant_patterns: Vec<String> = patterns
+            .iter()
             .filter(|p| p.frequency > 5)
             .map(|p| p.name.clone())
             .collect();
@@ -370,7 +398,8 @@ impl PatternDetector {
             dominant_patterns,
             architectural_style,
             component_organization: "Analyzed from pattern detection".to_string(),
-            integration_patterns: patterns.iter()
+            integration_patterns: patterns
+                .iter()
                 .filter(|p| matches!(p.pattern_type, PatternType::ArchitecturalPattern))
                 .map(|p| p.name.clone())
                 .collect(),
@@ -392,19 +421,26 @@ impl PatternDetector {
     }
 
     fn is_camel_case(&self, name: &str) -> bool {
-        name.chars().next().map(|c| c.is_lowercase()).unwrap_or(false) &&
-        name.chars().any(|c| c.is_uppercase()) &&
-        !name.contains('_')
+        name.chars()
+            .next()
+            .map(|c| c.is_lowercase())
+            .unwrap_or(false)
+            && name.chars().any(|c| c.is_uppercase())
+            && !name.contains('_')
     }
 
     fn is_snake_case(&self, name: &str) -> bool {
-        name.chars().all(|c| c.is_lowercase() || c.is_numeric() || c == '_') &&
-        name.contains('_')
+        name.chars()
+            .all(|c| c.is_lowercase() || c.is_numeric() || c == '_')
+            && name.contains('_')
     }
 
     fn is_pascal_case(&self, name: &str) -> bool {
-        name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) &&
-        !name.contains('_')
+        name.chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+            && !name.contains('_')
     }
 
     fn analyze_function_structure(&self, summary: &str) -> String {
@@ -420,13 +456,13 @@ impl PatternDetector {
     }
 
     fn contains_error_handling(&self, summary: &str) -> bool {
-        summary.contains("try") ||
-        summary.contains("catch") ||
-        summary.contains("throw") ||
-        summary.contains("error") ||
-        summary.contains("exception") ||
-        summary.contains("Result") ||
-        summary.contains("Option")
+        summary.contains("try")
+            || summary.contains("catch")
+            || summary.contains("throw")
+            || summary.contains("error")
+            || summary.contains("exception")
+            || summary.contains("Result")
+            || summary.contains("Option")
     }
 
     fn analyze_import_style(&self, summary: &str) -> String {
@@ -445,7 +481,8 @@ impl PatternDetector {
 
     fn calculate_naming_quality(&self, examples: &[String]) -> f32 {
         // Higher quality for consistent naming
-        let avg_length = examples.iter().map(|e| e.len()).sum::<usize>() as f32 / examples.len() as f32;
+        let avg_length =
+            examples.iter().map(|e| e.len()).sum::<usize>() as f32 / examples.len() as f32;
 
         if avg_length > 3.0 && avg_length < 20.0 {
             0.8 // Good naming length
@@ -457,12 +494,18 @@ impl PatternDetector {
     fn calculate_structure_quality(&self, examples: &[String]) -> f32 {
         // Quality based on consistency and completeness
         let has_error_handling = examples.iter().any(|e| self.contains_error_handling(e));
-        let has_documentation = examples.iter().any(|e| e.contains("/**") || e.contains("///"));
+        let has_documentation = examples
+            .iter()
+            .any(|e| e.contains("/**") || e.contains("///"));
 
         let mut score: f32 = 0.5; // Base score
 
-        if has_error_handling { score += 0.2; }
-        if has_documentation { score += 0.2; }
+        if has_error_handling {
+            score += 0.2;
+        }
+        if has_documentation {
+            score += 0.2;
+        }
 
         score.min(1.0)
     }
@@ -483,66 +526,92 @@ impl PatternDetector {
 
         // Good organization has consistent depth and logical grouping
         let avg_depth = depths.iter().sum::<usize>() as f32 / depths.len() as f32;
-        let depth_consistency = 1.0 - (depths.iter().map(|d| (*d as f32 - avg_depth).abs()).sum::<f32>() / depths.len() as f32 / avg_depth);
+        let depth_consistency = 1.0
+            - (depths
+                .iter()
+                .map(|d| (*d as f32 - avg_depth).abs())
+                .sum::<f32>()
+                / depths.len() as f32
+                / avg_depth);
 
         depth_consistency.max(0.0).min(1.0)
     }
 
     fn build_naming_examples(&self, examples: &[String], results: &[Value]) -> Vec<CodeExample> {
-        examples.iter()
+        examples
+            .iter()
             .take(3)
-            .filter_map(|name| {
-                results.iter().find(|r| r["name"].as_str() == Some(name))
-            })
+            .filter_map(|name| results.iter().find(|r| r["name"].as_str() == Some(name)))
             .map(|result| CodeExample {
                 file_path: result["path"].as_str().unwrap_or("unknown").to_string(),
                 function_name: result["name"].as_str().unwrap_or("unknown").to_string(),
-                code_snippet: result["summary"].as_str().unwrap_or("no summary").to_string(),
+                code_snippet: result["summary"]
+                    .as_str()
+                    .unwrap_or("no summary")
+                    .to_string(),
                 line_number: 0, // Would need more detailed analysis
             })
             .collect()
     }
 
     fn build_function_examples(&self, examples: &[String], results: &[Value]) -> Vec<CodeExample> {
-        examples.iter()
+        examples
+            .iter()
             .take(3)
             .filter_map(|summary| {
-                results.iter().find(|r| r["summary"].as_str() == Some(summary))
+                results
+                    .iter()
+                    .find(|r| r["summary"].as_str() == Some(summary))
             })
             .map(|result| CodeExample {
                 file_path: result["path"].as_str().unwrap_or("unknown").to_string(),
                 function_name: result["name"].as_str().unwrap_or("unknown").to_string(),
-                code_snippet: result["summary"].as_str().unwrap_or("no summary").to_string(),
+                code_snippet: result["summary"]
+                    .as_str()
+                    .unwrap_or("no summary")
+                    .to_string(),
                 line_number: 0,
             })
             .collect()
     }
 
     fn build_error_examples(&self, examples: &[String], results: &[Value]) -> Vec<CodeExample> {
-        examples.iter()
+        examples
+            .iter()
             .take(3)
             .filter_map(|summary| {
-                results.iter().find(|r| r["summary"].as_str() == Some(summary))
+                results
+                    .iter()
+                    .find(|r| r["summary"].as_str() == Some(summary))
             })
             .map(|result| CodeExample {
                 file_path: result["path"].as_str().unwrap_or("unknown").to_string(),
                 function_name: result["name"].as_str().unwrap_or("unknown").to_string(),
-                code_snippet: result["summary"].as_str().unwrap_or("no summary").to_string(),
+                code_snippet: result["summary"]
+                    .as_str()
+                    .unwrap_or("no summary")
+                    .to_string(),
                 line_number: 0,
             })
             .collect()
     }
 
     fn build_import_examples(&self, examples: &[String], results: &[Value]) -> Vec<CodeExample> {
-        examples.iter()
+        examples
+            .iter()
             .take(3)
             .filter_map(|summary| {
-                results.iter().find(|r| r["summary"].as_str() == Some(summary))
+                results
+                    .iter()
+                    .find(|r| r["summary"].as_str() == Some(summary))
             })
             .map(|result| CodeExample {
                 file_path: result["path"].as_str().unwrap_or("unknown").to_string(),
                 function_name: result["name"].as_str().unwrap_or("unknown").to_string(),
-                code_snippet: result["summary"].as_str().unwrap_or("no summary").to_string(),
+                code_snippet: result["summary"]
+                    .as_str()
+                    .unwrap_or("no summary")
+                    .to_string(),
                 line_number: 0,
             })
             .collect()

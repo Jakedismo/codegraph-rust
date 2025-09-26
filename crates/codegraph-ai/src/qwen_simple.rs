@@ -78,7 +78,11 @@ impl QwenClient {
     }
 
     /// Generate analysis using Qwen2.5-Coder with comprehensive context
-    pub async fn generate_analysis(&self, prompt: &str, system_prompt: Option<&str>) -> Result<QwenResult> {
+    pub async fn generate_analysis(
+        &self,
+        prompt: &str,
+        system_prompt: Option<&str>,
+    ) -> Result<QwenResult> {
         let start_time = Instant::now();
 
         // Build full prompt with system context if provided
@@ -99,22 +103,36 @@ impl QwenClient {
             },
         };
 
-        debug!("Sending request to Qwen2.5-Coder: {} context window", self.config.context_window);
+        debug!(
+            "Sending request to Qwen2.5-Coder: {} context window",
+            self.config.context_window
+        );
 
         let response = timeout(
             self.config.timeout,
             self.client
                 .post(&format!("{}/api/generate", self.config.base_url))
                 .json(&request)
-                .send()
+                .send(),
         )
         .await
-        .map_err(|_| CodeGraphError::Timeout(format!("Qwen request timeout after {:?}", self.config.timeout)))?
+        .map_err(|_| {
+            CodeGraphError::Timeout(format!(
+                "Qwen request timeout after {:?}",
+                self.config.timeout
+            ))
+        })?
         .map_err(|e| CodeGraphError::Network(format!("Qwen request failed: {}", e)))?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(CodeGraphError::External(format!("Qwen API error: {}", error_text)));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(CodeGraphError::External(format!(
+                "Qwen API error: {}",
+                error_text
+            )));
         }
 
         let response_data: SimpleResponse = response
@@ -147,11 +165,16 @@ impl QwenClient {
 
     /// Check if Qwen2.5-Coder model is available
     pub async fn check_availability(&self) -> Result<bool> {
-        debug!("Checking Qwen2.5-Coder availability at {}", self.config.base_url);
+        debug!(
+            "Checking Qwen2.5-Coder availability at {}",
+            self.config.base_url
+        );
 
         let response = timeout(
             Duration::from_secs(5),
-            self.client.get(&format!("{}/api/tags", self.config.base_url)).send()
+            self.client
+                .get(&format!("{}/api/tags", self.config.base_url))
+                .send(),
         )
         .await
         .map_err(|_| CodeGraphError::Timeout("Qwen availability check timeout".to_string()))?
@@ -201,7 +224,10 @@ impl QwenClient {
         }
 
         // Technical terminology indicates code understanding
-        if response.contains("function") || response.contains("class") || response.contains("module") {
+        if response.contains("function")
+            || response.contains("class")
+            || response.contains("module")
+        {
             confidence += 0.1;
         }
 

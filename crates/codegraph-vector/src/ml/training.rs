@@ -1,5 +1,5 @@
 //! Model training infrastructure for code analysis
-//! 
+//!
 //! This module provides comprehensive training infrastructure for domain-specific
 //! machine learning models used in code analysis. It supports various model types
 //! including classification, regression, and embedding models.
@@ -361,11 +361,15 @@ impl ModelTrainer {
     }
 
     /// Train a domain-specific model
-    pub async fn train_model(&self, dataset_name: &str, model_name: &str) -> Result<TrainingResults> {
+    pub async fn train_model(
+        &self,
+        dataset_name: &str,
+        model_name: &str,
+    ) -> Result<TrainingResults> {
         let datasets = self.datasets.read().await;
-        let dataset = datasets
-            .get(dataset_name)
-            .ok_or_else(|| CodeGraphError::Training(format!("Dataset '{}' not found", dataset_name)))?;
+        let dataset = datasets.get(dataset_name).ok_or_else(|| {
+            CodeGraphError::Training(format!("Dataset '{}' not found", dataset_name))
+        })?;
 
         // Split dataset
         let (train_data, val_data, _test_data) = self.split_dataset(dataset)?;
@@ -408,9 +412,11 @@ impl ModelTrainer {
             }
 
             // Save checkpoint if configured
-            if self.config.output_config.save_checkpoints &&
-               epoch % self.config.output_config.checkpoint_frequency == 0 {
-                self.save_checkpoint(&model_weights, epoch, model_name).await?;
+            if self.config.output_config.save_checkpoints
+                && epoch % self.config.output_config.checkpoint_frequency == 0
+            {
+                self.save_checkpoint(&model_weights, epoch, model_name)
+                    .await?;
             }
         }
 
@@ -454,9 +460,9 @@ impl ModelTrainer {
     /// Cross-validation training
     pub async fn cross_validate(&self, dataset_name: &str) -> Result<Vec<TrainingResults>> {
         let datasets = self.datasets.read().await;
-        let dataset = datasets
-            .get(dataset_name)
-            .ok_or_else(|| CodeGraphError::Training(format!("Dataset '{}' not found", dataset_name)))?;
+        let dataset = datasets.get(dataset_name).ok_or_else(|| {
+            CodeGraphError::Training(format!("Dataset '{}' not found", dataset_name))
+        })?;
 
         let mut cv_results = Vec::new();
         let fold_size = dataset.features.len() / self.config.validation_config.cv_folds;
@@ -475,7 +481,7 @@ impl ModelTrainer {
 
             let mut train_features = Vec::new();
             let mut train_targets = Vec::new();
-            
+
             train_features.extend_from_slice(&dataset.features[..val_start]);
             train_features.extend_from_slice(&dataset.features[val_end..]);
             train_targets.extend_from_slice(&dataset.targets[..val_start]);
@@ -536,7 +542,8 @@ impl ModelTrainer {
         let serialized = serde_json::to_string_pretty(model)
             .map_err(|e| CodeGraphError::Training(format!("Failed to serialize model: {}", e)))?;
 
-        tokio::fs::write(path, serialized).await
+        tokio::fs::write(path, serialized)
+            .await
             .map_err(|e| CodeGraphError::Training(format!("Failed to write model file: {}", e)))?;
 
         Ok(())
@@ -544,7 +551,8 @@ impl ModelTrainer {
 
     /// Load model from disk
     pub async fn load_model(&self, model_name: &str, path: &Path) -> Result<()> {
-        let content = tokio::fs::read_to_string(path).await
+        let content = tokio::fs::read_to_string(path)
+            .await
             .map_err(|e| CodeGraphError::Training(format!("Failed to read model file: {}", e)))?;
 
         let model: TrainedModel = serde_json::from_str(&content)
@@ -565,7 +573,7 @@ impl ModelTrainer {
     ) -> DatasetMetadata {
         let sample_count = features.len();
         let feature_count = self.estimate_feature_count(features);
-        
+
         let mut class_distribution = HashMap::new();
         let mut target_values = Vec::new();
 
@@ -584,13 +592,17 @@ impl ModelTrainer {
 
         let target_statistics = if !target_values.is_empty() {
             let mean = target_values.iter().sum::<f32>() / target_values.len() as f32;
-            let variance = target_values.iter()
+            let variance = target_values
+                .iter()
                 .map(|x| (x - mean).powi(2))
-                .sum::<f32>() / target_values.len() as f32;
+                .sum::<f32>()
+                / target_values.len() as f32;
             let std = variance.sqrt();
             let min = target_values.iter().fold(f32::INFINITY, |a, &b| a.min(b));
-            let max = target_values.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
-            
+            let max = target_values
+                .iter()
+                .fold(f32::NEG_INFINITY, |a, &b| a.max(b));
+
             let mut sorted_values = target_values.clone();
             sorted_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
             let median = sorted_values[sorted_values.len() / 2];
@@ -626,17 +638,17 @@ impl ModelTrainer {
             count += 5; // Basic syntactic features
             count += syntactic.node_type_distribution.len();
         }
-        
+
         if let Some(ref semantic) = sample.semantic {
             count += semantic.embedding.len();
             count += semantic.pattern_similarities.len();
             count += 1; // density score
         }
-        
+
         if let Some(_) = sample.complexity {
             count += 5; // Complexity features
         }
-        
+
         if let Some(_) = sample.dependencies {
             count += 4; // Dependency features
         }
@@ -644,7 +656,10 @@ impl ModelTrainer {
         count
     }
 
-    fn split_dataset(&self, dataset: &TrainingDataset) -> Result<(TrainingDataset, TrainingDataset, TrainingDataset)> {
+    fn split_dataset(
+        &self,
+        dataset: &TrainingDataset,
+    ) -> Result<(TrainingDataset, TrainingDataset, TrainingDataset)> {
         let total_samples = dataset.features.len();
         let train_size = (total_samples as f32 * self.config.data_config.train_split) as usize;
         let val_size = (total_samples as f32 * self.config.data_config.validation_split) as usize;
@@ -680,12 +695,12 @@ impl ModelTrainer {
     fn initialize_model_weights(&self, dataset: &TrainingDataset) -> Result<ModelWeights> {
         let feature_count = self.estimate_feature_count(&dataset.features);
         let output_size = match self.config.model_type {
-            ModelType::QualityClassifier => 3, // good/bad/needs_review
-            ModelType::BugDetector => 2,       // bug/no_bug
-            ModelType::SecurityDetector => 2,  // vulnerable/safe
-            ModelType::ComplexityPredictor => 1, // continuous value
+            ModelType::QualityClassifier => 3,    // good/bad/needs_review
+            ModelType::BugDetector => 2,          // bug/no_bug
+            ModelType::SecurityDetector => 2,     // vulnerable/safe
+            ModelType::ComplexityPredictor => 1,  // continuous value
             ModelType::PerformancePredictor => 1, // continuous value
-            ModelType::SimilarityModel => 1,   // similarity score
+            ModelType::SimilarityModel => 1,      // similarity score
         };
 
         // Simple linear model initialization
@@ -716,10 +731,14 @@ impl ModelTrainer {
         })
     }
 
-    async fn train_epoch(&self, dataset: &TrainingDataset, _weights: &mut ModelWeights) -> Result<f32> {
+    async fn train_epoch(
+        &self,
+        dataset: &TrainingDataset,
+        _weights: &mut ModelWeights,
+    ) -> Result<f32> {
         // Simplified training step - in practice would implement backpropagation
         let mut total_loss = 0.0;
-        let batch_count = (dataset.features.len() + self.config.hyperparameters.batch_size - 1) 
+        let batch_count = (dataset.features.len() + self.config.hyperparameters.batch_size - 1)
             / self.config.hyperparameters.batch_size;
 
         for _batch in 0..batch_count {
@@ -730,10 +749,14 @@ impl ModelTrainer {
         Ok(total_loss / batch_count as f32)
     }
 
-    async fn validate_epoch(&self, dataset: &TrainingDataset, _weights: &ModelWeights) -> Result<f32> {
+    async fn validate_epoch(
+        &self,
+        dataset: &TrainingDataset,
+        _weights: &ModelWeights,
+    ) -> Result<f32> {
         // Simplified validation step
         let mut total_loss = 0.0;
-        
+
         for _ in &dataset.features {
             // Simulate validation loss
             total_loss += 0.4; // Placeholder loss value
@@ -742,9 +765,13 @@ impl ModelTrainer {
         Ok(total_loss / dataset.features.len() as f32)
     }
 
-    async fn calculate_metrics(&self, _dataset: &TrainingDataset, _weights: &ModelWeights) -> Result<HashMap<String, f32>> {
+    async fn calculate_metrics(
+        &self,
+        _dataset: &TrainingDataset,
+        _weights: &ModelWeights,
+    ) -> Result<HashMap<String, f32>> {
         let mut metrics = HashMap::new();
-        
+
         // Placeholder metrics - in practice would calculate actual model performance
         metrics.insert("accuracy".to_string(), 0.85);
         metrics.insert("precision".to_string(), 0.82);
@@ -755,12 +782,20 @@ impl ModelTrainer {
         Ok(metrics)
     }
 
-    async fn save_checkpoint(&self, _weights: &ModelWeights, epoch: usize, model_name: &str) -> Result<()> {
-        let checkpoint_path = format!("{}_{}_epoch_{}.checkpoint", 
-            self.config.output_config.model_path, model_name, epoch);
-        
+    async fn save_checkpoint(
+        &self,
+        _weights: &ModelWeights,
+        epoch: usize,
+        model_name: &str,
+    ) -> Result<()> {
+        let checkpoint_path = format!(
+            "{}_{}_epoch_{}.checkpoint",
+            self.config.output_config.model_path, model_name, epoch
+        );
+
         // In practice, would serialize and save model weights
-        tokio::fs::write(&checkpoint_path, format!("Checkpoint for epoch {}", epoch)).await
+        tokio::fs::write(&checkpoint_path, format!("Checkpoint for epoch {}", epoch))
+            .await
             .map_err(|e| CodeGraphError::Training(format!("Failed to save checkpoint: {}", e)))?;
 
         Ok(())
@@ -791,23 +826,24 @@ mod tests {
 
         let feature_config = FeatureConfig::default();
         let embedding_generator = Arc::new(EmbeddingGenerator::default());
-        let feature_extractor = Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
+        let feature_extractor =
+            Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
         let trainer = ModelTrainer::new(config, feature_extractor);
 
-        let nodes = vec![
-            CodeNode {
-                id: "node1".to_string(),
-                name: "test_function".to_string(),
-                language: Some(Language::Rust),
-                node_type: Some(NodeType::Function),
-                content: Some("fn test() { println!(\"Hello\"); }".to_string()),
-                children: None,
-            },
-        ];
+        let nodes = vec![CodeNode {
+            id: "node1".to_string(),
+            name: "test_function".to_string(),
+            language: Some(Language::Rust),
+            node_type: Some(NodeType::Function),
+            content: Some("fn test() { println!(\"Hello\"); }".to_string()),
+            children: None,
+        }];
 
         let targets = vec![TrainingTarget::Classification(1)]; // Good quality
 
-        let result = trainer.prepare_dataset(&nodes, targets, "test_dataset").await;
+        let result = trainer
+            .prepare_dataset(&nodes, targets, "test_dataset")
+            .await;
         assert!(result.is_ok());
 
         let datasets = trainer.datasets.read().await;
@@ -834,7 +870,8 @@ mod tests {
 
         let feature_config = FeatureConfig::default();
         let embedding_generator = Arc::new(EmbeddingGenerator::default());
-        let feature_extractor = Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
+        let feature_extractor =
+            Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
         let trainer = ModelTrainer::new(config, feature_extractor);
 
         let nodes = vec![
@@ -861,9 +898,14 @@ mod tests {
             TrainingTarget::Regression(5.0), // High complexity
         ];
 
-        trainer.prepare_dataset(&nodes, targets, "complexity_dataset").await.unwrap();
-        let results = trainer.train_model("complexity_dataset", "complexity_model").await;
-        
+        trainer
+            .prepare_dataset(&nodes, targets, "complexity_dataset")
+            .await
+            .unwrap();
+        let results = trainer
+            .train_model("complexity_dataset", "complexity_model")
+            .await;
+
         assert!(results.is_ok());
         let training_results = results.unwrap();
         assert_eq!(training_results.model_type, ModelType::ComplexityPredictor);
@@ -887,7 +929,8 @@ mod tests {
 
         let feature_config = FeatureConfig::default();
         let embedding_generator = Arc::new(EmbeddingGenerator::default());
-        let feature_extractor = Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
+        let feature_extractor =
+            Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
         let trainer = ModelTrainer::new(config, feature_extractor);
 
         let features = vec![]; // Empty for test

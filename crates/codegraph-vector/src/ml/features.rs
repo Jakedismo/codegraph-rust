@@ -1,13 +1,13 @@
 //! Feature extraction pipeline for code analysis
-//! 
+//!
 //! This module provides advanced feature extraction capabilities for code analysis,
 //! building on the existing embedding infrastructure to support ML training pipelines.
 
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tokio::sync::RwLock;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// Configuration for feature extraction
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,7 +161,7 @@ impl FeatureExtractor {
     /// Extract features from multiple code nodes in batch
     pub async fn extract_features_batch(&self, nodes: &[CodeNode]) -> Result<Vec<CodeFeatures>> {
         let mut features = Vec::with_capacity(nodes.len());
-        
+
         for node in nodes {
             let node_features = self.extract_features(node).await?;
             features.push(node_features);
@@ -175,11 +175,11 @@ impl FeatureExtractor {
         // Count child nodes (approximated from content complexity)
         let child_count = self.estimate_child_count(node);
         let depth = self.calculate_ast_depth(node);
-        
+
         // Analyze node type distribution
         let mut node_type_distribution = HashMap::new();
         self.collect_node_types(node, &mut node_type_distribution);
-        
+
         // Calculate token and line counts from content
         let content = node.content.as_deref().unwrap_or("");
         let token_count = content.split_whitespace().count();
@@ -198,10 +198,10 @@ impl FeatureExtractor {
     async fn extract_semantic_features(&self, node: &CodeNode) -> Result<SemanticFeatures> {
         // Generate embedding
         let embedding = self.embedding_generator.generate_embedding(node).await?;
-        
+
         // Calculate pattern similarities
         let pattern_similarities = self.calculate_pattern_similarities(&embedding).await?;
-        
+
         // Calculate semantic density
         let density_score = self.calculate_semantic_density(&embedding);
 
@@ -215,23 +215,26 @@ impl FeatureExtractor {
     /// Extract complexity metrics
     async fn extract_complexity_features(&self, node: &CodeNode) -> Result<ComplexityFeatures> {
         let content = node.content.as_deref().unwrap_or("");
-        
+
         // Calculate cyclomatic complexity (simplified)
         let cyclomatic_complexity = self.calculate_cyclomatic_complexity(content);
-        
+
         // Calculate cognitive complexity
         let cognitive_complexity = self.calculate_cognitive_complexity(content);
-        
+
         // Calculate nesting depth
         let max_nesting_depth = self.calculate_nesting_depth(content);
-        
+
         // Extract parameter count for functions
-        let parameter_count = if matches!(node.node_type.as_ref(), Some(codegraph_core::NodeType::Function)) {
+        let parameter_count = if matches!(
+            node.node_type.as_ref(),
+            Some(codegraph_core::NodeType::Function)
+        ) {
             Some(self.extract_parameter_count(content))
         } else {
             None
         };
-        
+
         // Count return statements
         let return_count = content.matches("return").count();
 
@@ -300,7 +303,10 @@ impl FeatureExtractor {
     }
 
     /// Calculate pattern similarities using cached common patterns
-    async fn calculate_pattern_similarities(&self, embedding: &[f32]) -> Result<HashMap<String, f32>> {
+    async fn calculate_pattern_similarities(
+        &self,
+        embedding: &[f32],
+    ) -> Result<HashMap<String, f32>> {
         let cache = self.pattern_cache.read().await;
         let mut similarities = HashMap::new();
 
@@ -344,14 +350,17 @@ impl FeatureExtractor {
 
         for line in content.lines() {
             let trimmed = line.trim();
-            
+
             // Increase nesting for control structures
-            if trimmed.starts_with("if ") || trimmed.starts_with("while ") || 
-               trimmed.starts_with("for ") || trimmed.starts_with("match ") {
+            if trimmed.starts_with("if ")
+                || trimmed.starts_with("while ")
+                || trimmed.starts_with("for ")
+                || trimmed.starts_with("match ")
+            {
                 nesting_level += 1;
                 complexity += nesting_level;
             }
-            
+
             // Decrease nesting on closing braces
             if trimmed == "}" {
                 nesting_level = nesting_level.saturating_sub(1);
@@ -440,16 +449,16 @@ mod tests {
         };
 
         let features = extractor.extract_features(&node).await.unwrap();
-        
+
         assert_eq!(features.node_id, "test_node");
         assert!(features.syntactic.is_some());
         assert!(features.semantic.is_some());
         assert!(features.complexity.is_some());
-        
+
         let syntactic = features.syntactic.unwrap();
         assert!(syntactic.token_count > 0);
         assert!(syntactic.line_count > 0);
-        
+
         let complexity = features.complexity.unwrap();
         assert!(complexity.cyclomatic_complexity > 1); // Has if statement
         assert!(complexity.parameter_count == Some(2)); // Two parameters

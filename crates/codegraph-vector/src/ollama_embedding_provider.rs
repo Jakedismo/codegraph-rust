@@ -2,15 +2,14 @@
 ///
 /// Uses nomic-embed-code-GGUF:Q4_K_M for superior code understanding
 /// Complements Qwen2.5-Coder analysis with specialized code embeddings
-
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
+use futures::future;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 use tracing::{debug, info, warn};
-use futures::future;
 
 use crate::providers::{
     BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
@@ -63,11 +62,11 @@ pub struct OllamaEmbeddingProvider {
 impl OllamaEmbeddingProvider {
     pub fn new(config: OllamaEmbeddingConfig) -> Self {
         let characteristics = ProviderCharacteristics {
-            expected_throughput: 100.0, // Expected texts per second
+            expected_throughput: 100.0,                  // Expected texts per second
             typical_latency: Duration::from_millis(200), // Per text latency
             max_batch_size: config.batch_size,
             supports_streaming: false,
-            requires_network: false, // Local Ollama model
+            requires_network: false,           // Local Ollama model
             memory_usage: MemoryUsage::Medium, // ~500MB-1GB for embedding model
         };
 
@@ -80,11 +79,16 @@ impl OllamaEmbeddingProvider {
 
     /// Check if nomic-embed-code model is available
     pub async fn check_availability(&self) -> Result<bool> {
-        debug!("Checking nomic-embed-code availability at {}", self.config.base_url);
+        debug!(
+            "Checking nomic-embed-code availability at {}",
+            self.config.base_url
+        );
 
         let response = timeout(
             Duration::from_secs(5),
-            self.client.get(&format!("{}/api/tags", self.config.base_url)).send()
+            self.client
+                .get(&format!("{}/api/tags", self.config.base_url))
+                .send(),
         )
         .await
         .map_err(|_| CodeGraphError::Timeout("Ollama availability check timeout".to_string()))?
@@ -106,9 +110,9 @@ impl OllamaEmbeddingProvider {
                     model["name"]
                         .as_str()
                         .map(|name| {
-                            name.contains("nomic-embed") ||
-                            name.contains(&self.config.model_name) ||
-                            name == "nomic-embed-code"
+                            name.contains("nomic-embed")
+                                || name.contains(&self.config.model_name)
+                                || name == "nomic-embed-code"
                         })
                         .unwrap_or(false)
                 })
@@ -135,21 +139,31 @@ impl OllamaEmbeddingProvider {
             self.client
                 .post(&format!("{}/api/embeddings", self.config.base_url))
                 .json(&request)
-                .send()
+                .send(),
         )
         .await
-        .map_err(|_| CodeGraphError::Timeout(format!("Ollama embedding timeout after {:?}", self.config.timeout)))?
+        .map_err(|_| {
+            CodeGraphError::Timeout(format!(
+                "Ollama embedding timeout after {:?}",
+                self.config.timeout
+            ))
+        })?
         .map_err(|e| CodeGraphError::Network(format!("Ollama embedding request failed: {}", e)))?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(CodeGraphError::External(format!("Ollama embedding API error: {}", error_text)));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(CodeGraphError::External(format!(
+                "Ollama embedding API error: {}",
+                error_text
+            )));
         }
 
-        let response_data: OllamaEmbeddingResponse = response
-            .json()
-            .await
-            .map_err(|e| CodeGraphError::Parse(format!("Failed to parse Ollama embedding response: {}", e)))?;
+        let response_data: OllamaEmbeddingResponse = response.json().await.map_err(|e| {
+            CodeGraphError::Parse(format!("Failed to parse Ollama embedding response: {}", e))
+        })?;
 
         let processing_time = start_time.elapsed();
 
@@ -170,8 +184,12 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
         // Prepare text from code node (similar to other providers)
         let text = format!(
             "{} {} {}",
-            node.language.as_ref().map_or("unknown".to_string(), |l| format!("{:?}", l)),
-            node.node_type.as_ref().map_or("unknown".to_string(), |t| format!("{:?}", t)),
+            node.language
+                .as_ref()
+                .map_or("unknown".to_string(), |l| format!("{:?}", l)),
+            node.node_type
+                .as_ref()
+                .map_or("unknown".to_string(), |t| format!("{:?}", t)),
             node.name.as_str()
         );
 
@@ -190,24 +208,34 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
             return Ok(Vec::new());
         }
 
-        info!("Generating {} embeddings with nomic-embed-code", nodes.len());
+        info!(
+            "Generating {} embeddings with nomic-embed-code",
+            nodes.len()
+        );
         let start_time = Instant::now();
 
         // Prepare texts from nodes
-        let texts: Vec<String> = nodes.iter().map(|node| {
-            let text = format!(
-                "{} {} {}",
-                node.language.as_ref().map_or("unknown".to_string(), |l| format!("{:?}", l)),
-                node.node_type.as_ref().map_or("unknown".to_string(), |t| format!("{:?}", t)),
-                node.name.as_str()
-            );
+        let texts: Vec<String> = nodes
+            .iter()
+            .map(|node| {
+                let text = format!(
+                    "{} {} {}",
+                    node.language
+                        .as_ref()
+                        .map_or("unknown".to_string(), |l| format!("{:?}", l)),
+                    node.node_type
+                        .as_ref()
+                        .map_or("unknown".to_string(), |t| format!("{:?}", t)),
+                    node.name.as_str()
+                );
 
-            if let Some(content) = &node.content {
-                format!("{} {}", text, content)
-            } else {
-                text
-            }
-        }).collect();
+                if let Some(content) = &node.content {
+                    format!("{} {}", text, content)
+                } else {
+                    text
+                }
+            })
+            .collect();
 
         // Process in batches for optimal performance
         let mut all_embeddings = Vec::new();
@@ -217,7 +245,8 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
             debug!("Processing batch {} ({} texts)", batch_idx + 1, batch.len());
 
             // Process batch items in parallel but limited concurrency
-            let batch_futures: Vec<_> = batch.iter()
+            let batch_futures: Vec<_> = batch
+                .iter()
                 .map(|text| self.generate_single_embedding(text))
                 .collect();
 
@@ -254,11 +283,8 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
         let embeddings = self.generate_embeddings(nodes).await?;
         let duration = start_time.elapsed();
 
-        let metrics = EmbeddingMetrics::new(
-            "ollama-nomic-embed-code".to_string(),
-            nodes.len(),
-            duration,
-        );
+        let metrics =
+            EmbeddingMetrics::new("ollama-nomic-embed-code".to_string(), nodes.len(), duration);
 
         Ok((embeddings, metrics))
     }

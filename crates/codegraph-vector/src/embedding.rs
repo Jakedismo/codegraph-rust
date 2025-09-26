@@ -1,8 +1,13 @@
-use codegraph_core::{CodeGraphError, CodeNode, Result};
-#[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx", feature = "ollama"))]
-use std::sync::Arc;
 #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
 use crate::embeddings::generator::TextEmbeddingEngine;
+use codegraph_core::{CodeGraphError, CodeNode, Result};
+#[cfg(any(
+    feature = "local-embeddings",
+    feature = "openai",
+    feature = "onnx",
+    feature = "ollama"
+))]
+use std::sync::Arc;
 
 pub struct EmbeddingGenerator {
     model_config: ModelConfig,
@@ -59,9 +64,19 @@ impl EmbeddingGenerator {
     /// Construct an EmbeddingGenerator that optionally wraps the advanced engine based on env.
     /// If CODEGRAPH_EMBEDDING_PROVIDER=local, tries to initialize a local-first engine.
     pub async fn with_auto_from_env() -> Self {
-        #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx", feature = "ollama"))]
+        #[cfg(any(
+            feature = "local-embeddings",
+            feature = "openai",
+            feature = "onnx",
+            feature = "ollama"
+        ))]
         let mut base = Self::new(ModelConfig::default());
-        #[cfg(not(any(feature = "local-embeddings", feature = "openai", feature = "onnx", feature = "ollama")))]
+        #[cfg(not(any(
+            feature = "local-embeddings",
+            feature = "openai",
+            feature = "onnx",
+            feature = "ollama"
+        )))]
         let base = Self::new(ModelConfig::default());
         let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
             .unwrap_or_default()
@@ -92,10 +107,15 @@ impl EmbeddingGenerator {
         } else if provider == "onnx" {
             #[cfg(feature = "onnx")]
             {
-                use crate::embeddings::generator::{AdvancedEmbeddingGenerator, EmbeddingEngineConfig, OnnxConfigCompat};
+                use crate::embeddings::generator::{
+                    AdvancedEmbeddingGenerator, EmbeddingEngineConfig, OnnxConfigCompat,
+                };
                 let mut cfg = EmbeddingEngineConfig::default();
                 let model_repo = std::env::var("CODEGRAPH_LOCAL_MODEL").unwrap_or_default();
-                tracing::info!("🚀 Initializing ONNX embedding provider with model: {}", model_repo);
+                tracing::info!(
+                    "🚀 Initializing ONNX embedding provider with model: {}",
+                    model_repo
+                );
 
                 cfg.onnx = Some(OnnxConfigCompat {
                     model_repo: model_repo.clone(),
@@ -117,8 +137,12 @@ impl EmbeddingGenerator {
                         // INTELLIGENT FALLBACK: Try Ollama if ONNX fails
                         #[cfg(feature = "ollama")]
                         {
-                            let ollama_config = crate::ollama_embedding_provider::OllamaEmbeddingConfig::default();
-                            let ollama_provider = crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(ollama_config);
+                            let ollama_config =
+                                crate::ollama_embedding_provider::OllamaEmbeddingConfig::default();
+                            let ollama_provider =
+                                crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(
+                                    ollama_config,
+                                );
 
                             match ollama_provider.check_availability().await {
                                 Ok(true) => {
@@ -139,11 +163,17 @@ impl EmbeddingGenerator {
                         }
                         #[cfg(not(feature = "ollama"))]
                         {
-                            tracing::error!("   Ollama fallback not available (feature not enabled)");
-                            tracing::error!("   Falling back to random embeddings (no semantic AI matching)");
+                            tracing::error!(
+                                "   Ollama fallback not available (feature not enabled)"
+                            );
+                            tracing::error!(
+                                "   Falling back to random embeddings (no semantic AI matching)"
+                            );
                         }
 
-                        tracing::warn!("⚠️ Without real embeddings, AI semantic matching will be 0% effective");
+                        tracing::warn!(
+                            "⚠️ Without real embeddings, AI semantic matching will be 0% effective"
+                        );
                     }
                 }
             }
@@ -151,8 +181,10 @@ impl EmbeddingGenerator {
             #[cfg(feature = "ollama")]
             {
                 // Create Ollama embedding provider
-                let ollama_config = crate::ollama_embedding_provider::OllamaEmbeddingConfig::default();
-                let ollama_provider = crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(ollama_config);
+                let ollama_config =
+                    crate::ollama_embedding_provider::OllamaEmbeddingConfig::default();
+                let ollama_provider =
+                    crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(ollama_config);
 
                 // Check if model is available
                 match ollama_provider.check_availability().await {
@@ -253,7 +285,9 @@ impl EmbeddingGenerator {
 
         if text.len() > self.model_config.max_tokens * 4 {
             let mut new_len = self.model_config.max_tokens * 4;
-            if new_len > text.len() { new_len = text.len(); }
+            if new_len > text.len() {
+                new_len = text.len();
+            }
             while new_len > 0 && !text.is_char_boundary(new_len) {
                 new_len -= 1;
             }
@@ -277,11 +311,14 @@ impl EmbeddingGenerator {
         }
 
         // FALLBACK WARNING: Using random hash-based embeddings (no semantic meaning)
-        static FALLBACK_WARNING_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        static FALLBACK_WARNING_SHOWN: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
         if !FALLBACK_WARNING_SHOWN.swap(true, std::sync::atomic::Ordering::Relaxed) {
             tracing::error!("🚨 CRITICAL: Falling back to random hash-based embeddings");
             tracing::error!("   This means AI semantic matching will be 0% effective");
-            tracing::error!("   Resolution rates will remain at baseline (~60%) instead of target (85-90%)");
+            tracing::error!(
+                "   Resolution rates will remain at baseline (~60%) instead of target (85-90%)"
+            );
             tracing::error!("   Fix: Ensure ONNX or Ollama embedding providers are working");
         }
 

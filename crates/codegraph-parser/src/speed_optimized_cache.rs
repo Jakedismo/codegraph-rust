@@ -2,14 +2,13 @@
 ///
 /// COMPLETE IMPLEMENTATION: Ultra-high-speed semantic caching optimized for
 /// "maximal speed is the only acceptance criteria" principle.
-
 use codegraph_core::{ExtractionResult, Language, Result};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use std::time::{SystemTime, Instant};
-use tracing::{info, debug};
-use sha2::{Sha256, Digest};
+use std::time::{Instant, SystemTime};
+use tracing::{debug, info};
 
 /// Ultra-fast semantic cache optimized for M4 Max 128GB memory
 pub struct SpeedOptimizedCache {
@@ -55,7 +54,10 @@ impl Default for CacheConfig {
 impl SpeedOptimizedCache {
     pub fn new(config: CacheConfig) -> Self {
         info!("🚀 Initializing Speed-Optimized Semantic Cache");
-        info!("   💾 Max entries: {} (M4 Max optimized)", config.max_entries);
+        info!(
+            "   💾 Max entries: {} (M4 Max optimized)",
+            config.max_entries
+        );
         info!("   📊 Metrics enabled: {}", config.enable_metrics);
 
         Self {
@@ -81,16 +83,20 @@ impl SpeedOptimizedCache {
 
         let result = {
             let cache = self.main_cache.read().unwrap();
-            cache.get(&semantic_hash).map(|entry| {
-                entry.extraction_result.clone()
-            })
+            cache
+                .get(&semantic_hash)
+                .map(|entry| entry.extraction_result.clone())
         };
 
         if let Some(extraction_result) = result {
             self.update_access_tracking(&semantic_hash);
             self.record_hit(start_time);
 
-            debug!("⚡ CACHE HIT: {} ({:.0}ns lookup)", file_path.display(), start_time.elapsed().as_nanos());
+            debug!(
+                "⚡ CACHE HIT: {} ({:.0}ns lookup)",
+                file_path.display(),
+                start_time.elapsed().as_nanos()
+            );
             Some(extraction_result)
         } else {
             self.record_miss(start_time);
@@ -137,53 +143,68 @@ impl SpeedOptimizedCache {
         Ok(())
     }
 
-    async fn compute_file_semantic_hash(&self, file_path: &Path, language: &Language) -> Result<String> {
+    async fn compute_file_semantic_hash(
+        &self,
+        file_path: &Path,
+        language: &Language,
+    ) -> Result<String> {
         let content = tokio::fs::read_to_string(file_path).await?;
 
         let mut hasher = Sha256::new();
 
         let normalized = match language {
-            Language::Rust => {
-                content
-                    .lines()
-                    .filter_map(|line| {
-                        let line = line.trim();
-                        if line.starts_with("fn ") || line.starts_with("struct ") ||
-                           line.starts_with("trait ") || line.starts_with("impl ") ||
-                           line.starts_with("use ") || line.starts_with("mod ") {
-                            Some(line.split_whitespace().take(2).collect::<Vec<_>>().join(" "))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("|")
-            }
-            Language::TypeScript | Language::JavaScript => {
-                content
-                    .lines()
-                    .filter_map(|line| {
-                        let line = line.trim();
-                        if line.starts_with("function ") || line.starts_with("class ") ||
-                           line.starts_with("interface ") || line.starts_with("import ") ||
-                           line.starts_with("export ") {
-                            Some(line.split_whitespace().take(2).collect::<Vec<_>>().join(" "))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("|")
-            }
-            _ => {
-                content
-                    .lines()
-                    .map(|line| line.trim())
-                    .filter(|line| !line.is_empty())
-                    .take(100)
-                    .collect::<Vec<_>>()
-                    .join("|")
-            }
+            Language::Rust => content
+                .lines()
+                .filter_map(|line| {
+                    let line = line.trim();
+                    if line.starts_with("fn ")
+                        || line.starts_with("struct ")
+                        || line.starts_with("trait ")
+                        || line.starts_with("impl ")
+                        || line.starts_with("use ")
+                        || line.starts_with("mod ")
+                    {
+                        Some(
+                            line.split_whitespace()
+                                .take(2)
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        )
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("|"),
+            Language::TypeScript | Language::JavaScript => content
+                .lines()
+                .filter_map(|line| {
+                    let line = line.trim();
+                    if line.starts_with("function ")
+                        || line.starts_with("class ")
+                        || line.starts_with("interface ")
+                        || line.starts_with("import ")
+                        || line.starts_with("export ")
+                    {
+                        Some(
+                            line.split_whitespace()
+                                .take(2)
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        )
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("|"),
+            _ => content
+                .lines()
+                .map(|line| line.trim())
+                .filter(|line| !line.is_empty())
+                .take(100)
+                .collect::<Vec<_>>()
+                .join("|"),
         };
 
         hasher.update(normalized.as_bytes());
@@ -227,7 +248,8 @@ impl SpeedOptimizedCache {
             metrics.total_requests += 1;
             metrics.hit_rate = metrics.hits as f32 / metrics.total_requests as f32 * 100.0;
             metrics.average_lookup_time_ns =
-                (metrics.average_lookup_time_ns * (metrics.hits - 1) as f64 + lookup_time) / metrics.hits as f64;
+                (metrics.average_lookup_time_ns * (metrics.hits - 1) as f64 + lookup_time)
+                    / metrics.hits as f64;
         }
     }
 

@@ -336,8 +336,18 @@ impl AdvancedEmbeddingGenerator {
                     pooling: "mean".into(),
                 }
             };
-            let pooling = match oc.pooling.to_lowercase().as_str() { "cls" => OnnxPooling::Cls, "max" => OnnxPooling::Max, _ => OnnxPooling::Mean };
-            let prov = OnnxEmbeddingProvider::new(OnnxConfig { model_repo: oc.model_repo.clone(), model_file: oc.model_file.clone(), max_sequence_length: oc.max_sequence_length, pooling }).await?;
+            let pooling = match oc.pooling.to_lowercase().as_str() {
+                "cls" => OnnxPooling::Cls,
+                "max" => OnnxPooling::Max,
+                _ => OnnxPooling::Mean,
+            };
+            let prov = OnnxEmbeddingProvider::new(OnnxConfig {
+                model_repo: oc.model_repo.clone(),
+                model_file: oc.model_file.clone(),
+                max_sequence_length: oc.max_sequence_length,
+                pooling,
+            })
+            .await?;
             Ok(Box::new(prov))
         }
 
@@ -348,7 +358,9 @@ impl AdvancedEmbeddingGenerator {
         // ONNX explicit selection via env or config
         #[cfg(feature = "onnx")]
         {
-            let prov = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or_default().to_lowercase();
+            let prov = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
+                .unwrap_or_default()
+                .to_lowercase();
             if prov == "onnx" || config.onnx.is_some() {
                 if let Ok(onnx) = make_onnx(&config).await {
                     dimension_hint = onnx.embedding_dimension();

@@ -1,12 +1,9 @@
 /// Clean Official MCP SDK Implementation for CodeGraph
 /// Following exact Counter pattern from rmcp SDK documentation
-
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
-    tool, tool_handler, tool_router,
-    ErrorData as McpError,
-    ServerHandler,
+    tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -15,9 +12,9 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 #[cfg(feature = "qwen-integration")]
-use crate::qwen::{QwenClient, QwenConfig};
+use crate::cache::{init_cache, CacheConfig};
 #[cfg(feature = "qwen-integration")]
-use crate::cache::{CacheConfig, init_cache};
+use crate::qwen::{QwenClient, QwenConfig};
 
 /// Parameter structs following official rmcp SDK pattern
 // #[derive(Deserialize, JsonSchema)]
@@ -38,7 +35,9 @@ struct SearchRequest {
     limit: usize,
 }
 
-fn default_limit() -> usize { 10 }
+fn default_limit() -> usize {
+    10
+}
 
 #[derive(Deserialize, JsonSchema)]
 struct VectorSearchRequest {
@@ -64,7 +63,9 @@ struct GraphNeighborsRequest {
     limit: usize,
 }
 
-fn default_neighbor_limit() -> usize { 20 }
+fn default_neighbor_limit() -> usize {
+    20
+}
 
 #[derive(Deserialize, JsonSchema)]
 struct GraphTraverseRequest {
@@ -78,8 +79,12 @@ struct GraphTraverseRequest {
     limit: usize,
 }
 
-fn default_depth() -> usize { 2 }
-fn default_traverse_limit() -> usize { 100 }
+fn default_depth() -> usize {
+    2
+}
+fn default_traverse_limit() -> usize {
+    100
+}
 
 // #[derive(Deserialize, JsonSchema)]
 // struct CodeReadRequest {
@@ -130,8 +135,12 @@ struct SemanticIntelligenceRequest {
     max_context_tokens: usize,
 }
 
-fn default_task_type() -> String { "semantic_search".to_string() }
-fn default_max_context_tokens() -> usize { 80000 }
+fn default_task_type() -> String {
+    "semantic_search".to_string()
+}
+fn default_max_context_tokens() -> usize {
+    80000
+}
 
 #[derive(Deserialize, JsonSchema)]
 struct ImpactAnalysisRequest {
@@ -144,7 +153,9 @@ struct ImpactAnalysisRequest {
     change_type: String,
 }
 
-fn default_change_type() -> String { "modify".to_string() }
+fn default_change_type() -> String {
+    "modify".to_string()
+}
 
 #[derive(Deserialize, JsonSchema)]
 struct EmptyRequest {
@@ -182,7 +193,9 @@ struct CodeDocumentationRequest {
 }
 
 #[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
-fn default_doc_style() -> String { "comprehensive".to_string() }
+fn default_doc_style() -> String {
+    "comprehensive".to_string()
+}
 
 /// Clean CodeGraph MCP server following official Counter pattern
 #[derive(Clone)]
@@ -191,6 +204,9 @@ pub struct CodeGraphMCPServer {
     graph: Arc<tokio::sync::Mutex<codegraph_graph::CodeGraph>>,
     /// Simple counter for demonstration
     counter: Arc<Mutex<i32>>,
+    /// Cached Qwen client for AI-enhanced features
+    #[cfg(feature = "qwen-integration")]
+    qwen_client: Arc<Mutex<Option<QwenClient>>>,
     /// Official MCP tool router (required by macros)
     tool_router: ToolRouter<Self>,
 }
@@ -199,31 +215,77 @@ pub struct CodeGraphMCPServer {
 impl CodeGraphMCPServer {
     pub fn new() -> Self {
         // Create read-only database connection for concurrent multi-agent access
-        let current_dir = std::env::current_dir()
-            .unwrap_or_else(|_| std::path::PathBuf::from("."));
-        let db_path = current_dir.join(".codegraph/db");
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let db_root = current_dir.join(".codegraph");
+        let db_path = db_root.join("db");
 
-        // CRITICAL FIX: Use same database constructor as CLI (not read-only)
-        // The CLI uses CodeGraph::new() which works, read-only connections had access issues
-        let graph = codegraph_graph::CodeGraph::new()
-            .unwrap_or_else(|_| panic!("Failed to initialize CodeGraph database"));
+        if let Err(err) = std::fs::create_dir_all(&db_root) {
+            eprintln!(
+                "⚠️ Unable to create .codegraph directory at {:?}: {}",
+                db_root, err
+            );
+        }
+        if let Err(err) = std::fs::create_dir_all(&db_path) {
+            eprintln!(
+                "⚠️ Unable to create RocksDB directory at {:?}: {}",
+                db_path, err
+            );
+        }
+
+        // Attempt a full read/write graph first, then gracefully fall back to read-only mode
+        let graph = match codegraph_graph::CodeGraph::new() {
+            Ok(graph) => graph,
+            Err(err) => {
+                eprintln!(
+                    "⚠️ Primary CodeGraph open failed ({}). Falling back to read-only mode.",
+                    err
+                );
+                match codegraph_graph::CodeGraph::new_read_only() {
+                    Ok(read_only_graph) => read_only_graph,
+                    Err(ro_err) => panic!(
+                        "Failed to initialize CodeGraph database. rw={} ro={}",
+                        err, ro_err
+                    ),
+                }
+            }
+        };
 
         Self {
             graph: Arc::new(tokio::sync::Mutex::new(graph)),
             counter: Arc::new(Mutex::new(0)),
+            #[cfg(feature = "qwen-integration")]
+            qwen_client: Arc::new(Mutex::new(None)),
             tool_router: Self::tool_router(),
         }
     }
 
     /// Initialize with existing graph database from working directory
     pub async fn new_with_graph() -> Result<Self, String> {
+        // Ensure database directories exist before opening
+        let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+        let db_root = current_dir.join(".codegraph");
+        let db_path = db_root.join("db");
+
+        std::fs::create_dir_all(&db_root)
+            .map_err(|e| format!("Failed to create .codegraph directory: {}", e))?;
+        std::fs::create_dir_all(&db_path)
+            .map_err(|e| format!("Failed to create database directory: {}", e))?;
+
         // Try to open existing database first, create new if needed
-        let graph = codegraph_graph::CodeGraph::new()
-            .map_err(|e| format!("Failed to initialize CodeGraph database: {}", e))?;
+        let graph = codegraph_graph::CodeGraph::new().or_else(|err| {
+            eprintln!(
+                "⚠️ CodeGraph open failed in writable mode ({}). Falling back to read-only mode.",
+                err
+            );
+            codegraph_graph::CodeGraph::new_read_only()
+                .map_err(|ro_err| format!("Failed to initialize CodeGraph database: {} | {}", err, ro_err))
+        })?;
 
         Ok(Self {
             graph: Arc::new(tokio::sync::Mutex::new(graph)),
             counter: Arc::new(Mutex::new(0)),
+            #[cfg(feature = "qwen-integration")]
+            qwen_client: Arc::new(Mutex::new(None)),
             tool_router: Self::tool_router(),
         })
     }
@@ -242,57 +304,86 @@ impl CodeGraphMCPServer {
     // }
 
     /// Enhanced semantic search with AI-powered analysis for finding code patterns and architectural insights
-    #[tool(description = "Search your codebase with AI analysis. Finds code patterns, architectural insights, and team conventions. Use when you need intelligent analysis of search results. Required: query (what to search for). Optional: limit (max results, default 10).")]
-    async fn enhanced_search(&self, params: Parameters<SearchRequest>) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Search your codebase with AI analysis. Finds code patterns, architectural insights, and team conventions. Use when you need intelligent analysis of search results. Required: query (what to search for). Optional: limit (max results, default 10)."
+    )]
+    async fn enhanced_search(
+        &self,
+        params: Parameters<SearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let request = params.0; // Extract the inner value
 
         #[cfg(feature = "qwen-integration")]
         {
-            // 1. Perform vector search first using shared database connection
-            let graph = self.graph.lock().await;
-            match crate::server::bin_search_with_scores_shared(
-                request.query.clone(),
-                None, // No path filtering for enhanced search
-                None, // No language filtering for enhanced search
-                request.limit * 2, // Get more results for AI analysis
-                &graph
-            ).await {
-                Ok(search_results) => {
-                    // 2. Use the existing graph database from the server
-                    let state = crate::server::ServerState {
-                        graph: self.graph.clone(),
-                        qwen_client: crate::server::init_qwen_client().await,
-                    };
+            let SearchRequest { query, limit } = request;
 
-                    // 3. Call enhanced search with Qwen analysis
-                    match crate::server::enhanced_search(&state, serde_json::json!({
-                        "query": request.query,
-                        "limit": request.limit
-                    })).await {
-                        Ok(enhanced_results) => Ok(CallToolResult::success(vec![Content::text(
-                            serde_json::to_string_pretty(&enhanced_results)
-                                .unwrap_or_else(|_| "Error formatting enhanced search results".to_string())
-                        )])),
-                        Err(e) => {
-                            // Fallback to basic search results if AI fails
-                            let fallback = serde_json::json!({
-                                "search_results": search_results["results"],
-                                "ai_analysis": format!("AI analysis failed: {}", e),
-                                "query": request.query,
-                                "fallback_mode": true
-                            });
-                            Ok(CallToolResult::success(vec![Content::text(
-                                serde_json::to_string_pretty(&fallback)
-                                    .unwrap_or_else(|_| "Error formatting fallback results".to_string())
-                            )]))
-                        }
-                    }
-                },
-                Err(e) => Err(McpError {
-                    code: rmcp::model::ErrorCode(-32603),
-                    message: format!("Vector search failed: {}. Ensure codebase is indexed.", e).into(),
-                    data: None,
-                })
+            // Pre-compute search results for fallback handling without holding the lock
+            let search_results = {
+                let graph = self.graph.lock().await;
+                crate::server::bin_search_with_scores_shared(
+                    query.clone(),
+                    None,      // No path filtering for enhanced search
+                    None,      // No language filtering for enhanced search
+                    limit * 2, // Get more results for AI analysis
+                    &graph,
+                )
+                .await
+            };
+
+            let search_results = match search_results {
+                Ok(results) => results,
+                Err(e) => {
+                    return Err(McpError {
+                        code: rmcp::model::ErrorCode(-32603),
+                        message: format!(
+                            "Vector search failed: {}. Ensure codebase is indexed.",
+                            e
+                        )
+                        .into(),
+                        data: None,
+                    })
+                }
+            };
+
+            // Use the existing graph database from the server
+            let state = crate::server::ServerState {
+                graph: self.graph.clone(),
+                qwen_client: self.get_qwen_client().await,
+            };
+
+            // Call enhanced search with Qwen analysis
+            match crate::server::enhanced_search(
+                &state,
+                serde_json::json!({
+                    "query": query.clone(),
+                    "max_results": limit,
+                    "include_analysis": true
+                }),
+            )
+            .await
+            {
+                Ok(enhanced_results) => Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&enhanced_results)
+                        .unwrap_or_else(|_| "Error formatting enhanced search results".to_string()),
+                )])),
+                Err(e) => {
+                    // Fallback to basic search results if AI fails
+                    let fallback_results = search_results
+                        .get("results")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
+
+                    let fallback = serde_json::json!({
+                        "search_results": fallback_results,
+                        "ai_analysis": format!("AI analysis failed: {}", e),
+                        "query": query,
+                        "fallback_mode": true
+                    });
+                    Ok(CallToolResult::success(vec![Content::text(
+                        serde_json::to_string_pretty(&fallback)
+                            .unwrap_or_else(|_| "Error formatting fallback results".to_string()),
+                    )]))
+                }
             }
         }
         #[cfg(not(feature = "qwen-integration"))]
@@ -309,22 +400,27 @@ impl CodeGraphMCPServer {
     }
 
     /// Analyze coding patterns, conventions, and team standards across your codebase
-    #[tool(description = "Analyze your team's coding patterns and conventions. Detects naming conventions, code organization patterns, error handling styles, and quality metrics. Use to understand team standards or onboard new developers. No parameters required.")]
-    async fn pattern_detection(&self, params: Parameters<EmptyRequest>) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Analyze your team's coding patterns and conventions. Detects naming conventions, code organization patterns, error handling styles, and quality metrics. Use to understand team standards or onboard new developers. No parameters required."
+    )]
+    async fn pattern_detection(
+        &self,
+        params: Parameters<EmptyRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let _request = params.0; // Extract the inner value (unused)
 
         // Use the existing graph database from the server
         let state = crate::server::ServerState {
             graph: self.graph.clone(),
             #[cfg(feature = "qwen-integration")]
-            qwen_client: crate::server::init_qwen_client().await,
+            qwen_client: self.get_qwen_client().await,
         };
 
         // Call pattern detection with team intelligence analysis
         match crate::server::pattern_detection(&state, serde_json::json!({})).await {
             Ok(pattern_results) => Ok(CallToolResult::success(vec![Content::text(
                 serde_json::to_string_pretty(&pattern_results)
-                    .unwrap_or_else(|_| "Error formatting pattern detection results".to_string())
+                    .unwrap_or_else(|_| "Error formatting pattern detection results".to_string()),
             )])),
             Err(e) => {
                 // Fallback if pattern analysis fails
@@ -335,7 +431,7 @@ impl CodeGraphMCPServer {
                 });
                 Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&fallback)
-                        .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                        .unwrap_or_else(|_| "Error formatting fallback results".to_string()),
                 )]))
             }
         }
@@ -361,8 +457,13 @@ impl CodeGraphMCPServer {
     // }
 
     /// Fast similarity search for finding code that matches your query without AI analysis
-    #[tool(description = "Fast vector similarity search to find code similar to your query. Returns raw search results without AI analysis (faster than enhanced_search). Use for quick code discovery. Required: query (what to find). Optional: paths (filter by directories), langs (filter by languages), limit (max results, default 10).")]
-    async fn vector_search(&self, params: Parameters<VectorSearchRequest>) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Fast vector similarity search to find code similar to your query. Returns raw search results without AI analysis (faster than enhanced_search). Use for quick code discovery. Required: query (what to find). Optional: paths (filter by directories), langs (filter by languages), limit (max results, default 10)."
+    )]
+    async fn vector_search(
+        &self,
+        params: Parameters<VectorSearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let request = params.0;
         let graph = self.graph.lock().await;
         match crate::server::bin_search_with_scores_shared(
@@ -370,23 +471,34 @@ impl CodeGraphMCPServer {
             request.paths,
             request.langs,
             request.limit,
-            &graph
-        ).await {
+            &graph,
+        )
+        .await
+        {
             Ok(results) => Ok(CallToolResult::success(vec![Content::text(
                 serde_json::to_string_pretty(&results)
-                    .unwrap_or_else(|_| "Error formatting search results".to_string())
+                    .unwrap_or_else(|_| "Error formatting search results".to_string()),
             )])),
             Err(e) => Err(McpError {
                 code: rmcp::model::ErrorCode(-32603),
-                message: format!("Vector search failed: {}. Ensure codebase is indexed with 'codegraph index .'", e).into(),
+                message: format!(
+                    "Vector search failed: {}. Ensure codebase is indexed with 'codegraph index .'",
+                    e
+                )
+                .into(),
                 data: None,
-            })
+            }),
         }
     }
 
     /// Find code dependencies and relationships for a specific code element (function, class, etc)
-    #[tool(description = "Find all code that depends on or is used by a specific code element. Shows dependencies, imports, and relationships. Use to understand code impact before refactoring. Required: node (UUID from search results). Optional: limit (max results, default 20). Note: Get node UUIDs from vector_search or enhanced_search results.")]
-    async fn graph_neighbors(&self, params: Parameters<GraphNeighborsRequest>) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Find all code that depends on or is used by a specific code element. Shows dependencies, imports, and relationships. Use to understand code impact before refactoring. Required: node (UUID from search results). Optional: limit (max results, default 20). Note: Get node UUIDs from vector_search or enhanced_search results."
+    )]
+    async fn graph_neighbors(
+        &self,
+        params: Parameters<GraphNeighborsRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let request = params.0;
         let id = uuid::Uuid::parse_str(&request.node).map_err(|e| McpError {
             code: rmcp::model::ErrorCode(-32602),
@@ -398,17 +510,22 @@ impl CodeGraphMCPServer {
         let state = crate::server::ServerState {
             graph: self.graph.clone(),
             #[cfg(feature = "qwen-integration")]
-            qwen_client: crate::server::init_qwen_client().await,
+            qwen_client: self.get_qwen_client().await,
         };
 
         // Call graph neighbors with dependency analysis
-        match crate::server::graph_neighbors(&state, serde_json::json!({
-            "node": request.node,
-            "limit": request.limit
-        })).await {
+        match crate::server::graph_neighbors(
+            &state,
+            serde_json::json!({
+                "node": request.node,
+                "limit": request.limit
+            }),
+        )
+        .await
+        {
             Ok(neighbors_results) => Ok(CallToolResult::success(vec![Content::text(
                 serde_json::to_string_pretty(&neighbors_results)
-                    .unwrap_or_else(|_| "Error formatting graph neighbors results".to_string())
+                    .unwrap_or_else(|_| "Error formatting graph neighbors results".to_string()),
             )])),
             Err(e) => {
                 // Fallback if graph analysis fails
@@ -421,15 +538,20 @@ impl CodeGraphMCPServer {
                 });
                 Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&fallback)
-                        .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                        .unwrap_or_else(|_| "Error formatting fallback results".to_string()),
                 )]))
             }
         }
     }
 
     /// Explore code architecture by following dependency chains from a starting point
-    #[tool(description = "Follow dependency chains through your codebase to understand architectural flow and code relationships. Use to trace execution paths or understand system architecture. Required: start (UUID from search results). Optional: depth (how far to traverse, default 2), limit (max results, default 100). Note: Get start UUIDs from vector_search or enhanced_search results.")]
-    async fn graph_traverse(&self, params: Parameters<GraphTraverseRequest>) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Follow dependency chains through your codebase to understand architectural flow and code relationships. Use to trace execution paths or understand system architecture. Required: start (UUID from search results). Optional: depth (how far to traverse, default 2), limit (max results, default 100). Note: Get start UUIDs from vector_search or enhanced_search results."
+    )]
+    async fn graph_traverse(
+        &self,
+        params: Parameters<GraphTraverseRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let request = params.0;
         let _start = uuid::Uuid::parse_str(&request.start).map_err(|e| McpError {
             code: rmcp::model::ErrorCode(-32602),
@@ -441,18 +563,23 @@ impl CodeGraphMCPServer {
         let state = crate::server::ServerState {
             graph: self.graph.clone(),
             #[cfg(feature = "qwen-integration")]
-            qwen_client: crate::server::init_qwen_client().await,
+            qwen_client: self.get_qwen_client().await,
         };
 
         // Call graph traverse with architectural flow analysis
-        match crate::server::graph_traverse(&state, serde_json::json!({
-            "start": request.start,
-            "depth": request.depth,
-            "limit": request.limit
-        })).await {
+        match crate::server::graph_traverse(
+            &state,
+            serde_json::json!({
+                "start": request.start,
+                "depth": request.depth,
+                "limit": request.limit
+            }),
+        )
+        .await
+        {
             Ok(traverse_results) => Ok(CallToolResult::success(vec![Content::text(
                 serde_json::to_string_pretty(&traverse_results)
-                    .unwrap_or_else(|_| "Error formatting graph traverse results".to_string())
+                    .unwrap_or_else(|_| "Error formatting graph traverse results".to_string()),
             )])),
             Err(e) => {
                 // Fallback if graph traversal fails
@@ -466,7 +593,7 @@ impl CodeGraphMCPServer {
                 });
                 Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&fallback)
-                        .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                        .unwrap_or_else(|_| "Error formatting fallback results".to_string()),
                 )]))
             }
         }
@@ -474,8 +601,13 @@ impl CodeGraphMCPServer {
 
     /// REVOLUTIONARY: Intelligent codebase Q&A using RAG (Retrieval-Augmented Generation)
     #[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
-    #[tool(description = "Ask natural language questions about the codebase and get intelligent, cited responses. Uses hybrid retrieval (vector search + graph traversal + keyword matching) with AI generation. Provides streaming responses with source citations and confidence scoring. Examples: 'How does authentication work?', 'Explain the data flow', 'What would break if I change this function?'. Required: question (natural language query). Optional: max_results (default 10), streaming (default false).")]
-    async fn codebase_qa(&self, params: Parameters<CodebaseQaRequest>) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Ask natural language questions about the codebase and get intelligent, cited responses. Uses hybrid retrieval (vector search + graph traversal + keyword matching) with AI generation. Provides streaming responses with source citations and confidence scoring. Examples: 'How does authentication work?', 'Explain the data flow', 'What would break if I change this function?'. Required: question (natural language query). Optional: max_results (default 10), streaming (default false)."
+    )]
+    async fn codebase_qa(
+        &self,
+        params: Parameters<CodebaseQaRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let request = params.0;
 
         // Use the existing graph database from the server
@@ -490,10 +622,7 @@ impl CodeGraphMCPServer {
         // Use the shared graph instance from the server (fixes lock conflict)
         let graph_instance = self.graph.clone();
 
-        let rag_engine = codegraph_ai::rag::engine::RAGEngine::new(
-            graph_instance,
-            config
-        );
+        let rag_engine = codegraph_ai::rag::engine::RAGEngine::new(graph_instance, config);
 
         // Execute intelligent Q&A
         match rag_engine.answer(&request.question).await {
@@ -519,9 +648,9 @@ impl CodeGraphMCPServer {
 
                 Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&response)
-                        .unwrap_or_else(|_| "Error formatting RAG response".to_string())
+                        .unwrap_or_else(|_| "Error formatting RAG response".to_string()),
                 )]))
-            },
+            }
             Err(e) => {
                 let fallback = serde_json::json!({
                     "question": request.question,
@@ -531,7 +660,7 @@ impl CodeGraphMCPServer {
                 });
                 Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&fallback)
-                        .unwrap_or_else(|_| "Error formatting fallback response".to_string())
+                        .unwrap_or_else(|_| "Error formatting fallback response".to_string()),
                 )]))
             }
         }
@@ -539,8 +668,13 @@ impl CodeGraphMCPServer {
 
     /// REVOLUTIONARY: AI-powered code documentation generation with graph context
     #[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
-    #[tool(description = "Generate comprehensive documentation for functions, classes, or modules using AI analysis with graph context. Analyzes dependencies, usage patterns, and architectural relationships to create intelligent documentation with source citations. Required: target_name (function/class/module name). Optional: file_path (focus scope), style (comprehensive/concise/tutorial).")]
-    async fn code_documentation(&self, params: Parameters<CodeDocumentationRequest>) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Generate comprehensive documentation for functions, classes, or modules using AI analysis with graph context. Analyzes dependencies, usage patterns, and architectural relationships to create intelligent documentation with source citations. Required: target_name (function/class/module name). Optional: file_path (focus scope), style (comprehensive/concise/tutorial)."
+    )]
+    async fn code_documentation(
+        &self,
+        params: Parameters<CodeDocumentationRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let request = params.0;
 
         // Use the existing graph database from the server
@@ -555,10 +689,7 @@ impl CodeGraphMCPServer {
         // Use the shared graph instance from the server (fixes lock conflict)
         let graph_instance = self.graph.clone();
 
-        let rag_engine = codegraph_ai::rag::engine::RAGEngine::new(
-            graph_instance,
-            config
-        );
+        let rag_engine = codegraph_ai::rag::engine::RAGEngine::new(graph_instance, config);
 
         // Craft documentation query based on target and style
         let doc_query = format!(
@@ -589,9 +720,9 @@ impl CodeGraphMCPServer {
 
                 Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&response)
-                        .unwrap_or_else(|_| "Error formatting documentation response".to_string())
+                        .unwrap_or_else(|_| "Error formatting documentation response".to_string()),
                 )]))
-            },
+            }
             Err(e) => {
                 let fallback = serde_json::json!({
                     "target_name": request.target_name,
@@ -601,7 +732,7 @@ impl CodeGraphMCPServer {
                 });
                 Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&fallback)
-                        .unwrap_or_else(|_| "Error formatting fallback response".to_string())
+                        .unwrap_or_else(|_| "Error formatting fallback response".to_string()),
                 )]))
             }
         }
@@ -747,8 +878,13 @@ impl CodeGraphMCPServer {
     // }
 
     /// Deep AI-powered analysis of your entire codebase architecture and system design
-    #[tool(description = "Perform deep architectural analysis of your entire codebase using AI. Explains system design, component relationships, and overall architecture. Use for understanding large codebases or documenting architecture. Required: query (analysis focus). Optional: task_type (analysis type, default 'semantic_search'), max_context_tokens (AI context limit, default 80000).")]
-    async fn semantic_intelligence(&self, params: Parameters<SemanticIntelligenceRequest>) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Perform deep architectural analysis of your entire codebase using AI. Explains system design, component relationships, and overall architecture. Use for understanding large codebases or documenting architecture. Required: query (analysis focus). Optional: task_type (analysis type, default 'semantic_search'), max_context_tokens (AI context limit, default 80000)."
+    )]
+    async fn semantic_intelligence(
+        &self,
+        params: Parameters<SemanticIntelligenceRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let request = params.0;
 
         #[cfg(feature = "qwen-integration")]
@@ -756,18 +892,24 @@ impl CodeGraphMCPServer {
             // Use the existing graph database from the server
             let state = crate::server::ServerState {
                 graph: self.graph.clone(),
-                qwen_client: crate::server::init_qwen_client().await,
+                qwen_client: self.get_qwen_client().await,
             };
 
             // Call semantic intelligence with Qwen analysis
-            match crate::server::semantic_intelligence(&state, serde_json::json!({
-                "query": request.query,
-                "task_type": request.task_type,
-                "max_context_tokens": request.max_context_tokens
-            })).await {
+            match crate::server::semantic_intelligence(
+                &state,
+                serde_json::json!({
+                    "query": request.query,
+                    "task_type": request.task_type,
+                    "max_context_tokens": request.max_context_tokens
+                }),
+            )
+            .await
+            {
                 Ok(intelligence_results) => Ok(CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&intelligence_results)
-                        .unwrap_or_else(|_| "Error formatting semantic intelligence results".to_string())
+                    serde_json::to_string_pretty(&intelligence_results).unwrap_or_else(|_| {
+                        "Error formatting semantic intelligence results".to_string()
+                    }),
                 )])),
                 Err(e) => {
                     // Fallback if AI analysis fails
@@ -781,7 +923,7 @@ impl CodeGraphMCPServer {
                     });
                     Ok(CallToolResult::success(vec![Content::text(
                         serde_json::to_string_pretty(&fallback)
-                            .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                            .unwrap_or_else(|_| "Error formatting fallback results".to_string()),
                     )]))
                 }
             }
@@ -797,8 +939,13 @@ impl CodeGraphMCPServer {
     }
 
     /// Predict what code will break before you modify a function or class
-    #[tool(description = "Predict the impact of modifying a specific function or class. Shows what code depends on it and might break. Use before refactoring to avoid breaking changes. Required: target_function (function/class name), file_path (path to file containing it). Optional: change_type (type of change, default 'modify').")]
-    async fn impact_analysis(&self, params: Parameters<ImpactAnalysisRequest>) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Predict the impact of modifying a specific function or class. Shows what code depends on it and might break. Use before refactoring to avoid breaking changes. Required: target_function (function/class name), file_path (path to file containing it). Optional: change_type (type of change, default 'modify')."
+    )]
+    async fn impact_analysis(
+        &self,
+        params: Parameters<ImpactAnalysisRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let request = params.0;
 
         #[cfg(feature = "qwen-integration")]
@@ -806,18 +953,23 @@ impl CodeGraphMCPServer {
             // Use the existing graph database from the server
             let state = crate::server::ServerState {
                 graph: self.graph.clone(),
-                qwen_client: crate::server::init_qwen_client().await,
+                qwen_client: self.get_qwen_client().await,
             };
 
             // Call impact analysis with Qwen-powered dependency analysis
-            match crate::server::impact_analysis(&state, serde_json::json!({
-                "target_function": request.target_function,
-                "file_path": request.file_path,
-                "change_type": request.change_type
-            })).await {
+            match crate::server::impact_analysis(
+                &state,
+                serde_json::json!({
+                    "target_function": request.target_function,
+                    "file_path": request.file_path,
+                    "change_type": request.change_type
+                }),
+            )
+            .await
+            {
                 Ok(impact_results) => Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&impact_results)
-                        .unwrap_or_else(|_| "Error formatting impact analysis results".to_string())
+                        .unwrap_or_else(|_| "Error formatting impact analysis results".to_string()),
                 )])),
                 Err(e) => {
                     // Fallback if impact analysis fails
@@ -831,7 +983,7 @@ impl CodeGraphMCPServer {
                     });
                     Ok(CallToolResult::success(vec![Content::text(
                         serde_json::to_string_pretty(&fallback)
-                            .unwrap_or_else(|_| "Error formatting fallback results".to_string())
+                            .unwrap_or_else(|_| "Error formatting fallback results".to_string()),
                     )]))
                 }
             }
@@ -892,15 +1044,30 @@ impl CodeGraphMCPServer {
             let config = QwenConfig::default();
             let client = QwenClient::new(config.clone());
 
-            match client.check_availability().await {
-                Ok(true) => {
+            // Try to connect with a timeout to prevent hanging
+            let check_result = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                client.check_availability(),
+            )
+            .await;
+
+            match check_result {
+                Ok(Ok(true)) => {
                     eprintln!("✅ Qwen2.5-Coder-14B-128K available for CodeGraph intelligence");
+                    let mut qwen_lock = self.qwen_client.lock().await;
+                    *qwen_lock = Some(client);
                 }
-                Ok(false) => {
-                    eprintln!("⚠️ Qwen2.5-Coder model not found. Install with: ollama pull {}", config.model_name);
+                Ok(Ok(false)) => {
+                    eprintln!(
+                        "⚠️ Qwen2.5-Coder model not found. Install with: ollama pull {}",
+                        config.model_name
+                    );
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     eprintln!("❌ Failed to connect to Qwen2.5-Coder: {}", e);
+                }
+                Err(_) => {
+                    eprintln!("⚠️ Qwen2.5-Coder connection timed out after 5 seconds - Ollama may not be running");
                 }
             }
         }
@@ -908,6 +1075,13 @@ impl CodeGraphMCPServer {
         {
             eprintln!("💡 Qwen integration not enabled in this build");
         }
+    }
+
+    /// Get cached Qwen client if available
+    #[cfg(feature = "qwen-integration")]
+    pub async fn get_qwen_client(&self) -> Option<QwenClient> {
+        let qwen_lock = self.qwen_client.lock().await;
+        qwen_lock.clone()
     }
 }
 

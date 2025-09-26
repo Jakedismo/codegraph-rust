@@ -30,7 +30,7 @@ The CodeGraph Model Context Protocol (MCP) Server provides a comprehensive multi
 
 ### Protocol Compliance
 
-- **MCP Version**: 2025-03-26 (Latest)
+- **MCP Version**: 2025-06-18 (Latest)
 - **Transport**: WebSocket with HTTP fallback
 - **Message Format**: JSON-RPC 2.0
 - **Session Management**: Persistent sessions with reconnection support

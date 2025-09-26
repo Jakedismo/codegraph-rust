@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use codegraph_core::{CodeGraphError, CodeNode, GraphStore, Language, NodeId, NodeType, Result};
 use codegraph_graph::CodeGraph;
-use codegraph_vector::{EmbeddingGenerator, search::SemanticSearch};
+use codegraph_vector::{search::SemanticSearch, EmbeddingGenerator};
 use futures::future::try_join_all;
 use tokio::sync::RwLock;
 
