@@ -198,8 +198,13 @@ pub struct CodeGraphMCPServer {
 #[tool_router]
 impl CodeGraphMCPServer {
     pub fn new() -> Self {
-        // Create a simple graph for basic functionality
-        let graph = codegraph_graph::CodeGraph::new()
+        // Create read-only database connection for concurrent multi-agent access
+        let current_dir = std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let db_path = current_dir.join(".codegraph/db");
+
+        let graph = codegraph_graph::CodeGraph::new_read_only_with_path(
+            db_path.to_str().unwrap_or("./.codegraph/db"))
             .unwrap_or_else(|_| panic!("Failed to initialize CodeGraph database"));
 
         Self {
@@ -481,8 +486,18 @@ impl CodeGraphMCPServer {
             streaming_min_delay_ms: 10,
         };
 
-        // Create a new graph instance for RAG (the RAG engine manages its own synchronization)
-        let graph_instance = Arc::new(codegraph_graph::CodeGraph::new()
+        // Create a new read-only graph instance for RAG to prevent database lock conflicts
+        // This allows multiple agents to access the same project database concurrently
+        let current_dir = std::env::current_dir()
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Failed to get current directory: {}", e).into(),
+                data: None,
+            })?;
+
+        let db_path = current_dir.join(".codegraph/db");
+        let graph_instance = Arc::new(codegraph_graph::CodeGraph::new_read_only_with_path(
+            db_path.to_str().unwrap_or("./.codegraph/db"))
             .map_err(|e| McpError {
                 code: rmcp::model::ErrorCode(-32603),
                 message: format!("Failed to create code graph for RAG: {}", e).into(),
@@ -551,8 +566,18 @@ impl CodeGraphMCPServer {
             streaming_min_delay_ms: 5,
         };
 
-        // Create a new graph instance for RAG (the RAG engine manages its own synchronization)
-        let graph_instance = Arc::new(codegraph_graph::CodeGraph::new()
+        // Create a new read-only graph instance for RAG to prevent database lock conflicts
+        // This allows multiple agents to access the same project database concurrently
+        let current_dir = std::env::current_dir()
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Failed to get current directory: {}", e).into(),
+                data: None,
+            })?;
+
+        let db_path = current_dir.join(".codegraph/db");
+        let graph_instance = Arc::new(codegraph_graph::CodeGraph::new_read_only_with_path(
+            db_path.to_str().unwrap_or("./.codegraph/db"))
             .map_err(|e| McpError {
                 code: rmcp::model::ErrorCode(-32603),
                 message: format!("Failed to create code graph for RAG: {}", e).into(),
