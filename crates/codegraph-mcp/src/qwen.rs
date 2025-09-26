@@ -2,7 +2,6 @@ use codegraph_core::{CodeGraphError, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
-use tokio::time::timeout;
 use tracing::{debug, info, warn};
 
 /// Simple Qwen2.5-Coder client for MCP integration
@@ -127,21 +126,13 @@ impl QwenClient {
             self.config.context_window
         );
 
-        let response = timeout(
-            self.config.timeout,
-            self.client
-                .post(&format!("{}/api/chat", self.config.base_url))
-                .json(&request)
-                .send(),
-        )
-        .await
-        .map_err(|_| {
-            CodeGraphError::Timeout(format!(
-                "Qwen request timeout after {:?}",
-                self.config.timeout
-            ))
-        })?
-        .map_err(|e| CodeGraphError::Network(format!("Qwen request failed: {}", e)))?;
+        let response = self
+            .client
+            .post(&format!("{}/api/chat", self.config.base_url))
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| CodeGraphError::Network(format!("Qwen request failed: {}", e)))?;
 
         if !response.status().is_success() {
             let error_text = response
@@ -197,15 +188,14 @@ impl QwenClient {
             self.config.base_url
         );
 
-        let response = timeout(
-            Duration::from_secs(5),
-            self.client
-                .get(&format!("{}/api/tags", self.config.base_url))
-                .send(),
-        )
-        .await
-        .map_err(|_| CodeGraphError::Timeout("Qwen availability check timeout".to_string()))?
-        .map_err(|e| CodeGraphError::Network(format!("Qwen availability check failed: {}", e)))?;
+        let response = self
+            .client
+            .get(&format!("{}/api/tags", self.config.base_url))
+            .send()
+            .await
+            .map_err(|e| {
+                CodeGraphError::Network(format!("Qwen availability check failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
             return Ok(false);

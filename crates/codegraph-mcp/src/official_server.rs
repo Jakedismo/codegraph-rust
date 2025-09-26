@@ -277,8 +277,12 @@ impl CodeGraphMCPServer {
                 "⚠️ CodeGraph open failed in writable mode ({}). Falling back to read-only mode.",
                 err
             );
-            codegraph_graph::CodeGraph::new_read_only()
-                .map_err(|ro_err| format!("Failed to initialize CodeGraph database: {} | {}", err, ro_err))
+            codegraph_graph::CodeGraph::new_read_only().map_err(|ro_err| {
+                format!(
+                    "Failed to initialize CodeGraph database: {} | {}",
+                    err, ro_err
+                )
+            })
         })?;
 
         Ok(Self {
@@ -1044,30 +1048,20 @@ impl CodeGraphMCPServer {
             let config = QwenConfig::default();
             let client = QwenClient::new(config.clone());
 
-            // Try to connect with a timeout to prevent hanging
-            let check_result = tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                client.check_availability(),
-            )
-            .await;
-
-            match check_result {
-                Ok(Ok(true)) => {
+            match client.check_availability().await {
+                Ok(true) => {
                     eprintln!("✅ Qwen2.5-Coder-14B-128K available for CodeGraph intelligence");
                     let mut qwen_lock = self.qwen_client.lock().await;
                     *qwen_lock = Some(client);
                 }
-                Ok(Ok(false)) => {
+                Ok(false) => {
                     eprintln!(
                         "⚠️ Qwen2.5-Coder model not found. Install with: ollama pull {}",
                         config.model_name
                     );
                 }
-                Ok(Err(e)) => {
+                Err(e) => {
                     eprintln!("❌ Failed to connect to Qwen2.5-Coder: {}", e);
-                }
-                Err(_) => {
-                    eprintln!("⚠️ Qwen2.5-Coder connection timed out after 5 seconds - Ollama may not be running");
                 }
             }
         }

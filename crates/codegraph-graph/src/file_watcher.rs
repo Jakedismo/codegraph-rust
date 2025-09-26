@@ -1,8 +1,6 @@
 use codegraph_core::{traits::FileWatcher, ChangeEvent, Result};
 use crossbeam_channel::Sender;
-use notify::{
-    recommended_watcher, Config, Event, PollWatcher, RecursiveMode, Watcher,
-};
+use notify::{recommended_watcher, Config, Event, PollWatcher, RecursiveMode, Watcher};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::time::Duration;
@@ -34,7 +32,9 @@ impl FileWatcher for FileWatcherImpl {
             Ok(Ok(watcher)) => Box::new(watcher),
             Ok(Err(e)) => return Err(codegraph_core::CodeGraphError::Notify(e)),
             Err(_) => {
-                eprintln!("⚠️ macOS FSEvents watcher unavailable; falling back to polling file watcher");
+                eprintln!(
+                    "⚠️ macOS FSEvents watcher unavailable; falling back to polling file watcher"
+                );
                 let tx_clone = notify_tx.clone();
                 let poll_config = Config::default().with_poll_interval(Duration::from_secs(2));
                 let poll_watcher = PollWatcher::new(

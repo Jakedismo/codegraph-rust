@@ -58,16 +58,6 @@ TESTS = [
     }),
 ]
 
-WAIT_OVERRIDE = {
-    101: 4.0,
-    102: 4.0,
-    103: 20.0,
-    104: 25.0,
-    105: 6.0,
-    106: 20.0,
-    107: 25.0,
-}
-
 def drain(proc, seconds=2.0):
     """Read stdout for up to `seconds`, print as it arrives, and return captured text."""
     out = []
@@ -92,7 +82,16 @@ def send(proc, obj, wait=2.0, show=True):
         print("="*72)
     proc.stdin.write(s + "\n")
     proc.stdin.flush()
-    return drain(proc, wait) if wait > 0 else ""
+    # Wait indefinitely (in 5-second chunks) until we receive output or the process exits.
+    output = ""
+    while True:
+        chunk = drain(proc, 5.0)
+        output += chunk
+        if chunk:
+            return output
+        # If the process exited and nothing new arrived, break to avoid hanging forever.
+        if proc.poll() is not None:
+            return output
 
 def extract_uuid(text: str):
     m = UUID_RE.search(text or "")
@@ -218,16 +217,7 @@ def run():
                 }
             }
 
-        wait_time = WAIT_OVERRIDE.get(payload["id"], 5.0)
-        out = send(proc, payload, wait=wait_time) + drain(proc, wait_time)
-
-        # If the tool still hasn't produced output (possible for long-running AI calls),
-        # keep waiting in generous chunks until we see something or the process exits.
-        while not out.strip():
-            extra = drain(proc, wait_time)
-            if not extra.strip():
-                break
-            out += extra
+        out = send(proc, payload, wait=0)
 
         if payload["id"] == 102:
             vec2_output = out
