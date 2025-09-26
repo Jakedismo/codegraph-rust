@@ -30,33 +30,43 @@ UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB
 TESTS = [
     ("1. pattern_detection", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "pattern_detection","arguments": {"_unused": None}}, "id": 101
+        "params": {"name": "pattern_detection", "arguments": {"_unused": None}}, "id": 101
     }),
     ("2. vector_search", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "vector_search","arguments": {"query": "async function implementation","limit": 3}}, "id": 102
+        "params": {"name": "vector_search", "arguments": {"query": "async function implementation", "limit": 3}}, "id": 102
     }),
     ("3. enhanced_search", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "enhanced_search","arguments": {"query": "RAG engine streaming implementation","limit": 3}}, "id": 103
+        "params": {"name": "enhanced_search", "arguments": {"query": "RAG engine streaming implementation", "limit": 3}}, "id": 103
     }),
     ("4. codebase_qa", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "codebase_qa","arguments": {"question": "How does the RAG engine handle streaming responses?","max_results": 3,"streaming": False}}, "id": 104
+        "params": {"name": "codebase_qa", "arguments": {"question": "How does the RAG engine handle streaming responses?", "max_results": 3, "streaming": False}}, "id": 104
     }),
     ("5. graph_neighbors (auto-fill node UUID)", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "graph_neighbors","arguments": {"node": "REPLACE_WITH_NODE_UUID","limit": 5}}, "id": 105
+        "params": {"name": "graph_neighbors", "arguments": {"node": "REPLACE_WITH_NODE_UUID", "limit": 5}}, "id": 105
     }),
     ("6. impact_analysis", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "impact_analysis","arguments": {"target_function": "analyze_codebase","file_path": "crates/codegraph-mcp/src/qwen.rs","change_type": "modify"}}, "id": 106
+        "params": {"name": "impact_analysis", "arguments": {"target_function": "analyze_codebase", "file_path": "crates/codegraph-mcp/src/qwen.rs", "change_type": "modify"}}, "id": 106
     }),
     ("7. code_documentation", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "code_documentation","arguments": {"target_name": "QwenClient","file_path": "crates/codegraph-mcp/src/qwen.rs","style": "concise"}}, "id": 107
+        "params": {"name": "code_documentation", "arguments": {"target_name": "QwenClient", "file_path": "crates/codegraph-mcp/src/qwen.rs", "style": "concise"}}, "id": 107
     }),
 ]
+
+WAIT_OVERRIDE = {
+    101: 4.0,
+    102: 4.0,
+    103: 12.0,
+    104: 15.0,
+    105: 6.0,
+    106: 12.0,
+    107: 12.0,
+}
 
 def drain(proc, seconds=2.0):
     """Read stdout for up to `seconds`, print as it arrives, and return captured text."""
@@ -191,28 +201,36 @@ def run():
     vec2_output = ""
     for title, payload in TESTS:
         print(f"\n### {title} ###")
-        out = send(proc, payload, wait=3.0)
+        if payload["id"] == 105:
+            node = extract_uuid(vec2_output)
+            if not node:
+                print("⚠️ No UUID found in vector_search output. Skipping graph_neighbors call.")
+                continue
+            print(f"Auto-detected node UUID from vector_search: {node}")
+            payload = {
+                **payload,
+                "params": {
+                    **payload["params"],
+                    "arguments": {
+                        **payload["params"]["arguments"],
+                        "node": node
+                    }
+                }
+            }
+
+        wait_time = WAIT_OVERRIDE.get(payload["id"], 3.0)
+        out = send(proc, payload, wait=wait_time)
+
+        if not out.strip():
+            # Some tools (especially ones calling local LLMs) can take longer than
+            # our initial wait window. Give them more time and capture any output.
+            extra_wait = max(5.0, wait_time)
+            extra = drain(proc, extra_wait)
+            if extra:
+                out += extra
+
         if payload["id"] == 102:
             vec2_output = out
-
-        if payload["id"] == 105:  # graph_neighbors placeholder
-            if "REPLACE_WITH_NODE_UUID" in json.dumps(payload):
-                node = extract_uuid(vec2_output)
-                if node:
-                    print(f"Auto-detected node UUID from vector_search: {node}")
-                    payload = {
-                        **payload,
-                        "params": {
-                            **payload["params"],
-                            "arguments": {
-                                **payload["params"]["arguments"],
-                                "node": node
-                            }
-                        }
-                    }
-                    send(proc, payload, wait=3.0)
-                else:
-                    print("⚠️ No UUID found in vector_search output. Skipping graph_neighbors actual call.")
 
     # Graceful shutdown
     try:
