@@ -165,6 +165,17 @@ def run():
             pass
         sys.exit(1)
 
+    try:
+        init_msg = json.loads(init_out.strip().splitlines()[-1])
+        server_proto = init_msg.get("result", {}).get("protocolVersion")
+        if server_proto and server_proto != PROTO_DEFAULT:
+            print(
+                f"⚠️ Server reported protocolVersion={server_proto} but expected {PROTO_DEFAULT}."
+                " Ensure you are running a freshly-built CodeGraph binary with the updated protocol."
+            )
+    except Exception:
+        pass
+
     # 2) notifications/initialized (notification; no id)
     inited_note = {
         "jsonrpc": "2.0",

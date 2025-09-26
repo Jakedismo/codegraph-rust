@@ -60,14 +60,27 @@ echo "   DYLD_LIBRARY_PATH: /opt/homebrew/opt/faiss/lib"
 echo "   MACOSX_DEPLOYMENT_TARGET: 11.0"
 echo ""
 
-# Install CodeGraph with all revolutionary features
-echo -e "${BLUE}🚀 Installing CodeGraph Universal AI Development Platform...${NC}"
-echo "⏱️  This may take 5-10 minutes depending on your system..."
+FEATURE_FLAGS="ai-enhanced,qwen-integration,embeddings,faiss,embeddings-ollama,codegraph-vector/onnx"
+INSTALL_DIR="${CODEGRAPH_INSTALL_DIR:-$HOME/.local/bin}"
+
+echo -e "${BLUE}🚀 Building CodeGraph Universal AI Development Platform...${NC}"
+echo "⏱️  This may take a few minutes depending on your system..."
+echo "   Features: ${FEATURE_FLAGS}"
 echo ""
 
-cargo install --path crates/codegraph-mcp \
-    --features "embeddings,codegraph-vector/onnx,faiss,embeddings-ollama,qwen-integration,ai-enhanced" \
-    --force
+cargo build --release \
+    --package codegraph-mcp \
+    --bin codegraph \
+    --features "${FEATURE_FLAGS}" || {
+    echo ""
+    echo -e "${RED}❌ Build failed. Please review the error log above.${NC}"
+    exit 1
+}
+
+echo -e "${BLUE}📦 Installing binary to ${INSTALL_DIR}${NC}"
+mkdir -p "${INSTALL_DIR}"
+cp -f "$(pwd)/target/release/codegraph" "${INSTALL_DIR}/codegraph"
+chmod +x "${INSTALL_DIR}/codegraph"
 
 if [ $? -eq 0 ]; then
     echo ""
@@ -85,7 +98,8 @@ if [ $? -eq 0 ]; then
     echo "   1. Navigate to any project directory"
     echo "   2. Run: ${GREEN}codegraph init .${NC}"
     echo "   3. Run: ${GREEN}codegraph index .${NC} (auto-detects all 11 languages)"
-    echo "   4. Use CodeGraph tools in Claude Code!"
+    echo "   4. Ensure ${INSTALL_DIR} is on your PATH (e.g. export PATH=\"${INSTALL_DIR}:4PATH\")"
+    echo "   5. Use CodeGraph tools in Claude Code!"
     echo ""
     echo -e "${BLUE}🔗 MCP Configuration:${NC}"
     echo "   Global config works from any directory - no manual setup needed!"
