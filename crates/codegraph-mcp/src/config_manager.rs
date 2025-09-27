@@ -48,6 +48,7 @@ pub struct QwenModelConfig {
     pub max_tokens: usize,
     pub temperature: f32,
     pub timeout_seconds: u64,
+    pub connect_timeout_ms: u64,
     pub enable_caching: bool,
 }
 
@@ -115,9 +116,10 @@ impl Default for QwenModelConfig {
             model_name: "qwen2.5-coder-14b-128k".to_string(),
             base_url: "http://localhost:11434".to_string(),
             context_window: 128000,
-            max_tokens: 8192,
+            max_tokens: 1024,
             temperature: 0.1,
-            timeout_seconds: 90,
+            timeout_seconds: 180,
+            connect_timeout_ms: 5_000,
             enable_caching: true,
         }
     }
@@ -251,10 +253,31 @@ impl ConfigManager {
             }
         }
 
+        if let Ok(max_tokens) = env::var("CODEGRAPH_QWEN_MAX_TOKENS") {
+            if let Ok(tokens) = max_tokens.parse::<usize>() {
+                config.qwen.max_tokens = tokens;
+                debug!("Override Qwen max tokens from environment");
+            }
+        }
+
         if let Ok(temperature) = env::var("CODEGRAPH_TEMPERATURE") {
             if let Ok(temp_num) = temperature.parse::<f32>() {
                 config.qwen.temperature = temp_num;
                 debug!("Override temperature from environment");
+            }
+        }
+
+        if let Ok(timeout) = env::var("CODEGRAPH_QWEN_TIMEOUT_SECS") {
+            if let Ok(secs) = timeout.parse::<u64>() {
+                config.qwen.timeout_seconds = secs;
+                debug!("Override Qwen request timeout from environment");
+            }
+        }
+
+        if let Ok(connect_timeout) = env::var("CODEGRAPH_QWEN_CONNECT_TIMEOUT_MS") {
+            if let Ok(ms) = connect_timeout.parse::<u64>() {
+                config.qwen.connect_timeout_ms = ms;
+                debug!("Override Qwen connect timeout from environment");
             }
         }
 
@@ -586,6 +609,9 @@ impl ConfigManager {
             CODEGRAPH_MODEL=qwen2.5-coder-14b-128k    # Ollama model name\n\
             CODEGRAPH_OLLAMA_URL=http://localhost:11434 # Ollama server URL\n\
             CODEGRAPH_CONTEXT_WINDOW=128000   # Context window size\n\
+            CODEGRAPH_QWEN_MAX_TOKENS=1024    # Max completion tokens (0 disables limit)\n\
+            CODEGRAPH_QWEN_TIMEOUT_SECS=180   # Request timeout before falling back (0 disables)\n\
+            CODEGRAPH_QWEN_CONNECT_TIMEOUT_MS=5000 # Connection timeout to Ollama\n\
             CODEGRAPH_TEMPERATURE=0.1         # Generation temperature\n\n\
             ## Cache Configuration\n\
             CODEGRAPH_CACHE_SIZE=1000         # Maximum cache entries\n\
@@ -613,14 +639,16 @@ impl ConfigManager {
 #[cfg(feature = "qwen-integration")]
 impl From<CodeGraphConfig> for crate::qwen::QwenConfig {
     fn from(config: CodeGraphConfig) -> Self {
-        Self {
-            model_name: config.qwen.model_name,
-            base_url: config.qwen.base_url,
-            context_window: config.qwen.context_window,
-            max_tokens: config.qwen.max_tokens,
-            temperature: config.qwen.temperature,
-            timeout: Duration::from_secs(config.qwen.timeout_seconds),
-        }
+        let mut cfg = crate::qwen::QwenConfig::default();
+        cfg.model_name = config.qwen.model_name;
+        cfg.base_url = config.qwen.base_url;
+        cfg.context_window = config.qwen.context_window;
+        cfg.max_tokens = config.qwen.max_tokens;
+        cfg.temperature = config.qwen.temperature;
+        cfg.request_timeout = (config.qwen.timeout_seconds > 0)
+            .then(|| Duration::from_secs(config.qwen.timeout_seconds));
+        cfg.connect_timeout = Duration::from_millis(config.qwen.connect_timeout_ms.max(1));
+        cfg
     }
 }
 

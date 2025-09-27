@@ -1,5 +1,5 @@
 use codegraph_core::{CodeGraphError, Result};
-use reqwest::Client;
+use reqwest::{Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
@@ -12,20 +12,39 @@ pub struct QwenConfig {
     pub context_window: usize,
     pub max_tokens: usize,
     pub temperature: f32,
-    pub timeout: Duration,
+    pub request_timeout: Option<Duration>,
+    pub connect_timeout: Duration,
 }
 
 impl Default for QwenConfig {
     fn default() -> Self {
+        let request_timeout = std::env::var("CODEGRAPH_QWEN_TIMEOUT_SECS")
+            .ok()
+            .and_then(|raw| raw.parse::<u64>().ok())
+            .and_then(|secs| (secs > 0).then(|| Duration::from_secs(secs)));
+
+        let connect_timeout = std::env::var("CODEGRAPH_QWEN_CONNECT_TIMEOUT_MS")
+            .ok()
+            .and_then(|raw| raw.parse::<u64>().ok())
+            .map(Duration::from_millis)
+            .unwrap_or_else(|| Duration::from_secs(5));
+
+        let max_tokens = std::env::var("CODEGRAPH_QWEN_MAX_TOKENS")
+            .ok()
+            .and_then(|raw| raw.parse::<usize>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(1024);
+
         Self {
             model_name: std::env::var("CODEGRAPH_MODEL").unwrap_or_else(|_| {
                 "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M".to_string()
             }),
             base_url: "http://localhost:11434".to_string(),
             context_window: 128000,
-            max_tokens: 8192,
+            max_tokens,
             temperature: 0.1,
-            timeout: Duration::from_secs(90),
+            request_timeout,
+            connect_timeout,
         }
     }
 }
@@ -85,10 +104,20 @@ pub struct QwenClient {
 
 impl QwenClient {
     pub fn new(config: QwenConfig) -> Self {
-        Self {
-            client: Client::new(),
-            config,
+        let mut builder = ClientBuilder::new()
+            .pool_idle_timeout(None)
+            .tcp_keepalive(Some(Duration::from_secs(30)))
+            .connect_timeout(config.connect_timeout);
+
+        if let Some(timeout) = config.request_timeout {
+            builder = builder.timeout(timeout);
+        } else {
+            builder = builder.timeout(None);
         }
+
+        let client = builder.build().expect("Failed to build Qwen HTTP client");
+
+        Self { client, config }
     }
 
     /// Generate semantic analysis using Qwen2.5-Coder with optimized prompts
@@ -124,6 +153,11 @@ impl QwenClient {
         debug!(
             "Sending analysis request to Qwen2.5-Coder: {} context window",
             self.config.context_window
+        );
+
+        eprintln!(
+            "Qwen documentation request started (max_tokens={} timeout={:?})",
+            self.config.max_tokens, self.config.request_timeout
         );
 
         let response = self

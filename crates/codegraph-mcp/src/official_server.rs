@@ -681,6 +681,11 @@ impl CodeGraphMCPServer {
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
 
+        eprintln!(
+            "📘 Generating documentation for '{}' (style: {})",
+            request.target_name, request.style
+        );
+
         // Use the existing graph database from the server
         let config = codegraph_ai::rag::engine::RAGEngineConfig {
             max_results: 15, // More context for comprehensive documentation
@@ -710,6 +715,9 @@ impl CodeGraphMCPServer {
 
         // First, gather RAG insights so we always have citations/fallback ready
         let rag_result = rag_engine.answer(&doc_query).await;
+        if rag_result.is_ok() {
+            eprintln!("🗂 RAG context assembled for '{}'", request.target_name);
+        }
         let citations: Vec<serde_json::Value> = rag_result
             .as_ref()
             .ok()
@@ -731,7 +739,8 @@ impl CodeGraphMCPServer {
 
         // If Qwen is available, use it for richer documentation synthesis
         if let Some(ref qwen_client) = server_state.qwen_client {
-            let context_limit = ((qwen_client.config.context_window as f32) * 0.6) as usize;
+            let raw_limit = ((qwen_client.config.context_window as f32) * 0.5) as usize;
+            let context_limit = raw_limit.clamp(2048, 65536);
             if let Ok(context) = crate::server::build_comprehensive_context(
                 &server_state,
                 &doc_query,
@@ -739,6 +748,11 @@ impl CodeGraphMCPServer {
             )
             .await
             {
+                eprintln!(
+                    "🤖 Qwen synthesis in progress for '{}' (context ~{} chars)",
+                    request.target_name,
+                    context.len()
+                );
                 match qwen_client.analyze_codebase(&doc_query, &context).await {
                     Ok(doc_result) => {
                         let response = serde_json::json!({
@@ -758,6 +772,12 @@ impl CodeGraphMCPServer {
                                 "processing_time_ms": doc_result.processing_time.as_millis(),
                             }
                         });
+
+                        eprintln!(
+                            "✅ Qwen documentation ready for '{}' in {}ms",
+                            request.target_name,
+                            doc_result.processing_time.as_millis()
+                        );
 
                         return Ok(CallToolResult::success(vec![Content::text(
                             serde_json::to_string_pretty(&response).unwrap_or_else(|_| {

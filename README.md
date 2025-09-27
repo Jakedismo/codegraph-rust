@@ -1081,6 +1081,10 @@ export CODEGRAPH_LOG_LEVEL=debug
 export CODEGRAPH_DB_PATH=/custom/path/db
 export CODEGRAPH_EMBEDDING_MODEL=local
 export CODEGRAPH_HTTP_PORT=8080
+# Qwen runtime tuning (defaults shown)
+export CODEGRAPH_QWEN_MAX_TOKENS=1024            # Limit completion length for faster docs
+export CODEGRAPH_QWEN_TIMEOUT_SECS=180           # Fallback to RAG if Qwen exceeds this (0 disables)
+export CODEGRAPH_QWEN_CONNECT_TIMEOUT_MS=5000    # Abort if Ollama endpoint cannot be reached quickly
 ```
 
 ### Embedding Model Configuration
@@ -1475,3 +1479,63 @@ This project is dual-licensed under MIT and Apache 2.0 licenses. See [LICENSE-MI
 <p align="center">
   Completely built with Ouroboros - The next-generation of coding agent systems
 </p>
+## ⚙️ Installation (Local)
+
+> **Note:** CodeGraph runs entirely local-first. These steps build the CLI with all AI/Qwen tooling enabled.
+
+### 1. Install dependencies
+
+```bash
+# macOS (Homebrew)
+brew install faiss
+
+# Rust toolchain
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Ensure `faiss` libs are visible to the linker (the install script sets sensible defaults):
+
+```bash
+export LIBRARY_PATH="/opt/homebrew/opt/faiss/lib:$LIBRARY_PATH"
+export LD_LIBRARY_PATH="/opt/homebrew/opt/faiss/lib:$LD_LIBRARY_PATH"
+export DYLD_LIBRARY_PATH="/opt/homebrew/opt/faiss/lib:$DYLD_LIBRARY_PATH"
+```
+
+### 2. Build + install the CLI
+
+Run the bundled installer from the repo root:
+
+```bash
+bash install-codegraph-osx.sh
+```
+
+This compiles the release binary with the following features:
+
+```
+ai-enhanced, qwen-integration, embeddings,
+faiss, embeddings-ollama, codegraph-vector/onnx
+```
+
+The binary is copied to `~/.local/bin/codegraph` (honoring `CODEGRAPH_INSTALL_DIR` if you set it). Make sure that directory is on your `PATH`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### 3. (Optional) Keep a local copy of the release binary
+
+If you prefer to run it from the repo, grab the compiled binary and point `CODEGRAPH_BIN` at it:
+
+```bash
+cp target/release/codegraph dist/codegraph
+export CODEGRAPH_BIN="$(pwd)/dist/codegraph"
+```
+
+### 4. Verify the MCP tools
+
+```bash
+export NOTIFY_POLLING=true  # avoid macOS FSEvents issues
+python3 test_mcp_tools.py   # exercises all MCP tools
+```
+
+You should see the MCP handshake negotiate `protocolVersion: "2025-06-18"` and each tool (including `code_documentation`) return structured JSON.
