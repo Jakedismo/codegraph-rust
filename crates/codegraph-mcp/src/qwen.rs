@@ -111,8 +111,6 @@ impl QwenClient {
 
         if let Some(timeout) = config.request_timeout {
             builder = builder.timeout(timeout);
-        } else {
-            builder = builder.timeout(None);
         }
 
         let client = builder.build().expect("Failed to build Qwen HTTP client");
