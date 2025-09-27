@@ -702,8 +702,78 @@ impl CodeGraphMCPServer {
             request.target_name
         );
 
-        // Execute intelligent documentation generation
-        match rag_engine.answer(&doc_query).await {
+        // Prepare shared server state (graph + optional Qwen client)
+        let server_state = crate::server::ServerState {
+            graph: self.graph.clone(),
+            qwen_client: self.get_qwen_client().await,
+        };
+
+        // First, gather RAG insights so we always have citations/fallback ready
+        let rag_result = rag_engine.answer(&doc_query).await;
+        let citations: Vec<serde_json::Value> = rag_result
+            .as_ref()
+            .ok()
+            .map(|answer| {
+                answer
+                    .citations
+                    .iter()
+                    .map(|c| {
+                        serde_json::json!({
+                            "file": c.file_path,
+                            "line": c.line,
+                            "relevance": c.relevance,
+                            "context": c.name
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_else(Vec::new);
+
+        // If Qwen is available, use it for richer documentation synthesis
+        if let Some(ref qwen_client) = server_state.qwen_client {
+            let context_limit = ((qwen_client.config.context_window as f32) * 0.6) as usize;
+            if let Ok(context) = crate::server::build_comprehensive_context(
+                &server_state,
+                &doc_query,
+                context_limit.max(1024),
+            )
+            .await
+            {
+                match qwen_client.analyze_codebase(&doc_query, &context).await {
+                    Ok(doc_result) => {
+                        let response = serde_json::json!({
+                            "target_name": request.target_name,
+                            "documentation": doc_result.text,
+                            "confidence": doc_result.confidence_score,
+                            "style": request.style,
+                            "sources": citations,
+                            "processing_time_ms": doc_result.processing_time.as_millis() as u64,
+                            "generation_method": "qwen_documentation",
+                            "graph_context_used": true,
+                            "tool_type": "revolutionary_documentation",
+                            "model_performance": {
+                                "model_used": doc_result.model_used,
+                                "context_tokens": doc_result.context_tokens,
+                                "completion_tokens": doc_result.completion_tokens,
+                                "processing_time_ms": doc_result.processing_time.as_millis(),
+                            }
+                        });
+
+                        return Ok(CallToolResult::success(vec![Content::text(
+                            serde_json::to_string_pretty(&response).unwrap_or_else(|_| {
+                                "Error formatting documentation response".to_string()
+                            }),
+                        )]));
+                    }
+                    Err(e) => {
+                        eprintln!("⚠️ Qwen documentation generation failed: {}", e);
+                    }
+                }
+            }
+        }
+
+        // Fallback to heuristic RAG output if Qwen is unavailable or failed
+        match rag_result {
             Ok(answer) => {
                 let response = serde_json::json!({
                     "target_name": request.target_name,
