@@ -49,7 +49,7 @@ bytecheck = "0.8"
 rend = "0.5"
 
 # Error Handling
-thiserror = "2.0.16"
+thiserror = "2.0.17"
 anyhow = "1.0"
 
 # Utilities
