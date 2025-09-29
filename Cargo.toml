@@ -69,7 +69,7 @@ arc-swap = "1.7"
 
 # System Information
 num_cpus = "1.16"
-sysinfo = "0.37.0"
+sysinfo = "0.37.1"
 
 # Database
 rocksdb = "0.24"
