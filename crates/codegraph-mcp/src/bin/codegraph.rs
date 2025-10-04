@@ -1,12 +1,15 @@
 use anyhow::Result;
+use atty::Stream;
 use clap::{Parser, Subcommand};
 use codegraph_core::GraphStore;
 use codegraph_mcp::{IndexerConfig, ProcessManager, ProjectIndexer};
 use colored::*;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rmcp::{transport::stdio, ServiceExt};
 use std::path::PathBuf;
 use tracing::info;
-use tracing_subscriber;
+use tracing_indicatif::IndicatifLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry};
 
 #[derive(Parser)]
 #[command(
@@ -432,15 +435,10 @@ enum StatsFormat {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize logging
     let log_level = if cli.verbose { "debug" } else { "info" };
-    tracing_subscriber::fmt()
-        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| log_level.to_string()))
-        .init();
 
     // Load configuration if provided
     if let Some(config_path) = &cli.config {
-        info!("Loading configuration from: {:?}", config_path);
         // TODO: Load and merge configuration
     }
 
@@ -705,33 +703,34 @@ async fn handle_start(
 
     match transport {
         TransportType::Stdio { buffer_size: _ } => {
-            // For STDIO transport, reconfigure tracing to use stderr only
-            tracing_subscriber::fmt()
-                .with_writer(std::io::stderr)
-                .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-                .try_init()
-                .ok(); // Ignore if already initialized
-
-            eprintln!(
-                "{}",
-                "Starting CodeGraph MCP Server with 100% Official SDK..."
-                    .green()
-                    .bold()
-            );
+            if atty::is(Stream::Stderr) {
+                eprintln!(
+                    "{}",
+                    "Starting CodeGraph MCP Server with 100% Official SDK..."
+                        .green()
+                        .bold()
+                );
+            }
 
             // Create and initialize the revolutionary CodeGraph server with official SDK
             let mut server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
             server.initialize_qwen().await;
 
-            eprintln!("✅ Revolutionary CodeGraph MCP server ready with 100% protocol compliance");
+            if atty::is(Stream::Stderr) {
+                eprintln!("✅ Revolutionary CodeGraph MCP server ready with 100% protocol compliance");
+            }
 
             // Use official rmcp STDIO transport for perfect compliance
             let service = server.serve(rmcp::transport::stdio()).await.map_err(|e| {
-                eprintln!("❌ Failed to start official MCP server: {}", e);
+                if atty::is(Stream::Stderr) {
+                    eprintln!("❌ Failed to start official MCP server: {}", e);
+                }
                 anyhow::anyhow!("MCP server startup failed: {}", e)
             })?;
 
-            eprintln!("🚀 Official MCP server started with revolutionary capabilities");
+            if atty::is(Stream::Stderr) {
+                eprintln!("🚀 Official MCP server started with revolutionary capabilities");
+            }
 
             // Wait for the server to complete
             service
@@ -790,16 +789,23 @@ async fn handle_start(
 }
 
 async fn handle_stop(pid_file: Option<PathBuf>, force: bool) -> Result<()> {
-    println!("{}", "Stopping CodeGraph MCP Server...".yellow().bold());
+    if atty::is(Stream::Stdout) {
+        println!("{}", "Stopping CodeGraph MCP Server...".yellow().bold());
+    }
 
     let manager = ProcessManager::new();
 
     if force {
-        println!("Force stopping server");
+        if atty::is(Stream::Stdout) {
+            println!("Force stopping server");
+        }
     }
 
     manager.stop_server(pid_file, force).await?;
-    println!("✓ Server stopped");
+
+    if atty::is(Stream::Stdout) {
+        println!("✓ Server stopped");
+    }
 
     Ok(())
 }
@@ -856,45 +862,33 @@ async fn handle_index(
     device: Option<String>,
     max_seq_len: usize,
 ) -> Result<()> {
-    println!("{}", format!("Indexing project: {:?}", path).cyan().bold());
+    let indicatif_layer = IndicatifLayer::new();
+    let multi_progress = indicatif_layer.get_progress_bar();
 
-    if let Some(langs) = &languages {
-        println!("Languages: {}", langs.join(", "));
-    }
+    let subscriber = Registry::default()
+        .with(tracing_subscriber::filter::EnvFilter::from_default_env())
+        .with(indicatif_layer);
 
-    if recursive {
-        println!("Recursive indexing enabled");
-    }
+    tracing::subscriber::set_global_default(subscriber).ok();
+
+    let h_style = ProgressStyle::with_template("{spinner:.blue} {msg}")
+        .unwrap()
+        .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ");
+
+    let header_pb = multi_progress.add(ProgressBar::new(1));
+    header_pb.set_style(h_style);
+    header_pb.set_message(format!("Indexing project: {}", path.to_string_lossy()));
 
     // Memory-aware optimization for high-memory systems
     let available_memory_gb = estimate_available_memory_gb();
     let (optimized_batch_size, optimized_workers) =
         optimize_for_memory(available_memory_gb, batch_size, workers);
 
-    println!("Workers: {} → {} (optimized)", workers, optimized_workers);
-    println!(
-        "Batch size: {} → {} (optimized)",
-        batch_size, optimized_batch_size
-    );
-
     if available_memory_gb >= 64 {
-        println!(
-            "{}",
-            format!(
-                "🚀 High-memory system detected ({}GB) - performance optimized!",
-                available_memory_gb
-            )
-            .green()
-            .bold()
-        );
-        println!(
-            "{}",
-            format!(
-                "💾 Memory capacity: ~{} embeddings per batch",
-                optimized_batch_size
-            )
-            .cyan()
-        );
+        multi_progress.println(format!(
+            "🚀 High-memory system detected ({}GB) - performance optimized!",
+            available_memory_gb
+        ))?;
     }
 
     // Configure indexer
@@ -914,10 +908,15 @@ async fn handle_index(
     };
 
     // Create indexer
-    let mut indexer = ProjectIndexer::new(config).await?;
+    let mut indexer = ProjectIndexer::new(config, multi_progress.clone()).await?;
+
+    let start_time = std::time::Instant::now();
 
     // Perform indexing
     let stats = indexer.index_project(&path).await?;
+    let elapsed = start_time.elapsed();
+
+    header_pb.finish_with_message("✔ Indexing complete".to_string());
 
     println!();
     println!("{}", "🎉 INDEXING COMPLETE!".green().bold());
@@ -927,37 +926,35 @@ async fn handle_index(
     println!("{}", "📊 Performance Summary".cyan().bold());
     println!("┌─────────────────────────────────────────────────┐");
     println!(
-        "│ 📄 Files: {} indexed                             │",
-        format!("{:>6}", stats.files).yellow()
+        "│ ⏱️  Total time: {:<33} │",
+        format!("{:.2?}", elapsed).green()
     );
     println!(
-        "│ 📝 Lines: {} processed                           │",
-        format!("{:>6}", stats.lines).yellow()
+        "│ ⚡ Throughput: {:<33} │",
+        format!("{:.2} files/sec", stats.files as f64 / elapsed.as_secs_f64()).yellow()
+    );
+    println!("├─────────────────────────────────────────────────┤");
+    println!(
+        "│ 📄 Files: {} indexed, {} skipped {:<13} │",
+        format!("{:>6}", stats.files).yellow(),
+        format!("{:>4}", stats.skipped).yellow(),
+        ""
     );
     println!(
-        "│ 🔧 Functions: {} extracted                       │",
-        format!("{:>6}", stats.functions).green()
+        "│ 📝 Lines: {} processed {:<24} │",
+        format!("{:>6}", stats.lines).yellow(),
+        ""
     );
     println!(
-        "│ 🏗️  Classes: {} extracted                        │",
-        format!("{:>6}", stats.classes).green()
-    );
-    println!(
-        "│ 📦 Structs: {} extracted                         │",
-        format!("{:>6}", stats.structs).green()
-    );
-    println!(
-        "│ 🎯 Traits: {} extracted                          │",
-        format!("{:>6}", stats.traits).green()
-    );
-    println!(
-        "│ 💾 Embeddings: {} generated                      │",
-        format!("{:>6}", stats.embeddings).cyan()
+        "│ 💾 Embeddings: {} generated {:<20} │",
+        format!("{:>6}", stats.embeddings).cyan(),
+        ""
     );
     if stats.errors > 0 {
         println!(
-            "│ ❌ Errors: {} encountered                        │",
-            format!("{:>6}", stats.errors).red()
+            "│ ❌ Errors: {} encountered {:<24} │",
+            format!("{:>6}", stats.errors).red(),
+            ""
         );
     }
     println!("└─────────────────────────────────────────────────┘");
