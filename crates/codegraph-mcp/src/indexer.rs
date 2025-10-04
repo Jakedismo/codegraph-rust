@@ -53,6 +53,17 @@ impl Default for IndexerConfig {
     }
 }
 
+impl From<&IndexerConfig> for codegraph_parser::file_collect::FileCollectionConfig {
+    fn from(config: &IndexerConfig) -> Self {
+        codegraph_parser::file_collect::FileCollectionConfig {
+            recursive: config.recursive,
+            languages: config.languages.clone(),
+            include_patterns: config.include_patterns.clone(),
+            exclude_patterns: config.exclude_patterns.clone(),
+        }
+    }
+}
+
 /// EdgeSink implementation that bridges to CodeGraph for dependency analysis
 struct CodeGraphEdgeSink {
     graph: Arc<tokio::sync::Mutex<CodeGraph>>,
@@ -91,8 +102,7 @@ pub struct ProjectIndexer {
 }
 
 impl ProjectIndexer {
-    pub async fn new(config: IndexerConfig) -> Result<Self> {
-        let progress = MultiProgress::new();
+    pub async fn new(config: IndexerConfig, multi_progress: MultiProgress) -> Result<Self> {
         let parser = TreeSitterParser::new();
         let graph = CodeGraph::new()?;
         #[cfg(feature = "embeddings")]
@@ -193,7 +203,7 @@ impl ProjectIndexer {
 
         Ok(Self {
             config,
-            progress,
+            progress: multi_progress,
             parser,
             graph: Some(graph),
             vector_dim,
@@ -209,7 +219,12 @@ impl ProjectIndexer {
         // Check if already indexed
         if !self.config.force_reindex && self.is_indexed(path).await? {
             warn!("Project already indexed. Use --force to reindex.");
-            return Ok(IndexStats::default());
+            let mut stats = IndexStats::default();
+            stats.skipped =
+                codegraph_parser::file_collect::collect_source_files_with_config(path, &self.config.into())
+                    .map(|f| f.len())
+                    .unwrap_or(0);
+            return Ok(stats);
         }
 
         // Create file collection config from indexer config
@@ -220,26 +235,23 @@ impl ProjectIndexer {
             exclude_patterns: self.config.exclude_patterns.clone(),
         };
 
-        // Parse project into CodeNodes with enhanced configuration and comprehensive progress
-        let parse_pb = self.create_dual_progress_bar(
-            0,
-            "🌳 AST Parsing & Edge Extraction",
-            &format!(
-                "🎯 Languages: {} | 🔗 TreeSitter + Edge Analysis",
-                file_config.languages.join(", ")
-            ),
-        );
+        // STAGE 1: File Collection & Parsing
+        let files =
+            codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?;
+        let total_files = files.len();
+        let parse_pb =
+            self.create_progress_bar(total_files as u64, "🌳 AST Parsing & Edge Extraction");
 
         info!(
-            "🌳 Starting TreeSitter AST parsing for {} languages",
+            "🌳 Starting TreeSitter AST parsing for {} files across {} languages",
+            total_files,
             file_config.languages.len()
         );
         info!("🔗 Unified extraction: Nodes + Edges + Relationships in single pass");
-        info!("⚡ Revolutionary performance: Eliminating double-parsing bottleneck");
 
         // REVOLUTIONARY: Use unified extraction for nodes + edges in single pass (FASTEST approach)
         let (mut nodes, mut edges, pstats) = self
-            .parse_directory_with_unified_extraction(&path.to_string_lossy(), &file_config)
+            .parse_files_with_unified_extraction(files, &parse_pb)
             .await?;
 
         // Store counts for final summary (before consumption)
@@ -505,14 +517,19 @@ impl ProjectIndexer {
             save_embeddings_to_file(out_path, &nodes).await?;
         }
 
-        // Store nodes into graph and compute stats + build symbol resolution map
-        let main_pb = self.create_progress_bar(nodes.len() as u64, "Storing nodes");
-        let mut stats = IndexStats::default();
-        let mut seen_files = std::collections::HashSet::new();
+        // STAGE 4: Store nodes, compute stats, and build symbol map
+        let store_nodes_pb =
+            self.create_progress_bar(nodes.len() as u64, "📈 Storing nodes & symbols");
+        let mut stats = IndexStats {
+            files: pstats.parsed_files,
+            skipped: pstats.total_files - pstats.parsed_files,
+            ..Default::default()
+        };
         let mut symbol_map: std::collections::HashMap<String, NodeId> =
             std::collections::HashMap::new();
 
-        for n in nodes.iter() {
+        for n in nodes {
+            // Stats collection
             match n.node_type {
                 Some(NodeType::Function) => stats.functions += 1,
                 Some(NodeType::Class) => stats.classes += 1,
@@ -523,59 +540,35 @@ impl ProjectIndexer {
             if let Some(ref c) = n.content {
                 stats.lines += c.lines().count();
             }
-            if let Some(ref path) = n.location.file_path.as_str().into() {
-                if seen_files.insert(n.location.file_path.clone()) {
-                    stats.files += 1;
-                }
-            }
             if n.embedding.is_some() {
                 stats.embeddings += 1;
             }
 
-            // REVOLUTIONARY: Build comprehensive symbol resolution map for 100% edge linking
+            // Symbol map building
             let base_name = n.name.to_string();
             symbol_map.insert(base_name.clone(), n.id);
-
-            // Add qualified name patterns
             if let Some(qname) = n.metadata.attributes.get("qualified_name") {
                 symbol_map.insert(qname.clone(), n.id);
             }
-
-            // Add type-prefixed patterns
             if let Some(node_type) = &n.node_type {
-                let type_key = format!("{:?}::{}", node_type, base_name);
-                symbol_map.insert(type_key, n.id);
+                symbol_map.insert(format!("{:?}::{}", node_type, base_name), n.id);
             }
-
-            // Add file-scoped patterns for local resolution
-            let file_scoped = format!("{}::{}", n.location.file_path, base_name);
-            symbol_map.insert(file_scoped, n.id);
-
-            // Add short name without path for simple calls
+            symbol_map.insert(format!("{}::{}", n.location.file_path, base_name), n.id);
             if let Some(short_name) = base_name.split("::").last() {
                 symbol_map.insert(short_name.to_string(), n.id);
             }
-
-            // Add method patterns for impl blocks
             if let Some(method_of) = n.metadata.attributes.get("method_of") {
-                let method_key = format!("{}::{}", method_of, base_name);
-                symbol_map.insert(method_key, n.id);
+                symbol_map.insert(format!("{}::{}", method_of, base_name), n.id);
             }
-
-            // Add trait implementation patterns
             if let Some(trait_impl) = n.metadata.attributes.get("implements_trait") {
-                let trait_key = format!("{}::{}", trait_impl, base_name);
-                symbol_map.insert(trait_key, n.id);
+                symbol_map.insert(format!("{}::{}", trait_impl, base_name), n.id);
             }
 
-            main_pb.inc(1);
-        }
-
-        // Now store nodes (after stats collection and symbol map building)
-        for n in nodes {
+            // Store node
             self.graph.as_mut().unwrap().add_node(n).await?;
+            store_nodes_pb.inc(1);
         }
-        main_pb.finish_with_message("Indexing complete");
+        store_nodes_pb.finish_with_message("📈 Stored nodes & symbols");
 
         // REVOLUTIONARY: Store edges extracted during unified parsing (MAXIMUM SPEED)
         let stored_edges;
@@ -1002,11 +995,11 @@ impl ProjectIndexer {
         Ok(stats)
     }
 
-    /// REVOLUTIONARY: Parse directory with unified node+edge extraction for maximum speed
-    async fn parse_directory_with_unified_extraction(
+    /// REVOLUTIONARY: Parse files with unified node+edge extraction for maximum speed
+    async fn parse_files_with_unified_extraction(
         &self,
-        path: &str,
-        file_config: &codegraph_parser::file_collect::FileCollectionConfig,
+        files: Vec<(PathBuf, codegraph_parser::Language)>,
+        pb: &ProgressBar,
     ) -> Result<(
         Vec<CodeNode>,
         Vec<codegraph_core::EdgeRelationship>,
@@ -1017,32 +1010,7 @@ impl ProjectIndexer {
         use tokio::sync::Semaphore;
 
         let start_time = std::time::Instant::now();
-        let dir_path = std::path::Path::new(path);
-
-        info!("🌳 UNIFIED AST PARSING + EDGE EXTRACTION (Revolutionary Single-Pass)");
-        info!(
-            "   📂 Directory: {} (recursive: {})",
-            dir_path.display(),
-            file_config.recursive
-        );
-        info!("   🎯 Languages: {:?}", file_config.languages);
-        info!("   ⚡ Method: TreeSitter AST → Nodes + Edges simultaneously");
-        info!("   🚀 Performance: Eliminates double-parsing bottleneck");
-
-        // Collect files with smart filtering
-        let files = codegraph_parser::file_collect::collect_source_files_with_config(
-            dir_path,
-            file_config,
-        )?;
         let total_files = files.len();
-
-        info!(
-            "📁 File collection complete: {} source files identified for processing",
-            total_files
-        );
-        if total_files > 100 {
-            info!("   📈 Large codebase detected - using optimized parallel processing");
-        }
 
         // Create semaphore for concurrency control
         let semaphore = Arc::new(Semaphore::new(4)); // Conservative concurrency for edge processing
@@ -1057,11 +1025,14 @@ impl ProjectIndexer {
         let mut stream = stream::iter(files.into_iter().map(|(file_path, _)| {
             let semaphore = semaphore.clone();
             let parser = &self.parser;
+            let pb_clone = pb.clone();
             async move {
                 let _permit = semaphore.acquire().await.unwrap();
-                parser
+                let result = parser
                     .parse_file_with_edges(&file_path.to_string_lossy())
-                    .await
+                    .await;
+                pb_clone.inc(1);
+                result
             }
         }))
         .buffer_unordered(4);
@@ -1082,12 +1053,6 @@ impl ProjectIndexer {
                     all_nodes.extend(extraction_result.nodes);
                     all_edges.extend(extraction_result.edges);
                     parsed_files += 1;
-
-                    // Periodic progress updates for large codebases
-                    if parsed_files % 50 == 0 {
-                        info!("🌳 AST Progress: {}/{} files processed | {} nodes + {} edges extracted so far",
-                              parsed_files, total_files, all_nodes.len(), all_edges.len());
-                    }
                 }
                 Err(e) => {
                     failed_files += 1;
@@ -1975,6 +1940,7 @@ async fn save_embeddings_to_file(out: PathBuf, nodes: &[CodeNode]) -> Result<()>
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IndexStats {
     pub files: usize,
+    pub skipped: usize,
     pub lines: usize,
     pub functions: usize,
     pub classes: usize,
