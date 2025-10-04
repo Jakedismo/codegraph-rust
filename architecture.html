@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeGraph Interactive Architecture</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>CodeGraph System Architecture</h1>
+
+    <div id="diagram-container">
+        <p><strong>Instructions:</strong> To view the interactive diagram, please render the Mermaid diagram from <a href="architecture.md">architecture.md</a> into an SVG file named <code>architecture.svg</code> and place it in the same directory as this HTML file. You can use the <a href="https://mermaid.live" target="_blank">Mermaid Live Editor</a> for this.</p>
+        <object id="architecture-svg" type="image/svg+xml" data="architecture.svg">
+            Your browser does not support SVG.
+        </object>
+    </div>
+
+    <div id="narrative">
+        <h2>2. Narrative on Capabilities and Performance</h2>
+
+        <h3>Overview</h3>
+        <p>CodeGraph is a revolutionary, MCP-based codebase intelligence platform designed to transform any compatible Large Language Model (LLM) into a codebase expert. It achieves this through advanced semantic analysis, powered by the Qwen2.5-Coder-14B-128K model, providing deep insights into any given codebase. The system is built with a local-first philosophy, ensuring privacy and performance.</p>
+
+        <h3>Core Capabilities</h3>
+        <ul>
+            <li><strong>Semantic Intelligence</strong>: At its heart, CodeGraph leverages the Qwen2.5-Coder-14B model with a 128K context window for a complete and nuanced understanding of the codebase.</li>
+            <li><strong>Single-Pass Edge Processing</strong>: A revolutionary unified Abstract Syntax Tree (AST) parsing approach extracts both nodes (code symbols) and edges (relationships) in a single pass, significantly improving processing speed.</li>
+            <li><strong>AI-Enhanced Symbol Resolution</strong>: Achieves an impressive 85-90% success rate in linking code entities by using a multi-tiered approach that culminates in semantic similarity matching for otherwise unresolvable symbols.</li>
+            <li><strong>Conversational AI (RAG)</strong>: The system provides a Retrieval-Augmented Generation (RAG) engine, enabling users to interact with their codebase using natural language. This is exposed through tools like <code>codebase_qa</code> and <code>code_documentation</code>.</li>
+            <li><strong>Intelligent Caching</strong>: A sophisticated caching layer that uses semantic similarity matching to achieve high cache hit rates (50-80%+), dramatically speeding up subsequent queries.</li>
+            <li><strong>Pattern Detection</strong>: An advanced ML pipeline analyzes team conventions and coding patterns, providing insights into codebase health and consistency.</li>
+            <li><strong>MCP Protocol Integration</strong>: CodeGraph is compatible with any MCP-enabled agent, including Claude Code, Codex CLI, and Gemini CLI, allowing for seamless integration into existing developer workflows.</li>
+        </ul>
+
+        <h3>Architecture Deep Dive</h3>
+        <p>The CodeGraph system is a modular, multi-crate Rust workspace, designed for performance, maintainability, and scalability.</p>
+
+        <h4>Component Breakdown:</h4>
+        <ul>
+            <li><span class="component" data-component-id="A">`codegraph-core`</span>: The foundational crate of the entire system. It defines the core data structures, traits, and types that are used across all other components, ensuring a consistent data model. It has no internal dependencies.</li>
+            <li><span class="component" data-component-id="B">`codegraph-parser`</span>: Responsible for parsing source code into ASTs using Tree-sitter. It supports 11 programming languages and is responsible for the initial extraction of semantic nodes and their relationships (edges).</li>
+            <li><span class="component" data-component-id="C">`codegraph-graph`</span>: This component manages the storage and retrieval of the code graph data (nodes and edges) using RocksDB, a high-performance embedded key-value store. It provides the backbone for dependency analysis and architectural exploration.</li>
+            <li><span class="component" data-component-id="D">`codegraph-vector`</span>: Handles the creation of vector embeddings from code snippets and provides fast similarity search capabilities using FAISS. It supports multiple embedding providers, including local ONNX models and Ollama.</li>
+            <li><span class="component" data-component-id="E">`codegraph-ai`</span>: The intelligence layer of the system. It integrates with the Qwen model and uses the data from the graph and vector stores to provide advanced features like AI-powered symbol resolution, impact analysis, and semantic search.</li>
+            <li><span class="component" data-component-id="F">`codegraph-mcp`</span>: The main entry point for the command-line interface (CLI) and the primary MCP server. It orchestrates the other components to deliver the full suite of CodeGraph tools and functionalities.</li>
+            <li><span class="component" data-component-id="G">`codegraph-api`</span>: Provides a REST and GraphQL API server (using Axum) for programmatic access to CodeGraph's capabilities, allowing for integration with external tools and services.</li>
+            <li><span class="component" data-component-id="H">`core-rag-mcp-server`</span>: A dedicated, production-ready MCP server that exposes the RAG (Retrieval-Augmented Generation) functionality, enabling conversational AI features.</li>
+            <li><span class="component" data-component-id="I">`codegraph-cache`</span>: An AI-powered caching system that intelligently stores and retrieves results from vector operations, significantly improving performance for repeated or similar queries.</li>
+            <li><strong>Utility Crates</strong>:
+                <ul>
+                    <li><span class="component" data-component-id="J">`codegraph-concurrent`</span>: Provides concurrent data structures and utilities for parallel processing.</li>
+                    <li><span class="component" data-component-id="K">`codegraph-git`</span>: Integrates with Git repositories to enable features like incremental indexing based on file changes.</li>
+                    <li><span class="component" data-component-id="L">`codegraph-queue`</span>: A priority queue system for managing tasks and operations.</li>
+                    <li><span class="component" data-component-id="M">`codegraph-lb`</span>: An intelligent load balancer for distributing requests and managing resources.</li>
+                    <li><span class="component" data-component-id="N">`codegraph-zerocopy`</span>: Implements zero-copy data structures and serialization for highly efficient data handling.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h4>Data Flow (Indexing):</h4>
+        <ol>
+            <li>The <code>codegraph index</code> command is initiated via the <code>codegraph-mcp</code> CLI.</li>
+            <li><code>codegraph-parser</code> recursively scans the target directory, parsing files for supported languages into ASTs.</li>
+            <li>In a single pass, it extracts semantic nodes (functions, classes, etc.) and edges (calls, imports).</li>
+            <li>The extracted nodes and edges are sent to <code>codegraph-graph</code>, which stores them in a RocksDB database.</li>
+            <li>The semantic nodes are also passed to <code>codegraph-vector</code>, which generates 384-dimensional vector embeddings using the configured provider (ONNX or Ollama).</li>
+            <li>These embeddings are stored in a FAISS index for fast similarity search.</li>
+        </ol>
+
+        <h3>Performance Analysis</h3>
+        <p>CodeGraph is engineered for high performance, especially on modern, high-memory systems.</p>
+        <ul>
+            <li><strong>Indexing Speed</strong>: The system can parse and index code at a remarkable speed. For instance, it can process over 170,000 lines of code in just under half a second. The single-pass extraction process contributes a 50% speed improvement over traditional two-phase methods.</li>
+            <li><strong>Embedding Performance</strong>: The choice of embedding provider offers a trade-off between speed and quality.
+                <ul>
+                    <li><strong>ONNX (`all-MiniLM-L6-v2`)</strong>: Offers blazing-fast embedding generation, capable of indexing a 2.5 million line codebase in about 32 minutes. This is ideal for large codebases and rapid, iterative development.</li>
+                    <li><strong>Ollama (`nomic-embed-code`)</strong>: Provides state-of-the-art, code-specialized embeddings for maximum retrieval accuracy, though at a slower pace.</li>
+                </ul>
+            </li>
+            <li><strong>High-Memory Optimization</strong>: The system automatically detects the available system memory and adjusts its performance parameters accordingly. On a 128GB M4 Max system, it can increase the number of workers to 16 and the batch size to 20,480, enabling ultra-high performance indexing.</li>
+            <li><strong>Query Latency</strong>: Vector searches with FAISS are typically completed in sub-second time, and the intelligent caching layer further reduces latency for repeated queries to milliseconds.</li>
+        </ul>
+
+        <h3>Conclusion</h3>
+        <p>CodeGraph's architecture is a well-designed, modular system that effectively combines modern AI capabilities with high-performance engineering. Its local-first approach, coupled with its powerful semantic analysis and conversational AI features, makes it a revolutionary tool for developers seeking to gain a deeper understanding of their codebases. The system is not only powerful but also highly configurable, allowing users to balance performance and accuracy to suit their specific needs.</p>
+    </div>
+
+    <script src="interactive.js"></script>
+</body>
+</html>
