@@ -1,0 +1,81 @@
+# CodeGraph Configuration File
+# Copy this to .codegraph.toml or ~/.codegraph/config.toml and customize
+
+# ============================================================================
+# Embedding Configuration
+# ============================================================================
+[embedding]
+# Provider: "auto", "onnx", "ollama", or "openai"
+# "auto" will detect available models automatically
+provider = "auto"
+
+# Model path or identifier
+# For ONNX: Absolute path to model directory (auto-detected from HuggingFace cache)
+# For Ollama: Model name (e.g., "all-minilm:latest")
+# For OpenAI: Model name (e.g., "text-embedding-3-small")
+# Leave empty for auto-detection
+model = ""
+
+# Ollama URL (only used if provider is "ollama")
+ollama_url = "http://localhost:11434"
+
+# OpenAI API key (only used if provider is "openai")
+# Can also be set via OPENAI_API_KEY environment variable
+# openai_api_key = "sk-..."
+
+# Batch size for embedding generation (GPU optimization)
+batch_size = 64
+
+# ============================================================================
+# LLM Configuration (for insights generation)
+# ============================================================================
+[llm]
+# Enable LLM insights (false = context-only mode for agents like Claude/GPT-4)
+# Set to false for maximum speed if using an external agent
+enabled = false
+
+# LLM model identifier
+# For Ollama: Model name (e.g., "qwen2.5-coder:14b", "codellama:13b")
+# Leave empty if disabled
+model = ""
+
+# Ollama URL
+ollama_url = "http://localhost:11434"
+
+# Context window size (tokens)
+context_window = 8000
+
+# Temperature for generation (0.0 = deterministic, 1.0 = creative)
+temperature = 0.1
+
+# Insights mode: "context-only", "balanced", or "deep"
+# - context-only: Return context only (fastest, for agents)
+# - balanced: Process top 10 files with LLM (good speed/quality)
+# - deep: Process all reranked files (comprehensive)
+insights_mode = "context-only"
+
+# ============================================================================
+# Performance Configuration
+# ============================================================================
+[performance]
+# Number of worker threads (defaults to CPU count)
+num_threads = 0  # 0 = auto-detect
+
+# Cache size in MB
+cache_size_mb = 512
+
+# Enable GPU acceleration (requires CUDA/Metal support)
+enable_gpu = false
+
+# Maximum concurrent requests for embedding/LLM
+max_concurrent_requests = 4
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+[logging]
+# Log level: "trace", "debug", "info", "warn", "error"
+level = "info"
+
+# Log format: "pretty", "json", "compact"
+format = "pretty"

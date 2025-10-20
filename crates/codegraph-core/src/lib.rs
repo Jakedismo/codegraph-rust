@@ -2,6 +2,7 @@ pub mod advanced_config;
 pub mod buffer_pool;
 pub mod cli_config;
 pub mod config;
+pub mod config_manager;  // NEW: Simplified configuration system
 pub mod embedding_config;
 pub mod error;
 pub mod incremental;
@@ -23,6 +24,7 @@ pub mod watch;
 pub use advanced_config::*;
 pub use buffer_pool::*;
 pub use config::*;
+pub use config_manager::*;  // Re-export simplified config
 pub use embedding_config::*;
 pub use error::*;
 pub use incremental::*;

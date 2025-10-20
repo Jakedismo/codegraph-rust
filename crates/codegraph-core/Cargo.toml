@@ -19,6 +19,8 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true }
+dotenv = "0.15"
+dirs = "5.0"
 tokio = { workspace = true }
 futures = { workspace = true }
 num_cpus = { workspace = true }
