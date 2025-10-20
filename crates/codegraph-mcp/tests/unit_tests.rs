@@ -58,8 +58,8 @@ async fn test_heartbeat_manager_health_check() {
 
 #[test]
 fn test_protocol_version_creation() {
-    let version = ProtocolVersion::new("2025-03-26").unwrap();
-    assert_eq!(version.as_str(), "2025-03-26");
+    let version = ProtocolVersion::new("2025-06-18").unwrap();
+    assert_eq!(version.as_str(), "2025-06-18");
 
     let invalid = ProtocolVersion::new("invalid-version");
     assert!(invalid.is_err());
@@ -67,6 +67,7 @@ fn test_protocol_version_creation() {
 
 #[test]
 fn test_protocol_version_support() {
+    assert!(ProtocolVersion::is_supported("2025-06-18"));
     assert!(ProtocolVersion::is_supported("2025-03-26"));
     assert!(ProtocolVersion::is_supported("2024-11-05"));
     assert!(!ProtocolVersion::is_supported("1.0.0"));
@@ -74,7 +75,11 @@ fn test_protocol_version_support() {
 
 #[test]
 fn test_protocol_version_negotiation() {
-    let server_versions = vec!["2024-11-05", "2025-03-26"];
+    let server_versions = vec!["2024-11-05", "2025-03-26", "2025-06-18"];
+
+    // Client requests latest supported version
+    let result = ProtocolVersion::negotiate("2025-06-18", &server_versions);
+    assert_eq!(result.unwrap(), "2025-06-18");
 
     // Client requests supported version
     let result = ProtocolVersion::negotiate("2025-03-26", &server_versions);
@@ -86,11 +91,11 @@ fn test_protocol_version_negotiation() {
 
     // Client requests unsupported version, should fallback to latest supported
     let result = ProtocolVersion::negotiate("1.0.0", &server_versions);
-    assert_eq!(result.unwrap(), "2025-03-26");
+    assert_eq!(result.unwrap(), "2025-06-18");
 
     // No compatible versions
     let empty_versions: Vec<&str> = vec![];
-    let result = ProtocolVersion::negotiate("2025-03-26", &empty_versions);
+    let result = ProtocolVersion::negotiate("2025-06-18", &empty_versions);
     assert!(result.is_none());
 }
 
@@ -99,16 +104,17 @@ fn test_version_negotiator_creation() {
     let negotiator = VersionNegotiator::new();
 
     // Test with supported versions
+    assert!(negotiator.negotiate("2025-06-18").is_ok());
     assert!(negotiator.negotiate("2025-03-26").is_ok());
     assert!(negotiator.negotiate("2024-11-05").is_ok());
 }
 
 #[test]
 fn test_mcp_protocol() {
-    let version = ProtocolVersion::new("2025-03-26").unwrap();
+    let version = ProtocolVersion::new("2025-06-18").unwrap();
     let protocol = McpProtocol::new(version);
 
-    assert_eq!(protocol.version().as_str(), "2025-03-26");
+    assert_eq!(protocol.version().as_str(), "2025-06-18");
 
     // Test request building
     let params = json!({"test": "data"});
@@ -132,7 +138,7 @@ fn test_error_types() {
     assert!(websocket_error.to_string().contains("WebSocket error"));
 
     let version_mismatch = McpError::VersionMismatch {
-        expected: "2025-03-26".to_string(),
+        expected: "2025-06-18".to_string(),
         actual: "1.0.0".to_string(),
     };
     assert!(version_mismatch.to_string().contains("version mismatch"));
@@ -193,7 +199,7 @@ async fn test_backoff_durations() {
 #[test]
 fn test_mcp_initialize_params() {
     let params = McpInitializeParams {
-        protocol_version: "2025-03-26".to_string(),
+        protocol_version: "2025-06-18".to_string(),
         capabilities: McpCapabilities {
             experimental: None,
             sampling: None,
@@ -205,7 +211,7 @@ fn test_mcp_initialize_params() {
     };
 
     let serialized = serde_json::to_value(&params).unwrap();
-    assert_eq!(serialized["protocolVersion"], "2025-03-26");
+    assert_eq!(serialized["protocolVersion"], "2025-06-18");
     assert_eq!(serialized["clientInfo"]["name"], "test-client");
     assert_eq!(serialized["clientInfo"]["version"], "1.0.0");
 }
@@ -213,7 +219,7 @@ fn test_mcp_initialize_params() {
 #[test]
 fn test_mcp_initialize_result() {
     let json_result = json!({
-        "protocolVersion": "2025-03-26",
+        "protocolVersion": "2025-06-18",
         "capabilities": {},
         "serverInfo": {
             "name": "test-server",
@@ -222,7 +228,7 @@ fn test_mcp_initialize_result() {
     });
 
     let result: McpInitializeResult = serde_json::from_value(json_result).unwrap();
-    assert_eq!(result.protocol_version, "2025-03-26");
+    assert_eq!(result.protocol_version, "2025-06-18");
     assert_eq!(result.server_info.name, "test-server");
     assert_eq!(result.server_info.version, "1.0.0");
 }

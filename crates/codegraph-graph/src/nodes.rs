@@ -253,7 +253,7 @@ impl NodeStore for RocksNodeStore {
 
         let node_key = Self::id_key(node.id);
         let node_bytes =
-            bincode::serialize(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         let mut batch = WriteBatch::default();
         batch.put_cf(&nodes_cf, node_key, &node_bytes);
@@ -285,7 +285,7 @@ impl NodeStore for RocksNodeStore {
             .get_cf_opt(&nodes_cf, &key, &self.read_options)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
         if let Some(bytes) = data {
-            let node: Node = bincode::deserialize(&bytes)
+            let node: Node = serde_json::from_slice::<Node>(&bytes)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?;
             self.read_cache.insert(id, Arc::new(node.clone()));
             Ok(Some(node))
@@ -309,7 +309,7 @@ impl NodeStore for RocksNodeStore {
 
         let node_key = Self::id_key(node.id);
         let node_bytes =
-            bincode::serialize(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         let mut batch = WriteBatch::default();
         // Update main record
@@ -371,7 +371,7 @@ impl NodeStore for RocksNodeStore {
             }
             let key = Self::id_key(node.id);
             let bytes =
-                bincode::serialize(&*node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                serde_json::to_vec(&*node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
             batch.put_cf(&nodes_cf, key, &bytes);
             Self::write_node_indices(&mut batch, &labels_cf, &props_cf, node);
             batch.put_cf(
@@ -407,7 +407,7 @@ impl NodeStore for RocksNodeStore {
 
             let key = Self::id_key(node.id);
             let bytes =
-                bincode::serialize(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
             batch.put_cf(&nodes_cf, key, &bytes);
             Self::delete_node_indices(&mut batch, &labels_cf, &props_cf, &prev);
             Self::write_node_indices(&mut batch, &labels_cf, &props_cf, &node);
@@ -520,8 +520,8 @@ impl NodeStore for RocksNodeStore {
             if !key.starts_with(&prefix) {
                 break;
             }
-            let node: Node =
-                bincode::deserialize(&val).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            let node: Node = serde_json::from_slice::<Node>(&val)
+                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
             out.push(node);
         }
         // Already ordered by version due to suffix

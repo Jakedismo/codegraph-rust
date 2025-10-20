@@ -567,6 +567,7 @@ impl AstVisitor {
     }
 
     fn create_code_node(&self, node: &Node) -> Option<CodeNode> {
+        // Clean implementation without debug logging for better user experience
         let node_type = self.map_node_type(node.kind())?;
         let name = self.extract_name(node)?;
 
@@ -598,6 +599,15 @@ impl AstVisitor {
             (Language::TypeScript | Language::JavaScript, "function_declaration") => {
                 Some(NodeType::Function)
             }
+            (Language::TypeScript | Language::JavaScript, "function_expression") => {
+                Some(NodeType::Function)
+            }
+            (Language::TypeScript | Language::JavaScript, "arrow_function") => {
+                Some(NodeType::Function)
+            }
+            (Language::TypeScript | Language::JavaScript, "method_definition") => {
+                Some(NodeType::Function)
+            }
             (Language::TypeScript | Language::JavaScript, "class_declaration") => {
                 Some(NodeType::Class)
             }
@@ -606,6 +616,33 @@ impl AstVisitor {
             }
             (Language::TypeScript | Language::JavaScript, "import_statement") => {
                 Some(NodeType::Import)
+            }
+            (Language::TypeScript | Language::JavaScript, "import_clause") => {
+                Some(NodeType::Other("ImportClause".to_string()))
+            }
+            (Language::TypeScript | Language::JavaScript, "named_imports") => {
+                Some(NodeType::Other("NamedImports".to_string()))
+            }
+            (Language::TypeScript | Language::JavaScript, "import_specifier") => {
+                Some(NodeType::Other("ImportSpecifier".to_string()))
+            }
+            (Language::TypeScript | Language::JavaScript, "export_statement") => {
+                Some(NodeType::Other("Export".to_string()))
+            }
+            (Language::TypeScript | Language::JavaScript, "variable_declaration") => {
+                Some(NodeType::Variable)
+            }
+            (Language::TypeScript | Language::JavaScript, "variable_declarator") => {
+                Some(NodeType::Variable)
+            }
+            (Language::TypeScript | Language::JavaScript, "identifier") => {
+                Some(NodeType::Other("Identifier".to_string()))
+            }
+            (Language::TypeScript | Language::JavaScript, "comment") => {
+                Some(NodeType::Other("Comment".to_string()))
+            }
+            (Language::TypeScript | Language::JavaScript, "program") => {
+                Some(NodeType::Other("Program".to_string()))
             }
             (Language::TypeScript, "type_alias_declaration") => Some(NodeType::Type),
 

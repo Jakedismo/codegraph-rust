@@ -4,13 +4,13 @@
 
 use crate::{ZeroCopyError, ZeroCopyResult};
 use bytes::{Bytes, BytesMut};
+use rkyv::api::high::{HighDeserializer, HighSerializer, HighValidator};
+use rkyv::ser::allocator::ArenaHandle;
+use rkyv::util::AlignedVec;
 use rkyv::{
     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, rancor::Failure,
     to_bytes, Archive, Deserialize, Serialize,
 };
-use rkyv::api::high::{HighDeserializer, HighSerializer, HighValidator};
-use rkyv::ser::allocator::ArenaHandle;
-use rkyv::util::AlignedVec;
 use std::sync::Arc;
 use tracing::{debug, instrument, trace};
 

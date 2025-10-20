@@ -15,7 +15,7 @@ struct RagIndex {
     embeddings: HashMap<NodeId, Vec<f32>>,
     by_file: HashMap<String, Vec<NodeId>>, // file path -> node ids
     calls_out: HashMap<NodeId, Vec<NodeId>>, // caller -> callees
-    calls_in: HashMap<NodeId, Vec<NodeId>>,  // callee -> callers
+    calls_in: HashMap<NodeId, Vec<NodeId>>, // callee -> callers
 }
 
 /// RAG tools providing CodeGraph functionality backed by parser + embeddings
@@ -157,9 +157,9 @@ impl RagTools {
 
         // Hybrid call-graph: prefer parser pipeline edges (for supported languages),
         // then fall back to regex name matching for the rest.
+        use codegraph_parser::fast_io::read_file_to_string;
         use codegraph_parser::file_collect::collect_source_files;
         use codegraph_parser::pipeline::ConversionPipeline;
-        use codegraph_parser::fast_io::read_file_to_string;
         use regex::Regex;
 
         let files: Vec<(std::path::PathBuf, u64)> = tokio::task::spawn_blocking({
@@ -207,7 +207,9 @@ impl RagTools {
         // AST-based edges where possible
         for (path, _size) in &files {
             let path_str = path.to_string_lossy().to_string();
-            let Ok(source) = read_file_to_string(&path_str).await else { continue };
+            let Ok(source) = read_file_to_string(&path_str).await else {
+                continue;
+            };
             if let Ok(result) = pipeline.process_file(path.as_path(), source) {
                 // Map pipeline node ids to canonical index ids
                 let mut pip_nodes: HashMap<NodeId, CodeNode> = HashMap::new();
@@ -216,10 +218,18 @@ impl RagTools {
                 }
 
                 for e in result.edges {
-                    if !matches!(e.edge_type, EdgeType::Calls) { continue; }
-                    let Some(from_p) = pip_nodes.get(&e.from) else { continue; };
-                    let Some(to_p) = pip_nodes.get(&e.to) else { continue; };
-                    if let (Some(from_id), Some(to_id)) = (resolve_index_id(from_p), resolve_index_id(to_p)) {
+                    if !matches!(e.edge_type, EdgeType::Calls) {
+                        continue;
+                    }
+                    let Some(from_p) = pip_nodes.get(&e.from) else {
+                        continue;
+                    };
+                    let Some(to_p) = pip_nodes.get(&e.to) else {
+                        continue;
+                    };
+                    if let (Some(from_id), Some(to_id)) =
+                        (resolve_index_id(from_p), resolve_index_id(to_p))
+                    {
                         if from_id != to_id {
                             index.calls_out.entry(from_id).or_default().push(to_id);
                             index.calls_in.entry(to_id).or_default().push(from_id);
@@ -241,13 +251,17 @@ impl RagTools {
             }
         }
         for (id, node) in &index.nodes {
-            let Some(content) = node.content.as_deref() else { continue; };
+            let Some(content) = node.content.as_deref() else {
+                continue;
+            };
             let mut seen: HashSet<NodeId> = HashSet::new();
             for cap in ident_call.captures_iter(content) {
                 let fname = cap.get(1).map(|m| m.as_str()).unwrap_or("").to_lowercase();
                 if let Some(targets) = name_to_ids.get(&fname) {
                     for &tid in targets {
-                        if tid == *id { continue; }
+                        if tid == *id {
+                            continue;
+                        }
                         if seen.insert(tid) {
                             index.calls_out.entry(*id).or_default().push(tid);
                             index.calls_in.entry(tid).or_default().push(*id);
@@ -301,7 +315,10 @@ impl RagTools {
                         .unwrap_or_else(|| "unknown".to_string()),
                     content: node.content.as_deref().unwrap_or("").to_string(),
                     score,
-                    language: node.language.as_ref().map(|l| format!("{:?}", l).to_lowercase()),
+                    language: node
+                        .language
+                        .as_ref()
+                        .map(|l| format!("{:?}", l).to_lowercase()),
                 });
             }
         }
@@ -318,7 +335,10 @@ impl RagTools {
             Err(_) => return Ok(None),
         };
         if let Some(node) = idx.nodes.get(&id) {
-            let (start_line, end_line) = (node.location.line, node.location.end_line.unwrap_or(node.location.line));
+            let (start_line, end_line) = (
+                node.location.line,
+                node.location.end_line.unwrap_or(node.location.line),
+            );
             let deps = idx
                 .calls_out
                 .get(&id)
@@ -338,7 +358,10 @@ impl RagTools {
                     .map(|t| format!("{:?}", t))
                     .unwrap_or_else(|| "unknown".to_string()),
                 content: node.content.as_deref().unwrap_or("").to_string(),
-                language: node.language.as_ref().map(|l| format!("{:?}", l).to_lowercase()),
+                language: node
+                    .language
+                    .as_ref()
+                    .map(|l| format!("{:?}", l).to_lowercase()),
                 start_line,
                 end_line,
                 dependencies: deps,
@@ -375,7 +398,11 @@ impl RagTools {
             }
         };
         let Some(node) = idx.nodes.get(&id) else {
-            return Ok(RelationshipAnalysis { dependencies: vec![], dependents: vec![], related: vec![] });
+            return Ok(RelationshipAnalysis {
+                dependencies: vec![],
+                dependents: vec![],
+                related: vec![],
+            });
         };
 
         // Dependencies: direct call graph edges (callees)
@@ -415,7 +442,13 @@ impl RagTools {
         let mut related: Vec<(NodeId, f32)> = idx
             .embeddings
             .iter()
-            .filter_map(|(nid, emb)| if nid != &id { Some((*nid, cosine(&q, emb))) } else { None })
+            .filter_map(|(nid, emb)| {
+                if nid != &id {
+                    Some((*nid, cosine(&q, emb)))
+                } else {
+                    None
+                }
+            })
             .collect();
         related.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         related.truncate(8);
@@ -454,7 +487,9 @@ impl RagTools {
         let mut unique_files: HashSet<String> = HashSet::new();
         for node in idx.nodes.values() {
             if let Some(lang) = node.language.as_ref() {
-                *languages.entry(format!("{:?}", lang).to_lowercase()).or_insert(0) += 1;
+                *languages
+                    .entry(format!("{:?}", lang).to_lowercase())
+                    .or_insert(0) += 1;
             }
             match node.node_type {
                 Some(NodeType::Function) => function_count += 1,
@@ -462,7 +497,8 @@ impl RagTools {
                 Some(NodeType::Module) => module_count += 1,
                 _ => {}
             }
-            if node.location.file_path.contains("test") || node.location.file_path.contains("_test") {
+            if node.location.file_path.contains("test") || node.location.file_path.contains("_test")
+            {
                 test_file_count += 1;
             }
             unique_files.insert(node.location.file_path.clone());
@@ -538,7 +574,11 @@ fn cosine(a: &[f32], b: &[f32]) -> f32 {
         na += a[i] * a[i];
         nb += b[i] * b[i];
     }
-    if na == 0.0 || nb == 0.0 { 0.0 } else { dot / (na.sqrt() * nb.sqrt()) }
+    if na == 0.0 || nb == 0.0 {
+        0.0
+    } else {
+        dot / (na.sqrt() * nb.sqrt())
+    }
 }
 
 fn similar_in_file(node: &CodeNode, idx: &RagIndex, take: usize) -> Vec<String> {
@@ -556,10 +596,18 @@ fn similar_in_file_details(
     let mut out = Vec::new();
     if let Some(ids) = idx.by_file.get(&node.location.file_path) {
         for other_id in ids {
-            if other_id == &node.id { continue; }
+            if other_id == &node.id {
+                continue;
+            }
             if let Some(other) = idx.nodes.get(other_id) {
-                out.push((other.id, other.name.to_string(), other.location.file_path.clone()));
-                if out.len() >= take { break; }
+                out.push((
+                    other.id,
+                    other.name.to_string(),
+                    other.location.file_path.clone(),
+                ));
+                if out.len() >= take {
+                    break;
+                }
             }
         }
     }

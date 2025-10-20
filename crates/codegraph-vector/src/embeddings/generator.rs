@@ -218,11 +218,32 @@ fn hash_text(text: &str) -> u64 {
     hasher.finish()
 }
 
+/// Unicode-safe text truncation that respects character boundaries
+fn truncate_safely(text: &str, max_len: usize) -> String {
+    if text.len() <= max_len {
+        return text.to_string();
+    }
+
+    // Find the last valid char boundary at or before max_len
+    let mut boundary = max_len;
+    while !text.is_char_boundary(boundary) && boundary > 0 {
+        boundary -= 1;
+    }
+
+    // If we couldn't find any boundary, take first char
+    if boundary == 0 {
+        text.chars().next().map_or(String::new(), |c| c.to_string())
+    } else {
+        text[..boundary].to_string()
+    }
+}
+
 fn node_from_text(text: &str) -> CodeNode {
     let name = if text.len() <= 32 {
         text.to_string()
     } else {
-        text[..32].to_string()
+        // Unicode-safe truncation to avoid char boundary panics
+        truncate_safely(text, 32)
     };
     CodeNode::new(
         name,
@@ -315,8 +336,18 @@ impl AdvancedEmbeddingGenerator {
                     pooling: "mean".into(),
                 }
             };
-            let pooling = match oc.pooling.to_lowercase().as_str() { "cls" => OnnxPooling::Cls, "max" => OnnxPooling::Max, _ => OnnxPooling::Mean };
-            let prov = OnnxEmbeddingProvider::new(OnnxConfig { model_repo: oc.model_repo.clone(), model_file: oc.model_file.clone(), max_sequence_length: oc.max_sequence_length, pooling }).await?;
+            let pooling = match oc.pooling.to_lowercase().as_str() {
+                "cls" => OnnxPooling::Cls,
+                "max" => OnnxPooling::Max,
+                _ => OnnxPooling::Mean,
+            };
+            let prov = OnnxEmbeddingProvider::new(OnnxConfig {
+                model_repo: oc.model_repo.clone(),
+                model_file: oc.model_file.clone(),
+                max_sequence_length: oc.max_sequence_length,
+                pooling,
+            })
+            .await?;
             Ok(Box::new(prov))
         }
 
@@ -327,7 +358,9 @@ impl AdvancedEmbeddingGenerator {
         // ONNX explicit selection via env or config
         #[cfg(feature = "onnx")]
         {
-            let prov = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or_default().to_lowercase();
+            let prov = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
+                .unwrap_or_default()
+                .to_lowercase();
             if prov == "onnx" || config.onnx.is_some() {
                 if let Ok(onnx) = make_onnx(&config).await {
                     dimension_hint = onnx.embedding_dimension();

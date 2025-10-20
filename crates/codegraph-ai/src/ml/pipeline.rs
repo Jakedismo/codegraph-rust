@@ -114,7 +114,7 @@ impl HotSwapModel {
     pub fn active(&self) -> (String, String) {
         (
             self.active_name.clone(),
-            (*self.active_version.load()).clone(),
+            (*self.active_version.load()).to_string(),
         )
     }
 

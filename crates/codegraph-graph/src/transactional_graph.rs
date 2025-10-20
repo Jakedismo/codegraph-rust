@@ -174,7 +174,7 @@ impl GraphStore for TransactionalGraph {
         // Generate content hash for the node
         let content_hash = {
             let serialized =
-                bincode::serialize(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
             use sha2::{Digest, Sha256};
             let mut hasher = Sha256::new();
@@ -274,7 +274,7 @@ impl GraphStore for TransactionalGraph {
         let (old_hash, new_hash) = {
             let old_hash = if let Some(ref old) = old_node {
                 let serialized =
-                    bincode::serialize(old).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                    serde_json::to_vec(old).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
                 use sha2::{Digest, Sha256};
                 let mut hasher = Sha256::new();
@@ -285,7 +285,7 @@ impl GraphStore for TransactionalGraph {
             };
 
             let new_serialized =
-                bincode::serialize(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
             use sha2::{Digest, Sha256};
             let mut hasher = Sha256::new();

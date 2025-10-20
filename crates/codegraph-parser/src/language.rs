@@ -71,6 +71,57 @@ impl LanguageRegistry {
             },
         );
 
+        // Revolutionary universal language support
+        configs.insert(
+            Language::Swift,
+            LanguageConfig {
+                language: tree_sitter_swift::LANGUAGE.into(),
+                file_extensions: vec!["swift"],
+            },
+        );
+
+        // Temporarily disabled due to tree-sitter version conflicts - TODO: Fix when compatible versions available
+        // configs.insert(
+        //     Language::Kotlin,
+        //     LanguageConfig {
+        //         language: tree_sitter_kotlin::language(),
+        //         file_extensions: vec!["kt", "kts"],
+        //     },
+        // );
+
+        configs.insert(
+            Language::CSharp,
+            LanguageConfig {
+                language: tree_sitter_c_sharp::LANGUAGE.into(),
+                file_extensions: vec!["cs"],
+            },
+        );
+
+        configs.insert(
+            Language::Ruby,
+            LanguageConfig {
+                language: tree_sitter_ruby::LANGUAGE.into(),
+                file_extensions: vec!["rb", "rake", "gemspec"],
+            },
+        );
+
+        configs.insert(
+            Language::Php,
+            LanguageConfig {
+                language: tree_sitter_php::LANGUAGE_PHP.into(),
+                file_extensions: vec!["php", "phtml", "php3", "php4", "php5"],
+            },
+        );
+
+        // Temporarily disabled due to tree-sitter version conflicts - TODO: Fix when compatible versions available
+        // configs.insert(
+        //     Language::Dart,
+        //     LanguageConfig {
+        //         language: tree_sitter_dart::language(),
+        //         file_extensions: vec!["dart"],
+        //     },
+        // );
+
         Self { configs }
     }
 

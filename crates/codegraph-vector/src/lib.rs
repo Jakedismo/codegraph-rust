@@ -19,6 +19,9 @@ pub mod local_provider;
 #[cfg(feature = "onnx")]
 pub mod onnx_provider;
 
+#[cfg(feature = "ollama")]
+pub mod ollama_embedding_provider;
+
 #[cfg(feature = "faiss")]
 pub mod faiss_manager;
 #[cfg(feature = "faiss")]
@@ -37,7 +40,10 @@ pub mod persistent;
 #[cfg(feature = "persistent")]
 pub mod storage;
 
+pub mod ml;
 pub mod rag;
+pub mod reranker;  // NEW: Fast reranking pipeline for insights generation
+pub mod insights_generator;  // NEW: High-performance insights with reranking
 
 pub use embedding::*;
 pub use embeddings::generator::AdvancedEmbeddingGenerator;
@@ -58,6 +64,9 @@ pub use local_provider::*;
 #[cfg(feature = "onnx")]
 pub use onnx_provider::*;
 
+#[cfg(feature = "ollama")]
+pub use ollama_embedding_provider::*;
+
 #[cfg(feature = "faiss")]
 pub use faiss_manager::*;
 #[cfg(feature = "faiss")]
@@ -73,6 +82,8 @@ pub use persistent::*;
 pub use storage::*;
 
 pub use rag::*;
+pub use reranker::*;  // Re-export reranker types
+pub use insights_generator::*;  // Re-export insights types
 
 // Re-export common types for convenience
 pub use codegraph_core::{CodeGraphError, NodeId, Result};
