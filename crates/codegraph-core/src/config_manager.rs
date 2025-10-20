@@ -55,16 +55,21 @@ impl Default for CodeGraphConfig {
 /// Embedding provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingConfig {
-    /// Provider: "onnx", "ollama", "openai", or "auto"
+    /// Provider: "onnx", "ollama", "openai", "lmstudio", or "auto"
     #[serde(default = "default_embedding_provider")]
     pub provider: String,
 
     /// Model path or identifier
     /// For ONNX: path to model directory
     /// For Ollama: model name (e.g., "all-minilm:latest")
+    /// For LM Studio: model name (e.g., "jinaai/jina-embeddings-v3")
     /// For OpenAI: model name (e.g., "text-embedding-3-small")
     #[serde(default)]
     pub model: Option<String>,
+
+    /// LM Studio URL (if using LM Studio)
+    #[serde(default = "default_lmstudio_url")]
+    pub lmstudio_url: String,
 
     /// Ollama URL (if using Ollama)
     #[serde(default = "default_ollama_url")]
@@ -73,6 +78,10 @@ pub struct EmbeddingConfig {
     /// OpenAI API key (if using OpenAI)
     #[serde(default)]
     pub openai_api_key: Option<String>,
+
+    /// Embedding dimension (1536 for jina-code, 384 for all-MiniLM)
+    #[serde(default = "default_embedding_dimension")]
+    pub dimension: usize,
 
     /// Batch size for embedding generation
     #[serde(default = "default_batch_size")]
@@ -84,8 +93,10 @@ impl Default for EmbeddingConfig {
         Self {
             provider: default_embedding_provider(),
             model: None,  // Auto-detect
+            lmstudio_url: default_lmstudio_url(),
             ollama_url: default_ollama_url(),
             openai_api_key: None,
+            dimension: default_embedding_dimension(),
             batch_size: default_batch_size(),
         }
     }
@@ -98,10 +109,19 @@ pub struct LLMConfig {
     #[serde(default)]
     pub enabled: bool,
 
+    /// LLM provider: "ollama" or "lmstudio"
+    #[serde(default = "default_llm_provider")]
+    pub provider: String,
+
     /// Model identifier
+    /// For LM Studio: model name (e.g., "lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF")
     /// For Ollama: model name (e.g., "qwen2.5-coder:14b")
     #[serde(default)]
     pub model: Option<String>,
+
+    /// LM Studio URL
+    #[serde(default = "default_lmstudio_url")]
+    pub lmstudio_url: String,
 
     /// Ollama URL
     #[serde(default = "default_ollama_url")]
@@ -124,7 +144,9 @@ impl Default for LLMConfig {
     fn default() -> Self {
         Self {
             enabled: false,  // Default to context-only for speed
+            provider: default_llm_provider(),
             model: None,
+            lmstudio_url: default_lmstudio_url(),
             ollama_url: default_ollama_url(),
             context_window: default_context_window(),
             temperature: default_temperature(),
@@ -186,16 +208,19 @@ impl Default for LoggingConfig {
 }
 
 // Default value functions
-fn default_embedding_provider() -> String { "auto".to_string() }
+fn default_embedding_provider() -> String { "lmstudio".to_string() }
+fn default_lmstudio_url() -> String { "http://localhost:1234".to_string() }
 fn default_ollama_url() -> String { "http://localhost:11434".to_string() }
-fn default_batch_size() -> usize { 32 }
-fn default_context_window() -> usize { 8000 }
+fn default_embedding_dimension() -> usize { 1536 }  // jina-code-embeddings-1.5b
+fn default_batch_size() -> usize { 64 }
+fn default_llm_provider() -> String { "lmstudio".to_string() }
+fn default_context_window() -> usize { 32000 }  // DeepSeek Coder v2 Lite
 fn default_temperature() -> f32 { 0.1 }
 fn default_insights_mode() -> String { "context-only".to_string() }
 fn default_num_threads() -> usize { num_cpus::get() }
 fn default_cache_size_mb() -> usize { 512 }
 fn default_max_concurrent() -> usize { 4 }
-fn default_log_level() -> String { "info".to_string() }
+fn default_log_level() -> String { "warn".to_string() }  // Clean TUI output during indexing
 fn default_log_format() -> String { "pretty".to_string() }
 
 /// Configuration manager with smart defaults and auto-detection
