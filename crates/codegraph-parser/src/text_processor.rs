@@ -237,7 +237,7 @@ impl TextProcessor {
         keyword_cache: &DashMap<Language, HashSet<&'static str>>,
     ) {
         let root = tree.root_node();
-        let mut cursor = root.walk();
+        let cursor = root.walk();
         let content_bytes = content.as_bytes();
 
         // Stack-based traversal for better performance
@@ -354,10 +354,10 @@ impl TextProcessor {
             (r"\s+", TokenType::Whitespace),           // Whitespace
         ];
 
-        let mut keywords = Self::get_language_keywords(language);
+        let keywords = Self::get_language_keywords(language);
 
         for (i, line) in content.lines().enumerate() {
-            let mut line_offset = 0;
+            let line_offset = 0;
             let line_start_byte = content[..content
                 .split('\n')
                 .take(i)
@@ -1302,7 +1302,7 @@ impl TextProcessor {
         relationships: &mut Vec<TextSemanticRelationship>,
     ) {
         let root = tree.root_node();
-        let mut cursor = root.walk();
+        let cursor = root.walk();
         let content_bytes = content.as_bytes();
 
         // Find the node containing our chunk

@@ -16,6 +16,15 @@ tree-sitter-javascript = { workspace = true }
 tree-sitter-go = { workspace = true }
 tree-sitter-java = { workspace = true }
 tree-sitter-cpp = { workspace = true }
+
+# Revolutionary universal language support
+tree-sitter-swift = { workspace = true }
+tree-sitter-kotlin = { workspace = true }
+tree-sitter-c-sharp = { workspace = true }
+tree-sitter-ruby = { workspace = true }
+tree-sitter-php = { workspace = true }
+tree-sitter-dart = { workspace = true }
+
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

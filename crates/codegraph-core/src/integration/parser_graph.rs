@@ -128,6 +128,7 @@ where
     /// Process a directory recursively with bounded concurrency (batch-ready for 100+ files).
     pub async fn process_directory(&self, dir: &str, max_concurrent: usize) -> Result<DirSummary> {
         let start = std::time::Instant::now();
+
         let files = collect_source_files(dir).await?;
         let total = files.len();
         let semaphore = Arc::new(Semaphore::new(max_concurrent.max(1)));
@@ -160,6 +161,143 @@ where
         let elapsed = start.elapsed();
         info!(
             "Processed {} files ({} skipped) in {:.2}s",
+            processed,
+            skipped,
+            elapsed.as_secs_f64()
+        );
+        Ok(DirSummary {
+            total,
+            processed,
+            skipped,
+            duration: elapsed,
+        })
+    }
+
+    /// OPTIMIZED: Process directory with smart filtering for performance
+    pub async fn process_directory_with_config(
+        &self,
+        dir: &str,
+        max_concurrent: usize,
+        exclude_generated: bool,
+    ) -> Result<DirSummary> {
+        let start = std::time::Instant::now();
+
+        // Use basic file collection but filter out massive generated files for performance
+        let mut all_files = collect_source_files(dir).await?;
+
+        if exclude_generated {
+            all_files.retain(|path| {
+                let path_str = path.to_string_lossy();
+
+                // Universal build artifact exclusions (all languages)
+                let excluded =
+                    // Rust artifacts
+                    path_str.contains("/target/") ||
+                    path_str.contains("bindings.rs") ||
+
+                    // Node.js/TypeScript artifacts
+                    path_str.contains("/node_modules/") ||
+                    path_str.contains("/dist/") ||
+                    path_str.contains("/.next/") ||
+                    path_str.contains("/out/") ||
+
+                    // Python artifacts
+                    path_str.contains("/__pycache__/") ||
+                    path_str.contains("/.venv/") ||
+                    path_str.contains("/venv/") ||
+                    path_str.contains("/build/") ||
+
+                    // Java artifacts
+                    path_str.contains("/target/classes/") ||
+                    path_str.contains("/target/generated-sources/") ||
+                    path_str.contains("/.gradle/") ||
+
+                    // Go artifacts
+                    path_str.contains("/vendor/") ||
+
+                    // C++ artifacts
+                    path_str.contains("/cmake-build-") ||
+                    path_str.contains("/CMakeFiles/") ||
+
+                    // Swift artifacts
+                    path_str.contains("/.build/") ||
+                    path_str.contains("/DerivedData/") ||
+
+                    // C# artifacts
+                    path_str.contains("/bin/") ||
+                    path_str.contains("/obj/") ||
+
+                    // PHP artifacts
+                    path_str.contains("/vendor/") ||
+
+                    // Ruby artifacts
+                    path_str.contains("/vendor/bundle/") ||
+
+                    // Universal generated file patterns
+                    path_str.contains("_generated") ||
+                    path_str.contains(".generated") ||
+                    path_str.contains("generated_") ||
+                    path_str.ends_with(".pb.go") ||
+                    path_str.ends_with(".pb.rs") ||
+                    path_str.ends_with("_pb2.py") ||
+                    path_str.contains("/protobuf/") ||
+
+                    // IDE and tooling artifacts
+                    path_str.contains("/.idea/") ||
+                    path_str.contains("/.vscode/") ||
+                    path_str.contains("/.git/") ||
+                    path_str.contains("/coverage/");
+
+                !excluded
+            });
+        }
+
+        let files = all_files;
+        let total = files.len();
+        let semaphore = Arc::new(Semaphore::new(max_concurrent.max(1)));
+
+        let mut processed = 0usize;
+        let mut skipped = 0usize;
+
+        info!(
+            "Processing {} files for edge derivation (all languages supported)",
+            total
+        );
+
+        // Two-phase approach for better linking: first ingest nodes, then edges.
+        // Phase 1: parse + add nodes for all files (incremental aware) with progress tracking
+        for chunk in files.chunks(64) {
+            for file in chunk.iter().cloned() {
+                // Bound concurrency using semaphore, but avoid spawning to keep non-Send futures acceptable
+                let _permit = semaphore.clone().acquire_owned().await.unwrap();
+                match self.process_file(file.to_string_lossy().as_ref()).await {
+                    Ok(sum) => match sum.status {
+                        ProcessStatus::Processed => {
+                            processed += 1;
+                            // Simple progress logging every 10 files
+                            if processed % 10 == 0 {
+                                info!(
+                                    "Edge analysis progress: {}/{} files processed",
+                                    processed, total
+                                );
+                            }
+                        }
+                        ProcessStatus::Skipped => skipped += 1,
+                    },
+                    Err(e) => warn!("process_file error: {}", e),
+                }
+            }
+        }
+
+        // Phase 2: cross-file edges (imports/calls) using global symbol index
+        let cross_edges = self.derive_cross_file_edges().await?;
+        if !cross_edges.is_empty() {
+            self.edges.add_edges_batch(cross_edges).await?;
+        }
+
+        let elapsed = start.elapsed();
+        info!(
+            "Edge processing completed: {} files ({} skipped) in {:.2}s",
             processed,
             skipped,
             elapsed.as_secs_f64()

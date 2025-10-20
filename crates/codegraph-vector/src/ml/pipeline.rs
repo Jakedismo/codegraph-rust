@@ -1,13 +1,13 @@
 //! ML Pipeline orchestration for code analysis
-//! 
+//!
 //! This module provides a unified pipeline that orchestrates feature extraction,
 //! model training, inference optimization, and A/B testing for a complete
 //! machine learning workflow in code analysis.
 
-use crate::ml::features::{FeatureExtractor, FeatureConfig, CodeFeatures};
+use crate::ml::ab_testing::{ABTestConfig, ABTestingFramework, ExperimentResults};
+use crate::ml::features::{CodeFeatures, FeatureConfig, FeatureExtractor};
+use crate::ml::inference::{InferenceConfig, InferenceEngine, InferenceResult};
 use crate::ml::training::{ModelTrainer, TrainingConfig, TrainingResults, TrainingTarget};
-use crate::ml::inference::{InferenceEngine, InferenceConfig, InferenceResult};
-use crate::ml::ab_testing::{ABTestingFramework, ABTestConfig, ExperimentResults};
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -277,7 +277,8 @@ impl MLPipelineBuilder {
 
     /// Build the ML pipeline
     pub fn build(self) -> Result<MLPipeline> {
-        let embedding_generator = self.embedding_generator
+        let embedding_generator = self
+            .embedding_generator
             .unwrap_or_else(|| Arc::new(crate::EmbeddingGenerator::default()));
 
         let feature_extractor = Arc::new(FeatureExtractor::new(
@@ -346,7 +347,9 @@ impl MLPipeline {
 
         // Prepare training dataset
         let trainer = self.model_trainer.read().await;
-        trainer.prepare_dataset(nodes, targets, dataset_name).await?;
+        trainer
+            .prepare_dataset(nodes, targets, dataset_name)
+            .await?;
 
         // Train the model
         let results = trainer.train_model(dataset_name, model_name).await?;
@@ -354,7 +357,9 @@ impl MLPipeline {
         // Get the trained model and add to inference engine
         if let Some(trained_model) = trainer.get_model(model_name).await {
             let mut inference_engine = self.inference_engine.write().await;
-            inference_engine.add_model(model_name, trained_model.clone()).await?;
+            inference_engine
+                .add_model(model_name, trained_model.clone())
+                .await?;
 
             // Store in models registry
             let mut models = self.models.write().await;
@@ -378,7 +383,11 @@ impl MLPipeline {
     }
 
     /// Perform batch inference
-    pub async fn predict_batch(&self, model_name: &str, code_nodes: &[CodeNode]) -> Result<Vec<InferenceResult>> {
+    pub async fn predict_batch(
+        &self,
+        model_name: &str,
+        code_nodes: &[CodeNode],
+    ) -> Result<Vec<InferenceResult>> {
         let inference_engine = self.inference_engine.read().await;
         inference_engine.predict_batch(model_name, code_nodes).await
     }
@@ -386,7 +395,7 @@ impl MLPipeline {
     /// Start an A/B test experiment
     pub async fn start_ab_test(&self, config: ABTestConfig) -> Result<String> {
         let experiment_id = self.ab_testing.create_experiment(config).await?;
-        
+
         // Add to active experiments
         {
             let mut context = self.context.write().await;
@@ -404,7 +413,9 @@ impl MLPipeline {
         session_id: &str,
         code_node: &CodeNode,
     ) -> Result<InferenceResult> {
-        self.ab_testing.run_inference_with_test(experiment_id, session_id, code_node).await
+        self.ab_testing
+            .run_inference_with_test(experiment_id, session_id, code_node)
+            .await
     }
 
     /// Analyze A/B test results
@@ -418,8 +429,13 @@ impl MLPipeline {
     }
 
     /// Extract features from multiple code nodes
-    pub async fn extract_features_batch(&self, code_nodes: &[CodeNode]) -> Result<Vec<CodeFeatures>> {
-        self.feature_extractor.extract_features_batch(code_nodes).await
+    pub async fn extract_features_batch(
+        &self,
+        code_nodes: &[CodeNode],
+    ) -> Result<Vec<CodeFeatures>> {
+        self.feature_extractor
+            .extract_features_batch(code_nodes)
+            .await
     }
 
     /// Get pipeline status
@@ -446,7 +462,8 @@ impl MLPipeline {
         let config_json = serde_json::to_string_pretty(&context.config)
             .map_err(|e| CodeGraphError::Vector(format!("Failed to serialize config: {}", e)))?;
 
-        tokio::fs::write(path, config_json).await
+        tokio::fs::write(path, config_json)
+            .await
             .map_err(|e| CodeGraphError::Vector(format!("Failed to write config file: {}", e)))?;
 
         Ok(())
@@ -454,7 +471,8 @@ impl MLPipeline {
 
     /// Load pipeline configuration
     pub async fn load_config<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let config_content = tokio::fs::read_to_string(path).await
+        let config_content = tokio::fs::read_to_string(path)
+            .await
             .map_err(|e| CodeGraphError::Vector(format!("Failed to read config file: {}", e)))?;
 
         let config: MLPipelineConfig = serde_json::from_str(&config_content)
@@ -480,7 +498,9 @@ impl MLPipeline {
         // Add to inference engine if available
         if let Some(trained_model) = trainer.get_model(model_name).await {
             let mut inference_engine = self.inference_engine.write().await;
-            inference_engine.add_model(model_name, trained_model.clone()).await?;
+            inference_engine
+                .add_model(model_name, trained_model.clone())
+                .await?;
 
             // Store in models registry
             let mut models = self.models.write().await;
@@ -496,10 +516,19 @@ impl MLPipeline {
 
         // Get inference metrics
         let inference_metrics = self.get_inference_metrics().await;
-        metrics.insert("avg_latency_us".to_string(), inference_metrics.avg_latency_us);
-        metrics.insert("throughput_rps".to_string(), inference_metrics.throughput_rps);
+        metrics.insert(
+            "avg_latency_us".to_string(),
+            inference_metrics.avg_latency_us,
+        );
+        metrics.insert(
+            "throughput_rps".to_string(),
+            inference_metrics.throughput_rps,
+        );
         metrics.insert("error_rate".to_string(), inference_metrics.error_rate);
-        metrics.insert("cache_hit_rate".to_string(), inference_metrics.cache_hit_rate);
+        metrics.insert(
+            "cache_hit_rate".to_string(),
+            inference_metrics.cache_hit_rate,
+        );
 
         // Update context metrics
         {
@@ -511,7 +540,11 @@ impl MLPipeline {
     }
 
     /// Detect data drift
-    pub async fn detect_data_drift(&self, recent_features: &[CodeFeatures], baseline_features: &[CodeFeatures]) -> Result<f32> {
+    pub async fn detect_data_drift(
+        &self,
+        recent_features: &[CodeFeatures],
+        baseline_features: &[CodeFeatures],
+    ) -> Result<f32> {
         // Simplified drift detection using feature distribution comparison
         if recent_features.is_empty() || baseline_features.is_empty() {
             return Ok(0.0);
@@ -526,41 +559,63 @@ impl MLPipeline {
             recent_features.first().and_then(|f| f.syntactic.as_ref()),
             baseline_features.first().and_then(|f| f.syntactic.as_ref()),
         ) {
-            let recent_avg_tokens = recent_features.iter()
+            let recent_avg_tokens = recent_features
+                .iter()
                 .filter_map(|f| f.syntactic.as_ref().map(|s| s.token_count as f32))
-                .sum::<f32>() / recent_features.len() as f32;
+                .sum::<f32>()
+                / recent_features.len() as f32;
 
-            let baseline_avg_tokens = baseline_features.iter()
+            let baseline_avg_tokens = baseline_features
+                .iter()
                 .filter_map(|f| f.syntactic.as_ref().map(|s| s.token_count as f32))
-                .sum::<f32>() / baseline_features.len() as f32;
+                .sum::<f32>()
+                / baseline_features.len() as f32;
 
-            let drift = (recent_avg_tokens - baseline_avg_tokens).abs() / baseline_avg_tokens.max(1.0);
+            let drift =
+                (recent_avg_tokens - baseline_avg_tokens).abs() / baseline_avg_tokens.max(1.0);
             total_drift += drift;
             feature_count += 1;
         }
 
         // Compare complexity features
         if !recent_features.is_empty() && !baseline_features.is_empty() {
-            let recent_avg_complexity = recent_features.iter()
-                .filter_map(|f| f.complexity.as_ref().map(|c| c.cyclomatic_complexity as f32))
-                .sum::<f32>() / recent_features.len() as f32;
+            let recent_avg_complexity = recent_features
+                .iter()
+                .filter_map(|f| {
+                    f.complexity
+                        .as_ref()
+                        .map(|c| c.cyclomatic_complexity as f32)
+                })
+                .sum::<f32>()
+                / recent_features.len() as f32;
 
-            let baseline_avg_complexity = baseline_features.iter()
-                .filter_map(|f| f.complexity.as_ref().map(|c| c.cyclomatic_complexity as f32))
-                .sum::<f32>() / baseline_features.len() as f32;
+            let baseline_avg_complexity = baseline_features
+                .iter()
+                .filter_map(|f| {
+                    f.complexity
+                        .as_ref()
+                        .map(|c| c.cyclomatic_complexity as f32)
+                })
+                .sum::<f32>()
+                / baseline_features.len() as f32;
 
-            let drift = (recent_avg_complexity - baseline_avg_complexity).abs() / baseline_avg_complexity.max(1.0);
+            let drift = (recent_avg_complexity - baseline_avg_complexity).abs()
+                / baseline_avg_complexity.max(1.0);
             total_drift += drift;
             feature_count += 1;
         }
 
-        Ok(if feature_count > 0 { total_drift / feature_count as f32 } else { 0.0 })
+        Ok(if feature_count > 0 {
+            total_drift / feature_count as f32
+        } else {
+            0.0
+        })
     }
 
     /// Check if retraining is needed
     pub async fn should_retrain(&self) -> Result<bool> {
         let context = self.context.read().await;
-        
+
         // Check performance threshold
         if let Some(accuracy) = context.performance_metrics.get("accuracy") {
             if *accuracy < context.config.pipeline_settings.performance_threshold {
@@ -570,8 +625,11 @@ impl MLPipeline {
 
         // Check time since last training
         if let Some(last_training) = context.training_history.last() {
-            let training_age = last_training.model_metadata.timestamp.elapsed();
-            if training_age.num_seconds() as u64 > context.config.pipeline_settings.retrain_interval.as_secs() {
+            let training_age =
+                chrono::Utc::now().signed_duration_since(last_training.model_metadata.timestamp);
+            if training_age.num_seconds() as u64
+                > context.config.pipeline_settings.retrain_interval.as_secs()
+            {
                 return Ok(true);
             }
         }
@@ -580,9 +638,15 @@ impl MLPipeline {
     }
 
     /// Trigger automatic retraining
-    pub async fn trigger_retrain(&self, dataset_name: &str, nodes: &[CodeNode], targets: Vec<TrainingTarget>) -> Result<TrainingResults> {
+    pub async fn trigger_retrain(
+        &self,
+        dataset_name: &str,
+        nodes: &[CodeNode],
+        targets: Vec<TrainingTarget>,
+    ) -> Result<TrainingResults> {
         let model_name = format!("retrained_model_{}", chrono::Utc::now().timestamp());
-        self.train_model(dataset_name, nodes, targets, &model_name).await
+        self.train_model(dataset_name, nodes, targets, &model_name)
+            .await
     }
 
     /// Pause the pipeline
@@ -640,7 +704,7 @@ mod tests {
             .unwrap();
 
         pipeline.initialize().await.unwrap();
-        
+
         let status = pipeline.get_status().await;
         assert!(matches!(status, PipelineStatus::Ready));
     }
@@ -686,7 +750,7 @@ mod tests {
         pipeline.initialize().await.unwrap();
 
         let metrics = pipeline.monitor_performance().await.unwrap();
-        
+
         // Should have basic inference metrics
         assert!(metrics.contains_key("avg_latency_us"));
         assert!(metrics.contains_key("throughput_rps"));

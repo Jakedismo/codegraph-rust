@@ -1,7 +1,7 @@
 use std::fmt;
 
-pub const SUPPORTED_VERSIONS: &[&str] = &["2024-11-05", "2025-03-26"];
-pub const DEFAULT_VERSION: &str = "2025-03-26";
+pub const SUPPORTED_VERSIONS: &[&str] = &["2024-11-05", "2025-03-26", "2025-06-18"];
+pub const DEFAULT_VERSION: &str = "2025-06-18";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProtocolVersion(String);
@@ -135,6 +135,7 @@ mod tests {
 
     #[test]
     fn test_protocol_version_creation() {
+        assert!(ProtocolVersion::new("2025-06-18").is_ok());
         assert!(ProtocolVersion::new("2025-03-26").is_ok());
         assert!(ProtocolVersion::new("2024-11-05").is_ok());
         assert!(ProtocolVersion::new("1.0.0").is_err());
@@ -142,11 +143,17 @@ mod tests {
 
     #[test]
     fn test_version_negotiation() {
-        let result = ProtocolVersion::negotiate("2025-03-26", &["2025-03-26", "2024-11-05"]);
+        let result =
+            ProtocolVersion::negotiate("2025-06-18", &["2025-06-18", "2025-03-26", "2024-11-05"]);
+        assert_eq!(result, Some("2025-06-18".to_string()));
+
+        let result =
+            ProtocolVersion::negotiate("2025-03-26", &["2025-06-18", "2025-03-26", "2024-11-05"]);
         assert_eq!(result, Some("2025-03-26".to_string()));
 
-        let result = ProtocolVersion::negotiate("1.0.0", &["2025-03-26", "2024-11-05"]);
-        assert_eq!(result, Some("2025-03-26".to_string()));
+        let result =
+            ProtocolVersion::negotiate("1.0.0", &["2025-06-18", "2025-03-26", "2024-11-05"]);
+        assert_eq!(result, Some("2025-06-18".to_string()));
 
         let result = ProtocolVersion::negotiate("2024-11-05", &["2024-11-05"]);
         assert_eq!(result, Some("2024-11-05".to_string()));
@@ -155,17 +162,19 @@ mod tests {
     #[test]
     fn test_version_negotiator() {
         let negotiator = VersionNegotiator::new();
+        assert!(negotiator.negotiate("2025-06-18").is_ok());
         assert!(negotiator.negotiate("2025-03-26").is_ok());
         assert!(negotiator.negotiate("2024-11-05").is_ok());
 
         // When negotiating unsupported version, it should return latest supported
         let result = negotiator.negotiate("1.0.0");
         assert!(result.is_ok()); // Will fallback to latest supported version
-        assert_eq!(result.unwrap().as_str(), "2025-03-26");
+        assert_eq!(result.unwrap().as_str(), "2025-06-18");
     }
 
     #[test]
     fn test_is_supported() {
+        assert!(ProtocolVersion::is_supported("2025-06-18"));
         assert!(ProtocolVersion::is_supported("2025-03-26"));
         assert!(ProtocolVersion::is_supported("2024-11-05"));
         assert!(!ProtocolVersion::is_supported("1.0.0"));

@@ -1,7 +1,5 @@
 use core_rag_mcp_server::{CoreRagMcpServer, CoreRagServerConfig};
-use rmcp::transport::streamable_http_server::{
-    StreamableHttpServerConfig, StreamableHttpService,
-};
+use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use std::{env, net::SocketAddr, sync::Arc};
 use tracing::{error, info, warn};
 

@@ -12,7 +12,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, oneshot, RwLock};
-use tokio::time::timeout;
 use tracing::warn;
 use url::Url;
 
@@ -184,7 +183,7 @@ impl McpConnection {
         &self,
         method: &str,
         params: Value,
-        timeout_dur: Duration,
+        _timeout_dur: Duration,
     ) -> Result<JsonRpcMessage> {
         let id = uuid::Uuid::new_v4().to_string();
         let req = JsonRpcRequest::new(json!(id.clone()), method.to_string(), Some(params));
@@ -201,14 +200,13 @@ impl McpConnection {
             return Err(e);
         }
 
-        let res = timeout(timeout_dur, rx).await;
+        let res = rx.await;
         self.in_flight.fetch_sub(1, Ordering::SeqCst);
         match res {
-            Ok(Ok(msg)) => Ok(msg),
-            Ok(Err(_canceled)) => Err(McpError::ConnectionClosed),
-            Err(_elapsed) => {
+            Ok(msg) => Ok(msg),
+            Err(_canceled) => {
                 self.pending.remove(&id);
-                Err(McpError::RequestTimeout(method.to_string()))
+                Err(McpError::ConnectionClosed)
             }
         }
     }

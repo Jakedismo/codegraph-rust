@@ -1,18 +1,18 @@
 //! Inference optimization for real-time code analysis
-//! 
+//!
 //! This module provides optimized inference capabilities for trained models,
 //! focusing on low-latency, high-throughput predictions for real-time code analysis.
 //! Includes model optimization, batching, caching, and hardware acceleration.
 
 use crate::ml::features::{CodeFeatures, FeatureExtractor};
-use crate::ml::training::{TrainedModel, ModelWeights, ModelType};
+use crate::ml::training::{ModelType, ModelWeights, TrainedModel};
 use codegraph_core::{CodeGraphError, CodeNode, Result};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, Semaphore};
-use parking_lot::Mutex;
 
 /// Configuration for inference optimization
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,10 +200,7 @@ pub enum PredictionResult {
         class_names: Vec<String>,
     },
     /// Regression result
-    Regression {
-        value: f32,
-        uncertainty: f32,
-    },
+    Regression { value: f32, uncertainty: f32 },
     /// Multi-label classification
     MultiLabel {
         predictions: Vec<bool>,
@@ -211,10 +208,7 @@ pub enum PredictionResult {
         labels: Vec<String>,
     },
     /// Ranking score
-    Ranking {
-        score: f32,
-        rank: usize,
-    },
+    Ranking { score: f32, rank: usize },
 }
 
 /// Performance metrics for inference
@@ -297,7 +291,11 @@ pub enum FusedOperation {
     /// Batch normalization fusion
     BatchNorm { scale: f32, shift: f32 },
     /// Attention fusion
-    Attention { q_weights: Vec<f32>, k_weights: Vec<f32>, v_weights: Vec<f32> },
+    Attention {
+        q_weights: Vec<f32>,
+        k_weights: Vec<f32>,
+        v_weights: Vec<f32>,
+    },
 }
 
 /// Optimized model metadata
@@ -317,7 +315,7 @@ impl InferenceEngine {
     /// Create a new inference engine
     pub fn new(config: InferenceConfig, feature_extractor: Arc<FeatureExtractor>) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
-        
+
         Self {
             config,
             models: Arc::new(RwLock::new(HashMap::new())),
@@ -351,8 +349,10 @@ impl InferenceEngine {
 
     /// Perform inference on a single node
     pub async fn predict(&self, model_name: &str, node: &CodeNode) -> Result<InferenceResult> {
-        let _permit = self.semaphore.acquire().await
-            .map_err(|e| CodeGraphError::Vector(format!("Failed to acquire semaphore: {}", e)))?;
+        let _permit =
+            self.semaphore.acquire().await.map_err(|e| {
+                CodeGraphError::Vector(format!("Failed to acquire semaphore: {}", e))
+            })?;
 
         let start_time = Instant::now();
 
@@ -382,9 +382,15 @@ impl InferenceEngine {
     }
 
     /// Perform batch inference
-    pub async fn predict_batch(&self, model_name: &str, nodes: &[CodeNode]) -> Result<Vec<InferenceResult>> {
-        let _permit = self.semaphore.acquire().await
-            .map_err(|e| CodeGraphError::Vector(format!("Failed to acquire semaphore: {}", e)))?;
+    pub async fn predict_batch(
+        &self,
+        model_name: &str,
+        nodes: &[CodeNode],
+    ) -> Result<Vec<InferenceResult>> {
+        let _permit =
+            self.semaphore.acquire().await.map_err(|e| {
+                CodeGraphError::Vector(format!("Failed to acquire semaphore: {}", e))
+            })?;
 
         let start_time = Instant::now();
 
@@ -419,7 +425,8 @@ impl InferenceEngine {
 
         let total_time = start_time.elapsed();
         let from_cache = cached_count > 0;
-        self.update_batch_metrics(total_time, results.len(), cached_count, from_cache).await;
+        self.update_batch_metrics(total_time, results.len(), cached_count, from_cache)
+            .await;
 
         Ok(results)
     }
@@ -492,8 +499,8 @@ impl InferenceEngine {
         }
 
         let metadata = OptimizedModelMetadata {
-            size_reduction: 1.5, // Placeholder - would calculate actual reduction
-            speed_improvement: 2.0, // Placeholder - would measure actual improvement
+            size_reduction: 1.5,      // Placeholder - would calculate actual reduction
+            speed_improvement: 2.0,   // Placeholder - would measure actual improvement
             accuracy_retention: 0.98, // Placeholder - would validate accuracy
             optimized_at: chrono::Utc::now(),
         };
@@ -505,7 +512,11 @@ impl InferenceEngine {
         })
     }
 
-    async fn run_inference(&self, model_name: &str, features: &CodeFeatures) -> Result<InferenceResult> {
+    async fn run_inference(
+        &self,
+        model_name: &str,
+        features: &CodeFeatures,
+    ) -> Result<InferenceResult> {
         let models = self.models.read().await;
         let model = models
             .get(model_name)
@@ -517,8 +528,12 @@ impl InferenceEngine {
         let input_vector = self.features_to_vector(features)?;
 
         // Run model inference
-        let prediction = self.run_model_forward(&model.optimized_weights, &input_vector, &model.model.model_type)?;
-        
+        let prediction = self.run_model_forward(
+            &model.optimized_weights,
+            &input_vector,
+            &model.model.model_type,
+        )?;
+
         let latency_us = start_time.elapsed().as_micros() as u64;
 
         Ok(InferenceResult {
@@ -539,7 +554,7 @@ impl InferenceEngine {
             vector.push(syntactic.depth as f32);
             vector.push(syntactic.token_count as f32);
             vector.push(syntactic.line_count as f32);
-            
+
             // Add normalized node type distribution
             let total_nodes: usize = syntactic.node_type_distribution.values().sum();
             if total_nodes > 0 {
@@ -583,12 +598,13 @@ impl InferenceEngine {
     ) -> Result<PredictionResult> {
         // Simplified forward pass - in practice would implement proper neural network inference
         let mut output = vec![0.0f32; self.get_output_size(model_type)];
-        
+
         // Simple linear transformation (placeholder)
         for (i, value) in output.iter_mut().enumerate() {
             let mut sum = 0.0;
             for (j, &input_val) in input.iter().enumerate() {
-                if j < 10 { // Simplified weight access
+                if j < 10 {
+                    // Simplified weight access
                     sum += input_val * 0.1; // Placeholder weights
                 }
             }
@@ -609,7 +625,11 @@ impl InferenceEngine {
                 Ok(PredictionResult::Classification {
                     predicted_class,
                     class_probabilities: softmax_output,
-                    class_names: vec!["good".to_string(), "bad".to_string(), "needs_review".to_string()],
+                    class_names: vec![
+                        "good".to_string(),
+                        "bad".to_string(),
+                        "needs_review".to_string(),
+                    ],
                 })
             }
             ModelType::ComplexityPredictor | ModelType::PerformancePredictor => {
@@ -639,7 +659,9 @@ impl InferenceEngine {
         match model_type {
             ModelType::QualityClassifier => 3,
             ModelType::BugDetector | ModelType::SecurityDetector => 2,
-            ModelType::ComplexityPredictor | ModelType::PerformancePredictor | ModelType::SimilarityModel => 1,
+            ModelType::ComplexityPredictor
+            | ModelType::PerformancePredictor
+            | ModelType::SimilarityModel => 1,
         }
     }
 
@@ -661,7 +683,7 @@ impl InferenceEngine {
                 // Generate hash from feature content
                 use std::collections::hash_map::DefaultHasher;
                 use std::hash::{Hash, Hasher};
-                
+
                 let mut hasher = DefaultHasher::new();
                 features.node_id.hash(&mut hasher);
                 if let Some(ref syntactic) = features.syntactic {
@@ -683,13 +705,13 @@ impl InferenceEngine {
 
     async fn get_from_cache(&self, key: &str) -> Option<InferenceResult> {
         let mut cache = self.cache.write().await;
-        
+
         if let Some(entry) = cache.get_mut(key) {
             // Check if entry is still valid
             if entry.timestamp.elapsed().as_secs() < self.config.cache_config.ttl_seconds {
                 entry.access_count += 1;
                 entry.last_accessed = Instant::now();
-                
+
                 let mut result = entry.result.clone();
                 result.from_cache = true;
                 return Some(result);
@@ -698,7 +720,7 @@ impl InferenceEngine {
                 cache.remove(key);
             }
         }
-        
+
         None
     }
 
@@ -708,7 +730,7 @@ impl InferenceEngine {
         }
 
         let mut cache = self.cache.write().await;
-        
+
         // Check cache size and evict if necessary
         if cache.len() >= self.config.cache_config.max_entries {
             self.evict_cache_entry(&mut cache).await;
@@ -730,24 +752,19 @@ impl InferenceEngine {
         }
 
         let key_to_remove = match self.config.cache_config.eviction_policy {
-            EvictionPolicy::LRU => {
-                cache.iter()
-                    .min_by_key(|(_, entry)| entry.last_accessed)
-                    .map(|(key, _)| key.clone())
-            }
-            EvictionPolicy::LFU => {
-                cache.iter()
-                    .min_by_key(|(_, entry)| entry.access_count)
-                    .map(|(key, _)| key.clone())
-            }
-            EvictionPolicy::TTL => {
-                cache.iter()
-                    .min_by_key(|(_, entry)| entry.timestamp)
-                    .map(|(key, _)| key.clone())
-            }
-            EvictionPolicy::Random => {
-                cache.keys().next().cloned()
-            }
+            EvictionPolicy::LRU => cache
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_accessed)
+                .map(|(key, _)| key.clone()),
+            EvictionPolicy::LFU => cache
+                .iter()
+                .min_by_key(|(_, entry)| entry.access_count)
+                .map(|(key, _)| key.clone()),
+            EvictionPolicy::TTL => cache
+                .iter()
+                .min_by_key(|(_, entry)| entry.timestamp)
+                .map(|(key, _)| key.clone()),
+            EvictionPolicy::Random => cache.keys().next().cloned(),
         };
 
         if let Some(key) = key_to_remove {
@@ -771,12 +788,16 @@ impl InferenceEngine {
 
         metrics.total_requests += 1;
         metrics.total_inference_time_us += latency_us;
-        metrics.avg_latency_us = metrics.total_inference_time_us as f32 / metrics.total_requests as f32;
+        metrics.avg_latency_us =
+            metrics.total_inference_time_us as f32 / metrics.total_requests as f32;
 
         if from_cache {
-            metrics.cache_hit_rate = (metrics.cache_hit_rate * (metrics.total_requests - 1) as f32 + 1.0) / metrics.total_requests as f32;
+            metrics.cache_hit_rate = (metrics.cache_hit_rate * (metrics.total_requests - 1) as f32
+                + 1.0)
+                / metrics.total_requests as f32;
         } else {
-            metrics.cache_hit_rate = (metrics.cache_hit_rate * (metrics.total_requests - 1) as f32) / metrics.total_requests as f32;
+            metrics.cache_hit_rate = (metrics.cache_hit_rate * (metrics.total_requests - 1) as f32)
+                / metrics.total_requests as f32;
         }
 
         // Update latency history for percentile calculations
@@ -797,19 +818,30 @@ impl InferenceEngine {
         }
     }
 
-    async fn update_batch_metrics(&self, total_time: Duration, batch_size: usize, cached_count: usize, _from_cache: bool) {
+    async fn update_batch_metrics(
+        &self,
+        total_time: Duration,
+        batch_size: usize,
+        cached_count: usize,
+        _from_cache: bool,
+    ) {
         let mut metrics = self.metrics.write().await;
-        
-        metrics.avg_batch_size = (metrics.avg_batch_size * metrics.total_requests as f32 + batch_size as f32) / (metrics.total_requests + 1) as f32;
+
+        metrics.avg_batch_size = (metrics.avg_batch_size * metrics.total_requests as f32
+            + batch_size as f32)
+            / (metrics.total_requests + 1) as f32;
         metrics.total_requests += 1;
-        
+
         let avg_latency_us = total_time.as_micros() as u64 / batch_size as u64;
         metrics.total_inference_time_us += avg_latency_us;
-        metrics.avg_latency_us = metrics.total_inference_time_us as f32 / metrics.total_requests as f32;
+        metrics.avg_latency_us =
+            metrics.total_inference_time_us as f32 / metrics.total_requests as f32;
 
         if cached_count > 0 {
             let cache_ratio = cached_count as f32 / batch_size as f32;
-            metrics.cache_hit_rate = (metrics.cache_hit_rate * (metrics.total_requests - 1) as f32 + cache_ratio) / metrics.total_requests as f32;
+            metrics.cache_hit_rate = (metrics.cache_hit_rate * (metrics.total_requests - 1) as f32
+                + cache_ratio)
+                / metrics.total_requests as f32;
         }
     }
 
@@ -817,54 +849,52 @@ impl InferenceEngine {
 
     fn quantize_weights(&self, weights: &ModelWeights) -> Result<Vec<Vec<i8>>> {
         let mut quantized = Vec::new();
-        
+
         for layer_weights in &weights.linear_weights {
             let mut layer_quantized = Vec::new();
             let max_val = layer_weights.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
             let scale = max_val / 127.0;
-            
+
             for &weight in layer_weights {
                 let quantized_weight = ((weight / scale).round() as i8).clamp(-127, 127);
                 layer_quantized.push(quantized_weight);
             }
             quantized.push(layer_quantized);
         }
-        
+
         Ok(quantized)
     }
 
     fn calculate_scale_factors(&self, weights: &ModelWeights) -> Result<Vec<f32>> {
         let mut scale_factors = Vec::new();
-        
+
         for layer_weights in &weights.linear_weights {
             let max_val = layer_weights.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
             scale_factors.push(max_val / 127.0);
         }
-        
+
         Ok(scale_factors)
     }
 
     fn prune_weights(&self, weights: &ModelWeights) -> Result<Vec<bool>> {
         let mut pruned_indices = Vec::new();
         let threshold = self.config.optimization.pruning_threshold;
-        
+
         for layer_weights in &weights.linear_weights {
             for &weight in layer_weights {
                 pruned_indices.push(weight.abs() < threshold);
             }
         }
-        
+
         Ok(pruned_indices)
     }
 
     fn fuse_operations(&self, _weights: &ModelWeights) -> Result<Vec<FusedOperation>> {
         // Simplified operation fusion
-        Ok(vec![
-            FusedOperation::LinearReLU {
-                weights: vec![0.1, 0.2, 0.3],
-                bias: 0.0,
-            }
-        ])
+        Ok(vec![FusedOperation::LinearReLU {
+            weights: vec![0.1, 0.2, 0.3],
+            bias: 0.0,
+        }])
     }
 }
 
@@ -880,10 +910,11 @@ mod tests {
         let config = InferenceConfig::default();
         let feature_config = FeatureConfig::default();
         let embedding_generator = Arc::new(EmbeddingGenerator::default());
-        let feature_extractor = Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
-        
+        let feature_extractor =
+            Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
+
         let engine = InferenceEngine::new(config, feature_extractor);
-        
+
         let metrics = engine.get_metrics().await;
         assert_eq!(metrics.total_requests, 0);
     }
@@ -893,10 +924,11 @@ mod tests {
         let config = InferenceConfig::default();
         let feature_config = FeatureConfig::default();
         let embedding_generator = Arc::new(EmbeddingGenerator::default());
-        let feature_extractor = Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
-        
+        let feature_extractor =
+            Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
+
         let engine = InferenceEngine::new(config, feature_extractor);
-        
+
         let features = CodeFeatures {
             node_id: "test_node".to_string(),
             syntactic: None,
@@ -914,13 +946,14 @@ mod tests {
         let config = InferenceConfig::default();
         let feature_config = FeatureConfig::default();
         let embedding_generator = Arc::new(EmbeddingGenerator::default());
-        let feature_extractor = Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
-        
+        let feature_extractor =
+            Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
+
         let engine = InferenceEngine::new(config, feature_extractor);
-        
+
         let input = vec![1.0, 2.0, 3.0];
         let output = engine.softmax(&input);
-        
+
         let sum: f32 = output.iter().sum();
         assert!((sum - 1.0).abs() < 1e-6);
         assert!(output[2] > output[1]);
@@ -932,10 +965,11 @@ mod tests {
         let config = InferenceConfig::default();
         let feature_config = FeatureConfig::default();
         let embedding_generator = Arc::new(EmbeddingGenerator::default());
-        let feature_extractor = Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
-        
+        let feature_extractor =
+            Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
+
         let engine = InferenceEngine::new(config, feature_extractor);
-        
+
         assert!((engine.sigmoid(0.0) - 0.5).abs() < 1e-6);
         assert!(engine.sigmoid(100.0) > 0.9);
         assert!(engine.sigmoid(-100.0) < 0.1);

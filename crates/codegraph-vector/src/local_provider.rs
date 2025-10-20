@@ -413,7 +413,8 @@ impl LocalEmbeddingProvider {
                     .encode(text, true)
                     .map_err(|e| CodeGraphError::External(format!("Tokenization failed: {}", e)))?;
                 let mut ids: Vec<i64> = enc.get_ids().iter().map(|&x| x as i64).collect();
-                let mut mask: Vec<f32> = enc.get_attention_mask().iter().map(|&x| x as f32).collect();
+                let mut mask: Vec<f32> =
+                    enc.get_attention_mask().iter().map(|&x| x as f32).collect();
                 if ids.len() > config.max_sequence_length {
                     ids.truncate(config.max_sequence_length);
                     mask.truncate(config.max_sequence_length);
@@ -485,12 +486,12 @@ impl LocalEmbeddingProvider {
                     let masked_embeddings = sequence_output
                         .mul(&input_mask_expanded)
                         .map_err(|e| CodeGraphError::External(format!("mul failed: {}", e)))?;
-                    let sum_embeddings = masked_embeddings
-                        .sum_keepdim(1)
-                        .map_err(|e| CodeGraphError::External(format!("sum_keepdim failed: {}", e)))?;
-                    let sum_mask = input_mask_expanded
-                        .sum_keepdim(1)
-                        .map_err(|e| CodeGraphError::External(format!("sum_keepdim failed: {}", e)))?;
+                    let sum_embeddings = masked_embeddings.sum_keepdim(1).map_err(|e| {
+                        CodeGraphError::External(format!("sum_keepdim failed: {}", e))
+                    })?;
+                    let sum_mask = input_mask_expanded.sum_keepdim(1).map_err(|e| {
+                        CodeGraphError::External(format!("sum_keepdim failed: {}", e))
+                    })?;
                     let sum_mask = sum_mask
                         .clamp(1e-9, f64::INFINITY)
                         .map_err(|e| CodeGraphError::External(format!("clamp failed: {}", e)))?;
@@ -508,15 +509,16 @@ impl LocalEmbeddingProvider {
             };
 
             // Normalize rows
-            let norm = pooled
-                .pow(&Tensor::new(2.0, &device).map_err(|e| {
-                    CodeGraphError::External(format!("tensor new failed: {}", e))
-                })?)
-                .map_err(|e| CodeGraphError::External(format!("pow failed: {}", e)))?
-                .sum_keepdim(1)
-                .map_err(|e| CodeGraphError::External(format!("sum_keepdim failed: {}", e)))?
-                .sqrt()
-                .map_err(|e| CodeGraphError::External(format!("sqrt failed: {}", e)))?;
+            let norm =
+                pooled
+                    .pow(&Tensor::new(2.0, &device).map_err(|e| {
+                        CodeGraphError::External(format!("tensor new failed: {}", e))
+                    })?)
+                    .map_err(|e| CodeGraphError::External(format!("pow failed: {}", e)))?
+                    .sum_keepdim(1)
+                    .map_err(|e| CodeGraphError::External(format!("sum_keepdim failed: {}", e)))?
+                    .sqrt()
+                    .map_err(|e| CodeGraphError::External(format!("sqrt failed: {}", e)))?;
             let normalized = pooled
                 .div(
                     &norm

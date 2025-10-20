@@ -1,10 +1,10 @@
 use crate::{AstVisitor, LanguageRegistry};
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, CodeNode, CodeParser, Language, Result};
+use codegraph_core::{CodeGraphError, CodeNode, CodeParser, ExtractionResult, Language, Result};
 use futures::stream::{self, StreamExt};
 use sha2::Digest;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::fs;
@@ -13,7 +13,9 @@ use tracing::{debug, info, warn};
 use tree_sitter::{InputEdit, Parser, Point, Tree};
 
 use crate::fast_io::read_file_to_string;
-use crate::file_collect::collect_source_files;
+use crate::file_collect::{
+    collect_source_files, collect_source_files_with_config, FileCollectionConfig,
+};
 
 #[derive(Clone)]
 pub struct ParsedFile {
@@ -216,6 +218,151 @@ impl TreeSitterParser {
         Ok((all_nodes, stats))
     }
 
+    /// Enhanced directory parsing with proper configuration support
+    pub async fn parse_directory_parallel_with_config(
+        &self,
+        dir_path: &str,
+        config: &FileCollectionConfig,
+    ) -> Result<(Vec<CodeNode>, ParsingStatistics)> {
+        let start_time = Instant::now();
+        let dir_path = Path::new(dir_path);
+
+        info!(
+            "Starting enhanced parallel parsing of directory: {} (recursive: {}, languages: {:?})",
+            dir_path.display(),
+            config.recursive,
+            config.languages
+        );
+
+        // Collect and size files with proper configuration
+        let sized_files = tokio::task::spawn_blocking({
+            let dir = dir_path.to_path_buf();
+            let config = config.clone();
+            let registry = self.registry.clone();
+            move || {
+                // Use new file collection with config
+                let files = collect_source_files_with_config(&dir, &config).unwrap_or_default();
+
+                info!("Collected {} files from directory scan", files.len());
+
+                // Filter by language detection for additional safety
+                let filtered_files: Vec<(PathBuf, u64)> = files
+                    .into_iter()
+                    .filter(|(p, _)| {
+                        let detected = registry.detect_language(&p.to_string_lossy());
+                        if detected.is_none() {
+                            debug!("No language detected for: {}", p.display());
+                        }
+                        detected.is_some()
+                    })
+                    .collect();
+
+                info!(
+                    "Language filtering: {} files passed detection",
+                    filtered_files.len()
+                );
+                filtered_files
+            }
+        })
+        .await
+        .unwrap_or_default();
+
+        // Sort by size desc to reduce tail latency (schedule big files first)
+        let mut sized_files = sized_files;
+        sized_files.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let files: Vec<PathBuf> = sized_files.into_iter().map(|(p, _)| p).collect();
+        let total_files = files.len();
+
+        info!("Processing {} files for parsing", total_files);
+
+        if total_files == 0 {
+            warn!("No files to parse! Check:");
+            warn!("  - Directory contains source files");
+            warn!("  - Language filters: {:?}", config.languages);
+            warn!("  - Recursive setting: {}", config.recursive);
+            warn!("  - Include patterns: {:?}", config.include_patterns);
+            warn!("  - Exclude patterns: {:?}", config.exclude_patterns);
+        }
+
+        // Create semaphore for concurrency control
+        let semaphore = Arc::new(Semaphore::new(self.max_concurrent_files));
+
+        // Process files in chunks for better memory management
+        let mut all_nodes = Vec::new();
+        let mut total_lines = 0;
+        let mut parsed_files = 0;
+        let mut failed_files = 0;
+
+        let mut stream = stream::iter(files.into_iter().map(|file_path| {
+            let semaphore = semaphore.clone();
+            async move {
+                let _permit = semaphore.acquire().await.unwrap();
+                self.parse_file_with_caching(&file_path.to_string_lossy())
+                    .await
+            }
+        }))
+        .buffer_unordered(self.max_concurrent_files);
+
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok((nodes, lines)) => {
+                    if !nodes.is_empty() {
+                        debug!("Parsed {} nodes from file", nodes.len());
+                    }
+                    all_nodes.extend(nodes);
+                    total_lines += lines;
+                    parsed_files += 1;
+                }
+                Err(e) => {
+                    failed_files += 1;
+                    warn!("Failed to parse file: {}", e);
+                }
+            }
+        }
+
+        let parsing_duration = start_time.elapsed();
+        let files_per_second = if parsing_duration.as_secs_f64() > 0.0 {
+            parsed_files as f64 / parsing_duration.as_secs_f64()
+        } else {
+            0.0
+        };
+        let lines_per_second = if parsing_duration.as_secs_f64() > 0.0 {
+            total_lines as f64 / parsing_duration.as_secs_f64()
+        } else {
+            0.0
+        };
+
+        let stats = ParsingStatistics {
+            total_files,
+            parsed_files,
+            failed_files,
+            total_lines,
+            parsing_duration,
+            files_per_second,
+            lines_per_second,
+        };
+
+        info!(
+            "Enhanced parsing completed: {}/{} files, {} lines in {:.2}s ({:.1} files/s, {:.0} lines/s)",
+            parsed_files,
+            total_files,
+            total_lines,
+            parsing_duration.as_secs_f64(),
+            files_per_second,
+            lines_per_second
+        );
+
+        if failed_files > 0 {
+            warn!(
+                "Failed to parse {} files - check logs for details",
+                failed_files
+            );
+        }
+
+        Ok((all_nodes, stats))
+    }
+
     async fn parse_file_with_caching(&self, file_path: &str) -> Result<(Vec<CodeNode>, usize)> {
         let path = Path::new(file_path);
         let metadata = fs::metadata(path)
@@ -252,11 +399,41 @@ impl TreeSitterParser {
                     .unwrap_or(Language::Other("unknown".to_string()));
                 let content_hash = format!("{:x}", sha2::Sha256::digest(&content));
 
+                // Enable tree caching for better performance
+                let cached_tree = if content.len() < 500_000 {
+                    // Only cache smaller files to avoid memory issues
+                    // Re-parse to get a tree we can cache
+                    if let Ok((nodes, _, _)) = &result {
+                        if !nodes.is_empty() {
+                            // Parse again just for caching (small performance cost for future gains)
+                            let mut cache_parser = self
+                                .registry
+                                .create_parser(&language)
+                                .unwrap_or_else(|| tree_sitter::Parser::new());
+                            if let Some(config) = self.registry.get_config(&language) {
+                                if cache_parser.set_language(&config.language).is_ok() {
+                                    cache_parser.parse(&content, None)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 let parsed_file = ParsedFile {
                     file_path: file_path.to_string(),
                     language,
                     content: content.clone(),
-                    tree: None, // We'd need to clone the tree here for full caching
+                    tree: cached_tree, // Now caching trees for better performance
                     last_modified,
                     content_hash,
                 };
@@ -296,16 +473,55 @@ impl TreeSitterParser {
         language: Language,
     ) -> Result<Vec<CodeNode>> {
         let registry = self.registry.clone();
-        let content = content.to_string();
-        let file_path = file_path.to_string();
+        let content_string = content.to_string();
+        let file_path_string = file_path.to_string();
+        let parser_pool = self.parser_pool.clone();
 
-        tokio::task::spawn_blocking(move || {
-            let mut parser = registry.create_parser(&language).ok_or_else(|| {
-                CodeGraphError::Parse(format!("Unsupported language: {:?}", language))
-            })?;
+        // Clone for timeout message
+        let content_len = content.len();
+        let file_path_for_timeout = file_path.to_string();
+
+        // Add timeout protection for problematic files
+        let parsing_task = tokio::task::spawn_blocking(move || {
+            let content = content_string;
+            let file_path = file_path_string;
+            // Try to get parser from pool first, create new one if pool is empty
+            let mut parser = {
+                let mut pool = parser_pool.lock();
+                let mut found_parser = None;
+
+                for parser_set in pool.iter_mut() {
+                    if let Some(p) = parser_set.remove(&language) {
+                        found_parser = Some(p);
+                        break;
+                    }
+                }
+
+                found_parser.unwrap_or_else(|| {
+                    registry.create_parser(&language).unwrap_or_else(|| {
+                        // Fallback: create a default parser
+                        tree_sitter::Parser::new()
+                    })
+                })
+            };
+
+            // Ensure parser has correct language set
+            if let Some(config) = registry.get_config(&language) {
+                if parser.set_language(&config.language).is_err() {
+                    return Err(CodeGraphError::Parse(format!(
+                        "Failed to set language for: {:?}",
+                        language
+                    )));
+                }
+            } else {
+                return Err(CodeGraphError::Parse(format!(
+                    "Unsupported language: {:?}",
+                    language
+                )));
+            }
 
             // First attempt: try to parse normally
-            match parser.parse(&content, None) {
+            let result = match parser.parse(&content, None) {
                 Some(tree) => {
                     let mut tree_used = tree;
                     let mut used_content = content.clone();
@@ -332,15 +548,21 @@ impl TreeSitterParser {
                     }
 
                     if matches!(language, Language::Rust) {
-                        // Use advanced Rust extractor
+                        // REVOLUTIONARY: Use unified Rust extractor for nodes + edges in single pass
                         use crate::languages::rust::RustExtractor;
-                        Ok(RustExtractor::extract(&tree_used, &used_content, &file_path))
+                        let result = RustExtractor::extract_with_edges(
+                            &tree_used,
+                            &used_content,
+                            &file_path,
+                        );
+                        Ok(result.nodes) // Return only nodes for backward compatibility
                     } else if matches!(language, Language::Python) {
                         // Use Python extractor (docstrings, type hints, call graph metadata)
                         let extraction =
                             crate::languages::python::extract_python(&file_path, &used_content);
                         Ok(extraction.nodes)
-                    } else if matches!(language, Language::JavaScript | Language::TypeScript) {
+                    } else if matches!(language, Language::JavaScript) {
+                        // Use JavaScript-specific extraction (currently stub)
                         let nodes = crate::languages::javascript::extract_js_ts_nodes(
                             language.clone(),
                             &file_path,
@@ -348,6 +570,43 @@ impl TreeSitterParser {
                             tree_used.root_node(),
                         );
                         Ok(nodes)
+                    } else if matches!(language, Language::TypeScript) {
+                        // Use generic AstVisitor for TypeScript (bypassing stub)
+                        let mut visitor = AstVisitor::new(
+                            language.clone(),
+                            file_path.clone(),
+                            used_content.clone(),
+                        );
+                        visitor.visit(tree_used.root_node());
+                        Ok(visitor.nodes)
+                    } else if matches!(language, Language::Swift) {
+                        // Use advanced Swift extractor for iOS/macOS development
+                        use crate::languages::swift::SwiftExtractor;
+                        Ok(SwiftExtractor::extract(
+                            &tree_used,
+                            &used_content,
+                            &file_path,
+                        ))
+                    } else if matches!(language, Language::CSharp) {
+                        // Use advanced C# extractor for .NET development
+                        use crate::languages::csharp::CSharpExtractor;
+                        Ok(CSharpExtractor::extract(
+                            &tree_used,
+                            &used_content,
+                            &file_path,
+                        ))
+                    } else if matches!(language, Language::Ruby) {
+                        // Use advanced Ruby extractor for Rails development
+                        use crate::languages::ruby::RubyExtractor;
+                        Ok(RubyExtractor::extract(
+                            &tree_used,
+                            &used_content,
+                            &file_path,
+                        ))
+                    } else if matches!(language, Language::Php) {
+                        // Use advanced PHP extractor for Laravel/web development
+                        use crate::languages::php::PhpExtractor;
+                        Ok(PhpExtractor::extract(&tree_used, &used_content, &file_path))
                     } else {
                         let mut visitor = AstVisitor::new(
                             language.clone(),
@@ -385,6 +644,38 @@ impl TreeSitterParser {
                                         line,
                                     );
                                     recovered_nodes.extend(extraction.nodes);
+                                } else if matches!(language, Language::Swift) {
+                                    use crate::languages::swift::SwiftExtractor;
+                                    let nodes = SwiftExtractor::extract(
+                                        &tree,
+                                        line,
+                                        &format!("{}:{}", file_path, line_num + 1),
+                                    );
+                                    recovered_nodes.extend(nodes);
+                                } else if matches!(language, Language::CSharp) {
+                                    use crate::languages::csharp::CSharpExtractor;
+                                    let nodes = CSharpExtractor::extract(
+                                        &tree,
+                                        line,
+                                        &format!("{}:{}", file_path, line_num + 1),
+                                    );
+                                    recovered_nodes.extend(nodes);
+                                } else if matches!(language, Language::Ruby) {
+                                    use crate::languages::ruby::RubyExtractor;
+                                    let nodes = RubyExtractor::extract(
+                                        &tree,
+                                        line,
+                                        &format!("{}:{}", file_path, line_num + 1),
+                                    );
+                                    recovered_nodes.extend(nodes);
+                                } else if matches!(language, Language::Php) {
+                                    use crate::languages::php::PhpExtractor;
+                                    let nodes = PhpExtractor::extract(
+                                        &tree,
+                                        line,
+                                        &format!("{}:{}", file_path, line_num + 1),
+                                    );
+                                    recovered_nodes.extend(nodes);
                                 } else {
                                     let mut visitor = AstVisitor::new(
                                         language.clone(),
@@ -412,25 +703,113 @@ impl TreeSitterParser {
                         Ok(recovered_nodes)
                     }
                 }
+            };
+
+            // Return parser to pool for reuse
+            {
+                let mut pool = parser_pool.lock();
+                if let Some(parser_set) = pool.first_mut() {
+                    parser_set.insert(language, parser);
+                } else {
+                    let mut new_set = std::collections::HashMap::new();
+                    new_set.insert(language, parser);
+                    pool.push(new_set);
+                }
             }
-        })
-        .await
-        .map_err(|e| CodeGraphError::Parse(e.to_string()))?
+
+            result
+        });
+
+        // Apply timeout protection - fail fast for problematic files
+        let timeout_duration = if content_len > 1_000_000 {
+            Duration::from_secs(60) // Large files get more time
+        } else if content_len > 100_000 {
+            Duration::from_secs(30) // Medium files get moderate time
+        } else {
+            Duration::from_secs(10) // Small files should parse quickly
+        };
+
+        match tokio::time::timeout(timeout_duration, parsing_task).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(e)) => Err(CodeGraphError::Parse(e.to_string())),
+            Err(_) => {
+                warn!(
+                    "Parsing timeout for file: {} ({}s)",
+                    file_path_for_timeout,
+                    timeout_duration.as_secs()
+                );
+                Err(CodeGraphError::Parse(format!(
+                    "Parsing timeout for file: {} ({}s)",
+                    file_path_for_timeout,
+                    timeout_duration.as_secs()
+                )))
+            }
+        }
     }
 
-    // Lightweight tolerant cleaner to strip common constructs that confuse grammars
+    // Enhanced tolerant cleaner to strip common constructs that confuse grammars
     fn tolerant_clean(src: &str) -> String {
         let mut out = String::with_capacity(src.len());
+        let mut in_block_comment = false;
+        let mut in_multiline_macro = false;
+
         for line in src.lines() {
-            let t = line.trim_start();
-            if t.starts_with("#pragma")
-                || t.starts_with("//@generated")
-                || t.starts_with("#[cfg(")
-                || t.starts_with("macro_rules!")
-            {
+            let trimmed = line.trim_start();
+
+            // Handle block comments
+            if trimmed.contains("/*") && !in_block_comment {
+                in_block_comment = true;
+            }
+            if in_block_comment {
+                if trimmed.contains("*/") {
+                    in_block_comment = false;
+                }
                 continue;
             }
-            out.push_str(line);
+
+            // Handle multi-line macros
+            if trimmed.starts_with("macro_rules!") || in_multiline_macro {
+                in_multiline_macro = true;
+                if trimmed.ends_with("}") && !trimmed.ends_with("\\}") {
+                    in_multiline_macro = false;
+                }
+                continue;
+            }
+
+            // Skip problematic lines that commonly cause parse errors
+            if trimmed.starts_with("#pragma")
+                || trimmed.starts_with("//@generated")
+                || trimmed.starts_with("//!") // Doc comments that can be complex
+                || trimmed.starts_with("#[cfg(")
+                || trimmed.starts_with("#[derive(")
+                || trimmed.starts_with("#[allow(")
+                || trimmed.starts_with("#[warn(")
+                || trimmed.starts_with("#[deny(")
+                || trimmed.starts_with("#[forbid(")
+                || trimmed.starts_with("extern crate")
+                || trimmed.starts_with("use std::mem::transmute") // Unsafe constructs
+                || trimmed.contains("unsafe {") // Skip unsafe blocks that often have complex syntax
+                || trimmed.starts_with("pub use") && trimmed.contains("::*") // Complex re-exports
+                || trimmed.contains("__asm__") // Assembly code
+                || trimmed.contains("asm!")
+            // Rust inline assembly
+            {
+                // Replace with empty line to maintain line numbers for debugging
+                out.push('\n');
+                continue;
+            }
+
+            // Clean up complex generic syntax that can confuse parsers
+            let cleaned_line = if trimmed.contains('<') && trimmed.contains('>') {
+                // Simplify complex generic bounds that often cause issues
+                line.replace("where T: Clone + Send + Sync + 'static", "")
+                    .replace("impl<T>", "impl")
+                    .replace("for<'a>", "")
+            } else {
+                line.to_string()
+            };
+
+            out.push_str(&cleaned_line);
             out.push('\n');
         }
         out
@@ -509,9 +888,9 @@ impl TreeSitterParser {
                 .parse(&new_content, Some(&updated_tree))
                 .ok_or_else(|| CodeGraphError::Parse("Failed to incremental parse".to_string()))?;
 
-            let mut visitor = AstVisitor::new(language, file_path, new_content);
+            let mut visitor =
+                AstVisitor::new(language.clone(), file_path.clone(), new_content.clone());
             visitor.visit(new_tree.root_node());
-
             Ok(visitor.nodes)
         })
         .await
@@ -526,6 +905,190 @@ impl TreeSitterParser {
         let cache_size = self.parsed_cache.len();
         let estimated_memory = cache_size * 1024; // Rough estimate
         (cache_size, estimated_memory)
+    }
+
+    /// REVOLUTIONARY: Parse file with unified node+edge extraction for maximum speed
+    pub async fn parse_file_with_edges(&self, file_path: &str) -> Result<ExtractionResult> {
+        let language = self
+            .registry
+            .detect_language(file_path)
+            .ok_or_else(|| CodeGraphError::Parse(format!("Unknown file type: {}", file_path)))?;
+
+        let content = read_file_to_string(file_path)
+            .await
+            .map_err(|e| CodeGraphError::Io(e))?;
+
+        self.parse_content_with_unified_extraction(&content, file_path, language)
+            .await
+    }
+
+    /// FASTEST: Parse content with unified node+edge extraction in single AST traversal
+    async fn parse_content_with_unified_extraction(
+        &self,
+        content: &str,
+        file_path: &str,
+        language: Language,
+    ) -> Result<ExtractionResult> {
+        let registry = self.registry.clone();
+        let content_string = content.to_string();
+        let file_path_string = file_path.to_string();
+        let parser_pool = self.parser_pool.clone();
+
+        // Clone for timeout message
+        let content_len = content.len();
+        let file_path_for_timeout = file_path.to_string();
+
+        // Add timeout protection for problematic files
+        let parsing_task = tokio::task::spawn_blocking(move || {
+            let content = content_string;
+            let file_path = file_path_string;
+
+            // Try to get parser from pool first, create new one if pool is empty
+            let mut parser = {
+                let mut pool = parser_pool.lock();
+                let mut found_parser = None;
+
+                for parser_set in pool.iter_mut() {
+                    if let Some(p) = parser_set.remove(&language) {
+                        found_parser = Some(p);
+                        break;
+                    }
+                }
+
+                found_parser.unwrap_or_else(|| {
+                    registry
+                        .create_parser(&language)
+                        .unwrap_or_else(|| tree_sitter::Parser::new())
+                })
+            };
+
+            // Ensure parser has correct language set
+            if let Some(config) = registry.get_config(&language) {
+                if parser.set_language(&config.language).is_err() {
+                    return Err(CodeGraphError::Parse(format!(
+                        "Failed to set language for: {:?}",
+                        language
+                    )));
+                }
+            } else {
+                return Err(CodeGraphError::Parse(format!(
+                    "Unsupported language: {:?}",
+                    language
+                )));
+            }
+
+            // Parse with tolerance and retry
+            let result = match parser.parse(&content, None) {
+                Some(tree) => {
+                    let mut tree_used = tree;
+                    let mut used_content = content.clone();
+                    if tree_used.root_node().has_error() {
+                        let cleaned = Self::tolerant_clean(&content);
+                        if cleaned != content {
+                            if let Some(tree2) = parser.parse(&cleaned, None) {
+                                if !tree2.root_node().has_error() {
+                                    tree_used = tree2;
+                                    used_content = cleaned;
+                                }
+                            }
+                        }
+                    }
+
+                    // REVOLUTIONARY: Use unified extractors for MAXIMUM SPEED
+                    if matches!(language, Language::Rust) {
+                        use crate::languages::rust::RustExtractor;
+                        Ok(RustExtractor::extract_with_edges(
+                            &tree_used,
+                            &used_content,
+                            &file_path,
+                        ))
+                    } else if matches!(language, Language::TypeScript) {
+                        use crate::languages::javascript::TypeScriptExtractor;
+                        Ok(TypeScriptExtractor::extract_with_edges(
+                            &tree_used,
+                            &used_content,
+                            &file_path,
+                            language.clone(),
+                        ))
+                    } else if matches!(language, Language::JavaScript) {
+                        use crate::languages::javascript::TypeScriptExtractor;
+                        Ok(TypeScriptExtractor::extract_with_edges(
+                            &tree_used,
+                            &used_content,
+                            &file_path,
+                            language.clone(),
+                        ))
+                    } else if matches!(language, Language::Python) {
+                        use crate::languages::python::PythonExtractor;
+                        Ok(PythonExtractor::extract_with_edges(
+                            &tree_used,
+                            &used_content,
+                            &file_path,
+                        ))
+                    } else {
+                        // Fallback: use AstVisitor for other languages (no edges yet)
+                        let mut visitor = crate::AstVisitor::new(
+                            language.clone(),
+                            file_path.clone(),
+                            used_content.clone(),
+                        );
+                        visitor.visit(tree_used.root_node());
+                        Ok(ExtractionResult {
+                            nodes: visitor.nodes,
+                            edges: Vec::new(), // No edges for unsupported languages yet
+                        })
+                    }
+                }
+                None => {
+                    // Fallback: return empty result
+                    warn!("Complete parsing failed for {}", file_path);
+                    Ok(ExtractionResult {
+                        nodes: Vec::new(),
+                        edges: Vec::new(),
+                    })
+                }
+            };
+
+            // Return parser to pool
+            {
+                let mut pool = parser_pool.lock();
+                if let Some(parser_set) = pool.first_mut() {
+                    parser_set.insert(language, parser);
+                } else {
+                    let mut new_set = std::collections::HashMap::new();
+                    new_set.insert(language, parser);
+                    pool.push(new_set);
+                }
+            }
+
+            result
+        });
+
+        // Apply timeout protection
+        let timeout_duration = if content_len > 1_000_000 {
+            Duration::from_secs(60)
+        } else if content_len > 100_000 {
+            Duration::from_secs(30)
+        } else {
+            Duration::from_secs(10)
+        };
+
+        match tokio::time::timeout(timeout_duration, parsing_task).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(e)) => Err(CodeGraphError::Parse(e.to_string())),
+            Err(_) => {
+                warn!(
+                    "Parsing timeout for file: {} ({}s)",
+                    file_path_for_timeout,
+                    timeout_duration.as_secs()
+                );
+                Err(CodeGraphError::Parse(format!(
+                    "Parsing timeout for file: {} ({}s)",
+                    file_path_for_timeout,
+                    timeout_duration.as_secs()
+                )))
+            }
+        }
     }
 }
 

@@ -24,22 +24,30 @@ dashmap = { workspace = true }
 parking_lot = { workspace = true }
 tokio-util = { workspace = true }
 fastrand = { workspace = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true }
+toml = { workspace = true }
+rmcp = { workspace = true }
+schemars = { workspace = true }
 
 # CLI dependencies
 clap = { workspace = true }
 colored = { workspace = true }
 indicatif = { workspace = true }
 which = "8.0"
-nix = { version = "0.29", features = ["process", "signal"] }
-notify = "8.2"
+nix = { version = "0.30.1", features = ["process", "signal"] }
+notify = "8.2.0"
 walkdir = "2.5"
 regex = { workspace = true }
+rayon = { workspace = true }
+num_cpus = { workspace = true }
 
 # Internal dependencies
 codegraph-core = { workspace = true }
 codegraph-parser = { workspace = true }
 codegraph-graph = { workspace = true }
 codegraph-vector = { workspace = true, optional = true, default-features = false }
+codegraph-ai = { workspace = true, optional = true }  # Re-enabled for AI-powered symbol resolution
 faiss = { workspace = true, optional = true }
 # codegraph-api not used directly here; avoid pulling heavy deps
 ## core-rag-mcp-server intentionally not linked to keep binary lean
@@ -50,10 +58,16 @@ hyper = { workspace = true, optional = true }
 [dev-dependencies]
 tokio-test = { workspace = true }
 tempfile = { workspace = true }
+anyhow = { workspace = true }
+# rmcp already available through main dependencies for testing
 
 [[bin]]
 name = "codegraph"
 path = "src/bin/codegraph.rs"
+
+[[bin]]
+name = "codegraph-official"
+path = "src/bin/codegraph-official.rs"
 
 [features]
 default = []
@@ -61,4 +75,7 @@ faiss = ["dep:faiss"]
 embeddings = ["dep:codegraph-vector"]
 embeddings-local = ["embeddings", "codegraph-vector/local-embeddings"]
 embeddings-openai = ["embeddings", "codegraph-vector/openai"]
+embeddings-ollama = ["embeddings", "codegraph-vector/ollama"]
 server-http = ["dep:axum", "dep:hyper"]
+qwen-integration = []
+ai-enhanced = ["dep:codegraph-ai", "faiss", "embeddings"]

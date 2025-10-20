@@ -75,15 +75,24 @@ impl SimpleFaissManager {
             return Ok(());
         }
 
-        // Prepare flat vector array for FAISS
         let flat_vectors: Vec<f32> = vectors
             .iter()
             .flat_map(|(_, embedding)| embedding.iter().cloned())
             .collect();
 
-        // Add to FAISS index
         let mut index_guard = self.index.write();
         let index = index_guard.as_mut().unwrap();
+
+        // CRITICAL FIX: Train the index if it's not already trained
+        if !index.is_trained() && vectors.len() >= self.config.training_threshold {
+            info!(
+                "Training FAISS index with {} vectors...",
+                flat_vectors.len() / self.config.dimension
+            );
+            index
+                .train(&flat_vectors)
+                .map_err(|e| CodeGraphError::Vector(format!("Failed to train index: {}", e)))?;
+        }
 
         index
             .add(&flat_vectors)
@@ -119,9 +128,10 @@ impl SimpleFaissManager {
             )));
         }
 
-        let mut index_guard = self.index.write();
+        // Use a read lock for concurrent searches
+        let index_guard = self.index.read();
         let index = index_guard
-            .as_mut()
+            .as_ref()
             .ok_or_else(|| CodeGraphError::Vector("Index not initialized".to_string()))?;
 
         let search_result = index

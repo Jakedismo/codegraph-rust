@@ -6,8 +6,8 @@
 use crate::{ZeroCopyError, ZeroCopyResult};
 use memmap2::{Advice, Mmap, MmapMut, MmapOptions};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use rkyv::{access, access_unchecked, Archive};
 use rkyv::api::high::HighValidator;
+use rkyv::{access, access_unchecked, Archive};
 use std::{
     fs::{File, OpenOptions},
     io::{Seek, SeekFrom},

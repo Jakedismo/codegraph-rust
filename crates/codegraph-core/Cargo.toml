@@ -19,6 +19,8 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true }
+dotenv = "0.15"
+dirs = "5.0"
 tokio = { workspace = true }
 futures = { workspace = true }
 num_cpus = { workspace = true }
@@ -39,6 +41,7 @@ tikv-jemallocator = { workspace = true }
 hashbrown = { workspace = true }
 rustc-hash = { workspace = true }
 sha2 = { workspace = true }
+bincode = { workspace = true }
 
 memmap2 = { workspace = true }
 
@@ -47,8 +50,9 @@ bytes = { workspace = true }
 
 # Optional arena allocator and zero-copy archiving
 bumpalo = "3.15"
-rkyv = { version = "0.7", features = ["validation"] }
+rkyv = { version = "0.7.45", features = ["validation"] }
 bytecheck = "0.8"
+faiss.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

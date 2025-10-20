@@ -1,11 +1,14 @@
 use crate::EmbeddingGenerator;
 #[cfg(feature = "faiss")]
 use crate::SemanticSearch;
+#[cfg(feature = "cache")]
+use codegraph_cache::{CacheConfig, EmbeddingCache};
 use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, instrument};
+use tokio::sync::RwLock;
+use tracing::{debug, info, instrument};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalResult {
@@ -53,26 +56,54 @@ pub struct ContextRetriever {
     embedding_generator: Arc<EmbeddingGenerator>,
     config: RetrievalConfig,
     node_cache: HashMap<NodeId, CodeNode>,
+    #[cfg(feature = "cache")]
+    embedding_cache: Arc<RwLock<EmbeddingCache>>,
 }
 
 impl ContextRetriever {
     pub fn new() -> Self {
+        #[cfg(feature = "cache")]
+        let embedding_cache = {
+            let cache_config = CacheConfig {
+                max_entries: 10_000,
+                max_memory_bytes: 100 * 1024 * 1024, // 100MB
+                default_ttl: std::time::Duration::from_secs(3600),
+                enable_compression: true,
+            };
+            Arc::new(RwLock::new(EmbeddingCache::new(cache_config)))
+        };
+
         Self {
             #[cfg(feature = "faiss")]
             semantic_search: None,
             embedding_generator: Arc::new(EmbeddingGenerator::default()),
             config: RetrievalConfig::default(),
             node_cache: HashMap::new(),
+            #[cfg(feature = "cache")]
+            embedding_cache,
         }
     }
 
     pub fn with_config(config: RetrievalConfig) -> Self {
+        #[cfg(feature = "cache")]
+        let embedding_cache = {
+            let cache_config = CacheConfig {
+                max_entries: 10_000,
+                max_memory_bytes: 100 * 1024 * 1024, // 100MB
+                default_ttl: std::time::Duration::from_secs(3600),
+                enable_compression: true,
+            };
+            Arc::new(RwLock::new(EmbeddingCache::new(cache_config)))
+        };
+
         Self {
             #[cfg(feature = "faiss")]
             semantic_search: None,
             embedding_generator: Arc::new(EmbeddingGenerator::default()),
             config,
             node_cache: HashMap::new(),
+            #[cfg(feature = "cache")]
+            embedding_cache,
         }
     }
 
@@ -259,33 +290,34 @@ impl ContextRetriever {
     }
 
     async fn generate_query_embedding(&self, query: &str) -> Result<Vec<f32>> {
-        tokio::task::spawn_blocking({
-            let query = query.to_string();
-            move || {
-                let dimension = 384;
-                let mut embedding = vec![0.0f32; dimension];
+        // Try cache first if available
+        #[cfg(feature = "cache")]
+        {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(query.as_bytes());
+            let key = format!("query_{:x}", hasher.finalize());
 
-                let hash = simple_hash(&query);
-                let mut rng_state = hash;
-
-                for i in 0..dimension {
-                    rng_state = rng_state.wrapping_mul(1103515245).wrapping_add(12345);
-                    embedding[i] = ((rng_state as f32 / u32::MAX as f32) - 0.5) * 2.0;
-                }
-
-                // Normalize embedding
-                let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-                if norm > 0.0 {
-                    for x in &mut embedding {
-                        *x /= norm;
-                    }
-                }
-
-                embedding
+            // Check cache
+            if let Ok(Some(cached_embedding)) = self.embedding_cache.write().await.get(&key).await {
+                info!("🎯 Cache hit for query embedding");
+                return Ok(cached_embedding);
             }
-        })
-        .await
-        .map_err(|e| CodeGraphError::Vector(e.to_string()))
+
+            // Generate using embedding generator
+            let embedding = self.embedding_generator.generate_text_embedding(query).await?;
+
+            // Cache the result
+            let _ = self.embedding_cache.write().await.insert(key, embedding.clone(), std::time::Duration::from_secs(3600)).await;
+            info!("💾 Cached query embedding");
+            return Ok(embedding);
+        }
+
+        #[cfg(not(feature = "cache"))]
+        {
+            // Fallback: Use embedding generator or deterministic fallback
+            self.embedding_generator.generate_text_embedding(query).await
+        }
     }
 
     async fn generate_text_embedding(&self, text: &str) -> Result<Vec<f32>> {

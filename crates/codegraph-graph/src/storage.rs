@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono;
 use codegraph_core::{
-    CodeGraphError, CodeNode, GraphStore, Language, Location, NodeId, NodeType, Result,
+    CodeGraphError, CodeNode, EdgeType, GraphStore, Language, Location, NodeId, NodeType, Result,
 };
 use dashmap::DashMap;
 use memmap2::{Mmap, MmapOptions};
@@ -207,8 +207,9 @@ impl HighPerformanceRocksDbStorage {
 
         // Open existing column families in read-only mode
         let cf_names = vec![NODES_CF, EDGES_CF, INDICES_CF, METADATA_CF];
-        let db = DB::open_cf_for_read_only(&db_opts, &path, cf_names, false)
-            .map_err(|e| CodeGraphError::Database(format!("Failed to open database (read-only): {}", e)))?;
+        let db = DB::open_cf_for_read_only(&db_opts, &path, cf_names, false).map_err(|e| {
+            CodeGraphError::Database(format!("Failed to open database (read-only): {}", e))
+        })?;
 
         let batching_config = BatchingConfig::default();
         let db_arc = Arc::new(db);
@@ -241,7 +242,7 @@ impl HighPerformanceRocksDbStorage {
         let node_id = node.id;
         let serializable_node = SerializableCodeNode::from(node.clone());
         let node_key = Self::node_key(node_id);
-        let node_bytes = bincode::serialize(&serializable_node)
+        let node_bytes = serde_json::to_vec(&serializable_node)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
         let name_index_key = Self::index_key(b"name:", node.name.as_str(), node_id);
         self.with_batch(None, |batch| {
@@ -364,7 +365,10 @@ impl HighPerformanceRocksDbStorage {
             .get_cf(&metadata_cf, b"edge_counter")
             .map_err(|e| CodeGraphError::Database(e.to_string()))?
         {
-            if let Ok(count) = bincode::deserialize::<u64>(&edge_count_bytes) {
+            if let Ok(count) =
+                bincode::decode_from_slice(&edge_count_bytes, bincode::config::standard())
+                    .map(|(count, _)| count)
+            {
                 self.edge_counter.store(count, Ordering::Relaxed);
             }
         }
@@ -438,7 +442,7 @@ impl HighPerformanceRocksDbStorage {
 
         let edge_key = Self::edge_key(edge_id);
         let edge_bytes =
-            bincode::serialize(&edge).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            serde_json::to_vec(&edge).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         let from_index_key = Self::index_edge_key(b"from:", &edge.from.to_string(), edge_id);
         let to_index_key = Self::index_edge_key(b"to:", &edge.to.to_string(), edge_id);
@@ -462,7 +466,7 @@ impl HighPerformanceRocksDbStorage {
         let indices_cf = self.get_cf_handle(INDICES_CF)?;
         let edge_key = Self::edge_key(edge_id);
         let edge_bytes =
-            bincode::serialize(&edge).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            serde_json::to_vec(&edge).map_err(|e| CodeGraphError::Database(e.to_string()))?;
         let from_index_key = Self::index_edge_key(b"from:", &edge.from.to_string(), edge_id);
         let to_index_key = Self::index_edge_key(b"to:", &edge.to.to_string(), edge_id);
 
@@ -514,7 +518,7 @@ impl HighPerformanceRocksDbStorage {
                 .get_cf(&edges_cf, edge_key)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?
             {
-                let edge: SerializableEdge = bincode::deserialize(&edge_data)
+                let edge: SerializableEdge = serde_json::from_slice::<SerializableEdge>(&edge_data)
                     .map_err(|e| CodeGraphError::Database(e.to_string()))?;
                 edges.push(edge);
             }
@@ -563,7 +567,7 @@ impl HighPerformanceRocksDbStorage {
                 .get_cf(&edges_cf, edge_key)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?
             {
-                let edge: SerializableEdge = bincode::deserialize(&edge_data)
+                let edge: SerializableEdge = serde_json::from_slice::<SerializableEdge>(&edge_data)
                     .map_err(|e| CodeGraphError::Database(e.to_string()))?;
                 edges.push(edge);
             }
@@ -609,8 +613,9 @@ impl HighPerformanceRocksDbStorage {
                     .get_cf(&edges_cf, Self::edge_key(edge_id))
                     .map_err(|e| CodeGraphError::Database(e.to_string()))?
                 {
-                    let edge: SerializableEdge = bincode::deserialize(&edge_data)
-                        .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                    let edge: SerializableEdge =
+                        serde_json::from_slice::<SerializableEdge>(&edge_data)
+                            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
                     let type_match = match edge_type {
                         Some(t) => edge.edge_type == t,
                         None => true,
@@ -679,7 +684,7 @@ impl HighPerformanceRocksDbStorage {
         let indices_cf = self.get_cf_handle(INDICES_CF)?;
 
         let node_key = Self::node_key(node_id);
-        let node_bytes = bincode::serialize(&serializable_node)
+        let node_bytes = serde_json::to_vec(&serializable_node)
             .map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         let name_index_key = Self::index_key(b"name:", node.name.as_str(), node_id);
@@ -706,7 +711,7 @@ impl HighPerformanceRocksDbStorage {
             let node_id = node.id;
             let serializable_node = SerializableCodeNode::from(node.clone());
             let node_key = Self::node_key(node_id);
-            let node_bytes = bincode::serialize(&serializable_node)
+            let node_bytes = serde_json::to_vec(&serializable_node)
                 .map_err(|e| CodeGraphError::Database(e.to_string()))?;
             let name_index_key = Self::index_key(b"name:", node.name.as_str(), node_id);
 
@@ -739,7 +744,7 @@ impl HighPerformanceRocksDbStorage {
         for edge in edges.into_iter() {
             let edge_key = Self::edge_key(edge.id);
             let edge_bytes =
-                bincode::serialize(&edge).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                serde_json::to_vec(&edge).map_err(|e| CodeGraphError::Database(e.to_string()))?;
             let from_index_key = Self::index_edge_key(b"from:", &edge.from.to_string(), edge.id);
             let to_index_key = Self::index_edge_key(b"to:", &edge.to.to_string(), edge.id);
             self.with_batch(None, |batch| {

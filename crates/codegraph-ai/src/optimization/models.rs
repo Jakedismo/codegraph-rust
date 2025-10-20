@@ -283,7 +283,7 @@ impl<I: Send + 'static, O: Send + 'static> DynamicBatcher<I, O> {
                         size
                     );
                     for req in buffer.drain(..) {
-                        let _ = req.tx.send(Err(err.clone()));
+                        let _ = req.tx.send(Err(anyhow::anyhow!("{}", err)));
                     }
                 } else {
                     for (req, out) in buffer.drain(..).zip(outputs.into_iter()) {
@@ -297,7 +297,7 @@ impl<I: Send + 'static, O: Send + 'static> DynamicBatcher<I, O> {
             Err(e) => {
                 error!(error=?e, "batch inference failed");
                 for req in buffer.drain(..) {
-                    let _ = req.tx.send(Err(e.clone()));
+                    let _ = req.tx.send(Err(anyhow::anyhow!("{}", e)));
                 }
             }
         }
@@ -309,8 +309,9 @@ impl<I: Send + 'static, O: Send + 'static> DynamicBatcher<I, O> {
         self.tx
             .send(req)
             .await
-            .context("dynamic batch queue full or closed")?;
-        rx.await.context("inference canceled")?
+            .map_err(|_| anyhow::anyhow!("dynamic batch queue full or closed"))?;
+        rx.await
+            .map_err(|_| anyhow::anyhow!("inference canceled"))?
     }
 }
 

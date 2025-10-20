@@ -7,7 +7,9 @@ use uuid::Uuid;
 pub type NodeId = Uuid;
 pub type EdgeId = Uuid;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode,
+)]
 pub enum Language {
     Rust,
     TypeScript,
@@ -16,10 +18,19 @@ pub enum Language {
     Go,
     Java,
     Cpp,
+    // Revolutionary universal language support
+    Swift,
+    Kotlin,
+    CSharp,
+    Ruby,
+    Php,
+    Dart,
     Other(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode,
+)]
 pub enum NodeType {
     Function,
     Struct,
@@ -88,7 +99,7 @@ impl FromStr for EdgeType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
 pub struct Location {
     pub file_path: String,
     pub line: u32,
@@ -102,6 +113,22 @@ pub struct Metadata {
     pub attributes: HashMap<String, String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Universal extraction result for single-pass node + edge generation (FASTEST approach)
+#[derive(Debug, Clone)]
+pub struct ExtractionResult {
+    pub nodes: Vec<crate::CodeNode>,
+    pub edges: Vec<EdgeRelationship>,
+}
+
+/// Represents a relationship between code entities extracted during AST traversal
+#[derive(Debug, Clone)]
+pub struct EdgeRelationship {
+    pub from: NodeId,
+    pub to: String, // Symbol name to be resolved to NodeId later
+    pub edge_type: EdgeType,
+    pub metadata: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

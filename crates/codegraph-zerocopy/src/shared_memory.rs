@@ -6,8 +6,8 @@
 use crate::{ZeroCopyError, ZeroCopyResult};
 use memmap2::{MmapMut, MmapOptions};
 use parking_lot::{Mutex, RwLock};
-use rkyv::{access, access_unchecked, Archive};
 use rkyv::api::high::HighValidator;
+use rkyv::{access, access_unchecked, Archive};
 use std::{
     ffi::CString,
     fs::{File, OpenOptions},

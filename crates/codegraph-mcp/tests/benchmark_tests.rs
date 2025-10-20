@@ -121,10 +121,10 @@ async fn benchmark_version_negotiation() {
     let start = Instant::now();
 
     for i in 0..iterations {
-        let version = if i % 2 == 0 {
-            "2025-03-26"
-        } else {
-            "2024-11-05"
+        let version = match i % 3 {
+            0 => "2025-06-18",
+            1 => "2025-03-26",
+            _ => "2024-11-05",
         };
         let _result = negotiator.negotiate(version).unwrap();
     }
@@ -222,7 +222,7 @@ async fn performance_system_responsiveness() {
 
     // Create version negotiator
     let negotiator = VersionNegotiator::new();
-    let _version = negotiator.negotiate("2025-03-26").unwrap();
+    let _version = negotiator.negotiate("2025-06-18").unwrap();
 
     // Create complex message
     let params = json!({
