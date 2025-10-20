@@ -36,7 +36,7 @@ struct SearchRequest {
 }
 
 fn default_limit() -> usize {
-    10
+    5  // Reduced from 10 for faster agent responses
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -83,7 +83,7 @@ fn default_depth() -> usize {
     2
 }
 fn default_traverse_limit() -> usize {
-    100
+    20  // Reduced from 100 to prevent overwhelming agent responses
 }
 
 // #[derive(Deserialize, JsonSchema)]
@@ -130,7 +130,7 @@ struct SemanticIntelligenceRequest {
     /// Type of analysis to perform (default: "semantic_search")
     #[serde(default = "default_task_type")]
     task_type: String,
-    /// Maximum context tokens to use from 128K available (default: 80000)
+    /// Maximum context tokens to use from 128K available (default: 20000 for faster responses)
     #[serde(default = "default_max_context_tokens")]
     max_context_tokens: usize,
 }
@@ -139,7 +139,7 @@ fn default_task_type() -> String {
     "semantic_search".to_string()
 }
 fn default_max_context_tokens() -> usize {
-    80000
+    20000  // Reduced from 80000 for faster responses (30-60s instead of 60-120s)
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -170,7 +170,7 @@ struct EmptyRequest {
 struct CodebaseQaRequest {
     /// Natural language question about the codebase
     question: String,
-    /// Maximum number of results to consider (default: 10)
+    /// Maximum number of results to consider (default: 5 for faster responses)
     #[serde(default)]
     max_results: Option<usize>,
     /// Enable streaming response (default: false for MCP compatibility)
@@ -309,7 +309,7 @@ impl CodeGraphMCPServer {
 
     /// Enhanced semantic search with AI-powered analysis for finding code patterns and architectural insights
     #[tool(
-        description = "Search your codebase with AI analysis. Finds code patterns, architectural insights, and team conventions. Use when you need intelligent analysis of search results. Required: query (what to search for). Optional: limit (max results, default 10)."
+        description = "Search code with AI insights (2-5s). Returns relevant code + analysis of patterns and architecture. Use for: understanding code behavior, finding related functionality, discovering patterns. Fast alternative: vector_search. Required: query. Optional: limit (default 5)."
     )]
     async fn enhanced_search(
         &self,
@@ -405,7 +405,7 @@ impl CodeGraphMCPServer {
 
     /// Analyze coding patterns, conventions, and team standards across your codebase
     #[tool(
-        description = "Analyze your team's coding patterns and conventions. Detects naming conventions, code organization patterns, error handling styles, and quality metrics. Use to understand team standards or onboard new developers. No parameters required."
+        description = "Analyze coding patterns and conventions (1-3s). Detects naming styles, organization patterns, error handling, quality metrics. Use for: understanding team standards, onboarding, code review guidelines. No parameters required."
     )]
     async fn pattern_detection(
         &self,
@@ -462,7 +462,7 @@ impl CodeGraphMCPServer {
 
     /// Fast similarity search for finding code that matches your query without AI analysis
     #[tool(
-        description = "Fast vector similarity search to find code similar to your query. Returns raw search results without AI analysis (faster than enhanced_search). Use for quick code discovery. Required: query (what to find). Optional: paths (filter by directories), langs (filter by languages), limit (max results, default 10)."
+        description = "Fast vector search (0.5s). Returns matching code with similarity scores. Use for: quick code lookups, finding similar implementations. For deeper insights use enhanced_search. Required: query. Optional: paths, langs, limit (default 5)."
     )]
     async fn vector_search(
         &self,
@@ -497,7 +497,7 @@ impl CodeGraphMCPServer {
 
     /// Find code dependencies and relationships for a specific code element (function, class, etc)
     #[tool(
-        description = "Find all code that depends on or is used by a specific code element. Shows dependencies, imports, and relationships. Use to understand code impact before refactoring. Required: node (UUID from search results). Optional: limit (max results, default 20). Note: Get node UUIDs from vector_search or enhanced_search results."
+        description = "Find dependencies for a code element (0.3s). Shows what imports/calls this code and what it depends on. Use for: impact analysis, understanding relationships. Required: node (UUID from search). Optional: limit (default 20). Get UUIDs from vector_search or enhanced_search results."
     )]
     async fn graph_neighbors(
         &self,
@@ -550,7 +550,7 @@ impl CodeGraphMCPServer {
 
     /// Explore code architecture by following dependency chains from a starting point
     #[tool(
-        description = "Follow dependency chains through your codebase to understand architectural flow and code relationships. Use to trace execution paths or understand system architecture. Required: start (UUID from search results). Optional: depth (how far to traverse, default 2), limit (max results, default 100). Note: Get start UUIDs from vector_search or enhanced_search results."
+        description = "Follow dependency chains through code (0.5-2s). Traces execution paths and architectural flow. Use for: understanding call chains, mapping data flow. Required: start (UUID from search). Optional: depth (default 2), limit (default 20). Get UUIDs from vector_search or enhanced_search results."
     )]
     async fn graph_traverse(
         &self,
@@ -606,7 +606,7 @@ impl CodeGraphMCPServer {
     /// REVOLUTIONARY: Intelligent codebase Q&A using RAG (Retrieval-Augmented Generation)
     #[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
     #[tool(
-        description = "Ask natural language questions about the codebase and get intelligent, cited responses. Uses hybrid retrieval (vector search + graph traversal + keyword matching) with AI generation. Provides streaming responses with source citations and confidence scoring. Examples: 'How does authentication work?', 'Explain the data flow', 'What would break if I change this function?'. Required: question (natural language query). Optional: max_results (default 10), streaming (default false)."
+        description = "Ask questions about code and get AI answers with citations (5-30s). Examples: 'How does auth work?', 'Explain data flow'. Use for: complex questions requiring context. SLOW - use enhanced_search for simpler queries. Required: question. Optional: max_results (default 5), streaming (default false)."
     )]
     async fn codebase_qa(
         &self,
@@ -616,7 +616,7 @@ impl CodeGraphMCPServer {
 
         // Use the existing graph database from the server
         let config = codegraph_ai::rag::engine::RAGEngineConfig {
-            max_results: request.max_results.unwrap_or(10),
+            max_results: request.max_results.unwrap_or(5),  // Reduced from 10 for faster responses
             graph_neighbor_expansion: true,
             neighbor_hops: 2,
             streaming_chunk_chars: 64,
@@ -673,7 +673,7 @@ impl CodeGraphMCPServer {
     /// REVOLUTIONARY: AI-powered code documentation generation with graph context
     #[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
     #[tool(
-        description = "Generate comprehensive documentation for functions, classes, or modules using AI analysis with graph context. Analyzes dependencies, usage patterns, and architectural relationships to create intelligent documentation with source citations. Required: target_name (function/class/module name). Optional: file_path (focus scope), style (comprehensive/concise/tutorial)."
+        description = "Generate AI documentation for functions/classes (10-45s). Includes dependencies, usage patterns, examples. Use for: creating comprehensive docs. VERY SLOW - consider manual docs for simple cases. Required: target_name. Optional: file_path, style (comprehensive/concise/tutorial, default comprehensive)."
     )]
     async fn code_documentation(
         &self,
@@ -973,7 +973,7 @@ impl CodeGraphMCPServer {
 
     /// Deep AI-powered analysis of your entire codebase architecture and system design
     #[tool(
-        description = "Perform deep architectural analysis of your entire codebase using AI. Explains system design, component relationships, and overall architecture. Use for understanding large codebases or documenting architecture. Required: query (analysis focus). Optional: task_type (analysis type, default 'semantic_search'), max_context_tokens (AI context limit, default 80000)."
+        description = "⚠️ VERY SLOW (30-120s): Deep architectural analysis of entire codebase. Explains system design, components, architecture. Use ONLY for: major architectural questions, system-wide analysis. For specific code use enhanced_search. Required: query. Optional: max_context_tokens (default 20000, max 80000)."
     )]
     async fn semantic_intelligence(
         &self,
@@ -1034,7 +1034,7 @@ impl CodeGraphMCPServer {
 
     /// Predict what code will break before you modify a function or class
     #[tool(
-        description = "Predict the impact of modifying a specific function or class. Shows what code depends on it and might break. Use before refactoring to avoid breaking changes. Required: target_function (function/class name), file_path (path to file containing it). Optional: change_type (type of change, default 'modify')."
+        description = "Predict refactoring impact with AI (3-15s). Shows dependent code and breakage risks. Use for: pre-refactoring safety checks, understanding blast radius. Required: target_function, file_path. Optional: change_type (modify/delete/rename, default modify)."
     )]
     async fn impact_analysis(
         &self,
