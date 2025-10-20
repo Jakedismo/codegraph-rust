@@ -33,6 +33,9 @@ pub struct IndexerConfig {
     pub vector_dimension: usize,
     pub device: Option<String>,
     pub max_seq_len: usize,
+    /// Root directory of the project being indexed (where .codegraph/ will be created)
+    /// Defaults to current directory if not specified
+    pub project_root: PathBuf,
 }
 
 impl Default for IndexerConfig {
@@ -49,6 +52,7 @@ impl Default for IndexerConfig {
             vector_dimension: 384, // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
             device: None,
             max_seq_len: 512,
+            project_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         }
     }
 }
@@ -97,6 +101,7 @@ pub struct ProjectIndexer {
     parser: TreeSitterParser,
     graph: Option<CodeGraph>,
     vector_dim: usize,
+    project_root: PathBuf,
     #[cfg(feature = "embeddings")]
     embedder: codegraph_vector::EmbeddingGenerator,
 }
@@ -104,7 +109,9 @@ pub struct ProjectIndexer {
 impl ProjectIndexer {
     pub async fn new(config: IndexerConfig, multi_progress: MultiProgress) -> Result<Self> {
         let parser = TreeSitterParser::new();
-        let graph = CodeGraph::new()?;
+        let project_root = config.project_root.clone();
+        let db_path = project_root.join(".codegraph/db");
+        let graph = CodeGraph::new_with_path(db_path.to_str().unwrap())?;
         #[cfg(feature = "embeddings")]
         let embedder = {
             use codegraph_vector::EmbeddingGenerator;
@@ -207,6 +214,7 @@ impl ProjectIndexer {
             parser,
             graph: Some(graph),
             vector_dim,
+            project_root,
             #[cfg(feature = "embeddings")]
             embedder,
         })
@@ -477,8 +485,8 @@ impl ProjectIndexer {
                 }
             }
 
-            let out_dir = Path::new(".codegraph");
-            tokio::fs::create_dir_all(out_dir).await?;
+            let out_dir = self.project_root.join(".codegraph");
+            tokio::fs::create_dir_all(&out_dir).await?;
             // Global FAISS index creation with DEBUGGING
             info!(
                 "🔍 CRITICAL DEBUG: Creating FAISS index with {} vectors ({} total f32 values)",
@@ -528,7 +536,7 @@ impl ProjectIndexer {
         // Save embeddings for FAISS-backed search if enabled
         #[cfg(feature = "faiss")]
         {
-            let out_path = Path::new(".codegraph").join("embeddings.json");
+            let out_path = self.project_root.join(".codegraph/embeddings.json");
             save_embeddings_to_file(out_path, &nodes).await?;
         }
 
@@ -1799,7 +1807,7 @@ impl ProjectIndexer {
     }
 
     async fn is_indexed(&self, path: &Path) -> Result<bool> {
-        let metadata_path = Path::new(".codegraph").join("index.json");
+        let metadata_path = self.project_root.join(".codegraph/index.json");
         if !metadata_path.exists() {
             return Ok(false);
         }
@@ -1821,8 +1829,9 @@ impl ProjectIndexer {
             },
         };
 
-        let metadata_path = Path::new(".codegraph").join("index.json");
-        fs::create_dir_all(".codegraph").await?;
+        let codegraph_dir = self.project_root.join(".codegraph");
+        fs::create_dir_all(&codegraph_dir).await?;
+        let metadata_path = codegraph_dir.join("index.json");
         let json = serde_json::to_string_pretty(&metadata)?;
         fs::write(metadata_path, json).await?;
         Ok(())
