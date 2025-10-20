@@ -1202,24 +1202,42 @@ impl ProjectIndexer {
         info!("⚡ Embedding batch size: {} symbols per batch", batch_size);
 
         for batch in top_symbols.chunks(batch_size) {
-            // CRITICAL FIX: Sequential processing instead of concurrent to avoid ONNX conflicts
+            // PROFESSIONAL GPU OPTIMIZATION: Batch processing for maximum GPU utilization
             info!(
-                "🔧 Processing symbol batch of {} items sequentially",
+                "🔧 Processing symbol batch of {} items with GPU batching",
                 batch.len()
             );
-            for symbol in batch {
-                match embedder.generate_text_embedding(symbol).await {
-                    Ok(embedding) => {
-                        embeddings.insert(symbol.clone(), embedding);
-                        if embeddings.len() % 10 == 0 {
-                            info!("✅ Generated {} embeddings so far", embeddings.len());
-                        }
+
+            // Convert batch to Vec<String> for batch embedding
+            let batch_texts: Vec<String> = batch.iter().map(|s| s.to_string()).collect();
+
+            // Use batch embedding API for GPU acceleration
+            match embedder.embed_texts_batched(&batch_texts).await {
+                Ok(batch_embeddings) => {
+                    // Insert all embeddings from this batch
+                    for (symbol, embedding) in batch.iter().zip(batch_embeddings.into_iter()) {
+                        embeddings.insert(symbol.to_string(), embedding);
                     }
-                    Err(e) => {
-                        warn!(
-                            "⚠️ Failed to generate embedding for symbol '{}': {}",
-                            symbol, e
-                        );
+                    info!("✅ Generated {} embeddings so far (batch mode)", embeddings.len());
+                }
+                Err(e) => {
+                    warn!(
+                        "⚠️ Batch embedding failed for {} symbols: {}. Falling back to individual processing.",
+                        batch.len(), e
+                    );
+                    // Fallback to individual processing if batch fails
+                    for symbol in batch {
+                        match embedder.generate_text_embedding(symbol).await {
+                            Ok(embedding) => {
+                                embeddings.insert(symbol.clone(), embedding);
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "⚠️ Failed to generate embedding for symbol '{}': {}",
+                                    symbol, e
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -1280,26 +1298,47 @@ impl ProjectIndexer {
         );
 
         for batch in symbols_vec.chunks(batch_size) {
+            // PROFESSIONAL GPU OPTIMIZATION: Batch processing for maximum GPU utilization
             info!(
-                "🔧 Processing unresolved symbol batch of {} items sequentially",
+                "🔧 Processing unresolved symbol batch of {} items with GPU batching",
                 batch.len()
             );
-            for symbol in batch {
-                match embedder.generate_text_embedding(symbol).await {
-                    Ok(embedding) => {
-                        embeddings.insert(symbol.clone(), embedding);
-                        if embeddings.len() % 100 == 0 {
-                            info!(
-                                "✅ Generated {} unresolved embeddings so far",
-                                embeddings.len()
-                            );
-                        }
+
+            // Convert batch to Vec<String> for batch embedding
+            let batch_texts: Vec<String> = batch.iter().map(|s| s.to_string()).collect();
+
+            // Use batch embedding API for GPU acceleration
+            match embedder.embed_texts_batched(&batch_texts).await {
+                Ok(batch_embeddings) => {
+                    // Insert all embeddings from this batch
+                    for (symbol, embedding) in batch.iter().zip(batch_embeddings.into_iter()) {
+                        embeddings.insert(symbol.to_string(), embedding);
                     }
-                    Err(e) => {
-                        warn!(
-                            "⚠️ Failed to generate embedding for unresolved symbol '{}': {}",
-                            symbol, e
+                    if embeddings.len() % 100 == 0 {
+                        info!(
+                            "✅ Generated {} unresolved embeddings so far (batch mode)",
+                            embeddings.len()
                         );
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "⚠️ Batch embedding failed for {} unresolved symbols: {}. Falling back to individual processing.",
+                        batch.len(), e
+                    );
+                    // Fallback to individual processing if batch fails
+                    for symbol in batch {
+                        match embedder.generate_text_embedding(symbol).await {
+                            Ok(embedding) => {
+                                embeddings.insert(symbol.clone(), embedding);
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "⚠️ Failed to generate embedding for unresolved symbol '{}': {}",
+                                    symbol, e
+                                );
+                            }
+                        }
                     }
                 }
             }

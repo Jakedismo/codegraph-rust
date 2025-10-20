@@ -266,6 +266,24 @@ impl EmbeddingGenerator {
         self.encode_text(text).await
     }
 
+    /// Generate embeddings for multiple texts in batches for GPU optimization.
+    /// This method processes texts in batches to maximize GPU utilization.
+    pub async fn embed_texts_batched(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        // Use advanced engine's batching capabilities when available
+        #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
+        if let Some(engine) = &self.advanced {
+            return engine.embed_texts_batched(texts).await;
+        }
+
+        // Fallback: process texts sequentially
+        let mut embeddings = Vec::with_capacity(texts.len());
+        for text in texts {
+            let embedding = self.encode_text(text).await?;
+            embeddings.push(embedding);
+        }
+        Ok(embeddings)
+    }
+
     fn prepare_text(&self, node: &CodeNode) -> String {
         let mut text = format!(
             "{} {} {}",
