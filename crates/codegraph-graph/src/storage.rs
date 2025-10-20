@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono;
 use codegraph_core::{
-    CodeGraphError, CodeNode, EdgeType, GraphStore, Language, Location, NodeId, NodeType, Result,
+    CodeGraphError, CodeNode, GraphStore, Language, Location, NodeId, NodeType, Result,
 };
 use dashmap::DashMap;
 use memmap2::{Mmap, MmapOptions};

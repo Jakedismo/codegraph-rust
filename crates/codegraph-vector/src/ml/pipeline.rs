@@ -356,7 +356,7 @@ impl MLPipeline {
 
         // Get the trained model and add to inference engine
         if let Some(trained_model) = trainer.get_model(model_name).await {
-            let mut inference_engine = self.inference_engine.write().await;
+            let inference_engine = self.inference_engine.write().await;
             inference_engine
                 .add_model(model_name, trained_model.clone())
                 .await?;
@@ -497,7 +497,7 @@ impl MLPipeline {
 
         // Add to inference engine if available
         if let Some(trained_model) = trainer.get_model(model_name).await {
-            let mut inference_engine = self.inference_engine.write().await;
+            let inference_engine = self.inference_engine.write().await;
             inference_engine
                 .add_model(model_name, trained_model.clone())
                 .await?;

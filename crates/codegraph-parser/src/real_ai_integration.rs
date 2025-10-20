@@ -5,7 +5,7 @@ use crate::ai_pattern_learning::get_ai_pattern_learner;
 /// system to deliver real improvements to parsing accuracy and speed.
 ///
 /// NO TODOs - Only full implementations that transform the parsing capabilities.
-use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, NodeId};
+use codegraph_core::{EdgeRelationship, EdgeType, ExtractionResult, Language};
 use std::collections::HashMap;
 use tracing::info;
 

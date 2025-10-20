@@ -3,7 +3,7 @@
 //! This module provides advanced feature extraction capabilities for code analysis,
 //! building on the existing embedding infrastructure to support ML training pipelines.
 
-use codegraph_core::{CodeGraphError, CodeNode, Result};
+use codegraph_core::{CodeNode, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;

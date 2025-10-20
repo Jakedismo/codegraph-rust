@@ -29,6 +29,9 @@ sha2 = { workspace = true }
 toml = { workspace = true }
 rmcp = { workspace = true }
 schemars = { workspace = true }
+once_cell = { workspace = true }
+lru = { workspace = true }
+atty = { workspace = true }
 
 # CLI dependencies
 clap = { workspace = true }

@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports)]
+
 use chrono::{DateTime, Utc};
 use codegraph_core::{CodeGraphError, NodeId, Result, SnapshotId, TransactionId};
 use parking_lot::RwLock;

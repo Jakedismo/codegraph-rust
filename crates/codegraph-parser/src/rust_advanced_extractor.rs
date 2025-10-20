@@ -3,7 +3,7 @@
 /// COMPLETE IMPLEMENTATION: Deep Rust-specific semantic analysis that goes far beyond
 /// basic AST extraction to understand Rust's unique language features.
 use codegraph_core::{
-    CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, NodeType, Result,
+    CodeNode, EdgeRelationship, EdgeType, ExtractionResult, NodeType,
 };
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, info};

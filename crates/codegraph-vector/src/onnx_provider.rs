@@ -230,12 +230,11 @@ impl OnnxEmbeddingProvider {
     fn pool_and_normalize(
         &self,
         last_hidden: Array2<f32>,
-        mask: &Array2<i64>,
+        _mask: &Array2<i64>,
     ) -> Result<Vec<Vec<f32>>> {
         // last_hidden expected [B*L, H] after reshape, we’ll assume provider returns [B, H] already in a simplified path for now.
         // As a minimal implementation, we treat last_hidden as [B, H].
         let b = last_hidden.len_of(Axis(0));
-        let h = last_hidden.len_of(Axis(1));
         let mut out = Vec::with_capacity(b);
         for i in 0..b {
             let mut v = last_hidden.slice(s![i, ..]).to_owned().to_vec();
@@ -365,7 +364,7 @@ impl EmbeddingProvider for OnnxEmbeddingProvider {
                         .into_dimensionality::<ndarray::Ix3>()
                         .map_err(|e| CodeGraphError::External(e.to_string()))?;
                     let b = arr3.len_of(Axis(0));
-                    let l = arr3.len_of(Axis(1));
+                    let _seq_len = arr3.len_of(Axis(1));
                     let h = arr3.len_of(Axis(2));
                     // Broadcast mask to [B, L, 1]
                     let mask_f = mask.map(|&x| x as f32);

@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports)]
+
 use crate::CodeGraph;
 use codegraph_core::{NodeId, Result};
 use futures::stream::{Stream, StreamExt};

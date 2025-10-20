@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports)]
+
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -322,7 +324,7 @@ impl SelectiveNodeUpdater {
             .await?;
 
         let mut graph = self.graph.write().await;
-        let application_result = self
+        let _application_result = self
             .delta_processor
             .apply_delta(&mut graph, &delta_result.delta)
             .await?;
@@ -485,7 +487,7 @@ impl SelectiveNodeUpdater {
     async fn cache_update_result(
         &self,
         request: &SelectiveUpdateRequest,
-        result: &InternalUpdateResult,
+        _result: &InternalUpdateResult,
     ) {
         let cache_key = format!(
             "{}:{}",

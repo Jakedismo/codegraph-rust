@@ -203,7 +203,7 @@ impl DifferentialASTProcessor {
     ) -> Result<Vec<ChangeRegion>> {
         let mut regions = Vec::new();
 
-        let mut parser = self.get_or_create_parser(&cached_info.language)?;
+        let parser = self.get_or_create_parser(&cached_info.language)?;
 
         let new_tree = parser
             .parse(current_content, Some(&cached_info.tree))

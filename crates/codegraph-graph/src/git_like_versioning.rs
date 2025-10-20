@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports)]
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use codegraph_core::{ChangeType, CodeGraphError, NodeId, Result, VersionDiff, VersionId};
@@ -192,16 +194,16 @@ impl GitLikeVersionManager {
 
     pub async fn commit(
         &mut self,
-        message: String,
-        author: String,
-        changes: VersionDiff,
+        _message: String,
+        _author: String,
+        _changes: VersionDiff,
     ) -> Result<VersionId> {
         let current_branch = self
             .current_branch
             .as_ref()
             .ok_or_else(|| CodeGraphError::Transaction("No current branch".to_string()))?;
 
-        let branch = self
+        let _branch = self
             .storage
             .get_branch(current_branch)
             .await?
@@ -318,9 +320,9 @@ impl GitLikeVersionManager {
 
     pub async fn resolve_conflicts(
         &mut self,
-        conflicts: Vec<MergeConflict>,
-        resolutions: HashMap<NodeId, String>, // Node ID -> resolved content hash
-        author: String,
+        _conflicts: Vec<MergeConflict>,
+        _resolutions: HashMap<NodeId, String>, // Node ID -> resolved content hash
+        _author: String,
     ) -> Result<VersionId> {
         // TODO: Apply conflict resolutions and create merge commit
         // This would involve:
@@ -334,8 +336,8 @@ impl GitLikeVersionManager {
     pub async fn squash_commits(
         &mut self,
         commits: Vec<VersionId>,
-        new_message: String,
-        author: String,
+        _new_message: String,
+        _author: String,
     ) -> Result<VersionId> {
         if commits.is_empty() {
             return Err(CodeGraphError::Transaction(
@@ -351,7 +353,7 @@ impl GitLikeVersionManager {
 
         // Get cumulative diff from base to last commit
         let last_commit = commits.last().unwrap();
-        let cumulative_diff = self
+        let _cumulative_diff = self
             .storage
             .get_diff_between_versions(*base_commit, *last_commit)
             .await?;

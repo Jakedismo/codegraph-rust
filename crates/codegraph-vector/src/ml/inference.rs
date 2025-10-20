@@ -592,7 +592,7 @@ impl InferenceEngine {
 
     fn run_model_forward(
         &self,
-        weights: &OptimizedWeights,
+        _weights: &OptimizedWeights,
         input: &[f32],
         model_type: &ModelType,
     ) -> Result<PredictionResult> {

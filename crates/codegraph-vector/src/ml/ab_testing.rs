@@ -4,9 +4,7 @@
 //! different models, configurations, and optimization strategies. It includes
 //! statistical significance testing, experiment design, and performance analytics.
 
-use crate::ml::features::CodeFeatures;
-use crate::ml::inference::{InferenceEngine, InferenceMetrics, InferenceResult};
-use crate::ml::training::{ModelType, TrainedModel};
+use crate::ml::inference::{InferenceEngine, InferenceResult};
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

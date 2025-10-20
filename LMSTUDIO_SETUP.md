@@ -40,7 +40,7 @@ open ~/Downloads/LMStudio-*.dmg
 1. Open LM Studio
 2. Go to "Discover" tab
 3. Search and download:
-   - **Embeddings**: `jinaai/jina-embeddings-v3` (1.5B parameters, 1536-dim)
+   - **Embeddings**: `jinaai/jina-code-embeddings-1.5b` (1.5B parameters, 1536-dim)
    - **LLM**: `lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF`
      - Select: `DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf`
 
@@ -48,8 +48,8 @@ open ~/Downloads/LMStudio-*.dmg
 
 ```bash
 # Download embeddings model
-huggingface-cli download jinaai/jina-embeddings-v3 \
-  --local-dir ~/.cache/lm-studio/models/jinaai/jina-embeddings-v3
+huggingface-cli download jinaai/jina-code-embeddings-1.5b' \
+  --local-dir ~/.cache/lm-studio/models/jinaai/jina-code-embeddings-1.5b'
 
 # Download LLM model
 huggingface-cli download lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF \
@@ -108,7 +108,7 @@ Create `.codegraph.toml`:
 ```toml
 [embedding]
 provider = "lmstudio"
-model = "jinaai/jina-embeddings-v3"
+model = "jinaai/jina-code-embeddings-1.5b"
 lmstudio_url = "http://localhost:1234"
 dimension = 1536
 batch_size = 64

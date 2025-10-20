@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports, static_mut_refs)]
+
 use codegraph_core::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

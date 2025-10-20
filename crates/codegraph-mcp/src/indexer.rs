@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports)]
+
 use anyhow::Result;
 #[cfg(feature = "ai-enhanced")]
 use codegraph_ai::SemanticSearchEngine;
@@ -224,24 +226,20 @@ impl ProjectIndexer {
         let path = path.as_ref();
         info!("Starting project indexing: {:?}", path);
 
+        let file_config: codegraph_parser::file_collect::FileCollectionConfig =
+            (&self.config).into();
+
         // Check if already indexed
         if !self.config.force_reindex && self.is_indexed(path).await? {
             warn!("Project already indexed. Use --force to reindex.");
             let mut stats = IndexStats::default();
-            stats.skipped =
-                codegraph_parser::file_collect::collect_source_files_with_config(path, &self.config.into())
-                    .map(|f| f.len())
-                    .unwrap_or(0);
+            stats.skipped = codegraph_parser::file_collect::collect_source_files_with_config(
+                path, &file_config,
+            )
+            .map(|f| f.len())
+            .unwrap_or(0);
             return Ok(stats);
         }
-
-        // Create file collection config from indexer config
-        let file_config = codegraph_parser::file_collect::FileCollectionConfig {
-            recursive: self.config.recursive,
-            languages: self.config.languages.clone(),
-            include_patterns: self.config.include_patterns.clone(),
-            exclude_patterns: self.config.exclude_patterns.clone(),
-        };
 
         // STAGE 1: File Collection & Parsing
         let files =
@@ -1059,7 +1057,7 @@ impl ProjectIndexer {
     /// REVOLUTIONARY: Parse files with unified node+edge extraction for maximum speed
     async fn parse_files_with_unified_extraction(
         &self,
-        files: Vec<(PathBuf, codegraph_parser::Language)>,
+        files: Vec<(PathBuf, u64)>,
         pb: &ProgressBar,
     ) -> Result<(
         Vec<CodeNode>,

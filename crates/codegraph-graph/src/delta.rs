@@ -48,7 +48,7 @@ pub struct DeltaPerformanceStats {
 
 pub struct GraphDeltaProcessor {
     node_comparator: NodeComparator,
-    edge_comparator: EdgeComparator,
+    _edge_comparator: EdgeComparator,
     optimization_threshold: usize,
 }
 
@@ -56,7 +56,7 @@ impl GraphDeltaProcessor {
     pub fn new() -> Self {
         Self {
             node_comparator: NodeComparator::new(),
-            edge_comparator: EdgeComparator::new(),
+            _edge_comparator: EdgeComparator::new(),
             optimization_threshold: 1000, // Nodes threshold for optimization
         }
     }
@@ -158,6 +158,7 @@ impl GraphDeltaProcessor {
         affected_nodes: &mut HashSet<NodeId>,
         affected_edges: &mut HashSet<(NodeId, NodeId, EdgeType)>,
     ) -> Result<()> {
+        let _ = affected_edges;
         // Find removed nodes
         for (old_id, old_node) in old_nodes {
             if !new_nodes.contains_key(old_id) {
@@ -204,6 +205,7 @@ impl GraphDeltaProcessor {
         affected_nodes: &mut HashSet<NodeId>,
         affected_edges: &mut HashSet<(NodeId, NodeId, EdgeType)>,
     ) -> Result<()> {
+        let _ = affected_edges;
         // For large graphs, use parallel processing and heuristics
         use rayon::prelude::*;
 
@@ -405,6 +407,7 @@ impl NodeComparator {
             || old.metadata.attributes != new.metadata.attributes
     }
 
+    #[allow(dead_code)]
     fn metadata_changed(
         &self,
         old_metadata: &Option<HashMap<String, String>>,

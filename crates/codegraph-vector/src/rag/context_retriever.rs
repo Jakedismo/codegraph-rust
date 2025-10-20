@@ -3,12 +3,15 @@ use crate::EmbeddingGenerator;
 use crate::SemanticSearch;
 #[cfg(feature = "cache")]
 use codegraph_cache::{CacheConfig, EmbeddingCache};
-use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
+#[cfg(feature = "faiss")]
+use codegraph_core::CodeGraphError;
+use codegraph_core::{CodeNode, NodeId, Result};
+#[cfg(feature = "cache")]
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalResult {

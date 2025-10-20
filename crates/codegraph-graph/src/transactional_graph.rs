@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports)]
+
 use async_trait::async_trait;
 use codegraph_core::{
     CodeGraphError, CodeNode, GraphStore, IsolationLevel, NodeId, Result, SnapshotId,

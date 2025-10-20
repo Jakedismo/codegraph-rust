@@ -6,7 +6,7 @@ use std::time::Instant;
 
 // Performance optimization: Cache FAISS indexes and embedding generator
 use dashmap::DashMap;
-use once_cell::sync::OnceCell;
+use once_cell::sync::{Lazy, OnceCell};
 
 #[cfg(feature = "qwen-integration")]
 use crate::cache::{init_cache, CacheConfig};
@@ -17,16 +17,25 @@ use crate::qwen::{QwenClient, QwenConfig};
 // This prevents loading indexes from disk on every search (100-500ms overhead)
 // and recreating embedding generator (50-500ms overhead)
 #[cfg(feature = "faiss")]
-static INDEX_CACHE: once_cell::sync::Lazy<DashMap<PathBuf, Arc<Box<dyn faiss::index::Index>>>> =
-    once_cell::sync::Lazy::new(|| DashMap::new());
+use faiss::index::IndexImpl;
+
+#[cfg(feature = "faiss")]
+static INDEX_CACHE: Lazy<DashMap<PathBuf, Arc<parking_lot::Mutex<IndexImpl>>>> =
+    Lazy::new(|| DashMap::new());
 
 #[cfg(feature = "embeddings")]
-static EMBEDDING_GENERATOR: once_cell::sync::Lazy<tokio::sync::OnceCell<Arc<codegraph_vector::EmbeddingGenerator>>> =
-    once_cell::sync::Lazy::new(|| tokio::sync::OnceCell::new());
+static EMBEDDING_GENERATOR: Lazy<
+    tokio::sync::OnceCell<Arc<codegraph_vector::EmbeddingGenerator>>,
+> = Lazy::new(|| tokio::sync::OnceCell::new());
 
 // Query result cache for 100x speedup on repeated queries
-static QUERY_RESULT_CACHE: once_cell::sync::Lazy<parking_lot::Mutex<lru::LruCache<String, (Value, std::time::SystemTime)>>> =
-    once_cell::sync::Lazy::new(|| parking_lot::Mutex::new(lru::LruCache::new(std::num::NonZeroUsize::new(1000).unwrap())));
+static QUERY_RESULT_CACHE: Lazy<
+    parking_lot::Mutex<lru::LruCache<String, (Value, std::time::SystemTime)>>,
+> = Lazy::new(|| {
+    parking_lot::Mutex::new(lru::LruCache::new(
+        std::num::NonZeroUsize::new(1000).unwrap(),
+    ))
+});
 
 /// Performance timing breakdown for search operations
 #[derive(Debug, Clone)]
@@ -77,7 +86,9 @@ async fn get_embedding_generator() -> Arc<codegraph_vector::EmbeddingGenerator> 
 
 /// Get or load a cached FAISS index (10-50x speedup)
 #[cfg(feature = "faiss")]
-fn get_cached_index(index_path: &Path) -> anyhow::Result<Arc<Box<dyn faiss::index::Index>>> {
+fn get_cached_index(
+    index_path: &Path,
+) -> anyhow::Result<Arc<parking_lot::Mutex<IndexImpl>>> {
     use faiss::index::io::read_index;
 
     // Check if index is already cached
@@ -89,7 +100,8 @@ fn get_cached_index(index_path: &Path) -> anyhow::Result<Arc<Box<dyn faiss::inde
     // Load index from disk if not cached
     tracing::debug!("Loading index from disk: {:?}", index_path);
     let index = read_index(index_path.to_string_lossy())?;
-    let arc_index = Arc::new(index);
+    let arc_index: Arc<parking_lot::Mutex<IndexImpl>> =
+        Arc::new(parking_lot::Mutex::new(index));
 
     // Cache for future use
     INDEX_CACHE.insert(index_path.to_path_buf(), arc_index.clone());
@@ -539,7 +551,8 @@ pub async fn bin_search_with_scores_shared(
                 if let Ok(index) = get_cached_index(index_path) {
                     if let Ok(mapping_raw) = std::fs::read_to_string(ids_path) {
                         if let Ok(mapping) = serde_json::from_str::<Vec<codegraph_core::NodeId>>(&mapping_raw) {
-                            if let Ok(res) = index.search(&emb, *topk) {
+                            let mut index_lock = index.lock();
+                            if let Ok(res) = index_lock.search(&emb, *topk) {
                                 for (i, label) in res.labels.into_iter().enumerate() {
                                     if let Some(idx_val) = label.get() {
                                         let idx = idx_val as usize;

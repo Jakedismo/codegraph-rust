@@ -1,5 +1,6 @@
 /// Official MCP-compliant CodeGraph server using rmcp SDK
 use clap::{Parser, Subcommand};
+use indicatif::MultiProgress;
 use rmcp::{transport::stdio, ServiceExt};
 use std::path::PathBuf;
 use tracing::info;
@@ -132,7 +133,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ..Default::default()
             };
 
-            let mut indexer = codegraph_mcp::ProjectIndexer::new(config).await?;
+            let multi_progress = MultiProgress::new();
+            let mut indexer =
+                codegraph_mcp::ProjectIndexer::new(config, multi_progress).await?;
             let stats = indexer.index_project(&path).await?;
 
             println!("INDEXING COMPLETE!");

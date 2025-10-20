@@ -5,11 +5,10 @@ use codegraph_core::GraphStore;
 use codegraph_mcp::{IndexerConfig, ProcessManager, ProjectIndexer};
 use colored::*;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use rmcp::{transport::stdio, ServiceExt};
+use rmcp::ServiceExt;
 use std::path::PathBuf;
 use tracing::info;
-use tracing_indicatif::IndicatifLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry};
+use tracing_subscriber::{layer::SubscriberExt, Registry};
 
 #[derive(Parser)]
 #[command(
@@ -862,12 +861,11 @@ async fn handle_index(
     device: Option<String>,
     max_seq_len: usize,
 ) -> Result<()> {
-    let indicatif_layer = IndicatifLayer::new();
-    let multi_progress = indicatif_layer.get_progress_bar();
+    let multi_progress = MultiProgress::new();
 
     let subscriber = Registry::default()
         .with(tracing_subscriber::filter::EnvFilter::from_default_env())
-        .with(indicatif_layer);
+        .with(tracing_subscriber::fmt::layer());
 
     tracing::subscriber::set_global_default(subscriber).ok();
 
@@ -1529,7 +1527,8 @@ async fn handle_perf(
         project_root,
     };
 
-    let mut indexer = codegraph_mcp::ProjectIndexer::new(config).await?;
+    let multi_progress = MultiProgress::new();
+    let mut indexer = codegraph_mcp::ProjectIndexer::new(config, multi_progress).await?;
     let t0 = Instant::now();
     let stats = indexer.index_project(&path).await?;
     let indexing_secs = t0.elapsed().as_secs_f64();

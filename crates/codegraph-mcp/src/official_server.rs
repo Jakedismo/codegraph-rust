@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables, unused_imports)]
+
 /// Clean Official MCP SDK Implementation for CodeGraph
 /// Following exact Counter pattern from rmcp SDK documentation
 use rmcp::{
@@ -165,7 +167,6 @@ struct EmptyRequest {
 }
 
 /// REVOLUTIONARY: Request for intelligent codebase Q&A using RAG
-#[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
 #[derive(Deserialize, JsonSchema)]
 struct CodebaseQaRequest {
     /// Natural language question about the codebase
@@ -179,7 +180,6 @@ struct CodebaseQaRequest {
 }
 
 /// REVOLUTIONARY: Request for intelligent code documentation generation
-#[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
 #[derive(Deserialize, JsonSchema)]
 struct CodeDocumentationRequest {
     /// Function, class, or module name to document
@@ -192,7 +192,6 @@ struct CodeDocumentationRequest {
     style: String,
 }
 
-#[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
 fn default_doc_style() -> String {
     "comprehensive".to_string()
 }
@@ -614,7 +613,6 @@ impl CodeGraphMCPServer {
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
 
-        // Use the existing graph database from the server
         let config = codegraph_ai::rag::engine::RAGEngineConfig {
             max_results: request.max_results.unwrap_or(5),  // Reduced from 10 for faster responses
             graph_neighbor_expansion: true,
@@ -623,12 +621,10 @@ impl CodeGraphMCPServer {
             streaming_min_delay_ms: 10,
         };
 
-        // Use the shared graph instance from the server (fixes lock conflict)
         let graph_instance = self.graph.clone();
 
         let rag_engine = codegraph_ai::rag::engine::RAGEngine::new(graph_instance, config);
 
-        // Execute intelligent Q&A
         match rag_engine.answer(&request.question).await {
             Ok(answer) => {
                 let response = serde_json::json!({
@@ -668,6 +664,21 @@ impl CodeGraphMCPServer {
                 )]))
             }
         }
+    }
+
+    #[cfg(not(all(feature = "ai-enhanced", feature = "qwen-integration")))]
+    #[tool(
+        description = "codebase_qa (disabled – enable `ai-enhanced` and `qwen-integration` features to activate this tool)."
+    )]
+    async fn codebase_qa(
+        &self,
+        params: Parameters<CodebaseQaRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let _ = params;
+        Err(McpError::invalid_request(
+            "codebase_qa tool requires the `ai-enhanced` and `qwen-integration` features to be enabled",
+            None,
+        ))
     }
 
     /// REVOLUTIONARY: AI-powered code documentation generation with graph context
@@ -830,6 +841,21 @@ impl CodeGraphMCPServer {
                 )]))
             }
         }
+    }
+
+    #[cfg(not(all(feature = "ai-enhanced", feature = "qwen-integration")))]
+    #[tool(
+        description = "code_documentation (disabled – enable `ai-enhanced` and `qwen-integration` features to activate this tool)."
+    )]
+    async fn code_documentation(
+        &self,
+        params: Parameters<CodeDocumentationRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let _ = params;
+        Err(McpError::invalid_request(
+            "code_documentation tool requires the `ai-enhanced` and `qwen-integration` features to be enabled",
+            None,
+        ))
     }
 
     // /// Read file contents with optional line range for precise code analysis (DISABLED - overlaps with client tools)

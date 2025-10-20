@@ -128,10 +128,10 @@ impl SimpleFaissManager {
             )));
         }
 
-        // Use a read lock for concurrent searches
-        let index_guard = self.index.read();
+        // Acquire a write lock because the FAISS search API requires mutable access
+        let mut index_guard = self.index.write();
         let index = index_guard
-            .as_ref()
+            .as_mut()
             .ok_or_else(|| CodeGraphError::Vector("Index not initialized".to_string()))?;
 
         let search_result = index

@@ -1,4 +1,4 @@
-use crate::reranker::{ReRankingPipeline, ReRankingMetrics, RerankedResult, RerankerConfig};
+use crate::reranker::{ReRankingPipeline, RerankedResult, RerankerConfig};
 use crate::EmbeddingGenerator;
 use codegraph_core::{CodeNode, NodeId, Result};
 use serde::{Deserialize, Serialize};
@@ -180,7 +180,7 @@ impl InsightsGenerator {
                     let truncated = if content.len() > self.config.max_context_length {
                         format!("{}... [truncated]", &content[..self.config.max_context_length])
                     } else {
-                        content.clone()
+                        content.to_string()
                     };
                     context.push_str(&truncated);
                 } else {
