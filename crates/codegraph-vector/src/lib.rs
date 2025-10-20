@@ -42,6 +42,8 @@ pub mod storage;
 
 pub mod ml;
 pub mod rag;
+pub mod reranker;  // NEW: Fast reranking pipeline for insights generation
+pub mod insights_generator;  // NEW: High-performance insights with reranking
 
 pub use embedding::*;
 pub use embeddings::generator::AdvancedEmbeddingGenerator;
@@ -80,6 +82,8 @@ pub use persistent::*;
 pub use storage::*;
 
 pub use rag::*;
+pub use reranker::*;  // Re-export reranker types
+pub use insights_generator::*;  // Re-export insights types
 
 // Re-export common types for convenience
 pub use codegraph_core::{CodeGraphError, NodeId, Result};
