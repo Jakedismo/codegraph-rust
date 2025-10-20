@@ -182,7 +182,7 @@ jsonwebtoken = "9.3"
 argon2 = "0.5"
 
 # Testing
-tempfile = "3.8"
+tempfile = "3.23"
 tokio-test = "0.4"
 approx = "0.5"
 criterion = { version = "0.7.0", features = ["html_reports"] }
