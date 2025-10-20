@@ -904,6 +904,7 @@ async fn handle_index(
         batch_size: optimized_batch_size,
         device,
         max_seq_len,
+        project_root: path.clone().canonicalize().unwrap_or(path.clone()),
         ..Default::default()
     };
 
@@ -1505,8 +1506,12 @@ async fn handle_perf(
     use serde_json::json;
     use std::time::Instant;
 
-    if clean && std::path::Path::new(".codegraph").exists() {
-        let _ = std::fs::remove_dir_all(".codegraph");
+    let project_root = path.clone().canonicalize().unwrap_or(path.clone());
+    if clean {
+        let codegraph_dir = project_root.join(".codegraph");
+        if codegraph_dir.exists() {
+            let _ = std::fs::remove_dir_all(&codegraph_dir);
+        }
     }
 
     let config = codegraph_mcp::IndexerConfig {
@@ -1521,6 +1526,7 @@ async fn handle_perf(
         vector_dimension: 384, // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
         device: device.clone(),
         max_seq_len,
+        project_root,
     };
 
     let mut indexer = codegraph_mcp::ProjectIndexer::new(config).await?;
