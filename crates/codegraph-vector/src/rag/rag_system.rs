@@ -5,6 +5,8 @@ use crate::rag::{
 use crate::EmbeddingGenerator;
 #[cfg(feature = "faiss")]
 use crate::{FaissVectorStore, SemanticSearch};
+#[cfg(feature = "cache")]
+use codegraph_cache::{QueryCache, QueryCacheConfig};
 use codegraph_core::{CodeNode, NodeId, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -71,6 +73,8 @@ pub struct RAGSystem {
     semantic_search: Option<Arc<SemanticSearch>>,
     embedding_generator: Arc<EmbeddingGenerator>,
     query_cache: Arc<RwLock<HashMap<String, QueryResult>>>,
+    #[cfg(feature = "cache")]
+    advanced_query_cache: Arc<RwLock<QueryCache>>,
     metrics: Arc<RwLock<SystemMetrics>>,
 }
 
@@ -97,6 +101,23 @@ impl RAGSystem {
         let response_generator = ResponseGenerator::with_config(config.generation.clone());
         let embedding_generator = Arc::new(EmbeddingGenerator::default());
 
+        #[cfg(feature = "cache")]
+        let advanced_query_cache = {
+            let cache_config = QueryCacheConfig {
+                base_config: codegraph_cache::CacheConfig {
+                    max_entries: config.cache_size,
+                    max_memory_bytes: 200 * 1024 * 1024, // 200MB for query cache
+                    default_ttl: std::time::Duration::from_secs(7200),
+                    enable_compression: true,
+                },
+                similarity_threshold: 0.85,
+                max_query_dimension: 1024,
+                enable_fuzzy_matching: true,
+                fuzzy_tolerance: 0.1,
+            };
+            Arc::new(RwLock::new(QueryCache::new(cache_config)))
+        };
+
         Ok(Self {
             config,
             query_processor,
@@ -107,6 +128,8 @@ impl RAGSystem {
             semantic_search: None,
             embedding_generator,
             query_cache: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(feature = "cache")]
+            advanced_query_cache,
             metrics: Arc::new(RwLock::new(SystemMetrics::default())),
         })
     }

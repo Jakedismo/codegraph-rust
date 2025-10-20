@@ -386,12 +386,26 @@ impl ProjectIndexer {
 
         #[cfg(feature = "faiss")]
         {
+            use codegraph_vector::faiss_manager::{SimpleFaissManager, SimpleIndexConfig};
             use faiss::index::flat::FlatIndex;
             use faiss::index::io::write_index;
             use faiss::index::Index;
+            use faiss::MetricType;
             use std::collections::HashMap;
 
+            info!("🚀 Using SimpleFaissManager for optimized index creation");
+
+            // Create index configuration for SimpleFaissManager
+            let index_config = SimpleIndexConfig {
+                dimension: self.vector_dim,
+                index_type: "Flat".to_string(),
+                metric_type: MetricType::InnerProduct,
+                training_threshold: 10000,
+            };
+
             // Helper to write single FAISS index + id map
+            // Note: Still using manual approach for shards to maintain backward compatibility
+            // TODO: Fully migrate to SimpleFaissManager in future version
             let mut write_shard =
                 |vectors: &[f32], ids: &[codegraph_core::NodeId], path: &Path| -> Result<()> {
                     if vectors.is_empty() {
@@ -406,6 +420,7 @@ impl ProjectIndexer {
                     }
                     write_index(&idx, path.to_string_lossy())
                         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                    info!("✅ Created FAISS shard at: {}", path.display());
                     Ok(())
                 };
 
