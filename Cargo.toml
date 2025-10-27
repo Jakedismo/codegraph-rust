@@ -161,7 +161,7 @@ bytes = "1.6"
 
 # Memory allocator + profiling
 tikv-jemallocator = { version = "0.6.0", default-features = true }
-tikv-jemalloc-ctl = "0.6.0"
+tikv-jemalloc-ctl = "0.6.1"
 backtrace = "0.3"
 
 # Configuration
