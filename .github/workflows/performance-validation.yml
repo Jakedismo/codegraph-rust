@@ -278,7 +278,7 @@ jobs:
         echo "performance_report_created=true" >> $GITHUB_OUTPUT
 
     - name: Upload performance artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: performance-results-${{ github.sha }}
         path: |

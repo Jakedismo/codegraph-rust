@@ -60,7 +60,7 @@ jobs:
         alert-comment-cc-users: '@maintainers'
 
     - name: Upload benchmark reports
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: benchmark-reports
         path: |
@@ -188,7 +188,7 @@ jobs:
         # Add memory usage statistics here when we have specific binaries
 
     - name: Upload memory profiling report
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: memory-profiling-report
         path: memory_report.md
