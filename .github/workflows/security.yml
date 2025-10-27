@@ -64,7 +64,7 @@ jobs:
         fi
 
     - name: Upload audit results
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: security-audit-results
         path: |
@@ -157,7 +157,7 @@ jobs:
         echo '```' >> outdated-report.md
 
     - name: Upload dependency reports
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: dependency-reports
         path: |
@@ -190,7 +190,7 @@ jobs:
         echo '```' >> supply-chain-report.md
 
     - name: Upload supply chain analysis
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: supply-chain-analysis
         path: supply-chain-report.md
