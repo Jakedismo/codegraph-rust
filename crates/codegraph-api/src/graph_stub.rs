@@ -60,7 +60,7 @@ impl CodeGraph {
     }
 }
 
-/// Temporary stub for TransactionalGraph from codegraph-graph crate
+/// TransactionalGraph with real storage-backed managers
 #[derive(Clone)]
 pub struct TransactionalGraph {
     pub transaction_manager: ConcurrentTransactionManager,
@@ -69,12 +69,39 @@ pub struct TransactionalGraph {
 }
 
 impl TransactionalGraph {
+    /// Create a new TransactionalGraph with stub managers (for backward compatibility)
     pub fn new() -> Self {
         Self {
             transaction_manager: ConcurrentTransactionManager::new(),
             version_manager: GitLikeVersionManager::new(),
             recovery_manager: RecoveryManager::new(),
         }
+    }
+
+    /// Create a new TransactionalGraph with real storage-backed managers
+    pub async fn with_storage(storage_path: &str) -> Result<Self> {
+        use codegraph_graph::{RecoveryManager as RealRecoveryManager, VersionedRocksDbStorage};
+        use tokio::sync::RwLock as TokioRwLock;
+        use std::sync::Arc;
+
+        // Initialize storage
+        let storage = VersionedRocksDbStorage::new(storage_path).await?;
+        let storage_arc = Arc::new(TokioRwLock::new(storage));
+
+        // Create managers with real storage
+        let transaction_manager = ConcurrentTransactionManager::with_storage(storage_arc.clone());
+        let version_manager = GitLikeVersionManager::with_storage(storage_arc.clone());
+
+        let recovery_manager = RealRecoveryManager::new(
+            storage_path,
+            format!("{}_backups", storage_path),
+        );
+
+        Ok(Self {
+            transaction_manager,
+            version_manager,
+            recovery_manager,
+        })
     }
 
     pub async fn begin_transaction(&self) -> Result<Transaction> {
@@ -186,17 +213,29 @@ pub use codegraph_core::{
 };
 
 #[derive(Clone)]
-pub struct ConcurrentTransactionManager;
+pub struct ConcurrentTransactionManager {
+    storage: Option<Arc<tokio::sync::RwLock<codegraph_graph::VersionedRocksDbStorage>>>,
+}
 
 impl ConcurrentTransactionManager {
     pub fn new() -> Self {
-        Self
+        Self { storage: None }
+    }
+
+    pub fn with_storage(storage: Arc<tokio::sync::RwLock<codegraph_graph::VersionedRocksDbStorage>>) -> Self {
+        Self {
+            storage: Some(storage),
+        }
     }
 
     pub async fn begin_transaction(&self, isolation_level: IsolationLevel) -> Result<TransactionId> {
-        // Stub implementation - just generate a new transaction ID
-        // In a real implementation, this would create a transaction with the specified isolation level
-        Ok(Uuid::new_v4())
+        if let Some(storage) = &self.storage {
+            let mut guard = storage.write().await;
+            guard.begin_transaction(isolation_level).await
+        } else {
+            // Stub fallback
+            Ok(Uuid::new_v4())
+        }
     }
 
     pub async fn commit_transaction(&self, _tx_id: TransactionId) -> Result<()> {
@@ -218,69 +257,128 @@ impl ConcurrentTransactionManager {
 }
 
 #[derive(Clone)]
-pub struct GitLikeVersionManager;
+pub struct GitLikeVersionManager {
+    storage: Option<Arc<RwLock<codegraph_graph::VersionedRocksDbStorage>>>,
+}
 
 impl GitLikeVersionManager {
     pub fn new() -> Self {
-        Self
+        Self { storage: None }
+    }
+
+    pub fn with_storage(storage: Arc<RwLock<codegraph_graph::VersionedRocksDbStorage>>) -> Self {
+        Self {
+            storage: Some(storage),
+        }
     }
 
     pub async fn create_version(&self, name: String, description: String, author: String, parent_versions: Vec<VersionId>) -> Result<VersionId> {
-        let version_id = Uuid::new_v4();
-        let snapshot_id = Uuid::new_v4();
-
-        // In a real implementation, this would store the version
-        // For now, just return the ID
-        Ok(version_id)
+        if let Some(storage) = &self.storage {
+            let snapshot_id = Uuid::new_v4(); // TODO: Create real snapshot
+            let mut guard = storage.write().await;
+            guard.create_version(name, description, author, snapshot_id, parent_versions).await
+        } else {
+            // Stub fallback
+            Ok(Uuid::new_v4())
+        }
     }
 
     pub async fn list_versions(&self) -> Result<Vec<Version>> {
-        // Stub implementation - return empty list
-        // In a real implementation, this would fetch from storage
-        Ok(Vec::new())
+        if let Some(storage) = &self.storage {
+            let guard = storage.read().await;
+            guard.list_versions(None).await
+        } else {
+            // Stub fallback
+            Ok(Vec::new())
+        }
     }
 
     pub async fn get_version(&self, id: VersionId) -> Result<Option<Version>> {
-        // Stub implementation - return None
-        // In a real implementation, this would fetch from storage
-        Ok(None)
+        if let Some(storage) = &self.storage {
+            let guard = storage.read().await;
+            guard.get_version(id).await
+        } else {
+            // Stub fallback
+            Ok(None)
+        }
     }
 
-    pub async fn tag_version(&self, _version_id: VersionId, _tag_name: String) -> Result<()> {
-        Ok(())
+    pub async fn tag_version(&self, version_id: VersionId, tag_name: String) -> Result<()> {
+        if let Some(storage) = &self.storage {
+            let mut guard = storage.write().await;
+            guard.tag_version(version_id, tag_name).await
+        } else {
+            Ok(())
+        }
     }
 
-    pub async fn compare_versions(&self, _from: VersionId, _to: VersionId) -> Result<VersionDiff> {
-        Ok(VersionDiff {
-            added_nodes: Vec::new(),
-            deleted_nodes: Vec::new(),
-            modified_nodes: Vec::new(),
-        })
+    pub async fn compare_versions(&self, from: VersionId, to: VersionId) -> Result<VersionDiff> {
+        if let Some(storage) = &self.storage {
+            let guard = storage.read().await;
+            guard.compare_versions(from, to).await
+        } else {
+            Ok(VersionDiff {
+                added_nodes: Vec::new(),
+                deleted_nodes: Vec::new(),
+                modified_nodes: Vec::new(),
+                node_changes: HashMap::new(),
+            })
+        }
     }
 
-    pub async fn create_branch(&self, _name: String, _from_version: VersionId) -> Result<()> {
-        Ok(())
+    pub async fn create_branch(&self, name: String, from_version: VersionId) -> Result<()> {
+        if let Some(storage) = &self.storage {
+            let mut guard = storage.write().await;
+            use codegraph_graph::GitLikeVersioning;
+            guard.create_branch(name, from_version, "system".to_string()).await
+        } else {
+            Ok(())
+        }
     }
 
     pub async fn list_branches(&self) -> Result<Vec<Branch>> {
-        Ok(Vec::new())
+        if let Some(storage) = &self.storage {
+            let guard = storage.read().await;
+            use codegraph_graph::GitLikeVersioning;
+            guard.list_branches().await
+        } else {
+            Ok(Vec::new())
+        }
     }
 
-    pub async fn get_branch(&self, _name: String) -> Result<Option<Branch>> {
-        Ok(None)
+    pub async fn get_branch(&self, name: String) -> Result<Option<Branch>> {
+        if let Some(storage) = &self.storage {
+            let guard = storage.read().await;
+            use codegraph_graph::GitLikeVersioning;
+            guard.get_branch(&name).await
+        } else {
+            Ok(None)
+        }
     }
 
-    pub async fn delete_branch(&self, _name: String) -> Result<()> {
-        Ok(())
+    pub async fn delete_branch(&self, name: String) -> Result<()> {
+        if let Some(storage) = &self.storage {
+            let mut guard = storage.write().await;
+            use codegraph_graph::GitLikeVersioning;
+            guard.delete_branch(&name).await
+        } else {
+            Ok(())
+        }
     }
 
-    pub async fn merge_branches(&self, _source: String, _target: String) -> Result<MergeResult> {
-        Ok(MergeResult {
-            success: true,
-            conflicts: Vec::new(),
-            merged_version_id: Some(Uuid::new_v4()),
-            merge_commit_message: "Merged".to_string(),
-        })
+    pub async fn merge_branches(&self, source: String, target: String) -> Result<MergeResult> {
+        if let Some(storage) = &self.storage {
+            let mut guard = storage.write().await;
+            use codegraph_graph::GitLikeVersioning;
+            guard.merge(&source, &target, "system".to_string(), format!("Merge {} into {}", source, target)).await
+        } else {
+            Ok(MergeResult {
+                success: true,
+                conflicts: Vec::new(),
+                merged_version_id: Some(Uuid::new_v4()),
+                merge_commit_message: "Merged".to_string(),
+            })
+        }
     }
 
     pub async fn resolve_conflicts(&self, _conflicts: Vec<MergeConflict>) -> Result<()> {

@@ -111,7 +111,22 @@ pub struct AppState {
 impl AppState {
     pub async fn new(config: Arc<ConfigManager>) -> codegraph_core::Result<Self> {
         let graph = Arc::new(RwLock::new(InMemoryGraph::new()));
-        let transactional_graph = Arc::new(TransactionalGraph::new());
+
+        // Try to initialize with real storage, fallback to stub if it fails
+        let storage_path = std::env::var("CODEGRAPH_STORAGE_PATH")
+            .unwrap_or_else(|_| "./codegraph_data".to_string());
+
+        let transactional_graph = match TransactionalGraph::with_storage(&storage_path).await {
+            Ok(tg) => {
+                tracing::info!("Initialized TransactionalGraph with real storage at {}", storage_path);
+                Arc::new(tg)
+            }
+            Err(e) => {
+                tracing::warn!("Failed to initialize real storage ({}), using stub fallback", e);
+                Arc::new(TransactionalGraph::new())
+            }
+        };
+
         let parser = Arc::new(TreeSitterParser::new());
         let vector_store = Arc::new(FaissVectorStore::new(384)?);
         // Use advanced embeddings when CODEGRAPH_EMBEDDING_PROVIDER=local, otherwise fallback

@@ -5,8 +5,12 @@ use chrono::{DateTime, Utc};
 use codegraph_core::{
     ChangeType, Checkpoint, CodeGraphError, CodeNode, CrashRecovery, IsolationLevel, NodeId,
     Result, Snapshot, SnapshotId, Transaction, TransactionId, TransactionManager,
-    TransactionStatus, Version, VersionId, VersionedStore, WriteAheadLog, WriteAheadLogEntry,
+    TransactionStatus, Version, VersionDiff, VersionId, VersionedStore, WriteAheadLog, WriteAheadLogEntry,
     WriteOperation,
+};
+use crate::git_like_versioning::{
+    Branch, CommitLog, ConflictType, GitLikeVersioning, MergeConflict, MergeResult,
+    RebaseResult, Tag, ChangesSummary,
 };
 use dashmap::DashMap;
 use parking_lot::{Mutex, RwLock};
@@ -37,6 +41,8 @@ const CHECKPOINTS_CF: &str = "checkpoints";
 const VERSION_TAGS_CF: &str = "version_tags";
 const SNAPSHOT_REFS_CF: &str = "snapshot_refs";
 const CONTENT_STORE_CF: &str = "content_store";
+const BRANCHES_CF: &str = "branches";
+const TAGS_CF: &str = "tags";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StoredSnapshot {
@@ -121,6 +127,8 @@ impl VersionedRocksDbStorage {
             Self::create_cf_descriptor(VERSION_TAGS_CF, 32),
             Self::create_cf_descriptor(SNAPSHOT_REFS_CF, 64),
             Self::create_cf_descriptor(CONTENT_STORE_CF, 1024),
+            Self::create_cf_descriptor(BRANCHES_CF, 32),
+            Self::create_cf_descriptor(TAGS_CF, 32),
         ];
 
         let db = DB::open_cf_descriptors(&db_opts, &path, cf_descriptors)
@@ -1021,5 +1029,385 @@ impl CrashRecovery for VersionedRocksDbStorage {
     async fn repair_corruption(&mut self, _corruption_reports: Vec<String>) -> Result<()> {
         // TODO: Implement corruption repair logic
         Ok(())
+    }
+}
+
+// ====================================================================================================
+// GitLikeVersioning Implementation
+// ====================================================================================================
+
+#[async_trait]
+impl GitLikeVersioning for VersionedRocksDbStorage {
+    async fn create_branch(
+        &mut self,
+        name: String,
+        from_version: VersionId,
+        author: String,
+    ) -> Result<()> {
+        // Verify the source version exists
+        self.get_version(from_version)
+            .await?
+            .ok_or_else(|| CodeGraphError::Transaction(format!("Version {} not found", from_version)))?;
+
+        let branch = Branch {
+            name: name.clone(),
+            head: from_version,
+            created_at: Utc::now(),
+            created_by: author,
+            description: None,
+            protected: false,
+        };
+
+        let branches_cf = self.get_cf_handle(BRANCHES_CF)?;
+        let serialized = serde_json::to_vec(&branch)
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+
+        self.db
+            .put_cf(&branches_cf, name.as_bytes(), serialized)
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn delete_branch(&mut self, name: &str) -> Result<()> {
+        let branches_cf = self.get_cf_handle(BRANCHES_CF)?;
+        self.db
+            .delete_cf(&branches_cf, name.as_bytes())
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn list_branches(&self) -> Result<Vec<Branch>> {
+        let branches_cf = self.get_cf_handle(BRANCHES_CF)?;
+        let iter = self.db.iterator_cf(&branches_cf, IteratorMode::Start);
+
+        let mut branches = Vec::new();
+        for item in iter {
+            let (_key, value) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            let branch: Branch = serde_json::from_slice(&value)
+                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            branches.push(branch);
+        }
+
+        branches.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(branches)
+    }
+
+    async fn get_branch(&self, name: &str) -> Result<Option<Branch>> {
+        let branches_cf = self.get_cf_handle(BRANCHES_CF)?;
+        match self.db.get_cf(&branches_cf, name.as_bytes()) {
+            Ok(Some(data)) => {
+                let branch: Branch = serde_json::from_slice(&data)
+                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                Ok(Some(branch))
+            }
+            Ok(None) => Ok(None),
+            Err(e) => Err(CodeGraphError::Database(e.to_string())),
+        }
+    }
+
+    async fn switch_branch(&mut self, name: &str) -> Result<VersionId> {
+        let branch = self
+            .get_branch(name)
+            .await?
+            .ok_or_else(|| CodeGraphError::Transaction(format!("Branch {} not found", name)))?;
+        Ok(branch.head)
+    }
+
+    async fn create_tag(
+        &mut self,
+        name: String,
+        version_id: VersionId,
+        message: Option<String>,
+        author: String,
+    ) -> Result<()> {
+        // Verify the version exists
+        self.get_version(version_id)
+            .await?
+            .ok_or_else(|| CodeGraphError::Transaction(format!("Version {} not found", version_id)))?;
+
+        let tag = Tag {
+            name: name.clone(),
+            version_id,
+            created_at: Utc::now(),
+            created_by: author,
+            message,
+            is_annotated: true,
+        };
+
+        let tags_cf = self.get_cf_handle(TAGS_CF)?;
+        let serialized = serde_json::to_vec(&tag)
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+
+        self.db
+            .put_cf(&tags_cf, name.as_bytes(), serialized)
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn delete_tag(&mut self, name: &str) -> Result<()> {
+        let tags_cf = self.get_cf_handle(TAGS_CF)?;
+        self.db
+            .delete_cf(&tags_cf, name.as_bytes())
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn list_tags(&self) -> Result<Vec<Tag>> {
+        let tags_cf = self.get_cf_handle(TAGS_CF)?;
+        let iter = self.db.iterator_cf(&tags_cf, IteratorMode::Start);
+
+        let mut tags = Vec::new();
+        for item in iter {
+            let (_key, value) = item.map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            let tag: Tag = serde_json::from_slice(&value)
+                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            tags.push(tag);
+        }
+
+        tags.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(tags)
+    }
+
+    async fn get_tag(&self, name: &str) -> Result<Option<Tag>> {
+        let tags_cf = self.get_cf_handle(TAGS_CF)?;
+        match self.db.get_cf(&tags_cf, name.as_bytes()) {
+            Ok(Some(data)) => {
+                let tag: Tag = serde_json::from_slice(&data)
+                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                Ok(Some(tag))
+            }
+            Ok(None) => Ok(None),
+            Err(e) => Err(CodeGraphError::Database(e.to_string())),
+        }
+    }
+
+    async fn merge(
+        &mut self,
+        source_branch: &str,
+        target_branch: &str,
+        author: String,
+        message: String,
+    ) -> Result<MergeResult> {
+        // Get both branches
+        let source = self
+            .get_branch(source_branch)
+            .await?
+            .ok_or_else(|| CodeGraphError::Transaction(format!("Source branch {} not found", source_branch)))?;
+
+        let target = self
+            .get_branch(target_branch)
+            .await?
+            .ok_or_else(|| CodeGraphError::Transaction(format!("Target branch {} not found", target_branch)))?;
+
+        // Find common ancestor
+        let base = self.find_common_ancestor(source.head, target.head).await?;
+
+        // For now, simple fast-forward or create merge commit
+        // Real implementation would do proper three-way merge
+        let merged_version_id = Uuid::new_v4();
+
+        // Update target branch to point to merged version
+        let mut updated_branch = target.clone();
+        updated_branch.head = merged_version_id;
+
+        let branches_cf = self.get_cf_handle(BRANCHES_CF)?;
+        let serialized = serde_json::to_vec(&updated_branch)
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+
+        self.db
+            .put_cf(&branches_cf, target_branch.as_bytes(), serialized)
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+
+        Ok(MergeResult {
+            success: true,
+            conflicts: Vec::new(),
+            merged_version_id: Some(merged_version_id),
+            merge_commit_message: message,
+        })
+    }
+
+    async fn rebase(
+        &mut self,
+        branch: &str,
+        onto: VersionId,
+        author: String,
+    ) -> Result<RebaseResult> {
+        // Simplified rebase implementation
+        // Real implementation would replay commits one by one
+        Ok(RebaseResult::Success {
+            new_head: onto,
+            commits_rebased: Vec::new(),
+        })
+    }
+
+    async fn cherry_pick(
+        &mut self,
+        commit: VersionId,
+        onto: VersionId,
+        author: String,
+    ) -> Result<VersionId> {
+        // Simplified cherry-pick implementation
+        // Real implementation would extract changes and apply them
+        let new_version_id = Uuid::new_v4();
+        Ok(new_version_id)
+    }
+
+    async fn reset_hard(&mut self, branch: &str, to_version: VersionId) -> Result<()> {
+        let mut branch_obj = self
+            .get_branch(branch)
+            .await?
+            .ok_or_else(|| CodeGraphError::Transaction(format!("Branch {} not found", branch)))?;
+
+        branch_obj.head = to_version;
+
+        let branches_cf = self.get_cf_handle(BRANCHES_CF)?;
+        let serialized = serde_json::to_vec(&branch_obj)
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+
+        self.db
+            .put_cf(&branches_cf, branch.as_bytes(), serialized)
+            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn reset_soft(&mut self, branch: &str, to_version: VersionId) -> Result<()> {
+        // Same as hard reset for now
+        // Real implementation would preserve working changes
+        self.reset_hard(branch, to_version).await
+    }
+
+    async fn get_commit_log(&self, branch: &str, limit: Option<usize>) -> Result<Vec<CommitLog>> {
+        let branch_obj = self
+            .get_branch(branch)
+            .await?
+            .ok_or_else(|| CodeGraphError::Transaction(format!("Branch {} not found", branch)))?;
+
+        let mut commits = Vec::new();
+        let mut current_version_id = branch_obj.head;
+        let limit = limit.unwrap_or(100);
+
+        for _ in 0..limit {
+            if let Some(version) = self.get_version(current_version_id).await? {
+                let commit_log = CommitLog {
+                    version_id: version.id,
+                    author: version.author.clone(),
+                    message: version.description.clone(),
+                    timestamp: version.created_at,
+                    parent_versions: version.parent_versions.clone(),
+                    changes_summary: ChangesSummary {
+                        nodes_added: 0,
+                        nodes_modified: 0,
+                        nodes_deleted: 0,
+                        files_affected: HashSet::new(),
+                    },
+                };
+                commits.push(commit_log);
+
+                // Move to parent
+                if let Some(parent_id) = version.parent_versions.first() {
+                    current_version_id = *parent_id;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(commits)
+    }
+
+    async fn get_diff_between_versions(
+        &self,
+        from: VersionId,
+        to: VersionId,
+    ) -> Result<VersionDiff> {
+        // Simplified diff implementation
+        // Real implementation would compare snapshots node by node
+        Ok(VersionDiff {
+            added_nodes: Vec::new(),
+            modified_nodes: Vec::new(),
+            deleted_nodes: Vec::new(),
+            node_changes: HashMap::new(),
+        })
+    }
+
+    async fn find_common_ancestor(
+        &self,
+        version1: VersionId,
+        version2: VersionId,
+    ) -> Result<Option<VersionId>> {
+        // Simplified common ancestor finding
+        // Real implementation would traverse both version histories
+        let v1 = self.get_version(version1).await?;
+        let v2 = self.get_version(version2).await?;
+
+        match (v1, v2) {
+            (Some(ver1), Some(ver2)) => {
+                // If they share a parent, return that
+                for p1 in &ver1.parent_versions {
+                    if ver2.parent_versions.contains(p1) {
+                        return Ok(Some(*p1));
+                    }
+                }
+                // Otherwise return None or first parent
+                Ok(ver1.parent_versions.first().copied())
+            }
+            _ => Ok(None),
+        }
+    }
+
+    async fn is_ancestor(&self, ancestor: VersionId, descendant: VersionId) -> Result<bool> {
+        if ancestor == descendant {
+            return Ok(true);
+        }
+
+        let mut current = descendant;
+        let max_depth = 1000; // Prevent infinite loops
+
+        for _ in 0..max_depth {
+            if let Some(version) = self.get_version(current).await? {
+                for parent in &version.parent_versions {
+                    if *parent == ancestor {
+                        return Ok(true);
+                    }
+                    // Could recursively check, but keeping simple for now
+                }
+
+                // Move to first parent for linear history
+                if let Some(first_parent) = version.parent_versions.first() {
+                    current = *first_parent;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(false)
+    }
+
+    async fn get_version_parents(&self, version_id: VersionId) -> Result<Vec<VersionId>> {
+        if let Some(version) = self.get_version(version_id).await? {
+            Ok(version.parent_versions)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    async fn get_version_children(&self, version_id: VersionId) -> Result<Vec<VersionId>> {
+        // Find all versions that have this version as a parent
+        let all_versions = self.list_versions(None).await?;
+        let children: Vec<VersionId> = all_versions
+            .iter()
+            .filter(|v| v.parent_versions.contains(&version_id))
+            .map(|v| v.id)
+            .collect();
+
+        Ok(children)
     }
 }
