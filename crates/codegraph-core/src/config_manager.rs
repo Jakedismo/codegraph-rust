@@ -22,7 +22,7 @@ pub enum ConfigError {
 }
 
 /// Main configuration for CodeGraph
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CodeGraphConfig {
     /// Embedding provider configuration
     #[serde(default)]
@@ -39,17 +39,6 @@ pub struct CodeGraphConfig {
     /// Logging configuration
     #[serde(default)]
     pub logging: LoggingConfig,
-}
-
-impl Default for CodeGraphConfig {
-    fn default() -> Self {
-        Self {
-            embedding: EmbeddingConfig::default(),
-            llm: LLMConfig::default(),
-            performance: PerformanceConfig::default(),
-            logging: LoggingConfig::default(),
-        }
-    }
 }
 
 /// Embedding provider configuration
@@ -92,7 +81,7 @@ impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
             provider: default_embedding_provider(),
-            model: None,  // Auto-detect
+            model: None, // Auto-detect
             lmstudio_url: default_lmstudio_url(),
             ollama_url: default_ollama_url(),
             openai_api_key: None,
@@ -174,7 +163,7 @@ pub struct LLMConfig {
 impl Default for LLMConfig {
     fn default() -> Self {
         Self {
-            enabled: false,  // Default to context-only for speed
+            enabled: false, // Default to context-only for speed
             provider: default_llm_provider(),
             model: None,
             lmstudio_url: default_lmstudio_url(),
@@ -186,8 +175,8 @@ impl Default for LLMConfig {
             temperature: default_temperature(),
             insights_mode: default_insights_mode(),
             max_tokens: default_max_tokens(),
-            max_output_tokens: None,  // Will use max_tokens if not set
-            reasoning_effort: None,   // Only for reasoning models
+            max_output_tokens: None, // Will use max_tokens if not set
+            reasoning_effort: None,  // Only for reasoning models
             timeout_secs: default_timeout_secs(),
         }
     }
@@ -218,7 +207,7 @@ impl Default for PerformanceConfig {
         Self {
             num_threads: default_num_threads(),
             cache_size_mb: default_cache_size_mb(),
-            enable_gpu: false,  // Conservative default
+            enable_gpu: false, // Conservative default
             max_concurrent_requests: default_max_concurrent(),
         }
     }
@@ -246,22 +235,54 @@ impl Default for LoggingConfig {
 }
 
 // Default value functions
-fn default_embedding_provider() -> String { "lmstudio".to_string() }
-fn default_lmstudio_url() -> String { "http://localhost:1234".to_string() }
-fn default_ollama_url() -> String { "http://localhost:11434".to_string() }
-fn default_embedding_dimension() -> usize { 1536 }  // jina-code-embeddings-1.5b
-fn default_batch_size() -> usize { 64 }
-fn default_llm_provider() -> String { "lmstudio".to_string() }
-fn default_context_window() -> usize { 32000 }  // DeepSeek Coder v2 Lite
-fn default_temperature() -> f32 { 0.1 }
-fn default_insights_mode() -> String { "context-only".to_string() }
-fn default_max_tokens() -> usize { 4096 }
-fn default_timeout_secs() -> u64 { 120 }
-fn default_num_threads() -> usize { num_cpus::get() }
-fn default_cache_size_mb() -> usize { 512 }
-fn default_max_concurrent() -> usize { 4 }
-fn default_log_level() -> String { "warn".to_string() }  // Clean TUI output during indexing
-fn default_log_format() -> String { "pretty".to_string() }
+fn default_embedding_provider() -> String {
+    "lmstudio".to_string()
+}
+fn default_lmstudio_url() -> String {
+    "http://localhost:1234".to_string()
+}
+fn default_ollama_url() -> String {
+    "http://localhost:11434".to_string()
+}
+fn default_embedding_dimension() -> usize {
+    1536
+} // jina-code-embeddings-1.5b
+fn default_batch_size() -> usize {
+    64
+}
+fn default_llm_provider() -> String {
+    "lmstudio".to_string()
+}
+fn default_context_window() -> usize {
+    32000
+} // DeepSeek Coder v2 Lite
+fn default_temperature() -> f32 {
+    0.1
+}
+fn default_insights_mode() -> String {
+    "context-only".to_string()
+}
+fn default_max_tokens() -> usize {
+    4096
+}
+fn default_timeout_secs() -> u64 {
+    120
+}
+fn default_num_threads() -> usize {
+    num_cpus::get()
+}
+fn default_cache_size_mb() -> usize {
+    512
+}
+fn default_max_concurrent() -> usize {
+    4
+}
+fn default_log_level() -> String {
+    "warn".to_string()
+} // Clean TUI output during indexing
+fn default_log_format() -> String {
+    "pretty".to_string()
+}
 
 /// Configuration manager with smart defaults and auto-detection
 pub struct ConfigManager {
@@ -294,9 +315,19 @@ impl ConfigManager {
             info!("   📄 Config file: {}", path.display());
         }
         info!("   🤖 Embedding provider: {}", config.embedding.provider);
-        info!("   💬 LLM insights: {}", if config.llm.enabled { "enabled" } else { "disabled (context-only)" });
+        info!(
+            "   💬 LLM insights: {}",
+            if config.llm.enabled {
+                "enabled"
+            } else {
+                "disabled (context-only)"
+            }
+        );
 
-        Ok(Self { config, config_path })
+        Ok(Self {
+            config,
+            config_path,
+        })
     }
 
     /// Load .env file if it exists
@@ -353,11 +384,11 @@ impl ConfigManager {
 
     /// Read TOML config file
     fn read_toml_file(path: &Path) -> Result<CodeGraphConfig, ConfigError> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| ConfigError::ReadError(e.to_string()))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| ConfigError::ReadError(e.to_string()))?;
 
-        let config: CodeGraphConfig = toml::from_str(&content)
-            .map_err(|e| ConfigError::ParseError(e.to_string()))?;
+        let config: CodeGraphConfig =
+            toml::from_str(&content).map_err(|e| ConfigError::ParseError(e.to_string()))?;
 
         Ok(config)
     }
@@ -385,7 +416,7 @@ impl ConfigManager {
         // LLM configuration
         if let Ok(model) = std::env::var("CODEGRAPH_MODEL") {
             config.llm.model = Some(model);
-            config.llm.enabled = true;  // Enable if model specified
+            config.llm.enabled = true; // Enable if model specified
         }
         if let Ok(context) = std::env::var("CODEGRAPH_CONTEXT_WINDOW") {
             if let Ok(size) = context.parse() {
@@ -410,26 +441,35 @@ impl ConfigManager {
     fn validate_config(config: &CodeGraphConfig) -> Result<(), ConfigError> {
         // Validate embedding provider
         match config.embedding.provider.as_str() {
-            "auto" | "onnx" | "ollama" | "openai" => {},
-            other => return Err(ConfigError::ValidationError(
-                format!("Invalid embedding provider: {}. Must be one of: auto, onnx, ollama, openai", other)
-            )),
+            "auto" | "onnx" | "ollama" | "openai" => {}
+            other => {
+                return Err(ConfigError::ValidationError(format!(
+                    "Invalid embedding provider: {}. Must be one of: auto, onnx, ollama, openai",
+                    other
+                )))
+            }
         }
 
         // Validate insights mode
         match config.llm.insights_mode.as_str() {
-            "context-only" | "balanced" | "deep" => {},
-            other => return Err(ConfigError::ValidationError(
-                format!("Invalid insights mode: {}. Must be one of: context-only, balanced, deep", other)
-            )),
+            "context-only" | "balanced" | "deep" => {}
+            other => {
+                return Err(ConfigError::ValidationError(format!(
+                    "Invalid insights mode: {}. Must be one of: context-only, balanced, deep",
+                    other
+                )))
+            }
         }
 
         // Validate log level
         match config.logging.level.as_str() {
-            "trace" | "debug" | "info" | "warn" | "error" => {},
-            other => return Err(ConfigError::ValidationError(
-                format!("Invalid log level: {}. Must be one of: trace, debug, info, warn, error", other)
-            )),
+            "trace" | "debug" | "info" | "warn" | "error" => {}
+            other => {
+                return Err(ConfigError::ValidationError(format!(
+                    "Invalid log level: {}. Must be one of: trace, debug, info, warn, error",
+                    other
+                )))
+            }
         }
 
         Ok(())
@@ -443,17 +483,15 @@ impl ConfigManager {
     /// Create a default config file
     pub fn create_default_config(path: &Path) -> Result<(), ConfigError> {
         let config = CodeGraphConfig::default();
-        let toml_str = toml::to_string_pretty(&config)
-            .map_err(|e| ConfigError::ParseError(e.to_string()))?;
+        let toml_str =
+            toml::to_string_pretty(&config).map_err(|e| ConfigError::ParseError(e.to_string()))?;
 
         // Create parent directory if needed
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| ConfigError::ReadError(e.to_string()))?;
+            std::fs::create_dir_all(parent).map_err(|e| ConfigError::ReadError(e.to_string()))?;
         }
 
-        std::fs::write(path, toml_str)
-            .map_err(|e| ConfigError::ReadError(e.to_string()))?;
+        std::fs::write(path, toml_str).map_err(|e| ConfigError::ReadError(e.to_string()))?;
 
         Ok(())
     }
@@ -477,7 +515,7 @@ impl ConfigManager {
     fn check_ollama_available() -> bool {
         // Try to connect to Ollama
         std::process::Command::new("curl")
-            .args(&["-s", "http://localhost:11434/api/tags"])
+            .args(["-s", "http://localhost:11434/api/tags"])
             .output()
             .map(|output| output.status.success())
             .unwrap_or(false)

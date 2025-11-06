@@ -1,16 +1,16 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 
+use crate::git_like_versioning::{
+    Branch, ChangesSummary, CommitLog, ConflictType, GitLikeVersioning, MergeConflict, MergeResult,
+    RebaseResult, Tag,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use codegraph_core::{
     ChangeType, Checkpoint, CodeGraphError, CodeNode, CrashRecovery, IsolationLevel, NodeId,
     Result, Snapshot, SnapshotId, Transaction, TransactionId, TransactionManager,
-    TransactionStatus, Version, VersionDiff, VersionId, VersionedStore, WriteAheadLog, WriteAheadLogEntry,
-    WriteOperation,
-};
-use crate::git_like_versioning::{
-    Branch, CommitLog, ConflictType, GitLikeVersioning, MergeConflict, MergeResult,
-    RebaseResult, Tag, ChangesSummary,
+    TransactionStatus, Version, VersionDiff, VersionId, VersionedStore, WriteAheadLog,
+    WriteAheadLogEntry, WriteOperation,
 };
 use dashmap::DashMap;
 use parking_lot::{Mutex, RwLock};
@@ -1045,9 +1045,9 @@ impl GitLikeVersioning for VersionedRocksDbStorage {
         author: String,
     ) -> Result<()> {
         // Verify the source version exists
-        self.get_version(from_version)
-            .await?
-            .ok_or_else(|| CodeGraphError::Transaction(format!("Version {} not found", from_version)))?;
+        self.get_version(from_version).await?.ok_or_else(|| {
+            CodeGraphError::Transaction(format!("Version {} not found", from_version))
+        })?;
 
         let branch = Branch {
             name: name.clone(),
@@ -1059,8 +1059,8 @@ impl GitLikeVersioning for VersionedRocksDbStorage {
         };
 
         let branches_cf = self.get_cf_handle(BRANCHES_CF)?;
-        let serialized = serde_json::to_vec(&branch)
-            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        let serialized =
+            serde_json::to_vec(&branch).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.db
             .put_cf(&branches_cf, name.as_bytes(), serialized)
@@ -1122,9 +1122,9 @@ impl GitLikeVersioning for VersionedRocksDbStorage {
         author: String,
     ) -> Result<()> {
         // Verify the version exists
-        self.get_version(version_id)
-            .await?
-            .ok_or_else(|| CodeGraphError::Transaction(format!("Version {} not found", version_id)))?;
+        self.get_version(version_id).await?.ok_or_else(|| {
+            CodeGraphError::Transaction(format!("Version {} not found", version_id))
+        })?;
 
         let tag = Tag {
             name: name.clone(),
@@ -1136,8 +1136,8 @@ impl GitLikeVersioning for VersionedRocksDbStorage {
         };
 
         let tags_cf = self.get_cf_handle(TAGS_CF)?;
-        let serialized = serde_json::to_vec(&tag)
-            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        let serialized =
+            serde_json::to_vec(&tag).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.db
             .put_cf(&tags_cf, name.as_bytes(), serialized)
@@ -1191,15 +1191,13 @@ impl GitLikeVersioning for VersionedRocksDbStorage {
         message: String,
     ) -> Result<MergeResult> {
         // Get both branches
-        let source = self
-            .get_branch(source_branch)
-            .await?
-            .ok_or_else(|| CodeGraphError::Transaction(format!("Source branch {} not found", source_branch)))?;
+        let source = self.get_branch(source_branch).await?.ok_or_else(|| {
+            CodeGraphError::Transaction(format!("Source branch {} not found", source_branch))
+        })?;
 
-        let target = self
-            .get_branch(target_branch)
-            .await?
-            .ok_or_else(|| CodeGraphError::Transaction(format!("Target branch {} not found", target_branch)))?;
+        let target = self.get_branch(target_branch).await?.ok_or_else(|| {
+            CodeGraphError::Transaction(format!("Target branch {} not found", target_branch))
+        })?;
 
         // Find common ancestor
         let base = self.find_common_ancestor(source.head, target.head).await?;
@@ -1263,8 +1261,8 @@ impl GitLikeVersioning for VersionedRocksDbStorage {
         branch_obj.head = to_version;
 
         let branches_cf = self.get_cf_handle(BRANCHES_CF)?;
-        let serialized = serde_json::to_vec(&branch_obj)
-            .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        let serialized =
+            serde_json::to_vec(&branch_obj).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
         self.db
             .put_cf(&branches_cf, branch.as_bytes(), serialized)

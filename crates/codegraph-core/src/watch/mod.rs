@@ -103,7 +103,7 @@ impl IntelligentFileWatcher {
             let timeout = self.debounce;
             match raw_rx.recv_timeout(timeout) {
                 Ok(Ok(event)) => {
-                    let kind = event.kind.clone();
+                    let kind = event.kind;
                     for path in event.paths {
                         let track = match &kind {
                             EventKind::Remove(_) => {
@@ -126,7 +126,7 @@ impl IntelligentFileWatcher {
                                         let _ = self.process_path_event(&path, &kind, &tx);
                                     }
                                     _ => {
-                                        buf.insert(path.clone(), (kind.clone(), now));
+                                        buf.insert(path.clone(), (kind, now));
                                     }
                                 }
                             }
@@ -151,7 +151,7 @@ impl IntelligentFileWatcher {
                 let to_process: Vec<(PathBuf, EventKind)> = buf
                     .iter()
                     .filter(|(_, (_kind, t))| now.duration_since(*t) >= self.debounce)
-                    .map(|(k, (kind, _))| (k.clone(), kind.clone()))
+                    .map(|(k, (kind, _))| (k.clone(), *kind))
                     .collect();
                 let mut processed_paths: Vec<PathBuf> = Vec::new();
                 for (path, kind) in to_process {
@@ -301,7 +301,7 @@ impl IntelligentFileWatcher {
                                 modified: fs::metadata(p)
                                     .ok()
                                     .and_then(|m| m.modified().ok())
-                                    .unwrap_or_else(|| std::time::SystemTime::now()),
+                                    .unwrap_or_else(std::time::SystemTime::now),
                                 code_hash: code_hash.clone(),
                                 symbols_hash: symbols_hash.clone(),
                                 imports: imports.clone(),
@@ -344,7 +344,7 @@ impl IntelligentFileWatcher {
                             modified: fs::metadata(p)
                                 .ok()
                                 .and_then(|m| m.modified().ok())
-                                .unwrap_or_else(|| std::time::SystemTime::now()),
+                                .unwrap_or_else(std::time::SystemTime::now),
                             code_hash: code_hash.clone(),
                             symbols_hash: symbols_hash.clone(),
                             imports: imports.clone(),
@@ -680,7 +680,7 @@ impl IntelligentFileWatcher {
         for target in current.iter() {
             self.reverse_deps
                 .entry(target.clone())
-                .or_insert_with(|| HashSet::new())
+                .or_default()
                 .insert(file.to_path_buf());
         }
     }
@@ -826,7 +826,7 @@ fn strip_comments_c_like(s: &str) -> String {
             if let Some('/') = it.peek() {
                 // line comment
                 // consume rest of line
-                while let Some(ch) = it.next() {
+                for ch in it.by_ref() {
                     if ch == '\n' {
                         out.push('\n');
                         break;
@@ -882,8 +882,8 @@ fn strip_comments_python(s: &str) -> String {
         let mut escaped = false;
         let mut in_str: Option<char> = None;
         let mut acc = String::new();
-        let mut chars = line.chars().peekable();
-        while let Some(c) = chars.next() {
+        let chars = line.chars().peekable();
+        for c in chars {
             if let Some(q) = in_str {
                 acc.push(c);
                 if c == q && !escaped {

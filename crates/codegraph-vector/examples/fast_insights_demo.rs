@@ -1,5 +1,7 @@
 use codegraph_core::{CodeNode, Language, Location, NodeType};
-use codegraph_vector::{EmbeddingGenerator, InsightsGenerator, InsightsMode, InsightsConfig, RerankerConfig};
+use codegraph_vector::{
+    EmbeddingGenerator, InsightsConfig, InsightsGenerator, InsightsMode, RerankerConfig,
+};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -18,32 +20,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let embedding_gen = Arc::new(EmbeddingGenerator::default());
 
     // Example 1: Context-Only Mode (for agent workflows)
-    println!("=" .repeat(80));
+    println!("=".repeat(80));
     println!("Example 1: CONTEXT-ONLY MODE (Recommended for Claude/GPT-4)");
-    println!("=" .repeat(80));
+    println!("=".repeat(80));
 
     let insights_gen = InsightsGenerator::for_agent_workflow(embedding_gen.clone());
     let query = "How do I create a new user in the system?";
 
-    let result = insights_gen.generate_insights(query, candidates.clone()).await?;
+    let result = insights_gen
+        .generate_insights(query, candidates.clone())
+        .await?;
 
     println!("\n📋 Query: {}", result.query);
     println!("🎯 Mode: {:?}", result.mode);
     println!("\n📈 Performance Metrics:");
     println!("   • Total candidates: {}", result.metrics.total_candidates);
     println!("   • Files analyzed: {}", result.metrics.files_analyzed);
-    println!("   • Reranking time: {:.2}ms", result.metrics.reranking_duration_ms);
+    println!(
+        "   • Reranking time: {:.2}ms",
+        result.metrics.reranking_duration_ms
+    );
     println!("   • Total time: {:.2}ms", result.metrics.total_duration_ms);
-    println!("   • Speedup: {:.1}x vs processing all files", result.metrics.speedup_ratio);
+    println!(
+        "   • Speedup: {:.1}x vs processing all files",
+        result.metrics.speedup_ratio
+    );
 
     println!("\n📄 Context Ready for Agent:");
     println!("{}", truncate_display(&result.context, 500));
 
     // Example 2: Balanced Mode (for local LLM)
     println!("\n");
-    println!("=" .repeat(80));
+    println!("=".repeat(80));
     println!("Example 2: BALANCED MODE (For local Qwen2.5-Coder)");
-    println!("=" .repeat(80));
+    println!("=".repeat(80));
 
     let config = InsightsConfig {
         mode: InsightsMode::Balanced,
@@ -64,23 +74,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let insights_gen_balanced = InsightsGenerator::new(config, embedding_gen.clone());
-    let result_balanced = insights_gen_balanced.generate_insights(query, candidates.clone()).await?;
+    let result_balanced = insights_gen_balanced
+        .generate_insights(query, candidates.clone())
+        .await?;
 
     println!("\n📋 Query: {}", result_balanced.query);
     println!("🎯 Mode: {:?}", result_balanced.mode);
     println!("\n📈 Performance Metrics:");
-    println!("   • Total candidates: {}", result_balanced.metrics.total_candidates);
-    println!("   • Files analyzed: {}", result_balanced.metrics.files_analyzed);
-    println!("   • Reranking time: {:.2}ms", result_balanced.metrics.reranking_duration_ms);
-    println!("   • LLM time: {:.2}ms", result_balanced.metrics.llm_duration_ms);
-    println!("   • Total time: {:.2}ms", result_balanced.metrics.total_duration_ms);
-    println!("   • Speedup: {:.1}x vs processing all files", result_balanced.metrics.speedup_ratio);
+    println!(
+        "   • Total candidates: {}",
+        result_balanced.metrics.total_candidates
+    );
+    println!(
+        "   • Files analyzed: {}",
+        result_balanced.metrics.files_analyzed
+    );
+    println!(
+        "   • Reranking time: {:.2}ms",
+        result_balanced.metrics.reranking_duration_ms
+    );
+    println!(
+        "   • LLM time: {:.2}ms",
+        result_balanced.metrics.llm_duration_ms
+    );
+    println!(
+        "   • Total time: {:.2}ms",
+        result_balanced.metrics.total_duration_ms
+    );
+    println!(
+        "   • Speedup: {:.1}x vs processing all files",
+        result_balanced.metrics.speedup_ratio
+    );
 
     // Example 3: Performance Comparison
     println!("\n");
-    println!("=" .repeat(80));
+    println!("=".repeat(80));
     println!("Example 3: PERFORMANCE COMPARISON");
-    println!("=" .repeat(80));
+    println!("=".repeat(80));
 
     println!("\n📊 Pipeline Stages Breakdown:");
     println!("\nStage 1: Embedding-based Filter");
@@ -97,7 +127,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nStage 3: LLM Insights (Optional)");
     println!("   • Context-Only: SKIP (0ms)");
-    println!("   • Balanced: Top 10 files (~{:.0}ms)", result_balanced.metrics.llm_duration_ms);
+    println!(
+        "   • Balanced: Top 10 files (~{:.0}ms)",
+        result_balanced.metrics.llm_duration_ms
+    );
     println!("   • Deep: All reranked files (~500-2000ms)");
 
     println!("\n💡 Recommendations:");
@@ -151,6 +184,10 @@ fn truncate_display(text: &str, max_len: usize) -> String {
     if text.len() <= max_len {
         text.to_string()
     } else {
-        format!("{}... [truncated, {} more chars]", &text[..max_len], text.len() - max_len)
+        format!(
+            "{}... [truncated, {} more chars]",
+            &text[..max_len],
+            text.len() - max_len
+        )
     }
 }

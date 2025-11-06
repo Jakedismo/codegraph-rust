@@ -258,10 +258,7 @@ impl EmbeddingModelConfig {
                     "Jina configuration required when using Jina provider"
                 );
                 if let Some(config) = &self.jina {
-                    anyhow::ensure!(
-                        !config.model.is_empty(),
-                        "Jina model name cannot be empty"
-                    );
+                    anyhow::ensure!(!config.model.is_empty(), "Jina model name cannot be empty");
                     anyhow::ensure!(
                         !config.api_key_env.is_empty(),
                         "Jina API key environment variable name cannot be empty"
@@ -393,7 +390,8 @@ impl EmbeddingPreset {
     pub fn jina_v4() -> Self {
         Self {
             name: "jina-v4".to_string(),
-            description: "Jina embeddings-v4 model (multimodal, code-optimized with reranking)".to_string(),
+            description: "Jina embeddings-v4 model (multimodal, code-optimized with reranking)"
+                .to_string(),
             config: EmbeddingModelConfig::for_jina("jina-embeddings-v4", 1024),
         }
     }

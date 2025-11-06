@@ -255,7 +255,9 @@ impl GraphStore for TransactionalGraph {
                         // Node was deleted in this transaction
                         return Ok(None);
                     }
-                    WriteOperation::Update { new_content_hash, .. } => {
+                    WriteOperation::Update {
+                        new_content_hash, ..
+                    } => {
                         // Retrieve the modified version from content store
                         let content_opt = {
                             let storage = self.storage.clone();
@@ -452,7 +454,10 @@ impl GraphStore for TransactionalGraph {
                 for (node_id, write_op) in write_set {
                     if !snap.node_versions.contains_key(&node_id) {
                         // This is a new node added in this transaction
-                        if let WriteOperation::Update { new_content_hash, .. } = write_op {
+                        if let WriteOperation::Update {
+                            new_content_hash, ..
+                        } = write_op
+                        {
                             // Retrieve the node from content store
                             let content_opt = {
                                 let storage = storage.clone();

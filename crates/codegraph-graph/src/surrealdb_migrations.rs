@@ -1,7 +1,7 @@
 use codegraph_core::{CodeGraphError, Result};
 use serde::{Deserialize, Serialize};
-use surrealdb::{engine::any::Any, Surreal};
 use std::sync::Arc;
+use surrealdb::{engine::any::Any, Surreal};
 use tracing::{info, warn};
 
 /// Migration record stored in database
@@ -103,19 +103,16 @@ impl MigrationRunner {
     /// Get current schema version from database
     pub async fn get_current_version(&self) -> Result<u32> {
         let query = "SELECT version FROM schema_versions ORDER BY version DESC LIMIT 1";
-        let mut result = self.db
-            .query(query)
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to get schema version: {}", e)))?;
+        let mut result = self.db.query(query).await.map_err(|e| {
+            CodeGraphError::Database(format!("Failed to get schema version: {}", e))
+        })?;
 
         #[derive(Deserialize)]
         struct VersionRecord {
             version: u32,
         }
 
-        let versions: Vec<VersionRecord> = result
-            .take(0)
-            .unwrap_or_default();
+        let versions: Vec<VersionRecord> = result.take(0).unwrap_or_default();
 
         Ok(versions.first().map(|v| v.version).unwrap_or(0))
     }
@@ -152,15 +149,12 @@ impl MigrationRunner {
     async fn apply_migration(&self, migration: &Migration) -> Result<()> {
         // Execute all UP SQL statements
         for sql in &migration.up_sql {
-            self.db
-                .query(sql)
-                .await
-                .map_err(|e| {
-                    CodeGraphError::Database(format!(
-                        "Failed to apply migration {} ({}): {}",
-                        migration.version, migration.name, e
-                    ))
-                })?;
+            self.db.query(sql).await.map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Failed to apply migration {} ({}): {}",
+                    migration.version, migration.name, e
+                ))
+            })?;
         }
 
         // Record migration in database
@@ -172,7 +166,8 @@ impl MigrationRunner {
             checksum,
         };
 
-        let _: Option<MigrationRecord> = self.db
+        let _: Option<MigrationRecord> = self
+            .db
             .create(("schema_versions", format!("v{}", migration.version)))
             .content(record)
             .await
@@ -191,11 +186,17 @@ impl MigrationRunner {
         let current_version = self.get_current_version().await?;
 
         if target_version >= current_version {
-            warn!("Target version {} is not lower than current version {}", target_version, current_version);
+            warn!(
+                "Target version {} is not lower than current version {}",
+                target_version, current_version
+            );
             return Ok(0);
         }
 
-        info!("Rolling back from version {} to {}", current_version, target_version);
+        info!(
+            "Rolling back from version {} to {}",
+            current_version, target_version
+        );
 
         let mut rollback_count = 0;
 
@@ -221,19 +222,17 @@ impl MigrationRunner {
         if let Some(down_sql) = &migration.down_sql {
             // Execute all DOWN SQL statements
             for sql in down_sql {
-                self.db
-                    .query(sql)
-                    .await
-                    .map_err(|e| {
-                        CodeGraphError::Database(format!(
-                            "Failed to rollback migration {} ({}): {}",
-                            migration.version, migration.name, e
-                        ))
-                    })?;
+                self.db.query(sql).await.map_err(|e| {
+                    CodeGraphError::Database(format!(
+                        "Failed to rollback migration {} ({}): {}",
+                        migration.version, migration.name, e
+                    ))
+                })?;
             }
 
             // Remove migration record
-            let _: Option<MigrationRecord> = self.db
+            let _: Option<MigrationRecord> = self
+                .db
                 .delete(("schema_versions", format!("v{}", migration.version)))
                 .await
                 .map_err(|e| {
@@ -257,14 +256,12 @@ impl MigrationRunner {
         info!("Verifying migration integrity");
 
         let query = "SELECT * FROM schema_versions ORDER BY version";
-        let mut result = self.db
-            .query(query)
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to query migrations: {}", e)))?;
+        let mut result =
+            self.db.query(query).await.map_err(|e| {
+                CodeGraphError::Database(format!("Failed to query migrations: {}", e))
+            })?;
 
-        let applied: Vec<MigrationRecord> = result
-            .take(0)
-            .unwrap_or_default();
+        let applied: Vec<MigrationRecord> = result.take(0).unwrap_or_default();
 
         let mut all_valid = true;
 
@@ -298,14 +295,12 @@ impl MigrationRunner {
         let current_version = self.get_current_version().await?;
 
         let query = "SELECT * FROM schema_versions ORDER BY version";
-        let mut result = self.db
-            .query(query)
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to query migrations: {}", e)))?;
+        let mut result =
+            self.db.query(query).await.map_err(|e| {
+                CodeGraphError::Database(format!("Failed to query migrations: {}", e))
+            })?;
 
-        let applied: Vec<MigrationRecord> = result
-            .take(0)
-            .unwrap_or_default();
+        let applied: Vec<MigrationRecord> = result.take(0).unwrap_or_default();
 
         let mut statuses = Vec::new();
 

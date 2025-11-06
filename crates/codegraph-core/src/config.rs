@@ -120,7 +120,7 @@ impl Default for DatabaseBackend {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct DatabaseConfig {
     #[serde(default)]
     pub backend: DatabaseBackend,
@@ -128,16 +128,6 @@ pub struct DatabaseConfig {
     pub rocksdb: RocksDbConfig,
     #[serde(default)]
     pub surrealdb: SurrealDbConfig,
-}
-
-impl Default for DatabaseConfig {
-    fn default() -> Self {
-        Self {
-            backend: DatabaseBackend::default(),
-            rocksdb: RocksDbConfig::default(),
-            surrealdb: SurrealDbConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -306,7 +296,7 @@ impl ConfigManager {
     }
 
     pub fn new_watching(env_override: Option<String>) -> Result<Arc<Self>> {
-        let env_name = env_override.unwrap_or_else(|| Settings::default_env());
+        let env_name = env_override.unwrap_or_else(Settings::default_env);
         let config_dir = Self::default_config_dir();
         let loaded = Self::load_from_sources(&config_dir, &env_name)?;
         loaded.validate()?;
@@ -403,8 +393,7 @@ Example configuration files:
 
 For documentation, see: https://github.com/your-repo/codegraph-rust
 "#;
-                fs::write(&readme, readme_content)
-                    .context("Failed to write README")?;
+                fs::write(&readme, readme_content).context("Failed to write README")?;
                 info!("Created README: {:?}", readme);
             }
         }

@@ -1,7 +1,7 @@
 use codegraph_core::{CodeGraphError, Result};
 use serde::{Deserialize, Serialize};
-use surrealdb::{engine::any::Any, Surreal};
 use std::collections::HashMap;
+use surrealdb::{engine::any::Any, Surreal};
 use tracing::{info, warn};
 
 /// Schema definition for a table
@@ -64,8 +64,24 @@ pub struct IndexDefinition {
 pub struct Migration {
     pub version: u32,
     pub description: String,
-    pub up: Box<dyn Fn(&Surreal<Any>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>> + Send + Sync>,
-    pub down: Option<Box<dyn Fn(&Surreal<Any>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>> + Send + Sync>>,
+    pub up: Box<
+        dyn Fn(
+                &Surreal<Any>,
+            )
+                -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>
+            + Send
+            + Sync,
+    >,
+    pub down: Option<
+        Box<
+            dyn Fn(
+                    &Surreal<Any>,
+                )
+                    -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>
+                + Send
+                + Sync,
+        >,
+    >,
 }
 
 /// Schema manager for flexible schema evolution
@@ -138,15 +154,12 @@ impl SchemaManager {
         }
 
         // Execute DDL
-        self.db
-            .query(&ddl)
-            .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!(
-                    "Failed to apply schema for table {}: {}",
-                    schema.name, e
-                ))
-            })?;
+        self.db.query(&ddl).await.map_err(|e| {
+            CodeGraphError::Database(format!(
+                "Failed to apply schema for table {}: {}",
+                schema.name, e
+            ))
+        })?;
 
         Ok(())
     }
@@ -198,11 +211,7 @@ impl SchemaManager {
     }
 
     /// Add a field to an existing table
-    pub async fn add_field(
-        &self,
-        table: &str,
-        field: FieldDefinition,
-    ) -> Result<()> {
+    pub async fn add_field(&self, table: &str, field: FieldDefinition) -> Result<()> {
         info!("Adding field {} to table {}", field.name, table);
 
         let ddl = format!(
@@ -224,19 +233,13 @@ impl SchemaManager {
         self.db
             .query(&ddl)
             .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to add field: {}", e))
-            })?;
+            .map_err(|e| CodeGraphError::Database(format!("Failed to add field: {}", e)))?;
 
         Ok(())
     }
 
     /// Add an index to an existing table
-    pub async fn add_index(
-        &self,
-        table: &str,
-        index: IndexDefinition,
-    ) -> Result<()> {
+    pub async fn add_index(&self, table: &str, index: IndexDefinition) -> Result<()> {
         info!("Adding index {} to table {}", index.name, table);
 
         let columns = index.columns.join(", ");
@@ -250,9 +253,7 @@ impl SchemaManager {
         self.db
             .query(&ddl)
             .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to add index: {}", e))
-            })?;
+            .map_err(|e| CodeGraphError::Database(format!("Failed to add index: {}", e)))?;
 
         Ok(())
     }
@@ -266,9 +267,7 @@ impl SchemaManager {
         self.db
             .query(&ddl)
             .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to remove field: {}", e))
-            })?;
+            .map_err(|e| CodeGraphError::Database(format!("Failed to remove field: {}", e)))?;
 
         Ok(())
     }
@@ -282,9 +281,7 @@ impl SchemaManager {
         self.db
             .query(&ddl)
             .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to remove index: {}", e))
-            })?;
+            .map_err(|e| CodeGraphError::Database(format!("Failed to remove index: {}", e)))?;
 
         Ok(())
     }
@@ -297,18 +294,13 @@ impl SchemaManager {
         }
 
         let query = "SELECT version FROM schema_versions ORDER BY version DESC LIMIT 1";
-        let mut result = self.db
-            .query(query)
-            .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to get schema version: {}", e))
-            })?;
+        let mut result = self.db.query(query).await.map_err(|e| {
+            CodeGraphError::Database(format!("Failed to get schema version: {}", e))
+        })?;
 
         let versions: Vec<VersionRecord> = result
             .take(0)
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to extract version: {}", e))
-            })?;
+            .map_err(|e| CodeGraphError::Database(format!("Failed to extract version: {}", e)))?;
 
         Ok(versions.first().map(|v| v.version).unwrap_or(0))
     }
@@ -321,10 +313,9 @@ impl SchemaManager {
 
     /// Import schema from JSON
     pub fn import_schema(&mut self, json: &str) -> Result<()> {
-        let tables: HashMap<String, TableSchema> = serde_json::from_str(json)
-            .map_err(|e| {
-                CodeGraphError::Deserialization(format!("Failed to import schema: {}", e))
-            })?;
+        let tables: HashMap<String, TableSchema> = serde_json::from_str(json).map_err(|e| {
+            CodeGraphError::Deserialization(format!("Failed to import schema: {}", e))
+        })?;
 
         self.tables = tables;
         Ok(())
@@ -386,7 +377,9 @@ pub fn create_nodes_schema() -> TableSchema {
             },
             FieldDefinition {
                 name: "embedding".to_string(),
-                field_type: FieldType::Option(Box::new(FieldType::Array(Box::new(FieldType::Float)))),
+                field_type: FieldType::Option(Box::new(FieldType::Array(Box::new(
+                    FieldType::Float,
+                )))),
                 optional: true,
                 default: None,
             },

@@ -38,7 +38,7 @@ struct SearchRequest {
 }
 
 fn default_limit() -> usize {
-    5  // Reduced from 10 for faster agent responses
+    5 // Reduced from 10 for faster agent responses
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -85,7 +85,7 @@ fn default_depth() -> usize {
     2
 }
 fn default_traverse_limit() -> usize {
-    20  // Reduced from 100 to prevent overwhelming agent responses
+    20 // Reduced from 100 to prevent overwhelming agent responses
 }
 
 // #[derive(Deserialize, JsonSchema)]
@@ -141,7 +141,7 @@ fn default_task_type() -> String {
     "semantic_search".to_string()
 }
 fn default_max_context_tokens() -> usize {
-    20000  // Reduced from 80000 for faster responses (30-60s instead of 60-120s)
+    20000 // Reduced from 80000 for faster responses (30-60s instead of 60-120s)
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -614,7 +614,7 @@ impl CodeGraphMCPServer {
         let request = params.0;
 
         let config = codegraph_ai::rag::engine::RAGEngineConfig {
-            max_results: request.max_results.unwrap_or(5),  // Reduced from 10 for faster responses
+            max_results: request.max_results.unwrap_or(5), // Reduced from 10 for faster responses
             graph_neighbor_expansion: true,
             neighbor_hops: 2,
             streaming_chunk_chars: 64,

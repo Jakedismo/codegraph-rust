@@ -14,6 +14,12 @@ pub struct Arena {
     bump: Bump,
 }
 
+impl Default for Arena {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Arena {
     pub fn new() -> Self {
         Self { bump: Bump::new() }
@@ -37,7 +43,7 @@ impl Arena {
     }
 
     /// Allocate a value by moving it into the arena and returning a &'a mut T.
-    pub fn alloc<'a, T>(&'a self, value: T) -> &'a mut T {
+    pub fn alloc<T>(&self, value: T) -> &mut T {
         self.bump.alloc(value)
     }
 

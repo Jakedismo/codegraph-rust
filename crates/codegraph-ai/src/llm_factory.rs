@@ -37,9 +37,21 @@ impl LLMProviderFactory {
             _ => Err(anyhow!(
                 "Unsupported LLM provider: {}. Available providers: ollama, lmstudio{}{}{}",
                 provider_name,
-                if cfg!(feature = "anthropic") { ", anthropic" } else { "" },
-                if cfg!(feature = "openai-llm") { ", openai" } else { "" },
-                if cfg!(feature = "openai-compatible") { ", openai-compatible" } else { "" }
+                if cfg!(feature = "anthropic") {
+                    ", anthropic"
+                } else {
+                    ""
+                },
+                if cfg!(feature = "openai-llm") {
+                    ", openai"
+                } else {
+                    ""
+                },
+                if cfg!(feature = "openai-compatible") {
+                    ", openai-compatible"
+                } else {
+                    ""
+                }
             )),
         }
     }
@@ -136,10 +148,7 @@ impl LLMProviderFactory {
         let openai_config = OpenAIConfig {
             api_key,
             base_url: "https://api.openai.com/v1".to_string(),
-            model: config
-                .model
-                .clone()
-                .unwrap_or_else(|| "gpt-4o".to_string()),
+            model: config.model.clone().unwrap_or_else(|| "gpt-4o".to_string()),
             context_window: config.context_window,
             timeout_secs: config.timeout_secs,
             max_retries: 3,
@@ -152,14 +161,9 @@ impl LLMProviderFactory {
     /// Create an OpenAI-compatible provider
     #[cfg(feature = "openai-compatible")]
     fn create_openai_compatible_provider(config: &LLMConfig) -> Result<Arc<dyn LLMProvider>> {
-        let base_url = config
-            .openai_compatible_url
-            .clone()
-            .ok_or_else(|| {
-                anyhow!(
-                    "OpenAI-compatible base URL not found. Set 'openai_compatible_url' in config"
-                )
-            })?;
+        let base_url = config.openai_compatible_url.clone().ok_or_else(|| {
+            anyhow!("OpenAI-compatible base URL not found. Set 'openai_compatible_url' in config")
+        })?;
 
         let compat_config = OpenAICompatibleConfig {
             base_url,

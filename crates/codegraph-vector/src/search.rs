@@ -3,11 +3,11 @@ use crate::{CacheConfig, EmbeddingGenerator, FaissVectorStore, QueryHash, Search
 #[cfg(feature = "faiss")]
 use codegraph_core::{CodeGraphError, Result, VectorStore};
 use codegraph_core::{CodeNode, Language, NodeId, NodeType};
+#[cfg(feature = "faiss")]
+use futures::future::try_join_all;
 use std::collections::{HashMap, HashSet};
 #[cfg(feature = "faiss")]
 use std::{sync::Arc, time::Duration};
-#[cfg(feature = "faiss")]
-use futures::future::try_join_all;
 
 #[derive(Clone)]
 pub struct SearchResult {

@@ -84,8 +84,11 @@ impl AnthropicProvider {
                 Err(e) => {
                     last_error = Some(e);
                     if attempt < self.config.max_retries {
-                        tracing::warn!("Anthropic request failed (attempt {}/{}), retrying...",
-                            attempt + 1, self.config.max_retries + 1);
+                        tracing::warn!(
+                            "Anthropic request failed (attempt {}/{}), retrying...",
+                            attempt + 1,
+                            self.config.max_retries + 1
+                        );
                     }
                 }
             }
@@ -143,11 +146,7 @@ impl AnthropicProvider {
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
-            return Err(anyhow!(
-                "Anthropic API error ({}): {}",
-                status,
-                error_text
-            ));
+            return Err(anyhow!("Anthropic API error ({}): {}", status, error_text));
         }
 
         response

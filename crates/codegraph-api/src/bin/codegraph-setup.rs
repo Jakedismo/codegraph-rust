@@ -269,12 +269,7 @@ async fn run_setup_wizard() -> Result<SetupConfig> {
                     .allow_empty(true)
                     .interact_text()?;
 
-                let models = vec![
-                    "gpt-4o",
-                    "gpt-4o-mini",
-                    "gpt-4-turbo",
-                    "gpt-4",
-                ];
+                let models = vec!["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4"];
 
                 let model_selection = Select::with_theme(&theme)
                     .with_prompt("Select OpenAI model")
@@ -345,18 +340,15 @@ fn save_config(config: &SetupConfig) -> Result<()> {
         .join(".codegraph");
 
     // Create config directory if it doesn't exist
-    fs::create_dir_all(&config_dir)
-        .context("Failed to create config directory")?;
+    fs::create_dir_all(&config_dir).context("Failed to create config directory")?;
 
     let config_path = config_dir.join("config.toml");
 
     // Serialize config to TOML
-    let toml_content = toml::to_string_pretty(config)
-        .context("Failed to serialize config")?;
+    let toml_content = toml::to_string_pretty(config).context("Failed to serialize config")?;
 
     // Write to file
-    fs::write(&config_path, toml_content)
-        .context("Failed to write config file")?;
+    fs::write(&config_path, toml_content).context("Failed to write config file")?;
 
     println!("\n📝 Configuration preview:");
     println!("─────────────────────────────────────────────────");

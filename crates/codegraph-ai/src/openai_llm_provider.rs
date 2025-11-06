@@ -230,18 +230,21 @@ impl LLMProvider for OpenAIProvider {
 
     fn characteristics(&self) -> ProviderCharacteristics {
         // Characteristics vary by model
-        let (max_tokens, rpm_limit, tpm_limit, supports_functions) = match self.config.model.as_str() {
-            // Reasoning models
-            m if m.contains("o1") => (200_000, Some(50), Some(30_000), false),
-            m if m.contains("o3") || m.contains("o4") => (200_000, Some(50), Some(30_000), false),
-            m if m.starts_with("gpt-5") => (200_000, Some(50), Some(30_000), false),
-            // Standard models
-            "gpt-4o" => (128_000, Some(500), Some(30_000), true),
-            "gpt-4o-mini" => (128_000, Some(500), Some(200_000), true),
-            "gpt-4-turbo" => (128_000, Some(500), Some(30_000), true),
-            "gpt-4" => (8_192, Some(500), Some(10_000), true),
-            _ => (self.config.context_window, Some(500), Some(30_000), true),
-        };
+        let (max_tokens, rpm_limit, tpm_limit, supports_functions) =
+            match self.config.model.as_str() {
+                // Reasoning models
+                m if m.contains("o1") => (200_000, Some(50), Some(30_000), false),
+                m if m.contains("o3") || m.contains("o4") => {
+                    (200_000, Some(50), Some(30_000), false)
+                }
+                m if m.starts_with("gpt-5") => (200_000, Some(50), Some(30_000), false),
+                // Standard models
+                "gpt-4o" => (128_000, Some(500), Some(30_000), true),
+                "gpt-4o-mini" => (128_000, Some(500), Some(200_000), true),
+                "gpt-4-turbo" => (128_000, Some(500), Some(30_000), true),
+                "gpt-4" => (8_192, Some(500), Some(10_000), true),
+                _ => (self.config.context_window, Some(500), Some(30_000), true),
+            };
 
         ProviderCharacteristics {
             max_tokens,
@@ -394,7 +397,11 @@ mod tests {
                 ..Default::default()
             };
             let provider = OpenAIProvider::new(config).unwrap();
-            assert!(provider.is_reasoning_model(), "Model {} should be detected as reasoning model", model);
+            assert!(
+                provider.is_reasoning_model(),
+                "Model {} should be detected as reasoning model",
+                model
+            );
         }
     }
 
@@ -408,7 +415,11 @@ mod tests {
                 ..Default::default()
             };
             let provider = OpenAIProvider::new(config).unwrap();
-            assert!(!provider.is_reasoning_model(), "Model {} should NOT be detected as reasoning model", model);
+            assert!(
+                !provider.is_reasoning_model(),
+                "Model {} should NOT be detected as reasoning model",
+                model
+            );
         }
     }
 }

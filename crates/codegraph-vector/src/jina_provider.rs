@@ -253,11 +253,7 @@ impl JinaEmbeddingProvider {
     }
 
     /// Call Jina reranking API
-    pub async fn rerank(
-        &self,
-        query: &str,
-        documents: Vec<String>,
-    ) -> Result<Vec<RerankResult>> {
+    pub async fn rerank(&self, query: &str, documents: Vec<String>) -> Result<Vec<RerankResult>> {
         if !self.config.enable_reranking {
             return Ok(Vec::new());
         }

@@ -190,16 +190,14 @@ impl OpenAICompatibleProvider {
 
         // Add API key if provided
         if let Some(api_key) = &self.config.api_key {
-            request_builder = request_builder.header("Authorization", format!("Bearer {}", api_key));
+            request_builder =
+                request_builder.header("Authorization", format!("Bearer {}", api_key));
         }
 
-        let response = request_builder
-            .send()
-            .await
-            .context(format!(
-                "Failed to send request to {} Responses API at {}",
-                self.config.provider_name, self.config.base_url
-            ))?;
+        let response = request_builder.send().await.context(format!(
+            "Failed to send request to {} Responses API at {}",
+            self.config.provider_name, self.config.base_url
+        ))?;
 
         let status = response.status();
 
@@ -257,16 +255,14 @@ impl OpenAICompatibleProvider {
 
         // Add API key if provided
         if let Some(api_key) = &self.config.api_key {
-            request_builder = request_builder.header("Authorization", format!("Bearer {}", api_key));
+            request_builder =
+                request_builder.header("Authorization", format!("Bearer {}", api_key));
         }
 
-        let response = request_builder
-            .send()
-            .await
-            .context(format!(
-                "Failed to send request to {} Chat Completions API at {}",
-                self.config.provider_name, self.config.base_url
-            ))?;
+        let response = request_builder.send().await.context(format!(
+            "Failed to send request to {} Chat Completions API at {}",
+            self.config.provider_name, self.config.base_url
+        ))?;
 
         let status = response.status();
 
@@ -284,16 +280,16 @@ impl OpenAICompatibleProvider {
             ));
         }
 
-        let chat_response: ChatCompletionsResponse = response
-            .json()
-            .await
-            .context(format!(
-                "Failed to parse {} Chat Completions API response",
-                self.config.provider_name
-            ))?;
+        let chat_response: ChatCompletionsResponse = response.json().await.context(format!(
+            "Failed to parse {} Chat Completions API response",
+            self.config.provider_name
+        ))?;
 
         // Convert Chat Completions response to Responses API format
-        let choice = chat_response.choices.first().ok_or_else(|| anyhow!("No choices in response"))?;
+        let choice = chat_response
+            .choices
+            .first()
+            .ok_or_else(|| anyhow!("No choices in response"))?;
 
         Ok(ResponseAPIResponse {
             id: chat_response.id,
@@ -352,7 +348,7 @@ impl LLMProvider for OpenAICompatibleProvider {
         ProviderCharacteristics {
             max_tokens: self.config.context_window,
             avg_latency_ms: 1500, // Local models are typically slower
-            rpm_limit: None,       // No rate limits for local providers
+            rpm_limit: None,      // No rate limits for local providers
             tpm_limit: None,
             supports_streaming: true,
             supports_functions: false, // Most local providers don't support function calling

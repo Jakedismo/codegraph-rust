@@ -61,28 +61,28 @@ impl MappedFile {
 
     /// Hint: access pattern is sequential.
     pub fn advise_sequential(&self) {
-        advise_sequential_impl(&self)
+        advise_sequential_impl(self)
     }
 
     /// Hint: access pattern is random.
     pub fn advise_random(&self) {
-        advise_random_impl(&self)
+        advise_random_impl(self)
     }
 
     /// Hint: the given range will be needed soon. Offset+len are clamped to file size.
     pub fn will_need_range(&self, offset: usize, len: usize) {
-        will_need_range_impl(&self, offset, len)
+        will_need_range_impl(self, offset, len)
     }
 
     /// Advise the OS that we no longer need pages in the given range.
     /// Useful after processing a chunk to keep RSS low.
     pub fn dont_need_range(&self, offset: usize, len: usize) {
-        dont_need_range_impl(&self, offset, len)
+        dont_need_range_impl(self, offset, len)
     }
 
     /// Attempt to prefetch the given range into memory. Best-effort.
     pub fn prefetch_range(&self, offset: usize, len: usize) {
-        prefetch_range_impl(&self, offset, len)
+        prefetch_range_impl(self, offset, len)
     }
 }
 

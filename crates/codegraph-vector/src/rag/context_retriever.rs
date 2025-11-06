@@ -308,10 +308,18 @@ impl ContextRetriever {
             }
 
             // Generate using embedding generator
-            let embedding = self.embedding_generator.generate_text_embedding(query).await?;
+            let embedding = self
+                .embedding_generator
+                .generate_text_embedding(query)
+                .await?;
 
             // Cache the result
-            let _ = self.embedding_cache.write().await.insert(key, embedding.clone(), std::time::Duration::from_secs(3600)).await;
+            let _ = self
+                .embedding_cache
+                .write()
+                .await
+                .insert(key, embedding.clone(), std::time::Duration::from_secs(3600))
+                .await;
             info!("💾 Cached query embedding");
             return Ok(embedding);
         }
@@ -319,7 +327,9 @@ impl ContextRetriever {
         #[cfg(not(feature = "cache"))]
         {
             // Fallback: Use embedding generator or deterministic fallback
-            self.embedding_generator.generate_text_embedding(query).await
+            self.embedding_generator
+                .generate_text_embedding(query)
+                .await
         }
     }
 

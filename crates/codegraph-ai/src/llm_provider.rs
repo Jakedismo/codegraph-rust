@@ -123,7 +123,8 @@ pub trait LLMProvider: Send + Sync {
             role: MessageRole::User,
             content: prompt.to_string(),
         }];
-        self.generate_chat(&messages, &GenerationConfig::default()).await
+        self.generate_chat(&messages, &GenerationConfig::default())
+            .await
     }
 
     /// Generate a completion with custom configuration

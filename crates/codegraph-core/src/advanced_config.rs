@@ -10,7 +10,7 @@ use tracing::{debug, info, warn};
 use crate::embedding_config::{EmbeddingModelConfig, EmbeddingPreset};
 use crate::performance_config::{PerformanceMode, PerformanceModeConfig, PerformanceProfile};
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct AdvancedConfig {
     #[serde(default)]
     pub embedding: EmbeddingModelConfig,
@@ -26,18 +26,6 @@ pub struct AdvancedConfig {
 
     #[serde(default)]
     pub templates: ConfigTemplates,
-}
-
-impl Default for AdvancedConfig {
-    fn default() -> Self {
-        Self {
-            embedding: EmbeddingModelConfig::default(),
-            performance: PerformanceModeConfig::default(),
-            runtime: RuntimeConfig::default(),
-            monitoring: MonitoringConfig::default(),
-            templates: ConfigTemplates::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

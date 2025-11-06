@@ -716,7 +716,9 @@ async fn handle_start(
             server.initialize_qwen().await;
 
             if atty::is(Stream::Stderr) {
-                eprintln!("✅ Revolutionary CodeGraph MCP server ready with 100% protocol compliance");
+                eprintln!(
+                    "✅ Revolutionary CodeGraph MCP server ready with 100% protocol compliance"
+                );
             }
 
             // Use official rmcp STDIO transport for perfect compliance
@@ -930,7 +932,11 @@ async fn handle_index(
     );
     println!(
         "│ ⚡ Throughput: {:<33} │",
-        format!("{:.2} files/sec", stats.files as f64 / elapsed.as_secs_f64()).yellow()
+        format!(
+            "{:.2} files/sec",
+            stats.files as f64 / elapsed.as_secs_f64()
+        )
+        .yellow()
     );
     println!("├─────────────────────────────────────────────────┤");
     println!(

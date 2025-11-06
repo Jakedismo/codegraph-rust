@@ -93,7 +93,9 @@ impl PooledBuffer {
     }
 
     pub fn into_inner(mut self) -> Vec<u8> {
-        self.tracker.upgrade().map(|t| t.decr());
+        if let Some(t) = self.tracker.upgrade() {
+            t.decr()
+        }
         self.buf.take().unwrap()
     }
 }

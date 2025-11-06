@@ -87,7 +87,9 @@ pub struct EmbeddingReRanker {
 
 impl EmbeddingReRanker {
     pub fn new(embedding_generator: Arc<crate::EmbeddingGenerator>) -> Self {
-        Self { embedding_generator }
+        Self {
+            embedding_generator,
+        }
     }
 
     /// Fast cosine similarity computation
@@ -115,14 +117,24 @@ impl ReRanker for EmbeddingReRanker {
         query: &str,
         candidates: Vec<(NodeId, String)>,
     ) -> Result<Vec<(NodeId, f32)>> {
-        debug!("🔍 Fast embedding-based reranking for {} candidates", candidates.len());
+        debug!(
+            "🔍 Fast embedding-based reranking for {} candidates",
+            candidates.len()
+        );
 
         // Generate query embedding
-        let query_embedding = self.embedding_generator.generate_text_embedding(query).await?;
+        let query_embedding = self
+            .embedding_generator
+            .generate_text_embedding(query)
+            .await?;
 
         // Batch generate candidate embeddings for GPU efficiency
-        let candidate_texts: Vec<String> = candidates.iter().map(|(_, text)| text.clone()).collect();
-        let candidate_embeddings = self.embedding_generator.embed_texts_batched(&candidate_texts).await?;
+        let candidate_texts: Vec<String> =
+            candidates.iter().map(|(_, text)| text.clone()).collect();
+        let candidate_embeddings = self
+            .embedding_generator
+            .embed_texts_batched(&candidate_texts)
+            .await?;
 
         // Compute similarities
         let mut scores: Vec<(NodeId, f32)> = candidates
@@ -137,7 +149,10 @@ impl ReRanker for EmbeddingReRanker {
         // Sort by score descending
         scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        info!("✅ Embedding reranking complete: top score = {:.3}", scores.first().map(|s| s.1).unwrap_or(0.0));
+        info!(
+            "✅ Embedding reranking complete: top score = {:.3}",
+            scores.first().map(|s| s.1).unwrap_or(0.0)
+        );
         Ok(scores)
     }
 
@@ -200,7 +215,10 @@ impl ReRanker for CrossEncoderReRanker {
         query: &str,
         candidates: Vec<(NodeId, String)>,
     ) -> Result<Vec<(NodeId, f32)>> {
-        debug!("🎯 Cross-encoder reranking for {} candidates", candidates.len());
+        debug!(
+            "🎯 Cross-encoder reranking for {} candidates",
+            candidates.len()
+        );
 
         // Compute cross-encoder scores for all candidates
         let mut scores = Vec::new();
@@ -212,7 +230,10 @@ impl ReRanker for CrossEncoderReRanker {
         // Sort by score descending
         scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        info!("✅ Cross-encoder reranking complete: top score = {:.3}", scores.first().map(|s| s.1).unwrap_or(0.0));
+        info!(
+            "✅ Cross-encoder reranking complete: top score = {:.3}",
+            scores.first().map(|s| s.1).unwrap_or(0.0)
+        );
         Ok(scores)
     }
 
@@ -260,11 +281,22 @@ impl ReRankingPipeline {
     ) -> Result<Vec<RerankedResult>> {
         let total_start = std::time::Instant::now();
 
-        info!("🚀 Starting reranking pipeline for {} candidates", initial_candidates.len());
-        info!("   📊 Stage 1: Embedding-based filter (target: top {})", self.config.embedding_top_k);
-        info!("   📊 Stage 2: Cross-encoder rerank (target: top {})", self.config.cross_encoder_top_k);
-        info!("   📊 Stage 3: LLM insights (enabled: {}, target: top {})",
-            self.config.enable_llm_insights, self.config.llm_top_k);
+        info!(
+            "🚀 Starting reranking pipeline for {} candidates",
+            initial_candidates.len()
+        );
+        info!(
+            "   📊 Stage 1: Embedding-based filter (target: top {})",
+            self.config.embedding_top_k
+        );
+        info!(
+            "   📊 Stage 2: Cross-encoder rerank (target: top {})",
+            self.config.cross_encoder_top_k
+        );
+        info!(
+            "   📊 Stage 3: LLM insights (enabled: {}, target: top {})",
+            self.config.enable_llm_insights, self.config.llm_top_k
+        );
 
         // Stage 1: Fast embedding-based filtering
         let stage1_start = std::time::Instant::now();
@@ -281,15 +313,21 @@ impl ReRankingPipeline {
             })
             .collect();
 
-        let mut embedding_scores = self.embedding_reranker.rerank(query, candidates_with_text.clone()).await?;
+        let mut embedding_scores = self
+            .embedding_reranker
+            .rerank(query, candidates_with_text.clone())
+            .await?;
 
         // Apply threshold and top-k
         embedding_scores.retain(|(_, score)| *score >= self.config.embedding_threshold);
         embedding_scores.truncate(self.config.embedding_top_k);
 
         let stage1_duration = stage1_start.elapsed();
-        info!("✅ Stage 1 complete in {:.2}ms: {} candidates passed filter",
-            stage1_duration.as_secs_f64() * 1000.0, embedding_scores.len());
+        info!(
+            "✅ Stage 1 complete in {:.2}ms: {} candidates passed filter",
+            stage1_duration.as_secs_f64() * 1000.0,
+            embedding_scores.len()
+        );
 
         // Stage 2: Cross-encoder reranking (if enabled)
         let mut final_scores = embedding_scores.clone();
@@ -301,7 +339,8 @@ impl ReRankingPipeline {
             let stage2_candidates: Vec<(NodeId, String)> = embedding_scores
                 .iter()
                 .filter_map(|(id, _)| {
-                    candidates_with_text.iter()
+                    candidates_with_text
+                        .iter()
                         .find(|(cid, _)| cid == id)
                         .map(|(id, text)| (*id, text.clone()))
                 })
@@ -314,8 +353,11 @@ impl ReRankingPipeline {
             cross_encoder_scores.truncate(self.config.cross_encoder_top_k);
 
             let stage2_duration = stage2_start.elapsed();
-            info!("✅ Stage 2 complete in {:.2}ms: {} candidates reranked",
-                stage2_duration.as_secs_f64() * 1000.0, cross_encoder_scores.len());
+            info!(
+                "✅ Stage 2 complete in {:.2}ms: {} candidates reranked",
+                stage2_duration.as_secs_f64() * 1000.0,
+                cross_encoder_scores.len()
+            );
 
             final_scores = cross_encoder_scores;
         }
@@ -328,7 +370,9 @@ impl ReRankingPipeline {
                 .enumerate()
                 .find(|(_, (id, _))| id == node_id)
             {
-                let context_snippet = node.content.as_deref()
+                let context_snippet = node
+                    .content
+                    .as_deref()
                     .unwrap_or(&node.name)
                     .chars()
                     .take(200)
@@ -346,10 +390,16 @@ impl ReRankingPipeline {
         }
 
         let total_duration = total_start.elapsed();
-        info!("🎉 Reranking pipeline complete in {:.2}ms", total_duration.as_secs_f64() * 1000.0);
-        info!("   📈 Reduction: {} -> {} candidates ({:.1}% of original)",
-            initial_candidates.len(), results.len(),
-            (results.len() as f64 / initial_candidates.len() as f64) * 100.0);
+        info!(
+            "🎉 Reranking pipeline complete in {:.2}ms",
+            total_duration.as_secs_f64() * 1000.0
+        );
+        info!(
+            "   📈 Reduction: {} -> {} candidates ({:.1}% of original)",
+            initial_candidates.len(),
+            results.len(),
+            (results.len() as f64 / initial_candidates.len() as f64) * 100.0
+        );
 
         Ok(results)
     }

@@ -52,12 +52,12 @@ impl<'a> Scope<'a> {
 
     #[inline]
     pub fn alloc_slice_clone<'b, T: Clone>(&'b mut self, slice: &[T]) -> &'b [T] {
-        self.bytes_allocated += std::mem::size_of::<T>() * slice.len();
+        self.bytes_allocated += std::mem::size_of_val(slice);
         self.bump_ref().alloc_slice_clone(slice)
     }
 
     #[inline]
-    pub fn alloc<'b, T>(&'b mut self, value: T) -> &'b mut T {
+    pub fn alloc<T>(&mut self, value: T) -> &mut T {
         self.bytes_allocated += std::mem::size_of::<T>();
         self.bump_ref().alloc(value)
     }

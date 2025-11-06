@@ -265,8 +265,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Initialize configuration
-    let config = ConfigManager::new(None)
-        .context("Failed to load configuration")?;
+    let config = ConfigManager::new(None).context("Failed to load configuration")?;
 
     // Initialize app state (for now, we'll create a temporary one)
     // In production, this would connect to the actual storage
@@ -321,8 +320,7 @@ async fn execute_transaction_command(
         }
 
         TransactionCommands::Commit { transaction_id } => {
-            let tx_id = Uuid::parse_str(transaction_id)
-                .context("Invalid transaction ID format")?;
+            let tx_id = Uuid::parse_str(transaction_id).context("Invalid transaction ID format")?;
 
             state
                 .transactional_graph
@@ -341,8 +339,7 @@ async fn execute_transaction_command(
         }
 
         TransactionCommands::Rollback { transaction_id } => {
-            let tx_id = Uuid::parse_str(transaction_id)
-                .context("Invalid transaction ID format")?;
+            let tx_id = Uuid::parse_str(transaction_id).context("Invalid transaction ID format")?;
 
             state
                 .transactional_graph
@@ -668,11 +665,7 @@ fn print_pretty(value: &serde_json::Value) -> Result<()> {
                         println!("{}: {}", key_colored, n.to_string().yellow());
                     }
                     serde_json::Value::Bool(b) => {
-                        let val_colored = if *b {
-                            "true".green()
-                        } else {
-                            "false".red()
-                        };
+                        let val_colored = if *b { "true".green() } else { "false".red() };
                         println!("{}: {}", key_colored, val_colored);
                     }
                     _ => {

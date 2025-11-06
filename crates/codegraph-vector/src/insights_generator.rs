@@ -23,7 +23,7 @@ pub enum InsightsMode {
 
 impl Default for InsightsMode {
     fn default() -> Self {
-        Self::ContextOnly  // Default to fastest mode
+        Self::ContextOnly // Default to fastest mode
     }
 }
 
@@ -41,7 +41,7 @@ impl Default for InsightsConfig {
         Self {
             mode: InsightsMode::ContextOnly,
             reranker_config: RerankerConfig::default(),
-            max_context_length: 8000,  // Tokens
+            max_context_length: 8000, // Tokens
             include_metadata: true,
         }
     }
@@ -66,7 +66,7 @@ pub struct InsightsMetrics {
     pub reranking_duration_ms: f64,
     pub llm_duration_ms: f64,
     pub total_duration_ms: f64,
-    pub speedup_ratio: f64,  // vs processing all files
+    pub speedup_ratio: f64, // vs processing all files
 }
 
 /// High-performance insights generator with reranking pipeline
@@ -77,10 +77,8 @@ pub struct InsightsGenerator {
 
 impl InsightsGenerator {
     pub fn new(config: InsightsConfig, embedding_generator: Arc<EmbeddingGenerator>) -> Self {
-        let reranking_pipeline = ReRankingPipeline::new(
-            config.reranker_config.clone(),
-            embedding_generator,
-        );
+        let reranking_pipeline =
+            ReRankingPipeline::new(config.reranker_config.clone(), embedding_generator);
 
         Self {
             config,
@@ -96,16 +94,26 @@ impl InsightsGenerator {
     ) -> Result<InsightsResult> {
         let total_start = std::time::Instant::now();
 
-        info!("🚀 Generating insights in {:?} mode for {} candidates", self.config.mode, candidates.len());
+        info!(
+            "🚀 Generating insights in {:?} mode for {} candidates",
+            self.config.mode,
+            candidates.len()
+        );
 
         // Stage 1 & 2: Reranking pipeline (always runs)
         let reranking_start = std::time::Instant::now();
-        let reranked_results = self.reranking_pipeline.rerank_pipeline(query, candidates.clone()).await?;
+        let reranked_results = self
+            .reranking_pipeline
+            .rerank_pipeline(query, candidates.clone())
+            .await?;
         let reranking_duration = reranking_start.elapsed().as_secs_f64() * 1000.0;
 
-        info!("✅ Reranking complete: {} -> {} files ({:.1}% reduction)",
-            candidates.len(), reranked_results.len(),
-            (1.0 - reranked_results.len() as f64 / candidates.len() as f64) * 100.0);
+        info!(
+            "✅ Reranking complete: {} -> {} files ({:.1}% reduction)",
+            candidates.len(),
+            reranked_results.len(),
+            (1.0 - reranked_results.len() as f64 / candidates.len() as f64) * 100.0
+        );
 
         // Build context from reranked results
         let context = self.build_context(&reranked_results);
@@ -113,21 +121,25 @@ impl InsightsGenerator {
         // Stage 3: Optional LLM processing
         let (llm_insights, llm_duration) = match self.config.mode {
             InsightsMode::ContextOnly => {
-                info!("📋 Context-only mode: Skipping LLM processing (returning context for agent)");
+                info!(
+                    "📋 Context-only mode: Skipping LLM processing (returning context for agent)"
+                );
                 (None, 0.0)
             }
             InsightsMode::Balanced => {
-                self.generate_llm_insights_lightweight(query, &reranked_results).await?
+                self.generate_llm_insights_lightweight(query, &reranked_results)
+                    .await?
             }
             InsightsMode::Deep => {
-                self.generate_llm_insights_deep(query, &reranked_results).await?
+                self.generate_llm_insights_deep(query, &reranked_results)
+                    .await?
             }
         };
 
         let total_duration = total_start.elapsed().as_secs_f64() * 1000.0;
 
         // Calculate speedup vs processing all files
-        let estimated_full_llm_time = candidates.len() as f64 * 500.0;  // Estimate 500ms per file
+        let estimated_full_llm_time = candidates.len() as f64 * 500.0; // Estimate 500ms per file
         let speedup_ratio = estimated_full_llm_time / total_duration;
 
         let metrics = InsightsMetrics {
@@ -139,8 +151,10 @@ impl InsightsGenerator {
             speedup_ratio,
         };
 
-        info!("🎉 Insights generation complete in {:.2}ms ({:.1}x faster than processing all files)",
-            total_duration, speedup_ratio);
+        info!(
+            "🎉 Insights generation complete in {:.2}ms ({:.1}x faster than processing all files)",
+            total_duration, speedup_ratio
+        );
 
         Ok(InsightsResult {
             query: query.to_string(),
@@ -156,11 +170,18 @@ impl InsightsGenerator {
     fn build_context(&self, results: &[RerankedResult]) -> String {
         let mut context = String::new();
 
-        context.push_str(&format!("# Retrieved Context ({} files)\n\n", results.len()));
+        context.push_str(&format!(
+            "# Retrieved Context ({} files)\n\n",
+            results.len()
+        ));
 
         for (idx, result) in results.iter().enumerate() {
             if let Some(ref node) = result.node {
-                context.push_str(&format!("## File {} (Score: {:.3})\n", idx + 1, result.relevance_score));
+                context.push_str(&format!(
+                    "## File {} (Score: {:.3})\n",
+                    idx + 1,
+                    result.relevance_score
+                ));
 
                 if self.config.include_metadata {
                     context.push_str(&format!("**Path**: {}\n", node.location.file_path));
@@ -178,7 +199,10 @@ impl InsightsGenerator {
                 if let Some(ref content) = node.content {
                     // Truncate to max context length
                     let truncated = if content.len() > self.config.max_context_length {
-                        format!("{}... [truncated]", &content[..self.config.max_context_length])
+                        format!(
+                            "{}... [truncated]",
+                            &content[..self.config.max_context_length]
+                        )
                     } else {
                         content.to_string()
                     };
@@ -209,14 +233,18 @@ impl InsightsGenerator {
             return Ok((None, 0.0));
         }
 
-        info!("🤖 Running lightweight LLM on {} files", llm_candidates.len());
+        info!(
+            "🤖 Running lightweight LLM on {} files",
+            llm_candidates.len()
+        );
 
         // In production, this would call the local LLM (Qwen2.5-Coder)
         // For now, return a placeholder
         let insights = format!(
             "Lightweight analysis of {} files for query: '{}'\n\
             This would contain quick insights from Qwen2.5-Coder.",
-            llm_candidates.len(), query
+            llm_candidates.len(),
+            query
         );
 
         let duration = start.elapsed().as_secs_f64() * 1000.0;
@@ -237,7 +265,8 @@ impl InsightsGenerator {
         let insights = format!(
             "Deep analysis of {} files for query: '{}'\n\
             This would contain comprehensive insights from Qwen2.5-Coder.",
-            results.len(), query
+            results.len(),
+            query
         );
 
         let duration = start.elapsed().as_secs_f64() * 1000.0;
@@ -249,12 +278,12 @@ impl InsightsGenerator {
         let config = InsightsConfig {
             mode: InsightsMode::ContextOnly,
             reranker_config: RerankerConfig {
-                embedding_top_k: 50,  // More aggressive filtering
+                embedding_top_k: 50, // More aggressive filtering
                 embedding_threshold: 0.4,
                 enable_cross_encoder: true,
                 cross_encoder_top_k: 15,
                 cross_encoder_threshold: 0.6,
-                enable_llm_insights: false,  // No local LLM
+                enable_llm_insights: false, // No local LLM
                 llm_top_k: 0,
                 enable_batch_processing: true,
                 batch_size: 64,
@@ -278,7 +307,7 @@ impl InsightsGenerator {
                 cross_encoder_top_k: 20,
                 cross_encoder_threshold: 0.5,
                 enable_llm_insights: true,
-                llm_top_k: 10,  // Only top 10 to LLM
+                llm_top_k: 10, // Only top 10 to LLM
                 enable_batch_processing: true,
                 batch_size: 32,
                 max_concurrent_requests: 4,

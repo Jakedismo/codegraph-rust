@@ -234,7 +234,8 @@ impl ProjectIndexer {
             warn!("Project already indexed. Use --force to reindex.");
             let mut stats = IndexStats::default();
             stats.skipped = codegraph_parser::file_collect::collect_source_files_with_config(
-                path, &file_config,
+                path,
+                &file_config,
             )
             .map(|f| f.len())
             .unwrap_or(0);
@@ -421,8 +422,8 @@ impl ProjectIndexer {
 
                     // Use IVF index for large shards (>10K vectors) for O(sqrt(n)) complexity
                     if num_vectors > 10000 {
-                        use faiss::index::IndexImpl;
                         use faiss::index::index_factory;
+                        use faiss::index::IndexImpl;
 
                         // Create IVF index with nlist = sqrt(num_vectors)
                         let nlist = (num_vectors as f32).sqrt() as usize;
@@ -432,11 +433,15 @@ impl ProjectIndexer {
                         let mut idx = index_factory(
                             self.vector_dim as u32,
                             &index_description,
-                            faiss::MetricType::InnerProduct
-                        ).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                            faiss::MetricType::InnerProduct,
+                        )
+                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
                         // Train the index
-                        info!("🎓 Training IVF index with {} centroids for {} vectors", nlist, num_vectors);
+                        info!(
+                            "🎓 Training IVF index with {} centroids for {} vectors",
+                            nlist, num_vectors
+                        );
                         idx.train(vectors)
                             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
@@ -449,8 +454,12 @@ impl ProjectIndexer {
                         }
                         write_index(&idx, path.to_string_lossy())
                             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                        info!("✅ Created IVF FAISS index at: {} ({} vectors, {} centroids)",
-                              path.display(), num_vectors, nlist);
+                        info!(
+                            "✅ Created IVF FAISS index at: {} ({} vectors, {} centroids)",
+                            path.display(),
+                            num_vectors,
+                            nlist
+                        );
                     } else {
                         // Use Flat index for smaller shards (faster for <10K vectors)
                         let mut idx = FlatIndex::new_ip(self.vector_dim as u32)
@@ -462,8 +471,11 @@ impl ProjectIndexer {
                         }
                         write_index(&idx, path.to_string_lossy())
                             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                        info!("✅ Created Flat FAISS index at: {} ({} vectors)",
-                              path.display(), num_vectors);
+                        info!(
+                            "✅ Created Flat FAISS index at: {} ({} vectors)",
+                            path.display(),
+                            num_vectors
+                        );
                     }
                     Ok(())
                 };
@@ -1277,7 +1289,10 @@ impl ProjectIndexer {
                     for (symbol, embedding) in batch.iter().zip(batch_embeddings.into_iter()) {
                         embeddings.insert(symbol.to_string(), embedding);
                     }
-                    info!("✅ Generated {} embeddings so far (batch mode)", embeddings.len());
+                    info!(
+                        "✅ Generated {} embeddings so far (batch mode)",
+                        embeddings.len()
+                    );
                 }
                 Err(e) => {
                     warn!(

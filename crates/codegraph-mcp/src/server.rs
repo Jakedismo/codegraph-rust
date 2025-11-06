@@ -1,7 +1,7 @@
 use codegraph_core::GraphStore;
 use serde_json::{json, Value};
-use std::sync::Arc;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 // Performance optimization: Cache FAISS indexes and embedding generator
@@ -24,9 +24,8 @@ static INDEX_CACHE: Lazy<DashMap<PathBuf, Arc<parking_lot::Mutex<IndexImpl>>>> =
     Lazy::new(|| DashMap::new());
 
 #[cfg(feature = "embeddings")]
-static EMBEDDING_GENERATOR: Lazy<
-    tokio::sync::OnceCell<Arc<codegraph_vector::EmbeddingGenerator>>,
-> = Lazy::new(|| tokio::sync::OnceCell::new());
+static EMBEDDING_GENERATOR: Lazy<tokio::sync::OnceCell<Arc<codegraph_vector::EmbeddingGenerator>>> =
+    Lazy::new(|| tokio::sync::OnceCell::new());
 
 // Query result cache for 100x speedup on repeated queries
 static QUERY_RESULT_CACHE: Lazy<
@@ -86,9 +85,7 @@ async fn get_embedding_generator() -> Arc<codegraph_vector::EmbeddingGenerator> 
 
 /// Get or load a cached FAISS index (10-50x speedup)
 #[cfg(feature = "faiss")]
-fn get_cached_index(
-    index_path: &Path,
-) -> anyhow::Result<Arc<parking_lot::Mutex<IndexImpl>>> {
+fn get_cached_index(index_path: &Path) -> anyhow::Result<Arc<parking_lot::Mutex<IndexImpl>>> {
     use faiss::index::io::read_index;
 
     // Check if index is already cached
@@ -100,8 +97,7 @@ fn get_cached_index(
     // Load index from disk if not cached
     tracing::debug!("Loading index from disk: {:?}", index_path);
     let index = read_index(index_path.to_string_lossy())?;
-    let arc_index: Arc<parking_lot::Mutex<IndexImpl>> =
-        Arc::new(parking_lot::Mutex::new(index));
+    let arc_index: Arc<parking_lot::Mutex<IndexImpl>> = Arc::new(parking_lot::Mutex::new(index));
 
     // Cache for future use
     INDEX_CACHE.insert(index_path.to_path_buf(), arc_index.clone());
@@ -127,8 +123,13 @@ pub fn get_cache_stats() -> (usize, usize) {
 }
 
 /// Generate cache key for query result caching
-fn generate_cache_key(query: &str, paths: &Option<Vec<String>>, langs: &Option<Vec<String>>, limit: usize) -> String {
-    use sha2::{Sha256, Digest};
+fn generate_cache_key(
+    query: &str,
+    paths: &Option<Vec<String>>,
+    langs: &Option<Vec<String>>,
+    limit: usize,
+) -> String {
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(query.as_bytes());
     if let Some(p) = paths {
@@ -456,8 +457,8 @@ pub async fn bin_search_with_scores_shared(
     #[cfg(feature = "faiss")]
     {
         use faiss::index::Index as _;
-        use std::path::Path;
         use rayon::prelude::*;
+        use std::path::Path;
 
         let start_total = Instant::now();
 
@@ -516,7 +517,10 @@ pub async fn bin_search_with_scores_shared(
 
         if index_paths.is_empty() {
             // Search all available shards
-            for dir_path in &[Path::new(".codegraph/shards/lang"), Path::new(".codegraph/shards/path")] {
+            for dir_path in &[
+                Path::new(".codegraph/shards/lang"),
+                Path::new(".codegraph/shards/path"),
+            ] {
                 if dir_path.exists() {
                     if let Ok(entries) = std::fs::read_dir(dir_path) {
                         for entry in entries.flatten() {
@@ -539,7 +543,11 @@ pub async fn bin_search_with_scores_shared(
         let main_index_path = Path::new(".codegraph/faiss.index");
         let main_ids_path = Path::new(".codegraph/faiss_ids.json");
         if main_index_path.exists() && main_ids_path.exists() {
-            index_paths.push((main_index_path.to_path_buf(), main_ids_path.to_path_buf(), limit * 3));
+            index_paths.push((
+                main_index_path.to_path_buf(),
+                main_ids_path.to_path_buf(),
+                limit * 3,
+            ));
         }
 
         // PERFORMANCE FIX #3: Parallel shard searching (2-3x speedup)
@@ -550,7 +558,9 @@ pub async fn bin_search_with_scores_shared(
                 let mut results = Vec::new();
                 if let Ok(index) = get_cached_index(index_path) {
                     if let Ok(mapping_raw) = std::fs::read_to_string(ids_path) {
-                        if let Ok(mapping) = serde_json::from_str::<Vec<codegraph_core::NodeId>>(&mapping_raw) {
+                        if let Ok(mapping) =
+                            serde_json::from_str::<Vec<codegraph_core::NodeId>>(&mapping_raw)
+                        {
                             let mut index_lock = index.lock();
                             if let Ok(res) = index_lock.search(&emb, *topk) {
                                 for (i, label) in res.labels.into_iter().enumerate() {

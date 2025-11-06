@@ -300,11 +300,11 @@ impl ConfigCliHandler {
 
         if strict {
             // Additional strict validation
-            if matches!(config.embedding.provider, EmbeddingProvider::OpenAI) {
-                if config.embedding.openai.is_none() {
-                    pb.finish_with_message("❌ OpenAI configuration missing");
-                    anyhow::bail!("OpenAI provider requires OpenAI configuration");
-                }
+            if matches!(config.embedding.provider, EmbeddingProvider::OpenAI)
+                && config.embedding.openai.is_none()
+            {
+                pb.finish_with_message("❌ OpenAI configuration missing");
+                anyhow::bail!("OpenAI provider requires OpenAI configuration");
             }
 
             if config.performance.processing.parallel_workers > num_cpus::get() * 4 {

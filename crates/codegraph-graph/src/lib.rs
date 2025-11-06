@@ -20,11 +20,11 @@ pub mod update_scheduler;
 pub mod versioned_storage;
 
 #[cfg(feature = "surrealdb")]
-pub mod surrealdb_storage;
+pub mod surrealdb_migrations;
 #[cfg(feature = "surrealdb")]
 pub mod surrealdb_schema;
 #[cfg(feature = "surrealdb")]
-pub mod surrealdb_migrations;
+pub mod surrealdb_storage;
 
 pub use cache::*;
 pub use delta::*;
@@ -48,8 +48,8 @@ pub use update_scheduler::*;
 pub use versioned_storage::*;
 
 #[cfg(feature = "surrealdb")]
-pub use surrealdb_storage::*;
+pub use surrealdb_migrations::*;
 #[cfg(feature = "surrealdb")]
 pub use surrealdb_schema::*;
 #[cfg(feature = "surrealdb")]
-pub use surrealdb_migrations::*;
+pub use surrealdb_storage::*;

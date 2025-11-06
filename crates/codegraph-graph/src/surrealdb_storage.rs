@@ -5,11 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::sync::Arc;
-use surrealdb::{
-    engine::any::Any,
-    opt::auth::Root,
-    Surreal,
-};
+use surrealdb::{engine::any::Any, opt::auth::Root, Surreal};
 use tracing::{debug, error, info, warn};
 
 /// SurrealDB storage implementation with flexible schema support
@@ -93,12 +89,9 @@ impl SurrealDbStorage {
 
         // Authenticate if credentials provided
         if let (Some(username), Some(password)) = (&config.username, &config.password) {
-            db.signin(Root {
-                username,
-                password,
-            })
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Authentication failed: {}", e)))?;
+            db.signin(Root { username, password })
+                .await
+                .map_err(|e| CodeGraphError::Database(format!("Authentication failed: {}", e)))?;
         }
 
         // Select namespace and database
@@ -196,28 +189,25 @@ impl SurrealDbStorage {
         "#;
 
         // Execute schema definitions
-        self.db
-            .query(node_schema)
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to create nodes schema: {}", e)))?;
+        self.db.query(node_schema).await.map_err(|e| {
+            CodeGraphError::Database(format!("Failed to create nodes schema: {}", e))
+        })?;
 
-        self.db
-            .query(edge_schema)
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to create edges schema: {}", e)))?;
+        self.db.query(edge_schema).await.map_err(|e| {
+            CodeGraphError::Database(format!("Failed to create edges schema: {}", e))
+        })?;
 
-        self.db
-            .query(version_schema)
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to create versions schema: {}", e)))?;
+        self.db.query(version_schema).await.map_err(|e| {
+            CodeGraphError::Database(format!("Failed to create versions schema: {}", e))
+        })?;
 
-        self.db
-            .query(metadata_schema)
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to create metadata schema: {}", e)))?;
+        self.db.query(metadata_schema).await.map_err(|e| {
+            CodeGraphError::Database(format!("Failed to create metadata schema: {}", e))
+        })?;
 
         // Initialize schema version if not exists
-        let _: Option<SchemaVersion> = self.db
+        let _: Option<SchemaVersion> = self
+            .db
             .create(("schema_versions", "current"))
             .content(SchemaVersion {
                 version: 1,
@@ -225,7 +215,9 @@ impl SurrealDbStorage {
                 description: "Initial schema".to_string(),
             })
             .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to set schema version: {}", e)))?;
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to set schema version: {}", e))
+            })?;
 
         *self.schema_version.write().unwrap() = 1;
 
@@ -241,14 +233,18 @@ impl SurrealDbStorage {
         // Define migrations as functions for easy addition
         let migrations = vec![
             // Migration 2: Add indexes for performance
-            (2u32, "Add performance indexes", |db: &Surreal<Any>| async move {
-                db.query(r#"
+            (
+                2u32,
+                "Add performance indexes",
+                |db: &Surreal<Any>| async move {
+                    db.query(r#"
                     DEFINE INDEX IF NOT EXISTS idx_nodes_created_at ON TABLE nodes COLUMNS created_at;
                     DEFINE INDEX IF NOT EXISTS idx_edges_created_at ON TABLE edges COLUMNS created_at;
                 "#)
                 .await
                 .map_err(|e| CodeGraphError::Database(format!("Migration 2 failed: {}", e)))
-            }),
+                },
+            ),
         ];
 
         for (version, description, migration) in migrations {
@@ -257,7 +253,8 @@ impl SurrealDbStorage {
                 migration(&self.db).await?;
 
                 // Record migration
-                let _: Option<SchemaVersion> = self.db
+                let _: Option<SchemaVersion> = self
+                    .db
                     .create(("schema_versions", format!("v{}", version)))
                     .content(SchemaVersion {
                         version,
@@ -265,7 +262,9 @@ impl SurrealDbStorage {
                         description: description.to_string(),
                     })
                     .await
-                    .map_err(|e| CodeGraphError::Database(format!("Failed to record migration: {}", e)))?;
+                    .map_err(|e| {
+                        CodeGraphError::Database(format!("Failed to record migration: {}", e))
+                    })?;
 
                 *self.schema_version.write().unwrap() = version;
             }
@@ -283,23 +282,44 @@ impl SurrealDbStorage {
         data.insert("name".to_string(), JsonValue::String(node.name.to_string()));
 
         if let Some(node_type) = &node.node_type {
-            data.insert("node_type".to_string(), JsonValue::String(format!("{:?}", node_type)));
+            data.insert(
+                "node_type".to_string(),
+                JsonValue::String(format!("{:?}", node_type)),
+            );
         }
 
         if let Some(language) = &node.language {
-            data.insert("language".to_string(), JsonValue::String(format!("{:?}", language)));
+            data.insert(
+                "language".to_string(),
+                JsonValue::String(format!("{:?}", language)),
+            );
         }
 
         if let Some(content) = &node.content {
-            data.insert("content".to_string(), JsonValue::String(content.to_string()));
+            data.insert(
+                "content".to_string(),
+                JsonValue::String(content.to_string()),
+            );
         }
 
-        data.insert("file_path".to_string(), JsonValue::String(node.location.file_path.to_string()));
-        data.insert("start_line".to_string(), JsonValue::Number(node.location.start_line.into()));
-        data.insert("end_line".to_string(), JsonValue::Number(node.location.end_line.into()));
+        data.insert(
+            "file_path".to_string(),
+            JsonValue::String(node.location.file_path.to_string()),
+        );
+        data.insert(
+            "start_line".to_string(),
+            JsonValue::Number(node.location.start_line.into()),
+        );
+        data.insert(
+            "end_line".to_string(),
+            JsonValue::Number(node.location.end_line.into()),
+        );
 
         if let Some(embedding) = &node.embedding {
-            let emb_values: Vec<JsonValue> = embedding.iter().map(|&f| JsonValue::from(f as f64)).collect();
+            let emb_values: Vec<JsonValue> = embedding
+                .iter()
+                .map(|&f| JsonValue::from(f as f64))
+                .collect();
             data.insert("embedding".to_string(), JsonValue::Array(emb_values));
         }
 
@@ -312,7 +332,10 @@ impl SurrealDbStorage {
         for (key, value) in &node.metadata.attributes {
             metadata_obj.insert(key.clone(), JsonValue::String(value.clone()));
         }
-        data.insert("metadata".to_string(), serde_json::to_value(metadata_obj).unwrap());
+        data.insert(
+            "metadata".to_string(),
+            serde_json::to_value(metadata_obj).unwrap(),
+        );
 
         Ok(data)
     }
@@ -321,45 +344,47 @@ impl SurrealDbStorage {
     fn surreal_to_node(&self, data: HashMap<String, JsonValue>) -> Result<CodeNode> {
         use codegraph_core::{Language, Location, Metadata, NodeType, SharedStr};
 
-        let id_str = data.get("id")
+        let id_str = data
+            .get("id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| CodeGraphError::Deserialization("Missing node id".to_string()))?;
         let id = NodeId::parse_str(id_str)
             .map_err(|e| CodeGraphError::Deserialization(format!("Invalid node id: {}", e)))?;
 
-        let name = data.get("name")
+        let name = data
+            .get("name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| CodeGraphError::Deserialization("Missing node name".to_string()))?;
 
-        let node_type = data.get("node_type")
+        let node_type = data
+            .get("node_type")
             .and_then(|v| v.as_str())
             .and_then(|s| serde_json::from_str::<NodeType>(&format!("\"{}\"", s)).ok());
 
-        let language = data.get("language")
+        let language = data
+            .get("language")
             .and_then(|v| v.as_str())
             .and_then(|s| serde_json::from_str::<Language>(&format!("\"{}\"", s)).ok());
 
-        let content = data.get("content")
+        let content = data
+            .get("content")
             .and_then(|v| v.as_str())
             .map(|s| SharedStr::from(s));
 
-        let file_path = data.get("file_path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let file_path = data.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
 
-        let start_line = data.get("start_line")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
+        let start_line = data.get("start_line").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
-        let end_line = data.get("end_line")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
+        let end_line = data.get("end_line").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
-        let embedding = data.get("embedding")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect());
+        let embedding = data.get("embedding").and_then(|v| v.as_array()).map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_f64().map(|f| f as f32))
+                .collect()
+        });
 
-        let complexity = data.get("complexity")
+        let complexity = data
+            .get("complexity")
             .and_then(|v| v.as_f64())
             .map(|f| f as f32);
 
@@ -398,7 +423,8 @@ impl GraphStore for SurrealDbStorage {
         let data = self.node_to_surreal(&node)?;
         let node_id = node.id.to_string();
 
-        let _: Option<HashMap<String, JsonValue>> = self.db
+        let _: Option<HashMap<String, JsonValue>> = self
+            .db
             .create(("nodes", &node_id))
             .content(data)
             .await
@@ -421,7 +447,8 @@ impl GraphStore for SurrealDbStorage {
         }
 
         let node_id = id.to_string();
-        let result: Option<HashMap<String, JsonValue>> = self.db
+        let result: Option<HashMap<String, JsonValue>> = self
+            .db
             .select(("nodes", &node_id))
             .await
             .map_err(|e| CodeGraphError::Database(format!("Failed to get node: {}", e)))?;
@@ -447,7 +474,8 @@ impl GraphStore for SurrealDbStorage {
         let data = self.node_to_surreal(&node)?;
         let node_id = node.id.to_string();
 
-        let _: Option<HashMap<String, JsonValue>> = self.db
+        let _: Option<HashMap<String, JsonValue>> = self
+            .db
             .update(("nodes", &node_id))
             .content(data)
             .await
@@ -465,7 +493,8 @@ impl GraphStore for SurrealDbStorage {
         debug!("Removing node: {}", id);
 
         let node_id = id.to_string();
-        let _: Option<HashMap<String, JsonValue>> = self.db
+        let _: Option<HashMap<String, JsonValue>> = self
+            .db
             .delete(("nodes", &node_id))
             .await
             .map_err(|e| CodeGraphError::Database(format!("Failed to delete node: {}", e)))?;
@@ -482,17 +511,21 @@ impl GraphStore for SurrealDbStorage {
         debug!("Finding nodes by name: {}", name);
 
         let query = "SELECT * FROM nodes WHERE name = $name";
-        let mut result = self.db
+        let mut result = self
+            .db
             .query(query)
             .bind(("name", name))
             .await
             .map_err(|e| CodeGraphError::Database(format!("Failed to query nodes: {}", e)))?;
 
-        let nodes: Vec<HashMap<String, JsonValue>> = result
-            .take(0)
-            .map_err(|e| CodeGraphError::Database(format!("Failed to extract query results: {}", e)))?;
+        let nodes: Vec<HashMap<String, JsonValue>> = result.take(0).map_err(|e| {
+            CodeGraphError::Database(format!("Failed to extract query results: {}", e))
+        })?;
 
-        nodes.into_iter().map(|data| self.surreal_to_node(data)).collect()
+        nodes
+            .into_iter()
+            .map(|data| self.surreal_to_node(data))
+            .collect()
     }
 }
 

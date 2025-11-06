@@ -139,7 +139,7 @@ where
         // Two-phase approach for better linking: first ingest nodes, then edges.
         // Phase 1: parse + add nodes for all files (incremental aware)
         for chunk in files.chunks(64) {
-            for file in chunk.iter().cloned() {
+            for file in chunk {
                 // Bound concurrency using semaphore, but avoid spawning to keep non-Send futures acceptable
                 let _permit = semaphore.clone().acquire_owned().await.unwrap();
                 match self.process_file(file.to_string_lossy().as_ref()).await {
@@ -267,7 +267,7 @@ where
         // Two-phase approach for better linking: first ingest nodes, then edges.
         // Phase 1: parse + add nodes for all files (incremental aware) with progress tracking
         for chunk in files.chunks(64) {
-            for file in chunk.iter().cloned() {
+            for file in chunk {
                 // Bound concurrency using semaphore, but avoid spawning to keep non-Send futures acceptable
                 let _permit = semaphore.clone().acquire_owned().await.unwrap();
                 match self.process_file(file.to_string_lossy().as_ref()).await {
@@ -606,7 +606,7 @@ fn parse_import_targets(s: &str) -> Vec<String> {
             }
         } else {
             // import Default from 'x' | import * as ns from 'x' (skip wildcard)
-            let tokens: Vec<&str> = text[6..].trim().split_whitespace().collect();
+            let tokens: Vec<&str> = text[6..].split_whitespace().collect();
             if !tokens.is_empty() && tokens[0] != "*" {
                 out.push(tokens[0].trim_matches(',').to_string());
             }
@@ -631,10 +631,8 @@ async fn collect_source_files(dir: &str) -> Result<Vec<PathBuf>> {
             if let Ok(ft) = entry.file_type().await {
                 if ft.is_dir() {
                     dirs.push(path);
-                } else if ft.is_file() {
-                    if is_supported_source(&path) {
-                        files.push(path);
-                    }
+                } else if ft.is_file() && is_supported_source(&path) {
+                    files.push(path);
                 }
             }
         }

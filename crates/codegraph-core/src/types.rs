@@ -45,7 +45,7 @@ pub enum NodeType {
     Other(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum EdgeType {
     Calls,
     Defines,
@@ -54,14 +54,9 @@ pub enum EdgeType {
     Extends,
     Implements,
     Contains,
+    #[default]
     References,
     Other(String),
-}
-
-impl Default for EdgeType {
-    fn default() -> Self {
-        EdgeType::References
-    }
 }
 
 impl fmt::Display for EdgeType {
