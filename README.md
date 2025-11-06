@@ -323,10 +323,18 @@ cargo build --release --bin codegraph-setup --features all-cloud-providers
 
 ### Manual Configuration
 
+**Configuration directory: `~/.codegraph/`**
+
+All configuration files are stored in `~/.codegraph/` in TOML format.
+
 Configuration is loaded from (in order):
-1. `./.codegraph.toml` (project-specific)
-2. `~/.codegraph/config.toml` (global)
-3. Environment variables
+1. `~/.codegraph/default.toml` (base configuration)
+2. `~/.codegraph/{environment}.toml` (e.g., development.toml, production.toml)
+3. `~/.codegraph/local.toml` (local overrides, machine-specific)
+4. `./config/` (fallback for backward compatibility)
+5. Environment variables (CODEGRAPH__* prefix)
+
+**See [Configuration Guide](docs/CONFIGURATION_GUIDE.md) for complete documentation.**
 
 **Full configuration example:**
 ```toml

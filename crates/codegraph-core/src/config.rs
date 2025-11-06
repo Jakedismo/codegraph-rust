@@ -324,15 +324,97 @@ impl ConfigManager {
         Ok(manager)
     }
 
+    /// Get the default configuration directory.
+    ///
+    /// Priority order:
+    /// 1. ~/.codegraph/ (primary, user-level config)
+    /// 2. ./config/ (backward compatibility, project-level config)
+    /// 3. Current directory (fallback)
     pub fn default_config_dir() -> PathBuf {
-        // Prefer ./config/, fallback to current dir
-        let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let dir = cwd.join("config");
-        if dir.exists() {
-            dir
-        } else {
-            cwd
+        // First, try ~/.codegraph
+        if let Some(home_dir) = dirs::home_dir() {
+            let codegraph_dir = home_dir.join(".codegraph");
+            if codegraph_dir.exists() {
+                info!("Using config directory: {:?}", codegraph_dir);
+                return codegraph_dir;
+            }
         }
+
+        // Fall back to ./config/ for backward compatibility
+        let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let project_config = cwd.join("config");
+        if project_config.exists() {
+            info!("Using config directory: {:?}", project_config);
+            return project_config;
+        }
+
+        // Final fallback to current directory
+        info!("Using config directory: {:?}", cwd);
+        cwd
+    }
+
+    /// Initialize the ~/.codegraph configuration directory with default config files.
+    ///
+    /// This creates the directory if it doesn't exist and optionally copies
+    /// default configuration files.
+    pub fn init_user_config_dir(copy_defaults: bool) -> Result<PathBuf> {
+        let home_dir = dirs::home_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+
+        let codegraph_dir = home_dir.join(".codegraph");
+
+        // Create directory if it doesn't exist
+        if !codegraph_dir.exists() {
+            fs::create_dir_all(&codegraph_dir)
+                .context("Failed to create ~/.codegraph directory")?;
+            info!("Created config directory: {:?}", codegraph_dir);
+        }
+
+        if copy_defaults {
+            // Create default.toml if it doesn't exist
+            let default_config = codegraph_dir.join("default.toml");
+            if !default_config.exists() {
+                let default_content = include_str!("../../../config/default.toml");
+                fs::write(&default_config, default_content)
+                    .context("Failed to write default config")?;
+                info!("Created default config: {:?}", default_config);
+            }
+
+            // Create README
+            let readme = codegraph_dir.join("README.txt");
+            if !readme.exists() {
+                let readme_content = r#"CodeGraph Configuration Directory
+==================================
+
+This directory contains configuration files for CodeGraph.
+
+Configuration files are loaded in the following order:
+1. default.toml (base configuration)
+2. {environment}.toml (e.g., development.toml, production.toml)
+3. local.toml (local overrides, not tracked in git)
+4. Environment variables (CODEGRAPH__* prefix)
+
+Example configuration files:
+- default.toml         - Base configuration
+- development.toml     - Development environment
+- production.toml      - Production environment
+- surrealdb.toml       - SurrealDB-specific config
+- embedding.toml       - Embedding model config
+
+For documentation, see: https://github.com/your-repo/codegraph-rust
+"#;
+                fs::write(&readme, readme_content)
+                    .context("Failed to write README")?;
+                info!("Created README: {:?}", readme);
+            }
+        }
+
+        Ok(codegraph_dir)
+    }
+
+    /// Get the config directory path, with an option to specify a custom location
+    pub fn get_config_dir(custom_path: Option<PathBuf>) -> PathBuf {
+        custom_path.unwrap_or_else(Self::default_config_dir)
     }
 
     pub fn load_from_sources(config_dir: &Path, env_name: &str) -> Result<Settings> {

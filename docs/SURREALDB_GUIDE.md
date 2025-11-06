@@ -49,7 +49,7 @@ cargo install surrealdb --locked
 
 ### Basic Configuration (WebSocket - Default)
 
-Create a configuration file (e.g., `config/surrealdb.toml`):
+Create a configuration file at `~/.codegraph/surrealdb.toml`:
 
 ```toml
 [database]
@@ -62,7 +62,9 @@ database = "graph"
 auto_migrate = true
 ```
 
-**Note:** This requires SurrealDB server running on port 8000 (see "Running SurrealDB Server" below).
+**Note:**
+- Configuration files should be placed in `~/.codegraph/` directory (see [Configuration Guide](./CONFIGURATION_GUIDE.md))
+- This requires SurrealDB server running on port 8000 (see "Running SurrealDB Server" below)
 
 ### File-Based Configuration (Embedded)
 
