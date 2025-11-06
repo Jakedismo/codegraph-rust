@@ -196,9 +196,12 @@ pub async fn begin_transaction(
         _ => IsolationLevel::ReadCommitted,
     };
 
-    // TODO: Use the actual transactional graph from state
-    // For now, this is a placeholder implementation
-    let transaction_id = TransactionId::new_v4();
+    let transaction_id = state
+        .transactional_graph
+        .transaction_manager
+        .begin_transaction(isolation_level)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to begin transaction: {}", e)))?;
 
     Ok(Json(BeginTransactionResponse {
         transaction_id: transaction_id.to_string(),
@@ -213,7 +216,13 @@ pub async fn commit_transaction(
     let tx_id = Uuid::parse_str(&transaction_id)
         .map_err(|_| ApiError::BadRequest("Invalid transaction ID format".to_string()))?;
 
-    // TODO: Implement actual transaction commit
+    state
+        .transactional_graph
+        .transaction_manager
+        .commit_transaction(tx_id)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to commit transaction: {}", e)))?;
+
     Ok(Json(TransactionResponse {
         transaction_id: transaction_id,
         status: "committed".to_string(),
@@ -228,7 +237,13 @@ pub async fn rollback_transaction(
     let tx_id = Uuid::parse_str(&transaction_id)
         .map_err(|_| ApiError::BadRequest("Invalid transaction ID format".to_string()))?;
 
-    // TODO: Implement actual transaction rollback
+    state
+        .transactional_graph
+        .transaction_manager
+        .rollback_transaction(tx_id)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to rollback transaction: {}", e)))?;
+
     Ok(Json(TransactionResponse {
         transaction_id: transaction_id,
         status: "rolled_back".to_string(),
@@ -251,8 +266,19 @@ pub async fn create_version(
     let parent_versions = parent_versions
         .map_err(|_| ApiError::BadRequest("Invalid parent version ID format".to_string()))?;
 
-    // TODO: Implement actual version creation
-    let version_id = VersionId::new_v4();
+    let version_id = state
+        .transactional_graph
+        .version_manager
+        .create_version(
+            request.name,
+            request.description,
+            request.author,
+            parent_versions,
+        )
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to create version: {}", e)))?;
+
+    // Generate a snapshot ID for this version
     let snapshot_id = SnapshotId::new_v4();
 
     Ok(Json(CreateVersionResponse {
@@ -268,13 +294,20 @@ pub async fn get_version(
     let id = Uuid::parse_str(&version_id)
         .map_err(|_| ApiError::BadRequest("Invalid version ID format".to_string()))?;
 
-    // TODO: Implement actual version retrieval
+    let version = state
+        .transactional_graph
+        .version_manager
+        .get_version(id)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to get version: {}", e)))?
+        .ok_or_else(|| ApiError::NotFound(format!("Version {} not found", version_id)))?;
+
     Ok(Json(VersionDto {
         id: version_id,
-        name: "placeholder".to_string(),
-        description: "Placeholder version".to_string(),
+        name: "version".to_string(), // Version struct doesn't have name field in stub
+        description: "Version description".to_string(),
         author: "system".to_string(),
-        created_at: Utc::now(),
+        created_at: version.timestamp,
         snapshot_id: SnapshotId::new_v4().to_string(),
         parent_versions: vec![],
         tags: vec![],
@@ -291,8 +324,30 @@ pub async fn list_versions(
         .and_then(|s| s.parse().ok())
         .unwrap_or(50);
 
-    // TODO: Implement actual version listing
-    Ok(Json(vec![]))
+    let versions = state
+        .transactional_graph
+        .version_manager
+        .list_versions()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to list versions: {}", e)))?;
+
+    let version_dtos: Vec<VersionDto> = versions
+        .into_iter()
+        .take(limit)
+        .map(|v| VersionDto {
+            id: v.id.to_string(),
+            name: "version".to_string(),
+            description: "Version description".to_string(),
+            author: "system".to_string(),
+            created_at: v.timestamp,
+            snapshot_id: SnapshotId::new_v4().to_string(),
+            parent_versions: vec![],
+            tags: vec![],
+            metadata: HashMap::new(),
+        })
+        .collect();
+
+    Ok(Json(version_dtos))
 }
 
 pub async fn tag_version(
@@ -303,7 +358,13 @@ pub async fn tag_version(
     let id = Uuid::parse_str(&version_id)
         .map_err(|_| ApiError::BadRequest("Invalid version ID format".to_string()))?;
 
-    // TODO: Implement actual version tagging
+    state
+        .transactional_graph
+        .version_manager
+        .tag_version(id, request.name.clone())
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to tag version: {}", e)))?;
+
     Ok(Json(TagDto {
         name: request.name,
         version_id: version_id,
@@ -323,15 +384,14 @@ pub async fn compare_versions(
     let to_id = Uuid::parse_str(&to_version)
         .map_err(|_| ApiError::BadRequest("Invalid to_version ID format".to_string()))?;
 
-    // TODO: Implement actual version comparison
-    Ok(Json(VersionDiffDto {
-        from_version: from_version,
-        to_version: to_version,
-        added_nodes: vec![],
-        modified_nodes: vec![],
-        deleted_nodes: vec![],
-        node_changes: HashMap::new(),
-    }))
+    let diff = state
+        .transactional_graph
+        .version_manager
+        .compare_versions(from_id, to_id)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to compare versions: {}", e)))?;
+
+    Ok(Json(convert_version_diff(diff, from_version, to_version)))
 }
 
 // Branch Management Handlers
@@ -343,7 +403,13 @@ pub async fn create_branch(
     let from_version_id = Uuid::parse_str(&request.from_version)
         .map_err(|_| ApiError::BadRequest("Invalid from_version ID format".to_string()))?;
 
-    // TODO: Implement actual branch creation
+    state
+        .transactional_graph
+        .version_manager
+        .create_branch(request.name.clone(), from_version_id)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to create branch: {}", e)))?;
+
     Ok(Json(BranchDto {
         name: request.name,
         head: request.from_version,
@@ -355,20 +421,45 @@ pub async fn create_branch(
 }
 
 pub async fn list_branches(State(state): State<AppState>) -> ApiResult<Json<Vec<BranchDto>>> {
-    // TODO: Implement actual branch listing
-    Ok(Json(vec![]))
+    let branches = state
+        .transactional_graph
+        .version_manager
+        .list_branches()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to list branches: {}", e)))?;
+
+    let branch_dtos: Vec<BranchDto> = branches
+        .into_iter()
+        .map(|b| BranchDto {
+            name: b.name,
+            head: b.head.to_string(),
+            created_at: b.created_at,
+            created_by: b.created_by,
+            description: None,
+            protected: false,
+        })
+        .collect();
+
+    Ok(Json(branch_dtos))
 }
 
 pub async fn get_branch(
     State(state): State<AppState>,
     Path(branch_name): Path<String>,
 ) -> ApiResult<Json<BranchDto>> {
-    // TODO: Implement actual branch retrieval
+    let branch = state
+        .transactional_graph
+        .version_manager
+        .get_branch(branch_name.clone())
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to get branch: {}", e)))?
+        .ok_or_else(|| ApiError::NotFound(format!("Branch '{}' not found", branch_name)))?;
+
     Ok(Json(BranchDto {
-        name: branch_name,
-        head: VersionId::new_v4().to_string(),
-        created_at: Utc::now(),
-        created_by: "system".to_string(),
+        name: branch.name,
+        head: branch.head.to_string(),
+        created_at: branch.created_at,
+        created_by: branch.created_by,
         description: None,
         protected: false,
     }))
@@ -378,7 +469,13 @@ pub async fn delete_branch(
     State(state): State<AppState>,
     Path(branch_name): Path<String>,
 ) -> ApiResult<StatusCode> {
-    // TODO: Implement actual branch deletion
+    state
+        .transactional_graph
+        .version_manager
+        .delete_branch(branch_name)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to delete branch: {}", e)))?;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -388,18 +485,14 @@ pub async fn merge_branches(
     State(state): State<AppState>,
     Json(request): Json<MergeRequest>,
 ) -> ApiResult<Json<MergeResultDto>> {
-    // TODO: Implement actual branch merging
-    Ok(Json(MergeResultDto {
-        success: true,
-        conflicts: vec![],
-        merged_version_id: Some(VersionId::new_v4().to_string()),
-        merge_commit_message: request.message.unwrap_or_else(|| {
-            format!(
-                "Merge branch '{}' into '{}'",
-                request.source_branch, request.target_branch
-            )
-        }),
-    }))
+    let result = state
+        .transactional_graph
+        .version_manager
+        .merge_branches(request.source_branch.clone(), request.target_branch.clone())
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to merge branches: {}", e)))?;
+
+    Ok(Json(convert_merge_result(result)))
 }
 
 pub async fn resolve_conflicts(
@@ -408,6 +501,15 @@ pub async fn resolve_conflicts(
     Json(resolutions): Json<HashMap<String, String>>, // node_id -> resolution_strategy
 ) -> ApiResult<Json<MergeResultDto>> {
     // TODO: Implement conflict resolution
+    // This requires storing pending merge state and retrieving conflict objects
+    // For now, we call resolve_conflicts with an empty vec as a placeholder
+    state
+        .transactional_graph
+        .version_manager
+        .resolve_conflicts(vec![])
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to resolve conflicts: {}", e)))?;
+
     Ok(Json(MergeResultDto {
         success: true,
         conflicts: vec![],
@@ -425,8 +527,12 @@ pub async fn create_snapshot(
     let tx_id = Uuid::parse_str(&transaction_id)
         .map_err(|_| ApiError::BadRequest("Invalid transaction ID format".to_string()))?;
 
-    // TODO: Implement actual snapshot creation
-    let snapshot_id = SnapshotId::new_v4();
+    let snapshot_id = state
+        .transactional_graph
+        .recovery_manager
+        .create_snapshot(format!("snapshot_{}", tx_id))
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to create snapshot: {}", e)))?;
 
     Ok(Json(SnapshotDto {
         id: snapshot_id.to_string(),
@@ -446,10 +552,17 @@ pub async fn get_snapshot(
     let id = Uuid::parse_str(&snapshot_id)
         .map_err(|_| ApiError::BadRequest("Invalid snapshot ID format".to_string()))?;
 
-    // TODO: Implement actual snapshot retrieval
+    let snapshot = state
+        .transactional_graph
+        .recovery_manager
+        .get_snapshot(id)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to get snapshot: {}", e)))?
+        .ok_or_else(|| ApiError::NotFound(format!("Snapshot {} not found", snapshot_id)))?;
+
     Ok(Json(SnapshotDto {
         id: snapshot_id,
-        created_at: Utc::now(),
+        created_at: snapshot.timestamp,
         transaction_id: TransactionId::new_v4().to_string(),
         parent_snapshot: None,
         children_snapshots: vec![],
@@ -463,49 +576,87 @@ pub async fn get_snapshot(
 pub async fn get_transaction_stats(
     State(state): State<AppState>,
 ) -> ApiResult<Json<TransactionStatsDto>> {
-    // TODO: Implement actual transaction statistics
+    let stats = state
+        .transactional_graph
+        .transaction_manager
+        .get_transaction_stats()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to get transaction stats: {}", e)))?;
+
     Ok(Json(TransactionStatsDto {
-        active_transactions: 0,
-        committed_transactions: 0,
-        aborted_transactions: 0,
-        average_commit_time_ms: 0.0,
-        deadlocks_detected: 0,
+        active_transactions: stats.active_transactions,
+        committed_transactions: stats.committed_transactions,
+        aborted_transactions: stats.aborted_transactions,
+        average_commit_time_ms: stats.average_commit_time_ms,
+        deadlocks_detected: 0, // Not tracked in current implementation
     }))
 }
 
 pub async fn get_recovery_stats(
     State(state): State<AppState>,
 ) -> ApiResult<Json<RecoveryStatsDto>> {
-    // TODO: Implement actual recovery statistics
+    let stats = state
+        .transactional_graph
+        .recovery_manager
+        .get_recovery_stats()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to get recovery stats: {}", e)))?;
+
     Ok(Json(RecoveryStatsDto {
-        last_integrity_check: None,
-        recovery_in_progress: false,
-        failed_recovery_attempts: 0,
-        quarantined_items: 0,
+        last_integrity_check: stats.last_integrity_check,
+        recovery_in_progress: stats.recovery_in_progress,
+        failed_recovery_attempts: stats.failed_recovery_attempts,
+        quarantined_items: 0, // Not tracked in current implementation
     }))
 }
 
 pub async fn run_integrity_check(
     State(state): State<AppState>,
 ) -> ApiResult<Json<IntegrityReportDto>> {
-    // TODO: Implement actual integrity check
+    let report = state
+        .transactional_graph
+        .recovery_manager
+        .run_integrity_check()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to run integrity check: {}", e)))?;
+
+    let severity = if report.corrupted_data_count > 0 {
+        "critical"
+    } else if report.issue_count > 10 {
+        "high"
+    } else if report.issue_count > 5 {
+        "medium"
+    } else {
+        "low"
+    };
+
     Ok(Json(IntegrityReportDto {
-        timestamp: Utc::now(),
-        issue_count: 0,
-        corrupted_data_count: 0,
-        orphaned_snapshots_count: 0,
-        missing_content_count: 0,
-        checksum_mismatches_count: 0,
-        severity: "low".to_string(),
+        timestamp: report.timestamp,
+        issue_count: report.issue_count,
+        corrupted_data_count: report.corrupted_data_count,
+        orphaned_snapshots_count: 0, // Not tracked in current implementation
+        missing_content_count: 0,    // Not tracked in current implementation
+        checksum_mismatches_count: 0, // Not tracked in current implementation
+        severity: severity.to_string(),
     }))
 }
 
 pub async fn create_backup(
     State(state): State<AppState>,
 ) -> ApiResult<Json<HashMap<String, String>>> {
-    // TODO: Implement actual backup creation
+    let backup_id = Uuid::new_v4();
+    let backup_path = format!("/tmp/codegraph_backup_{}", backup_id);
+
+    state
+        .transactional_graph
+        .recovery_manager
+        .create_backup(backup_path.clone())
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to create backup: {}", e)))?;
+
     Ok(Json(HashMap::from([
-        ("backup_id".to_string(), Uuid::new_v4().to_string()),
+        ("backup_id".to_string(), backup_id.to_string()),
+        ("backup_path".to_string(), backup_path),
         ("status".to_string(), "created".to_string()),
         (
             "message".to_string(),
@@ -518,12 +669,21 @@ pub async fn restore_from_backup(
     State(state): State<AppState>,
     Path(backup_id): Path<String>,
 ) -> ApiResult<Json<HashMap<String, String>>> {
-    // TODO: Implement actual backup restoration
+    let backup_path = format!("/tmp/codegraph_backup_{}", backup_id);
+
+    state
+        .transactional_graph
+        .recovery_manager
+        .restore_from_backup(backup_path)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to restore from backup: {}", e)))?;
+
     Ok(Json(HashMap::from([
+        ("backup_id".to_string(), backup_id),
         ("status".to_string(), "restored".to_string()),
         (
             "message".to_string(),
-            format!("Restored from backup {}", backup_id),
+            "Restored from backup successfully".to_string(),
         ),
     ])))
 }

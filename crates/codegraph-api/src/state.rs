@@ -1,4 +1,5 @@
 use crate::connection_pool::{load_base_urls_from_env, ConnectionPoolConfig, HttpClientPool};
+use crate::graph_stub::TransactionalGraph;
 use crate::performance::{PerformanceOptimizer, PerformanceOptimizerConfig};
 use crate::service_registry::ServiceRegistry;
 use codegraph_core::{CodeNode, ConfigManager, GraphStore, NodeId, Settings};
@@ -95,6 +96,7 @@ pub struct AppState {
     pub settings: Arc<RwLock<Settings>>,
     pub config: Arc<ConfigManager>,
     pub graph: Arc<RwLock<InMemoryGraph>>,
+    pub transactional_graph: Arc<TransactionalGraph>,
     pub parser: Arc<TreeSitterParser>,
     pub vector_store: Arc<FaissVectorStore>,
     pub embedding_generator: Arc<EmbeddingGenerator>,
@@ -109,6 +111,7 @@ pub struct AppState {
 impl AppState {
     pub async fn new(config: Arc<ConfigManager>) -> codegraph_core::Result<Self> {
         let graph = Arc::new(RwLock::new(InMemoryGraph::new()));
+        let transactional_graph = Arc::new(TransactionalGraph::new());
         let parser = Arc::new(TreeSitterParser::new());
         let vector_store = Arc::new(FaissVectorStore::new(384)?);
         // Use advanced embeddings when CODEGRAPH_EMBEDDING_PROVIDER=local, otherwise fallback
@@ -147,6 +150,7 @@ impl AppState {
             settings: config.settings().clone(),
             config,
             graph,
+            transactional_graph,
             parser,
             vector_store,
             embedding_generator,

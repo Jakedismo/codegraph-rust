@@ -1,3 +1,4 @@
+use crate::llm_provider::*;
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, Result};
 use reqwest::Client;
@@ -235,12 +236,98 @@ impl QwenClient {
     }
 }
 
-/// Trait for CodeGraph intelligence analysis
+// LLMProvider trait implementation for QwenClient
 #[async_trait]
-pub trait CodeIntelligenceProvider {
-    async fn analyze_semantic_context(&self, query: &str, context: &str) -> Result<String>;
-    async fn detect_patterns(&self, code_samples: &[String]) -> Result<String>;
-    async fn analyze_impact(&self, target_code: &str, dependencies: &str) -> Result<String>;
+impl LLMProvider for QwenClient {
+    async fn generate_chat(
+        &self,
+        messages: &[Message],
+        config: &GenerationConfig,
+    ) -> LLMResult<LLMResponse> {
+        // Build prompt from messages
+        let prompt = messages
+            .iter()
+            .map(|m| match m.role {
+                MessageRole::System => format!("System: {}", m.content),
+                MessageRole::User => format!("User: {}", m.content),
+                MessageRole::Assistant => format!("Assistant: {}", m.content),
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        let prompt = format!("{}\n\nAssistant:", prompt);
+
+        let start_time = Instant::now();
+        let request = SimpleRequest {
+            model: self.config.model_name.clone(),
+            prompt,
+            stream: false,
+            options: SimpleOptions {
+                temperature: config.temperature,
+                num_predict: config.max_tokens.unwrap_or(self.config.max_tokens),
+                num_ctx: self.config.context_window,
+            },
+        };
+
+        let response = timeout(
+            self.config.timeout,
+            self.client
+                .post(&format!("{}/api/generate", self.config.base_url))
+                .json(&request)
+                .send(),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("Qwen request timeout"))?
+        .map_err(|e| anyhow::anyhow!("Qwen request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(anyhow::anyhow!("Qwen API error: {}", error_text));
+        }
+
+        let response_data: SimpleResponse = response
+            .json()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to parse Qwen response: {}", e))?;
+
+        Ok(LLMResponse {
+            content: response_data.response,
+            total_tokens: Some(
+                response_data.prompt_eval_count.unwrap_or(0)
+                    + response_data.eval_count.unwrap_or(0),
+            ),
+            prompt_tokens: response_data.prompt_eval_count,
+            completion_tokens: response_data.eval_count,
+            finish_reason: Some("stop".to_string()),
+            model: self.config.model_name.clone(),
+        })
+    }
+
+    async fn is_available(&self) -> bool {
+        self.check_availability().await.unwrap_or(false)
+    }
+
+    fn provider_name(&self) -> &str {
+        "qwen"
+    }
+
+    fn model_name(&self) -> &str {
+        &self.config.model_name
+    }
+
+    fn characteristics(&self) -> ProviderCharacteristics {
+        ProviderCharacteristics {
+            max_tokens: self.config.context_window,
+            avg_latency_ms: 2000,
+            rpm_limit: None,
+            tpm_limit: None,
+            supports_streaming: true,
+            supports_functions: false,
+        }
+    }
 }
 
 #[async_trait]
