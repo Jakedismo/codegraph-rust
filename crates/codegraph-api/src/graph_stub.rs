@@ -180,35 +180,10 @@ pub struct IntegrityReport {
     pub corrupted_data_count: usize,
 }
 
-// Stub manager types
-// Note: uuid and chrono are already imported at the top of this file
-
-// Define missing types that were incorrectly imported from codegraph_core
-pub type TransactionId = Uuid;
-pub type SnapshotId = Uuid;
-pub type VersionId = Uuid;
-
-#[derive(Debug, Clone)]
-pub struct IsolationLevel;
-
-#[derive(Debug, Clone)]
-pub struct Snapshot {
-    pub id: SnapshotId,
-    pub timestamp: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Version {
-    pub id: VersionId,
-    pub timestamp: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone)]
-pub struct VersionDiff {
-    pub added_nodes: Vec<NodeId>,
-    pub modified_nodes: Vec<NodeId>,
-    pub deleted_nodes: Vec<NodeId>,
-}
+// Import the real types from codegraph_core instead of redefining them
+pub use codegraph_core::{
+    IsolationLevel, Snapshot, SnapshotId, TransactionId, Version, VersionDiff, VersionId,
+};
 
 #[derive(Clone)]
 pub struct ConcurrentTransactionManager;
@@ -218,7 +193,9 @@ impl ConcurrentTransactionManager {
         Self
     }
 
-    pub async fn begin_transaction(&self, _isolation_level: IsolationLevel) -> Result<TransactionId> {
+    pub async fn begin_transaction(&self, isolation_level: IsolationLevel) -> Result<TransactionId> {
+        // Stub implementation - just generate a new transaction ID
+        // In a real implementation, this would create a transaction with the specified isolation level
         Ok(Uuid::new_v4())
     }
 
@@ -248,15 +225,24 @@ impl GitLikeVersionManager {
         Self
     }
 
-    pub async fn create_version(&self, _name: String, _description: String, _author: String, _parent_versions: Vec<VersionId>) -> Result<VersionId> {
-        Ok(Uuid::new_v4())
+    pub async fn create_version(&self, name: String, description: String, author: String, parent_versions: Vec<VersionId>) -> Result<VersionId> {
+        let version_id = Uuid::new_v4();
+        let snapshot_id = Uuid::new_v4();
+
+        // In a real implementation, this would store the version
+        // For now, just return the ID
+        Ok(version_id)
     }
 
     pub async fn list_versions(&self) -> Result<Vec<Version>> {
+        // Stub implementation - return empty list
+        // In a real implementation, this would fetch from storage
         Ok(Vec::new())
     }
 
-    pub async fn get_version(&self, _id: VersionId) -> Result<Option<Version>> {
+    pub async fn get_version(&self, id: VersionId) -> Result<Option<Version>> {
+        // Stub implementation - return None
+        // In a real implementation, this would fetch from storage
         Ok(None)
     }
 
