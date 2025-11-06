@@ -14,6 +14,26 @@ api_base = "https://api.openai.com/v1"
 max_retries = 3
 timeout_secs = 30
 
+# Example Jina configuration (uncomment to use)
+# [embedding]
+# provider = "jina"
+# dimension = 1024
+# cache_enabled = true
+# cache_ttl_secs = 3600
+# normalize_embeddings = true
+#
+# [embedding.jina]
+# model = "jina-embeddings-v4"
+# api_key_env = "JINA_API_KEY"
+# api_base = "https://api.jina.ai/v1"
+# max_retries = 3
+# timeout_secs = 30
+# task = "code.query"
+# late_chunking = true
+# enable_reranking = true
+# reranking_model = "jina-reranker-v3"
+# reranking_top_n = 10
+
 [performance]
 mode = "balanced"
 
