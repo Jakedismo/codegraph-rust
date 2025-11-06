@@ -19,6 +19,13 @@ pub mod traversal;
 pub mod update_scheduler;
 pub mod versioned_storage;
 
+#[cfg(feature = "surrealdb")]
+pub mod surrealdb_storage;
+#[cfg(feature = "surrealdb")]
+pub mod surrealdb_schema;
+#[cfg(feature = "surrealdb")]
+pub mod surrealdb_migrations;
+
 pub use cache::*;
 pub use delta::*;
 pub use delta_processor::*;
@@ -39,3 +46,10 @@ pub use transactional_graph::*;
 pub use traversal::*;
 pub use update_scheduler::*;
 pub use versioned_storage::*;
+
+#[cfg(feature = "surrealdb")]
+pub use surrealdb_storage::*;
+#[cfg(feature = "surrealdb")]
+pub use surrealdb_schema::*;
+#[cfg(feature = "surrealdb")]
+pub use surrealdb_migrations::*;

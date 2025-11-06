@@ -31,6 +31,13 @@ num_cpus = "1.16"
 crossbeam-channel = "0.5"
 notify = { workspace = true }
 
+# SurrealDB support (optional)
+surrealdb = { version = "2.2", optional = true }
+
+[features]
+default = []
+surrealdb = ["dep:surrealdb"]
+
 [dev-dependencies]
 tokio-test = { workspace = true }
 tempfile = { workspace = true }

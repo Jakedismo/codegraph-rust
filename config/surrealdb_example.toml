@@ -1,0 +1,64 @@
+# CodeGraph Configuration with SurrealDB
+
+[database]
+# Select SurrealDB as the database backend
+backend = "surrealdb"
+
+# RocksDB configuration (not used when backend is surrealdb, but kept for backward compatibility)
+[database.rocksdb]
+path = "data/graph.db"
+read_only = false
+
+# SurrealDB configuration
+[database.surrealdb]
+# Connection string options:
+# - Local file: "file://data/graph.db"
+# - Memory (testing): "mem://"
+# - Remote HTTP: "http://localhost:8000"
+# - Remote HTTPS: "https://example.com:8000"
+# - WebSocket: "ws://localhost:8000"
+connection = "file://data/surrealdb/graph.db"
+
+# Namespace for multi-tenancy (default: "codegraph")
+namespace = "codegraph"
+
+# Database name (default: "graph")
+database = "graph"
+
+# Optional: Authentication credentials
+# username = "root"
+# password = "root"  # Can also be set via CODEGRAPH__DATABASE__SURREALDB__PASSWORD env var
+
+# Enable strict schema validation (default: false)
+# When true, SurrealDB will enforce the defined schema strictly
+# When false, allows for schema flexibility and easier migrations
+strict_mode = false
+
+# Auto-apply migrations on startup (default: true)
+# When true, automatically runs pending migrations when connecting
+auto_migrate = true
+
+# Example: Remote SurrealDB server configuration
+# [database.surrealdb]
+# connection = "https://your-surrealdb-server.com:8000"
+# namespace = "production"
+# database = "codegraph"
+# username = "admin"
+# # Password should be set via environment variable:
+# # CODEGRAPH__DATABASE__SURREALDB__PASSWORD=your_password
+# strict_mode = true
+# auto_migrate = false
+
+[server]
+host = "0.0.0.0"
+port = 3000
+
+[vector]
+dimension = 1024
+
+[logging]
+level = "info"
+
+[security]
+require_auth = false
+rate_limit_per_minute = 1200

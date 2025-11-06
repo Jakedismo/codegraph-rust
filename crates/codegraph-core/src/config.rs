@@ -51,6 +51,96 @@ impl Default for RocksDbConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SurrealDbConfig {
+    /// Connection string for SurrealDB (e.g., "file://data/graph.db" or "http://localhost:8000")
+    pub connection: String,
+    /// Namespace for multi-tenancy
+    #[serde(default = "SurrealDbConfig::default_namespace")]
+    pub namespace: String,
+    /// Database name
+    #[serde(default = "SurrealDbConfig::default_database")]
+    pub database: String,
+    /// Optional username for authentication
+    #[serde(default)]
+    pub username: Option<String>,
+    /// Optional password for authentication
+    #[serde(default, skip_serializing)]
+    #[schemars(skip)]
+    pub password: Option<SecretString>,
+    /// Enable strict schema validation
+    #[serde(default = "SurrealDbConfig::default_strict_mode")]
+    pub strict_mode: bool,
+    /// Auto-apply migrations on startup
+    #[serde(default = "SurrealDbConfig::default_auto_migrate")]
+    pub auto_migrate: bool,
+}
+
+impl SurrealDbConfig {
+    fn default_namespace() -> String {
+        "codegraph".to_string()
+    }
+
+    fn default_database() -> String {
+        "graph".to_string()
+    }
+
+    fn default_strict_mode() -> bool {
+        false
+    }
+
+    fn default_auto_migrate() -> bool {
+        true
+    }
+}
+
+impl Default for SurrealDbConfig {
+    fn default() -> Self {
+        Self {
+            connection: "file://data/graph.db".into(),
+            namespace: Self::default_namespace(),
+            database: Self::default_database(),
+            username: None,
+            password: None,
+            strict_mode: Self::default_strict_mode(),
+            auto_migrate: Self::default_auto_migrate(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseBackend {
+    RocksDb,
+    SurrealDb,
+}
+
+impl Default for DatabaseBackend {
+    fn default() -> Self {
+        Self::RocksDb
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DatabaseConfig {
+    #[serde(default)]
+    pub backend: DatabaseBackend,
+    #[serde(default)]
+    pub rocksdb: RocksDbConfig,
+    #[serde(default)]
+    pub surrealdb: SurrealDbConfig,
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            backend: DatabaseBackend::default(),
+            rocksdb: RocksDbConfig::default(),
+            surrealdb: SurrealDbConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct VectorConfig {
     pub dimension: usize,
     #[serde(default = "VectorConfig::default_index")]
@@ -118,7 +208,10 @@ pub struct Settings {
     #[serde(default)]
     pub server: ServerConfig,
     #[serde(default)]
-    pub rocksdb: RocksDbConfig,
+    pub database: DatabaseConfig,
+    /// Deprecated: Use database.rocksdb instead
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rocksdb: Option<RocksDbConfig>,
     #[serde(default)]
     pub vector: VectorConfig,
     #[serde(default)]
@@ -134,7 +227,8 @@ impl Default for Settings {
         Self {
             env: Self::default_env(),
             server: ServerConfig::default(),
-            rocksdb: RocksDbConfig::default(),
+            database: DatabaseConfig::default(),
+            rocksdb: None,
             vector: VectorConfig::default(),
             logging: LoggingConfig::default(),
             security: SecurityConfig::default(),
@@ -161,6 +255,31 @@ impl Settings {
             self.vector.dimension > 0 && self.vector.dimension <= 8192,
             "vector.dimension must be 1..=8192"
         );
+
+        // Validate database configuration
+        match self.database.backend {
+            DatabaseBackend::RocksDb => {
+                anyhow::ensure!(
+                    !self.database.rocksdb.path.is_empty(),
+                    "database.rocksdb.path cannot be empty"
+                );
+            }
+            DatabaseBackend::SurrealDb => {
+                anyhow::ensure!(
+                    !self.database.surrealdb.connection.is_empty(),
+                    "database.surrealdb.connection cannot be empty"
+                );
+                anyhow::ensure!(
+                    !self.database.surrealdb.namespace.is_empty(),
+                    "database.surrealdb.namespace cannot be empty"
+                );
+                anyhow::ensure!(
+                    !self.database.surrealdb.database.is_empty(),
+                    "database.surrealdb.database cannot be empty"
+                );
+            }
+        }
+
         Ok(())
     }
 }
