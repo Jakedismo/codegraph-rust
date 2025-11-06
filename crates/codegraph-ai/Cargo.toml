@@ -28,3 +28,10 @@ arc-swap = { workspace = true }
 num_cpus = { workspace = true }
 prometheus = { workspace = true }
 reqwest = { workspace = true }
+
+[features]
+default = []
+anthropic = []
+openai-llm = []
+openai-compatible = []
+all-cloud-providers = ["anthropic", "openai-llm", "openai-compatible"]

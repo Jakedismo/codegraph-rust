@@ -48,6 +48,51 @@ That is the entire end-to-end workflow. LM Studio now has a project-specific vec
 
 ---
 
+## Cloud Provider Support ☁️
+
+CodeGraph now supports both **local** and **cloud-based** LLM and embedding providers, giving you flexibility in deployment:
+
+### Supported Cloud Providers
+
+- **Anthropic Claude** - State-of-the-art code understanding with 200K context
+- **OpenAI GPT** - GPT-4o and other OpenAI models
+- **OpenAI-Compatible** - Any custom OpenAI-compatible endpoint
+
+### Quick Setup with Wizard
+
+The easiest way to configure cloud providers:
+
+```bash
+# Build and run the setup wizard
+cargo build --release --bin codegraph-setup --features all-cloud-providers
+./target/release/codegraph-setup
+```
+
+The interactive wizard will guide you through:
+1. Choosing your embedding provider (ONNX, Ollama, LM Studio, or OpenAI)
+2. Selecting your LLM provider (Ollama, LM Studio, Anthropic, OpenAI, or custom)
+3. Configuring API keys and models
+4. Setting advanced options
+
+### Manual Configuration
+
+Or configure manually in `.codegraph.toml`:
+
+```toml
+[llm]
+enabled = true
+provider = "anthropic"  # or "openai", "ollama", "lmstudio", "openai-compatible"
+model = "claude-3-5-sonnet-20241022"
+anthropic_api_key = "sk-ant-..."  # Or set ANTHROPIC_API_KEY env var
+context_window = 200000
+temperature = 0.1
+max_tokens = 4096
+```
+
+**For detailed provider setup, pricing, and comparisons, see [docs/CLOUD_PROVIDERS.md](docs/CLOUD_PROVIDERS.md).**
+
+---
+
 ## Everyday CLI
 
 | Command | Description |

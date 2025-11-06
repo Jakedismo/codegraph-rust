@@ -42,28 +42,55 @@ batch_size = 64
 # Set to false for maximum speed if using an external agent
 enabled = false
 
-# LLM provider: "ollama" or "lmstudio"
-# "lmstudio" recommended for MLX + Flash Attention 2 (macOS)
+# LLM provider: "ollama", "lmstudio", "anthropic", "openai", or "openai-compatible"
+# - "lmstudio": Local LLMs via LM Studio (recommended for MLX + Flash Attention 2 on macOS)
+# - "ollama": Local LLMs via Ollama
+# - "anthropic": Anthropic Claude API (requires API key)
+# - "openai": OpenAI GPT API (requires API key)
+# - "openai-compatible": Any OpenAI-compatible API endpoint
 provider = "lmstudio"
 
 # LLM model identifier
-# For LM Studio: lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF/DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf
+# For LM Studio: lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF
 # For Ollama: Model name (e.g., "qwen2.5-coder:14b", "codellama:13b")
-# Recommended: DeepSeek Coder v2 Lite Instruct Q4_K_M (superior performance)
+# For Anthropic: Model name (e.g., "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022")
+# For OpenAI: Model name (e.g., "gpt-4o", "gpt-4o-mini", "gpt-4-turbo")
+# For OpenAI-compatible: Custom model name
+# Recommended: DeepSeek Coder v2 Lite Instruct Q4_K_M (local), or Claude 3.5 Sonnet (cloud)
 model = "lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF"
 
-# LM Studio URL (default port 1234)
+# LM Studio URL (only used if provider is "lmstudio")
 lmstudio_url = "http://localhost:1234"
 
-# Ollama URL
+# Ollama URL (only used if provider is "ollama")
 ollama_url = "http://localhost:11434"
+
+# OpenAI-compatible base URL (only used if provider is "openai-compatible")
+# Example: "http://localhost:1234/v1" for LM Studio OpenAI endpoint
+# openai_compatible_url = "http://localhost:1234/v1"
+
+# Anthropic API key (only used if provider is "anthropic")
+# Can also be set via ANTHROPIC_API_KEY environment variable
+# anthropic_api_key = "sk-ant-..."
+
+# OpenAI API key (only used if provider is "openai" or some "openai-compatible" endpoints)
+# Can also be set via OPENAI_API_KEY environment variable
+# openai_api_key = "sk-..."
 
 # Context window size (tokens)
 # DeepSeek Coder v2 Lite: 32768 tokens
+# Claude 3.5 Sonnet: 200000 tokens
+# GPT-4o: 128000 tokens
 context_window = 32000
 
-# Temperature for generation (0.0 = deterministic, 1.0 = creative)
+# Temperature for generation (0.0 = deterministic, 2.0 = very creative)
 temperature = 0.1
+
+# Maximum tokens to generate in responses
+max_tokens = 4096
+
+# Request timeout in seconds
+timeout_secs = 120
 
 # Insights mode: "context-only", "balanced", or "deep"
 # - context-only: Return context only (fastest, for agents)

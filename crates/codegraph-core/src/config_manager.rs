@@ -109,13 +109,16 @@ pub struct LLMConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// LLM provider: "ollama" or "lmstudio"
+    /// LLM provider: "ollama", "lmstudio", "anthropic", "openai", "openai-compatible"
     #[serde(default = "default_llm_provider")]
     pub provider: String,
 
     /// Model identifier
     /// For LM Studio: model name (e.g., "lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF")
     /// For Ollama: model name (e.g., "qwen2.5-coder:14b")
+    /// For Anthropic: model name (e.g., "claude-3-5-sonnet-20241022")
+    /// For OpenAI: model name (e.g., "gpt-4o")
+    /// For OpenAI-compatible: custom model name
     #[serde(default)]
     pub model: Option<String>,
 
@@ -126,6 +129,18 @@ pub struct LLMConfig {
     /// Ollama URL
     #[serde(default = "default_ollama_url")]
     pub ollama_url: String,
+
+    /// OpenAI-compatible base URL (for custom endpoints)
+    #[serde(default)]
+    pub openai_compatible_url: Option<String>,
+
+    /// Anthropic API key
+    #[serde(default)]
+    pub anthropic_api_key: Option<String>,
+
+    /// OpenAI API key
+    #[serde(default)]
+    pub openai_api_key: Option<String>,
 
     /// Context window size
     #[serde(default = "default_context_window")]
@@ -138,6 +153,14 @@ pub struct LLMConfig {
     /// Insights mode: "context-only", "balanced", or "deep"
     #[serde(default = "default_insights_mode")]
     pub insights_mode: String,
+
+    /// Maximum tokens to generate
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: usize,
+
+    /// Request timeout in seconds
+    #[serde(default = "default_timeout_secs")]
+    pub timeout_secs: u64,
 }
 
 impl Default for LLMConfig {
@@ -148,9 +171,14 @@ impl Default for LLMConfig {
             model: None,
             lmstudio_url: default_lmstudio_url(),
             ollama_url: default_ollama_url(),
+            openai_compatible_url: None,
+            anthropic_api_key: None,
+            openai_api_key: None,
             context_window: default_context_window(),
             temperature: default_temperature(),
             insights_mode: default_insights_mode(),
+            max_tokens: default_max_tokens(),
+            timeout_secs: default_timeout_secs(),
         }
     }
 }
@@ -217,6 +245,8 @@ fn default_llm_provider() -> String { "lmstudio".to_string() }
 fn default_context_window() -> usize { 32000 }  // DeepSeek Coder v2 Lite
 fn default_temperature() -> f32 { 0.1 }
 fn default_insights_mode() -> String { "context-only".to_string() }
+fn default_max_tokens() -> usize { 4096 }
+fn default_timeout_secs() -> u64 { 120 }
 fn default_num_threads() -> usize { num_cpus::get() }
 fn default_cache_size_mb() -> usize { 512 }
 fn default_max_concurrent() -> usize { 4 }
