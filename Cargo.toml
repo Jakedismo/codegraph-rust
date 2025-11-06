@@ -13,6 +13,7 @@ members = [
     "crates/codegraph-lb",
     "crates/codegraph-ai",
     "crates/codegraph-api",
+    "crates/codegraph-cli",
     "crates/core-rag-mcp-server",
     "scripts",
     "tests/integration"
