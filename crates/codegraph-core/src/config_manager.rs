@@ -154,9 +154,17 @@ pub struct LLMConfig {
     #[serde(default = "default_insights_mode")]
     pub insights_mode: String,
 
-    /// Maximum tokens to generate
+    /// Maximum tokens to generate (legacy parameter)
     #[serde(default = "default_max_tokens")]
     pub max_tokens: usize,
+
+    /// Maximum output tokens (for Responses API and reasoning models)
+    #[serde(default)]
+    pub max_output_tokens: Option<usize>,
+
+    /// Reasoning effort for reasoning models: "minimal", "low", "medium", "high"
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 
     /// Request timeout in seconds
     #[serde(default = "default_timeout_secs")]
@@ -178,6 +186,8 @@ impl Default for LLMConfig {
             temperature: default_temperature(),
             insights_mode: default_insights_mode(),
             max_tokens: default_max_tokens(),
+            max_output_tokens: None,  // Will use max_tokens if not set
+            reasoning_effort: None,   // Only for reasoning models
             timeout_secs: default_timeout_secs(),
         }
     }

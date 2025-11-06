@@ -86,8 +86,18 @@ context_window = 32000
 # Temperature for generation (0.0 = deterministic, 2.0 = very creative)
 temperature = 0.1
 
-# Maximum tokens to generate in responses
+# Maximum tokens to generate in responses (legacy parameter, use max_output_tokens for Responses API)
 max_tokens = 4096
+
+# Maximum output tokens for Responses API and reasoning models
+# If not set, falls back to max_tokens
+# max_output_tokens = 4096
+
+# Reasoning effort for reasoning models (o1, o3, o4-mini, GPT-5)
+# Options: "minimal", "low", "medium", "high"
+# Higher effort = more reasoning tokens = better quality but slower and more expensive
+# Only applies to reasoning models, ignored by standard models
+# reasoning_effort = "medium"
 
 # Request timeout in seconds
 timeout_secs = 120

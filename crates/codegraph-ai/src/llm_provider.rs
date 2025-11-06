@@ -25,15 +25,19 @@ pub struct ProviderCharacteristics {
 /// Configuration for generation parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerationConfig {
-    /// Temperature for sampling (0.0 to 2.0)
+    /// Temperature for sampling (0.0 to 2.0) - Not supported by reasoning models
     pub temperature: f32,
-    /// Maximum tokens to generate
+    /// Maximum tokens to generate (legacy parameter for Chat Completions API)
     pub max_tokens: Option<usize>,
-    /// Top-p nucleus sampling parameter
+    /// Maximum output tokens (for Responses API and reasoning models)
+    pub max_output_tokens: Option<usize>,
+    /// Reasoning effort for reasoning models: "minimal", "low", "medium", "high"
+    pub reasoning_effort: Option<String>,
+    /// Top-p nucleus sampling parameter - Not supported by reasoning models
     pub top_p: Option<f32>,
-    /// Frequency penalty (-2.0 to 2.0)
+    /// Frequency penalty (-2.0 to 2.0) - Not supported by reasoning models
     pub frequency_penalty: Option<f32>,
-    /// Presence penalty (-2.0 to 2.0)
+    /// Presence penalty (-2.0 to 2.0) - Not supported by reasoning models
     pub presence_penalty: Option<f32>,
     /// Stop sequences
     pub stop: Option<Vec<String>>,
@@ -44,6 +48,8 @@ impl Default for GenerationConfig {
         Self {
             temperature: 0.1,
             max_tokens: Some(4096),
+            max_output_tokens: None, // Will use max_tokens if not set
+            reasoning_effort: None,  // Only for reasoning models
             top_p: None,
             frequency_penalty: None,
             presence_penalty: None,

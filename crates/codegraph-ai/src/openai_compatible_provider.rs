@@ -22,6 +22,8 @@ pub struct OpenAICompatibleConfig {
     pub api_key: Option<String>,
     /// Provider name for display purposes
     pub provider_name: String,
+    /// Whether to use Responses API (true) or Chat Completions API (false)
+    pub use_responses_api: bool,
 }
 
 impl Default for OpenAICompatibleConfig {
@@ -34,6 +36,7 @@ impl Default for OpenAICompatibleConfig {
             max_retries: 3,
             api_key: None,
             provider_name: "openai-compatible".to_string(),
+            use_responses_api: true, // Default to new Responses API
         }
     }
 }
@@ -46,6 +49,7 @@ impl OpenAICompatibleConfig {
             model,
             context_window: 32_000,
             provider_name: "lmstudio".to_string(),
+            use_responses_api: true,
             ..Default::default()
         }
     }
@@ -57,6 +61,7 @@ impl OpenAICompatibleConfig {
             model,
             context_window: 128_000,
             provider_name: "ollama".to_string(),
+            use_responses_api: true,
             ..Default::default()
         }
     }
@@ -67,6 +72,7 @@ impl OpenAICompatibleConfig {
             base_url,
             model,
             provider_name,
+            use_responses_api: true,
             ..Default::default()
         }
     }
@@ -99,12 +105,12 @@ impl OpenAICompatibleProvider {
         Self::new(OpenAICompatibleConfig::ollama(model))
     }
 
-    /// Send a request to OpenAI-compatible API with retry logic
+    /// Send a request with retry logic
     async fn send_request(
         &self,
         messages: &[Message],
         config: &GenerationConfig,
-    ) -> Result<OpenAICompatibleResponse> {
+    ) -> Result<ResponseAPIResponse> {
         let mut last_error = None;
 
         for attempt in 0..=self.config.max_retries {
@@ -133,32 +139,52 @@ impl OpenAICompatibleProvider {
         Err(last_error.unwrap_or_else(|| anyhow!("All retry attempts failed")))
     }
 
-    /// Try a single request to OpenAI-compatible API
+    /// Try a single request using Responses API format
     async fn try_request(
         &self,
         messages: &[Message],
         config: &GenerationConfig,
-    ) -> Result<OpenAICompatibleResponse> {
-        let request = OpenAICompatibleRequest {
+    ) -> Result<ResponseAPIResponse> {
+        if self.config.use_responses_api {
+            self.try_responses_api_request(messages, config).await
+        } else {
+            self.try_chat_completions_request(messages, config).await
+        }
+    }
+
+    /// Try request using Responses API
+    async fn try_responses_api_request(
+        &self,
+        messages: &[Message],
+        config: &GenerationConfig,
+    ) -> Result<ResponseAPIResponse> {
+        // Extract system instructions and user input
+        let instructions = messages
+            .iter()
+            .find(|m| matches!(m.role, MessageRole::System))
+            .map(|m| m.content.clone());
+
+        let input = messages
+            .iter()
+            .filter(|m| !matches!(m.role, MessageRole::System))
+            .map(|m| format!("{}: {}", m.role, m.content))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        let request = ResponsesAPIRequest {
             model: self.config.model.clone(),
-            messages: messages
-                .iter()
-                .map(|m| OpenAICompatibleMessage {
-                    role: m.role.to_string(),
-                    content: m.content.clone(),
-                })
-                .collect(),
+            input,
+            instructions,
+            max_output_tokens: config.max_output_tokens.or(config.max_tokens),
+            reasoning_effort: config.reasoning_effort.clone(),
             temperature: Some(config.temperature),
-            max_tokens: config.max_tokens,
             top_p: config.top_p,
-            frequency_penalty: config.frequency_penalty,
-            presence_penalty: config.presence_penalty,
             stop: config.stop.clone(),
         };
 
         let mut request_builder = self
             .client
-            .post(format!("{}/chat/completions", self.config.base_url))
+            .post(format!("{}/responses", self.config.base_url))
             .header("Content-Type", "application/json")
             .json(&request);
 
@@ -171,7 +197,7 @@ impl OpenAICompatibleProvider {
             .send()
             .await
             .context(format!(
-                "Failed to send request to {} API at {}",
+                "Failed to send request to {} Responses API at {}",
                 self.config.provider_name, self.config.base_url
             ))?;
 
@@ -192,12 +218,95 @@ impl OpenAICompatibleProvider {
         }
 
         response
-            .json::<OpenAICompatibleResponse>()
+            .json::<ResponseAPIResponse>()
             .await
             .context(format!(
-                "Failed to parse {} API response",
+                "Failed to parse {} Responses API response",
                 self.config.provider_name
             ))
+    }
+
+    /// Try request using Chat Completions API (fallback for older systems)
+    async fn try_chat_completions_request(
+        &self,
+        messages: &[Message],
+        config: &GenerationConfig,
+    ) -> Result<ResponseAPIResponse> {
+        let request = ChatCompletionsRequest {
+            model: self.config.model.clone(),
+            messages: messages
+                .iter()
+                .map(|m| ChatMessage {
+                    role: m.role.to_string(),
+                    content: m.content.clone(),
+                })
+                .collect(),
+            temperature: Some(config.temperature),
+            max_tokens: config.max_output_tokens.or(config.max_tokens),
+            max_completion_tokens: config.max_output_tokens.or(config.max_tokens),
+            reasoning_effort: config.reasoning_effort.clone(),
+            top_p: config.top_p,
+            stop: config.stop.clone(),
+        };
+
+        let mut request_builder = self
+            .client
+            .post(format!("{}/chat/completions", self.config.base_url))
+            .header("Content-Type", "application/json")
+            .json(&request);
+
+        // Add API key if provided
+        if let Some(api_key) = &self.config.api_key {
+            request_builder = request_builder.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        let response = request_builder
+            .send()
+            .await
+            .context(format!(
+                "Failed to send request to {} Chat Completions API at {}",
+                self.config.provider_name, self.config.base_url
+            ))?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+
+            return Err(anyhow!(
+                "{} API error ({}): {}",
+                self.config.provider_name,
+                status,
+                error_text
+            ));
+        }
+
+        let chat_response: ChatCompletionsResponse = response
+            .json()
+            .await
+            .context(format!(
+                "Failed to parse {} Chat Completions API response",
+                self.config.provider_name
+            ))?;
+
+        // Convert Chat Completions response to Responses API format
+        let choice = chat_response.choices.first().ok_or_else(|| anyhow!("No choices in response"))?;
+
+        Ok(ResponseAPIResponse {
+            id: chat_response.id,
+            response_type: "response".to_string(),
+            status: choice.finish_reason.clone(),
+            output_text: choice.message.content.clone(),
+            usage: chat_response.usage.map(|u| Usage {
+                prompt_tokens: u.prompt_tokens,
+                output_tokens: u.completion_tokens,
+                total_tokens: u.total_tokens,
+                reasoning_tokens: None,
+            }),
+        })
     }
 }
 
@@ -210,18 +319,13 @@ impl LLMProvider for OpenAICompatibleProvider {
     ) -> LLMResult<LLMResponse> {
         let response = self.send_request(messages, config).await?;
 
-        let choice = response
-            .choices
-            .first()
-            .ok_or_else(|| anyhow!("No choices in API response"))?;
-
         Ok(LLMResponse {
-            content: choice.message.content.clone(),
+            content: response.output_text,
             total_tokens: response.usage.as_ref().map(|u| u.total_tokens),
             prompt_tokens: response.usage.as_ref().map(|u| u.prompt_tokens),
-            completion_tokens: response.usage.as_ref().map(|u| u.completion_tokens),
-            finish_reason: choice.finish_reason.clone(),
-            model: response.model.clone().unwrap_or_else(|| self.config.model.clone()),
+            completion_tokens: response.usage.as_ref().map(|u| u.output_tokens),
+            finish_reason: response.status.clone(),
+            model: self.config.model.clone(),
         })
     }
 
@@ -325,51 +429,89 @@ impl CodeIntelligenceProvider for OpenAICompatibleProvider {
     }
 }
 
-// OpenAI-compatible API request/response types
+// API request/response types for Responses API
 
 #[derive(Debug, Serialize)]
-struct OpenAICompatibleRequest {
+struct ResponsesAPIRequest {
     model: String,
-    messages: Vec<OpenAICompatibleMessage>,
+    input: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instructions: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_output_tokens: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stop: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseAPIResponse {
+    id: String,
+    #[serde(rename = "type")]
+    response_type: String,
+    status: Option<String>,
+    output_text: String,
+    #[serde(default)]
+    usage: Option<Usage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Usage {
+    prompt_tokens: usize,
+    #[serde(alias = "completion_tokens")]
+    output_tokens: usize,
+    total_tokens: usize,
+    #[serde(default)]
+    reasoning_tokens: Option<usize>,
+}
+
+// API request/response types for Chat Completions API (fallback)
+
+#[derive(Debug, Serialize)]
+struct ChatCompletionsRequest {
+    model: String,
+    messages: Vec<ChatMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    max_completion_tokens: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     top_p: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    frequency_penalty: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    presence_penalty: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stop: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct OpenAICompatibleMessage {
+struct ChatMessage {
     role: String,
     content: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct OpenAICompatibleResponse {
-    id: Option<String>,
-    object: Option<String>,
-    created: Option<u64>,
-    model: Option<String>,
-    choices: Vec<Choice>,
-    usage: Option<Usage>,
+struct ChatCompletionsResponse {
+    id: String,
+    object: String,
+    choices: Vec<ChatChoice>,
+    usage: Option<ChatUsage>,
 }
 
 #[derive(Debug, Deserialize)]
-struct Choice {
-    index: usize,
-    message: OpenAICompatibleMessage,
+struct ChatChoice {
+    message: ChatMessage,
     finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct Usage {
+struct ChatUsage {
     prompt_tokens: usize,
     completion_tokens: usize,
     total_tokens: usize,
@@ -384,6 +526,7 @@ mod tests {
         let config = OpenAICompatibleConfig::lm_studio("test-model".to_string());
         assert_eq!(config.base_url, "http://localhost:1234/v1");
         assert_eq!(config.provider_name, "lmstudio");
+        assert!(config.use_responses_api);
     }
 
     #[test]
@@ -391,5 +534,6 @@ mod tests {
         let config = OpenAICompatibleConfig::ollama("llama3".to_string());
         assert_eq!(config.base_url, "http://localhost:11434/v1");
         assert_eq!(config.provider_name, "ollama");
+        assert!(config.use_responses_api);
     }
 }

@@ -2,9 +2,12 @@
 
 CodeGraph now supports both local and cloud-based LLM and embedding providers, giving you flexibility in how you deploy and use the system.
 
+**🆕 NEW: OpenAI Responses API Support** - CodeGraph now uses OpenAI's modern Responses API (`/v1/responses`) with full support for reasoning models (o1, o3, o4-mini), reasoning budgets, and `max_output_tokens`.
+
 ## Table of Contents
 
 - [Overview](#overview)
+- [Responses API & Reasoning Models](#responses-api--reasoning-models)
 - [Quick Start with Setup Wizard](#quick-start-with-setup-wizard)
 - [Supported Providers](#supported-providers)
 - [Configuration](#configuration)
@@ -26,8 +29,63 @@ CodeGraph supports the following provider types:
 - **Ollama**: Local LLMs (e.g., Qwen2.5-Coder, CodeLlama)
 - **LM Studio**: Local LLMs (e.g., DeepSeek Coder)
 - **Anthropic Claude**: Cloud-based (requires API key)
-- **OpenAI**: Cloud-based (requires API key)
-- **OpenAI-Compatible**: Any custom OpenAI-compatible endpoint
+- **OpenAI**: Cloud-based (requires API key) - **Now using Responses API**
+- **OpenAI-Compatible**: Any custom OpenAI-compatible endpoint - **Supports both Responses and Chat Completions APIs**
+
+## Responses API & Reasoning Models
+
+### What's New
+
+CodeGraph has been updated to use **OpenAI's Responses API** (`/v1/responses`), the modern successor to the Chat Completions API. This brings several advantages:
+
+1. **Reasoning Model Support**: Full support for o1, o3, o4-mini, and GPT-5 series models
+2. **Reasoning Budget Control**: Use `reasoning_effort` parameter to control thinking depth
+3. **Modern Parameters**: Uses `max_output_tokens` instead of `max_tokens`
+4. **Better Performance**: Optimized for the latest OpenAI models
+5. **Backward Compatibility**: OpenAI-compatible provider falls back to Chat Completions API when needed
+
+### Reasoning Models
+
+Reasoning models like OpenAI's o1, o3, and o4-mini use a different approach:
+- They "think" before responding, generating reasoning tokens
+- Higher reasoning effort = more thinking = better quality (but slower and more expensive)
+- They don't support temperature or other sampling parameters
+- They use `max_output_tokens` instead of `max_tokens`
+
+### Configuration for Reasoning Models
+
+```toml
+[llm]
+enabled = true
+provider = "openai"
+model = "o3-mini"  # or "o1", "o4-mini", "gpt-5"
+openai_api_key = "sk-..."
+context_window = 200000
+max_output_tokens = 25000  # Use this instead of max_tokens
+reasoning_effort = "medium"  # Options: "minimal", "low", "medium", "high"
+```
+
+**Reasoning Effort Levels:**
+- `"minimal"` - Fast, basic reasoning (GPT-5 only)
+- `"low"` - Quick responses with light reasoning
+- `"medium"` - Balanced reasoning (recommended)
+- `"high"` - Deep reasoning for complex problems
+
+### API Format Differences
+
+**Responses API** (Used by OpenAI provider):
+- Endpoint: `/v1/responses`
+- Request: `input` (string) and `instructions` (optional string)
+- Response: `output_text` (string)
+- Supports: `max_output_tokens`, `reasoning_effort`
+
+**Chat Completions API** (Fallback for compatibility):
+- Endpoint: `/v1/chat/completions`
+- Request: `messages` (array)
+- Response: `choices[0].message.content`
+- Supports: `max_completion_tokens`, `reasoning_effort`
+
+The OpenAI-compatible provider supports both formats and automatically falls back to Chat Completions API if Responses API is not available.
 
 ## Quick Start with Setup Wizard
 

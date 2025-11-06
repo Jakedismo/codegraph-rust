@@ -15,7 +15,7 @@ pub struct OpenAIConfig {
     pub api_key: String,
     /// Base URL for API (default: https://api.openai.com/v1)
     pub base_url: String,
-    /// Model to use (e.g., "gpt-4o", "gpt-4-turbo")
+    /// Model to use (e.g., "gpt-4o", "o3-mini", "o1")
     pub model: String,
     /// Maximum context window
     pub context_window: usize,
@@ -41,7 +41,7 @@ impl Default for OpenAIConfig {
     }
 }
 
-/// OpenAI LLM provider
+/// OpenAI LLM provider using the Responses API
 pub struct OpenAIProvider {
     config: OpenAIConfig,
     client: Client,
@@ -69,7 +69,16 @@ impl OpenAIProvider {
         Self::new(OpenAIConfig::default())
     }
 
-    /// Send a request to OpenAI API with retry logic
+    /// Check if this is a reasoning model
+    fn is_reasoning_model(&self) -> bool {
+        let model = self.config.model.to_lowercase();
+        model.contains("o1")
+            || model.contains("o3")
+            || model.contains("o4")
+            || model.starts_with("gpt-5")
+    }
+
+    /// Send a request to OpenAI Responses API with retry logic
     async fn send_request(
         &self,
         messages: &[Message],
@@ -102,32 +111,51 @@ impl OpenAIProvider {
         Err(last_error.unwrap_or_else(|| anyhow!("All retry attempts failed")))
     }
 
-    /// Try a single request to OpenAI API
+    /// Try a single request to OpenAI Responses API
     async fn try_request(
         &self,
         messages: &[Message],
         config: &GenerationConfig,
     ) -> Result<OpenAIResponse> {
-        let request = OpenAIRequest {
+        let is_reasoning = self.is_reasoning_model();
+
+        // Extract system instructions and user input
+        let instructions = messages
+            .iter()
+            .find(|m| matches!(m.role, MessageRole::System))
+            .map(|m| m.content.clone());
+
+        let input = messages
+            .iter()
+            .filter(|m| !matches!(m.role, MessageRole::System))
+            .map(|m| format!("{}: {}", m.role, m.content))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        // Build request based on model type
+        let mut request = OpenAIRequest {
             model: self.config.model.clone(),
-            messages: messages
-                .iter()
-                .map(|m| OpenAIMessage {
-                    role: m.role.to_string(),
-                    content: m.content.clone(),
-                })
-                .collect(),
-            temperature: Some(config.temperature),
-            max_tokens: config.max_tokens,
-            top_p: config.top_p,
-            frequency_penalty: config.frequency_penalty,
-            presence_penalty: config.presence_penalty,
+            input,
+            instructions,
+            max_output_tokens: config.max_output_tokens.or(config.max_tokens),
+            reasoning_effort: None,
+            temperature: None,
+            top_p: None,
             stop: config.stop.clone(),
         };
 
+        // Only add sampling parameters for non-reasoning models
+        if !is_reasoning {
+            request.temperature = Some(config.temperature);
+            request.top_p = config.top_p;
+        } else {
+            // Add reasoning effort for reasoning models
+            request.reasoning_effort = config.reasoning_effort.clone();
+        }
+
         let mut request_builder = self
             .client
-            .post(format!("{}/chat/completions", self.config.base_url))
+            .post(format!("{}/responses", self.config.base_url))
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .header("Content-Type", "application/json")
             .json(&request);
@@ -139,7 +167,7 @@ impl OpenAIProvider {
         let response = request_builder
             .send()
             .await
-            .context("Failed to send request to OpenAI API")?;
+            .context("Failed to send request to OpenAI Responses API")?;
 
         let status = response.status();
 
@@ -155,7 +183,7 @@ impl OpenAIProvider {
         response
             .json::<OpenAIResponse>()
             .await
-            .context("Failed to parse OpenAI API response")
+            .context("Failed to parse OpenAI Responses API response")
     }
 }
 
@@ -169,18 +197,13 @@ impl LLMProvider for OpenAIProvider {
         let start = Instant::now();
         let response = self.send_request(messages, config).await?;
 
-        let choice = response
-            .choices
-            .first()
-            .ok_or_else(|| anyhow!("No choices in OpenAI response"))?;
-
         Ok(LLMResponse {
-            content: choice.message.content.clone(),
+            content: response.output_text,
             total_tokens: response.usage.as_ref().map(|u| u.total_tokens),
             prompt_tokens: response.usage.as_ref().map(|u| u.prompt_tokens),
-            completion_tokens: response.usage.as_ref().map(|u| u.completion_tokens),
-            finish_reason: choice.finish_reason.clone(),
-            model: response.model,
+            completion_tokens: response.usage.as_ref().map(|u| u.output_tokens),
+            finish_reason: response.status.clone(),
+            model: self.config.model.clone(),
         })
     }
 
@@ -192,7 +215,7 @@ impl LLMProvider for OpenAIProvider {
         }];
 
         let mut config = GenerationConfig::default();
-        config.max_tokens = Some(1);
+        config.max_output_tokens = Some(1);
 
         self.generate_chat(&messages, &config).await.is_ok()
     }
@@ -207,13 +230,17 @@ impl LLMProvider for OpenAIProvider {
 
     fn characteristics(&self) -> ProviderCharacteristics {
         // Characteristics vary by model
-        let (max_tokens, rpm_limit, tpm_limit) = match self.config.model.as_str() {
-            "gpt-4o" => (128_000, Some(500), Some(30_000)),
-            "gpt-4o-mini" => (128_000, Some(500), Some(200_000)),
-            "gpt-4-turbo" => (128_000, Some(500), Some(30_000)),
-            "gpt-4" => (8_192, Some(500), Some(10_000)),
-            "gpt-3.5-turbo" => (16_385, Some(500), Some(60_000)),
-            _ => (self.config.context_window, Some(500), Some(30_000)),
+        let (max_tokens, rpm_limit, tpm_limit, supports_functions) = match self.config.model.as_str() {
+            // Reasoning models
+            m if m.contains("o1") => (200_000, Some(50), Some(30_000), false),
+            m if m.contains("o3") || m.contains("o4") => (200_000, Some(50), Some(30_000), false),
+            m if m.starts_with("gpt-5") => (200_000, Some(50), Some(30_000), false),
+            // Standard models
+            "gpt-4o" => (128_000, Some(500), Some(30_000), true),
+            "gpt-4o-mini" => (128_000, Some(500), Some(200_000), true),
+            "gpt-4-turbo" => (128_000, Some(500), Some(30_000), true),
+            "gpt-4" => (8_192, Some(500), Some(10_000), true),
+            _ => (self.config.context_window, Some(500), Some(30_000), true),
         };
 
         ProviderCharacteristics {
@@ -222,7 +249,7 @@ impl LLMProvider for OpenAIProvider {
             rpm_limit,
             tpm_limit,
             supports_streaming: true,
-            supports_functions: true,
+            supports_functions,
         }
     }
 }
@@ -296,54 +323,45 @@ impl CodeIntelligenceProvider for OpenAIProvider {
     }
 }
 
-// OpenAI API request/response types
+// OpenAI Responses API request/response types
 
 #[derive(Debug, Serialize)]
 struct OpenAIRequest {
     model: String,
-    messages: Vec<OpenAIMessage>,
+    input: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instructions: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_output_tokens: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    frequency_penalty: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    presence_penalty: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     stop: Option<Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAIMessage {
-    role: String,
-    content: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct OpenAIResponse {
     id: String,
-    object: String,
-    created: u64,
-    model: String,
-    choices: Vec<Choice>,
+    #[serde(rename = "type")]
+    response_type: String,
+    status: Option<String>,
+    output_text: String,
+    #[serde(default)]
     usage: Option<Usage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Choice {
-    index: usize,
-    message: OpenAIMessage,
-    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct Usage {
     prompt_tokens: usize,
-    completion_tokens: usize,
+    #[serde(alias = "completion_tokens")]
+    output_tokens: usize,
     total_tokens: usize,
+    #[serde(default)]
+    reasoning_tokens: Option<usize>,
 }
 
 #[cfg(test)]
@@ -364,5 +382,33 @@ mod tests {
             ..Default::default()
         };
         assert!(OpenAIProvider::new(config).is_err());
+    }
+
+    #[test]
+    fn test_reasoning_model_detection() {
+        let models = vec!["o1-preview", "o3-mini", "o4-mini", "gpt-5"];
+        for model in models {
+            let config = OpenAIConfig {
+                api_key: "test".to_string(),
+                model: model.to_string(),
+                ..Default::default()
+            };
+            let provider = OpenAIProvider::new(config).unwrap();
+            assert!(provider.is_reasoning_model(), "Model {} should be detected as reasoning model", model);
+        }
+    }
+
+    #[test]
+    fn test_standard_model_detection() {
+        let models = vec!["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"];
+        for model in models {
+            let config = OpenAIConfig {
+                api_key: "test".to_string(),
+                model: model.to_string(),
+                ..Default::default()
+            };
+            let provider = OpenAIProvider::new(config).unwrap();
+            assert!(!provider.is_reasoning_model(), "Model {} should NOT be detected as reasoning model", model);
+        }
     }
 }
