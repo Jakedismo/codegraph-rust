@@ -173,19 +173,30 @@ impl GraphStore for TransactionalGraph {
     async fn add_node(&mut self, node: CodeNode) -> Result<()> {
         let transaction_id = self.get_current_transaction_id()?;
 
-        // Generate content hash for the node
-        let content_hash = {
-            let serialized =
-                serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        // Serialize the node for content-addressed storage
+        let serialized =
+            serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
-            use sha2::{Digest, Sha256};
-            let mut hasher = Sha256::new();
-            hasher.update(&serialized);
-            format!("{:x}", hasher.finalize())
+        // Store the content and get the hash
+        let content_hash = {
+            let storage = self.storage.clone();
+            let serialized_clone = serialized.clone();
+            tokio::task::spawn_blocking(move || {
+                let handle = tokio::runtime::Handle::current();
+                handle.block_on(async move {
+                    let mut guard = storage.write();
+                    guard.store_content(&serialized_clone).await
+                })
+            })
+            .await
+            .map_err(|e| CodeGraphError::Threading(e.to_string()))??
         };
 
-        // Add to transaction's write set
-        let write_op = WriteOperation::Insert(node.id);
+        // Add to transaction's write set with the content hash
+        let write_op = WriteOperation::Update {
+            old_content_hash: String::new(), // New insert has no old content
+            new_content_hash: content_hash,
+        };
         {
             let storage = self.storage.clone();
             let node_id = node.id;
@@ -202,9 +213,6 @@ impl GraphStore for TransactionalGraph {
             .await
             .map_err(|e| CodeGraphError::Threading(e.to_string()))??;
         }
-
-        // Store the actual content in the storage with the hash
-        // TODO: Implement content-addressed storage for the node data
 
         Ok(())
     }
@@ -226,44 +234,73 @@ impl GraphStore for TransactionalGraph {
         }
 
         // Check if this node is in the current transaction's write set first
-        let is_in_write = {
+        let transaction = {
             let storage = self.storage.clone();
             tokio::task::spawn_blocking(move || {
                 let handle = tokio::runtime::Handle::current();
                 handle.block_on(async move {
                     let guard = storage.read();
-                    Ok::<_, CodeGraphError>(guard.get_transaction(transaction_id).await?)
+                    guard.get_transaction(transaction_id).await
                 })
             })
             .await
             .map_err(|e| CodeGraphError::Threading(e.to_string()))??
         };
-        if let Some(transaction) = is_in_write {
-            if transaction.write_set.contains_key(&id) {
+
+        if let Some(tx) = transaction {
+            if let Some(write_op) = tx.write_set.get(&id) {
                 // Node is being modified in this transaction
-                // TODO: Return the modified version from the write set
+                match write_op {
+                    WriteOperation::Delete(_) => {
+                        // Node was deleted in this transaction
+                        return Ok(None);
+                    }
+                    WriteOperation::Update { new_content_hash, .. } => {
+                        // Retrieve the modified version from content store
+                        let content_opt = {
+                            let storage = self.storage.clone();
+                            let hash = new_content_hash.clone();
+                            tokio::task::spawn_blocking(move || {
+                                let handle = tokio::runtime::Handle::current();
+                                handle.block_on(async move {
+                                    let guard = storage.read();
+                                    guard.get_content(&hash).await
+                                })
+                            })
+                            .await
+                            .map_err(|e| CodeGraphError::Threading(e.to_string()))??
+                        };
+
+                        if let Some(content) = content_opt {
+                            let node: CodeNode = serde_json::from_slice(&content)
+                                .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                            return Ok(Some(node));
+                        }
+                    }
+                    WriteOperation::Insert(_) => {
+                        // This shouldn't happen as we use Update for inserts now
+                    }
+                }
             }
-        }
 
-        // If not in write set, read from the snapshot
-        let maybe_tx = {
-            let storage = self.storage.clone();
-            tokio::task::spawn_blocking(move || {
-                let handle = tokio::runtime::Handle::current();
-                handle.block_on(async move {
-                    let guard = storage.read();
-                    Ok::<_, CodeGraphError>(guard.get_transaction(transaction_id).await?)
+            // If not in write set, read from the transaction's snapshot
+            let snapshot_id = tx.snapshot_id;
+            let node_opt = {
+                let storage = self.storage.clone();
+                tokio::task::spawn_blocking(move || {
+                    let handle = tokio::runtime::Handle::current();
+                    handle.block_on(async move {
+                        let guard = storage.read();
+                        guard.read_node_at_snapshot(id, snapshot_id).await
+                    })
                 })
-            })
-            .await
-            .map_err(|e| CodeGraphError::Threading(e.to_string()))??
-        };
-        if let Some(_transaction) = maybe_tx {
-            // TODO: Read node from the transaction's snapshot
-            // This would involve reading from the snapshot's content store
+                .await
+                .map_err(|e| CodeGraphError::Threading(e.to_string()))??
+            };
+
+            return Ok(node_opt);
         }
 
-        // For now, return None as placeholder
         Ok(None)
     }
 
@@ -273,28 +310,41 @@ impl GraphStore for TransactionalGraph {
         // Get the current version of the node to create before/after images
         let old_node = self.get_node(node.id).await?;
 
-        let (old_hash, new_hash) = {
-            let old_hash = if let Some(ref old) = old_node {
-                let serialized =
-                    serde_json::to_vec(old).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+        // Get old hash if node exists
+        let old_hash = if let Some(ref old) = old_node {
+            let serialized =
+                serde_json::to_vec(old).map_err(|e| CodeGraphError::Database(e.to_string()))?;
+            let storage = self.storage.clone();
+            let serialized_clone = serialized.clone();
+            tokio::task::spawn_blocking(move || {
+                let handle = tokio::runtime::Handle::current();
+                handle.block_on(async move {
+                    let mut guard = storage.write();
+                    guard.store_content(&serialized_clone).await
+                })
+            })
+            .await
+            .map_err(|e| CodeGraphError::Threading(e.to_string()))??
+        } else {
+            String::new()
+        };
 
-                use sha2::{Digest, Sha256};
-                let mut hasher = Sha256::new();
-                hasher.update(&serialized);
-                format!("{:x}", hasher.finalize())
-            } else {
-                String::new()
-            };
+        // Serialize and store the new node content
+        let new_serialized =
+            serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
 
-            let new_serialized =
-                serde_json::to_vec(&node).map_err(|e| CodeGraphError::Database(e.to_string()))?;
-
-            use sha2::{Digest, Sha256};
-            let mut hasher = Sha256::new();
-            hasher.update(&new_serialized);
-            let new_hash = format!("{:x}", hasher.finalize());
-
-            (old_hash, new_hash)
+        let new_hash = {
+            let storage = self.storage.clone();
+            let serialized_clone = new_serialized.clone();
+            tokio::task::spawn_blocking(move || {
+                let handle = tokio::runtime::Handle::current();
+                handle.block_on(async move {
+                    let mut guard = storage.write();
+                    guard.store_content(&serialized_clone).await
+                })
+            })
+            .await
+            .map_err(|e| CodeGraphError::Threading(e.to_string()))??
         };
 
         // Add to transaction's write set
@@ -398,11 +448,21 @@ impl GraphStore for ReadOnlyTransactionalGraph {
     }
 
     async fn get_node(&self, id: NodeId) -> Result<Option<CodeNode>> {
-        // TODO: Read node from the specific snapshot
-        // This involves looking up the content hash for this node in the snapshot
-        // and then retrieving the content from the content store
+        // Read node from the specific snapshot
+        let storage = self.storage.clone();
+        let snapshot_id = self.snapshot_id;
 
-        Ok(None)
+        let node_opt = tokio::task::spawn_blocking(move || {
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async move {
+                let guard = storage.read();
+                guard.read_node_at_snapshot(id, snapshot_id).await
+            })
+        })
+        .await
+        .map_err(|e| CodeGraphError::Threading(e.to_string()))??;
+
+        Ok(node_opt)
     }
 
     async fn update_node(&mut self, _node: CodeNode) -> Result<()> {
