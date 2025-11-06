@@ -1,0 +1,34 @@
+[package]
+name = "codegraph-napi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# NAPI-RS
+napi = { version = "2.16", features = ["async", "tokio_rt", "napi8"] }
+napi-derive = "2.16"
+
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Local crates
+codegraph-core = { path = "../codegraph-core" }
+codegraph-api = { path = "../codegraph-api" }
+codegraph-graph = { path = "../codegraph-graph" }
+
+[build-dependencies]
+napi-build = "2.1"
+
+[profile.release]
+lto = true
+strip = true
