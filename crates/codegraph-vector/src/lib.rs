@@ -22,6 +22,9 @@ pub mod onnx_provider;
 #[cfg(feature = "ollama")]
 pub mod ollama_embedding_provider;
 
+#[cfg(feature = "jina")]
+pub mod jina_provider;
+
 #[cfg(feature = "faiss")]
 pub mod faiss_manager;
 #[cfg(feature = "faiss")]
@@ -66,6 +69,9 @@ pub use onnx_provider::*;
 
 #[cfg(feature = "ollama")]
 pub use ollama_embedding_provider::*;
+
+#[cfg(feature = "jina")]
+pub use jina_provider::*;
 
 #[cfg(feature = "faiss")]
 pub use faiss_manager::*;

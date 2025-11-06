@@ -10,6 +10,7 @@ pub enum EmbeddingProvider {
     Local,
     Cohere,
     HuggingFace,
+    Jina,
     Custom(String),
 }
 
@@ -96,6 +97,79 @@ impl Default for LocalEmbeddingConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct JinaEmbeddingConfig {
+    pub model: String,
+    pub api_key_env: String,
+    #[serde(default = "JinaEmbeddingConfig::default_api_base")]
+    pub api_base: String,
+    #[serde(default = "JinaEmbeddingConfig::default_max_retries")]
+    pub max_retries: u32,
+    #[serde(default = "JinaEmbeddingConfig::default_timeout_secs")]
+    pub timeout_secs: u64,
+    #[serde(default = "JinaEmbeddingConfig::default_task")]
+    pub task: String,
+    #[serde(default = "JinaEmbeddingConfig::default_late_chunking")]
+    pub late_chunking: bool,
+    #[serde(default = "JinaEmbeddingConfig::default_enable_reranking")]
+    pub enable_reranking: bool,
+    #[serde(default = "JinaEmbeddingConfig::default_reranking_model")]
+    pub reranking_model: String,
+    #[serde(default = "JinaEmbeddingConfig::default_reranking_top_n")]
+    pub reranking_top_n: usize,
+}
+
+impl JinaEmbeddingConfig {
+    fn default_api_base() -> String {
+        "https://api.jina.ai/v1".to_string()
+    }
+
+    fn default_max_retries() -> u32 {
+        3
+    }
+
+    fn default_timeout_secs() -> u64 {
+        30
+    }
+
+    fn default_task() -> String {
+        "code.query".to_string()
+    }
+
+    fn default_late_chunking() -> bool {
+        true
+    }
+
+    fn default_enable_reranking() -> bool {
+        true
+    }
+
+    fn default_reranking_model() -> String {
+        "jina-reranker-v3".to_string()
+    }
+
+    fn default_reranking_top_n() -> usize {
+        10
+    }
+}
+
+impl Default for JinaEmbeddingConfig {
+    fn default() -> Self {
+        Self {
+            model: "jina-embeddings-v4".to_string(),
+            api_key_env: "JINA_API_KEY".to_string(),
+            api_base: Self::default_api_base(),
+            max_retries: Self::default_max_retries(),
+            timeout_secs: Self::default_timeout_secs(),
+            task: Self::default_task(),
+            late_chunking: Self::default_late_chunking(),
+            enable_reranking: Self::default_enable_reranking(),
+            reranking_model: Self::default_reranking_model(),
+            reranking_top_n: Self::default_reranking_top_n(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EmbeddingModelConfig {
     #[serde(default)]
     pub provider: EmbeddingProvider,
@@ -108,6 +182,9 @@ pub struct EmbeddingModelConfig {
 
     #[serde(default)]
     pub local: Option<LocalEmbeddingConfig>,
+
+    #[serde(default)]
+    pub jina: Option<JinaEmbeddingConfig>,
 
     #[serde(default)]
     pub custom_config: HashMap<String, serde_json::Value>,
@@ -175,6 +252,22 @@ impl EmbeddingModelConfig {
                     anyhow::ensure!(config.batch_size > 0, "Batch size must be greater than 0");
                 }
             }
+            EmbeddingProvider::Jina => {
+                anyhow::ensure!(
+                    self.jina.is_some(),
+                    "Jina configuration required when using Jina provider"
+                );
+                if let Some(config) = &self.jina {
+                    anyhow::ensure!(
+                        !config.model.is_empty(),
+                        "Jina model name cannot be empty"
+                    );
+                    anyhow::ensure!(
+                        !config.api_key_env.is_empty(),
+                        "Jina API key environment variable name cannot be empty"
+                    );
+                }
+            }
             _ => {}
         }
 
@@ -190,6 +283,7 @@ impl EmbeddingModelConfig {
                 ..Default::default()
             }),
             local: None,
+            jina: None,
             custom_config: HashMap::new(),
             cache_enabled: Self::default_cache_enabled(),
             cache_ttl_secs: Self::default_cache_ttl_secs(),
@@ -204,6 +298,24 @@ impl EmbeddingModelConfig {
             openai: None,
             local: Some(LocalEmbeddingConfig {
                 model_path: model_path.to_string(),
+                ..Default::default()
+            }),
+            jina: None,
+            custom_config: HashMap::new(),
+            cache_enabled: Self::default_cache_enabled(),
+            cache_ttl_secs: Self::default_cache_ttl_secs(),
+            normalize_embeddings: Self::default_normalize_embeddings(),
+        }
+    }
+
+    pub fn for_jina(model: &str, dimension: usize) -> Self {
+        Self {
+            provider: EmbeddingProvider::Jina,
+            dimension,
+            openai: None,
+            local: None,
+            jina: Some(JinaEmbeddingConfig {
+                model: model.to_string(),
                 ..Default::default()
             }),
             custom_config: HashMap::new(),
@@ -221,6 +333,7 @@ impl Default for EmbeddingModelConfig {
             dimension: Self::default_dimension(),
             openai: None,
             local: Some(LocalEmbeddingConfig::default()),
+            jina: None,
             custom_config: HashMap::new(),
             cache_enabled: Self::default_cache_enabled(),
             cache_ttl_secs: Self::default_cache_ttl_secs(),
@@ -277,6 +390,14 @@ impl EmbeddingPreset {
         }
     }
 
+    pub fn jina_v4() -> Self {
+        Self {
+            name: "jina-v4".to_string(),
+            description: "Jina embeddings-v4 model (multimodal, code-optimized with reranking)".to_string(),
+            config: EmbeddingModelConfig::for_jina("jina-embeddings-v4", 1024),
+        }
+    }
+
     pub fn all_presets() -> Vec<Self> {
         vec![
             Self::openai_small(),
@@ -284,6 +405,7 @@ impl EmbeddingPreset {
             Self::openai_ada(),
             Self::local_minilm(),
             Self::local_mpnet(),
+            Self::jina_v4(),
         ]
     }
 

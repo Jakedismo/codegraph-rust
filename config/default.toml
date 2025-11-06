@@ -4,9 +4,29 @@ env = "development"
 host = "0.0.0.0"
 port = 3000
 
-[rocksdb]
+# Database configuration
+[database]
+# Backend options: "rocksdb" (default), "surrealdb"
+backend = "rocksdb"
+
+[database.rocksdb]
 path = "data/graph.db"
 read_only = false
+
+[database.surrealdb]
+# Example SurrealDB configuration (uncomment to use)
+# connection = "ws://localhost:8000"  # Standard SurrealDB WebSocket connection
+# namespace = "codegraph"
+# database = "graph"
+# auto_migrate = true
+# strict_mode = false
+# Alternative: file://data/surrealdb/graph.db for embedded mode
+
+# Deprecated: Legacy rocksdb configuration (use database.rocksdb instead)
+# This is kept for backward compatibility
+# [rocksdb]
+# path = "data/graph.db"
+# read_only = false
 
 [vector]
 dimension = 384
