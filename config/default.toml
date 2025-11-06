@@ -15,11 +15,12 @@ read_only = false
 
 [database.surrealdb]
 # Example SurrealDB configuration (uncomment to use)
-# connection = "file://data/surrealdb/graph.db"
+# connection = "ws://localhost:8000"  # Standard SurrealDB WebSocket connection
 # namespace = "codegraph"
 # database = "graph"
 # auto_migrate = true
 # strict_mode = false
+# Alternative: file://data/surrealdb/graph.db for embedded mode
 
 # Deprecated: Legacy rocksdb configuration (use database.rocksdb instead)
 # This is kept for backward compatibility

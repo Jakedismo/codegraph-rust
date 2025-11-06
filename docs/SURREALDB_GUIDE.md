@@ -47,9 +47,26 @@ cargo install surrealdb --locked
 
 ## Configuration
 
-### Basic Configuration (File-Based)
+### Basic Configuration (WebSocket - Default)
 
 Create a configuration file (e.g., `config/surrealdb.toml`):
+
+```toml
+[database]
+backend = "surrealdb"
+
+[database.surrealdb]
+connection = "ws://localhost:8000"  # Standard SurrealDB connection
+namespace = "codegraph"
+database = "graph"
+auto_migrate = true
+```
+
+**Note:** This requires SurrealDB server running on port 8000 (see "Running SurrealDB Server" below).
+
+### File-Based Configuration (Embedded)
+
+For embedded/local-only usage without a server:
 
 ```toml
 [database]
@@ -242,9 +259,13 @@ runner.migrate().await?;
 use codegraph_graph::surrealdb_storage::*;
 use codegraph_core::*;
 
-// Initialize storage
+// Initialize storage (default: ws://localhost:8000)
+let config = SurrealDbConfig::default();
+let mut storage = SurrealDbStorage::new(config).await?;
+
+// Or specify custom connection
 let config = SurrealDbConfig {
-    connection: "file://data/graph.db".to_string(),
+    connection: "ws://localhost:8000".to_string(),
     namespace: "codegraph".to_string(),
     database: "graph".to_string(),
     ..Default::default()

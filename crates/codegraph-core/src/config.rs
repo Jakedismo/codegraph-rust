@@ -96,7 +96,7 @@ impl SurrealDbConfig {
 impl Default for SurrealDbConfig {
     fn default() -> Self {
         Self {
-            connection: "file://data/graph.db".into(),
+            connection: "ws://localhost:8000".into(),
             namespace: Self::default_namespace(),
             database: Self::default_database(),
             username: None,

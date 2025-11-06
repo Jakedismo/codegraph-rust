@@ -12,12 +12,12 @@ read_only = false
 # SurrealDB configuration
 [database.surrealdb]
 # Connection string options:
-# - Local file: "file://data/graph.db"
+# - WebSocket (default): "ws://localhost:8000"
+# - Local file: "file://data/surrealdb/graph.db"
 # - Memory (testing): "mem://"
 # - Remote HTTP: "http://localhost:8000"
 # - Remote HTTPS: "https://example.com:8000"
-# - WebSocket: "ws://localhost:8000"
-connection = "file://data/surrealdb/graph.db"
+connection = "ws://localhost:8000"
 
 # Namespace for multi-tenancy (default: "codegraph")
 namespace = "codegraph"

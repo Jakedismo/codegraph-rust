@@ -37,7 +37,7 @@ pub struct SurrealDbConfig {
 impl Default for SurrealDbConfig {
     fn default() -> Self {
         Self {
-            connection: "file://data/graph.db".to_string(),
+            connection: "ws://localhost:8000".to_string(),
             namespace: "codegraph".to_string(),
             database: "graph".to_string(),
             username: None,
