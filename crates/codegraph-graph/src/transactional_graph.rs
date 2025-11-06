@@ -394,13 +394,94 @@ impl GraphStore for TransactionalGraph {
     }
 
     async fn find_nodes_by_name(&self, name: &str) -> Result<Vec<CodeNode>> {
-        let _transaction_id = self.get_current_transaction_id()?;
+        let transaction_id = self.get_current_transaction_id()?;
 
-        // TODO: Implement transactional node search
-        // This would involve:
-        // 1. Reading from the current transaction's snapshot
-        // 2. Applying any pending writes from the transaction
-        // 3. Returning the merged view
+        // Get transaction to access snapshot and write set
+        let transaction = {
+            let storage = self.storage.clone();
+            tokio::task::spawn_blocking(move || {
+                let handle = tokio::runtime::Handle::current();
+                handle.block_on(async move {
+                    let guard = storage.read();
+                    guard.get_transaction(transaction_id).await
+                })
+            })
+            .await
+            .map_err(|e| CodeGraphError::Threading(e.to_string()))??
+        };
+
+        if let Some(tx) = transaction {
+            let snapshot_id = tx.snapshot_id;
+            let write_set = tx.write_set.clone();
+
+            // Get the snapshot to iterate through all nodes
+            let snapshot = {
+                let storage = self.storage.clone();
+                tokio::task::spawn_blocking(move || {
+                    let handle = tokio::runtime::Handle::current();
+                    handle.block_on(async move {
+                        let guard = storage.read();
+                        guard.get_snapshot(snapshot_id).await
+                    })
+                })
+                .await
+                .map_err(|e| CodeGraphError::Threading(e.to_string()))??
+            };
+
+            if let Some(snap) = snapshot {
+                let mut result_nodes = Vec::new();
+                let storage = self.storage.clone();
+                let name_owned = name.to_string();
+
+                // Iterate through all nodes in the snapshot
+                for (node_id, _content_hash) in snap.node_versions {
+                    // Check if this node was deleted in the write set
+                    if let Some(WriteOperation::Delete(_)) = write_set.get(&node_id) {
+                        continue; // Skip deleted nodes
+                    }
+
+                    // Try to get the node (will check write set first, then snapshot)
+                    if let Some(node) = self.get_node(node_id).await? {
+                        if node.name == name_owned {
+                            result_nodes.push(node);
+                        }
+                    }
+                }
+
+                // Check write set for newly inserted nodes not in the snapshot
+                for (node_id, write_op) in write_set {
+                    if !snap.node_versions.contains_key(&node_id) {
+                        // This is a new node added in this transaction
+                        if let WriteOperation::Update { new_content_hash, .. } = write_op {
+                            // Retrieve the node from content store
+                            let content_opt = {
+                                let storage = storage.clone();
+                                let hash = new_content_hash.clone();
+                                tokio::task::spawn_blocking(move || {
+                                    let handle = tokio::runtime::Handle::current();
+                                    handle.block_on(async move {
+                                        let guard = storage.read();
+                                        guard.get_content(&hash).await
+                                    })
+                                })
+                                .await
+                                .map_err(|e| CodeGraphError::Threading(e.to_string()))??
+                            };
+
+                            if let Some(content) = content_opt {
+                                let node: CodeNode = serde_json::from_slice(&content)
+                                    .map_err(|e| CodeGraphError::Database(e.to_string()))?;
+                                if node.name == name_owned {
+                                    result_nodes.push(node);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return Ok(result_nodes);
+            }
+        }
 
         Ok(Vec::new())
     }
@@ -477,8 +558,37 @@ impl GraphStore for ReadOnlyTransactionalGraph {
         ))
     }
 
-    async fn find_nodes_by_name(&self, _name: &str) -> Result<Vec<CodeNode>> {
-        // TODO: Implement snapshot-based node search
+    async fn find_nodes_by_name(&self, name: &str) -> Result<Vec<CodeNode>> {
+        let storage = self.storage.clone();
+        let snapshot_id = self.snapshot_id;
+        let name_owned = name.to_string();
+
+        // Get the snapshot
+        let snapshot = tokio::task::spawn_blocking(move || {
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async move {
+                let guard = storage.read();
+                guard.get_snapshot(snapshot_id).await
+            })
+        })
+        .await
+        .map_err(|e| CodeGraphError::Threading(e.to_string()))??;
+
+        if let Some(snap) = snapshot {
+            let mut result_nodes = Vec::new();
+
+            // Iterate through all nodes in the snapshot
+            for (node_id, _content_hash) in snap.node_versions {
+                if let Some(node) = self.get_node(node_id).await? {
+                    if node.name == name_owned {
+                        result_nodes.push(node);
+                    }
+                }
+            }
+
+            return Ok(result_nodes);
+        }
+
         Ok(Vec::new())
     }
 }
