@@ -5,7 +5,8 @@ use codegraph_core::{CodeGraphError, CodeNode, Result};
     feature = "local-embeddings",
     feature = "openai",
     feature = "onnx",
-    feature = "ollama"
+    feature = "ollama",
+    feature = "jina"
 ))]
 use std::sync::Arc;
 
@@ -15,6 +16,8 @@ pub struct EmbeddingGenerator {
     pub(crate) advanced: Option<Arc<crate::embeddings::generator::AdvancedEmbeddingGenerator>>,
     #[cfg(feature = "ollama")]
     ollama_provider: Option<crate::ollama_embedding_provider::OllamaEmbeddingProvider>,
+    #[cfg(feature = "jina")]
+    jina_provider: Option<crate::jina_provider::JinaEmbeddingProvider>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +45,8 @@ impl EmbeddingGenerator {
             advanced: None,
             #[cfg(feature = "ollama")]
             ollama_provider: None,
+            #[cfg(feature = "jina")]
+            jina_provider: None,
         }
     }
 
@@ -68,14 +73,16 @@ impl EmbeddingGenerator {
             feature = "local-embeddings",
             feature = "openai",
             feature = "onnx",
-            feature = "ollama"
+            feature = "ollama",
+            feature = "jina"
         ))]
         let mut base = Self::new(ModelConfig::default());
         #[cfg(not(any(
             feature = "local-embeddings",
             feature = "openai",
             feature = "onnx",
-            feature = "ollama"
+            feature = "ollama",
+            feature = "jina"
         )))]
         let base = Self::new(ModelConfig::default());
         let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
@@ -202,6 +209,24 @@ impl EmbeddingGenerator {
                     }
                 }
             }
+        } else if provider == "jina" {
+            #[cfg(feature = "jina")]
+            {
+                // Create Jina embedding provider
+                let jina_config = crate::jina_provider::JinaConfig::default();
+                match crate::jina_provider::JinaEmbeddingProvider::new(jina_config) {
+                    Ok(jina_provider) => {
+                        tracing::info!("✅ Jina embeddings initialized successfully");
+                        base.jina_provider = Some(jina_provider);
+                        // Jina embeddings-v4 uses 2048 dimensions
+                        base.model_config.dimension = 2048;
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to initialize Jina embeddings: {}", e);
+                        tracing::error!("   Make sure JINA_API_KEY environment variable is set");
+                    }
+                }
+            }
         }
         base
     }
@@ -212,6 +237,26 @@ impl EmbeddingGenerator {
     }
 
     pub async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {
+        // Prefer Jina provider for batch processing (cloud-based embeddings)
+        #[cfg(feature = "jina")]
+        if let Some(jina) = &self.jina_provider {
+            tracing::info!(
+                target: "codegraph_vector::embeddings",
+                "Using Jina embeddings for batch: {} items",
+                nodes.len()
+            );
+            use crate::providers::EmbeddingProvider;
+            let embs = jina.generate_embeddings(nodes).await?;
+            if embs.len() != nodes.len() {
+                return Err(CodeGraphError::Vector(format!(
+                    "Jina provider returned {} embeddings for {} inputs",
+                    embs.len(),
+                    nodes.len()
+                )));
+            }
+            return Ok(embs);
+        }
+
         // Prefer Ollama provider for batch processing (code-specialized embeddings)
         #[cfg(feature = "ollama")]
         if let Some(ollama) = &self.ollama_provider {

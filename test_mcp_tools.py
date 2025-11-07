@@ -2,59 +2,78 @@
 # test_mcp_tools_stdio.py
 #
 # Automatic tester for CodeGraph MCP tools using `codegraph stdio-serve`.
+# - Loads configuration from .env file automatically
 # - Sends MCP initialize + notifications/initialized first (handshake)
 # - Then runs the 7 tool calls
 # - Auto-detects a node UUID from vector_search for graph_neighbors
 #
 # Usage:
-#   CODEGRAPH_MODEL="hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M" \
-#   python3 test_mcp_tools_stdio.py
+#   python3 test_mcp_tools.py
 #
-# Optional env:
+# The script will automatically load settings from .env in the project root
+#
+# Optional env overrides:
+#   CODEGRAPH_MODEL="..."  # Override model from .env
 #   MCP_PROTOCOL_VERSION="2025-06-18"  # default below
 
 import json, os, re, select, signal, subprocess, sys, time
 import shlex
 from pathlib import Path
 
+# Load .env file if python-dotenv is available
+try:
+    from dotenv import load_dotenv
+    # Find .env file in project root
+    env_path = Path(__file__).resolve().parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"✓ Loaded configuration from {env_path}")
+    else:
+        print(f"⚠️  No .env file found at {env_path}")
+except ImportError:
+    print("⚠️  python-dotenv not installed. Install with: pip install python-dotenv")
+    print("   Falling back to environment variables only")
+
+# Defaults (can be overridden by .env or environment variables)
 MODEL_DEFAULT = "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M"
 PROTO_DEFAULT = os.environ.get("MCP_PROTOCOL_VERSION", "2025-06-18")
 
+# Read configuration from environment (.env loaded above)
+LLM_PROVIDER = os.environ.get("CODEGRAPH_LLM_PROVIDER") or os.environ.get("LLM_PROVIDER", "ollama")
+LLM_MODEL = os.environ.get("CODEGRAPH_MODEL", MODEL_DEFAULT)
+EMBEDDING_PROVIDER = os.environ.get("CODEGRAPH_EMBEDDING_PROVIDER", "jina")
+
 DEFAULT_FEATURES = (
     "ai-enhanced,qwen-integration,embeddings,faiss,"
-    "embeddings-ollama,codegraph-vector/onnx"
+    "embeddings-ollama,embeddings-jina,codegraph-vector/onnx"
 )
 
 UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}")
 
 TESTS = [
-    ("1. pattern_detection", {
+    ("1. search (semantic search)", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "pattern_detection", "arguments": {"_unused": None}}, "id": 101
+        "params": {"name": "search", "arguments": {"query": "configuration management", "limit": 3}}, "id": 101
     }),
     ("2. vector_search", {
         "jsonrpc": "2.0", "method": "tools/call",
         "params": {"name": "vector_search", "arguments": {"query": "async function implementation", "limit": 3}}, "id": 102
     }),
-    ("3. enhanced_search", {
+    ("3. graph_neighbors (auto-fill node UUID)", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "enhanced_search", "arguments": {"query": "RAG engine streaming implementation", "limit": 3}}, "id": 103
+        "params": {"name": "graph_neighbors", "arguments": {"node": "REPLACE_WITH_NODE_UUID", "limit": 5}}, "id": 103
     }),
-    ("4. codebase_qa", {
+    ("4. graph_traverse", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "codebase_qa", "arguments": {"question": "How does the RAG engine handle streaming responses?", "max_results": 3, "streaming": False}}, "id": 104
+        "params": {"name": "graph_traverse", "arguments": {"start": "REPLACE_WITH_NODE_UUID", "depth": 2, "limit": 10}}, "id": 104
     }),
-    ("5. graph_neighbors (auto-fill node UUID)", {
+    ("5. semantic_intelligence", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "graph_neighbors", "arguments": {"node": "REPLACE_WITH_NODE_UUID", "limit": 5}}, "id": 105
+        "params": {"name": "semantic_intelligence", "arguments": {"query": "How is configuration loaded from .env files?", "task_type": "semantic_search", "max_context_tokens": 10000}}, "id": 105
     }),
     ("6. impact_analysis", {
         "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "impact_analysis", "arguments": {"target_function": "analyze_codebase", "file_path": "crates/codegraph-mcp/src/qwen.rs", "change_type": "modify"}}, "id": 106
-    }),
-    ("7. code_documentation", {
-        "jsonrpc": "2.0", "method": "tools/call",
-        "params": {"name": "code_documentation", "arguments": {"target_name": "QwenClient", "file_path": "crates/codegraph-mcp/src/qwen.rs", "style": "concise"}}, "id": 107
+        "params": {"name": "impact_analysis", "arguments": {"target_function": "load", "file_path": "crates/codegraph-core/src/config_manager.rs", "change_type": "modify"}}, "id": 106
     }),
 ]
 
@@ -98,8 +117,19 @@ def extract_uuid(text: str):
     return m.group(0) if m else None
 
 def ensure_codegraph_model():
+    """Ensure CODEGRAPH_MODEL is set, either from .env or default."""
     if "CODEGRAPH_MODEL" not in os.environ:
-        os.environ["CODEGRAPH_MODEL"] = MODEL_DEFAULT
+        os.environ["CODEGRAPH_MODEL"] = LLM_MODEL
+
+    # Print configuration being used
+    print("\n" + "="*72)
+    print("CodeGraph Configuration:")
+    print("="*72)
+    print(f"  LLM Provider: {LLM_PROVIDER}")
+    print(f"  LLM Model: {os.environ.get('CODEGRAPH_MODEL', 'not set')}")
+    print(f"  Embedding Provider: {EMBEDDING_PROVIDER}")
+    print(f"  Protocol Version: {PROTO_DEFAULT}")
+    print("="*72 + "\n")
 
 def resolve_codegraph_command():
     """Determine which command should launch the CodeGraph MCP server."""
@@ -198,29 +228,35 @@ def run():
 
     # ── Run tests ─────────────────────────────────────────────────────────────
     vec2_output = ""
+    node_uuid = None
+
     for title, payload in TESTS:
         print(f"\n### {title} ###")
-        if payload["id"] == 105:
-            node = extract_uuid(vec2_output)
-            if not node:
-                print("⚠️ No UUID found in vector_search output. Skipping graph_neighbors call.")
+
+        # Extract UUID from vector_search for later tests
+        if payload["id"] == 102:
+            out = send(proc, payload, wait=0)
+            vec2_output = out
+            node_uuid = extract_uuid(vec2_output)
+            if node_uuid:
+                print(f"✓ Detected node UUID: {node_uuid}")
+            continue
+
+        # Auto-fill node UUID for graph operations
+        if payload["id"] in [103, 104]:  # graph_neighbors and graph_traverse
+            if not node_uuid:
+                print("⚠️ No UUID found in vector_search output. Skipping graph operation.")
                 continue
-            print(f"Auto-detected node UUID from vector_search: {node}")
-            payload = {
-                **payload,
-                "params": {
-                    **payload["params"],
-                    "arguments": {
-                        **payload["params"]["arguments"],
-                        "node": node
-                    }
-                }
-            }
+            print(f"Using node UUID from vector_search: {node_uuid}")
+
+            # Replace the placeholder UUID
+            args = payload["params"]["arguments"]
+            if "node" in args and args["node"] == "REPLACE_WITH_NODE_UUID":
+                args["node"] = node_uuid
+            if "start" in args and args["start"] == "REPLACE_WITH_NODE_UUID":
+                args["start"] = node_uuid
 
         out = send(proc, payload, wait=0)
-
-        if payload["id"] == 102:
-            vec2_output = out
 
     # Graceful shutdown
     try:

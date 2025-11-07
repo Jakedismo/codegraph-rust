@@ -63,6 +63,14 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_type ON TABLE nodes COLUMNS node_type;
 DEFINE INDEX IF NOT EXISTS idx_nodes_language ON TABLE nodes COLUMNS language;
 DEFINE INDEX IF NOT EXISTS idx_nodes_file_path ON TABLE nodes COLUMNS file_path;
 
+-- Vector similarity search index using HNSW
+-- Note: Dimension must match your embedding provider
+-- - Jina embeddings-v4: 2048 dimensions
+-- - Ollama nomic-embed-code: 768 dimensions
+-- - OpenAI text-embedding-3-small: 1536 dimensions
+-- Update DIMENSION parameter based on your CODEGRAPH_EMBEDDING_PROVIDER
+DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_hnsw ON TABLE nodes FIELDS embedding HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+
 -- =============================================================================
 -- EDGES TABLE - Relationship Storage
 -- =============================================================================
@@ -189,6 +197,46 @@ ON DUPLICATE KEY UPDATE description = 'Initial CodeGraph schema with nodes, edge
 -- Get project statistics
 -- SELECT * FROM project_metadata;
 
--- Find nodes by semantic similarity (assuming vector search extension)
--- This would require HNSW or MTREE index on the embedding field
--- Example: DEFINE INDEX idx_nodes_embedding ON TABLE nodes FIELDS embedding MTREE DIMENSION 2048;
+-- =============================================================================
+-- Vector Similarity Search Examples (using HNSW index)
+-- =============================================================================
+
+-- Pure vector similarity search (K-nearest neighbors)
+-- Find the 10 most similar nodes to a query embedding
+-- LET $query_embedding = [0.1, 0.2, ...]; -- Your query vector (2048 dimensions for Jina)
+-- SELECT id, name, file_path, node_type, vector::distance::knn() AS similarity_score
+-- FROM nodes
+-- WHERE embedding <|10,100|> $query_embedding  -- K=10 results, EF=100 candidate list size
+-- ORDER BY similarity_score ASC;
+
+-- Hybrid search: Vector search + keyword/metadata filters
+-- Find similar functions in a specific directory
+-- LET $query_embedding = [0.1, 0.2, ...];
+-- SELECT id, name, file_path, vector::distance::knn() AS score
+-- FROM nodes
+-- WHERE
+--     node_type = 'Function'
+--     AND file_path ~ '/src/'
+--     AND embedding <|5,80|> $query_embedding
+-- ORDER BY score ASC;
+
+-- Hybrid search: Vector + language filter
+-- Find similar code entities in Rust files only
+-- LET $query_embedding = [0.1, 0.2, ...];
+-- SELECT id, name, file_path, language, vector::distance::knn() AS score
+-- FROM nodes
+-- WHERE
+--     language = 'Rust'
+--     AND embedding <|10,100|> $query_embedding
+-- ORDER BY score ASC;
+
+-- Full-text search combined with vector search (requires full-text index)
+-- First, define a full-text index on the content field:
+-- DEFINE ANALYZER code_analyzer TOKENIZERS class,punct FILTERS lowercase,ascii;
+-- DEFINE INDEX IF NOT EXISTS idx_nodes_content_fulltext ON TABLE nodes FIELDS content SEARCH ANALYZER code_analyzer BM25;
+--
+-- Then perform hybrid search with fusion:
+-- LET $query_embedding = [0.1, 0.2, ...];
+-- LET $vector_results = SELECT id FROM nodes WHERE embedding <|20,100|> $query_embedding;
+-- LET $text_results = SELECT id, search::score(1) AS score FROM nodes WHERE content @1@ 'authentication' ORDER BY score DESC LIMIT 20;
+-- search::linear([$vector_results, $text_results], [2, 1], 10, 'zscore');  -- Fuse results with weights [2x vector, 1x text], return top 10
