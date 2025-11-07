@@ -736,7 +736,7 @@ async fn cloud_search_impl(
     paths: Option<Vec<String>>,
     langs: Option<Vec<String>>,
     limit: usize,
-    graph: &codegraph_graph::CodeGraph,
+    _graph: &codegraph_graph::CodeGraph,
 ) -> anyhow::Result<Value> {
     use codegraph_core::Language;
 
@@ -745,94 +745,123 @@ async fn cloud_search_impl(
     tracing::info!("🌐 Cloud Mode: SurrealDB HNSW + Jina reranking");
 
     // 1. Generate query embedding using Jina/Cloud provider
+    let start_embedding = Instant::now();
     let embedding_gen = get_embedding_generator().await?;
     let query_embedding = embedding_gen.generate_text_embedding(&query).await?;
+    let embedding_time = start_embedding.elapsed().as_millis() as u64;
 
     // 2. Overretrieve for reranking (3x limit)
     let overretrieve_limit = limit * 3;
 
-    // 3. SurrealDB HNSW search
-    let storage = graph.get_storage();
+    // 3. Create SurrealDB storage connection for cloud mode
+    let start_connect = Instant::now();
+    let surrealdb_config = codegraph_graph::SurrealDbConfig {
+        connection: std::env::var("SURREALDB_URL")
+            .unwrap_or_else(|_| "ws://localhost:3004".to_string()),
+        namespace: std::env::var("SURREALDB_NAMESPACE").unwrap_or_else(|_| "codegraph".to_string()),
+        database: std::env::var("SURREALDB_DATABASE").unwrap_or_else(|_| "main".to_string()),
+        username: std::env::var("SURREALDB_USERNAME").ok(),
+        password: std::env::var("SURREALDB_PASSWORD").ok(),
+        strict_mode: false,
+        auto_migrate: false, // Don't migrate on every search
+        cache_enabled: true,
+    };
 
-    // For now, use get_all_nodes and do in-memory similarity search
-    // TODO: Implement proper HNSW search in SurrealDB storage layer
-    let all_nodes = storage.get_all_nodes().await?;
+    let surrealdb_storage = codegraph_graph::SurrealDbStorage::new(surrealdb_config).await?;
+    let connect_time = start_connect.elapsed().as_millis() as u64;
 
-    if all_nodes.is_empty() {
+    // 4. SurrealDB HNSW search with metadata filtering
+    let start_search = Instant::now();
+
+    // Build filter parameters
+    let node_type_filter = langs.as_ref().map(|langs| {
+        langs
+            .iter()
+            .filter_map(|l| match l.to_lowercase().as_str() {
+                "rust" => Some("Rust".to_string()),
+                "python" => Some("Python".to_string()),
+                "javascript" | "js" => Some("JavaScript".to_string()),
+                "typescript" | "ts" => Some("TypeScript".to_string()),
+                "go" => Some("Go".to_string()),
+                "java" => Some("Java".to_string()),
+                _ => None,
+            })
+            .next() // Take first matching language for now
+    });
+
+    let file_path_pattern = paths.as_ref().map(|p| p.join("|"));
+
+    let search_results = surrealdb_storage
+        .vector_search_with_metadata(
+            query_embedding.clone(),
+            overretrieve_limit,
+            100, // ef_search parameter for HNSW
+            node_type_filter,
+            None, // language filter (separate from node_type)
+            file_path_pattern,
+        )
+        .await?;
+
+    let search_time = start_search.elapsed().as_millis() as u64;
+
+    if search_results.is_empty() {
         return Ok(json!({
             "results": [],
-            "message": "No nodes found in database. Please index your codebase first.",
+            "message": "No results found. Ensure codebase is indexed with embeddings.",
             "performance": {
                 "total_ms": start_total.elapsed().as_millis(),
+                "embedding_ms": embedding_time,
+                "connect_ms": connect_time,
+                "search_ms": search_time,
                 "mode": "cloud"
             }
         }));
     }
 
-    // Filter by language and path
-    let lang_filter: Option<Vec<Language>> = langs.as_ref().map(|langs| {
-        langs
-            .iter()
-            .filter_map(|l| match l.to_lowercase().as_str() {
-                "rust" => Some(Language::Rust),
-                "python" => Some(Language::Python),
-                "javascript" | "js" => Some(Language::JavaScript),
-                "typescript" | "ts" => Some(Language::TypeScript),
-                "go" => Some(Language::Go),
-                "java" => Some(Language::Java),
-                _ => None,
-            })
-            .collect()
-    });
+    // 5. Load full nodes from SurrealDB
+    let start_load = Instant::now();
+    let node_ids: Vec<String> = search_results.iter().map(|(id, _)| id.clone()).collect();
+    let nodes = surrealdb_storage.get_nodes_by_ids(&node_ids).await?;
+    let load_time = start_load.elapsed().as_millis() as u64;
 
-    let filtered_nodes: Vec<_> = all_nodes
-        .into_iter()
-        .filter(|node| {
-            // Filter by language
-            if let Some(ref langs) = lang_filter {
-                if !langs.contains(&node.language) {
-                    return false;
-                }
-            }
+    // 6. TODO: Add Jina reranking here
+    // For now, use HNSW scores directly
 
-            // Filter by paths
-            if let Some(ref paths) = paths {
-                if !paths.iter().any(|p| node.location.file_path.contains(p)) {
-                    return false;
-                }
-            }
-
-            true
-        })
-        .collect();
-
-    // TODO: For MVP, return basic results without reranking
-    // Full implementation requires Jina reranking integration
-    let results: Vec<Value> = filtered_nodes
+    // 7. Format results
+    let start_format = Instant::now();
+    let results: Vec<Value> = nodes
         .iter()
+        .zip(search_results.iter())
         .take(limit)
-        .map(|node| {
+        .map(|(node, (_id, score))| {
             json!({
                 "id": node.id,
                 "name": node.name,
-                "node_type": format!("{:?}", node.node_type),
-                "language": format!("{:?}", node.language),
+                "node_type": node.node_type.as_ref().map(|nt| format!("{:?}", nt)).unwrap_or_default(),
+                "language": node.language.as_ref().map(|l| format!("{:?}", l)).unwrap_or_default(),
                 "file_path": node.location.file_path,
-                "start_line": node.location.start_line,
+                "start_line": node.location.line,
                 "end_line": node.location.end_line,
-                "score": 0.5, // Placeholder score
+                "score": 1.0 - score,  // Convert distance to similarity
                 "summary": node.content.as_deref().unwrap_or("").chars().take(160).collect::<String>()
             })
         })
         .collect();
+    let format_time = start_format.elapsed().as_millis() as u64;
 
     Ok(json!({
         "results": results,
         "total_results": results.len(),
         "performance": {
             "total_ms": start_total.elapsed().as_millis(),
+            "embedding_generation_ms": embedding_time,
+            "surrealdb_connection_ms": connect_time,
+            "hnsw_search_ms": search_time,
+            "node_loading_ms": load_time,
+            "formatting_ms": format_time,
             "mode": "cloud",
-            "note": "SurrealDB HNSW search - reranking not yet implemented"
+            "hnsw_enabled": true,
+            "reranking_enabled": false  // TODO: Phase 2.5
         }
     }))
 }

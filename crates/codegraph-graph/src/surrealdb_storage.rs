@@ -288,6 +288,192 @@ impl SurrealDbStorage {
     }
     */
 
+    /// Vector search using SurrealDB HNSW indexes
+    /// Returns node IDs and similarity scores
+    pub async fn vector_search_knn(
+        &self,
+        query_embedding: Vec<f32>,
+        limit: usize,
+        ef_search: usize,
+    ) -> Result<Vec<(String, f32)>> {
+        info!(
+            "Executing HNSW vector search with limit={}, ef_search={}",
+            limit, ef_search
+        );
+
+        // Convert f32 to f64 for SurrealDB
+        let query_vec: Vec<f64> = query_embedding.iter().map(|&f| f as f64).collect();
+
+        // SurrealDB HNSW search using <|K,EF|> operator
+        // vector::distance::knn() reuses pre-computed distance from HNSW
+        let query = r#"
+            SELECT id, vector::distance::knn() AS score
+            FROM nodes
+            WHERE embedding <|$limit,$ef_search|> $query_embedding
+            ORDER BY score ASC
+            LIMIT $limit
+        "#;
+
+        let mut result = self
+            .db
+            .query(query)
+            .bind(("query_embedding", query_vec))
+            .bind(("limit", limit))
+            .bind(("ef_search", ef_search))
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("HNSW search failed: {}", e)))?;
+
+        #[derive(Deserialize)]
+        struct SearchResult {
+            id: String,
+            score: f64,
+        }
+
+        let results: Vec<SearchResult> = result.take(0).map_err(|e| {
+            CodeGraphError::Database(format!("Failed to extract search results: {}", e))
+        })?;
+
+        Ok(results
+            .into_iter()
+            .map(|r| (r.id, r.score as f32))
+            .collect())
+    }
+
+    /// Vector search with metadata filtering
+    pub async fn vector_search_with_metadata(
+        &self,
+        query_embedding: Vec<f32>,
+        limit: usize,
+        ef_search: usize,
+        node_type: Option<String>,
+        language: Option<String>,
+        file_path_pattern: Option<String>,
+    ) -> Result<Vec<(String, f32)>> {
+        info!(
+            "Executing filtered HNSW search: type={:?}, lang={:?}, path={:?}",
+            node_type, language, file_path_pattern
+        );
+
+        let query_vec: Vec<f64> = query_embedding.iter().map(|&f| f as f64).collect();
+
+        // Build dynamic WHERE clause
+        let mut where_clauses =
+            vec!["embedding <|$limit,$ef_search|> $query_embedding".to_string()];
+
+        if let Some(ref nt) = node_type {
+            where_clauses.push(format!("node_type = '{}'", nt));
+        }
+
+        if let Some(ref lang) = language {
+            where_clauses.push(format!("language = '{}'", lang));
+        }
+
+        if let Some(ref path) = file_path_pattern {
+            // Support OR patterns like "src/|lib/"
+            if path.contains('|') {
+                let patterns: Vec<String> = path
+                    .split('|')
+                    .map(|p| format!("file_path CONTAINS '{}'", p))
+                    .collect();
+                where_clauses.push(format!("({})", patterns.join(" OR ")));
+            } else {
+                where_clauses.push(format!("file_path CONTAINS '{}'", path));
+            }
+        }
+
+        let where_clause = where_clauses.join(" AND ");
+
+        let query = format!(
+            r#"
+            SELECT id, vector::distance::knn() AS score
+            FROM nodes
+            WHERE {}
+            ORDER BY score ASC
+            LIMIT $limit
+        "#,
+            where_clause
+        );
+
+        let mut result = self
+            .db
+            .query(&query)
+            .bind(("query_embedding", query_vec))
+            .bind(("limit", limit))
+            .bind(("ef_search", ef_search))
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("Filtered HNSW search failed: {}", e)))?;
+
+        #[derive(Deserialize)]
+        struct SearchResult {
+            id: String,
+            score: f64,
+        }
+
+        let results: Vec<SearchResult> = result.take(0).map_err(|e| {
+            CodeGraphError::Database(format!("Failed to extract filtered results: {}", e))
+        })?;
+
+        Ok(results
+            .into_iter()
+            .map(|r| (r.id, r.score as f32))
+            .collect())
+    }
+
+    /// Get multiple nodes by their IDs in one query
+    pub async fn get_nodes_by_ids(&self, ids: &[String]) -> Result<Vec<CodeNode>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        debug!("Getting {} nodes by IDs", ids.len());
+
+        // Check cache first for all IDs
+        let mut nodes = Vec::new();
+        let mut missing_ids = Vec::new();
+
+        if self.config.cache_enabled {
+            for id_str in ids {
+                if let Ok(id) = NodeId::parse_str(id_str) {
+                    if let Some(cached) = self.node_cache.get(&id) {
+                        nodes.push(cached.clone());
+                    } else {
+                        missing_ids.push(id_str.clone());
+                    }
+                }
+            }
+        } else {
+            missing_ids = ids.to_vec();
+        }
+
+        // Fetch missing nodes from database
+        if !missing_ids.is_empty() {
+            let query = "SELECT * FROM nodes WHERE id IN $ids";
+            let mut result = self
+                .db
+                .query(query)
+                .bind(("ids", missing_ids))
+                .await
+                .map_err(|e| CodeGraphError::Database(format!("Failed to query nodes: {}", e)))?;
+
+            let db_nodes: Vec<HashMap<String, JsonValue>> = result.take(0).map_err(|e| {
+                CodeGraphError::Database(format!("Failed to extract query results: {}", e))
+            })?;
+
+            for data in db_nodes {
+                let node = self.surreal_to_node(data)?;
+
+                // Update cache
+                if self.config.cache_enabled {
+                    self.node_cache.insert(node.id, node.clone());
+                }
+
+                nodes.push(node);
+            }
+        }
+
+        Ok(nodes)
+    }
+
     /// Convert CodeNode to SurrealDB-compatible format
     fn node_to_surreal(&self, node: &CodeNode) -> Result<HashMap<String, JsonValue>> {
         let mut data = HashMap::new();
