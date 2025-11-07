@@ -93,9 +93,9 @@ struct RerankResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct RerankResult {
-    index: usize,
-    relevance_score: f32,
+pub struct RerankResult {
+    pub index: usize,
+    pub relevance_score: f32,
 }
 
 /// Error response from Jina API

@@ -48,7 +48,7 @@ num_cpus = { workspace = true }
 # Internal dependencies
 codegraph-core = { workspace = true }
 codegraph-parser = { workspace = true }
-codegraph-graph = { workspace = true }
+codegraph-graph = { workspace = true, features = [] }
 codegraph-vector = { workspace = true, optional = true, default-features = false }
 codegraph-ai = { workspace = true, optional = true }  # Re-enabled for AI-powered symbol resolution
 faiss = { workspace = true, optional = true }
@@ -80,6 +80,7 @@ embeddings-local = ["embeddings", "codegraph-vector/local-embeddings"]
 embeddings-openai = ["embeddings", "codegraph-vector/openai"]
 embeddings-ollama = ["embeddings", "codegraph-vector/ollama"]
 embeddings-jina = ["embeddings", "codegraph-vector/jina"]
+cloud = ["embeddings-jina", "codegraph-graph/surrealdb"]
 server-http = ["dep:axum", "dep:hyper"]
 qwen-integration = []
 ai-enhanced = ["dep:codegraph-ai", "faiss", "embeddings"]

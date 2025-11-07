@@ -18,6 +18,8 @@ use crate::qwen::{QwenClient, QwenConfig};
 // and recreating embedding generator (50-500ms overhead)
 #[cfg(feature = "faiss")]
 use faiss::index::IndexImpl;
+#[cfg(feature = "faiss")]
+use faiss::Index;
 
 #[cfg(feature = "faiss")]
 static INDEX_CACHE: Lazy<DashMap<PathBuf, Arc<parking_lot::Mutex<IndexImpl>>>> =
@@ -575,7 +577,11 @@ async fn faiss_search_impl(
                 "📥 Loading FAISS index from disk (first-time): {}",
                 index_path.display()
             );
-            let idx = faiss::read_index(&index_path)?;
+            let idx = faiss::read_index(
+                index_path
+                    .to_str()
+                    .ok_or_else(|| anyhow::anyhow!("Invalid index path"))?,
+            )?;
             Ok::<_, anyhow::Error>(Arc::new(parking_lot::Mutex::new(idx)))
         })?
         .clone();
@@ -585,16 +591,26 @@ async fn faiss_search_impl(
     // Search FAISS index
     let start_search = Instant::now();
     let search_limit = limit * 10; // Overretrieve for filtering
-    let (distances, labels) = {
-        let index = index_arc.lock();
-        let query_vec = vec![query_embedding.clone()];
-        index.search(&query_vec, search_limit)?
+    let search_result = {
+        let mut index = index_arc.lock();
+        index.search(&query_embedding, search_limit)?
     };
     let search_time = start_search.elapsed().as_millis() as u64;
 
     // Get node IDs from labels
     let start_node_load = Instant::now();
-    let node_ids: Vec<i64> = labels[0].iter().filter(|&&id| id >= 0).copied().collect();
+    let node_ids: Vec<i64> = search_result
+        .labels
+        .iter()
+        .filter_map(|&id| {
+            let id_i64 = id as i64;
+            if id_i64 >= 0 {
+                Some(id_i64)
+            } else {
+                None
+            }
+        })
+        .collect();
 
     if node_ids.is_empty() {
         return Ok(json!({
@@ -636,7 +652,7 @@ async fn faiss_search_impl(
 
     let results: Vec<Value> = nodes
         .iter()
-        .zip(distances[0].iter())
+        .zip(search_result.distances.iter())
         .filter(|(node, _)| {
             // Filter by language if specified
             if let Some(ref langs) = lang_filter {
@@ -712,16 +728,16 @@ pub async fn bin_search_with_scores_shared(
             faiss_search_impl(query, paths, langs, limit, graph).await
         }
         SearchMode::Cloud => {
-            #[cfg(feature = "embeddings")]
+            #[cfg(feature = "cloud")]
             {
                 tracing::info!("🌐 Search Mode: Cloud (SurrealDB HNSW + Jina reranking)");
                 cloud_search_impl(query, paths, langs, limit, graph).await
             }
-            #[cfg(not(feature = "embeddings"))]
+            #[cfg(not(feature = "cloud"))]
             {
                 Err(anyhow::anyhow!(
-                    "Cloud mode requires embeddings feature. Either:\n\
-                     1. Rebuild with --features embeddings, or\n\
+                    "Cloud mode requires cloud feature. Either:\n\
+                     1. Rebuild with --features cloud, or\n\
                      2. Use local mode: CODEGRAPH_EMBEDDING_PROVIDER=local"
                 ))
             }
@@ -730,7 +746,7 @@ pub async fn bin_search_with_scores_shared(
 }
 
 /// Cloud search implementation using SurrealDB HNSW + Jina embeddings + reranking
-#[cfg(feature = "embeddings")]
+#[cfg(feature = "cloud")]
 async fn cloud_search_impl(
     query: String,
     paths: Option<Vec<String>>,
@@ -774,7 +790,7 @@ async fn cloud_search_impl(
     let start_search = Instant::now();
 
     // Build filter parameters
-    let node_type_filter = langs.as_ref().map(|langs| {
+    let node_type_filter = langs.as_ref().and_then(|langs| {
         langs
             .iter()
             .filter_map(|l| match l.to_lowercase().as_str() {
@@ -830,7 +846,7 @@ async fn cloud_search_impl(
     let mut rerank_time = 0u64;
 
     // Try to create Jina provider for reranking
-    #[cfg(feature = "jina")]
+    #[cfg(feature = "embeddings-jina")]
     let reranked_results: Vec<(usize, f32)> = {
         match codegraph_vector::JinaConfig::default().api_key.is_empty() {
             true => {
@@ -885,7 +901,7 @@ async fn cloud_search_impl(
         }
     };
 
-    #[cfg(not(feature = "jina"))]
+    #[cfg(not(feature = "embeddings-jina"))]
     let reranked_results: Vec<(usize, f32)> = {
         tracing::info!("Jina feature not enabled, using HNSW scores only");
         (0..nodes.len()).map(|i| (i, search_results[i].1)).collect()
@@ -1002,6 +1018,44 @@ pub async fn bin_search_with_scores(
     // Create temporary graph for legacy compatibility
     let graph = codegraph_graph::CodeGraph::new_read_only()?;
     bin_search_with_scores_shared(query, paths, langs, limit, &graph).await
+}
+
+// Stub implementations for functions called by official_server.rs but not yet implemented
+pub struct ServerState {
+    pub graph: Arc<tokio::sync::Mutex<codegraph_graph::CodeGraph>>,
+}
+
+pub async fn enhanced_search(_state: &ServerState, _params: Value) -> anyhow::Result<Value> {
+    Err(anyhow::anyhow!("enhanced_search not yet implemented"))
+}
+
+pub async fn pattern_detection(_state: &ServerState, _params: Value) -> anyhow::Result<Value> {
+    Err(anyhow::anyhow!("pattern_detection not yet implemented"))
+}
+
+pub async fn graph_neighbors(_state: &ServerState, _params: Value) -> anyhow::Result<Value> {
+    Err(anyhow::anyhow!("graph_neighbors not yet implemented"))
+}
+
+pub async fn graph_traverse(_state: &ServerState, _params: Value) -> anyhow::Result<Value> {
+    Err(anyhow::anyhow!("graph_traverse not yet implemented"))
+}
+
+pub async fn build_comprehensive_context(
+    _state: &ServerState,
+    _params: Value,
+) -> anyhow::Result<String> {
+    Err(anyhow::anyhow!(
+        "build_comprehensive_context not yet implemented"
+    ))
+}
+
+pub async fn semantic_intelligence(_state: &ServerState, _params: Value) -> anyhow::Result<Value> {
+    Err(anyhow::anyhow!("semantic_intelligence not yet implemented"))
+}
+
+pub async fn impact_analysis(_state: &ServerState, _params: Value) -> anyhow::Result<Value> {
+    Err(anyhow::anyhow!("impact_analysis not yet implemented"))
 }
 
 #[cfg(test)]
