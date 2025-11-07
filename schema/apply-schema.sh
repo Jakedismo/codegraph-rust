@@ -6,8 +6,8 @@
 set -e
 
 # Default values
-ENDPOINT="${SURREAL_ENDPOINT:-http://localhost:8000}"
-NAMESPACE="${SURREAL_NAMESPACE:-codegraph}"
+ENDPOINT="${SURREAL_ENDPOINT:-http://localhost:3004}"
+NAMESPACE="${SURREAL_NAMESPACE:-ouroboros}"
 DATABASE="${SURREAL_DATABASE:-codegraph}"
 USERNAME="${SURREAL_USER:-root}"
 PASSWORD="${SURREAL_PASSWORD:-root}"
@@ -27,8 +27,8 @@ Usage: $(basename "$0") [OPTIONS]
 Apply CodeGraph SurrealDB schema to a running database instance.
 
 OPTIONS:
-    -e, --endpoint URL      SurrealDB endpoint (default: http://localhost:8000)
-    -n, --namespace NAME    Namespace to use (default: codegraph)
+    -e, --endpoint URL      SurrealDB endpoint (default: http://localhost:3004)
+    -n, --namespace NAME    Namespace to use (default: ouroboros)
     -d, --database NAME     Database name (default: codegraph)
     -u, --username USER     Username for authentication (default: root)
     -p, --password PASS     Password for authentication (default: root)

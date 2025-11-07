@@ -75,10 +75,10 @@ DEFINE TABLE IF NOT EXISTS edges SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS id ON TABLE edges TYPE string;
 
 -- Source node reference
-DEFINE FIELD IF NOT EXISTS from ON TABLE edges TYPE record(nodes);
+DEFINE FIELD IF NOT EXISTS from ON TABLE edges TYPE record<nodes>;
 
 -- Target node reference
-DEFINE FIELD IF NOT EXISTS to ON TABLE edges TYPE record(nodes);
+DEFINE FIELD IF NOT EXISTS to ON TABLE edges TYPE record<nodes>;
 
 -- Type of relationship (calls, imports, inherits, contains, etc.)
 DEFINE FIELD IF NOT EXISTS edge_type ON TABLE edges TYPE string;

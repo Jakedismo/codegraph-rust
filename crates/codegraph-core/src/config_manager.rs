@@ -44,7 +44,7 @@ pub struct CodeGraphConfig {
 /// Embedding provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingConfig {
-    /// Provider: "onnx", "ollama", "openai", "lmstudio", or "auto"
+    /// Provider: "onnx", "ollama", "openai", "lmstudio", "jina", or "auto"
     #[serde(default = "default_embedding_provider")]
     pub provider: String,
 
@@ -53,6 +53,7 @@ pub struct EmbeddingConfig {
     /// For Ollama: model name (e.g., "all-minilm:latest")
     /// For LM Studio: model name (e.g., "jinaai/jina-embeddings-v3")
     /// For OpenAI: model name (e.g., "text-embedding-3-small")
+    /// For Jina: model name (e.g., "jina-embeddings-v4")
     #[serde(default)]
     pub model: Option<String>,
 
@@ -68,7 +69,35 @@ pub struct EmbeddingConfig {
     #[serde(default)]
     pub openai_api_key: Option<String>,
 
-    /// Embedding dimension (1536 for jina-code, 384 for all-MiniLM)
+    /// Jina API key (if using Jina)
+    #[serde(default)]
+    pub jina_api_key: Option<String>,
+
+    /// Jina API base URL
+    #[serde(default = "default_jina_api_base")]
+    pub jina_api_base: String,
+
+    /// Enable Jina reranking
+    #[serde(default)]
+    pub jina_enable_reranking: bool,
+
+    /// Jina reranking model
+    #[serde(default = "default_jina_reranking_model")]
+    pub jina_reranking_model: String,
+
+    /// Jina reranking top N results
+    #[serde(default = "default_jina_reranking_top_n")]
+    pub jina_reranking_top_n: usize,
+
+    /// Jina late chunking
+    #[serde(default)]
+    pub jina_late_chunking: bool,
+
+    /// Jina task type
+    #[serde(default = "default_jina_task")]
+    pub jina_task: String,
+
+    /// Embedding dimension (1024 for jina-embeddings-v4, 1536 for jina-code, 384 for all-MiniLM)
     #[serde(default = "default_embedding_dimension")]
     pub dimension: usize,
 
@@ -85,6 +114,13 @@ impl Default for EmbeddingConfig {
             lmstudio_url: default_lmstudio_url(),
             ollama_url: default_ollama_url(),
             openai_api_key: None,
+            jina_api_key: None,
+            jina_api_base: default_jina_api_base(),
+            jina_enable_reranking: false,
+            jina_reranking_model: default_jina_reranking_model(),
+            jina_reranking_top_n: default_jina_reranking_top_n(),
+            jina_late_chunking: false,
+            jina_task: default_jina_task(),
             dimension: default_embedding_dimension(),
             batch_size: default_batch_size(),
         }
@@ -243,6 +279,18 @@ fn default_lmstudio_url() -> String {
 }
 fn default_ollama_url() -> String {
     "http://localhost:11434".to_string()
+}
+fn default_jina_api_base() -> String {
+    "https://api.jina.ai/v1".to_string()
+}
+fn default_jina_reranking_model() -> String {
+    "jina-reranker-v3".to_string()
+}
+fn default_jina_reranking_top_n() -> usize {
+    10
+}
+fn default_jina_task() -> String {
+    "code.query".to_string()
 }
 fn default_embedding_dimension() -> usize {
     1536
@@ -412,8 +460,43 @@ impl ConfigManager {
         if let Ok(key) = std::env::var("OPENAI_API_KEY") {
             config.embedding.openai_api_key = Some(key);
         }
+        if let Ok(dimension) = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION") {
+            if let Ok(dim) = dimension.parse() {
+                config.embedding.dimension = dim;
+            }
+        }
+
+        // Jina configuration
+        if let Ok(key) = std::env::var("JINA_API_KEY") {
+            config.embedding.jina_api_key = Some(key);
+        }
+        if let Ok(base) = std::env::var("JINA_API_BASE") {
+            config.embedding.jina_api_base = base;
+        }
+        if let Ok(enable) = std::env::var("JINA_ENABLE_RERANKING") {
+            config.embedding.jina_enable_reranking = enable.to_lowercase() == "true";
+        }
+        if let Ok(model) = std::env::var("JINA_RERANKING_MODEL") {
+            config.embedding.jina_reranking_model = model;
+        }
+        if let Ok(top_n) = std::env::var("JINA_RERANKING_TOP_N") {
+            if let Ok(n) = top_n.parse() {
+                config.embedding.jina_reranking_top_n = n;
+            }
+        }
+        if let Ok(chunking) = std::env::var("JINA_LATE_CHUNKING") {
+            config.embedding.jina_late_chunking = chunking.to_lowercase() == "true";
+        }
+        if let Ok(task) = std::env::var("JINA_TASK") {
+            config.embedding.jina_task = task;
+        }
 
         // LLM configuration
+        if let Ok(provider) =
+            std::env::var("CODEGRAPH_LLM_PROVIDER").or_else(|_| std::env::var("LLM_PROVIDER"))
+        {
+            config.llm.provider = provider;
+        }
         if let Ok(model) = std::env::var("CODEGRAPH_MODEL") {
             config.llm.model = Some(model);
             config.llm.enabled = true; // Enable if model specified
@@ -441,10 +524,10 @@ impl ConfigManager {
     fn validate_config(config: &CodeGraphConfig) -> Result<(), ConfigError> {
         // Validate embedding provider
         match config.embedding.provider.as_str() {
-            "auto" | "onnx" | "ollama" | "openai" => {}
+            "auto" | "onnx" | "ollama" | "openai" | "jina" | "lmstudio" => {}
             other => {
                 return Err(ConfigError::ValidationError(format!(
-                    "Invalid embedding provider: {}. Must be one of: auto, onnx, ollama, openai",
+                    "Invalid embedding provider: {}. Must be one of: auto, onnx, ollama, openai, jina, lmstudio",
                     other
                 )))
             }

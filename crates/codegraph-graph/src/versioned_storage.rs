@@ -213,7 +213,7 @@ impl VersionedRocksDbStorage {
         format!("{:x}", hasher.finalize())
     }
 
-    async fn store_content(&self, content: &[u8]) -> Result<String> {
+    pub async fn store_content(&self, content: &[u8]) -> Result<String> {
         let hash = Self::compute_content_hash(content);
 
         if self.content_cache.contains_key(&hash) {
@@ -253,7 +253,7 @@ impl VersionedRocksDbStorage {
         Ok(hash)
     }
 
-    async fn get_content(&self, hash: &str) -> Result<Option<Vec<u8>>> {
+    pub async fn get_content(&self, hash: &str) -> Result<Option<Vec<u8>>> {
         if let Some(cached) = self.content_cache.get(hash) {
             return Ok(Some(cached.as_ref().clone()));
         }
@@ -282,7 +282,7 @@ impl VersionedRocksDbStorage {
             .clone()
     }
 
-    async fn read_node_at_snapshot(
+    pub async fn read_node_at_snapshot(
         &self,
         node_id: NodeId,
         snapshot_id: SnapshotId,

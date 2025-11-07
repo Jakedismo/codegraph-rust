@@ -60,7 +60,6 @@ pub struct IndexDefinition {
 }
 
 /// Migration definition
-#[derive(Debug, Clone)]
 pub struct Migration {
     pub version: u32,
     pub description: String,
@@ -307,15 +306,13 @@ impl SchemaManager {
 
     /// Export current schema as JSON
     pub async fn export_schema(&self) -> Result<String> {
-        serde_json::to_string_pretty(&self.tables)
-            .map_err(|e| CodeGraphError::Serialization(format!("Failed to export schema: {}", e)))
+        Ok(serde_json::to_string_pretty(&self.tables)?)
     }
 
     /// Import schema from JSON
     pub fn import_schema(&mut self, json: &str) -> Result<()> {
-        let tables: HashMap<String, TableSchema> = serde_json::from_str(json).map_err(|e| {
-            CodeGraphError::Deserialization(format!("Failed to import schema: {}", e))
-        })?;
+        let tables: HashMap<String, TableSchema> = serde_json::from_str(json)
+            .map_err(|e| CodeGraphError::Parse(format!("Failed to import schema: {}", e)))?;
 
         self.tables = tables;
         Ok(())

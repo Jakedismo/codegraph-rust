@@ -332,7 +332,7 @@ impl LLMProvider for QwenClient {
 
 #[async_trait]
 impl CodeIntelligenceProvider for QwenClient {
-    async fn analyze_semantic_context(&self, query: &str, context: &str) -> Result<String> {
+    async fn analyze_semantic_context(&self, query: &str, context: &str) -> LLMResult<String> {
         let prompt = format!(
             "Analyze this codebase context for semantic understanding:\n\n\
             SEARCH QUERY: {}\n\n\
@@ -353,7 +353,7 @@ impl CodeIntelligenceProvider for QwenClient {
         Ok(result.text)
     }
 
-    async fn detect_patterns(&self, code_samples: &[String]) -> Result<String> {
+    async fn detect_patterns(&self, code_samples: &[String]) -> LLMResult<String> {
         let prompt = format!(
             "Analyze these code samples for patterns and conventions:\n\n\
             CODE SAMPLES:\n{}\n\n\
@@ -373,7 +373,7 @@ impl CodeIntelligenceProvider for QwenClient {
         Ok(result.text)
     }
 
-    async fn analyze_impact(&self, target_code: &str, dependencies: &str) -> Result<String> {
+    async fn analyze_impact(&self, target_code: &str, dependencies: &str) -> LLMResult<String> {
         let prompt = format!(
             "Analyze the impact of modifying this code:\n\n\
             TARGET CODE:\n{}\n\n\

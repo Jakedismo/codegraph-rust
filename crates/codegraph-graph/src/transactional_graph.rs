@@ -436,15 +436,15 @@ impl GraphStore for TransactionalGraph {
                 let name_owned = name.to_string();
 
                 // Iterate through all nodes in the snapshot
-                for (node_id, _content_hash) in snap.node_versions {
+                for (node_id, _content_hash) in &snap.node_versions {
                     // Check if this node was deleted in the write set
-                    if let Some(WriteOperation::Delete(_)) = write_set.get(&node_id) {
+                    if let Some(WriteOperation::Delete(_)) = write_set.get(node_id) {
                         continue; // Skip deleted nodes
                     }
 
                     // Try to get the node (will check write set first, then snapshot)
-                    if let Some(node) = self.get_node(node_id).await? {
-                        if node.name == name_owned {
+                    if let Some(node) = self.get_node(*node_id).await? {
+                        if node.name.as_str() == name_owned.as_str() {
                             result_nodes.push(node);
                         }
                     }
@@ -476,7 +476,7 @@ impl GraphStore for TransactionalGraph {
                             if let Some(content) = content_opt {
                                 let node: CodeNode = serde_json::from_slice(&content)
                                     .map_err(|e| CodeGraphError::Database(e.to_string()))?;
-                                if node.name == name_owned {
+                                if node.name.as_str() == name_owned.as_str() {
                                     result_nodes.push(node);
                                 }
                             }
@@ -583,9 +583,9 @@ impl GraphStore for ReadOnlyTransactionalGraph {
             let mut result_nodes = Vec::new();
 
             // Iterate through all nodes in the snapshot
-            for (node_id, _content_hash) in snap.node_versions {
-                if let Some(node) = self.get_node(node_id).await? {
-                    if node.name == name_owned {
+            for (node_id, _content_hash) in &snap.node_versions {
+                if let Some(node) = self.get_node(*node_id).await? {
+                    if node.name.as_str() == name_owned.as_str() {
                         result_nodes.push(node);
                     }
                 }

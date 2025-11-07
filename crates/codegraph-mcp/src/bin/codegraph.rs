@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use atty::Stream;
 use clap::{Parser, Subcommand};
 use codegraph_core::GraphStore;
@@ -1329,13 +1329,76 @@ async fn handle_search(
 async fn handle_config(action: ConfigAction) -> Result<()> {
     match action {
         ConfigAction::Show { json } => {
+            use codegraph_core::config_manager::ConfigManager;
+
+            // Load actual configuration
+            let config_mgr = ConfigManager::load().context("Failed to load configuration")?;
+            let config = config_mgr.config();
+
             if json {
-                println!(r#"{{"embedding_model": "all-MiniLM-L6-v2", "vector_dimension": 384}}"#);
+                let json_output = serde_json::json!({
+                    "embedding": {
+                        "provider": config.embedding.provider,
+                        "model": config.embedding.model,
+                        "dimension": config.embedding.dimension,
+                        "jina_enable_reranking": config.embedding.jina_enable_reranking,
+                        "jina_reranking_model": config.embedding.jina_reranking_model,
+                        "jina_task": config.embedding.jina_task,
+                    },
+                    "llm": {
+                        "enabled": config.llm.enabled,
+                        "provider": config.llm.provider,
+                        "model": config.llm.model,
+                        "context_window": config.llm.context_window,
+                    }
+                });
+                println!("{}", serde_json::to_string_pretty(&json_output)?);
             } else {
                 println!("{}", "Current Configuration:".blue().bold());
-                println!("  Embedding Model: all-MiniLM-L6-v2");
-                println!("  Vector Dimension: 384");
-                println!("  Database Path: ~/.codegraph/db");
+                println!(
+                    "  Embedding Provider: {}",
+                    config.embedding.provider.yellow()
+                );
+                if let Some(model) = config.embedding.model.as_deref() {
+                    println!("  Embedding Model: {}", model.yellow());
+                }
+                println!("  Vector Dimension: {}", config.embedding.dimension);
+
+                if config.embedding.provider == "jina" {
+                    println!("\n  {}", "Jina Settings:".green().bold());
+                    println!("    API Base: {}", config.embedding.jina_api_base);
+                    println!(
+                        "    Reranking Enabled: {}",
+                        config.embedding.jina_enable_reranking
+                    );
+                    if config.embedding.jina_enable_reranking {
+                        println!(
+                            "    Reranking Model: {}",
+                            config.embedding.jina_reranking_model
+                        );
+                        println!(
+                            "    Reranking Top-N: {}",
+                            config.embedding.jina_reranking_top_n
+                        );
+                    }
+                    println!("    Late Chunking: {}", config.embedding.jina_late_chunking);
+                    println!("    Task: {}", config.embedding.jina_task);
+                }
+
+                println!("\n  {}", "LLM Settings:".green().bold());
+                println!("    Provider: {}", config.llm.provider.yellow());
+                println!(
+                    "    Enabled: {}",
+                    if config.llm.enabled {
+                        "yes".green()
+                    } else {
+                        "no (context-only)".yellow()
+                    }
+                );
+                if let Some(model) = config.llm.model.as_deref() {
+                    println!("    Model: {}", model.yellow());
+                }
+                println!("    Context Window: {}", config.llm.context_window);
             }
         }
         ConfigAction::Set { key, value } => {

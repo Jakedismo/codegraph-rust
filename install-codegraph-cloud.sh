@@ -58,6 +58,16 @@ echo "☁️  Cloud: Jina embeddings, Anthropic/OpenAI LLM providers"
 echo "💾 Database: SurrealDB backend"
 echo ""
 
+# Load environment variables from .env file if it exists
+if [ -f .env ]; then
+    echo -e "${BLUE}📄 Loading configuration from .env file...${NC}"
+    set -a  # automatically export all variables
+    source .env
+    set +a
+    echo -e "${GREEN}✅ Configuration loaded${NC}"
+    echo ""
+fi
+
 # Set up environment variables for FAISS linking
 export LIBRARY_PATH="/opt/homebrew/opt/faiss/lib:$LIBRARY_PATH"
 export LD_LIBRARY_PATH="/opt/homebrew/opt/faiss/lib:$LD_LIBRARY_PATH"
