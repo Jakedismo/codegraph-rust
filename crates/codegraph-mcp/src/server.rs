@@ -824,16 +824,82 @@ async fn cloud_search_impl(
     let nodes = surrealdb_storage.get_nodes_by_ids(&node_ids).await?;
     let load_time = start_load.elapsed().as_millis() as u64;
 
-    // 6. TODO: Add Jina reranking here
-    // For now, use HNSW scores directly
+    // 6. Jina reranking (if available)
+    let start_rerank = Instant::now();
+    let mut rerank_enabled = false;
+    let mut rerank_time = 0u64;
 
-    // 7. Format results
+    // Try to create Jina provider for reranking
+    #[cfg(feature = "jina")]
+    let reranked_results: Vec<(usize, f32)> = {
+        match codegraph_vector::JinaConfig::default().api_key.is_empty() {
+            true => {
+                tracing::warn!("JINA_API_KEY not set, skipping reranking");
+                // Return HNSW order
+                (0..nodes.len()).map(|i| (i, search_results[i].1)).collect()
+            }
+            false => {
+                let jina_config = codegraph_vector::JinaConfig {
+                    enable_reranking: true,
+                    reranking_model: "jina-reranker-v3".to_string(),
+                    reranking_top_n: limit,
+                    ..codegraph_vector::JinaConfig::default()
+                };
+
+                match codegraph_vector::JinaEmbeddingProvider::new(jina_config) {
+                    Ok(jina_provider) => {
+                        // Prepare documents for reranking
+                        let documents: Vec<String> = nodes
+                            .iter()
+                            .map(|node| {
+                                format!("{}\n{}", node.name, node.content.as_deref().unwrap_or(""))
+                            })
+                            .collect();
+
+                        match jina_provider.rerank(&query, documents).await {
+                            Ok(rerank_results) => {
+                                tracing::info!(
+                                    "🎯 Jina reranking: {} results",
+                                    rerank_results.len()
+                                );
+                                rerank_enabled = true;
+                                // Map rerank results to (index, score)
+                                rerank_results
+                                    .into_iter()
+                                    .map(|r| (r.index, r.relevance_score))
+                                    .collect()
+                            }
+                            Err(e) => {
+                                tracing::warn!("Jina reranking failed: {}, using HNSW scores", e);
+                                // Fallback to HNSW order
+                                (0..nodes.len()).map(|i| (i, search_results[i].1)).collect()
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to create Jina provider: {}, using HNSW scores", e);
+                        (0..nodes.len()).map(|i| (i, search_results[i].1)).collect()
+                    }
+                }
+            }
+        }
+    };
+
+    #[cfg(not(feature = "jina"))]
+    let reranked_results: Vec<(usize, f32)> = {
+        tracing::info!("Jina feature not enabled, using HNSW scores only");
+        (0..nodes.len()).map(|i| (i, search_results[i].1)).collect()
+    };
+
+    rerank_time = start_rerank.elapsed().as_millis() as u64;
+
+    // 7. Format results using reranked order
     let start_format = Instant::now();
-    let results: Vec<Value> = nodes
+    let results: Vec<Value> = reranked_results
         .iter()
-        .zip(search_results.iter())
         .take(limit)
-        .map(|(node, (_id, score))| {
+        .map(|(index, score)| {
+            let node = &nodes[*index];
             json!({
                 "id": node.id,
                 "name": node.name,
@@ -842,7 +908,7 @@ async fn cloud_search_impl(
                 "file_path": node.location.file_path,
                 "start_line": node.location.line,
                 "end_line": node.location.end_line,
-                "score": 1.0 - score,  // Convert distance to similarity
+                "score": *score,
                 "summary": node.content.as_deref().unwrap_or("").chars().take(160).collect::<String>()
             })
         })
@@ -858,10 +924,11 @@ async fn cloud_search_impl(
             "surrealdb_connection_ms": connect_time,
             "hnsw_search_ms": search_time,
             "node_loading_ms": load_time,
+            "reranking_ms": rerank_time,
             "formatting_ms": format_time,
             "mode": "cloud",
             "hnsw_enabled": true,
-            "reranking_enabled": false  // TODO: Phase 2.5
+            "reranking_enabled": rerank_enabled
         }
     }))
 }
