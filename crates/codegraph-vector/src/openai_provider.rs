@@ -1,12 +1,22 @@
 #[cfg(feature = "openai")]
-use crate::providers::{
-    BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
+use crate::{
+    prep::chunker::{
+        aggregate_chunk_embeddings, build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode,
+    },
+    providers::{
+        BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
+    },
 };
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::{
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokenizers::Tokenizer;
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
 
@@ -81,6 +91,7 @@ struct ErrorDetails {
 pub struct OpenAiEmbeddingProvider {
     config: OpenAiConfig,
     client: Client,
+    tokenizer: Arc<Tokenizer>,
 }
 
 #[cfg(feature = "openai")]
@@ -98,33 +109,32 @@ impl OpenAiEmbeddingProvider {
             .build()
             .map_err(|e| CodeGraphError::Network(e.to_string()))?;
 
-        Ok(Self { config, client })
+        let tokenizer_path = PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tokenizers/qwen2.5-coder.json"
+        ));
+        let tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| {
+            CodeGraphError::Configuration(format!(
+                "Failed to load tokenizer from {:?}: {}",
+                tokenizer_path, e
+            ))
+        })?;
+
+        Ok(Self {
+            config,
+            client,
+            tokenizer: Arc::new(tokenizer),
+        })
     }
 
-    /// Prepare text from CodeNode for embedding
-    fn prepare_text(&self, node: &CodeNode) -> String {
-        let mut text = format!(
-            "{} {} {}",
-            node.language
-                .as_ref()
-                .map_or("unknown".to_string(), |l| format!("{:?}", l).to_lowercase()),
-            node.node_type
-                .as_ref()
-                .map_or("unknown".to_string(), |t| format!("{:?}", t).to_lowercase()),
-            node.name.as_str()
-        );
+    fn chunker_config(&self) -> ChunkerConfig {
+        ChunkerConfig::new(self.config.max_tokens_per_request)
+            .sanitize_mode(SanitizeMode::Strict)
+            .cache_capacity(2048)
+    }
 
-        if let Some(content) = &node.content {
-            text.push(' ');
-            text.push_str(content);
-        }
-
-        // Truncate to prevent token limit issues
-        if text.len() > self.config.max_tokens_per_request * 4 {
-            text.truncate(self.config.max_tokens_per_request * 4);
-        }
-
-        text
+    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+        build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
     }
 
     /// Call OpenAI embeddings API with retry logic
@@ -223,29 +233,33 @@ impl OpenAiEmbeddingProvider {
         config: &BatchConfig,
     ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)> {
         let start_time = Instant::now();
-        let mut all_embeddings = Vec::with_capacity(nodes.len());
+        let plan = self.build_plan_for_nodes(nodes);
+        debug!(
+            "OpenAI chunk planner: {} nodes -> {} chunks (avg {:.2} chunks/node)",
+            plan.stats.total_nodes,
+            plan.stats.total_chunks,
+            plan.stats.total_chunks as f64 / plan.stats.total_nodes.max(1) as f64
+        );
+        let chunk_to_node = plan.chunk_to_node();
+        let chunk_texts: Vec<String> = plan.chunks.into_iter().map(|c| c.text).collect();
+        let chunk_size = config.batch_size.max(1);
+        let mut chunk_embeddings = Vec::with_capacity(chunk_texts.len());
 
-        // Convert nodes to texts
-        let texts: Vec<String> = nodes.iter().map(|node| self.prepare_text(node)).collect();
-
-        // Process in chunks to respect API limits and batch configuration
-        let chunk_size = config
-            .batch_size
-            .min(self.config.max_tokens_per_request / 100); // Conservative estimate
-
-        for chunk in texts.chunks(chunk_size) {
-            debug!("Processing batch of {} texts", chunk.len());
-
+        for chunk in chunk_texts.chunks(chunk_size) {
+            debug!("Processing OpenAI chunk of {} texts", chunk.len());
             let response = self.call_api(chunk.to_vec()).await?;
 
-            // Sort embeddings by index to maintain order
             let mut batch_embeddings: Vec<_> = response.data.into_iter().collect();
             batch_embeddings.sort_by_key(|item| item.index);
-
-            for item in batch_embeddings {
-                all_embeddings.push(item.embedding);
-            }
+            chunk_embeddings.extend(batch_embeddings.into_iter().map(|item| item.embedding));
         }
+
+        let node_embeddings = aggregate_chunk_embeddings(
+            nodes.len(),
+            &chunk_to_node,
+            chunk_embeddings,
+            self.embedding_dimension(),
+        );
 
         let duration = start_time.elapsed();
         let metrics = EmbeddingMetrics::new("OpenAI".to_string(), nodes.len(), duration);
@@ -255,7 +269,7 @@ impl OpenAiEmbeddingProvider {
             metrics.texts_processed, metrics.duration, metrics.throughput
         );
 
-        Ok((all_embeddings, metrics))
+        Ok((node_embeddings, metrics))
     }
 }
 
@@ -263,16 +277,13 @@ impl OpenAiEmbeddingProvider {
 #[async_trait]
 impl EmbeddingProvider for OpenAiEmbeddingProvider {
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
-        let text = self.prepare_text(node);
-        let response = self.call_api(vec![text]).await?;
-
-        if let Some(embedding_data) = response.data.into_iter().next() {
-            Ok(embedding_data.embedding)
-        } else {
-            Err(CodeGraphError::External(
-                "No embedding returned from OpenAI API".to_string(),
-            ))
-        }
+        let config = BatchConfig::default();
+        let (mut embeddings, _) = self
+            .generate_embeddings_with_config(std::slice::from_ref(node), &config)
+            .await?;
+        embeddings.pop().ok_or_else(|| {
+            CodeGraphError::External("No embedding returned from OpenAI API".to_string())
+        })
     }
 
     async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {

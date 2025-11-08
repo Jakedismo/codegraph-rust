@@ -1,6 +1,11 @@
 #[cfg(feature = "local-embeddings")]
-use crate::providers::{
-    BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
+use crate::{
+    prep::chunker::{
+        aggregate_chunk_embeddings, build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode,
+    },
+    providers::{
+        BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
+    },
 };
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
@@ -161,35 +166,14 @@ impl LocalEmbeddingProvider {
         })
     }
 
-    /// Prepare text from CodeNode for embedding
-    fn prepare_text(&self, node: &CodeNode) -> String {
-        let mut text = format!(
-            "{} {} {}",
-            node.language
-                .as_ref()
-                .map_or("unknown".to_string(), |l| format!("{:?}", l).to_lowercase()),
-            node.node_type
-                .as_ref()
-                .map_or("unknown".to_string(), |t| format!("{:?}", t).to_lowercase()),
-            node.name.as_str()
-        );
+    fn chunker_config(&self) -> ChunkerConfig {
+        ChunkerConfig::new(self.config.max_sequence_length)
+            .sanitize_mode(SanitizeMode::Strict)
+            .cache_capacity(2048)
+    }
 
-        if let Some(content) = &node.content {
-            text.push(' ');
-            text.push_str(content);
-        }
-
-        // Truncate to max sequence length (approximate token count)
-        let max_chars = self.config.max_sequence_length * 4;
-        if text.len() > max_chars {
-            let mut new_len = max_chars.min(text.len());
-            while new_len > 0 && !text.is_char_boundary(new_len) {
-                new_len -= 1;
-            }
-            text.truncate(new_len);
-        }
-
-        text
+    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+        build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
     }
 
     /// Tokenize text and create input tensors
@@ -556,8 +540,13 @@ impl LocalEmbeddingProvider {
 #[async_trait]
 impl EmbeddingProvider for LocalEmbeddingProvider {
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
-        let text = self.prepare_text(node);
-        self.generate_single_embedding(text).await
+        let config = BatchConfig::default();
+        let (mut embeddings, _) = self
+            .generate_embeddings_with_config(std::slice::from_ref(node), &config)
+            .await?;
+        embeddings
+            .pop()
+            .ok_or_else(|| CodeGraphError::External("Local provider returned no embedding".into()))
     }
 
     async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {
@@ -579,18 +568,33 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
         }
 
         let start_time = Instant::now();
+        let plan = self.build_plan_for_nodes(nodes);
+        debug!(
+            "Local chunk planner: {} nodes -> {} chunks (avg {:.2} chunks/node)",
+            plan.stats.total_nodes,
+            plan.stats.total_chunks,
+            plan.stats.total_chunks as f64 / plan.stats.total_nodes.max(1) as f64
+        );
+        let chunk_to_node = plan.chunk_to_node();
+        let chunk_texts: Vec<String> = plan.chunks.into_iter().map(|c| c.text).collect();
+        let mut all_embeddings = Vec::with_capacity(chunk_texts.len());
 
-        // Prepare texts
-        let texts: Vec<String> = nodes.iter().map(|node| self.prepare_text(node)).collect();
-
-        // Process in batches
-        let mut all_embeddings = Vec::with_capacity(nodes.len());
-
-        for chunk in texts.chunks(config.batch_size) {
-            debug!("Processing local batch of {} texts", chunk.len());
+        for chunk in chunk_texts.chunks(config.batch_size.max(1)) {
+            debug!(
+                target: "codegraph_vector::local_provider",
+                "Processing local batch of {} chunks",
+                chunk.len()
+            );
             let batch_embeddings = self.process_batch(chunk.to_vec()).await?;
             all_embeddings.extend(batch_embeddings);
         }
+
+        let node_embeddings = aggregate_chunk_embeddings(
+            nodes.len(),
+            &chunk_to_node,
+            all_embeddings,
+            self.embedding_dimension(),
+        );
 
         let duration = start_time.elapsed();
         let metrics = EmbeddingMetrics::new("Local".to_string(), nodes.len(), duration);
@@ -600,7 +604,7 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
             metrics.texts_processed, metrics.duration, metrics.throughput
         );
 
-        Ok((all_embeddings, metrics))
+        Ok((node_embeddings, metrics))
     }
 
     fn embedding_dimension(&self) -> usize {

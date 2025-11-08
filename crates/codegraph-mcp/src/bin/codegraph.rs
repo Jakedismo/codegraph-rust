@@ -878,15 +878,15 @@ async fn handle_start(
                 }
 
                 // Create session manager for stateful HTTP connections
-                let session_manager = Arc::new(LocalSessionManager::new());
+                let session_manager = Arc::new(LocalSessionManager::default());
 
                 // Service factory - creates new CodeGraphMCPServer for each session
-                let service_factory = Arc::new(|| {
-                    let mut server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
+                let service_factory = || {
+                    let server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
                     // Note: initialize_qwen() is async, but service factory must be sync
                     // Qwen initialization will happen on first use
                     Ok(server)
-                });
+                };
 
                 // Configure HTTP server with SSE streaming
                 let config = StreamableHttpServerConfig {

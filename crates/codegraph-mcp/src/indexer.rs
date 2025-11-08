@@ -3,11 +3,11 @@
 use anyhow::Result;
 #[cfg(feature = "ai-enhanced")]
 use codegraph_ai::SemanticSearchEngine;
-#[cfg(feature = "ai-enhanced")]
-use futures::{stream, StreamExt};
 use codegraph_core::{CodeNode, EdgeRelationship, GraphStore, NodeId, NodeType};
 use codegraph_graph::{edge::CodeEdge, CodeGraph};
 use codegraph_parser::{get_ai_pattern_learner, TreeSitterParser};
+#[cfg(feature = "ai-enhanced")]
+use futures::{stream, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use num_cpus;
 use rayon::prelude::*;
@@ -1303,6 +1303,9 @@ impl ProjectIndexer {
             .map(|chunk| chunk.iter().cloned().collect())
             .collect();
 
+        let max_concurrent = 4; // Parallel batch processing
+        let mut processed = 0; // Track progress
+
         let mut batch_stream = stream::iter(batches.into_iter().map(|batch| {
             let embedder = embedder;
             async move {
@@ -1315,7 +1318,8 @@ impl ProjectIndexer {
         while let Some((batch, result)) = batch_stream.next().await {
             match result {
                 Ok(batch_embeddings) => {
-                    for (symbol, embedding) in batch.iter().cloned().zip(batch_embeddings.into_iter())
+                    for (symbol, embedding) in
+                        batch.iter().cloned().zip(batch_embeddings.into_iter())
                     {
                         embeddings.insert(symbol, embedding);
                         processed += 1;
@@ -1408,6 +1412,8 @@ impl ProjectIndexer {
             .map(|chunk| chunk.iter().cloned().collect())
             .collect();
 
+        let max_concurrent = 4; // Parallel batch processing
+
         let mut batch_stream = stream::iter(batches.into_iter().map(|batch| {
             let embedder = embedder;
             async move {
@@ -1420,7 +1426,8 @@ impl ProjectIndexer {
         while let Some((batch, result)) = batch_stream.next().await {
             match result {
                 Ok(batch_embeddings) => {
-                    for (symbol, embedding) in batch.iter().cloned().zip(batch_embeddings.into_iter())
+                    for (symbol, embedding) in
+                        batch.iter().cloned().zip(batch_embeddings.into_iter())
                     {
                         embeddings.insert(symbol, embedding);
                     }

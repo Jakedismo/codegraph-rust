@@ -8,6 +8,7 @@ pub mod cache;
 pub mod gpu;
 pub mod memory;
 pub mod optimization;
+pub mod prep;
 pub mod simd_ops;
 
 #[cfg(feature = "openai")]

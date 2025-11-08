@@ -3,7 +3,11 @@ use fxhash::hash64;
 use lru::LruCache;
 use rayon::prelude::*;
 use semchunk_rs::Chunker;
-use std::{num::NonZeroUsize, sync::{Arc, Mutex}, time::Instant};
+use std::{
+    num::NonZeroUsize,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 use tokenizers::Tokenizer;
 use unicode_normalization::UnicodeNormalization;
 
@@ -208,8 +212,9 @@ fn chunkify(
     counter: Arc<TokenCounter>,
 ) -> (Vec<TextChunk>, Vec<ChunkMeta>) {
     let counter_for_chunker = Arc::clone(&counter);
-    let chunker =
-        Chunker::new(config.max_tokens_per_text, move |s: &str| counter_for_chunker.count(s));
+    let chunker = Chunker::new(config.max_tokens_per_text, move |s: &str| {
+        counter_for_chunker.count(s)
+    });
     let mut result_chunks = Vec::new();
     let mut result_meta = Vec::new();
 

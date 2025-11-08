@@ -1,11 +1,13 @@
 #[cfg(feature = "jina")]
-use crate::providers::{
-    BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
+use crate::{
+    prep::chunker::{build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode},
+    providers::{
+        BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
+    },
 };
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, Language, Result};
 use reqwest::Client;
-use semchunk_rs::Chunker;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -13,7 +15,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Mutex as TokioMutex, Semaphore};
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
-use unicode_normalization::UnicodeNormalization;
 
 pub const MAX_NODE_TEXTS_HARD_LIMIT: usize = 96;
 pub const MAX_REL_TEXTS_HARD_LIMIT: usize = 32;
@@ -231,12 +232,7 @@ impl RateWindow {
         }
     }
 
-    fn wait_duration(
-        &self,
-        rpm_limit: usize,
-        tpm_limit: usize,
-        expect_tokens: usize,
-    ) -> Duration {
+    fn wait_duration(&self, rpm_limit: usize, tpm_limit: usize, expect_tokens: usize) -> Duration {
         let now = Instant::now();
         let mut wait = Duration::ZERO;
 
@@ -333,7 +329,9 @@ impl JinaEmbeddingProvider {
         let rate_limiter = Arc::new(JinaRateLimiter::new(
             500,
             1_000_000,
-            config.max_tokens_per_text.saturating_mul(config.max_texts_per_request),
+            config
+                .max_tokens_per_text
+                .saturating_mul(config.max_texts_per_request),
         ));
 
         Ok(Self {
@@ -414,92 +412,55 @@ impl JinaEmbeddingProvider {
         Ok(encoding.len())
     }
 
-    /// Sanitize text for safe tokenization by removing problematic characters
-    fn sanitize_text(text: &str) -> String {
-        // Apply Unicode NFC normalization to handle combining characters
-        let normalized: String = text.nfc().collect();
-
-        // Remove ALL emojis by iterating through the emojis database
-        // and replacing each one found in the text
-        let mut result = normalized.clone();
-        for emoji in emojis::iter() {
-            if result.contains(emoji.as_str()) {
-                result = result.replace(emoji.as_str(), "");
-            }
-        }
-
-        // Filter out control characters and box-drawing/block elements
-        result
-            .chars()
-            .filter(|c| {
-                // Keep only non-control, non-null, printable characters
-                if c.is_control() || *c == '\0' || *c == '\u{FFFD}' {
-                    return false;
-                }
-
-                // Filter out box-drawing and block elements (U+2500-U+259F)
-                let code = *c as u32;
-                !matches!(code, 0x2500..=0x259F)
-            })
-            .collect()
-    }
-
     /// Prepare text from CodeNode for embedding
     /// Jina code embeddings expect actual code, not formatted metadata
     /// Chunks code if it exceeds the configured token budget
+    fn chunker_config(&self) -> ChunkerConfig {
+        ChunkerConfig::new(self.config.max_tokens_per_text)
+            .max_texts_per_request(self.config.max_texts_per_request)
+            .cache_capacity(4096)
+            .sanitize_mode(SanitizeMode::AsciiFastPath)
+    }
+
+    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+        build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
+    }
+
     fn prepare_text(&self, node: &CodeNode) -> Vec<String> {
-        // Use the actual code content, or fallback to just the name
-        let text = if let Some(content) = &node.content {
-            content.to_string()
-        } else {
-            // For nodes without content (like imports), use the name
-            node.name.to_string()
-        };
-
-        // Sanitize text to prevent tokenization errors
-        let text = Self::sanitize_text(&text);
-        let max_tokens = self.config.max_tokens_per_text.clamp(256, 7500); // enforced safety window
-
-        let mut chunks = self.chunk_with_semchunk(&text, max_tokens);
-        if chunks.is_empty() {
-            chunks.push(text.clone());
+        let plan = self.build_plan_for_nodes(std::slice::from_ref(node));
+        if plan.chunks.is_empty() {
+            return vec![node
+                .content
+                .as_deref()
+                .unwrap_or_else(|| node.name.as_ref())
+                .to_string()];
         }
 
-        if chunks.len() == 1 {
-            let token_count = self
-                .count_tokens(&chunks[0])
-                .unwrap_or_else(|_| chunks[0].len() / 4);
+        let mut texts = Vec::with_capacity(plan.chunks.len());
+        let mut token_counts = Vec::with_capacity(plan.chunks.len());
+        for chunk in plan.chunks {
+            token_counts.push(chunk.tokens);
+            texts.push(chunk.text);
+        }
+
+        if texts.len() == 1 {
+            let token_count = *token_counts.first().unwrap_or(&0);
             debug!(
                 "Text has {} tokens (<= {} limit) for node {}; single chunk",
-                token_count, max_tokens, node.name
+                token_count, self.config.max_tokens_per_text, node.name
             );
         } else {
-            let total_tokens = chunks
-                .iter()
-                .map(|chunk| self.count_tokens(chunk).unwrap_or(chunk.len() / 4))
-                .sum::<usize>();
+            let total_tokens: usize = token_counts.iter().sum();
             info!(
                 "Chunked {} tokens into {} chunks for node {} (limit {})",
                 total_tokens,
-                chunks.len(),
+                texts.len(),
                 node.name,
-                max_tokens
+                self.config.max_tokens_per_text
             );
         }
 
-        chunks
-    }
-
-    fn chunk_with_semchunk(&self, text: &str, max_tokens: usize) -> Vec<String> {
-        let tokenizer = Arc::clone(&self.tokenizer);
-        let counter = move |s: &str| {
-            tokenizer
-                .encode(s, false)
-                .map(|encoding| encoding.len())
-                .unwrap_or_else(|_| s.len().max(1) / 4)
-        };
-        let chunker = Chunker::new(max_tokens.max(1), counter);
-        chunker.chunk_text(text)
+        texts
     }
 
     /// Call Jina embeddings API with retry logic

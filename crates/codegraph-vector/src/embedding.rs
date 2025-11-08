@@ -1,14 +1,11 @@
 #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
 use crate::embeddings::generator::TextEmbeddingEngine;
+use crate::prep::chunker::{
+    aggregate_chunk_embeddings, build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode,
+};
 use codegraph_core::{CodeGraphError, CodeNode, Result};
-#[cfg(any(
-    feature = "local-embeddings",
-    feature = "openai",
-    feature = "onnx",
-    feature = "ollama",
-    feature = "jina"
-))]
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
+use tokenizers::Tokenizer;
 
 pub struct EmbeddingGenerator {
     model_config: ModelConfig,
@@ -18,6 +15,7 @@ pub struct EmbeddingGenerator {
     ollama_provider: Option<crate::ollama_embedding_provider::OllamaEmbeddingProvider>,
     #[cfg(feature = "jina")]
     jina_provider: Option<crate::jina_provider::JinaEmbeddingProvider>,
+    tokenizer: Arc<Tokenizer>,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +37,17 @@ impl Default for ModelConfig {
 
 impl EmbeddingGenerator {
     pub fn new(config: ModelConfig) -> Self {
+        let tokenizer_path = PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tokenizers/qwen2.5-coder.json"
+        ));
+        let tokenizer = Tokenizer::from_file(&tokenizer_path).unwrap_or_else(|e| {
+            panic!(
+                "Failed to load tokenizer from {:?}: {}. This tokenizer is required for chunking.",
+                tokenizer_path, e
+            )
+        });
+
         Self {
             model_config: config,
             #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
@@ -47,6 +56,7 @@ impl EmbeddingGenerator {
             ollama_provider: None,
             #[cfg(feature = "jina")]
             jina_provider: None,
+            tokenizer: Arc::new(tokenizer),
         }
     }
 
@@ -74,6 +84,16 @@ impl EmbeddingGenerator {
         if let Some(ref mut provider) = self.jina_provider {
             provider.set_max_concurrent(max_concurrent);
         }
+    }
+
+    fn chunker_config(&self) -> ChunkerConfig {
+        ChunkerConfig::new(self.model_config.max_tokens)
+            .sanitize_mode(SanitizeMode::AsciiFastPath)
+            .cache_capacity(2048)
+    }
+
+    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+        build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
     }
 
     pub fn dimension(&self) -> usize {
@@ -247,11 +267,16 @@ impl EmbeddingGenerator {
     }
 
     pub async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
-        let text = self.prepare_text(node);
-        self.encode_text(&text).await
+        let mut embeddings = self.generate_embeddings(std::slice::from_ref(node)).await?;
+        embeddings
+            .pop()
+            .ok_or_else(|| CodeGraphError::Vector("No embedding generated".to_string()))
     }
 
     pub async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {
+        if nodes.is_empty() {
+            return Ok(Vec::new());
+        }
         // Prefer Jina provider for batch processing (cloud-based embeddings)
         #[cfg(feature = "jina")]
         if let Some(jina) = &self.jina_provider {
@@ -294,31 +319,51 @@ impl EmbeddingGenerator {
 
         #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
         if let Some(engine) = &self.advanced {
-            // Use provider's batched path when available
-            let texts: Vec<String> = nodes.iter().map(|n| self.prepare_text(n)).collect();
+            let plan = self.build_plan_for_nodes(nodes);
             tracing::info!(
                 target: "codegraph_vector::embeddings",
-                "Using advanced embedding engine for batch: {} items",
-                texts.len()
+                "Advanced engine chunk plan: {} nodes -> {} chunks",
+                plan.stats.total_nodes,
+                plan.stats.total_chunks
             );
-            let embs = engine.embed_many(&texts).await?;
-            if embs.len() != texts.len() {
+            let chunk_to_node = plan.chunk_to_node();
+            let chunk_texts: Vec<String> =
+                plan.chunks.into_iter().map(|chunk| chunk.text).collect();
+            tracing::info!(
+                target: "codegraph_vector::embeddings",
+                "Using advanced embedding engine for batch: {} chunks",
+                chunk_texts.len()
+            );
+            let chunk_embeddings = engine.embed_many(&chunk_texts).await?;
+            if chunk_embeddings.len() != chunk_texts.len() {
                 return Err(CodeGraphError::Vector(format!(
                     "provider returned {} embeddings for {} inputs",
-                    embs.len(),
-                    texts.len()
+                    chunk_embeddings.len(),
+                    chunk_texts.len()
                 )));
             }
-            return Ok(embs);
+            let aggregated = aggregate_chunk_embeddings(
+                nodes.len(),
+                &chunk_to_node,
+                chunk_embeddings,
+                self.dimension(),
+            );
+            return Ok(aggregated);
         }
 
-        // Fallback: sequential deterministic embeddings
-        let mut embeddings = Vec::with_capacity(nodes.len());
-        for node in nodes {
-            let embedding = self.generate_embedding(node).await?;
-            embeddings.push(embedding);
+        // Fallback: sequential deterministic embeddings with chunking
+        let plan = self.build_plan_for_nodes(nodes);
+        let chunk_to_node = plan.chunk_to_node();
+        let mut chunk_embeddings = Vec::with_capacity(plan.chunks.len());
+        for chunk in plan.chunks {
+            chunk_embeddings.push(self.encode_text(&chunk.text).await?);
         }
-        Ok(embeddings)
+        Ok(aggregate_chunk_embeddings(
+            nodes.len(),
+            &chunk_to_node,
+            chunk_embeddings,
+            self.dimension(),
+        ))
     }
 
     /// Generate an embedding directly from free text. Useful for query embeddings.
@@ -347,37 +392,6 @@ impl EmbeddingGenerator {
             embeddings.push(embedding);
         }
         Ok(embeddings)
-    }
-
-    fn prepare_text(&self, node: &CodeNode) -> String {
-        let mut text = format!(
-            "{} {} {}",
-            node.language
-                .as_ref()
-                .map_or("unknown".to_string(), language_to_string),
-            node.node_type
-                .as_ref()
-                .map_or("unknown".to_string(), node_type_to_string),
-            node.name.as_str()
-        );
-
-        if let Some(content) = &node.content {
-            text.push(' ');
-            text.push_str(content);
-        }
-
-        if text.len() > self.model_config.max_tokens * 4 {
-            let mut new_len = self.model_config.max_tokens * 4;
-            if new_len > text.len() {
-                new_len = text.len();
-            }
-            while new_len > 0 && !text.is_char_boundary(new_len) {
-                new_len -= 1;
-            }
-            text.truncate(new_len);
-        }
-
-        text
     }
 
     async fn encode_text(&self, text: &str) -> Result<Vec<f32>> {
@@ -449,40 +463,4 @@ fn simple_hash(text: &str) -> u32 {
         hash = hash.wrapping_mul(33).wrapping_add(byte as u32);
     }
     hash
-}
-
-fn language_to_string(lang: &codegraph_core::Language) -> String {
-    match lang {
-        codegraph_core::Language::Rust => "rust".to_string(),
-        codegraph_core::Language::TypeScript => "typescript".to_string(),
-        codegraph_core::Language::JavaScript => "javascript".to_string(),
-        codegraph_core::Language::Python => "python".to_string(),
-        codegraph_core::Language::Go => "go".to_string(),
-        codegraph_core::Language::Java => "java".to_string(),
-        codegraph_core::Language::Cpp => "cpp".to_string(),
-        // Revolutionary universal language support
-        codegraph_core::Language::Swift => "swift".to_string(),
-        codegraph_core::Language::Kotlin => "kotlin".to_string(),
-        codegraph_core::Language::CSharp => "csharp".to_string(),
-        codegraph_core::Language::Ruby => "ruby".to_string(),
-        codegraph_core::Language::Php => "php".to_string(),
-        codegraph_core::Language::Dart => "dart".to_string(),
-        codegraph_core::Language::Other(name) => name.clone(),
-    }
-}
-
-fn node_type_to_string(node_type: &codegraph_core::NodeType) -> String {
-    match node_type {
-        codegraph_core::NodeType::Function => "function".to_string(),
-        codegraph_core::NodeType::Struct => "struct".to_string(),
-        codegraph_core::NodeType::Enum => "enum".to_string(),
-        codegraph_core::NodeType::Trait => "trait".to_string(),
-        codegraph_core::NodeType::Module => "module".to_string(),
-        codegraph_core::NodeType::Variable => "variable".to_string(),
-        codegraph_core::NodeType::Import => "import".to_string(),
-        codegraph_core::NodeType::Class => "class".to_string(),
-        codegraph_core::NodeType::Interface => "interface".to_string(),
-        codegraph_core::NodeType::Type => "type".to_string(),
-        codegraph_core::NodeType::Other(name) => name.clone(),
-    }
 }

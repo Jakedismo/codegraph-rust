@@ -46,6 +46,7 @@ reqwest = { workspace = true, optional = true }
 # ONNX Runtime provider (optional)
 ort = { version = "2.0.0-rc.10", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries"] }
 semchunk-rs = "0.1.1"
+fxhash = "0.2.1"
 
 
 
