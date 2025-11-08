@@ -1,3 +1,13 @@
+# pyproject.toml - Dependency management for CodeGraph test scripts
+# This is NOT a package - just dependency declarations for uv/pip
+#
+# Usage:
+#   uv sync              # Install dependencies with uv
+#   uv run python3 test_agentic_tools.py
+#
+# Or traditional pip:
+#   pip install -r requirements-test.txt
+
 [project]
 name = "codegraph-tests"
 version = "1.0.0"
@@ -11,12 +21,3 @@ dependencies = [
 dev = [
     "ruff>=0.1.0",  # Linting and formatting
 ]
-
-[tool.uv]
-dev-dependencies = [
-    "ruff>=0.1.0",
-]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
