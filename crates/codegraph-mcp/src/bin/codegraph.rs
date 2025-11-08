@@ -832,14 +832,17 @@ async fn handle_start(
             key,
             cors: _,
         } => {
-            eprintln!("🚧 HTTP transport with official SDK not yet implemented");
-            eprintln!("💡 Use STDIO transport for 100% official SDK compliance:");
+            eprintln!("🚧 HTTP transport not yet implemented with official rmcp SDK");
+            eprintln!();
+            eprintln!("💡 Use STDIO transport instead (recommended):");
             eprintln!("   codegraph start stdio");
-            eprintln!("💡 Or use legacy HTTP server:");
-            eprintln!("   codegraph start http --legacy");
+            eprintln!();
+            eprintln!("📋 HTTP transport implementation is tracked in the roadmap.");
+            eprintln!("   The official rmcp SDK supports streamable HTTP, but integration");
+            eprintln!("   with CodeGraph's agentic tools is not yet complete.");
 
             return Err(anyhow::anyhow!(
-                "HTTP transport requires legacy mode or official SDK implementation"
+                "HTTP transport not yet implemented - use 'codegraph start stdio' instead"
             ));
         }
         TransportType::Dual {

@@ -492,12 +492,11 @@ codegraph index -r /path/to/project
 # Start MCP server (for Claude Desktop, LM Studio, etc.)
 codegraph start stdio
 
-# Start streamable HTTP server (alternative)
-codegraph start http
-
 # List available MCP tools
 codegraph tools list
 ```
+
+**Note:** HTTP transport is not yet implemented with the official rmcp SDK. Use STDIO transport for all MCP integrations.
 
 ### Using with Claude Desktop
 
