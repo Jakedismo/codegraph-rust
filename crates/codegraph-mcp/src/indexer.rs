@@ -114,6 +114,25 @@ pub struct ProjectIndexer {
 }
 
 impl ProjectIndexer {
+    #[cfg(feature = "ai-enhanced")]
+    fn symbol_embedding_batch_settings(&self) -> (usize, usize) {
+        let batch_size = std::env::var("CODEGRAPH_SYMBOL_BATCH_SIZE")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or_else(|| self.config.batch_size)
+            .max(1)
+            .min(2048);
+
+        let max_concurrent = std::env::var("CODEGRAPH_SYMBOL_MAX_CONCURRENT")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or_else(|| self.config.max_concurrent)
+            .max(1)
+            .min(16);
+
+        (batch_size, max_concurrent)
+    }
+
     pub async fn new(
         config: IndexerConfig,
         global_config: &codegraph_core::config_manager::CodeGraphConfig,
@@ -1267,9 +1286,6 @@ impl ProjectIndexer {
         &self,
         symbol_map: &std::collections::HashMap<String, NodeId>,
     ) -> std::collections::HashMap<String, Vec<f32>> {
-        use codegraph_vector::EmbeddingGenerator;
-        use futures::future::join_all;
-
         info!("🧠 Pre-computing symbol embeddings for M4 Max AI optimization");
         info!(
             "🔧 DEBUG: precompute_symbol_embeddings called with {} symbols",
@@ -1295,16 +1311,21 @@ impl ProjectIndexer {
         info!("🤖 Using preserved ONNX embedder for AI semantic matching");
         let embedder = &self.embedder;
         info!("✅ Using working ONNX embedder session (guaranteed real embeddings)");
-        let batch_size = 50; // Optimal for embedding generation
-        info!("⚡ Embedding batch size: {} symbols per batch", batch_size);
+        let (batch_size, max_concurrent) = self.symbol_embedding_batch_settings();
+        let total_batches = (top_symbols.len() + batch_size - 1) / batch_size;
+        info!(
+            "⚡ Embedding batch size: {} symbols ({} batches, max {} concurrent)",
+            batch_size,
+            total_batches.max(1),
+            max_concurrent
+        );
 
         let batches: Vec<Vec<String>> = top_symbols
             .chunks(batch_size)
             .map(|chunk| chunk.iter().cloned().collect())
             .collect();
 
-        let max_concurrent = 4; // Parallel batch processing
-        let mut processed = 0; // Track progress
+        let mut processed = 0usize;
 
         let mut batch_stream = stream::iter(batches.into_iter().map(|batch| {
             let embedder = embedder;
@@ -1400,19 +1421,20 @@ impl ProjectIndexer {
 
         let symbols_vec: Vec<_> = unresolved_symbols.iter().cloned().collect();
         let embedder = &self.embedder;
-        let batch_size = 50; // Professional batch size for unresolved symbols
+        let (batch_size, max_concurrent) = self.symbol_embedding_batch_settings();
 
+        let total_batches = (symbols_vec.len() + batch_size - 1) / batch_size;
         info!(
-            "⚡ Unresolved embedding batch size: {} symbols per batch",
-            batch_size
+            "⚡ Unresolved embedding batch size: {} symbols ({} batches, max {} concurrent)",
+            batch_size,
+            total_batches.max(1),
+            max_concurrent
         );
 
         let batches: Vec<Vec<String>> = symbols_vec
             .chunks(batch_size)
             .map(|chunk| chunk.iter().cloned().collect())
             .collect();
-
-        let max_concurrent = 4; // Parallel batch processing
 
         let mut batch_stream = stream::iter(batches.into_iter().map(|batch| {
             let embedder = embedder;
