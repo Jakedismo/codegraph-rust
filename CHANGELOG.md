@@ -5,6 +5,105 @@ All notable changes to the CodeGraph MCP Intelligence Platform will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2025-01-08 - Agentic Code Intelligence & Architecture Migration
+
+### 🚀 **Added - Agentic MCP Tools (AI-Enhanced Feature)**
+
+#### **1. Tier-Aware Agentic Orchestration**
+- **7 Agentic MCP Tools**: Multi-step reasoning workflows for comprehensive code analysis
+  - `agentic_code_search` - Autonomous graph exploration for code search
+  - `agentic_dependency_analysis` - Dependency chain and impact analysis
+  - `agentic_call_chain_analysis` - Execution flow tracing
+  - `agentic_architecture_analysis` - Architectural pattern assessment
+  - `agentic_api_surface_analysis` - Public interface analysis
+  - `agentic_context_builder` - Comprehensive context gathering
+  - `agentic_semantic_question` - Complex codebase Q&A
+- **Automatic tier detection**: Based on LLM context window (Small/Medium/Large/Massive)
+- **Tier-aware prompting**: 28 specialized prompts (7 types × 4 tiers)
+  - Small (<50K): TERSE prompts, 5 max steps, 2,048 tokens
+  - Medium (50K-150K): BALANCED prompts, 10 max steps, 4,096 tokens
+  - Large (150K-500K): DETAILED prompts, 15 max steps, 8,192 tokens
+  - Massive (>500K): EXPLORATORY prompts, 20 max steps, 16,384 tokens
+- **LRU caching**: Transparent SurrealDB result caching (100 entries default)
+- **Configurable max tokens**: `MCP_CODE_AGENT_MAX_OUTPUT_TOKENS` env variable
+
+#### **2. Graph Analysis Integration**
+- **6 SurrealDB graph tools**: Deep structural code analysis
+  - `get_transitive_dependencies` - Full dependency chains
+  - `detect_circular_dependencies` - Cycle detection
+  - `trace_call_chain` - Execution path analysis
+  - `calculate_coupling_metrics` - Ca, Ce, I metrics
+  - `get_hub_nodes` - Architectural hotspot detection
+  - `get_reverse_dependencies` - Change impact assessment
+- **Zero-heuristic design**: LLM infers from structured data only
+- **Tool call logging**: Complete reasoning traces with execution stats
+- **Cache statistics**: Hit rate, evictions, size tracking
+
+#### **3. CLI Enhancements**
+- **New command**: `codegraph config agent-status`
+  - Shows LLM provider, context tier, prompt verbosity
+  - Lists all available MCP tools with descriptions
+  - Displays orchestrator settings (max steps, cache, tokens)
+  - JSON output support for automation
+- **Configuration visibility**: Understand how config affects system behavior
+
+### ⚠️ **Deprecated - MCP Server FAISS+RocksDB Support**
+
+**IMPORTANT**: The MCP server's FAISS+RocksDB graph database solution is now **deprecated** in favor of SurrealDB-based architecture.
+
+**What's Deprecated:**
+- MCP server integration with FAISS vector search
+- MCP server integration with RocksDB graph storage
+- Cloud dual-mode search via MCP protocol
+
+**What Remains Supported:**
+- ✅ **CLI commands**: All FAISS/RocksDB operations remain available via `codegraph` CLI
+- ✅ **Rust SDK**: Full programmatic access to FAISS/RocksDB functionality
+- ✅ **NAPI bindings**: TypeScript/Node.js integration still functional
+- ✅ **Local embeddings**: ONNX, Ollama, LM Studio providers unchanged
+
+**Migration Path:**
+
+For **MCP code-agent** functionality, you must now set up SurrealDB:
+
+**Option 1: Free Cloud Instance (Recommended for testing)**
+1. Sign up at [Surreal Cloud](https://surrealdb.com/cloud) - **FREE 1GB instance included**
+2. Get connection details from dashboard
+3. Configure environment:
+   ```bash
+   export SURREALDB_URL=wss://your-instance.surrealdb.cloud
+   export SURREALDB_NAMESPACE=codegraph
+   export SURREALDB_DATABASE=main
+   export SURREALDB_USERNAME=your-username
+   export SURREALDB_PASSWORD=your-password
+   ```
+
+**Option 2: Local Installation**
+```bash
+# Install SurrealDB
+curl -sSf https://install.surrealdb.com | sh
+
+# Run locally
+surreal start --bind 127.0.0.1:3004 --user root --pass root memory
+
+# Configure
+export SURREALDB_URL=ws://localhost:3004
+export SURREALDB_NAMESPACE=codegraph
+export SURREALDB_DATABASE=main
+```
+
+**Free Cloud Services:**
+- 🆓 **SurrealDB Cloud**: 1GB free instance (perfect for testing and small projects)
+- 🆓 **Jina AI**: 10 million free API tokens when you register at [jina.ai](https://jina.ai)
+  - Includes embeddings, reranking, and token counting APIs
+  - Production-grade embeddings with no local GPU required
+
+**Rationale:**
+- SurrealDB provides native graph capabilities vs. custom RocksDB layer
+- HNSW vector indexing is built-in vs. separate FAISS integration
+- Cloud-native architecture enables distributed deployments
+- Unified storage reduces complexity and maintenance overhead
+
 ## [1.1.0] - 2025-11-08 - Cloud-Native Vector Search & TypeScript Integration
 
 ### 🌟 **Major Release - Cloud Embeddings, Dual-Mode Search, and NAPI Bindings**

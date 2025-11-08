@@ -14,6 +14,49 @@ CodeGraph indexes your source code, creates semantic embeddings, and exposes a *
 - ☁️ **NEW:** Jina AI cloud embeddings with modifiable models and dimensions and reranking
 - 🗄️ **NEW:** SurrealDB HNSW backend for cloud-native and local vector search
 - 📦 **NEW:** Node.js NAPI bindings for zero-overhead TypeScript integration
+- 🤖 **NEW:** Agentic code-agent tools with tier-aware multi-step reasoning
+
+---
+
+## ⚠️ Important: MCP Server Architecture Change
+
+**FAISS+RocksDB support in MCP server is deprecated** in favor of SurrealDB-based architecture.
+
+### What Changed:
+- ❌ **MCP server** no longer uses FAISS vector search or RocksDB graph storage
+- ✅ **CLI and SDK** continue to support FAISS/RocksDB for local operations
+- ✅ **NAPI bindings** still provide TypeScript access to all features
+- 🆕 **MCP code-agent tools** now require SurrealDB for graph analysis
+
+### Required Setup for Code-Agent Tools:
+
+The new agentic MCP tools (`agentic_code_search`, `agentic_dependency_analysis`, etc.) require SurrealDB:
+
+**Option 1: Free Cloud Instance (Recommended)**
+- Sign up at [Surreal Cloud](https://surrealdb.com/cloud)
+- **Get 1GB FREE instance** - perfect for testing and small projects
+- Configure connection details in environment variables
+
+**Option 2: Local Installation**
+```bash
+# Install SurrealDB
+curl -sSf https://install.surrealdb.com | sh
+
+# Run locally
+surreal start --bind 127.0.0.1:3004 --user root --pass root memory
+```
+
+**Free Cloud Resources:**
+- 🆓 **SurrealDB Cloud**: 1GB free instance at [surrealdb.com/cloud](https://surrealdb.com/cloud)
+- 🆓 **Jina AI**: 10 million free API tokens at [jina.ai](https://jina.ai) for embeddings and reranking
+
+### Why This Change:
+- **Native graph capabilities**: SurrealDB provides built-in graph database features
+- **Unified storage**: Single database for both vectors and graph relationships
+- **Cloud-native**: Better support for distributed deployments
+- **Reduced complexity**: Eliminates custom RocksDB integration layer
+
+**See [CHANGELOG.md](CHANGELOG.md) for detailed migration guide.**
 
 ---
 
@@ -179,7 +222,7 @@ ollama_url = "http://localhost:11434"
 - Install and launch the app
 
 **Step 2: Download models in LM Studio**
-- **Embedding model:** `jinaai/jina-code-embeddings-1.5b`
+- **Embedding model:** `jinaai/jina-embeddings-v4`
 - **LLM model (optional):** `lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF`
 
 **Step 3: Start LM Studio server**
@@ -200,9 +243,9 @@ Create `~/.codegraph/config.toml`:
 ```toml
 [embedding]
 provider = "lmstudio"
-model = "jinaai/jina-code-embeddings-1.5b"
+model = "jinaai/jina-embeddings-v4"
 lmstudio_url = "http://localhost:1234"
-dimension = 1536
+dimension = 2048
 
 [llm]
 enabled = true
@@ -260,9 +303,9 @@ The wizard will guide you through configuration.
 ```toml
 [embedding]
 provider = "jina" # or openai
-model = "jina-code-embeddings-1.5b"
+model = "jina-embeddings-v4"
 openai_api_key = "sk-..."  # or set OPENAI_API_KEY env var
-dimension = 1536
+dimension = 2048
 
 [llm]
 enabled = true
@@ -276,9 +319,9 @@ context_window = 200000
 ```toml
 [embedding]
 provider = "jina" # or openai
-model = "jina-code-embeddings-1.5b"
+model = "jina-embeddings-v4"
 openai_api_key = "sk-..."
-dimension = 1536
+dimension = 2048
 
 [llm]
 enabled = true
@@ -312,7 +355,7 @@ anthropic_api_key = "sk-ant-..."
 provider = "openai"  # or "jina"
 model = "text-embedding-3-small"
 openai_api_key = "sk-..."
-dimension = 1536
+dimension = 2048
 
 [llm]
 enabled = true
@@ -328,9 +371,9 @@ context_window = 2000000  # 2M tokens!
 ```toml
 [embedding]
 provider = "jina"  # or "openai"
-model = "jina-code-embeddings-1.5b"
+model = "jina-embeddings-v4"
 openai_api_key = "sk-..."
-dimension = 1536
+dimension = 2048
 
 [vector_store]
 backend = "surrealdb"  # Instead of "faiss"
@@ -411,8 +454,8 @@ Configuration is loaded from (in order):
 ```toml
 [embedding]
 provider = "lmstudio"  # or "onnx", "ollama", "openai"
-model = "jinaai/jina-code-embeddings-1.5b"
-dimension = 1536
+model = "jinaai/jina-embeddings-v4"
+dimension = 2048
 batch_size = 64
 
 [llm]
