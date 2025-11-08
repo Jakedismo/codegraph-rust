@@ -524,25 +524,82 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 
 ---
 
-## 📚 For AI Agents: Initial Instructions
+## 🤖 For AI Agents: Code Insights Workflow
 
-CodeGraph provides comprehensive guidance for AI agents using the MCP server:
+CodeGraph provides a comprehensive Code Insights agent workflow for AI-powered code analysis and development.
 
-**Read the instructions:**
+### Getting Started: The Complete Workflow
+
+**Step 1: Index Your Codebase**
 ```bash
-# Via MCP prompt (recommended)
+# First, make sure your codebase is indexed and embedded
+codegraph index /path/to/your/project
+
+# Verify indexing completed successfully
+# You should see: "✅ Indexing complete! X files processed"
+```
+
+**Step 2: Start the MCP Server**
+```bash
+# Start CodeGraph MCP server for AI agent access
+codegraph start stdio
+
+# Or if using HTTP transport for web clients:
+# codegraph start http --host 127.0.0.1 --port 3000
+```
+
+**Step 3: Read the Initial Instructions**
+
+Once the server is running and your AI agent is connected, **invoke the initial instructions**:
+
+```bash
+# Via MCP prompt (recommended - provides full context)
 Use prompt: codegraph_initial_instructions
 
-# Via tool call
+# Via tool call (quick access)
 Call tool: read_initial_instructions
 ```
 
-**What you'll learn:**
-- 🎯 Tool selection framework with decision gates
-- 🧠 Metacognitive reasoning patterns
-- 📊 Evidence-based workflow guidelines
-- 🔒 Safety requirements and best practices
-- 🚀 Common development workflows
+**Step 4: Start Your Code Intelligence Workflow**
+
+After reading the initial instructions, you'll have access to powerful code analysis tools:
+
+- 🔍 **`enhanced_search`** - Semantic code search with LLM-powered analysis
+- 🧠 **`semantic_intelligence`** - Deep code understanding and pattern detection
+- 📊 **`impact_analysis`** - Analyze ripple effects of code changes
+- 🔬 **`pattern_detection`** - Find architectural patterns and anti-patterns
+- 🗺️ **`graph_neighbors`** - Explore code dependencies and relationships
+- 🌐 **`graph_traverse`** - Navigate complex dependency chains
+- 📈 **`performance_metrics`** - Monitor system and query performance
+
+### What the Initial Instructions Provide
+
+The initial instructions give you:
+
+- 🎯 **Tool Selection Framework** - Decision gates to choose the right tool for each task
+- 🧠 **Metacognitive Reasoning Patterns** - How to think about code analysis systematically
+- 📊 **Evidence-Based Workflow Guidelines** - Ground all decisions in actual tool outputs
+- 🔒 **Safety Requirements** - Best practices to avoid breaking changes
+- 🚀 **Common Development Workflows** - Pre-built patterns for features, debugging, and learning
+
+### Quick Start Example
+
+```bash
+# 1. After indexing, invoke initial instructions
+read_initial_instructions()
+
+# 2. Use enhanced search to understand authentication
+enhanced_search("authentication implementation")
+
+# 3. Analyze impact before refactoring
+impact_analysis("AuthService.login")
+
+# 4. Navigate dependencies
+graph_neighbors("AuthService")
+
+# 5. Detect patterns in the codebase
+pattern_detection("singleton pattern")
+```
 
 **For detailed guidance, see:** [Initial Instructions Guide](docs/INITIAL_INSTRUCTIONS_GUIDE.md)
 
