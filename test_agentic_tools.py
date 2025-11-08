@@ -9,7 +9,10 @@
 #
 # REQUIREMENTS:
 #   - SurrealDB must be running (local or cloud)
-#   - python-dotenv: pip install python-dotenv
+#   - Python dependencies:
+#     uv sync  # Recommended (installs from pyproject.toml)
+#     OR
+#     pip install -r requirements-test.txt
 #
 # Usage:
 #   python3 test_agentic_tools.py

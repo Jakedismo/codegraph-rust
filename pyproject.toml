@@ -1,0 +1,22 @@
+[project]
+name = "codegraph-tests"
+version = "1.0.0"
+description = "Test utilities for CodeGraph MCP server"
+requires-python = ">=3.8"
+dependencies = [
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",  # Linting and formatting
+]
+
+[tool.uv]
+dev-dependencies = [
+    "ruff>=0.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
