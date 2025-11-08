@@ -38,7 +38,6 @@ pub mod context_optimizer;
 pub mod pattern_detector;
 #[cfg(feature = "qwen-integration")]
 pub mod performance;
-pub mod prompts;
 #[cfg(feature = "qwen-integration")]
 pub mod qwen;
 #[cfg(feature = "qwen-integration")]
