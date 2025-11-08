@@ -4,7 +4,7 @@
 use crate::context_aware_limits::ContextTier;
 use crate::error::McpError;
 use crate::graph_tool_executor::GraphToolExecutor;
-use crate::graph_tool_schemas::{GraphToolSchemas, ToolSchema};
+use crate::graph_tool_schemas::GraphToolSchemas;
 use crate::Result;
 use codegraph_ai::llm_provider::{GenerationConfig, LLMProvider, Message, MessageRole};
 use futures::future::BoxFuture;

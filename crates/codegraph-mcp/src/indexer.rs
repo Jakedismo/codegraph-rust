@@ -1178,7 +1178,6 @@ impl ProjectIndexer {
                 }
             }
         }
-        parse_pb.finish_and_clear();
 
         let parsing_duration = start_time.elapsed();
         let files_per_second = if parsing_duration.as_secs_f64() > 0.0 {
