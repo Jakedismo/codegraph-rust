@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, instrument, warn};
 
 /// Configuration for agentic workflow behavior
 #[derive(Debug, Clone)]
@@ -24,6 +24,10 @@ pub struct AgenticConfig {
     pub temperature: f32,
     /// Maximum tokens for each LLM response
     pub max_tokens: usize,
+    /// Enable LRU caching for SurrealDB tool results
+    pub enable_cache: bool,
+    /// Maximum number of cache entries (LRU eviction)
+    pub cache_size: usize,
 }
 
 impl AgenticConfig {
@@ -41,6 +45,8 @@ impl AgenticConfig {
             max_duration_secs: 300, // 5 minutes max
             temperature: 0.1,       // Low temperature for focused tool calling
             max_tokens,
+            enable_cache: true, // Enable caching by default
+            cache_size: 100,    // 100 entries (~1MB memory with typical JSON results)
         }
     }
 }
@@ -79,6 +85,104 @@ pub struct AgenticResult {
     pub completed_successfully: bool,
     /// Termination reason (e.g., "max_steps", "timeout", "success")
     pub termination_reason: String,
+}
+
+impl AgenticResult {
+    /// Extract a formatted reasoning trace for logging/analysis
+    pub fn reasoning_trace(&self) -> String {
+        let mut trace = String::new();
+        trace.push_str(&format!(
+            "=== Agentic Workflow Trace ({} steps, {}ms, {} tokens) ===\n\n",
+            self.total_steps, self.duration_ms, self.total_tokens
+        ));
+
+        for (idx, step) in self.steps.iter().enumerate() {
+            trace.push_str(&format!("--- Step {} ---\n", idx + 1));
+            trace.push_str(&format!("Reasoning: {}\n", step.reasoning));
+
+            if let Some(tool_name) = &step.tool_name {
+                trace.push_str(&format!("Tool: {}\n", tool_name));
+                if let Some(params) = &step.tool_params {
+                    trace.push_str(&format!(
+                        "Parameters: {}\n",
+                        serde_json::to_string_pretty(params).unwrap_or_else(|_| params.to_string())
+                    ));
+                }
+                if let Some(result) = &step.tool_result {
+                    trace.push_str(&format!(
+                        "Result: {}\n",
+                        serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string())
+                    ));
+                }
+            }
+
+            if step.is_final {
+                trace.push_str("[FINAL STEP]\n");
+            }
+            trace.push_str("\n");
+        }
+
+        trace.push_str(&format!(
+            "=== Workflow {} ({}) ===\n",
+            if self.completed_successfully {
+                "COMPLETED"
+            } else {
+                "INCOMPLETE"
+            },
+            self.termination_reason
+        ));
+
+        trace
+    }
+
+    /// Get all tool calls made during the workflow
+    pub fn tool_calls(&self) -> Vec<(&str, &JsonValue)> {
+        self.steps
+            .iter()
+            .filter_map(|step| step.tool_name.as_deref().zip(step.tool_params.as_ref()))
+            .collect()
+    }
+
+    /// Get tool call statistics
+    pub fn tool_call_stats(&self) -> ToolCallStats {
+        let total_tool_calls = self
+            .steps
+            .iter()
+            .filter(|step| step.tool_name.is_some())
+            .count();
+
+        let mut tool_usage: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for step in &self.steps {
+            if let Some(tool_name) = &step.tool_name {
+                *tool_usage.entry(tool_name.clone()).or_insert(0) += 1;
+            }
+        }
+
+        ToolCallStats {
+            total_tool_calls,
+            unique_tools_used: tool_usage.len(),
+            tool_usage,
+            avg_tokens_per_step: if self.total_steps > 0 {
+                self.total_tokens / self.total_steps
+            } else {
+                0
+            },
+        }
+    }
+}
+
+/// Statistics about tool calls in an agentic workflow
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallStats {
+    /// Total number of tool calls made
+    pub total_tool_calls: usize,
+    /// Number of unique tools used
+    pub unique_tools_used: usize,
+    /// Usage count per tool
+    pub tool_usage: std::collections::HashMap<String, usize>,
+    /// Average tokens used per step
+    pub avg_tokens_per_step: usize,
 }
 
 /// Agentic orchestrator that coordinates LLM reasoning with tool execution
@@ -179,12 +283,25 @@ impl AgenticOrchestrator {
             // Execute tool if requested
             let mut executed_step = step.clone();
             if let (Some(tool_name), Some(tool_params)) = (&step.tool_name, &step.tool_params) {
-                info!("🔧 Executing tool: {}", tool_name);
+                let tool_start = Instant::now();
+                info!(
+                    tool = %tool_name,
+                    params = %serde_json::to_string(tool_params).unwrap_or_else(|_| "{}".to_string()),
+                    "🔧 Executing tool"
+                );
 
                 let tool_result = self
                     .tool_executor
                     .execute(tool_name, tool_params.clone())
                     .await?;
+
+                let tool_duration = tool_start.elapsed();
+                info!(
+                    tool = %tool_name,
+                    duration_ms = tool_duration.as_millis(),
+                    result_size = tool_result.to_string().len(),
+                    "✓ Tool execution completed"
+                );
 
                 executed_step.tool_result = Some(tool_result.clone());
 

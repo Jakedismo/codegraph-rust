@@ -2,7 +2,11 @@
 // ABOUTME: Executes graph analysis tools by calling Rust SDK wrappers with validated parameters
 
 use codegraph_graph::GraphFunctions;
+use lru::LruCache;
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -10,16 +14,95 @@ use crate::error::McpError;
 use crate::graph_tool_schemas::GraphToolSchemas;
 use crate::Result;
 
+/// Statistics about LRU cache performance
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CacheStats {
+    /// Number of cache hits (successful lookups)
+    pub hits: u64,
+    /// Number of cache misses (lookups that required SurrealDB call)
+    pub misses: u64,
+    /// Number of entries evicted due to LRU policy
+    pub evictions: u64,
+    /// Current number of entries in cache
+    pub current_size: usize,
+    /// Maximum cache size (capacity)
+    pub max_size: usize,
+}
+
+impl CacheStats {
+    /// Calculate cache hit rate as percentage
+    pub fn hit_rate(&self) -> f64 {
+        let total = self.hits + self.misses;
+        if total == 0 {
+            0.0
+        } else {
+            (self.hits as f64 / total as f64) * 100.0
+        }
+    }
+}
+
 /// Executor for graph analysis tools
 /// Receives tool calls from LLM and executes appropriate SurrealDB functions
 pub struct GraphToolExecutor {
     graph_functions: Arc<GraphFunctions>,
+    /// LRU cache for tool results (function_name + params → result)
+    cache: Arc<Mutex<LruCache<String, JsonValue>>>,
+    /// Cache statistics for observability
+    cache_stats: Arc<Mutex<CacheStats>>,
+    /// Whether caching is enabled
+    cache_enabled: bool,
 }
 
 impl GraphToolExecutor {
     /// Create a new tool executor with GraphFunctions instance
     pub fn new(graph_functions: Arc<GraphFunctions>) -> Self {
-        Self { graph_functions }
+        Self::with_cache(graph_functions, true, 100)
+    }
+
+    /// Create a new tool executor with custom cache configuration
+    pub fn with_cache(
+        graph_functions: Arc<GraphFunctions>,
+        cache_enabled: bool,
+        cache_size: usize,
+    ) -> Self {
+        let capacity = NonZeroUsize::new(cache_size).unwrap_or(NonZeroUsize::new(100).unwrap());
+        let cache = Arc::new(Mutex::new(LruCache::new(capacity)));
+        let cache_stats = Arc::new(Mutex::new(CacheStats {
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            current_size: 0,
+            max_size: cache_size,
+        }));
+
+        Self {
+            graph_functions,
+            cache,
+            cache_stats,
+            cache_enabled,
+        }
+    }
+
+    /// Get current cache statistics
+    pub fn cache_stats(&self) -> CacheStats {
+        self.cache_stats.lock().clone()
+    }
+
+    /// Clear the cache and reset statistics
+    pub fn clear_cache(&self) {
+        let mut cache = self.cache.lock();
+        cache.clear();
+        let mut stats = self.cache_stats.lock();
+        stats.hits = 0;
+        stats.misses = 0;
+        stats.evictions = 0;
+        stats.current_size = 0;
+    }
+
+    /// Generate a cache key from tool name and parameters
+    fn cache_key(tool_name: &str, parameters: &JsonValue) -> String {
+        // Create deterministic key from function name + serialized params
+        format!("{}:{}", tool_name, parameters.to_string())
     }
 
     /// Execute a tool call from LLM
@@ -38,27 +121,71 @@ impl GraphToolExecutor {
         let _schema = GraphToolSchemas::get_by_name(tool_name)
             .ok_or_else(|| McpError::Protocol(format!("Unknown tool: {}", tool_name)))?;
 
+        // Check cache if enabled
+        if self.cache_enabled {
+            let cache_key = Self::cache_key(tool_name, &parameters);
+
+            // Try cache lookup
+            {
+                let mut cache = self.cache.lock();
+                if let Some(cached_result) = cache.get(&cache_key) {
+                    // Cache hit
+                    let mut stats = self.cache_stats.lock();
+                    stats.hits += 1;
+                    debug!("Cache hit for {}: {}", tool_name, cache_key);
+                    return Ok(cached_result.clone());
+                }
+            }
+
+            // Cache miss - record it
+            {
+                let mut stats = self.cache_stats.lock();
+                stats.misses += 1;
+            }
+            debug!("Cache miss for {}: {}", tool_name, cache_key);
+        }
+
         // Execute based on tool name
         let result = match tool_name {
             "get_transitive_dependencies" => {
-                self.execute_get_transitive_dependencies(parameters).await?
-            }
-            "detect_circular_dependencies" => {
-                self.execute_detect_circular_dependencies(parameters)
+                self.execute_get_transitive_dependencies(parameters.clone())
                     .await?
             }
-            "trace_call_chain" => self.execute_trace_call_chain(parameters).await?,
-            "calculate_coupling_metrics" => {
-                self.execute_calculate_coupling_metrics(parameters).await?
+            "detect_circular_dependencies" => {
+                self.execute_detect_circular_dependencies(parameters.clone())
+                    .await?
             }
-            "get_hub_nodes" => self.execute_get_hub_nodes(parameters).await?,
-            "get_reverse_dependencies" => self.execute_get_reverse_dependencies(parameters).await?,
+            "trace_call_chain" => self.execute_trace_call_chain(parameters.clone()).await?,
+            "calculate_coupling_metrics" => {
+                self.execute_calculate_coupling_metrics(parameters.clone())
+                    .await?
+            }
+            "get_hub_nodes" => self.execute_get_hub_nodes(parameters.clone()).await?,
+            "get_reverse_dependencies" => {
+                self.execute_get_reverse_dependencies(parameters.clone())
+                    .await?
+            }
             _ => {
                 return Err(
                     McpError::Protocol(format!("Tool not implemented: {}", tool_name)).into(),
                 )
             }
         };
+
+        // Cache the result if enabled
+        if self.cache_enabled {
+            let cache_key = Self::cache_key(tool_name, &parameters);
+            let mut cache = self.cache.lock();
+            let was_evicted = cache.len() >= cache.cap().get();
+            cache.put(cache_key, result.clone());
+
+            // Update stats
+            let mut stats = self.cache_stats.lock();
+            if was_evicted {
+                stats.evictions += 1;
+            }
+            stats.current_size = cache.len();
+        }
 
         info!("Tool execution complete: {}", tool_name);
         Ok(result)
@@ -250,5 +377,74 @@ mod tests {
         assert_eq!(params["node_id"].as_str().unwrap(), "nodes:123");
         assert_eq!(params["edge_type"].as_str().unwrap(), "Calls");
         assert_eq!(params["depth"].as_i64().unwrap(), 5);
+    }
+
+    // === Cache Tests ===
+
+    #[test]
+    fn test_cache_key_generation() {
+        let params1 = json!({
+            "node_id": "nodes:123",
+            "edge_type": "Calls",
+            "depth": 3
+        });
+        let params2 = json!({
+            "node_id": "nodes:123",
+            "edge_type": "Calls",
+            "depth": 3
+        });
+        let params3 = json!({
+            "node_id": "nodes:456",
+            "edge_type": "Calls",
+            "depth": 3
+        });
+
+        let key1 = GraphToolExecutor::cache_key("get_transitive_dependencies", &params1);
+        let key2 = GraphToolExecutor::cache_key("get_transitive_dependencies", &params2);
+        let key3 = GraphToolExecutor::cache_key("get_transitive_dependencies", &params3);
+
+        // Same params should generate same key
+        assert_eq!(key1, key2);
+        // Different params should generate different key
+        assert_ne!(key1, key3);
+    }
+
+    #[test]
+    fn test_cache_stats_initialization() {
+        let stats = CacheStats {
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            current_size: 0,
+            max_size: 100,
+        };
+
+        assert_eq!(stats.hit_rate(), 0.0);
+    }
+
+    #[test]
+    fn test_cache_stats_hit_rate_calculation() {
+        let stats = CacheStats {
+            hits: 75,
+            misses: 25,
+            evictions: 5,
+            current_size: 50,
+            max_size: 100,
+        };
+
+        assert_eq!(stats.hit_rate(), 75.0);
+    }
+
+    #[test]
+    fn test_cache_stats_hit_rate_no_requests() {
+        let stats = CacheStats {
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            current_size: 0,
+            max_size: 100,
+        };
+
+        assert_eq!(stats.hit_rate(), 0.0);
     }
 }

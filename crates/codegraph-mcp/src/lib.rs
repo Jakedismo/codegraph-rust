@@ -46,11 +46,13 @@ pub mod qwen;
 pub mod tools_schema;
 
 #[cfg(feature = "ai-enhanced")]
-pub use agentic_orchestrator::{AgenticConfig, AgenticOrchestrator, AgenticResult, ReasoningStep};
+pub use agentic_orchestrator::{
+    AgenticConfig, AgenticOrchestrator, AgenticResult, ReasoningStep, ToolCallStats,
+};
 pub use connection::*;
 pub use context_aware_limits::{ContextAwareLimits, ContextTier};
 pub use error::{McpError, Result};
-pub use graph_tool_executor::GraphToolExecutor;
+pub use graph_tool_executor::{CacheStats, GraphToolExecutor};
 pub use graph_tool_schemas::{GraphToolSchemas, ToolSchema};
 pub use heartbeat::*;
 pub use indexer::{IndexStats, IndexerConfig, ProjectIndexer};
