@@ -1,10 +1,10 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 #[cfg(feature = "ai-enhanced")]
 use codegraph_ai::SemanticSearchEngine;
 use codegraph_core::{CodeNode, EdgeRelationship, GraphStore, NodeId, NodeType};
-use codegraph_graph::{edge::CodeEdge, CodeGraph};
+use codegraph_graph::{edge::CodeEdge, CodeGraph, SurrealDbConfig, SurrealDbStorage};
 use codegraph_parser::{get_ai_pattern_learner, TreeSitterParser};
 #[cfg(feature = "ai-enhanced")]
 use futures::{stream, StreamExt};
@@ -16,7 +16,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use tokio::fs;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex as TokioMutex};
 use tracing::{debug, info, warn};
 use url::Url;
 use walkdir::WalkDir;
@@ -113,6 +113,7 @@ pub struct ProjectIndexer {
     progress: MultiProgress,
     parser: TreeSitterParser,
     graph: Option<CodeGraph>,
+    surreal: Option<Arc<TokioMutex<SurrealDbStorage>>>,
     vector_dim: usize,
     project_root: PathBuf,
     #[cfg(feature = "embeddings")]
@@ -155,6 +156,7 @@ impl ProjectIndexer {
         let project_root = config.project_root.clone();
         let db_path = project_root.join(".codegraph/db");
         let graph = CodeGraph::new_with_path(db_path.to_str().unwrap())?;
+        let surreal = Self::connect_surreal_from_env().await?;
         #[cfg(feature = "embeddings")]
         let embedder = {
             use codegraph_vector::EmbeddingGenerator;
@@ -271,6 +273,7 @@ impl ProjectIndexer {
             progress: multi_progress,
             parser,
             graph: Some(graph),
+            surreal,
             vector_dim,
             project_root,
             #[cfg(feature = "embeddings")]
@@ -691,8 +694,17 @@ impl ProjectIndexer {
                 symbol_map.insert(format!("{}::{}", trait_impl, base_name), n.id);
             }
 
+            let surreal_clone = if self.surreal.is_some() {
+                Some(n.clone())
+            } else {
+                None
+            };
+
             // Store node
             self.graph.as_mut().unwrap().add_node(n).await?;
+            if let Some(node_for_surreal) = surreal_clone {
+                self.persist_node_to_surreal(node_for_surreal).await?;
+            }
             store_nodes_pb.inc(1);
         }
         store_nodes_pb.finish_with_message("📈 Stored nodes & symbols");
@@ -979,14 +991,26 @@ impl ProjectIndexer {
             // OPTIMIZED: Parallel bulk edge insertion for M4 Max performance
             let bulk_start_time = std::time::Instant::now();
             let mut bulk_success = 0;
+            let surreal_enabled = self.surreal.is_some();
 
             // Process edges in parallel batches for maximum throughput
             let batch_size = 1000; // Optimized for M4 Max memory
             for batch in serializable_edges.chunks(batch_size) {
+                let mut inserted_batch = if surreal_enabled {
+                    Vec::with_capacity(batch.len())
+                } else {
+                    Vec::new()
+                };
                 for edge in batch {
                     if let Ok(_) = self.graph.as_mut().unwrap().add_edge(edge.clone()).await {
                         bulk_success += 1;
+                        if surreal_enabled {
+                            inserted_batch.push(edge.clone());
+                        }
                     }
+                }
+                if surreal_enabled && !inserted_batch.is_empty() {
+                    self.persist_edges_to_surreal(inserted_batch).await?;
                 }
                 edge_pb.set_position(bulk_success as u64);
             }
@@ -1957,6 +1981,66 @@ impl ProjectIndexer {
         let json = serde_json::to_string_pretty(&metadata)?;
         fs::write(metadata_path, json).await?;
         Ok(())
+    }
+
+    async fn persist_node_to_surreal(&self, node: CodeNode) -> Result<()> {
+        if let Some(storage) = &self.surreal {
+            let mut guard = storage.lock().await;
+            guard.add_node(node).await?;
+        }
+        Ok(())
+    }
+
+    async fn persist_edges_to_surreal(&self, edges: Vec<CodeEdge>) -> Result<()> {
+        if let Some(storage) = &self.surreal {
+            let mut guard = storage.lock().await;
+            guard.add_code_edges(edges).await?;
+        }
+        Ok(())
+    }
+
+    async fn connect_surreal_from_env() -> Result<Option<Arc<TokioMutex<SurrealDbStorage>>>> {
+        let connection = match Self::surreal_env_value("CODEGRAPH_SURREALDB_URL", "SURREALDB_URL") {
+            Some(url) => url,
+            None => return Ok(None),
+        };
+        let namespace =
+            Self::surreal_env_value("CODEGRAPH_SURREALDB_NAMESPACE", "SURREALDB_NAMESPACE")
+                .unwrap_or_else(|| "codegraph".to_string());
+        let database =
+            Self::surreal_env_value("CODEGRAPH_SURREALDB_DATABASE", "SURREALDB_DATABASE")
+                .unwrap_or_else(|| "main".to_string());
+        let username =
+            Self::surreal_env_value("CODEGRAPH_SURREALDB_USERNAME", "SURREALDB_USERNAME");
+        let password =
+            Self::surreal_env_value("CODEGRAPH_SURREALDB_PASSWORD", "SURREALDB_PASSWORD");
+
+        info!(
+            "🗄️ Connecting to SurrealDB: {} namespace={} database={}",
+            Self::sanitize_surreal_url(&connection),
+            namespace,
+            database
+        );
+
+        let mut config = SurrealDbConfig::default();
+        config.connection = connection.clone();
+        config.namespace = namespace.clone();
+        config.database = database.clone();
+        config.username = username.clone();
+        config.password = password.clone();
+
+        let storage = SurrealDbStorage::new(config)
+            .await
+            .with_context(|| format!("Failed to connect to SurrealDB at {}", connection))?;
+
+        info!(
+            "🗄️ SurrealDB connection established: {} namespace={} database={}",
+            Self::sanitize_surreal_url(&connection),
+            namespace,
+            database
+        );
+
+        Ok(Some(Arc::new(TokioMutex::new(storage))))
     }
 
     fn log_surrealdb_status(&self, phase: &str) {

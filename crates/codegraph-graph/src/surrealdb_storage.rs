@@ -1,11 +1,12 @@
+use crate::edge::CodeEdge;
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId, Result};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
+use serde_json::{json, Value as JsonValue};
 use std::collections::HashMap;
 use std::sync::Arc;
-use surrealdb::{engine::any::Any, opt::auth::Root, Surreal};
+use surrealdb::{engine::any::Any, opt::auth::Root, sql::Thing, Surreal};
 use tracing::{debug, info};
 
 /// SurrealDB storage implementation with flexible schema support
@@ -629,6 +630,37 @@ impl SurrealDbStorage {
             embedding,
             complexity,
         })
+    }
+
+    pub async fn add_code_edge(&mut self, edge: CodeEdge) -> Result<()> {
+        let edge_id = edge.id.to_string();
+        let from_ref = Thing::from(("nodes".to_string(), edge.from.to_string()));
+        let to_ref = Thing::from(("nodes".to_string(), edge.to.to_string()));
+        let metadata_value =
+            serde_json::to_value(&edge.metadata).unwrap_or_else(|_| JsonValue::Null);
+
+        let record = json!({
+            "from": from_ref,
+            "to": to_ref,
+            "edge_type": edge.edge_type.to_string(),
+            "weight": edge.weight,
+            "metadata": metadata_value,
+        });
+
+        self.db
+            .create(("edges", edge_id))
+            .content(record)
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("Failed to create edge: {}", e)))?;
+
+        Ok(())
+    }
+
+    pub async fn add_code_edges(&mut self, edges: Vec<CodeEdge>) -> Result<()> {
+        for edge in edges {
+            self.add_code_edge(edge).await?;
+        }
+        Ok(())
     }
 }
 
