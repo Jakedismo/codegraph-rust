@@ -8,18 +8,23 @@ use futures::future::BoxFuture;
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        CallToolResult, Content, Meta, NumberOrString, ProgressNotification,
-        ProgressNotificationParam, ProgressToken, ServerCapabilities, ServerInfo,
-        ServerNotification,
+        CallToolResult, Content, GetPromptRequestParam, GetPromptResult, ListPromptsResult, Meta,
+        NumberOrString, PaginatedRequestParam, ProgressNotification, ProgressNotificationParam,
+        ProgressToken, Prompt, PromptMessage, PromptMessageContent, PromptMessageRole,
+        ServerCapabilities, ServerInfo, ServerNotification,
     },
+    service::RequestContext,
     tool, tool_handler, tool_router, ErrorData as McpError, Peer, RoleServer, ServerHandler,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
+use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+use crate::prompts::INITIAL_INSTRUCTIONS;
 
 #[cfg(feature = "qwen-integration")]
 use crate::cache::{init_cache, CacheConfig};
@@ -1126,6 +1131,28 @@ impl CodeGraphMCPServer {
         }
     }
 
+    /// Read CodeGraph Initial Instructions - Essential guide for AI agents
+    ///
+    /// Provides critical guidance on context-efficient tool usage:
+    /// - When to use CodeGraph tools vs manual file reading
+    /// - Tool selection decision framework
+    /// - Context efficiency best practices
+    /// - Common workflows and anti-patterns
+    #[tool(
+        description = "Read CodeGraph usage guide for AI agents. Learn when to use CodeGraph tools instead of reading files manually for maximum context efficiency. Essential reading before starting codebase work."
+    )]
+    async fn read_initial_instructions(
+        &self,
+        _params: Parameters<EmptyRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let content = format!(
+            "{}\n\n---\n\n**Tip:** These instructions are also available as the MCP prompt 'codegraph_initial_instructions'.",
+            INITIAL_INSTRUCTIONS
+        );
+
+        Ok(CallToolResult::success(vec![Content::text(content)]))
+    }
+
     // === AGENTIC MCP TOOLS ===
     // These tools use AgenticOrchestrator for multi-step graph analysis workflows
     // with automatic tier detection based on CODEGRAPH_CONTEXT_WINDOW or config
@@ -1548,9 +1575,64 @@ impl ServerHandler for CodeGraphMCPServer {
             ),
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
+                .enable_prompts()
                 .enable_logging()
                 .build(),
             ..Default::default()
+        }
+    }
+
+    fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListPromptsResult, McpError>> + Send + '_ {
+        async move {
+            Ok(ListPromptsResult {
+                prompts: vec![Prompt {
+                    name: "codegraph_initial_instructions".to_string(),
+                    title: Some("CodeGraph Initial Instructions for AI Agents".to_string()),
+                    description: Some(
+                        "Essential guide for using CodeGraph MCP tools efficiently. Learn when to use CodeGraph tools vs manual file reading, tool selection framework, context efficiency best practices, and common workflows.".to_string()
+                    ),
+                    arguments: None,
+                    icons: None,
+                }],
+                next_cursor: None,
+            })
+        }
+    }
+
+    fn get_prompt(
+        &self,
+        request: GetPromptRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<GetPromptResult, McpError>> + Send + '_ {
+        let name = request.name.clone();
+        async move {
+            match name.as_str() {
+                "codegraph_initial_instructions" => Ok(GetPromptResult {
+                    description: Some(
+                        "CodeGraph Initial Instructions - Essential guide for context-efficient tool usage".to_string()
+                    ),
+                    messages: vec![
+                        PromptMessage {
+                            role: PromptMessageRole::User,
+                            content: PromptMessageContent::text(
+                                "Please read the CodeGraph Initial Instructions below. These guidelines will help you use CodeGraph tools efficiently and avoid wasting context by reading unnecessary files."
+                            ),
+                        },
+                        PromptMessage {
+                            role: PromptMessageRole::Assistant,
+                            content: PromptMessageContent::text(INITIAL_INSTRUCTIONS),
+                        },
+                    ],
+                }),
+                _ => Err(McpError::invalid_params(
+                    format!("Unknown prompt: {}", name),
+                    None
+                )),
+            }
         }
     }
 }
