@@ -2,340 +2,366 @@
 
 ## Introduction
 
-CodeGraph is a semantic code intelligence system that provides **condensed, context-aware information** about codebases through vector search, graph analysis, and LLM-powered insights.
+CodeGraph is an **autonomous code intelligence system** powered by multi-step reasoning and graph analysis. Unlike traditional code search tools, CodeGraph's **agentic tools** autonomously decide which graph analysis functions to call based on your natural language queries.
 
-**Critical principle:** Use CodeGraph tools FIRST before reading files manually. These tools give you targeted, semantically-relevant context without burning your context window on irrelevant code.
-
----
-
-## Core Philosophy: Context Efficiency
-
-### ❌ The Old Way (Context-Inefficient)
-```
-User: "How does authentication work in this codebase?"
-
-Agent reads:
-- auth/login.rs (300 lines)
-- auth/session.rs (250 lines)
-- middleware/auth_middleware.rs (400 lines)
-- models/user.rs (500 lines)
-- config/auth_config.rs (150 lines)
-
-Total: 1,600 lines read, 95% irrelevant to the question
-```
-
-### ✅ The CodeGraph Way (Context-Efficient)
-```
-User: "How does authentication work in this codebase?"
-
-Agent: enhanced_search("authentication flow and session management")
-
-Returns:
-- Relevant 20-line excerpts from 5 files
-- AI explanation of the auth architecture
-- Key functions and their relationships
-- Entry points and integration patterns
-
-Total: ~200 lines of RELEVANT context
-```
-
-**Context savings: 87% reduction with better understanding**
+**Critical principle:** Use CodeGraph's agentic tools for **all codebase exploration**. These tools provide condensed, semantically-relevant, graph-analyzed context without burning your context window.
 
 ---
 
-## When to Use CodeGraph Tools
+## Core Philosophy: Autonomous Graph Intelligence
 
-### 🎯 ALWAYS Use CodeGraph Tools For:
+### ❌ The Old Way (Manual Graph Exploration)
+```
+Agent manually calls:
+1. search_code("authentication")
+2. get_dependencies(node_id_1)
+3. get_dependencies(node_id_2)
+4. get_dependencies(node_id_3)
+5. trace_call_chain(node_id_1)
+... 15 more manual tool calls
 
-**1. Discovering Code**
-- ❓ "Where is X implemented?"
-- ❓ "How does Y work?"
-- ❓ "Find code that does Z"
-- ✅ **Tool:** `enhanced_search` or `vector_search`
+Result: Burned 500 lines of context, still incomplete picture
+```
 
-**2. Understanding Architecture**
-- ❓ "What depends on this function?"
-- ❓ "What calls this code?"
-- ❓ "Trace this execution path"
-- ✅ **Tool:** `graph_neighbors` or `graph_traverse`
+### ✅ The CodeGraph Way (Autonomous Agentic)
+```
+Agent: agentic_dependency_analysis("how does authentication integrate with the database?")
 
-**3. Analyzing Patterns**
-- ❓ "What patterns does this codebase use?"
-- ❓ "How are errors handled?"
-- ❓ "What's the naming convention?"
-- ✅ **Tool:** `pattern_detection`
+CodeGraph autonomously:
+- Searches for authentication code
+- Identifies relevant nodes
+- Traces transitive dependencies
+- Analyzes coupling metrics
+- Maps call chains
+- Synthesizes findings
 
-**4. Finding Similar Code**
-- ❓ "Where else do we do X?"
-- ❓ "Find code similar to this snippet"
-- ✅ **Tool:** `vector_search`
+Result: Comprehensive answer in 150 lines, complete architectural understanding
+```
 
-**5. Complex Questions**
-- ❓ "Explain the data flow through the system"
-- ❓ "How does feature X integrate with Y?"
-- ✅ **Tool:** `codebase_qa` (if available)
-
-### 🚫 DON'T Use Manual File Reading When:
-
-- You're exploring unfamiliar code (**use `enhanced_search` first**)
-- You need to understand how components connect (**use `graph_traverse`**)
-- You're looking for a pattern across the codebase (**use `pattern_detection`**)
-- You want to find similar implementations (**use `vector_search`**)
-- You need high-level architecture understanding (**use `enhanced_search` + `graph_neighbors`**)
-
-### ✅ Manual File Reading IS Appropriate When:
-
-- CodeGraph returned the exact file/function you need and you want full implementation details
-- You're making targeted edits to a specific file
-- You need to see the exact line-by-line logic after CodeGraph narrowed down the location
-- You're reviewing code that CodeGraph already identified as relevant
-
-**Rule of thumb:** CodeGraph for FINDING and UNDERSTANDING, manual reading for DETAILS and EDITING.
+**The difference:** CodeGraph's LLM agent autonomously orchestrates graph exploration. You just ask the question.
 
 ---
 
-## Available MCP Tools
+## How Agentic Tools Work
 
-### 🔍 Search & Discovery Tools
+### Architecture Overview
 
-#### `enhanced_search` - Your Primary Discovery Tool
-**What it does:** Semantic search with AI-powered analysis
-**Speed:** 2-5 seconds
-**Returns:** Ranked code excerpts + AI explanations of patterns and architecture
+```
+Your Query
+    ↓
+Agentic Tool (with multi-step reasoning)
+    ↓
+Autonomous LLM Decision-Making:
+  - Which graph functions to call?
+  - What order to call them?
+  - How deep to traverse?
+  - What patterns to look for?
+    ↓
+SurrealDB Graph Functions:
+  - fn::get_transitive_dependencies()
+  - fn::get_reverse_dependencies()
+  - fn::trace_call_chain()
+  - fn::calculate_coupling_metrics()
+  - fn::get_hub_nodes()
+  - fn::detect_circular_dependencies()
+    ↓
+Synthesized, Context-Efficient Answer
+```
+
+### 4-Tier Context System
+
+CodeGraph automatically selects the appropriate tier based on your LLM's context window:
+
+| Tier | Context Window | Output Tokens | Best For |
+|------|----------------|---------------|----------|
+| **Tier 1: Nano** | <32k | 2,048 | Quick lookups, simple queries |
+| **Tier 2: Standard** | 32k-128k | 8,192 | Most queries, balanced depth |
+| **Tier 3: Extended** | 128k-200k | 32,768 | Complex analysis, deep exploration |
+| **Tier 4: Mega** | 200k+ | 131,072 | Comprehensive architectural analysis |
+
+**You don't configure this** - CodeGraph detects your context window and auto-selects the tier.
+
+---
+
+## Available Agentic Tools
+
+All agentic tools follow the same pattern:
+1. **Input:** Natural language query
+2. **Processing:** Autonomous multi-step graph exploration
+3. **Output:** Synthesized analysis with code context
+
+### 🔍 1. `agentic_code_search`
+
+**What it does:** Autonomous graph exploration for finding and understanding code
 
 **When to use:**
+- "Where is X implemented?"
+- "Find code that does Y"
+- "How does Z work?"
 - Starting any code exploration task
-- Questions like "how does X work?"
-- Finding implementations of features
-- Understanding high-level architecture
+
+**How it works:**
+- Semantically searches for relevant code
+- Autonomously decides which nodes to explore
+- Traces relationships and dependencies
+- Provides context-rich results with explanations
 
 **Example:**
 ```javascript
-enhanced_search("JWT token validation and refresh logic")
-// Returns: Relevant code + explanation of auth flow
+agentic_code_search("how does JWT token validation work in this codebase?")
+
+// Returns: Autonomous analysis including:
+// - Token validation entry points
+// - Related middleware and utilities
+// - Integration with authentication flow
+// - Security considerations found in code
 ```
 
 **Parameters:**
 - `query` (required): Natural language question or search term
-- `limit` (optional): Number of results (default: 5)
 
 ---
 
-#### `vector_search` - Fast Similarity Search
-**What it does:** Fast vector-based code similarity matching
-**Speed:** 0.5 seconds
-**Returns:** Code snippets with similarity scores
+### 📊 2. `agentic_dependency_analysis`
+
+**What it does:** Autonomous dependency chain and impact analysis
 
 **When to use:**
-- Need quick results without AI analysis
-- Finding code similar to a snippet
-- "Where else do we do this?" questions
-- Following up on `enhanced_search` for more examples
+- "What depends on this code?"
+- "What will break if I change X?"
+- "Map the dependency graph for Y"
+- Understanding impact before refactoring
+
+**How it works:**
+- Finds forward and reverse dependencies
+- Calculates coupling metrics (afferent/efferent)
+- Detects circular dependencies
+- Identifies stability vs instability
 
 **Example:**
 ```javascript
-vector_search("async error handling patterns", {
-  paths: ["src/"],
-  langs: ["rust"],
-  limit: 10
-})
+agentic_dependency_analysis("analyze dependencies of the AuthService module")
+
+// Returns: Autonomous analysis including:
+// - All modules that depend on AuthService (afferent)
+// - All modules AuthService depends on (efferent)
+// - Coupling metrics (instability score)
+// - Impact assessment for potential changes
+// - Circular dependency warnings if any
 ```
 
 **Parameters:**
-- `query` (required): Search text or code snippet
-- `paths` (optional): Filter by file paths (e.g., ["src/", "lib/"])
-- `langs` (optional): Filter by language (e.g., ["rust", "typescript"])
-- `limit` (optional): Number of results (default: 5)
+- `query` (required): Dependency analysis question
 
 ---
 
-#### `pattern_detection` - Codebase-Wide Pattern Analysis
-**What it does:** Analyzes coding patterns, conventions, and team standards
-**Speed:** 1-3 seconds
-**Returns:** Naming conventions, organization patterns, error handling styles, quality metrics
+### 🔗 3. `agentic_call_chain_analysis`
+
+**What it does:** Autonomous execution flow tracing and call path analysis
 
 **When to use:**
-- Onboarding to a new codebase
-- Understanding team conventions
-- Before writing new code (to match existing patterns)
-- Code review preparation
+- "Trace the execution path from X to Y"
+- "What's the call chain for Z?"
+- "How does data flow through the system?"
+- Debugging execution flows
+
+**How it works:**
+- Traces call chains through the graph
+- Identifies execution paths
+- Maps data flow
+- Detects recursive calls
 
 **Example:**
 ```javascript
-pattern_detection()
-// Returns: Full analysis of codebase patterns and conventions
-```
+agentic_call_chain_analysis("trace the execution path from HTTP request to database query")
 
-**Parameters:** None
-
----
-
-### 🗺️ Graph Analysis Tools
-
-#### `graph_neighbors` - Direct Dependency Analysis
-**What it does:** Find what directly calls or is called by a code element
-**Speed:** 0.3 seconds
-**Returns:** 1-hop dependency graph (immediate neighbors)
-
-**When to use:**
-- "What calls this function?"
-- "What does this function call?"
-- Quick impact assessment
-- Understanding immediate relationships
-
-**Example:**
-```javascript
-// First, get the node UUID from enhanced_search or vector_search
-enhanced_search("AuthService.login method")
-// Returns: {..., node_id: "uuid-1234"}
-
-graph_neighbors("uuid-1234", { limit: 20 })
-// Returns: All functions that call or are called by login()
+// Returns: Autonomous analysis including:
+// - Complete call chain from entry point to DB
+// - Intermediate layers (routing → controller → service → repository)
+// - Data transformations along the path
+// - Error handling points
 ```
 
 **Parameters:**
-- `node` (required): UUID of the code element (get from search results)
-- `limit` (optional): Max neighbors to return (default: 20)
-
-**Important:** You MUST get node UUIDs from search tools first!
+- `query` (required): Call chain question
 
 ---
 
-#### `graph_traverse` - Deep Dependency Chain Analysis
-**What it does:** Follow dependency chains through multiple levels
-**Speed:** 0.5-2 seconds
-**Returns:** Full dependency paths up to specified depth
+### 🏗️ 4. `agentic_architecture_analysis`
+
+**What it does:** Autonomous architectural pattern assessment and design analysis
 
 **When to use:**
-- Tracing execution flows
-- Understanding transitive dependencies
-- "What's the full call chain from X to Y?"
-- Deep impact analysis
+- "What architectural patterns does this code use?"
+- "Analyze the system architecture"
+- "What design patterns are present?"
+- Understanding codebase organization
+
+**How it works:**
+- Identifies architectural patterns
+- Analyzes layer separation
+- Detects design patterns (Factory, Strategy, etc.)
+- Assesses code organization
 
 **Example:**
 ```javascript
-// First, get the starting node UUID from search
-vector_search("main entry point")
-// Returns: {..., node_id: "uuid-5678"}
+agentic_architecture_analysis("what architectural patterns does the authentication system use?")
 
-graph_traverse("uuid-5678", {
-  depth: 3,
-  limit: 20
-})
-// Returns: Dependency tree 3 levels deep from entry point
+// Returns: Autonomous analysis including:
+// - Layered architecture breakdown (API → Service → Repository)
+// - Design patterns identified (Strategy for auth providers)
+// - Separation of concerns analysis
+// - Coupling/cohesion assessment
+// - Recommendations for improvements
 ```
 
 **Parameters:**
-- `start` (required): UUID of starting node (get from search results)
-- `depth` (optional): How many levels to traverse (default: 2)
-- `limit` (optional): Max nodes to return (default: 20)
+- `query` (required): Architecture analysis question
 
 ---
 
-### 🤖 Advanced AI Tools (Feature-Gated)
+### 🌐 5. `agentic_api_surface_analysis`
 
-#### `codebase_qa` - RAG-Powered Q&A
-**What it does:** Answer complex questions using Retrieval-Augmented Generation
-**Speed:** 5-30 seconds (SLOW)
-**Returns:** AI-generated answer with citations from codebase
+**What it does:** Autonomous public interface and API contract analysis
 
 **When to use:**
-- Complex architectural questions requiring deep context
-- Questions that span multiple systems
-- When enhanced_search isn't providing enough depth
+- "What's the public API of X?"
+- "Analyze the external interface of Y"
+- "What methods are exposed to consumers?"
+- Understanding API design
 
-**When NOT to use:**
-- Simple "where is X" questions (use `enhanced_search` instead)
-- Quick lookups (use `vector_search` instead)
+**How it works:**
+- Identifies public vs private interfaces
+- Analyzes API contracts
+- Detects breaking change risks
+- Maps consumer usage
 
 **Example:**
 ```javascript
-codebase_qa("How does the authentication system integrate with the database layer and what security measures are in place?", {
-  max_results: 5,
-  streaming: false
-})
+agentic_api_surface_analysis("analyze the public API surface of the UserService")
+
+// Returns: Autonomous analysis including:
+// - All public methods and their signatures
+// - Public vs private method breakdown
+// - Consumer usage patterns (who calls what)
+// - API stability assessment
+// - Breaking change risk analysis
 ```
 
 **Parameters:**
-- `question` (required): Your question in natural language
-- `max_results` (optional): Context chunks to retrieve (default: 5)
-- `streaming` (optional): Stream response (default: false)
+- `query` (required): API surface question
 
 ---
 
-#### `code_documentation` - AI Documentation Generator
-**What it does:** Generate comprehensive documentation for functions/classes
-**Speed:** 10-45 seconds (VERY SLOW)
-**Returns:** Full documentation with dependencies, usage patterns, examples
+### 📦 6. `agentic_context_builder`
+
+**What it does:** Autonomous comprehensive context gathering for code generation
 
 **When to use:**
-- Creating comprehensive docs for complex code
-- Understanding undocumented legacy code
+- "Gather context for implementing feature X"
+- "What context do I need to modify Y?"
+- Preparing to generate or modify code
+- Understanding full context around a change
 
-**When NOT to use:**
-- Quick understanding (use `enhanced_search` instead)
-- Simple functions (write docs manually faster)
+**How it works:**
+- Gathers relevant code context
+- Identifies related patterns
+- Collects dependencies
+- Synthesizes comprehensive picture
 
 **Example:**
 ```javascript
-code_documentation("AuthService.validateToken", {
-  file_path: "src/auth/service.rs",
-  style: "comprehensive"  // or "concise" or "tutorial"
-})
+agentic_context_builder("gather context for adding rate limiting to the API")
+
+// Returns: Autonomous analysis including:
+// - Existing middleware patterns
+// - Where to hook into request processing
+// - Related configuration points
+// - Similar features for reference (caching, auth)
+// - Integration points and dependencies
 ```
 
 **Parameters:**
-- `target_name` (required): Function/class name to document
-- `file_path` (optional): Path to file containing target
-- `style` (optional): "comprehensive", "concise", or "tutorial" (default: "comprehensive")
+- `query` (required): Context gathering question
+
+---
+
+### ❓ 7. `agentic_semantic_question`
+
+**What it does:** Autonomous complex codebase Q&A with semantic understanding
+
+**When to use:**
+- Complex questions requiring deep understanding
+- "How does the system handle X?"
+- "Explain the relationship between Y and Z"
+- Questions spanning multiple systems
+
+**How it works:**
+- Semantically understands the question
+- Autonomously explores relevant code
+- Synthesizes answer from multiple sources
+- Provides comprehensive explanation
+
+**Example:**
+```javascript
+agentic_semantic_question("how does error handling work across the application, and what patterns are used?")
+
+// Returns: Autonomous analysis including:
+// - Error handling strategies identified
+// - Pattern breakdown (Result types, try/catch, custom errors)
+// - Consistency analysis across modules
+// - Best practices observed
+// - Anti-patterns or issues detected
+```
+
+**Parameters:**
+- `query` (required): Semantic question about the codebase
 
 ---
 
 ## Decision Framework: Which Tool to Use?
 
-### Quick Reference Tree
+### Quick Selection Guide
 
 ```
-What do you need to do?
+What do you need?
+
+├─ 🔍 FIND & UNDERSTAND CODE
+│  └─ agentic_code_search
+│     "Where is X?" | "How does Y work?" | "Find code that does Z"
 │
-├─ 🔍 FIND CODE
-│  ├─ "Where is X?" → enhanced_search
-│  ├─ "Find similar code" → vector_search
-│  └─ "Quick lookup" → vector_search
+├─ 📊 ANALYZE DEPENDENCIES
+│  └─ agentic_dependency_analysis
+│     "What depends on X?" | "Impact of changing Y?" | "Coupling analysis"
 │
-├─ 🧠 UNDERSTAND ARCHITECTURE
-│  ├─ "How does X work?" → enhanced_search
-│  ├─ "What patterns exist?" → pattern_detection
-│  └─ "Complex question" → codebase_qa (if available)
+├─ 🔗 TRACE EXECUTION
+│  └─ agentic_call_chain_analysis
+│     "Execution path from X to Y" | "Call chain for Z" | "Data flow"
 │
-├─ 🗺️ MAP DEPENDENCIES
-│  ├─ "What calls this?" → graph_neighbors
-│  ├─ "Trace call chain" → graph_traverse
-│  └─ "Impact of change" → graph_neighbors + graph_traverse
+├─ 🏗️ UNDERSTAND ARCHITECTURE
+│  └─ agentic_architecture_analysis
+│     "Architectural patterns?" | "Design analysis" | "Layer structure"
 │
-└─ 📖 GENERATE DOCS
-   └─ "Document this code" → code_documentation (if available)
+├─ 🌐 ANALYZE API
+│  └─ agentic_api_surface_analysis
+│     "Public API of X?" | "External interface" | "Breaking changes?"
+│
+├─ 📦 GATHER CONTEXT
+│  └─ agentic_context_builder
+│     "Context for implementing X" | "Before modifying Y"
+│
+└─ ❓ COMPLEX QUESTIONS
+   └─ agentic_semantic_question
+      "How does X relate to Y?" | "Explain Z across system"
 ```
 
-### Tool Selection Gates
+### When in Doubt
 
-**Before calling ANY tool, ask yourself:**
+**Default to `agentic_code_search`** for exploration, then use specialized tools for deeper analysis:
 
-1. **Have I used CodeGraph to explore this area yet?**
-   - ❌ No → Start with `enhanced_search` or `vector_search`
-   - ✅ Yes → Proceed to specific tool or manual reading
-
-2. **Do I need AI insights or just code matches?**
-   - 🧠 AI insights → `enhanced_search`
-   - ⚡ Fast matches → `vector_search`
-
-3. **Do I have a node UUID for graph operations?**
-   - ❌ No → Run search first to get UUIDs
-   - ✅ Yes → Use `graph_neighbors` or `graph_traverse`
-
-4. **Will this answer require >30 seconds?**
-   - ⏰ Yes → Consider if `codebase_qa` is worth it
-   - ⚡ No → Use faster tools
+1. Start: `agentic_code_search` - Find and understand the code
+2. Deepen: Use specialized tool based on what you learned
+3. Synthesize: `agentic_semantic_question` for comprehensive understanding
 
 ---
 
@@ -344,246 +370,232 @@ What do you need to do?
 ### 🚀 Workflow 1: Implementing a New Feature
 
 ```
-Task: "Add rate limiting to the API"
+Task: "Add rate limiting middleware to the API"
 
 Step 1: Understand existing patterns
-  → pattern_detection()
+  → agentic_architecture_analysis("how is middleware structured in this API?")
 
-Step 2: Find similar features
-  → enhanced_search("middleware and request handling patterns")
+Step 2: Gather implementation context
+  → agentic_context_builder("gather context for adding rate limiting middleware")
 
-Step 3: Check dependencies
-  → graph_neighbors("uuid-of-middleware-entry-point")
+Step 3: Find similar features
+  → agentic_code_search("find existing middleware implementations for reference")
 
-Step 4: Find similar implementations
-  → vector_search("rate limiting or request throttling")
+Step 4: Analyze integration points
+  → agentic_dependency_analysis("analyze middleware registration and hook points")
 
-Step 5: NOW read specific files identified by CodeGraph
-  → Read the 2-3 files CodeGraph identified as most relevant
-
-Step 6: Implement feature using discovered patterns
+Step 5: Implement using gathered context
+  → Now you have complete understanding without reading 50 files
 ```
 
-**Context efficiency:** Used CodeGraph to go from 50 potential files to 2-3 relevant ones.
+**Context efficiency:** One tool call vs reading middleware/, config/, routes/ directories manually.
 
 ---
 
 ### 🐛 Workflow 2: Debugging an Issue
 
 ```
-Task: "Auth tokens expire too quickly"
+Task: "Users report authentication tokens expiring too quickly"
 
-Step 1: Find the auth token logic
-  → enhanced_search("token expiration and TTL configuration")
+Step 1: Find the token logic
+  → agentic_code_search("JWT token creation and expiration logic")
 
-Step 2: Understand the flow
-  → graph_traverse("uuid-of-token-creation", { depth: 2 })
+Step 2: Trace the execution path
+  → agentic_call_chain_analysis("trace token generation from login to storage")
 
-Step 3: Find where it's configured
-  → vector_search("token.expires_in or TTL configuration")
+Step 3: Analyze dependencies
+  → agentic_dependency_analysis("what depends on token expiration configuration?")
 
-Step 4: Check for similar patterns
-  → vector_search("session duration or timeout settings")
+Step 4: Understand the system
+  → agentic_semantic_question("how does token lifecycle management work?")
 
-Step 5: Read the specific config file CodeGraph identified
-  → Read the exact config file/function found
-
-Step 6: Fix and verify
+Step 5: Fix with full context
+  → Now you understand the complete token system
 ```
 
-**Context efficiency:** Went straight to the problem without reading auth/*.
+**Context efficiency:** Complete understanding in 4 tool calls vs manually tracing through 20+ files.
 
 ---
 
 ### 📚 Workflow 3: Learning a New Codebase
 
 ```
-Task: "Understand this React application"
+Task: "Onboard to this React application"
 
-Step 1: Learn the patterns
-  → pattern_detection()
+Step 1: Architecture overview
+  → agentic_architecture_analysis("analyze the overall application architecture")
 
-Step 2: Understand architecture
-  → enhanced_search("application architecture and main components")
+Step 2: Entry points and flow
+  → agentic_code_search("find application entry points and main routing")
 
-Step 3: Map the entry points
-  → enhanced_search("app entry point and routing structure")
+Step 3: Key patterns
+  → agentic_architecture_analysis("what design patterns are used throughout?")
 
-Step 4: Explore key components
-  → graph_neighbors("uuid-of-main-component")
+Step 4: Module structure
+  → agentic_dependency_analysis("analyze module dependencies and organization")
 
-Step 5: Find examples
-  → vector_search("API data fetching patterns")
+Step 5: API contracts
+  → agentic_api_surface_analysis("what APIs and interfaces are exposed?")
 
-Step 6: Deep dive on specific areas only after mapping
-  → Now read specific files for implementation details
+Step 6: Deep dive areas
+  → agentic_code_search for specific features you'll work on
 ```
 
-**Context efficiency:** Built mental model before reading any complete files.
+**Context efficiency:** Comprehensive codebase map without reading hundreds of files.
 
 ---
 
 ### 🔄 Workflow 4: Refactoring Code
 
 ```
-Task: "Extract database logic into a repository layer"
+Task: "Extract database logic into repository layer"
 
-Step 1: Find all database access
-  → enhanced_search("database queries and data access patterns")
+Step 1: Find current implementation
+  → agentic_code_search("find all direct database access in the codebase")
 
-Step 2: Map dependencies
-  → graph_neighbors("uuid-of-db-access-function")
+Step 2: Analyze impact
+  → agentic_dependency_analysis("analyze dependencies of database access code")
 
-Step 3: Analyze current patterns
-  → pattern_detection()
+Step 3: Check for patterns
+  → agentic_architecture_analysis("analyze current data access patterns")
 
-Step 4: Check for existing abstractions
-  → vector_search("repository pattern or data access layer")
+Step 4: Trace usage
+  → agentic_call_chain_analysis("trace database query execution paths")
 
-Step 5: Trace impact
-  → graph_traverse("uuid-of-db-access", { depth: 3 })
+Step 5: Plan changes
+  → agentic_context_builder("gather context for implementing repository pattern")
 
-Step 6: Read specific files for refactoring
-  → Read only the files that CodeGraph identified as using DB
+Step 6: Verify safety
+  → agentic_api_surface_analysis("analyze public interfaces that will change")
 
-Step 7: Implement repository layer following discovered patterns
+Step 7: Refactor with confidence
+  → Full impact understanding before touching any code
 ```
 
-**Context efficiency:** Knew exactly what to refactor before touching any files.
+**Context efficiency:** Complete refactoring plan without manually mapping 100+ call sites.
 
 ---
 
-## Anti-Patterns: What NOT to Do
+## Best Practices
 
-### ❌ Anti-Pattern 1: Reading Files First
+### ✅ DO:
 
-**DON'T:**
-```
-User: "How does caching work?"
-Agent: Let me read cache.rs, cache_manager.rs, redis.rs...
-```
+1. **Ask natural language questions** - The agentic tools understand intent
+   - ✅ "how does authentication integrate with the database?"
+   - ✅ "what will break if I refactor the UserService?"
 
-**DO:**
-```
-User: "How does caching work?"
-Agent: enhanced_search("caching implementation and strategy")
-→ Get condensed, relevant excerpts and AI explanation
-→ THEN read specific files if needed
-```
+2. **Trust autonomous exploration** - Let CodeGraph decide which graph functions to call
+   - ✅ One tool call with comprehensive question
+   - ❌ Not manually calling multiple graph functions
 
----
+3. **Use specialized tools** - Each tool is optimized for specific analysis types
+   - ✅ `agentic_dependency_analysis` for impact analysis
+   - ❌ Not using `agentic_code_search` for everything
 
-### ❌ Anti-Pattern 2: Ignoring Graph Tools for Dependencies
+4. **Start broad, then narrow** - Begin with overview, drill down as needed
+   - ✅ `agentic_architecture_analysis` → `agentic_code_search` for specifics
+   - ❌ Not immediately searching for specific functions
 
-**DON'T:**
-```
-User: "What uses this function?"
-Agent: Let me grep through all files for the function name...
-```
+### ❌ DON'T:
 
-**DO:**
-```
-User: "What uses this function?"
-Agent:
-  Step 1: enhanced_search("FunctionName")
-  Step 2: graph_neighbors("uuid-from-search-result")
-→ Get exact call graph with locations
-```
+1. **Don't manually read files first** - Use CodeGraph tools to find relevant code
+   - ❌ Reading src/auth/*.rs before understanding the system
+   - ✅ `agentic_code_search("authentication system")` first
 
----
+2. **Don't bypass agentic tools** - They provide autonomy and graph intelligence
+   - ❌ Trying to call SurrealDB functions directly
+   - ✅ Using agentic tools which autonomously orchestrate graph functions
 
-### ❌ Anti-Pattern 3: Using Slow Tools for Simple Questions
+3. **Don't ask overly narrow questions initially** - Start with context
+   - ❌ "find the validateToken function"
+   - ✅ "how does token validation work in the authentication system?"
 
-**DON'T:**
-```
-User: "Where is the login function?"
-Agent: codebase_qa("Where is the login function?")
-→ Waits 20 seconds for simple lookup
-```
-
-**DO:**
-```
-User: "Where is the login function?"
-Agent: vector_search("login function")
-→ Get answer in 0.5 seconds
-```
+4. **Don't ignore the autonomous results** - CodeGraph explored the graph intelligently
+   - ❌ Immediately searching for more after getting results
+   - ✅ Reading and understanding what CodeGraph autonomously discovered
 
 ---
 
-### ❌ Anti-Pattern 4: Not Getting UUIDs First
+## Context Efficiency Comparison
 
-**DON'T:**
+### Manual Exploration (Old Way)
 ```
-Agent: graph_neighbors("AuthService")  # WRONG - needs UUID not name
-→ Error: Invalid node UUID
+Task: "Understand authentication system"
+
+Manual approach:
+- Read auth/login.rs (300 lines)
+- Read auth/session.rs (250 lines)
+- Read middleware/auth_middleware.rs (400 lines)
+- Read models/user.rs (500 lines)
+- Read config/auth_config.rs (150 lines)
+- Read database/user_repository.rs (350 lines)
+
+Total: 1,950 lines read
+Relevant: ~200 lines (10%)
+Context burned: 90% waste
+Time: 30+ minutes of reading
 ```
 
-**DO:**
+### Agentic Exploration (CodeGraph Way)
 ```
-Agent:
-  Step 1: enhanced_search("AuthService")
-  Step 2: Extract UUID from result
-  Step 3: graph_neighbors("uuid-1234")
-→ Success
+Task: "Understand authentication system"
+
+Agentic approach:
+→ agentic_architecture_analysis("analyze authentication system architecture")
+
+Returns:
+- Layered architecture breakdown
+- Key components and their relationships
+- Auth flow with code excerpts
+- Design patterns identified
+- Security considerations
+
+Total: ~250 lines of RELEVANT content
+Relevant: ~250 lines (100%)
+Context efficiency: 87% reduction
+Time: 5-10 seconds for complete understanding
 ```
+
+**Result:** 7.8x more efficient with better understanding.
 
 ---
 
-### ❌ Anti-Pattern 5: Reading When You Should Search
+## Understanding the Autonomous Nature
 
-**DON'T:**
-```
-User: "Find all error handling code"
-Agent: Let me read through every .rs file...
-→ Burns 10,000 lines of context
-```
+### What "Agentic" Means
 
-**DO:**
-```
-User: "Find all error handling code"
-Agent:
-  Option 1: enhanced_search("error handling patterns and strategies")
-  Option 2: pattern_detection() → See error handling conventions
-  Option 3: vector_search("error handling or Result type usage")
-→ Get condensed, relevant matches
-```
+When you call an agentic tool, here's what happens behind the scenes:
 
----
+1. **Your query is analyzed** by an LLM agent
+2. **The agent reasons** about which graph functions to call
+3. **Multi-step exploration** happens autonomously:
+   - Search for relevant nodes
+   - Follow dependency chains
+   - Calculate metrics
+   - Detect patterns
+   - Trace call paths
+4. **Results are synthesized** into a coherent answer
 
-## Context Efficiency Guidelines
+**You don't:**
+- Specify which graph functions to call
+- Decide traversal depth
+- Choose analysis order
+- Manage intermediate results
 
-### 📊 Estimated Context Costs
+**CodeGraph does all of this autonomously.**
 
-| Approach | Context Used | Relevance | Efficiency |
-|----------|--------------|-----------|------------|
-| Read 10 files manually | ~3,000 lines | ~10% relevant | ❌ Very Low |
-| `enhanced_search` first | ~200 lines | ~80% relevant | ✅ Very High |
-| `vector_search` first | ~150 lines | ~60% relevant | ✅ High |
-| Read after CodeGraph | ~500 lines | ~95% relevant | ✅ High |
+### The Graph Functions (Under the Hood)
 
-### 💡 Best Practices
+CodeGraph uses these SurrealDB functions autonomously:
 
-1. **Always start with CodeGraph tools** - Don't guess which files to read
-2. **Use fast tools for simple questions** - vector_search over codebase_qa
-3. **Get UUIDs from search before graph operations** - Required workflow
-4. **Chain tools logically** - Search → Graph → Read
-5. **Read files only after narrowing down** - Use CodeGraph to filter
+- `fn::get_transitive_dependencies()` - Follow dependency chains forward
+- `fn::get_reverse_dependencies()` - Follow dependency chains backward
+- `fn::trace_call_chain()` - Trace execution paths
+- `fn::calculate_coupling_metrics()` - Compute afferent/efferent coupling
+- `fn::get_hub_nodes()` - Find highly connected nodes
+- `fn::detect_circular_dependencies()` - Find dependency cycles
 
-### 🎯 Success Metrics
-
-You're using CodeGraph effectively if:
-- ✅ You use search tools before reading files
-- ✅ You extract UUIDs from search results for graph tools
-- ✅ You choose the fastest appropriate tool
-- ✅ You read fewer than 5 files to answer most questions
-- ✅ You can explain architecture without reading complete files
-
-You're NOT using CodeGraph effectively if:
-- ❌ You read files before searching
-- ❌ You try to use graph tools without UUIDs
-- ❌ You use slow tools for simple questions
-- ❌ You read 10+ files to understand a feature
-- ❌ You ignore pattern_detection when onboarding
+**You never call these directly** - the agentic tools orchestrate them autonomously.
 
 ---
 
@@ -591,31 +603,36 @@ You're NOT using CodeGraph effectively if:
 
 When starting work on a codebase with CodeGraph:
 
-- [ ] Run `pattern_detection()` to understand conventions
-- [ ] Use `enhanced_search` for your first exploration question
-- [ ] Extract node UUIDs from search results before using graph tools
-- [ ] Chain tools: Search → Graph → Read (not Read → Read → Read)
-- [ ] Only read complete files after CodeGraph narrows down locations
-- [ ] Use fast `vector_search` for quick lookups, `enhanced_search` for understanding
-- [ ] Remember: CodeGraph for FINDING, manual reading for EDITING
+- [ ] Use `agentic_architecture_analysis` to understand overall structure
+- [ ] Use `agentic_code_search` for your first exploration question
+- [ ] Let autonomous exploration work - don't immediately search for more
+- [ ] Use specialized tools for specific analysis types
+- [ ] Read the comprehensive results before making decisions
+- [ ] Only read source files after CodeGraph narrows down locations
+- [ ] Trust the multi-step reasoning - it explored the graph intelligently
 
 ---
 
 ## Remember
 
-**CodeGraph is your context-efficient codebase navigator.**
+**CodeGraph provides autonomous, graph-powered code intelligence.**
 
-The goal is to:
-1. **Find** relevant code quickly (search tools)
-2. **Understand** architecture efficiently (enhanced_search + graph tools)
-3. **Map** dependencies accurately (graph_neighbors + graph_traverse)
-4. **Save** context for what matters (targeted reading)
+The goals:
+1. **Autonomous exploration** - The LLM agent orchestrates graph analysis
+2. **Context efficiency** - Get comprehensive understanding in minimal context
+3. **Graph-powered insights** - Leverage SurrealDB graph functions automatically
+4. **Multi-step reasoning** - Complex analysis happens in one tool call
 
-**Default workflow:** Search → Graph → Read (not Read → Read → Read)
+**Key principle:** Just ask your question in natural language. CodeGraph autonomously:
+- Decides which graph functions to call
+- Explores the dependency graph
+- Synthesizes findings
+- Provides comprehensive, context-efficient answers
 
-**When in doubt:** Start with `enhanced_search` - it's your Swiss Army knife.
+**Default workflow:** Ask question → Read autonomous analysis → Make informed decisions
 
 ---
 
 **Last Updated:** 2025-01-08
-**Version:** 2.0.0 (Correct Tools Edition)
+**Version:** 3.0.0 (Agentic Tools Edition)
+**Requires:** `ai-enhanced` feature flag
