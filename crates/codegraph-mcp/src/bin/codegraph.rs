@@ -290,20 +290,6 @@ enum Commands {
         #[arg(long, help = "Open graph in read-only mode for perf queries")]
         graph_readonly: bool,
     },
-    #[command(about = "Serve HTTP MCP endpoint")]
-    #[cfg(feature = "server-http")]
-    ServeHttp {
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        #[arg(long, default_value = "3000")]
-        port: u16,
-    },
-    #[cfg(feature = "legacy-mcp-server")]
-    #[command(about = "Serve STDIO MCP endpoint")]
-    ServeStdio {
-        #[arg(long, default_value = "8192")]
-        buffer_size: usize,
-    },
 }
 
 #[derive(Subcommand)]
@@ -763,14 +749,6 @@ async fn main() -> Result<()> {
             yes,
         } => {
             handle_clean(index, vectors, cache, all, yes).await?;
-        }
-        #[cfg(feature = "server-http")]
-        Commands::ServeHttp { host, port } => {
-            codegraph_mcp::server::serve_http(host, port).await?;
-        }
-        #[cfg(feature = "legacy-mcp-server")]
-        Commands::ServeStdio { buffer_size } => {
-            codegraph_mcp::server::serve_stdio(buffer_size).await?;
         }
     }
 
