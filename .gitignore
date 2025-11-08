@@ -142,6 +142,13 @@ __pycache__/
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+.uv/
+
 # Coverage reports
 tarpaulin-report.html
 cobertura.xml
