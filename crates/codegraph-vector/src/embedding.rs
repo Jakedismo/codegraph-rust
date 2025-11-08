@@ -381,12 +381,12 @@ impl EmbeddingGenerator {
     }
 
     async fn encode_text(&self, text: &str) -> Result<Vec<f32>> {
-        // Prefer Jina provider when available (cloud code embeddings with nl2code.query task)
+        // Prefer Jina provider when available (cloud code embeddings with code.query task)
         #[cfg(feature = "jina")]
         if let Some(jina) = &self.jina_provider {
-            // Use nl2code.query task type for search queries (asymmetric embeddings)
+            // Use code.query task type for search queries (asymmetric embeddings)
             return jina
-                .generate_text_embedding_with_task(text, "nl2code.query")
+                .generate_text_embedding_with_task(text, "code.query")
                 .await;
         }
 

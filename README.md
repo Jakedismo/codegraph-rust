@@ -2,7 +2,7 @@
 
 > Turn your codebase into a searchable knowledge graph powered by embeddings and LLMs
 
-CodeGraph indexes your source code, creates semantic embeddings, and exposes a **Model Context Protocol (MCP)** server that AI tools (Claude Desktop, LM Studio, etc.) can query for project-aware context.
+CodeGraph indexes your source code to a graph database, creates semantic embeddings, and exposes a **Model Context Protocol (MCP)** server that AI tools (Claude Desktop, LM Studio, etc.) can query for project-aware context.
 
 **✨ What you get:**
 - 🔍 Semantic code search across your entire codebase
@@ -52,7 +52,7 @@ surreal start --bind 127.0.0.1:3004 --user root --pass root memory
 
 ### Why This Change:
 - **Native graph capabilities**: SurrealDB provides built-in graph database features
-- **Unified storage**: Single database for both vectors and graph relationships
+- **Unified storage**: Single database for both vectors and graph relationships and extendable to relational and document use-cases!
 - **Cloud-native**: Better support for distributed deployments
 - **Reduced complexity**: Eliminates custom RocksDB integration layer
 
@@ -743,33 +743,6 @@ npm run build -- --features full
 
 **See [NAPI README](crates/codegraph-napi/README.md) for complete documentation.**
 
----
-
-## 🚀 Advanced Features
-
-### Graph Analytics
-- The indexer produces ownership graphs and dependency edges
-- Automatic metadata extraction for RAG consumption
-
-### MCP Tools
-Exposed through the MCP server:
-- `vector.search` - Semantic code search
-- `graph.traverse` - Navigate code relationships
-- `code.read` - Read source files
-- `insights.generate` - LLM-powered code analysis
-
-### FAISS Tuning
-For large codebases:
-- Set `CODEGRAPH_FAISS_TRAINING_THRESHOLD` environment variable
-- Or provide pre-built index in `.codegraph/faiss.index`
-
-**See `docs/` for:**
-- Architecture details
-- RAG pipeline documentation
-- Deployment guides
-- Operator playbooks
-
----
 
 ## 🤝 Contributing
 
@@ -800,7 +773,6 @@ Dual-licensed under MIT and Apache 2.0. See `LICENSE-MIT` and `LICENSE-APACHE` f
 
 - **[NAPI Bindings Guide](crates/codegraph-napi/README.md)** - Complete TypeScript integration documentation
 - **[Cloud Providers Guide](docs/CLOUD_PROVIDERS.md)** - Detailed cloud provider setup
-- **[LM Studio Setup](LMSTUDIO_SETUP.md)** - LM Studio-specific configuration
-- **[Configuration Reference](.codegraph.toml.example)** - All configuration options
+- **[Configuration Reference](config/.codegraph.toml.example)** - All configuration options
 - **[Changelog](CHANGELOG.md)** - Version history and release notes
 - **[Legacy Docs](docs/legacy/)** - Historical experiments and architecture notes

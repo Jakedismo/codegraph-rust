@@ -1,3 +1,5 @@
+#![cfg(feature = "http2")]
+
 use axum::{
     body::Body,
     extract::{Path, Query, Request},
@@ -676,4 +678,3 @@ mod tests {
         assert!(should_update);
     }
 }
-#![cfg(feature = "http2")]

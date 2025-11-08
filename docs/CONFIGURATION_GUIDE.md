@@ -150,7 +150,7 @@ normalize_embeddings = true
 [embedding.jina]
 model = "jina-embeddings-v4"
 api_key_env = "JINA_API_KEY"
-task = "code.query"
+task = "code.passage"
 late_chunking = true
 enable_reranking = true
 reranking_model = "jina-reranker-v3"

@@ -1,6 +1,6 @@
 #!/bin/bash
 # CodeGraph Cloud-Enhanced Installation Script
-# Features: Jina embeddings, cloud LLM providers (Anthropic/OpenAI), SurrealDB backend
+# Features: Jina embeddings, cloud LLM providers (Anthropic/x.AI/OpenAI), SurrealDB backend
 
 set -e  # Exit on any error
 
@@ -54,7 +54,7 @@ fi
 echo -e "${BLUE}🔧 Building CodeGraph with cloud features...${NC}"
 echo "📊 Languages: Rust, Python, JavaScript, TypeScript, Swift, C#, Ruby, PHP, Go, Java, C++"
 echo "🛠️  Tools: enhanced_search, semantic_intelligence, impact_analysis, pattern_detection, vector_search, graph_neighbors, graph_traverse, performance_metrics"
-echo "☁️  Cloud: Jina embeddings, Anthropic/OpenAI LLM providers"
+echo "☁️  Cloud: Jina embeddings, Anthropic/x.AI/OpenAI LLM providers"
 echo "💾 Database: SurrealDB backend"
 echo ""
 
@@ -85,7 +85,7 @@ echo ""
 # - ai-enhanced: Core AI features (includes faiss + embeddings + codegraph-ai)
 # - codegraph-vector/jina: Jina embeddings provider
 # - codegraph-graph/surrealdb: SurrealDB backend support
-# - codegraph-ai/all-cloud-providers: Anthropic, OpenAI, and OpenAI-compatible providers
+# - codegraph-ai/all-cloud-providers: Anthropic, OpenAI, x.AI and OpenAI-compatible providers
 FEATURE_FLAGS="ai-enhanced,codegraph-vector/jina,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers"
 INSTALL_DIR="${CODEGRAPH_INSTALL_DIR:-$HOME/.local/bin}"
 
@@ -151,8 +151,12 @@ if [ $? -eq 0 ]; then
     echo "   # CODEGRAPH_LLM_PROVIDER=openai"
     echo "   # OPENAI_API_KEY=your-openai-api-key"
     echo ""
+    echo "   ${GREEN}# Or x:AI${NC}"
+    echo "   # CODEGRAPH_LLM_PROVIDER=xai"
+    echo "   # OPENAI_API_KEY=your-xai-api-key"
+    echo ""
     echo "   ${GREEN}# Or use both (specify which to use)${NC}"
-    echo "   CODEGRAPH_MODEL=gpt-5-codex  # or claude-3-5-sonnet-20241022"
+    echo "   CODEGRAPH_MODEL=gpt-5-codex  # or claude-4-5-sonnet-20250925 or f.ex. grok-4-fast"
     echo ""
     echo -e "${BLUE}🚀 Quick Start:${NC}"
     echo "   1. Start SurrealDB: ${GREEN}surreal start --bind 0.0.0.0:3004 --user root --pass root file://data/surreal.db${NC}"

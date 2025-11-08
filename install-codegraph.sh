@@ -66,7 +66,7 @@ echo "⏱️  This may take 5-10 minutes depending on your system..."
 echo ""
 
 cargo install --path crates/codegraph-mcp \
-    --features "embeddings,codegraph-vector/onnx,faiss,embeddings-ollama,qwen-integration" \
+    --features "faiss,embeddings,embeddings-local,embeddings-openai,embeddings-ollama,embeddings-jina,cloud,server-http,qwen-integration,ai-enhanced" \
     --force
 
 if [ $? -eq 0 ]; then
@@ -94,10 +94,10 @@ if [ $? -eq 0 ]; then
     echo "   • Auto-detection: Works for all 11 languages when no --languages specified"
     echo ""
     echo -e "${BLUE}🔗 MCP Configuration:${NC}"
-    echo "   Global config works from any directory - no manual setup needed!"
+    echo "   • Streamable HTTP server works from any directory - no manual setup needed!"
     echo ""
     echo -e "${BLUE}📖 Documentation:${NC}"
-    echo "   • CODEGRAPH-MCP-TOOLS-GUIDE.md - Copy to other projects"
+    echo "   • check docs and config folders for more information"
     echo "   • CHANGELOG.md - Complete v1.0.0 release notes"
     echo "   • README.md - Full platform documentation"
     echo ""

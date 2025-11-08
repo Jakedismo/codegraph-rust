@@ -7,14 +7,15 @@ use codegraph_core::{CodeGraphError, CodeNode, Language, Result};
 use reqwest::Client;
 use semchunk_rs::Chunker;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex as TokioMutex, Semaphore};
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
 use unicode_normalization::UnicodeNormalization;
 
-pub const MAX_NODE_TEXTS_HARD_LIMIT: usize = 64;
+pub const MAX_NODE_TEXTS_HARD_LIMIT: usize = 96;
 pub const MAX_REL_TEXTS_HARD_LIMIT: usize = 32;
 
 /// Configuration for Jina embedding provider
@@ -47,16 +48,18 @@ impl Default for JinaConfig {
             // Support both CODEGRAPH_EMBEDDING_MODEL and JINA_EMBEDDINGS_MODEL
             model: std::env::var("CODEGRAPH_EMBEDDING_MODEL")
                 .or_else(|_| std::env::var("JINA_EMBEDDINGS_MODEL"))
-                .unwrap_or_else(|_| "jina-code-embeddings-1.5b".to_string()),
+                .unwrap_or_else(|_| "jina-embeddings-v4".to_string()),
             api_base: std::env::var("JINA_API_BASE")
                 .unwrap_or_else(|_| "https://api.jina.ai/v1".to_string()),
             max_retries: 3,
             timeout: Duration::from_secs(30),
-            task: std::env::var("JINA_API_TASK").unwrap_or_else(|_| "nl2code.passage".to_string()),
-            late_chunking: false,
+            task: std::env::var("JINA_API_TASK").unwrap_or_else(|_| "code.passage".to_string()),
+            late_chunking: std::env::var("JINA_LATE_CHUNKING")
+                .map(|v| v != "false")
+                .unwrap_or(true),
             // Truncate: false by default (matches working curl), configurable via JINA_TRUNCATE=true
             truncate: std::env::var("JINA_TRUNCATE")
-                .map(|v| v == "true")
+                .map(|v| v != "false")
                 .unwrap_or(true),
             enable_reranking: std::env::var("JINA_ENABLE_RERANKING")
                 .map(|v| v == "true")
@@ -103,6 +106,7 @@ struct EmbeddingRequest {
     model: String,
     task: String,
     truncate: bool,
+    late_chunking: bool,
     input: Vec<String>,
 }
 
@@ -174,6 +178,7 @@ pub struct JinaEmbeddingProvider {
     config: JinaConfig,
     client: Client,
     tokenizer: Arc<tokenizers::Tokenizer>,
+    rate_limiter: Arc<JinaRateLimiter>,
 }
 
 #[cfg(feature = "jina")]
@@ -183,6 +188,117 @@ struct ChunkMeta {
     node_name: String,
     language: Option<Language>,
     chunk_idx: usize,
+}
+
+struct JinaRateLimiter {
+    rpm_limit: usize,
+    tpm_limit: usize,
+    max_tokens_hint: usize,
+    window: TokioMutex<RateWindow>,
+}
+
+struct RateWindow {
+    requests: VecDeque<Instant>,
+    token_events: VecDeque<(Instant, usize)>,
+    total_tokens: usize,
+}
+
+impl RateWindow {
+    fn new() -> Self {
+        Self {
+            requests: VecDeque::new(),
+            token_events: VecDeque::new(),
+            total_tokens: 0,
+        }
+    }
+
+    fn evict(&mut self) {
+        let cutoff = Instant::now() - Duration::from_secs(60);
+        while let Some(ts) = self.requests.front() {
+            if *ts < cutoff {
+                self.requests.pop_front();
+            } else {
+                break;
+            }
+        }
+        while let Some((ts, tokens)) = self.token_events.front() {
+            if *ts < cutoff {
+                self.total_tokens = self.total_tokens.saturating_sub(*tokens);
+                self.token_events.pop_front();
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn wait_duration(
+        &self,
+        rpm_limit: usize,
+        tpm_limit: usize,
+        expect_tokens: usize,
+    ) -> Duration {
+        let now = Instant::now();
+        let mut wait = Duration::ZERO;
+
+        if self.requests.len() >= rpm_limit {
+            if let Some(ts) = self.requests.front() {
+                let candidate = ts
+                    .checked_add(Duration::from_secs(60))
+                    .unwrap_or(*ts)
+                    .saturating_duration_since(now);
+                wait = wait.max(candidate);
+            }
+        }
+
+        if self.total_tokens + expect_tokens > tpm_limit {
+            if let Some((ts, _)) = self.token_events.front() {
+                let candidate = ts
+                    .checked_add(Duration::from_secs(60))
+                    .unwrap_or(*ts)
+                    .saturating_duration_since(now);
+                wait = wait.max(candidate);
+            }
+        }
+
+        wait
+    }
+}
+
+impl JinaRateLimiter {
+    fn new(rpm_limit: usize, tpm_limit: usize, max_tokens_hint: usize) -> Self {
+        Self {
+            rpm_limit,
+            tpm_limit,
+            max_tokens_hint: max_tokens_hint.max(1),
+            window: TokioMutex::new(RateWindow::new()),
+        }
+    }
+
+    async fn acquire(&self, expected_tokens: usize) {
+        let expect = expected_tokens.min(self.max_tokens_hint).max(1);
+        loop {
+            let mut guard = self.window.lock().await;
+            guard.evict();
+            if guard.requests.len() < self.rpm_limit
+                && guard.total_tokens + expect <= self.tpm_limit
+            {
+                drop(guard);
+                break;
+            }
+            let wait = guard.wait_duration(self.rpm_limit, self.tpm_limit, expect);
+            drop(guard);
+            tokio::time::sleep(wait).await;
+        }
+    }
+
+    async fn record_request(&self, tokens_used: usize) {
+        let mut guard = self.window.lock().await;
+        guard.evict();
+        let now = Instant::now();
+        guard.requests.push_back(now);
+        guard.token_events.push_back((now, tokens_used));
+        guard.total_tokens = guard.total_tokens.saturating_add(tokens_used);
+    }
 }
 
 #[cfg(feature = "jina")]
@@ -214,16 +330,48 @@ impl JinaEmbeddingProvider {
             ))
         })?;
 
+        let rate_limiter = Arc::new(JinaRateLimiter::new(
+            500,
+            1_000_000,
+            config.max_tokens_per_text.saturating_mul(config.max_texts_per_request),
+        ));
+
         Ok(Self {
             config,
             client,
             tokenizer: Arc::new(tokenizer),
-        })
+            rate_limiter,
+        }
+        .log_runtime_config())
+    }
+
+    fn log_runtime_config(self) -> Self {
+        info!(
+            target: "codegraph_vector::jina_provider",
+            "Jina provider config: max_tokens_per_text={}, max_texts_per_request={}, rel_max_texts={}, task={}, late_chunking={}, truncate={}",
+            self.config.max_tokens_per_text,
+            self.config.max_texts_per_request,
+            self.config.relationship_max_texts_per_request,
+            self.config.task,
+            self.config.late_chunking,
+            self.config.truncate
+        );
+        self
     }
 
     /// Update the batch size for embedding generation
     pub fn set_batch_size(&mut self, batch_size: usize) {
-        self.config.batch_size = batch_size;
+        let clamped = batch_size
+            .max(1)
+            .min(self.config.max_texts_per_request)
+            .min(MAX_NODE_TEXTS_HARD_LIMIT);
+        if batch_size != clamped {
+            info!(
+                target: "codegraph_vector::jina_provider",
+                "Clamped requested Jina batch size {} to {}", batch_size, clamped
+            );
+        }
+        self.config.batch_size = clamped;
     }
 
     /// Update the maximum concurrent requests for parallel processing
@@ -249,8 +397,12 @@ impl JinaEmbeddingProvider {
             "jina-embeddings-v4" => 2048,
             "jina-embeddings-v3" => 1024,
             "jina-embeddings-v2-base-code" => 768,
-            _ => 1536, // Default to 1.5b code embeddings
+            _ => 2048, // Default to v4 dimensions
         }
+    }
+
+    pub fn batch_size(&self) -> usize {
+        self.config.batch_size
     }
 
     /// Count tokens in text using Qwen2.5-Coder tokenizer
@@ -385,7 +537,8 @@ impl JinaEmbeddingProvider {
             model: self.config.model.clone(),
             task: self.config.task.clone(),
             truncate: self.config.truncate,
-            input: texts,
+            late_chunking: self.config.late_chunking,
+            input: texts.clone(),
         };
 
         // Debug: log the COMPLETE JSON being sent
@@ -394,6 +547,10 @@ impl JinaEmbeddingProvider {
         }
 
         let mut last_error = None;
+        let expected_tokens = texts
+            .len()
+            .saturating_mul(self.config.max_tokens_per_text)
+            .max(1);
 
         for attempt in 0..=self.config.max_retries {
             if attempt > 0 {
@@ -413,6 +570,8 @@ impl JinaEmbeddingProvider {
             let api_url = format!("{}/embeddings", self.config.api_base);
             debug!("Posting to: {}", api_url);
 
+            self.rate_limiter.acquire(expected_tokens).await;
+
             let request_result = timeout(
                 self.config.timeout,
                 self.client
@@ -423,20 +582,18 @@ impl JinaEmbeddingProvider {
                     .send(),
             )
             .await;
-
             match request_result {
                 Ok(Ok(response)) => {
                     if response.status().is_success() {
                         match response.json::<EmbeddingResponse>().await {
                             Ok(embedding_response) => {
-                                info!(
-                                    "Jina API call successful: {} embeddings, {} tokens",
-                                    embedding_response.data.len(),
-                                    embedding_response.usage.total_tokens
-                                );
+                                self.rate_limiter
+                                    .record_request(embedding_response.usage.total_tokens)
+                                    .await;
                                 return Ok(embedding_response);
                             }
                             Err(e) => {
+                                self.rate_limiter.record_request(expected_tokens).await;
                                 last_error = Some(CodeGraphError::External(format!(
                                     "Failed to parse response: {}",
                                     e
@@ -444,6 +601,7 @@ impl JinaEmbeddingProvider {
                             }
                         }
                     } else {
+                        self.rate_limiter.record_request(expected_tokens).await;
                         // Get status before consuming response
                         let status = response.status();
 
@@ -486,9 +644,11 @@ impl JinaEmbeddingProvider {
                     }
                 }
                 Ok(Err(e)) => {
+                    self.rate_limiter.record_request(expected_tokens).await;
                     last_error = Some(CodeGraphError::Network(format!("Request failed: {}", e)));
                 }
                 Err(_) => {
+                    self.rate_limiter.record_request(expected_tokens).await;
                     last_error = Some(CodeGraphError::Timeout(
                         "Jina API request timed out".to_string(),
                     ));
@@ -534,7 +694,7 @@ impl JinaEmbeddingProvider {
         }
     }
 
-    /// Generate embedding for a single text with custom task type (e.g., "nl2code.query")
+    /// Generate embedding for a single text with custom task type (e.g., "code.query")
     pub async fn generate_text_embedding_with_task(
         &self,
         text: &str,
@@ -544,6 +704,7 @@ impl JinaEmbeddingProvider {
             model: self.config.model.clone(),
             task: task.to_string(),
             truncate: self.config.truncate,
+            late_chunking: self.config.late_chunking,
             input: vec![text.to_string()],
         };
 
@@ -787,7 +948,12 @@ impl JinaEmbeddingProvider {
                     .map(|item| item.embedding)
                     .collect();
 
-                Ok::<(usize, Vec<Vec<f32>>), CodeGraphError>((batch_idx, embeddings))
+                Ok::<(usize, Vec<Vec<f32>>, usize, usize), CodeGraphError>((
+                    batch_idx,
+                    embeddings,
+                    chunk_vec.len(),
+                    response.usage.total_tokens,
+                ))
             });
 
             tasks.push(task);
@@ -803,12 +969,24 @@ impl JinaEmbeddingProvider {
         }
 
         // Sort by batch index to maintain order
-        batch_results.sort_by_key(|(idx, _)| *idx);
+        batch_results.sort_by_key(|(idx, _, _, _)| *idx);
 
         // Flatten chunk embeddings while maintaining order
         let mut chunk_embeddings = Vec::with_capacity(texts.len());
-        for (_, embeddings) in batch_results {
+        let mut total_texts_processed = 0usize;
+        let mut total_tokens_used = 0usize;
+        let request_count = batch_results.len();
+        for (_, embeddings, count, tokens) in batch_results.into_iter() {
             chunk_embeddings.extend(embeddings);
+            total_texts_processed += count;
+            total_tokens_used += tokens;
+        }
+
+        if request_count > 0 {
+            info!(
+                "Jina aggregated chunk: {} texts across {} calls (≈ {} tokens)",
+                total_texts_processed, request_count, total_tokens_used
+            );
         }
 
         // Aggregate chunk embeddings back into node embeddings
@@ -925,8 +1103,8 @@ impl EmbeddingProvider for JinaEmbeddingProvider {
             "jina-code-embeddings-1.5b" => 1536,
             "jina-code-embeddings-0.5b" => 896,
             "jina-embeddings-v4" => 2048,
-            "jina-embeddings-v3" => 256,
-            _ => 1536, // Default to 1.5b code embeddings
+            "jina-embeddings-v3" => 1024,
+            _ => 2048,
         }
     }
 
@@ -940,6 +1118,7 @@ impl EmbeddingProvider for JinaEmbeddingProvider {
             model: self.config.model.clone(),
             task: self.config.task.clone(),
             truncate: self.config.truncate,
+            late_chunking: self.config.late_chunking,
             input: vec!["test".to_string()],
         };
 
@@ -1048,6 +1227,16 @@ mod tests {
                 tokens
             );
         }
+    }
+
+    #[test]
+    fn default_task_and_chunking_flags() {
+        let mut config = JinaConfig::default();
+        config.api_key = "test-key".to_string();
+        let provider = JinaEmbeddingProvider::new(config).expect("provider init");
+        assert_eq!(provider.config.task, "code.passage");
+        assert!(provider.config.late_chunking);
+        assert!(provider.config.truncate);
     }
 }
 

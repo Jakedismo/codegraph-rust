@@ -1537,9 +1537,9 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
 
 # Embedding dimension (default: auto-detected)
 # - 384: all-MiniLM (local)
-# - 2048: jina-embeddings-v4 (Supports Matryoshka 1024, 512, 256)
+# - 2048: jina-embeddings-v4 (supports Matryoshka 1024/512/256)
 # - 1536: OpenAI text-embedding-3-small, jina-code-embeddings
-# CODEGRAPH_EMBEDDING_DIMENSION=1536
+# CODEGRAPH_EMBEDDING_DIMENSION=2048
 
 # ============================================================================
 # LLM PROVIDER (for insights, optional)

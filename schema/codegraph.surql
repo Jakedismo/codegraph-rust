@@ -71,7 +71,7 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_file_path ON TABLE nodes COLUMNS file_path;
 -- - Ollama nomic-embed-code: 768 dimensions
 -- - OpenAI text-embedding-3-small: 1536 dimensions
 -- Update DIMENSION parameter based on your CODEGRAPH_EMBEDDING_PROVIDER
-DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_hnsw ON TABLE nodes FIELDS embedding HNSW DIMENSION 1536 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_hnsw ON TABLE nodes FIELDS embedding HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
 
 -- =============================================================================
 -- EDGES TABLE - Relationship Storage

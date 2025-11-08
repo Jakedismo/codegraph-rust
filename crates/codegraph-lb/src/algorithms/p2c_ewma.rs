@@ -2,6 +2,7 @@ use super::Balancer;
 use crate::types::{Endpoint, EndpointPool};
 use parking_lot::Mutex;
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand_core::SeedableRng as _;
 use std::sync::Arc;
 
 pub struct PowerOfTwoChoicesEwma {
@@ -11,7 +12,7 @@ pub struct PowerOfTwoChoicesEwma {
 impl PowerOfTwoChoicesEwma {
     pub fn new() -> Self {
         Self {
-            rng: Mutex::new(StdRng::from_entropy()),
+            rng: Mutex::new(StdRng::seed_from_u64(0xACE1u64)),
         }
     }
 }

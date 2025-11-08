@@ -310,8 +310,8 @@ fn default_jina_task() -> String {
     "code.query".to_string()
 }
 fn default_embedding_dimension() -> usize {
-    1536
-} // jina-code-embeddings-1.5b
+    2048
+} // jina-embeddings-v4
 fn default_batch_size() -> usize {
     64
 }
