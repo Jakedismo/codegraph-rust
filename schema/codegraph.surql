@@ -104,23 +104,27 @@ ON DUPLICATE KEY UPDATE description = 'SurrealDB functions for graph analysis';
 -- =============================================================================
 -- Helper Functions
 -- =============================================================================
+-- Optional but recommended: index to speed edge-type filtering
+DEFINE INDEX idx_edges_edge_type ON TABLE edges COLUMNS edge_type;
+
+-- ===== Node info helper (fixed) =====
 DEFINE FUNCTION fn::node_info($node_id: string) {
-    RETURN (
-        SELECT
-            id,
-            name,
-            node_type AS kind,
-            language,
-            content,
-            metadata,
-            {
-                file_path,
-                start_line,
-                end_line
-            } AS location
-        FROM ONLY $node_id
-        LIMIT 1
-    )[0];
+    LET $res = SELECT
+        id,
+        name,
+        node_type AS kind,
+        language,
+        content,
+        metadata,
+        {
+            file_path: file_path,
+            start_line: start_line,
+            end_line: end_line
+        } AS location
+    FROM ONLY $node_id
+    LIMIT 1;
+
+    RETURN $res[0];
 };
 
 DEFINE FUNCTION fn::node_reference($node_id: string) {
@@ -225,23 +229,34 @@ DEFINE FUNCTION fn::get_transitive_dependencies($node_id: string, $edge_type: st
 DEFINE FUNCTION fn::detect_circular_dependencies($edge_type: string) {
     LET $edge_name = $edge_type ?? 'Calls';
 
+    -- Candidate directed pairs (exclude self-loops early)
     LET $pairs = (
-        SELECT from AS node1_id, to AS node2_id
+        SELECT
+            from AS node1_id,
+            to   AS node2_id
         FROM edges
         WHERE edge_type = $edge_name
+          AND from != to
     );
 
+    -- Keep undirected pairs once (node1_id < node2_id) that have the reverse edge
     LET $cycles = (
-        SELECT DISTINCT node1_id, node2_id
+        SELECT
+            node1_id,
+            node2_id
         FROM $pairs
-        WHERE node1_id != node2_id
-          AND node1_id < node2_id
+        WHERE node1_id < node2_id
           AND (
-            SELECT count() FROM edges
-            WHERE from = node2_id AND to = node1_id AND edge_type = $edge_name
-        ) > 0
+              SELECT VALUE count()
+              FROM edges
+              WHERE edge_type = $edge_name
+                AND from = node2_id
+                AND to   = node1_id
+          ) > 0
+        GROUP BY node1_id, node2_id
     );
 
+    -- Enrich with node info
     LET $raw = (
         SELECT
             node1_id,
@@ -251,6 +266,7 @@ DEFINE FUNCTION fn::detect_circular_dependencies($edge_type: string) {
         FROM $cycles
     );
 
+    -- Final shape, filter missing nodes defensively
     RETURN SELECT
         node1_id,
         node2_id,
@@ -350,60 +366,70 @@ DEFINE FUNCTION fn::get_hub_nodes($min_degree: int) {
     LET $threshold = IF $min_degree != NONE AND $min_degree > 0 THEN $min_degree ELSE 5 END;
     LET $edge_list = fn::edge_types();
 
-    LET $incoming = (
-        SELECT to AS node_id, edge_type, count() AS count
+    LET $incoming_by_type = (
+        SELECT
+            to AS node_id,
+            edge_type,
+            count() AS count
         FROM edges
         WHERE edge_type INSIDE $edge_list
         GROUP BY to, edge_type
     );
 
-    LET $outgoing = (
-        SELECT from AS node_id, edge_type, count() AS count
+    LET $outgoing_by_type = (
+        SELECT
+            from AS node_id,
+            edge_type,
+            count() AS count
         FROM edges
         WHERE edge_type INSIDE $edge_list
         GROUP BY from, edge_type
     );
 
     LET $incoming_totals = (
-        SELECT node_id, math::sum(count) AS total
-        FROM $incoming
-        GROUP BY node_id
+        SELECT
+            to AS node_id,
+            count() AS total
+        FROM edges
+        WHERE edge_type INSIDE $edge_list
+        GROUP BY to
     );
 
     LET $outgoing_totals = (
-        SELECT node_id, math::sum(count) AS total
-        FROM $outgoing
-        GROUP BY node_id
+        SELECT
+            from AS node_id,
+            count() AS total
+        FROM edges
+        WHERE edge_type INSIDE $edge_list
+        GROUP BY from
     );
 
-    LET $candidates = (
-        SELECT DISTINCT node_id
-        FROM (
-            SELECT node_id FROM $incoming
-            UNION
-            SELECT node_id FROM $outgoing
-        )
+    -- safest: concat then dedupe
+    LET $candidates = array::distinct(
+      array::concat(
+        (SELECT VALUE node_id FROM $incoming_totals),
+        (SELECT VALUE node_id FROM $outgoing_totals)
+      )
     );
 
     LET $raw = (
         SELECT
             candidate_id,
             fn::node_info(candidate_id) AS node,
-            ((SELECT VALUE total FROM $incoming_totals WHERE node_id = candidate_id LIMIT 1)[0] ?? 0) AS afferent_degree,
-            ((SELECT VALUE total FROM $outgoing_totals WHERE node_id = candidate_id LIMIT 1)[0] ?? 0) AS efferent_degree,
+            (array::first(SELECT VALUE total FROM $incoming_totals WHERE node_id = candidate_id LIMIT 1) ?? 0) AS afferent_degree,
+            (array::first(SELECT VALUE total FROM $outgoing_totals WHERE node_id = candidate_id LIMIT 1) ?? 0) AS efferent_degree,
             (
                 SELECT edge_type, count
-                FROM $incoming
+                FROM $incoming_by_type
                 WHERE node_id = candidate_id
             ) AS incoming_by_type,
             (
                 SELECT edge_type, count
-                FROM $outgoing
+                FROM $outgoing_by_type
                 WHERE node_id = candidate_id
             ) AS outgoing_by_type
         FROM (
-            SELECT node_id AS candidate_id
-            FROM $candidates
+            SELECT node_id AS candidate_id FROM $candidates
         )
     );
 
@@ -416,9 +442,11 @@ DEFINE FUNCTION fn::get_hub_nodes($min_degree: int) {
         incoming_by_type,
         outgoing_by_type
     FROM $raw
-    WHERE (afferent_degree + efferent_degree) >= $threshold
+    WHERE node != NONE
+      AND (afferent_degree + efferent_degree) >= $threshold
     ORDER BY total_degree DESC;
 };
+
 
 DEFINE FUNCTION fn::get_reverse_dependencies($node_id: string, $edge_type: string, $depth: int) {
     LET $safe_depth = IF $depth > 0 AND $depth <= 10 THEN $depth ELSE 3 END;
