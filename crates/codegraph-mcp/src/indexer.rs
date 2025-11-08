@@ -12,11 +12,13 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use num_cpus;
 use rayon::prelude::*;
 use regex::Regex;
+use std::env;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
+use url::Url;
 use walkdir::WalkDir;
 
 use std::sync::Arc;
@@ -279,6 +281,7 @@ impl ProjectIndexer {
     pub async fn index_project(&mut self, path: impl AsRef<Path>) -> Result<IndexStats> {
         let path = path.as_ref();
         info!("Starting project indexing: {:?}", path);
+        self.log_surrealdb_status("pre-parse");
 
         let file_config: codegraph_parser::file_collect::FileCollectionConfig =
             (&self.config).into();
@@ -346,6 +349,7 @@ impl ProjectIndexer {
             "   🎯 Sample nodes: {:?}",
             nodes.iter().take(3).map(|n| &n.name).collect::<Vec<_>>()
         );
+        self.log_surrealdb_status("post-parse");
 
         if nodes.is_empty() {
             warn!("No nodes generated from parsing! Check parser implementation.");
@@ -1953,6 +1957,63 @@ impl ProjectIndexer {
         let json = serde_json::to_string_pretty(&metadata)?;
         fs::write(metadata_path, json).await?;
         Ok(())
+    }
+
+    fn log_surrealdb_status(&self, phase: &str) {
+        let connection = Self::surreal_env_value("CODEGRAPH_SURREALDB_URL", "SURREALDB_URL");
+        let namespace =
+            Self::surreal_env_value("CODEGRAPH_SURREALDB_NAMESPACE", "SURREALDB_NAMESPACE")
+                .unwrap_or_else(|| "codegraph".to_string());
+        let database =
+            Self::surreal_env_value("CODEGRAPH_SURREALDB_DATABASE", "SURREALDB_DATABASE")
+                .unwrap_or_else(|| "main".to_string());
+        let username =
+            Self::surreal_env_value("CODEGRAPH_SURREALDB_USERNAME", "SURREALDB_USERNAME");
+        let auth_state = if username.is_some()
+            || Self::surreal_env_value("CODEGRAPH_SURREALDB_PASSWORD", "SURREALDB_PASSWORD")
+                .is_some()
+        {
+            "credentials configured"
+        } else {
+            "no auth"
+        };
+
+        match connection {
+            Some(raw) => {
+                let sanitized = Self::sanitize_surreal_url(&raw);
+                info!(
+                    "🗄️ SurrealDB ({}): target={} namespace={} database={} auth={}",
+                    phase, sanitized, namespace, database, auth_state
+                );
+            }
+            None => {
+                info!(
+                    "🗄️ SurrealDB ({}): connection not configured (set CODEGRAPH_SURREALDB_URL or SURREALDB_URL)",
+                    phase
+                );
+            }
+        }
+    }
+
+    fn surreal_env_value(primary: &str, fallback: &str) -> Option<String> {
+        env::var(primary)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .or_else(|| env::var(fallback).ok().filter(|v| !v.trim().is_empty()))
+    }
+
+    fn sanitize_surreal_url(raw: &str) -> String {
+        if let Ok(mut url) = Url::parse(raw) {
+            if !url.username().is_empty() {
+                let _ = url.set_username("****");
+            }
+            if url.password().is_some() {
+                let _ = url.set_password(Some("****"));
+            }
+            url.to_string()
+        } else {
+            raw.to_string()
+        }
     }
 
     fn create_progress_bar(&self, total: u64, message: &str) -> ProgressBar {
