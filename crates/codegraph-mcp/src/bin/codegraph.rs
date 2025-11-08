@@ -832,18 +832,103 @@ async fn handle_start(
             key,
             cors: _,
         } => {
-            eprintln!("🚧 HTTP transport not yet implemented with official rmcp SDK");
-            eprintln!();
-            eprintln!("💡 Use STDIO transport instead (recommended):");
-            eprintln!("   codegraph start stdio");
-            eprintln!();
-            eprintln!("📋 HTTP transport implementation is tracked in the roadmap.");
-            eprintln!("   The official rmcp SDK supports streamable HTTP, but integration");
-            eprintln!("   with CodeGraph's agentic tools is not yet complete.");
+            #[cfg(not(feature = "server-http"))]
+            {
+                eprintln!("🚧 HTTP transport requires the 'server-http' feature");
+                eprintln!();
+                eprintln!("💡 Rebuild with HTTP support:");
+                eprintln!("   cargo build --release --features server-http");
+                eprintln!();
+                eprintln!("💡 Or use STDIO transport:");
+                eprintln!("   codegraph start stdio");
 
-            return Err(anyhow::anyhow!(
-                "HTTP transport not yet implemented - use 'codegraph start stdio' instead"
-            ));
+                return Err(anyhow::anyhow!(
+                    "HTTP transport not enabled - rebuild with 'server-http' feature"
+                ));
+            }
+
+            #[cfg(feature = "server-http")]
+            {
+                use axum::Router;
+                use rmcp::transport::streamable_http_server::{
+                    session::local::LocalSessionManager, StreamableHttpServerConfig,
+                    StreamableHttpService,
+                };
+                use std::sync::Arc;
+                use std::time::Duration;
+
+                if atty::is(Stream::Stderr) {
+                    eprintln!(
+                        "{}",
+                        "Starting CodeGraph MCP Server with HTTP transport..."
+                            .green()
+                            .bold()
+                    );
+                }
+
+                // Handle TLS configuration
+                if tls {
+                    if cert.is_none() || key.is_none() {
+                        return Err(anyhow::anyhow!(
+                            "TLS enabled but certificate or key not provided. Use --cert and --key"
+                        ));
+                    }
+                    eprintln!("⚠️  TLS configuration detected but not yet implemented");
+                    eprintln!("   Server will start without TLS");
+                }
+
+                // Create session manager for stateful HTTP connections
+                let session_manager = Arc::new(LocalSessionManager::new());
+
+                // Service factory - creates new CodeGraphMCPServer for each session
+                let service_factory = Arc::new(|| {
+                    let mut server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
+                    // Note: initialize_qwen() is async, but service factory must be sync
+                    // Qwen initialization will happen on first use
+                    Ok(server)
+                });
+
+                // Configure HTTP server with SSE streaming
+                let config = StreamableHttpServerConfig {
+                    sse_keep_alive: Some(Duration::from_secs(15)), // Send keep-alive every 15s
+                    stateful_mode: true, // Enable session management + SSE
+                };
+
+                if atty::is(Stream::Stderr) {
+                    eprintln!("📡 Configuring StreamableHTTP with SSE keep-alive (15s)");
+                }
+
+                // Create StreamableHttpService (implements tower::Service)
+                let http_service =
+                    StreamableHttpService::new(service_factory, session_manager, config);
+
+                // Create Axum router
+                let app = Router::new().fallback_service(http_service);
+
+                // Bind to address
+                let addr = format!("{}:{}", host, port);
+                let listener = tokio::net::TcpListener::bind(&addr)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to bind to {}: {}", addr, e))?;
+
+                if atty::is(Stream::Stderr) {
+                    eprintln!("✅ CodeGraph MCP HTTP server ready");
+                    eprintln!("🚀 Listening on http://{}", addr);
+                    eprintln!();
+                    eprintln!("📋 HTTP Endpoints:");
+                    eprintln!("   POST   /mcp  - Initialize session");
+                    eprintln!("   GET    /mcp  - Open SSE stream (with Mcp-Session-Id header)");
+                    eprintln!("   POST   /mcp  - Send request (with Mcp-Session-Id header)");
+                    eprintln!("   DELETE /mcp  - Close session");
+                    eprintln!();
+                    eprintln!("💡 Progress notifications stream via Server-Sent Events");
+                }
+
+                // Serve with Axum
+                axum::serve(listener, app)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("HTTP server error: {}", e))?;
+            }
         }
         TransportType::Dual {
             host,

@@ -16,9 +16,9 @@ members = [
     "crates/codegraph-cli",
     "crates/codegraph-napi",
     "crates/core-rag-mcp-server",
-    "scripts",
     "tests/integration"
 ]
+exclude = ["scripts"]
 default-members = [
     "crates/codegraph-core"
 ]

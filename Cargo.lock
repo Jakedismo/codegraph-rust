@@ -4429,20 +4429,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "measure_baseline_performance"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "codegraph-core",
- "schemars 1.0.4",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "memchr"
 version = "2.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
