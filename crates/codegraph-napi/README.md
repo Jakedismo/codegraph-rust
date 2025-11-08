@@ -18,23 +18,77 @@
 📊 **Embedding Statistics** - Real-time metrics for provider and cache performance
 🎯 **Smart Search Routing** - Automatic fallback from cloud to local on failures
 
-## Installation
+## Installation from Local Repository
 
-### Option 1: Build from Source
+### Option 1: Install Directly from Directory (Recommended)
 
 ```bash
-# Install NAPI-RS CLI
-npm install -g @napi-rs/cli
-
-# Build the addon
-cd crates/codegraph-napi
+# Build the addon once
+cd /path/to/codegraph-rust/crates/codegraph-napi
 npm install
 npm run build
 
-# The compiled addon will be in ./codegraph.*.node
+# Install in your project
+cd /path/to/your-project
+npm install /path/to/codegraph-rust/crates/codegraph-napi
 ```
 
-### Option 2: Pre-built Binaries (Coming Soon)
+### Option 2: Pack and Install
+
+```bash
+# Build and pack the addon
+cd /path/to/codegraph-rust/crates/codegraph-napi
+npm install
+npm run build
+npm pack  # Or: bun run pack
+
+# This creates: codegraph-napi-1.0.0.tgz
+
+# Install the tarball in your project
+cd /path/to/your-project
+npm install /path/to/codegraph-rust/crates/codegraph-napi/codegraph-napi-1.0.0.tgz
+```
+
+The tarball includes:
+- ✅ Compiled `.node` binary for your platform
+- ✅ TypeScript definitions (`index.d.ts`)
+- ✅ `package.json` with all metadata
+
+**Quick Example:**
+
+```bash
+# One-time: Build and pack
+cd ~/codegraph-rust/crates/codegraph-napi
+npm install && npm run build && npm pack
+
+# Share the tarball or install locally
+cd ~/my-awesome-app
+npm install ~/codegraph-rust/crates/codegraph-napi/codegraph-napi-1.0.0.tgz
+
+# Start using immediately
+cat > search.ts << 'EOF'
+import { semanticSearch } from 'codegraph-napi';
+
+const results = await semanticSearch('authentication');
+console.log(results);
+EOF
+
+npx tsx search.ts
+```
+
+### Option 3: Add to package.json
+
+```json
+{
+  "dependencies": {
+    "codegraph-napi": "file:../codegraph-rust/crates/codegraph-napi"
+  }
+}
+```
+
+Then run `npm install` or `bun install`.
+
+### Option 4: Pre-built Binaries (Coming Soon)
 
 ```bash
 npm install codegraph
@@ -82,10 +136,12 @@ export CODEGRAPH_CLOUD_ENABLED=true
 
 ## Quick Start
 
+> **Note**: All examples work with both `npm` and `bun`. Simply replace `npm` with `bun` in any command.
+
 ### Semantic Search (New!)
 
 ```typescript
-import { semanticSearch, getCloudConfig } from 'codegraph';
+import { semanticSearch, getCloudConfig } from 'codegraph-napi';
 
 // Check cloud availability
 const cloudConfig = await getCloudConfig();
@@ -115,7 +171,7 @@ import {
   listVersions,
   createBranch,
   mergeBranches,
-} from 'codegraph';
+} from 'codegraph-napi';
 
 // Create a version - direct function call!
 const version = await createVersion({
@@ -144,7 +200,7 @@ await createBranch({
 ### Initialization
 
 ```typescript
-import { initialize, getAddonVersion } from 'codegraph';
+import { initialize, getAddonVersion } from 'codegraph-napi';
 
 // Optional - initializes automatically on first call
 await initialize();
@@ -385,7 +441,7 @@ console.timeEnd('cli');
 
 ```typescript
 import express from 'express';
-import { createVersion, listVersions } from 'codegraph';
+import { createVersion, listVersions } from 'codegraph-napi';
 
 const app = express();
 app.use(express.json());
@@ -412,7 +468,7 @@ app.listen(3000);
 ```typescript
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { createVersion, listVersions } from 'codegraph';
+import { createVersion, listVersions } from 'codegraph-napi';
 
 const program = new Command();
 
@@ -444,7 +500,7 @@ program.parse();
 
 ```typescript
 import { Queue, Worker } from 'bullmq';
-import { createVersion, mergeBranches } from 'codegraph';
+import { createVersion, mergeBranches } from 'codegraph-napi';
 
 const worker = new Worker('codegraph-tasks', async job => {
   switch (job.name) {
@@ -465,7 +521,7 @@ const worker = new Worker('codegraph-tasks', async job => {
 ### Example 1: Semantic Code Search with Fallback
 
 ```typescript
-import { semanticSearch, getCloudConfig } from 'codegraph';
+import { semanticSearch, getCloudConfig } from 'codegraph-napi';
 
 async function searchCode(query: string) {
   // Check cloud availability first
@@ -500,7 +556,7 @@ await searchCode('JWT token validation');
 
 ```typescript
 import { watch } from 'fs';
-import { reloadConfig, getCloudConfig, getConfigPath } from 'codegraph';
+import { reloadConfig, getCloudConfig, getConfigPath } from 'codegraph-napi';
 
 async function watchConfiguration() {
   const configPath = await getConfigPath();
@@ -533,7 +589,7 @@ watchConfiguration().catch(console.error);
 ### Example 3: Embedding Provider Monitoring
 
 ```typescript
-import { getEmbeddingStats, semanticSearch } from 'codegraph';
+import { getEmbeddingStats, semanticSearch } from 'codegraph-napi';
 
 async function monitorEmbeddings() {
   // Get initial stats
@@ -569,7 +625,7 @@ monitorEmbeddings().catch(console.error);
 ### Example 4: Progressive Search (Local → Cloud)
 
 ```typescript
-import { semanticSearch, isCloudAvailable } from 'codegraph';
+import { semanticSearch, isCloudAvailable } from 'codegraph-napi';
 
 async function progressiveSearch(query: string) {
   // Try local search first (fast)
@@ -611,7 +667,7 @@ import {
   semanticSearch,
   getCloudConfig,
   reloadConfig
-} from 'codegraph';
+} from 'codegraph-napi';
 
 class SearchService {
   private cloudEnabled = false;
@@ -711,7 +767,7 @@ CMD ["node", "server.js"]
 
 ```typescript
 // lambda/handler.ts
-import { createVersion, listVersions } from 'codegraph';
+import { createVersion, listVersions } from 'codegraph-napi';
 
 export const handler = async (event) => {
   if (event.action === 'create') {
@@ -832,7 +888,7 @@ mkdir -p ~/.codegraph
 // Set environment variable before importing
 process.env.CODEGRAPH_STORAGE = '/custom/path';
 
-import { initialize } from 'codegraph';
+import { initialize } from 'codegraph-napi';
 await initialize();
 ```
 
