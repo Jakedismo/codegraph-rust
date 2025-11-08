@@ -524,6 +524,30 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 
 ---
 
+## 📚 For AI Agents: Initial Instructions
+
+CodeGraph provides comprehensive guidance for AI agents using the MCP server:
+
+**Read the instructions:**
+```bash
+# Via MCP prompt (recommended)
+Use prompt: codegraph_initial_instructions
+
+# Via tool call
+Call tool: read_initial_instructions
+```
+
+**What you'll learn:**
+- 🎯 Tool selection framework with decision gates
+- 🧠 Metacognitive reasoning patterns
+- 📊 Evidence-based workflow guidelines
+- 🔒 Safety requirements and best practices
+- 🚀 Common development workflows
+
+**For detailed guidance, see:** [Initial Instructions Guide](docs/INITIAL_INSTRUCTIONS_GUIDE.md)
+
+---
+
 ## 📊 Feature Flags Reference
 
 When building, include features for the providers you want to use:
