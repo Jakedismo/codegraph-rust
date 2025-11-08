@@ -647,7 +647,8 @@ impl SurrealDbStorage {
             "metadata": metadata_value,
         });
 
-        self.db
+        let _: Option<HashMap<String, JsonValue>> = self
+            .db
             .create(("edges", edge_id))
             .content(record)
             .await
