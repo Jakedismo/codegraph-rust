@@ -38,6 +38,8 @@ pub struct IndexerConfig {
     pub vector_dimension: usize,
     pub device: Option<String>,
     pub max_seq_len: usize,
+    pub symbol_batch_size: Option<usize>,
+    pub symbol_max_concurrent: Option<usize>,
     /// Root directory of the project being indexed (where .codegraph/ will be created)
     /// Defaults to current directory if not specified
     pub project_root: PathBuf,
@@ -58,6 +60,8 @@ impl Default for IndexerConfig {
             vector_dimension: 384, // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
             device: None,
             max_seq_len: 512,
+            symbol_batch_size: None,
+            symbol_max_concurrent: None,
             project_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         }
     }
@@ -116,19 +120,26 @@ pub struct ProjectIndexer {
 impl ProjectIndexer {
     #[cfg(feature = "ai-enhanced")]
     fn symbol_embedding_batch_settings(&self) -> (usize, usize) {
+        let config_batch = self
+            .config
+            .symbol_batch_size
+            .unwrap_or_else(|| self.config.batch_size.max(256));
+        let config_concurrent = self
+            .config
+            .symbol_max_concurrent
+            .unwrap_or_else(|| self.config.max_concurrent.max(2));
+
         let batch_size = std::env::var("CODEGRAPH_SYMBOL_BATCH_SIZE")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or_else(|| self.config.batch_size)
-            .max(1)
-            .min(2048);
+            .unwrap_or(config_batch)
+            .clamp(1, 2048);
 
         let max_concurrent = std::env::var("CODEGRAPH_SYMBOL_MAX_CONCURRENT")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or_else(|| self.config.max_concurrent)
-            .max(1)
-            .min(16);
+            .unwrap_or(config_concurrent)
+            .clamp(1, 32);
 
         (batch_size, max_concurrent)
     }
@@ -289,9 +300,6 @@ impl ProjectIndexer {
         let files =
             codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?;
         let total_files = files.len();
-        let parse_pb =
-            self.create_progress_bar(total_files as u64, "🌳 AST Parsing & Edge Extraction");
-
         info!(
             "🌳 Starting TreeSitter AST parsing for {} files across {} languages",
             total_files,
@@ -301,7 +309,7 @@ impl ProjectIndexer {
 
         // REVOLUTIONARY: Use unified extraction for nodes + edges in single pass (FASTEST approach)
         let (mut nodes, edges, pstats) = self
-            .parse_files_with_unified_extraction(files, &parse_pb)
+            .parse_files_with_unified_extraction(files, total_files as u64)
             .await?;
 
         // Store counts for final summary (before consumption)
@@ -318,7 +326,6 @@ impl ProjectIndexer {
             "🌳 AST Analysis complete: {}/{} files (✅ {:.1}% success) | 📊 {} nodes + {} edges | ⚡ {:.0} lines/s",
             pstats.parsed_files, pstats.total_files, success_rate, total_nodes_extracted, total_edges_extracted, pstats.lines_per_second
         );
-        parse_pb.finish_with_message(parse_completion_msg);
 
         // Enhanced parsing statistics
         info!("🌳 TreeSitter AST parsing results:");
@@ -1115,7 +1122,7 @@ impl ProjectIndexer {
     async fn parse_files_with_unified_extraction(
         &self,
         files: Vec<(PathBuf, u64)>,
-        pb: &ProgressBar,
+        total_files: u64,
     ) -> Result<(
         Vec<CodeNode>,
         Vec<codegraph_core::EdgeRelationship>,
@@ -1125,12 +1132,6 @@ impl ProjectIndexer {
         use std::sync::Arc;
         use tokio::sync::Semaphore;
 
-        let start_time = std::time::Instant::now();
-        let total_files = files.len();
-
-        // Create semaphore for concurrency control
-        let semaphore = Arc::new(Semaphore::new(4)); // Conservative concurrency for edge processing
-
         // Process files and collect both nodes and edges
         let mut all_nodes = Vec::new();
         let mut all_edges = Vec::new();
@@ -1138,16 +1139,17 @@ impl ProjectIndexer {
         let mut parsed_files = 0;
         let mut failed_files = 0;
 
+        let semaphore = Arc::new(Semaphore::new(4));
+        let start_time = std::time::Instant::now();
+
         let mut stream = stream::iter(files.into_iter().map(|(file_path, _)| {
             let semaphore = semaphore.clone();
             let parser = &self.parser;
-            let pb_clone = pb.clone();
             async move {
                 let _permit = semaphore.acquire().await.unwrap();
                 let result = parser
                     .parse_file_with_edges(&file_path.to_string_lossy())
                     .await;
-                pb_clone.inc(1);
                 result
             }
         }))
@@ -1176,6 +1178,7 @@ impl ProjectIndexer {
                 }
             }
         }
+        parse_pb.finish_and_clear();
 
         let parsing_duration = start_time.elapsed();
         let files_per_second = if parsing_duration.as_secs_f64() > 0.0 {
@@ -1190,7 +1193,7 @@ impl ProjectIndexer {
         };
 
         let stats = codegraph_parser::ParsingStatistics {
-            total_files,
+            total_files: total_files.try_into().unwrap_or(usize::MAX),
             parsed_files,
             failed_files,
             total_lines,

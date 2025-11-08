@@ -141,6 +141,18 @@ enum Commands {
             default_value = "512"
         )]
         max_seq_len: usize,
+        #[arg(
+            long,
+            help = "Symbol embedding batch size (overrides generic batch size for precomputing symbols)",
+            value_parser = clap::value_parser!(usize)
+        )]
+        symbol_batch_size: Option<usize>,
+        #[arg(
+            long,
+            help = "Symbol embedding max concurrency (overrides generic max-concurrent)",
+            value_parser = clap::value_parser!(usize)
+        )]
+        symbol_max_concurrent: Option<usize>,
     },
 
     #[command(
@@ -532,6 +544,8 @@ async fn main() -> Result<()> {
             max_concurrent,
             device,
             max_seq_len,
+            symbol_batch_size,
+            symbol_max_concurrent,
         } => {
             handle_index(
                 config,
@@ -547,6 +561,8 @@ async fn main() -> Result<()> {
                 max_concurrent,
                 device,
                 max_seq_len,
+                symbol_batch_size,
+                symbol_max_concurrent,
                 cli.debug,
             )
             .await?;
@@ -1015,6 +1031,8 @@ async fn handle_index(
     max_concurrent: usize,
     device: Option<String>,
     max_seq_len: usize,
+    symbol_batch_size: Option<usize>,
+    symbol_max_concurrent: Option<usize>,
     debug_log: bool,
 ) -> Result<()> {
     let project_root = path.clone().canonicalize().unwrap_or_else(|_| path.clone());
@@ -1080,6 +1098,8 @@ async fn handle_index(
         max_concurrent,
         device,
         max_seq_len,
+        symbol_batch_size,
+        symbol_max_concurrent,
         project_root: project_root.clone(),
         ..Default::default()
     };
@@ -2142,6 +2162,8 @@ async fn handle_perf(
         vector_dimension: 384, // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
         device: device.clone(),
         max_seq_len,
+        symbol_batch_size: None,
+        symbol_max_concurrent: None,
         project_root,
     };
 
