@@ -357,8 +357,134 @@ mod tests {
                     .select_prompt(analysis_type, tier)
                     .expect("Should have prompt");
                 assert!(!prompt.is_empty());
-                assert!(prompt.contains(analysis_type.as_str()) || prompt.contains("NOTE"));
+                // Prompts should not contain placeholder text anymore
+                assert!(!prompt.contains("placeholder"));
+                assert!(!prompt.contains("Phase 2B"));
             }
+        }
+    }
+
+    #[test]
+    fn test_tier_to_verbosity_prompt_content() {
+        let selector = PromptSelector::new();
+
+        // Test that Small tier gets TERSE prompts with appropriate constraints
+        let terse_prompt = selector
+            .select_prompt(AnalysisType::ArchitectureAnalysis, ContextTier::Small)
+            .expect("Should have terse prompt");
+        assert!(
+            terse_prompt.contains("TERSE")
+                || terse_prompt.contains("5 STEPS")
+                || terse_prompt.contains("MAX 5")
+        );
+
+        // Test that Medium tier gets BALANCED prompts
+        let balanced_prompt = selector
+            .select_prompt(AnalysisType::ArchitectureAnalysis, ContextTier::Medium)
+            .expect("Should have balanced prompt");
+        assert!(
+            balanced_prompt.contains("BALANCED")
+                || balanced_prompt.contains("10 STEPS")
+                || balanced_prompt.contains("MAX 10")
+        );
+
+        // Test that Large tier gets DETAILED prompts
+        let detailed_prompt = selector
+            .select_prompt(AnalysisType::ArchitectureAnalysis, ContextTier::Large)
+            .expect("Should have detailed prompt");
+        assert!(
+            detailed_prompt.contains("DETAILED")
+                || detailed_prompt.contains("15 STEPS")
+                || detailed_prompt.contains("MAX 15")
+        );
+
+        // Test that Massive tier gets EXPLORATORY prompts
+        let exploratory_prompt = selector
+            .select_prompt(AnalysisType::ArchitectureAnalysis, ContextTier::Massive)
+            .expect("Should have exploratory prompt");
+        assert!(
+            exploratory_prompt.contains("EXPLORATORY")
+                || exploratory_prompt.contains("20 STEPS")
+                || exploratory_prompt.contains("MAX 20")
+        );
+    }
+
+    #[test]
+    fn test_all_prompts_enforce_zero_heuristics() {
+        let selector = PromptSelector::new();
+
+        // Every prompt should enforce zero heuristics principle
+        for analysis_type in AnalysisType::all() {
+            for tier in [
+                ContextTier::Small,
+                ContextTier::Medium,
+                ContextTier::Large,
+                ContextTier::Massive,
+            ] {
+                let prompt = selector
+                    .select_prompt(analysis_type, tier)
+                    .expect("Should have prompt");
+
+                // Should contain zero heuristics guidance
+                assert!(
+                    prompt.contains("ZERO HEURISTIC")
+                        || prompt.contains("NO HEURISTIC")
+                        || prompt.contains("ONLY structured")
+                        || prompt.contains("NO assumptions"),
+                    "Prompt for {:?}/{:?} should enforce zero heuristics",
+                    analysis_type,
+                    tier
+                );
+
+                // Should enforce JSON response format
+                assert!(
+                    prompt.contains("\"reasoning\"") && prompt.contains("\"tool_call\""),
+                    "Prompt for {:?}/{:?} should specify JSON response format",
+                    analysis_type,
+                    tier
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_specialized_prompts_for_all_analysis_types() {
+        let selector = PromptSelector::new();
+
+        // Test that we have specialized (non-generic) prompts for all analysis types
+        let test_cases = vec![
+            (AnalysisType::CodeSearch, "code", "search"),
+            (
+                AnalysisType::DependencyAnalysis,
+                "dependency",
+                "dependencies",
+            ),
+            (AnalysisType::CallChainAnalysis, "call", "chain"),
+            (
+                AnalysisType::ArchitectureAnalysis,
+                "architecture",
+                "architectural",
+            ),
+            (AnalysisType::ApiSurfaceAnalysis, "API", "surface"),
+            (AnalysisType::ContextBuilder, "context", "build"),
+            (AnalysisType::SemanticQuestion, "semantic", "question"),
+        ];
+
+        for (analysis_type, keyword1, keyword2) in test_cases {
+            let prompt = selector
+                .select_prompt(analysis_type, ContextTier::Medium)
+                .expect("Should have prompt");
+
+            // Each prompt should contain keywords relevant to its analysis type
+            let lowercase_prompt = prompt.to_lowercase();
+            assert!(
+                lowercase_prompt.contains(keyword1) || lowercase_prompt.contains(keyword2),
+                "Prompt for {:?} should contain '{}' or '{}' but got: {}...",
+                analysis_type,
+                keyword1,
+                keyword2,
+                &prompt[..200.min(prompt.len())]
+            );
         }
     }
 
