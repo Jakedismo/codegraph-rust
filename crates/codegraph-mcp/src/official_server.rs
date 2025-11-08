@@ -1118,38 +1118,110 @@ impl CodeGraphMCPServer {
         }
     }
 
-    // /// Analyze CodeGraph's cache performance and get optimization recommendations (DISABLED - not useful for coding agents)
-    // #[tool(description = "Analyze CodeGraph's caching system performance and get optimization recommendations. Shows cache hit/miss ratios, memory usage, and performance improvements. Use to optimize system performance or diagnose caching issues. No parameters required.")]
-    // async fn cache_stats(&self, params: Parameters<EmptyRequest>) -> Result<CallToolResult, McpError> {
-    //     let _request = params.0;
+    // === AGENTIC MCP TOOLS ===
+    // These tools use AgenticOrchestrator for multi-step graph analysis workflows
+    // with automatic tier detection based on CODEGRAPH_CONTEXT_WINDOW or config
 
-    //     #[cfg(feature = "qwen-integration")]
-    //     {
-    //         // This would use the cache analysis from the original server
-    //         Ok(CallToolResult::success(vec![Content::text(
-    //             "Intelligent Cache Performance Analysis\n\
-    //             📈 Revolutionary Cache Intelligence:\n\
-    //             • Semantic similarity matching effectiveness\n\
-    //             • Response time improvements from caching\n\
-    //             • Memory usage and optimization suggestions\n\
-    //             • Performance trend analysis\n\
-    //             🚀 Features:\n\
-    //             • Hit/miss ratio optimization\n\
-    //             • Cache health assessment\n\
-    //             • Intelligent cache recommendations\n\
-    //             💡 Status: Cache analytics ready!\n\
-    //             💡 Note: Detailed statistics available with active cache usage".to_string()
-    //         )]))
-    //     }
-    //     #[cfg(not(feature = "qwen-integration"))]
-    //     {
-    //         Ok(CallToolResult::success(vec![Content::text(
-    //             "Cache Statistics\n\
-    //             📈 Basic cache information available\n\
-    //             💡 Note: Enable qwen-integration for advanced analytics".to_string()
-    //         )]))
-    //     }
-    // }
+    /// Agentic code search with multi-step graph exploration
+    #[cfg(feature = "ai-enhanced")]
+    #[tool(
+        description = "Multi-step code search using agentic graph exploration. The LLM autonomously decides which graph analysis tools to call based on your query. Use for: finding code patterns, exploring unfamiliar codebases, discovering relationships. Required: query. Note: Uses automatic tier detection based on LLM context window."
+    )]
+    async fn agentic_code_search(
+        &self,
+        params: Parameters<SearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        #[cfg(feature = "ai-enhanced")]
+        {
+            let request = params.0;
+            self.execute_agentic_workflow(crate::AnalysisType::CodeSearch, &request.query)
+                .await
+        }
+    }
+
+    /// Agentic dependency analysis with multi-step exploration
+    #[cfg(feature = "ai-enhanced")]
+    #[tool(
+        description = "Multi-step dependency analysis using agentic graph exploration. The LLM autonomously explores dependency chains and impact. Use for: understanding dependency relationships, impact analysis. Required: query."
+    )]
+    async fn agentic_dependency_analysis(
+        &self,
+        params: Parameters<SearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let request = params.0;
+        self.execute_agentic_workflow(crate::AnalysisType::DependencyAnalysis, &request.query)
+            .await
+    }
+
+    /// Agentic call chain analysis with multi-step tracing
+    #[cfg(feature = "ai-enhanced")]
+    #[tool(
+        description = "Multi-step call chain analysis using agentic graph exploration. The LLM autonomously traces execution paths and call sequences. Use for: understanding execution flow, debugging call chains. Required: query."
+    )]
+    async fn agentic_call_chain_analysis(
+        &self,
+        params: Parameters<SearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let request = params.0;
+        self.execute_agentic_workflow(crate::AnalysisType::CallChainAnalysis, &request.query)
+            .await
+    }
+
+    /// Agentic architecture analysis with multi-step system exploration
+    #[cfg(feature = "ai-enhanced")]
+    #[tool(
+        description = "Multi-step architecture analysis using agentic graph exploration. The LLM autonomously analyzes architectural patterns and system design. Use for: understanding system architecture, design patterns. Required: query."
+    )]
+    async fn agentic_architecture_analysis(
+        &self,
+        params: Parameters<SearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let request = params.0;
+        self.execute_agentic_workflow(crate::AnalysisType::ArchitectureAnalysis, &request.query)
+            .await
+    }
+
+    /// Agentic API surface analysis with multi-step exploration
+    #[cfg(feature = "ai-enhanced")]
+    #[tool(
+        description = "Multi-step API surface analysis using agentic graph exploration. The LLM autonomously analyzes public interfaces and contracts. Use for: understanding API design, public interfaces. Required: query."
+    )]
+    async fn agentic_api_surface_analysis(
+        &self,
+        params: Parameters<SearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let request = params.0;
+        self.execute_agentic_workflow(crate::AnalysisType::ApiSurfaceAnalysis, &request.query)
+            .await
+    }
+
+    /// Agentic context builder with multi-step comprehensive context gathering
+    #[cfg(feature = "ai-enhanced")]
+    #[tool(
+        description = "Multi-step context building using agentic graph exploration. The LLM autonomously gathers comprehensive context for code generation. Use for: preparing context for code generation, understanding code context. Required: query."
+    )]
+    async fn agentic_context_builder(
+        &self,
+        params: Parameters<SearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let request = params.0;
+        self.execute_agentic_workflow(crate::AnalysisType::ContextBuilder, &request.query)
+            .await
+    }
+
+    /// Agentic semantic question answering with multi-step exploration
+    #[cfg(feature = "ai-enhanced")]
+    #[tool(
+        description = "Multi-step semantic question answering using agentic graph exploration. The LLM autonomously explores the codebase to answer complex questions. Use for: answering complex codebase questions, semantic analysis. Required: query."
+    )]
+    async fn agentic_semantic_question(
+        &self,
+        params: Parameters<SearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let request = params.0;
+        self.execute_agentic_workflow(crate::AnalysisType::SemanticQuestion, &request.query)
+            .await
+    }
 }
 
 impl CodeGraphMCPServer {
@@ -1192,6 +1264,143 @@ impl CodeGraphMCPServer {
     pub async fn get_qwen_client(&self) -> Option<QwenClient> {
         let qwen_lock = self.qwen_client.lock().await;
         qwen_lock.clone()
+    }
+
+    /// Auto-detect context tier from environment or config
+    #[cfg(feature = "ai-enhanced")]
+    fn detect_context_tier() -> crate::ContextTier {
+        // Try CODEGRAPH_CONTEXT_WINDOW env var first
+        if let Ok(context_window_str) = std::env::var("CODEGRAPH_CONTEXT_WINDOW") {
+            if let Ok(context_window) = context_window_str.parse::<usize>() {
+                return crate::ContextTier::from_context_window(context_window);
+            }
+        }
+
+        // Fall back to config
+        match codegraph_core::config_manager::ConfigManager::load() {
+            Ok(config_manager) => {
+                let config = config_manager.config();
+                crate::ContextTier::from_context_window(config.llm.context_window)
+            }
+            Err(_) => {
+                // Default to Medium tier if config can't be loaded
+                eprintln!("⚠️ Failed to load config, defaulting to Medium context tier");
+                crate::ContextTier::Medium
+            }
+        }
+    }
+
+    /// Execute agentic workflow with automatic tier detection and prompt selection
+    #[cfg(feature = "ai-enhanced")]
+    async fn execute_agentic_workflow(
+        &self,
+        analysis_type: crate::AnalysisType,
+        query: &str,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::{AgenticOrchestrator, PromptSelector};
+        use codegraph_ai::llm_factory::LLMProviderFactory;
+        use codegraph_graph::GraphFunctions;
+        use std::sync::Arc;
+
+        // Auto-detect context tier
+        let tier = Self::detect_context_tier();
+
+        eprintln!("🎯 Agentic {} (tier={:?})", analysis_type.as_str(), tier);
+
+        // Load config for LLM provider
+        let config_manager =
+            codegraph_core::config_manager::ConfigManager::load().map_err(|e| McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Failed to load config: {}", e).into(),
+                data: None,
+            })?;
+        let config = config_manager.config();
+
+        // Create LLM provider
+        let llm_provider =
+            LLMProviderFactory::create_from_config(&config.llm).map_err(|e| McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Failed to create LLM provider: {}", e).into(),
+                data: None,
+            })?;
+
+        // Create GraphFunctions with SurrealDB connection
+        // We'll use the SurrealDbStorage to create the connection
+        let graph_functions = {
+            use codegraph_graph::SurrealDbStorage;
+
+            let surrealdb_config = codegraph_graph::SurrealDbConfig {
+                connection: std::env::var("SURREALDB_URL")
+                    .unwrap_or_else(|_| "ws://localhost:3004".to_string()),
+                namespace: std::env::var("SURREALDB_NAMESPACE")
+                    .unwrap_or_else(|_| "codegraph".to_string()),
+                database: std::env::var("SURREALDB_DATABASE")
+                    .unwrap_or_else(|_| "main".to_string()),
+                username: std::env::var("SURREALDB_USERNAME").ok(),
+                password: std::env::var("SURREALDB_PASSWORD").ok(),
+                strict_mode: false,
+                auto_migrate: false, // Don't auto-migrate for agentic tools
+                cache_enabled: false,
+            };
+
+            // Create SurrealDbStorage which handles connection setup
+            let storage = SurrealDbStorage::new(surrealdb_config)
+                .await
+                .map_err(|e| McpError {
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: format!("Failed to create SurrealDB storage: {}. Ensure SurrealDB is running on ws://localhost:3004", e).into(),
+                    data: None,
+                })?;
+
+            // Get the database connection from storage and create GraphFunctions
+            Arc::new(GraphFunctions::new(storage.db()))
+        };
+
+        // Create GraphToolExecutor
+        let tool_executor = Arc::new(crate::GraphToolExecutor::new(graph_functions));
+
+        // Create AgenticOrchestrator
+        let orchestrator = AgenticOrchestrator::new(llm_provider, tool_executor, tier);
+
+        // Get tier-appropriate prompt from PromptSelector
+        let prompt_selector = PromptSelector::new();
+        let system_prompt = prompt_selector
+            .select_prompt(analysis_type, tier)
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Failed to select prompt: {}", e).into(),
+                data: None,
+            })?;
+
+        // Execute agentic workflow
+        let result = orchestrator
+            .execute(query, system_prompt)
+            .await
+            .map_err(|e| McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: format!("Agentic workflow failed: {}", e).into(),
+                data: None,
+            })?;
+
+        // Format result as JSON
+        let response_json = serde_json::json!({
+            "analysis_type": analysis_type.as_str(),
+            "tier": format!("{:?}", tier),
+            "query": query,
+            "final_answer": result.final_answer,
+            "total_steps": result.total_steps,
+            "duration_ms": result.duration_ms,
+            "total_tokens": result.total_tokens,
+            "completed_successfully": result.completed_successfully,
+            "termination_reason": result.termination_reason,
+            "steps": result.steps,
+            "tool_call_stats": result.tool_call_stats(),
+        });
+
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&response_json)
+                .unwrap_or_else(|_| "Error formatting agentic result".to_string()),
+        )]))
     }
 }
 

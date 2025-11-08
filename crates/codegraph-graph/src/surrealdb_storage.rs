@@ -75,6 +75,12 @@ struct SchemaVersion {
 }
 
 impl SurrealDbStorage {
+    /// Get the underlying SurrealDB connection
+    /// This is useful for advanced operations like graph functions
+    pub fn db(&self) -> Arc<Surreal<Any>> {
+        Arc::clone(&self.db)
+    }
+
     /// Create a new SurrealDB storage instance
     pub async fn new(config: SurrealDbConfig) -> Result<Self> {
         info!(
