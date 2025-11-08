@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::fmt;
 
 /// Result type for LLM operations
@@ -30,8 +31,8 @@ pub struct GenerationConfig {
     /// Maximum tokens to generate (legacy parameter for Chat Completions API)
     pub max_tokens: Option<usize>,
     /// Maximum output tokens (for Responses API and reasoning models)
-    pub max_output_tokens: Option<usize>,
-    /// Reasoning effort for reasoning models: "minimal", "low", "medium", "high"
+    pub max_completion_token: Option<usize>,
+    /// Reasoning effort for reasoning models: "minimal", "medium", "high"
     pub reasoning_effort: Option<String>,
     /// Top-p nucleus sampling parameter - Not supported by reasoning models
     pub top_p: Option<f32>,
@@ -48,14 +49,21 @@ impl Default for GenerationConfig {
         Self {
             temperature: 0.1,
             max_tokens: Some(4096),
-            max_output_tokens: None, // Will use max_tokens if not set
-            reasoning_effort: None,  // Only for reasoning models
+            max_completion_token: None, // Will use max_tokens if not set
+            reasoning_effort: default_reasoning_effort(),
             top_p: None,
             frequency_penalty: None,
             presence_penalty: None,
             stop: None,
         }
     }
+}
+
+fn default_reasoning_effort() -> Option<String> {
+    env::var("CODEGRAPH_REASONING_EFFORT")
+        .ok()
+        .filter(|v| matches!(v.as_str(), "minimal" | "medium" | "high"))
+        .or_else(|| Some("medium".to_string()))
 }
 
 /// A message in the conversation

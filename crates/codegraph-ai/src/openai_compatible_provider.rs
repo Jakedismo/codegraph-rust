@@ -175,9 +175,8 @@ impl OpenAICompatibleProvider {
             model: self.config.model.clone(),
             input,
             instructions,
-            max_output_tokens: config.max_output_tokens.or(config.max_tokens),
+            max_completion_tokens: config.max_completion_token.or(config.max_tokens),
             reasoning_effort: config.reasoning_effort.clone(),
-            temperature: Some(config.temperature),
             top_p: config.top_p,
             stop: config.stop.clone(),
         };
@@ -239,9 +238,8 @@ impl OpenAICompatibleProvider {
                     content: m.content.clone(),
                 })
                 .collect(),
-            temperature: Some(config.temperature),
-            max_tokens: config.max_output_tokens.or(config.max_tokens),
-            max_completion_tokens: config.max_output_tokens.or(config.max_tokens),
+            max_tokens: config.max_tokens,
+            max_completion_tokens: config.max_completion_token.or(config.max_tokens),
             reasoning_effort: config.reasoning_effort.clone(),
             top_p: config.top_p,
             stop: config.stop.clone(),
@@ -434,11 +432,9 @@ struct ResponsesAPIRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     instructions: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_output_tokens: Option<usize>,
+    max_completion_tokens: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -472,8 +468,6 @@ struct Usage {
 struct ChatCompletionsRequest {
     model: String,
     messages: Vec<ChatMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]

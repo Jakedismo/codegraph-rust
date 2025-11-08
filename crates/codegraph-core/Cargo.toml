@@ -53,6 +53,7 @@ bumpalo = "3.15"
 rkyv = { version = "0.7.45", features = ["validation"] }
 bytecheck = "0.8"
 faiss.workspace = true
+semchunk-rs = "0.1.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

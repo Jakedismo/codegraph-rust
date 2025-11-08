@@ -21,6 +21,7 @@ pub struct CodeGraphConfig {
     pub cache: CacheConfig,
     pub performance: PerformanceConfig,
     pub features: FeatureConfig,
+    pub agentic: AgenticWorkflowConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +86,23 @@ pub struct FeatureConfig {
     pub enable_detailed_logging: bool,
 }
 
+/// Agentic workflow configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgenticWorkflowConfig {
+    /// Enable agentic multi-step tool calling workflows
+    pub enable_agentic_mode: bool,
+    /// Override max_steps per tier (None = use tier defaults)
+    pub max_steps_override: Option<usize>,
+    /// Maximum duration for entire agentic workflow (seconds)
+    pub max_duration_secs: u64,
+    /// Timeout for individual tool calls (seconds, 0 = no timeout)
+    pub tool_timeout_secs: u64,
+    /// Temperature for tool calling decisions (None = use qwen.temperature)
+    pub tool_calling_temperature: Option<f32>,
+    /// Enable detailed reasoning traces in logs
+    pub enable_reasoning_traces: bool,
+}
+
 impl Default for CodeGraphConfig {
     fn default() -> Self {
         Self {
@@ -93,6 +111,7 @@ impl Default for CodeGraphConfig {
             cache: CacheConfig::default(),
             performance: PerformanceConfig::default(),
             features: FeatureConfig::default(),
+            agentic: AgenticWorkflowConfig::default(),
         }
     }
 }
@@ -166,6 +185,19 @@ impl Default for FeatureConfig {
             enable_pattern_detection: true,
             enable_performance_monitoring: true,
             enable_detailed_logging: false,
+        }
+    }
+}
+
+impl Default for AgenticWorkflowConfig {
+    fn default() -> Self {
+        Self {
+            enable_agentic_mode: true,
+            max_steps_override: None,       // Use tier defaults
+            max_duration_secs: 300,         // 5 minutes
+            tool_timeout_secs: 30,          // 30 seconds per tool call
+            tool_calling_temperature: None, // Use qwen.temperature
+            enable_reasoning_traces: false, // Off by default for performance
         }
     }
 }

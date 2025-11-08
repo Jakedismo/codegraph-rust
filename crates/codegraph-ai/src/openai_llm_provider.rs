@@ -137,7 +137,7 @@ impl OpenAIProvider {
             model: self.config.model.clone(),
             input,
             instructions,
-            max_output_tokens: config.max_output_tokens.or(config.max_tokens),
+            max_completion_token: config.max_completion_token.or(config.max_tokens),
             reasoning_effort: None,
             temperature: None,
             top_p: None,
@@ -215,7 +215,7 @@ impl LLMProvider for OpenAIProvider {
         }];
 
         let mut config = GenerationConfig::default();
-        config.max_output_tokens = Some(1);
+        config.max_completion_token = Some(1);
 
         self.generate_chat(&messages, &config).await.is_ok()
     }
@@ -335,7 +335,7 @@ struct OpenAIRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     instructions: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_output_tokens: Option<usize>,
+    max_completion_token: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

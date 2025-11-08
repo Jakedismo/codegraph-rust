@@ -42,11 +42,12 @@ batch_size = 64
 # Set to false for maximum speed if using an external agent
 enabled = false
 
-# LLM provider: "ollama", "lmstudio", "anthropic", "openai", or "openai-compatible"
+# LLM provider: "ollama", "lmstudio", "anthropic", "openai", "xai", or "openai-compatible"
 # - "lmstudio": Local LLMs via LM Studio (recommended for MLX + Flash Attention 2 on macOS)
 # - "ollama": Local LLMs via Ollama
 # - "anthropic": Anthropic Claude API (requires API key)
 # - "openai": OpenAI GPT API (requires API key)
+# - "xai": xAI Grok API (2M context, $0.50-$1.50/M tokens, requires API key)
 # - "openai-compatible": Any OpenAI-compatible API endpoint
 provider = "lmstudio"
 
@@ -55,6 +56,7 @@ provider = "lmstudio"
 # For Ollama: Model name (e.g., "qwen2.5-coder:14b", "codellama:13b")
 # For Anthropic: Model name (e.g., "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022")
 # For OpenAI: Model name (e.g., "gpt-4o", "gpt-4o-mini", "gpt-4-turbo")
+# For xAI: Model name (e.g., "grok-4-fast", "grok-4-turbo")
 # For OpenAI-compatible: Custom model name
 # Recommended: DeepSeek Coder v2 Lite Instruct Q4_K_M (local), or Claude 3.5 Sonnet (cloud)
 model = "lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF"
@@ -77,21 +79,30 @@ ollama_url = "http://localhost:11434"
 # Can also be set via OPENAI_API_KEY environment variable
 # openai_api_key = "sk-..."
 
+# xAI API key (only used if provider is "xai")
+# Can also be set via XAI_API_KEY environment variable
+# xai_api_key = "xai-..."
+
+# xAI base URL (only used if provider is "xai")
+# Default: "https://api.x.ai/v1"
+# xai_base_url = "https://api.x.ai/v1"
+
 # Context window size (tokens)
 # DeepSeek Coder v2 Lite: 32768 tokens
 # Claude 3.5 Sonnet: 200000 tokens
 # GPT-4o: 128000 tokens
+# Grok-4 (xAI): 2000000 tokens (2M!)
 context_window = 32000
 
 # Temperature for generation (0.0 = deterministic, 2.0 = very creative)
 temperature = 0.1
 
-# Maximum tokens to generate in responses (legacy parameter, use max_output_tokens for Responses API)
+# Maximum tokens to generate in responses (legacy parameter, use max_completion_token for Responses API)
 max_tokens = 4096
 
 # Maximum output tokens for Responses API and reasoning models
 # If not set, falls back to max_tokens
-# max_output_tokens = 4096
+# max_completion_token = 4096
 
 # Reasoning effort for reasoning models (o1, o3, o4-mini, GPT-5)
 # Options: "minimal", "low", "medium", "high"

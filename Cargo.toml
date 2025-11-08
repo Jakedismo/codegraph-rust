@@ -111,7 +111,7 @@ rand = "0.9.2"
 git2 = "0.20"
 
 # Tree-sitter for parsing - Enhanced error handling and pooling implemented
-tree-sitter = "0.25.10"
+tree-sitter = "0.25"
 tree-sitter-rust = "0.24"
 tree-sitter-python = "0.25.0"
 tree-sitter-javascript = "0.25"
@@ -214,6 +214,7 @@ codegraph-ai = { path = "crates/codegraph-ai" }
 
 [patch.crates-io]
 rmcp = { path = "vendor/rmcp" }
+semchunk-rs = { path = "vendor/semchunk-rs" }
 
 [profile.release]
 # Performance-oriented release (kept as-is for general builds)

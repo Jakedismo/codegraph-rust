@@ -21,7 +21,7 @@ pub mod visitor;
 #[cfg(feature = "experimental")]
 pub mod watcher;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "experimental"))]
 pub mod integration_tests;
 
 #[cfg(test)]

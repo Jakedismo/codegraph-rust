@@ -690,7 +690,7 @@ impl Default for MLPipelineBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegraph_core::{Language, NodeType};
+    use codegraph_core::{Language, Location, NodeId, NodeType};
 
     #[tokio::test]
     async fn test_pipeline_creation() {
@@ -714,17 +714,26 @@ mod tests {
         let pipeline = MLPipeline::builder().build().unwrap();
         pipeline.initialize().await.unwrap();
 
-        let code_node = CodeNode {
-            id: "test_node".to_string(),
-            name: "test_function".to_string(),
-            language: Some(Language::Rust),
-            node_type: Some(NodeType::Function),
-            content: Some("fn test() { println!(\"Hello\"); }".to_string()),
-            children: None,
+        let location = Location {
+            file_path: "src/lib.rs".to_string(),
+            line: 1,
+            column: 1,
+            end_line: Some(1),
+            end_column: Some(1),
         };
 
+        let mut code_node = CodeNode::new(
+            "test_function",
+            Some(NodeType::Function),
+            Some(Language::Rust),
+            location,
+        )
+        .with_content("fn test() { println!(\"Hello\"); }");
+        code_node.id =
+            NodeId::parse_str("11111111-1111-1111-1111-111111111111").expect("static uuid");
+
         let features = pipeline.extract_features(&code_node).await.unwrap();
-        assert_eq!(features.node_id, "test_node");
+        assert_eq!(features.node_id, "11111111-1111-1111-1111-111111111111");
     }
 
     #[tokio::test]

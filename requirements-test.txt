@@ -1,0 +1,4 @@
+# Python dependencies for testing CodeGraph MCP server
+# Install with: pip install -r requirements-test.txt
+
+python-dotenv>=1.0.0

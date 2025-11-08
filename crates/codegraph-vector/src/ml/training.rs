@@ -28,7 +28,7 @@ pub struct TrainingConfig {
 }
 
 /// Types of models that can be trained
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ModelType {
     /// Code quality classifier (good/bad/needs_review)
     QualityClassifier,
@@ -807,7 +807,27 @@ mod tests {
     use super::*;
     use crate::ml::features::FeatureConfig;
     use crate::EmbeddingGenerator;
-    use codegraph_core::{Language, NodeType};
+    use codegraph_core::{Language, Location, NodeType};
+
+    fn sample_location() -> Location {
+        Location {
+            file_path: "test.rs".to_string(),
+            line: 1,
+            column: 1,
+            end_line: None,
+            end_column: None,
+        }
+    }
+
+    fn sample_node(name: &str, content: &str) -> CodeNode {
+        CodeNode::new(
+            name,
+            Some(NodeType::Function),
+            Some(Language::Rust),
+            sample_location(),
+        )
+        .with_content(content.to_string())
+    }
 
     #[tokio::test]
     async fn test_dataset_preparation() {
@@ -830,14 +850,10 @@ mod tests {
             Arc::new(FeatureExtractor::new(feature_config, embedding_generator));
         let trainer = ModelTrainer::new(config, feature_extractor);
 
-        let nodes = vec![CodeNode {
-            id: "node1".to_string(),
-            name: "test_function".to_string(),
-            language: Some(Language::Rust),
-            node_type: Some(NodeType::Function),
-            content: Some("fn test() { println!(\"Hello\"); }".to_string()),
-            children: None,
-        }];
+        let nodes = vec![sample_node(
+            "test_function",
+            "fn test() { println!(\"Hello\"); }",
+        )];
 
         let targets = vec![TrainingTarget::Classification(1)]; // Good quality
 
@@ -875,22 +891,11 @@ mod tests {
         let trainer = ModelTrainer::new(config, feature_extractor);
 
         let nodes = vec![
-            CodeNode {
-                id: "node1".to_string(),
-                name: "simple_function".to_string(),
-                language: Some(Language::Rust),
-                node_type: Some(NodeType::Function),
-                content: Some("fn simple() { return 1; }".to_string()),
-                children: None,
-            },
-            CodeNode {
-                id: "node2".to_string(),
-                name: "complex_function".to_string(),
-                language: Some(Language::Rust),
-                node_type: Some(NodeType::Function),
-                content: Some("fn complex() { if x > 0 { for i in 0..10 { if i % 2 == 0 { println!(\"{}\", i); } } } }".to_string()),
-                children: None,
-            },
+            sample_node("simple_function", "fn simple() { return 1; }"),
+            sample_node(
+                "complex_function",
+                "fn complex() { if x > 0 { for i in 0..10 { if i % 2 == 0 { println!(\"{}\", i); } } } }",
+            ),
         ];
 
         let targets = vec![

@@ -1,14 +1,20 @@
 use anyhow::{Context, Result};
 use atty::Stream;
+use chrono::Utc;
 use clap::{Parser, Subcommand};
 use codegraph_core::GraphStore;
 use codegraph_mcp::{IndexerConfig, ProcessManager, ProjectIndexer};
 use colored::*;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rmcp::ServiceExt;
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use tracing::info;
-use tracing_subscriber::{layer::SubscriberExt, Registry};
+use tracing_subscriber::{
+    filter::EnvFilter, fmt::writer::BoxMakeWriter, layer::SubscriberExt, Registry,
+};
 
 #[derive(Parser)]
 #[command(
@@ -25,6 +31,13 @@ struct Cli {
 
     #[arg(short, long, global = true, help = "Enable verbose logging")]
     verbose: bool,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Capture index logs to a file under .codegraph/logs"
+    )]
+    debug: bool,
 
     #[arg(long, global = true, help = "Configuration file path")]
     config: Option<PathBuf>,
@@ -65,7 +78,14 @@ enum Commands {
         detailed: bool,
     },
 
-    #[command(about = "Index a project or directory")]
+    #[command(
+        about = "Index a project or directory",
+        long_about = "Index a project with dual-mode support:\n\
+                      • Local Mode (FAISS): Set CODEGRAPH_EMBEDDING_PROVIDER=local or ollama\n\
+                      • Cloud Mode (SurrealDB HNSW + Jina reranking): Set CODEGRAPH_EMBEDDING_PROVIDER=jina\n\
+                      \n\
+                      Some flags are mode-specific (see individual flag help for details)."
+    )]
     Index {
         #[arg(help = "Path to project directory")]
         path: PathBuf,
@@ -88,24 +108,49 @@ enum Commands {
         #[arg(long, help = "Watch for changes and auto-reindex")]
         watch: bool,
 
-        #[arg(long, help = "Number of parallel workers", default_value = "4")]
+        #[arg(
+            long,
+            help = "Number of parallel workers (applies to both local and cloud modes)",
+            default_value = "4"
+        )]
         workers: usize,
 
-        #[arg(long, help = "Embedding batch size", default_value = "100")]
+        #[arg(
+            long,
+            help = "Embedding batch size (both modes; cloud mode uses API batching, local uses local processing batches)",
+            default_value = "100"
+        )]
         batch_size: usize,
 
-        #[arg(long, help = "Local embedding device: cpu | metal | cuda:<id>")]
+        #[arg(
+            long,
+            help = "[Cloud mode only] Maximum concurrent API requests for parallel embedding generation (ignored in local mode)",
+            default_value = "10"
+        )]
+        max_concurrent: usize,
+
+        #[arg(
+            long,
+            help = "[Local mode only] Embedding device: cpu | metal | cuda:<id> (ignored in cloud mode)"
+        )]
         device: Option<String>,
 
         #[arg(
             long,
-            help = "Max sequence length for local embeddings",
+            help = "[Local mode only] Max sequence length for embeddings (ignored in cloud mode)",
             default_value = "512"
         )]
         max_seq_len: usize,
     },
 
-    #[command(about = "Search indexed code")]
+    #[command(
+        about = "Search indexed code",
+        long_about = "Search with dual-mode support:\n\
+                      • Local Mode: FAISS vector search with local/ollama embeddings\n\
+                      • Cloud Mode: SurrealDB HNSW search with Jina embeddings + reranking\n\
+                      \n\
+                      Mode is determined by CODEGRAPH_EMBEDDING_PROVIDER (must match indexing mode)."
+    )]
     Search {
         #[arg(help = "Search query")]
         query: String,
@@ -253,6 +298,7 @@ enum Commands {
         #[arg(long, default_value = "3000")]
         port: u16,
     },
+    #[cfg(feature = "legacy-mcp-server")]
     #[command(about = "Serve STDIO MCP endpoint")]
     ServeStdio {
         #[arg(long, default_value = "8192")]
@@ -374,6 +420,25 @@ enum TransportType {
 
 #[derive(Subcommand)]
 enum ConfigAction {
+    #[command(
+        about = "Initialize global configuration",
+        long_about = "Create global configuration files at ~/.codegraph/:\n\
+                      • config.toml - Structured configuration\n\
+                      • .env - Environment variables (recommended for API keys)\n\
+                      \n\
+                      Configuration hierarchy (highest to lowest priority):\n\
+                      1. Environment variables\n\
+                      2. Local .env (current directory)\n\
+                      3. Global ~/.codegraph.env\n\
+                      4. Local .codegraph.toml (current directory)\n\
+                      5. Global ~/.codegraph/config.toml\n\
+                      6. Built-in defaults"
+    )]
+    Init {
+        #[arg(short, long, help = "Overwrite existing files")]
+        force: bool,
+    },
+
     #[command(about = "Show current configuration")]
     Show {
         #[arg(long, help = "Show as JSON")]
@@ -432,13 +497,19 @@ enum StatsFormat {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env file if present
+    dotenv::dotenv().ok();
+
     let cli = Cli::parse();
 
-    let log_level = if cli.verbose { "debug" } else { "info" };
+    // Load configuration once at startup
+    use codegraph_core::config_manager::ConfigManager;
+    let config_mgr = ConfigManager::load().context("Failed to load configuration")?;
+    let config = config_mgr.config();
 
-    // Load configuration if provided
-    if let Some(config_path) = &cli.config {
-        // TODO: Load and merge configuration
+    // TODO: Override with CLI config path if provided
+    if let Some(_config_path) = &cli.config {
+        // Future: merge CLI-specified config file
     }
 
     match cli.command {
@@ -466,10 +537,12 @@ async fn main() -> Result<()> {
             watch,
             workers,
             batch_size,
+            max_concurrent,
             device,
             max_seq_len,
         } => {
             handle_index(
+                config,
                 path,
                 languages,
                 exclude,
@@ -479,8 +552,10 @@ async fn main() -> Result<()> {
                 watch,
                 workers,
                 batch_size,
+                max_concurrent,
                 device,
                 max_seq_len,
+                cli.debug,
             )
             .await?;
         }
@@ -495,6 +570,7 @@ async fn main() -> Result<()> {
             expand_graph,
         } => {
             handle_search(
+                config,
                 query,
                 search_type,
                 limit,
@@ -565,6 +641,7 @@ async fn main() -> Result<()> {
                 limit,
             } => {
                 handle_search(
+                    config,
                     query,
                     SearchType::Semantic,
                     limit,
@@ -638,6 +715,7 @@ async fn main() -> Result<()> {
             graph_readonly,
         } => {
             handle_perf(
+                config,
                 path,
                 langs,
                 warmup,
@@ -684,6 +762,7 @@ async fn main() -> Result<()> {
         Commands::ServeHttp { host, port } => {
             codegraph_mcp::server::serve_http(host, port).await?;
         }
+        #[cfg(feature = "legacy-mcp-server")]
         Commands::ServeStdio { buffer_size } => {
             codegraph_mcp::server::serve_stdio(buffer_size).await?;
         }
@@ -851,6 +930,7 @@ async fn handle_status(pid_file: Option<PathBuf>, detailed: bool) -> Result<()> 
 }
 
 async fn handle_index(
+    config: &codegraph_core::config_manager::CodeGraphConfig,
     path: PathBuf,
     languages: Option<Vec<String>>,
     exclude: Vec<String>,
@@ -860,16 +940,39 @@ async fn handle_index(
     watch: bool,
     workers: usize,
     batch_size: usize,
+    max_concurrent: usize,
     device: Option<String>,
     max_seq_len: usize,
+    debug_log: bool,
 ) -> Result<()> {
+    let project_root = path.clone().canonicalize().unwrap_or_else(|_| path.clone());
+
+    let env_filter =
+        || EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let mut debug_log_path: Option<PathBuf> = None;
+
+    if debug_log {
+        let (writer, log_path) = prepare_debug_writer(&project_root)?;
+        let subscriber = Registry::default()
+            .with(env_filter())
+            .with(tracing_subscriber::fmt::layer())
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(writer)
+                    .with_ansi(false),
+            );
+        tracing::subscriber::set_global_default(subscriber).ok();
+        println!("{} {}", "📝 Debug log:".cyan(), log_path.display());
+        debug_log_path = Some(log_path);
+    } else {
+        let subscriber = Registry::default()
+            .with(env_filter())
+            .with(tracing_subscriber::fmt::layer());
+        tracing::subscriber::set_global_default(subscriber).ok();
+    }
+
     let multi_progress = MultiProgress::new();
-
-    let subscriber = Registry::default()
-        .with(tracing_subscriber::filter::EnvFilter::from_default_env())
-        .with(tracing_subscriber::fmt::layer());
-
-    tracing::subscriber::set_global_default(subscriber).ok();
 
     let h_style = ProgressStyle::with_template("{spinner:.blue} {msg}")
         .unwrap()
@@ -893,7 +996,7 @@ async fn handle_index(
 
     // Configure indexer
     let languages_list = languages.clone().unwrap_or_default();
-    let config = IndexerConfig {
+    let indexer_config = IndexerConfig {
         languages: languages_list.clone(),
         exclude_patterns: exclude,
         include_patterns: include,
@@ -902,14 +1005,15 @@ async fn handle_index(
         watch,
         workers: optimized_workers,
         batch_size: optimized_batch_size,
+        max_concurrent,
         device,
         max_seq_len,
-        project_root: path.clone().canonicalize().unwrap_or(path.clone()),
+        project_root: project_root.clone(),
         ..Default::default()
     };
 
     // Create indexer
-    let mut indexer = ProjectIndexer::new(config, multi_progress.clone()).await?;
+    let mut indexer = ProjectIndexer::new(indexer_config, config, multi_progress.clone()).await?;
 
     let start_time = std::time::Instant::now();
 
@@ -1039,10 +1143,19 @@ async fn handle_index(
         indexer.watch_for_changes(path).await?;
     }
 
+    if let Some(log_path) = debug_log_path {
+        println!(
+            "{} {}",
+            "📂 Detailed log saved at:".cyan(),
+            log_path.display()
+        );
+    }
+
     Ok(())
 }
 
 async fn handle_search(
+    _config: &codegraph_core::config_manager::CodeGraphConfig,
     query: String,
     search_type: SearchType,
     limit: usize,
@@ -1328,6 +1441,145 @@ async fn handle_search(
 
 async fn handle_config(action: ConfigAction) -> Result<()> {
     match action {
+        ConfigAction::Init { force } => {
+            use codegraph_core::config_manager::ConfigManager;
+
+            println!(
+                "{}",
+                "Initializing CodeGraph global configuration..."
+                    .green()
+                    .bold()
+            );
+            println!();
+
+            // Ensure ~/.codegraph directory exists
+            let home = dirs::home_dir()
+                .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+            let codegraph_dir = home.join(".codegraph");
+
+            if !codegraph_dir.exists() {
+                std::fs::create_dir_all(&codegraph_dir)
+                    .context("Failed to create ~/.codegraph directory")?;
+                println!("✓ Created directory: {}", codegraph_dir.display());
+            }
+
+            // Create config.toml
+            let config_path = codegraph_dir.join("config.toml");
+            if config_path.exists() && !force {
+                println!(
+                    "⚠️  Configuration file already exists: {}",
+                    config_path.display()
+                );
+                println!("   Use --force to overwrite");
+            } else {
+                ConfigManager::create_default_config(&config_path)
+                    .context("Failed to create config.toml")?;
+                println!("✓ Created config file: {}", config_path.display());
+            }
+
+            // Create .env template
+            let env_path = codegraph_dir.join(".env");
+            if env_path.exists() && !force {
+                println!(
+                    "⚠️  Environment file already exists: {}",
+                    env_path.display()
+                );
+                println!("   Use --force to overwrite");
+            } else {
+                let env_template = r#"# CodeGraph Global Configuration
+# This file is loaded automatically by codegraph
+# Environment variables here override config.toml settings
+
+# ============================================================================
+# EMBEDDING PROVIDER
+# ============================================================================
+# Provider: "local", "ollama", "lmstudio", "openai", "jina", or "auto"
+# - local: ONNX local embeddings (fastest, no API needed)
+# - ollama: Ollama embeddings (good balance, requires Ollama running)
+# - openai: OpenAI embeddings (cloud, requires API key)
+# - jina: Jina embeddings with reranking (best quality, requires API key)
+# - auto: Auto-detect best available provider
+CODEGRAPH_EMBEDDING_PROVIDER=auto
+
+# ============================================================================
+# CLOUD PROVIDERS (OpenAI, Jina)
+# ============================================================================
+# OpenAI API Key (if using OpenAI embeddings)
+# OPENAI_API_KEY=sk-...
+
+# Jina API Key (if using Jina embeddings + reranking)
+# JINA_API_KEY=jina_...
+
+# Enable Jina reranking (improves search quality, requires Jina provider)
+# JINA_ENABLE_RERANKING=true
+
+# ============================================================================
+# LOCAL PROVIDERS (Ollama, Local)
+# ============================================================================
+# Ollama URL (if using Ollama)
+# CODEGRAPH_OLLAMA_URL=http://localhost:11434
+
+# Local embedding model (if using local/ONNX provider)
+# CODEGRAPH_LOCAL_MODEL=/path/to/model
+
+# ============================================================================
+# PERFORMANCE
+# ============================================================================
+# Embedding batch size (default: 100)
+# Higher values = faster indexing but more memory
+# CODEGRAPH_BATCH_SIZE=100
+
+# Embedding dimension (default: auto-detected)
+# - 384: all-MiniLM (local)
+# - 2048: jina-embeddings-v4 (Supports Matryoshka 1024, 512, 256)
+# - 1536: OpenAI text-embedding-3-small, jina-code-embeddings
+# CODEGRAPH_EMBEDDING_DIMENSION=1536
+
+# ============================================================================
+# LLM PROVIDER (for insights, optional)
+# ============================================================================
+# LLM Provider: "ollama", "lmstudio", "anthropic", "openai"
+# CODEGRAPH_LLM_PROVIDER=lmstudio
+
+# LLM Model
+# CODEGRAPH_MODEL=qwen2.5-coder:14b
+
+# Enable LLM insights (context-only mode if disabled)
+# CODEGRAPH_LLM_ENABLED=false
+
+# ============================================================================
+# LOGGING
+# ============================================================================
+# Log level: trace, debug, info, warn, error
+# RUST_LOG=warn
+"#;
+
+                std::fs::write(&env_path, env_template).context("Failed to create .env file")?;
+                println!("✓ Created environment file: {}", env_path.display());
+            }
+
+            println!();
+            println!(
+                "{}",
+                "Configuration initialized successfully!".green().bold()
+            );
+            println!();
+            println!("Next steps:");
+            println!(
+                "1. Edit {} to configure your API keys and preferences",
+                env_path.display()
+            );
+            println!("2. Run 'codegraph config show' to verify your configuration");
+            println!("3. Run 'codegraph index <path>' to start indexing your codebase");
+            println!();
+            println!("Configuration hierarchy (highest to lowest priority):");
+            println!("  1. Environment variables");
+            println!("  2. Local .env (current directory)");
+            println!("  3. Global {}", env_path.display());
+            println!("  4. Local .codegraph.toml (current directory)");
+            println!("  5. Global {}", config_path.display());
+            println!("  6. Built-in defaults");
+        }
         ConfigAction::Show { json } => {
             use codegraph_core::config_manager::ConfigManager;
 
@@ -1557,6 +1809,7 @@ async fn handle_clean(index: bool, vectors: bool, cache: bool, all: bool, yes: b
 }
 
 async fn handle_perf(
+    config: &codegraph_core::config_manager::CodeGraphConfig,
     path: PathBuf,
     langs: Option<Vec<String>>,
     warmup: usize,
@@ -1581,7 +1834,7 @@ async fn handle_perf(
         }
     }
 
-    let config = codegraph_mcp::IndexerConfig {
+    let indexer_config = codegraph_mcp::IndexerConfig {
         languages: langs.clone().unwrap_or_default(),
         exclude_patterns: vec![],
         include_patterns: vec![],
@@ -1590,6 +1843,7 @@ async fn handle_perf(
         watch: false,
         workers,
         batch_size,
+        max_concurrent: 10,
         vector_dimension: 384, // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
         device: device.clone(),
         max_seq_len,
@@ -1597,7 +1851,8 @@ async fn handle_perf(
     };
 
     let multi_progress = MultiProgress::new();
-    let mut indexer = codegraph_mcp::ProjectIndexer::new(config, multi_progress).await?;
+    let mut indexer =
+        codegraph_mcp::ProjectIndexer::new(indexer_config, config, multi_progress).await?;
     let t0 = Instant::now();
     let stats = indexer.index_project(&path).await?;
     let indexing_secs = t0.elapsed().as_secs_f64();
@@ -1751,6 +2006,20 @@ async fn handle_perf(
     Ok(())
 }
 
+fn prepare_debug_writer(base_path: &Path) -> Result<(BoxMakeWriter, PathBuf)> {
+    let log_dir = base_path.join(".codegraph").join("logs");
+    std::fs::create_dir_all(&log_dir)?;
+    let timestamp = Utc::now().format("%Y%m%dT%H%M%S");
+    let log_path = log_dir.join(format!("index-debug-{}.log", timestamp));
+    let file = File::create(&log_path)?;
+    let shared = Arc::new(Mutex::new(file));
+    let writer = BoxMakeWriter::new({
+        let shared = Arc::clone(&shared);
+        move || DebugLogWriter::new(Arc::clone(&shared))
+    });
+    Ok((writer, log_path))
+}
+
 /// Estimate available system memory in GB
 fn estimate_available_memory_gb() -> usize {
     #[cfg(target_os = "macos")]
@@ -1837,4 +2106,27 @@ fn optimize_for_memory(
     };
 
     (optimized_batch_size, optimized_workers)
+}
+
+#[derive(Clone)]
+struct DebugLogWriter {
+    file: Arc<Mutex<File>>,
+}
+
+impl DebugLogWriter {
+    fn new(file: Arc<Mutex<File>>) -> Self {
+        Self { file }
+    }
+}
+
+impl Write for DebugLogWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut guard = self.file.lock().unwrap();
+        guard.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let mut guard = self.file.lock().unwrap();
+        guard.flush()
+    }
 }

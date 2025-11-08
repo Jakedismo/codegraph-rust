@@ -20,10 +20,8 @@ use std::time::Duration;
 
 use arc_swap::ArcSwap;
 use parking_lot::RwLock as PLRwLock;
-use tokio::sync::RwLock;
-use uuid::Uuid;
 
-use codegraph_core::{CodeNode, NodeId, Result};
+use codegraph_core::{CodeNode, Result};
 use codegraph_vector::ml as vml;
 use codegraph_vector::EmbeddingGenerator;
 

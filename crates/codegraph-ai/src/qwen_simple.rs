@@ -5,7 +5,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Simple Qwen2.5-Coder client for CodeGraph MCP integration
 #[derive(Debug, Clone)]

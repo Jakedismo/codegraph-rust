@@ -5,9 +5,10 @@ This guide explains how to test the CodeGraph MCP server after indexing your pro
 ## Prerequisites
 
 1. **Python 3.8+** with pip
-2. **SurrealDB** running on port 3004
-3. **CodeGraph binary** built and ready
-4. **Project indexed** with `codegraph index`
+2. **CodeGraph binary** built and ready
+3. **Project indexed** with `codegraph index`
+4. **Optional**: SurrealDB (only if using cloud-surrealdb feature)
+5. **Optional**: API keys for cloud providers (Jina AI, OpenAI, Anthropic)
 
 ## Setup
 
@@ -23,33 +24,92 @@ This installs `python-dotenv` for loading `.env` configuration.
 
 Make sure your `.env` file has the necessary settings:
 
+**For Local-Only Setup (ONNX + Ollama):**
 ```bash
 # LLM Provider Configuration
-CODEGRAPH_LLM_PROVIDER=openai          # or anthropic, ollama, lmstudio
-CODEGRAPH_MODEL=gpt-5-codex            # your model
-
-# API Keys (as needed)
-OPENAI_API_KEY=sk-...                  # if using OpenAI
-ANTHROPIC_API_KEY=sk-ant-...           # if using Anthropic
-
-# Embedding Provider
-CODEGRAPH_EMBEDDING_PROVIDER=jina      # or ollama, openai
-JINA_API_KEY=jina_...                  # if using Jina
-
-# Optional: Ollama settings
+CODEGRAPH_LLM_PROVIDER=ollama
+CODEGRAPH_MODEL=qwen2.5-coder:14b
 CODEGRAPH_OLLAMA_URL=http://localhost:11434
+
+# Embedding Provider (local)
+CODEGRAPH_EMBEDDING_PROVIDER=onnx
 ```
 
-### 3. Index Your Project
+**For Cloud Setup (Jina AI + Anthropic):**
+```bash
+# LLM Provider Configuration
+CODEGRAPH_LLM_PROVIDER=anthropic
+CODEGRAPH_MODEL=claude-haiku
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Embedding Provider (Jina AI)
+CODEGRAPH_EMBEDDING_PROVIDER=jina
+JINA_API_KEY=jina_...
+JINA_EMBEDDING_MODEL=jina-embeddings-v4
+JINA_EMBEDDING_DIMENSION=2048
+JINA_RERANKING_ENABLED=true
+JINA_RERANKING_MODEL=jina-reranker-v3
+```
+
+**For OpenAI Setup:**
+```bash
+# LLM Provider Configuration
+CODEGRAPH_LLM_PROVIDER=openai
+CODEGRAPH_MODEL=gpt-5-codex
+OPENAI_API_KEY=sk-...
+
+# Embedding Provider (OpenAI)
+CODEGRAPH_EMBEDDING_PROVIDER=openai
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_EMBEDDING_DIMENSION=1536
+```
+
+**For xAI Grok Setup (2M context, super cheap):**
+```bash
+# LLM Provider Configuration
+CODEGRAPH_LLM_PROVIDER=xai
+CODEGRAPH_MODEL=grok-4-fast
+XAI_API_KEY=xai-...
+
+# Embedding Provider (OpenAI or Jina)
+CODEGRAPH_EMBEDDING_PROVIDER=openai
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_EMBEDDING_DIMENSION=1536
+```
+
+**For SurrealDB HNSW Backend:**
+```bash
+# Vector Store Backend
+SURREALDB_CONNECTION=ws://localhost:8000
+SURREALDB_NAMESPACE=codegraph
+SURREALDB_DATABASE=production
+```
+
+### 3. Build CodeGraph with Required Features
+
+Build CodeGraph with the features you want to test:
+
+```bash
+# Local-only (ONNX + Ollama + FAISS)
+cargo build --release --features "onnx,ollama,faiss"
+
+# Cloud features (Jina AI + SurrealDB)
+cargo build --release --features "cloud-jina,cloud-surrealdb,faiss"
+
+# Full build (all features)
+cargo build --release --features "all-cloud-providers,onnx,ollama,cloud,faiss"
+```
+
+### 4. Index Your Project
 
 Before testing, make sure your codebase is indexed:
 
 ```bash
 # Index the current project
-codegraph index .
+./target/release/codegraph index .
 
 # Or index a specific path
-codegraph index /path/to/your/code
+./target/release/codegraph index /path/to/your/code
 ```
 
 This creates the `.codegraph/` directory with the indexed data.
@@ -64,13 +124,21 @@ Simply run the test script:
 python3 test_mcp_tools.py
 ```
 
-The script will:
-1. ✅ Load configuration from `.env`
-2. ✅ Display the configuration being used
-3. ✅ Start the MCP server
-4. ✅ Run MCP handshake (initialize + notifications)
-5. ✅ Execute 6 test tool calls
-6. ✅ Automatically extract node UUIDs for graph operations
+**The script will automatically:**
+1. ✅ Load configuration from `.env` file in project root
+2. ✅ Display comprehensive configuration (LLM provider, model, embedding provider, cloud features)
+3. ✅ Detect and use local binary (`target/release/codegraph` or `target/debug/codegraph`)
+4. ✅ Fall back to `cargo run` with appropriate feature flags if no binary found
+5. ✅ Start the MCP server with proper stdio communication
+6. ✅ Run MCP handshake (initialize + notifications)
+7. ✅ Execute 6 test tool calls (search, vector_search, graph operations, semantic intelligence, impact analysis)
+8. ✅ Automatically extract node UUIDs from search results for graph operations
+
+**Recent improvements:**
+- Updated default model to `qwen2.5-coder:14b` (better for local testing)
+- Updated feature flags to use current features (`onnx,ollama,faiss` instead of deprecated `ai-enhanced,qwen-integration`)
+- Added cloud configuration display (shows Jina AI and SurrealDB settings if configured)
+- Prefers release binary over debug binary for better performance
 
 ### What Gets Tested
 
@@ -109,8 +177,8 @@ The script tests the following MCP tools:
 ========================================================================
 CodeGraph Configuration:
 ========================================================================
-  LLM Provider: openai
-  LLM Model: gpt-5-codex
+  LLM Provider: anthropic
+  LLM Model: claude-haiku
   Embedding Provider: jina
   Protocol Version: 2025-06-18
 ========================================================================
@@ -220,14 +288,16 @@ This means the indexed database doesn't have nodes yet. Index your project first
 codegraph index .
 ```
 
-### Error: Connection refused
+### Error: Connection refused (SurrealDB)
 
-Make sure SurrealDB is running:
+Only needed if you're testing with the `cloud-surrealdb` feature:
 
 ```bash
 # Start SurrealDB
-surreal start --bind 0.0.0.0:3004 --user root --pass root file://data/surreal.db
+surreal start --bind 0.0.0.0:8000 --user root --pass root file://data/surreal.db
 ```
+
+If you're not using SurrealDB, build without the `cloud-surrealdb` feature.
 
 ### Server startup fails
 
@@ -266,16 +336,29 @@ Reduce `max_context_tokens` in the test for faster responses:
 
 ```bash
 # Test with OpenAI
-CODEGRAPH_LLM_PROVIDER=openai python3 test_mcp_tools.py
+CODEGRAPH_LLM_PROVIDER=openai \
+CODEGRAPH_MODEL=gpt-5-codex \
+python3 test_mcp_tools.py
 
 # Test with Anthropic
 CODEGRAPH_LLM_PROVIDER=anthropic \
-CODEGRAPH_MODEL=claude-3-5-sonnet-20241022 \
+CODEGRAPH_MODEL=claude-haiku \
 python3 test_mcp_tools.py
 
 # Test with local Ollama
 CODEGRAPH_LLM_PROVIDER=ollama \
 CODEGRAPH_MODEL=qwen2.5-coder:14b \
+python3 test_mcp_tools.py
+
+# Test with xAI Grok (2M context window!)
+CODEGRAPH_LLM_PROVIDER=xai \
+CODEGRAPH_MODEL=grok-4-fast \
+python3 test_mcp_tools.py
+
+# Test with Jina AI embeddings
+CODEGRAPH_EMBEDDING_PROVIDER=jina \
+JINA_EMBEDDING_MODEL=jina-embeddings-v4 \
+JINA_EMBEDDING_DIMENSION=2048 \
 python3 test_mcp_tools.py
 ```
 
@@ -338,8 +421,84 @@ jobs:
         run: python3 test_mcp_tools.py
 ```
 
+## Testing NAPI Bindings
+
+### Prerequisites
+
+```bash
+# Install Node.js dependencies
+cd crates/codegraph-napi
+npm install
+
+# Build with desired features
+npm run build  # Default: local features only
+# Or: npm run build -- --features full
+```
+
+### Quick Test
+
+```typescript
+// test.mjs
+import { semanticSearch, getCloudConfig, getEmbeddingStats } from './index.js';
+
+// Test search
+const results = await semanticSearch('configuration management', {
+  limit: 5,
+  useCloud: false  // Set to true if cloud features enabled
+});
+console.log(`Found ${results.totalCount} results`);
+
+// Test cloud config
+const config = await getCloudConfig();
+console.log('Cloud config:', config);
+
+// Test embedding stats
+const stats = await getEmbeddingStats();
+console.log('Embedding stats:', stats);
+```
+
+```bash
+# Run test
+node test.mjs
+```
+
+### TypeScript Integration Test
+
+```typescript
+// test.ts
+import { semanticSearch, SearchOptions, DualModeSearchResult } from 'codegraph-napi';
+
+async function testSearch() {
+  const options: SearchOptions = {
+    limit: 10,
+    useCloud: true,
+    reranking: true
+  };
+
+  const results: DualModeSearchResult = await semanticSearch(
+    'find authentication code',
+    options
+  );
+
+  console.log(`Search mode: ${results.modeUsed}`);
+  console.log(`Found ${results.totalCount} results in ${results.searchTimeMs}ms`);
+
+  for (const result of results.results) {
+    console.log(`- ${result.name} (score: ${result.score})`);
+  }
+}
+
+testSearch().catch(console.error);
+```
+
+```bash
+# Compile and run TypeScript
+npx tsx test.ts
+```
+
 ## See Also
 
+- **[NAPI Bindings README](crates/codegraph-napi/README.md)** - Complete TypeScript integration guide
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history with cloud features
 - [SETUP_VERIFICATION.md](SETUP_VERIFICATION.md) - Setup verification guide
 - [schema/README.md](schema/README.md) - Database schema documentation
-- [CHANGES_SUMMARY.md](CHANGES_SUMMARY.md) - Recent changes summary

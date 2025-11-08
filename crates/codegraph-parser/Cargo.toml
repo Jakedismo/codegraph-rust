@@ -19,11 +19,10 @@ tree-sitter-cpp = { workspace = true }
 
 # Revolutionary universal language support
 tree-sitter-swift = { workspace = true }
-tree-sitter-kotlin = { workspace = true }
 tree-sitter-c-sharp = { workspace = true }
 tree-sitter-ruby = { workspace = true }
 tree-sitter-php = { workspace = true }
-tree-sitter-dart = { workspace = true }
+# Disabled: tree-sitter-kotlin and tree-sitter-dart pull in incompatible tree-sitter v0.20.10
 
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -1,3 +1,5 @@
+// ABOUTME: Defines the supported programming languages available to the parser pipeline.
+// ABOUTME: Maps file extensions to Tree-sitter grammars and builds configured parsers.
 use codegraph_core::Language;
 use std::collections::HashMap;
 use tree_sitter::Parser;
@@ -71,7 +73,6 @@ impl LanguageRegistry {
             },
         );
 
-        // Revolutionary universal language support
         configs.insert(
             Language::Swift,
             LanguageConfig {
@@ -146,5 +147,27 @@ impl LanguageRegistry {
         let mut parser = Parser::new();
         parser.set_language(&config.language).ok()?;
         Some(parser)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tree_sitter::{LANGUAGE_VERSION, MIN_COMPATIBLE_LANGUAGE_VERSION};
+
+    #[test]
+    fn registered_languages_use_supported_versions() {
+        let registry = LanguageRegistry::new();
+        for (language, config) in &registry.configs {
+            let version = config.language.version();
+            assert!(
+                (MIN_COMPATIBLE_LANGUAGE_VERSION..=LANGUAGE_VERSION).contains(&version),
+                "Language {:?} uses incompatible Tree-sitter version {} (supported {}..={})",
+                language,
+                version,
+                MIN_COMPATIBLE_LANGUAGE_VERSION,
+                LANGUAGE_VERSION
+            );
+        }
     }
 }

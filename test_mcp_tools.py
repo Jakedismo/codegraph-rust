@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# test_mcp_tools_stdio.py
+# test_mcp_tools.py
 #
-# Automatic tester for CodeGraph MCP tools using `codegraph stdio-serve`.
+# Automatic tester for CodeGraph MCP tools using `codegraph start stdio`.
 # - Loads configuration from .env file automatically
 # - Sends MCP initialize + notifications/initialized first (handshake)
-# - Then runs the 7 tool calls
-# - Auto-detects a node UUID from vector_search for graph_neighbors
+# - Then runs 6 tool calls
+# - Auto-detects a node UUID from vector_search for graph_neighbors/graph_traverse
 #
 # Usage:
 #   python3 test_mcp_tools.py
@@ -14,6 +14,8 @@
 #
 # Optional env overrides:
 #   CODEGRAPH_MODEL="..."  # Override model from .env
+#   CODEGRAPH_LLM_PROVIDER="..."  # Override provider from .env
+#   CODEGRAPH_EMBEDDING_PROVIDER="..."  # Override embedding provider
 #   MCP_PROTOCOL_VERSION="2025-06-18"  # default below
 
 import json, os, re, select, signal, subprocess, sys, time
@@ -35,17 +37,20 @@ except ImportError:
     print("   Falling back to environment variables only")
 
 # Defaults (can be overridden by .env or environment variables)
-MODEL_DEFAULT = "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M"
+MODEL_DEFAULT = "qwen2.5-coder:14b"  # For Ollama local testing
 PROTO_DEFAULT = os.environ.get("MCP_PROTOCOL_VERSION", "2025-06-18")
 
 # Read configuration from environment (.env loaded above)
 LLM_PROVIDER = os.environ.get("CODEGRAPH_LLM_PROVIDER") or os.environ.get("LLM_PROVIDER", "ollama")
 LLM_MODEL = os.environ.get("CODEGRAPH_MODEL", MODEL_DEFAULT)
-EMBEDDING_PROVIDER = os.environ.get("CODEGRAPH_EMBEDDING_PROVIDER", "jina")
+EMBEDDING_PROVIDER = os.environ.get("CODEGRAPH_EMBEDDING_PROVIDER", "onnx")
 
+# Feature flags for building (if using cargo run)
+# Update based on your build configuration
 DEFAULT_FEATURES = (
-    "ai-enhanced,qwen-integration,embeddings,faiss,"
-    "embeddings-ollama,embeddings-jina,codegraph-vector/onnx"
+    "onnx,ollama,faiss"  # Local-only default
+    # For cloud features, use: "cloud-jina,cloud-surrealdb,anthropic,faiss"
+    # For full build, use: "all-cloud-providers,onnx,ollama,cloud,faiss"
 )
 
 UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}")
@@ -128,6 +133,19 @@ def ensure_codegraph_model():
     print(f"  LLM Provider: {LLM_PROVIDER}")
     print(f"  LLM Model: {os.environ.get('CODEGRAPH_MODEL', 'not set')}")
     print(f"  Embedding Provider: {EMBEDDING_PROVIDER}")
+
+    # Show cloud config if available
+    if os.environ.get("JINA_API_KEY"):
+        jina_model = os.environ.get("JINA_EMBEDDING_MODEL", "jina-embeddings-v4")
+        jina_dim = os.environ.get("JINA_EMBEDDING_DIMENSION", "2048")
+        print(f"  Jina Model: {jina_model} ({jina_dim}D)")
+        if os.environ.get("JINA_RERANKING_ENABLED", "").lower() == "true":
+            reranker = os.environ.get("JINA_RERANKING_MODEL", "jina-reranker-v3")
+            print(f"  Jina Reranking: {reranker}")
+
+    if os.environ.get("SURREALDB_CONNECTION"):
+        print(f"  SurrealDB: {os.environ.get('SURREALDB_CONNECTION')}")
+
     print(f"  Protocol Version: {PROTO_DEFAULT}")
     print("="*72 + "\n")
 
@@ -141,13 +159,21 @@ def resolve_codegraph_command():
     if binary := os.environ.get("CODEGRAPH_BIN"):
         return [binary]
 
-    # Prefer locally-built binary if available.
+    # Prefer locally-built release binary if available.
     repo_root = Path(__file__).resolve().parent
-    local_bin = repo_root / "target" / "debug" / "codegraph"
-    if local_bin.exists():
-        return [str(local_bin)]
+    release_bin = repo_root / "target" / "release" / "codegraph"
+    if release_bin.exists():
+        print(f"Using release binary: {release_bin}")
+        return [str(release_bin)]
+
+    # Try debug binary
+    debug_bin = repo_root / "target" / "debug" / "codegraph"
+    if debug_bin.exists():
+        print(f"Using debug binary: {debug_bin}")
+        return [str(debug_bin)]
 
     # Fallback to cargo run with all required features.
+    print(f"No binary found, using cargo run with features: {DEFAULT_FEATURES}")
     return [
         "cargo",
         "run",

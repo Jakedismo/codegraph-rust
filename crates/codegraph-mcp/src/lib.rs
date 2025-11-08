@@ -1,11 +1,31 @@
+#[cfg(feature = "ai-enhanced")]
+pub mod agentic_api_surface_prompts;
+#[cfg(feature = "ai-enhanced")]
+pub mod agentic_orchestrator;
+#[cfg(feature = "ai-enhanced")]
+pub mod architecture_analysis_prompts;
+#[cfg(feature = "ai-enhanced")]
+pub mod call_chain_prompts;
+#[cfg(feature = "ai-enhanced")]
+pub mod code_search_prompts;
 pub mod connection;
+pub mod context_aware_limits;
+#[cfg(feature = "ai-enhanced")]
+pub mod context_builder_prompts;
+#[cfg(feature = "ai-enhanced")]
+pub mod dependency_analysis_prompts;
 pub mod error;
+pub mod graph_tool_executor;
+pub mod graph_tool_schemas;
 pub mod heartbeat;
 pub mod indexer;
 pub mod message;
 pub mod official_server;
 pub mod process;
+pub mod prompt_selector;
 pub mod protocol;
+#[cfg(feature = "ai-enhanced")]
+pub mod semantic_question_prompts;
 pub mod server;
 pub mod transport;
 pub mod version;
@@ -25,12 +45,18 @@ pub mod qwen;
 #[cfg(feature = "qwen-integration")]
 pub mod tools_schema;
 
+#[cfg(feature = "ai-enhanced")]
+pub use agentic_orchestrator::{AgenticConfig, AgenticOrchestrator, AgenticResult, ReasoningStep};
 pub use connection::*;
+pub use context_aware_limits::{ContextAwareLimits, ContextTier};
 pub use error::{McpError, Result};
+pub use graph_tool_executor::GraphToolExecutor;
+pub use graph_tool_schemas::{GraphToolSchemas, ToolSchema};
 pub use heartbeat::*;
 pub use indexer::{IndexStats, IndexerConfig, ProjectIndexer};
 pub use message::*;
 pub use process::{ProcessInfo, ProcessManager, ProcessStatus};
+pub use prompt_selector::{AnalysisType, PromptSelector, PromptSelectorStats, PromptVerbosity};
 pub use protocol::*;
 pub use transport::*;
 pub use version::*;

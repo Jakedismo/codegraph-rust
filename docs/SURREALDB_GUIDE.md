@@ -103,7 +103,7 @@ backend = "surrealdb"
 connection = "http://localhost:8000"
 namespace = "production"
 database = "codegraph"
-username = "admin"
+username = "root"
 # Set password via environment variable: CODEGRAPH__DATABASE__SURREALDB__PASSWORD
 auto_migrate = false
 strict_mode = true

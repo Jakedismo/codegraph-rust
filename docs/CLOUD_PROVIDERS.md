@@ -26,7 +26,7 @@ CodeGraph supports the following provider types:
 - **OpenAI**: Cloud-based embeddings (requires API key)
 
 ### LLM Providers
-- **Ollama**: Local LLMs (e.g., Qwen2.5-Coder, CodeLlama)
+- **Ollama**: Local LLMs (e.g., Qwen2.5-Coder, Kimi-K2-Thinking)
 - **LM Studio**: Local LLMs (e.g., DeepSeek Coder)
 - **Anthropic Claude**: Cloud-based (requires API key)
 - **OpenAI**: Cloud-based (requires API key) - **Now using Responses API**
@@ -39,14 +39,14 @@ CodeGraph supports the following provider types:
 CodeGraph has been updated to use **OpenAI's Responses API** (`/v1/responses`), the modern successor to the Chat Completions API. This brings several advantages:
 
 1. **Reasoning Model Support**: Full support for o1, o3, o4-mini, and GPT-5 series models
-2. **Reasoning Budget Control**: Use `reasoning_effort` parameter to control thinking depth
+2. **Reasoning Control**: Use `reasoning_effort` to tune depth/cost
 3. **Modern Parameters**: Uses `max_output_tokens` instead of `max_tokens`
 4. **Better Performance**: Optimized for the latest OpenAI models
 5. **Backward Compatibility**: OpenAI-compatible provider falls back to Chat Completions API when needed
 
 ### Reasoning Models
 
-Reasoning models like OpenAI's o1, o3, and o4-mini use a different approach:
+Reasoning models like OpenAI's gpt-5 family, o3, and o4-mini or x.AI Grok-4-fast use a different approach:
 - They "think" before responding, generating reasoning tokens
 - Higher reasoning effort = more thinking = better quality (but slower and more expensive)
 - They don't support temperature or other sampling parameters
@@ -58,18 +58,18 @@ Reasoning models like OpenAI's o1, o3, and o4-mini use a different approach:
 [llm]
 enabled = true
 provider = "openai"
-model = "o3-mini"  # or "o1", "o4-mini", "gpt-5"
+model = "o4-mini"  # or "o1", "o4-mini", "gpt-5"
 openai_api_key = "sk-..."
 context_window = 200000
 max_output_tokens = 25000  # Use this instead of max_tokens
-reasoning_effort = "medium"  # Options: "minimal", "low", "medium", "high"
+reasoning_effort = "medium"  # Options: "minimal", "medium", "high"
 ```
 
 **Reasoning Effort Levels:**
 - `"minimal"` - Fast, basic reasoning (GPT-5 only)
-- `"low"` - Quick responses with light reasoning
-- `"medium"` - Balanced reasoning (recommended)
-- `"high"` - Deep reasoning for complex problems
+- `"medium"` - Balanced reasoning (recommended gpt-5 automatically adjusts reasoning budget based on task complexity on this setting)
+- `"high"` - Deep reasoning for complex problems (better quality/longer response times)
+- `"models"`- Through OpenAI Responses compatible provider access your favorite reasoning models grok-4-fast, Kimi-K2-Thinking, GLM-4.6 and others
 
 ### API Format Differences
 
@@ -113,7 +113,7 @@ Configuration is saved to `~/.codegraph/config.toml`.
 ### Anthropic Claude
 
 **Features:**
-- 200K token context window
+- 1M/200K token context window
 - State-of-the-art code understanding
 - Fast response times
 - Multiple model tiers (Opus, Sonnet, Haiku)
@@ -132,22 +132,22 @@ cargo build --features anthropic
 [llm]
 enabled = true
 provider = "anthropic"
-model = "claude-3-5-sonnet-20241022"
+model = "sonnet"
 anthropic_api_key = "sk-ant-..."  # Or set ANTHROPIC_API_KEY env var
 context_window = 200000
 temperature = 0.1
-max_tokens = 4096
+max_tokens = 64000
 ```
 
 **Available Models:**
-- `claude-3-5-sonnet-20241022` (recommended for code)
-- `claude-3-5-haiku-20241022` (faster, lower cost)
-- `claude-3-opus-20240229` (highest capability)
+- `sonnet[1m]` (recommended for large codebases)
+- `sonnet` (faster, lower cost)
+- `haiku` (the cost / quality king)
 
 ### OpenAI
 
 **Features:**
-- GPT-4o with 128K context
+- GPT-5 family with 200K/400K context
 - Function calling support
 - Streaming responses
 - Multiple model options
@@ -166,18 +166,15 @@ cargo build --features openai-llm
 [llm]
 enabled = true
 provider = "openai"
-model = "gpt-4o"
+model = "gpt-5-codex-mini"
 openai_api_key = "sk-..."  # Or set OPENAI_API_KEY env var
-context_window = 128000
-temperature = 0.1
-max_tokens = 4096
+context_window = 200000
+reasoning_effort = "medium"
+max_tokens = 32000
 ```
 
 **Available Models:**
-- `gpt-4o` (latest, best performance)
-- `gpt-4o-mini` (faster, lower cost)
-- `gpt-4-turbo` (previous generation)
-- `gpt-4` (original GPT-4)
+- `gpt-5-family` - recommended to stick to these for quality
 
 ### OpenAI-Compatible Endpoints
 
@@ -197,22 +194,22 @@ cargo build --features openai-compatible
 ```toml
 [llm]
 enabled = true
-provider = "openai-compatible"
-model = "your-model-name"
+provider = "lmstudio"
+model = "moonshotai/kimi-k2-thinking"
 openai_compatible_url = "http://localhost:1234/v1"
-context_window = 32000
-temperature = 0.1
+context_window = 252000
+reasoning_effort = "high"
 ```
 
 3. Or configure for custom endpoint:
 ```toml
 [llm]
 enabled = true
-provider = "openai-compatible"
-model = "custom-model"
+provider = "xai"
+model = "grok-4-fast"
 openai_compatible_url = "https://your-endpoint.com/v1"
 openai_api_key = "optional-key-if-required"
-context_window = 32000
+context_window = 2000000
 ```
 
 ### Local Providers (Ollama)
@@ -229,7 +226,7 @@ context_window = 32000
 
 2. Pull a code model:
 ```bash
-ollama pull qwen2.5-coder:14b
+ollama pull qwen2.5-coder-128k:14b
 ```
 
 3. Configure in `.codegraph.toml`:
@@ -237,9 +234,9 @@ ollama pull qwen2.5-coder:14b
 [llm]
 enabled = true
 provider = "ollama"
-model = "qwen2.5-coder:14b"
+model = "qwen2.5-coder-128k:14b"
 ollama_url = "http://localhost:11434"
-context_window = 128000
+context_window = 252000 (Max Ollama output, depends on the model)
 temperature = 0.1
 ```
 
@@ -321,7 +318,7 @@ use codegraph_ai::anthropic_provider::{AnthropicConfig, AnthropicProvider};
 
 let config = AnthropicConfig {
     api_key: std::env::var("ANTHROPIC_API_KEY")?,
-    model: "claude-3-5-sonnet-20241022".to_string(),
+    model: "sonnet".to_string(),
     context_window: 200_000,
     timeout_secs: 120,
     max_retries: 3,
@@ -335,11 +332,11 @@ println!("{}", response.content);
 
 ## Provider Comparison
 
-| Feature | Anthropic Claude | OpenAI GPT | Ollama (Local) | LM Studio (Local) |
+| Feature | Anthropic Claude | OpenAI & Compatible | Ollama (Local) | LM Studio (Local) |
 |---------|------------------|------------|----------------|-------------------|
 | **Cost** | Pay-per-token | Pay-per-token | Free | Free |
 | **Privacy** | Cloud | Cloud | Local | Local |
-| **Context Window** | 200K | 128K | Varies | Varies |
+| **Context Window** | 1M/200K | 400K/200K | Varies | Varies |
 | **Code Understanding** | Excellent | Excellent | Good | Good |
 | **Speed** | Fast | Fast | Slower | Slower |
 | **Internet Required** | Yes | Yes | No (after setup) | No |
@@ -349,20 +346,20 @@ println!("{}", response.content);
 ### Recommended Providers by Use Case
 
 **Best for Production:**
-- Anthropic Claude 3.5 Sonnet (best code understanding)
-- OpenAI GPT-4o (good all-around performance)
+- Anthropic Sonnet (best code understanding)
+- OpenAI gpt-5-codex (good all-around performance)
 
 **Best for Development:**
-- Ollama with Qwen2.5-Coder (free, good quality)
-- LM Studio with DeepSeek Coder (free, customizable)
+- Ollama with Qwen2.5-Coder-128k (free, good quality)
+- LM Studio with Kimi-K2-Thinking (free, SOTA)
 
 **Best for Privacy:**
 - Ollama (completely local)
 - LM Studio (completely local)
 
 **Best for Cost:**
-- Anthropic Claude 3.5 Haiku (cloud, lower cost)
-- OpenAI GPT-4o-mini (cloud, lower cost)
+- Anthropic Haiku (cloud, lower cost)
+- OpenAI gpt-5-codex-mini (cloud, lower cost)
 - Ollama/LM Studio (free)
 
 ## Troubleshooting

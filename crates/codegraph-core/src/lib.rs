@@ -23,8 +23,13 @@ pub mod watch;
 
 pub use advanced_config::*;
 pub use buffer_pool::*;
-pub use config::*;
-pub use config_manager::*; // Re-export simplified config
+pub use config::ConfigManager as ServerConfigManager;
+pub use config::LoggingConfig as ServerLoggingConfig;
+pub use config::{
+    crypto, DatabaseBackend, DatabaseConfig, RocksDbConfig, SecretsConfig, SecurityConfig,
+    ServerConfig, Settings, SurrealDbConfig, VectorConfig,
+};
+pub use config_manager::*;
 pub use embedding_config::*;
 pub use error::*;
 pub use incremental::*;

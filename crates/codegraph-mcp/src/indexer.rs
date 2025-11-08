@@ -32,6 +32,7 @@ pub struct IndexerConfig {
     pub watch: bool,
     pub workers: usize,
     pub batch_size: usize,
+    pub max_concurrent: usize,
     pub vector_dimension: usize,
     pub device: Option<String>,
     pub max_seq_len: usize,
@@ -51,6 +52,7 @@ impl Default for IndexerConfig {
             watch: false,
             workers: 4,
             batch_size: 100,
+            max_concurrent: 10,
             vector_dimension: 384, // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
             device: None,
             max_seq_len: 512,
@@ -99,6 +101,7 @@ impl EdgeSink for CodeGraphEdgeSink {
 
 pub struct ProjectIndexer {
     config: IndexerConfig,
+    global_config: codegraph_core::config_manager::CodeGraphConfig,
     progress: MultiProgress,
     parser: TreeSitterParser,
     graph: Option<CodeGraph>,
@@ -109,7 +112,11 @@ pub struct ProjectIndexer {
 }
 
 impl ProjectIndexer {
-    pub async fn new(config: IndexerConfig, multi_progress: MultiProgress) -> Result<Self> {
+    pub async fn new(
+        config: IndexerConfig,
+        global_config: &codegraph_core::config_manager::CodeGraphConfig,
+        multi_progress: MultiProgress,
+    ) -> Result<Self> {
         let parser = TreeSitterParser::new();
         let project_root = config.project_root.clone();
         let db_path = project_root.join(".codegraph/db");
@@ -117,10 +124,8 @@ impl ProjectIndexer {
         #[cfg(feature = "embeddings")]
         let embedder = {
             use codegraph_vector::EmbeddingGenerator;
-            // If local requested via env, override local config from CLI flags
-            let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
-                .unwrap_or_default()
-                .to_lowercase();
+            // Use global config for embedding provider
+            let provider = global_config.embedding.provider.to_lowercase();
             if provider == "local" {
                 #[cfg(feature = "embeddings-local")]
                 {
@@ -144,8 +149,10 @@ impl ProjectIndexer {
                         }
                         _ => LocalDeviceTypeCompat::Cpu,
                     };
-                    let model_name = std::env::var("CODEGRAPH_LOCAL_MODEL")
-                        .unwrap_or_else(|_| "sentence-transformers/all-MiniLM-L6-v2".to_string());
+                    let model_name =
+                        global_config.embedding.model.clone().unwrap_or_else(|| {
+                            "sentence-transformers/all-MiniLM-L6-v2".to_string()
+                        });
                     cfg.local = Some(LocalEmbeddingConfigCompat {
                         model_name,
                         device,
@@ -186,15 +193,29 @@ impl ProjectIndexer {
                         target: "codegraph_mcp::indexer",
                         "CODEGRAPH_EMBEDDING_PROVIDER=local requested but the 'embeddings-local' feature is not enabled; using auto provider"
                     );
-                    EmbeddingGenerator::with_auto_from_env().await
+                    let mut g = EmbeddingGenerator::with_auto_from_env().await;
+                    // Set batch_size and max_concurrent for Jina provider if applicable
+                    #[cfg(feature = "embeddings-jina")]
+                    {
+                        g.set_jina_batch_size(config.batch_size);
+                        g.set_jina_max_concurrent(config.max_concurrent);
+                    }
+                    g
                 }
             } else {
-                let g = EmbeddingGenerator::with_auto_from_env().await;
+                let mut g = EmbeddingGenerator::with_auto_from_env().await;
+                // Set batch_size and max_concurrent for Jina provider if applicable
+                #[cfg(feature = "embeddings-jina")]
+                {
+                    g.set_jina_batch_size(config.batch_size);
+                    g.set_jina_max_concurrent(config.max_concurrent);
+                }
                 tracing::info!(
                     target: "codegraph_mcp::indexer",
-                    "Active embeddings: {:?} (batch_size: {})",
-                    std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").ok(),
-                    config.batch_size
+                    "Active embeddings: {} (batch_size: {}, max_concurrent: {})",
+                    global_config.embedding.provider,
+                    config.batch_size,
+                    config.max_concurrent
                 );
                 g
             }
@@ -212,6 +233,7 @@ impl ProjectIndexer {
 
         Ok(Self {
             config,
+            global_config: global_config.clone(),
             progress: multi_progress,
             parser,
             graph: Some(graph),
@@ -257,7 +279,7 @@ impl ProjectIndexer {
         info!("🔗 Unified extraction: Nodes + Edges + Relationships in single pass");
 
         // REVOLUTIONARY: Use unified extraction for nodes + edges in single pass (FASTEST approach)
-        let (mut nodes, mut edges, pstats) = self
+        let (mut nodes, edges, pstats) = self
             .parse_files_with_unified_extraction(files, &parse_pb)
             .await?;
 
@@ -312,10 +334,12 @@ impl ProjectIndexer {
         let mut processed = 0u64;
 
         // Enhanced embedding phase logging
-        let provider =
-            std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or("default".to_string());
+        let provider = &self.global_config.embedding.provider;
         info!("💾 Starting semantic embedding generation:");
-        info!("   🤖 Provider: {} (384-dimensional embeddings)", provider);
+        info!(
+            "   🤖 Provider: {} ({}-dimensional embeddings)",
+            provider, self.vector_dim
+        );
         info!("   📊 Nodes to embed: {} semantic entities", total);
         info!(
             "   ⚡ Batch size: {} (optimized for {} system)",
@@ -359,8 +383,7 @@ impl ProjectIndexer {
             100.0
         };
 
-        let provider =
-            std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or("default".to_string());
+        let provider = &self.global_config.embedding.provider;
         let embed_completion_msg = format!(
             "💾 Semantic embeddings complete: {}/{} nodes (✅ {:.1}% success) | 🤖 {} | 📐 384-dim | 🚀 Batch: {}",
             processed, total, embedding_rate, provider, self.config.batch_size
@@ -393,22 +416,23 @@ impl ProjectIndexer {
 
         #[cfg(feature = "faiss")]
         {
-            use codegraph_vector::faiss_manager::{SimpleFaissManager, SimpleIndexConfig};
+            // SimpleFaissManager not available - using direct FAISS API instead
+            // use codegraph_vector::faiss_manager::{SimpleFaissManager, SimpleIndexConfig};
             use faiss::index::flat::FlatIndex;
             use faiss::index::io::write_index;
             use faiss::index::Index;
             use faiss::MetricType;
             use std::collections::HashMap;
 
-            info!("🚀 Using SimpleFaissManager for optimized index creation");
+            info!("🚀 Using direct FAISS API for optimized index creation");
 
-            // Create index configuration for SimpleFaissManager
-            let index_config = SimpleIndexConfig {
-                dimension: self.vector_dim,
-                index_type: "Flat".to_string(),
-                metric_type: MetricType::InnerProduct,
-                training_threshold: 10000,
-            };
+            // Create index configuration - SimpleFaissManager not available
+            // let index_config = SimpleIndexConfig {
+            //     dimension: self.vector_dim,
+            //     index_type: "Flat".to_string(),
+            //     metric_type: MetricType::InnerProduct,
+            //     training_threshold: 10000,
+            // };
 
             // Helper to write single FAISS index + id map
             // PERFORMANCE FIX: Use IVF index for large shards (>10K vectors) for 10x speedup
@@ -1089,7 +1113,7 @@ impl ProjectIndexer {
         // Process files and collect both nodes and edges
         let mut all_nodes = Vec::new();
         let mut all_edges = Vec::new();
-        let mut total_lines = 0;
+        let total_lines = 0;
         let mut parsed_files = 0;
         let mut failed_files = 0;
 

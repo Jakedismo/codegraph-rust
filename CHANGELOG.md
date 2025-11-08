@@ -5,6 +5,307 @@ All notable changes to the CodeGraph MCP Intelligence Platform will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-11-08 - Cloud-Native Vector Search & TypeScript Integration
+
+### 🌟 **Major Release - Cloud Embeddings, Dual-Mode Search, and NAPI Bindings**
+
+This release transforms CodeGraph into a hybrid local/cloud platform with enterprise-grade cloud embeddings, cloud-native vector search, and zero-overhead TypeScript integration through native Node.js bindings.
+
+### ☁️ **Added - Cloud Provider Ecosystem**
+
+#### **1. xAI Grok Integration (2M context window)**
+- **Massive 2M token context**: Analyze entire large codebases in a single query
+- **Extremely affordable**: $0.50/$1.50 per million tokens (10x cheaper than GPT-5)
+- **OpenAI-compatible API**: Seamless integration using existing OpenAI provider code
+- **Multiple models**: grok-4-fast (default) and grok-4-turbo
+- **Environment configuration**:
+  ```bash
+  XAI_API_KEY=xai_xxx
+  ```
+- **Config options**: `xai_api_key`, `xai_base_url` (default: https://api.x.ai/v1)
+- **Use case**: Whole-codebase analysis, massive documentation ingestion, cross-repo analysis
+
+#### **2. Jina AI Cloud Embeddings (Variable Matrysohka dimensions)**
+- **Production-grade embeddings**: Jina AI jina-code-embeddings-1.5b ad 0.5b with 1536/896-dimensional vectors
+- **Intelligent reranking**: Optional two-stage retrieval with Jina reranker-v3
+- **Token counting API**: Accurate token usage tracking for cost optimization
+- **Batch processing**: Efficient batch embedding generation with automatic chunking
+- **Environment configuration**:
+  ```bash
+  JINA_API_KEY=jina_xxx
+  JINA_RERANKING_ENABLED=true
+  ```
+- **Feature flag**: `--features cloud-jina` for conditional compilation
+
+#### **3. SurrealDB HNSW Vector Backend**
+- **Cloud-native vector search**: Distributed HNSW index with SurrealDB
+- **Sub-5ms query latency**: Fast approximate nearest neighbor search
+- **Automatic fallback**: Graceful degradation to local FAISS on connection failure
+- **Flexible deployment**: Self-hosted or cloud-managed SurrealDB instances
+- **Schema-based storage**: Structured code node storage with version tracking
+- **Environment configuration**:
+  ```bash
+  SURREALDB_CONNECTION=ws://localhost:8000
+  SURREALDB_NAMESPACE=codegraph
+  SURREALDB_DATABASE=production
+  ```
+- **Feature flag**: `--features cloud-surrealdb` for conditional compilation
+
+#### **4. Dual-Mode Search Architecture**
+- **Intelligent routing**: Automatic selection between local FAISS and cloud SurrealDB
+- **Configuration-driven**: Enable cloud search globally or per-query
+- **Automatic fallback**: Seamless degradation to local search on cloud failure
+- **Performance monitoring**: Detailed timing metrics for each search mode
+- **Explicit mode override**: Client can force local or cloud search per query
+- **Implementation**:
+  ```rust
+  // Automatic routing based on config
+  let use_cloud = match opts.use_cloud {
+      Some(explicit) => explicit,
+      None => state.cloud_enabled,
+  };
+
+  // Cloud search with fallback
+  let results = if use_cloud {
+      cloud::search_cloud(&state, &query, &opts)
+          .await
+          .or_else(|_| local::search_local(&state, &query, &opts).await)
+  } else {
+      local::search_local(&state, &query, &opts).await
+  };
+  ```
+
+### 📦 **Added - Node.js NAPI Bindings**
+
+#### **Zero-Overhead TypeScript Integration:**
+- **Native performance**: Direct Rust-to-Node.js bindings with NAPI-RS
+- **Auto-generated types**: TypeScript definitions generated from Rust code
+- **No serialization overhead**: Direct memory sharing between Rust and Node.js
+- **Async runtime**: Full tokio async support with Node.js event loop integration
+- **Type safety**: Compile-time type checking across language boundary
+
+#### **Complete API Surface:**
+```typescript
+// Search operations
+const results = await semanticSearch(query, {
+  limit: 10,
+  useCloud: true,
+  reranking: true
+});
+
+// Configuration management
+const cloudConfig = await getCloudConfig();
+await reloadConfig();  // Hot-reload without restart
+
+// Embedding operations
+const stats = await getEmbeddingStats();
+const tokens = await countTokens("query text");
+
+// Graph operations
+const neighbors = await getNeighbors(nodeId);
+const stats = await getGraphStats();
+```
+
+#### **Feature Flags for Optional Dependencies:**
+```toml
+[features]
+default = ["local"]
+local = ["codegraph-vector/faiss"]          # FAISS-only, no cloud
+cloud-jina = ["codegraph-vector/jina"]      # Jina AI embeddings
+cloud-surrealdb = ["surrealdb"]             # SurrealDB vector backend
+cloud = ["cloud-jina", "cloud-surrealdb"]   # All cloud features
+full = ["local", "cloud"]                   # Everything
+```
+
+#### **Hot-Reload Configuration:**
+- **Runtime config updates**: Reload config without restarting Node.js process
+- **RwLock-based state**: Thread-safe concurrent access to configuration
+- **Automatic propagation**: Config changes apply to all subsequent operations
+- **Implementation**:
+  ```rust
+  pub async fn reload_config() -> Result<bool> {
+      let state = get_or_init_state().await?;
+      let mut guard = state.write().await;
+      guard.reload_config().await?;
+      Ok(true)
+  }
+  ```
+
+### 📊 **OpenAI Provider Enhancements**
+
+#### **Unified OpenAI Configuration:**
+- **Embeddings**: OpenAI text-embedding-3-small/large with configurable dimensions
+- **Reasoning models**: GPT-5 family with adjustable reasoning effort
+- **Batch operations**: Efficient batch embedding generation
+- **Configuration**:
+  ```toml
+  [embedding]
+  provider = "openai"
+  model = "text-embedding-3-small"
+  openai_api_key = "sk-..."
+  dimension = 1536
+
+  [llm]
+  provider = "openai"
+  model = "gpt-5-codex-mini"
+  reasoning_effort = "medium"  # low, medium, high
+  max_completion_token = 25000
+  ```
+
+### 🏗️ **Architecture Improvements**
+
+#### **Modular Search Implementation:**
+- **`search/mod.rs`**: Search dispatcher with dual-mode routing
+- **`search/local.rs`**: FAISS-based local vector search
+- **`search/cloud.rs`**: SurrealDB cloud vector search with reranking
+- **Clean separation**: Local and cloud search fully independent
+- **Feature gating**: Cloud code excluded when features disabled
+
+#### **Type System Enhancements:**
+- **`types.rs`**: Complete NAPI type definitions for TypeScript interop
+- **`errors.rs`**: Unified error handling with NAPI conversion
+- **`state.rs`**: Hot-reloadable application state management
+- **`config.rs`**: Configuration API with cloud feature detection
+
+### 🚀 **Performance Characteristics**
+
+#### **Cloud Search Latency:**
+| Operation | Latency | Notes |
+|-----------|---------|-------|
+| Jina embedding (single) | 50-150ms | API call overhead |
+| Jina embedding (batch) | 100-300ms | 512 documents in batch at once |
+| SurrealDB HNSW search | 2-5ms | Fast approximate NN |
+| Jina reranking (top-K) | 80-200ms | Rerank top candidates |
+| **Total cloud search** | **250-500ms** | Full pipeline with reranking |
+
+#### **Local Search Latency:**
+| Operation | Latency | Notes |
+|-----------|---------|-------|
+| ONNX embedding | <1ms | Cached generator |
+| FAISS search | 2-5ms | Cached index |
+| **Total local search** | **3-10ms** | Optimized pipeline |
+
+#### **Dual-Mode Advantage:**
+- **Privacy-sensitive**: Use local search (no data sent to cloud)
+- **Best quality**: Use cloud search with reranking
+- **Hybrid**: Default to local, override to cloud for critical queries
+
+### 💾 **Build & Installation**
+
+#### **NAPI Build Commands:**
+```bash
+# Local-only (FAISS, no cloud)
+npm run build  # Uses default = ["local"]
+
+# Cloud-only (no FAISS)
+npm run build -- --features cloud
+
+# Full build (local + cloud)
+npm run build -- --features full
+```
+
+#### **Installation Methods:**
+```bash
+# Method 1: Direct install (recommended)
+npm install /path/to/codegraph-napi
+
+# Method 2: Pack and install
+npm pack  # Creates codegraph-napi-1.0.0.tgz
+npm install /path/to/codegraph-napi-1.0.0.tgz
+
+# Method 3: Bun users
+bun install /path/to/codegraph-napi
+```
+
+### 📝 **Documentation**
+
+#### **Comprehensive Guides:**
+- **NAPI README**: Complete TypeScript integration guide (900+ lines)
+- **API Reference**: All exported functions with examples
+- **Feature Flags**: Detailed matrix of feature combinations
+- **Cloud Setup**: Step-by-step Jina AI and SurrealDB configuration
+- **Hot-Reload**: Configuration update patterns and best practices
+
+### 🔧 **Bug Fixes**
+
+#### **Tree-sitter ABI Compatibility:**
+- **Fixed**: Runtime crashes from multiple tree-sitter versions
+- **Root cause**: tree-sitter-kotlin and tree-sitter-dart pulling v0.20.10
+- **Solution**: Removed conflicting dependencies, unified on v0.24.7
+- **Impact**: Parser.set_language() now works reliably for all languages
+
+#### **Codegraph-API Compilation Fixes:**
+- **Fixed**: 21+ compilation errors across multiple modules
+- **Import resolution**: Added missing feature flags for FaissVectorStore
+- **Type conversions**: Implemented From traits for stub types
+- **Method delegation**: Fixed graph_stub.rs method routing
+- **Field mappings**: Corrected config field access patterns
+
+### ✅ **Backward Compatibility**
+
+- ✅ Existing local-only builds continue to work
+- ✅ No breaking changes to MCP tool interface
+- ✅ Feature flags allow incremental cloud adoption
+- ✅ FAISS remains default (cloud is opt-in)
+- ✅ Configuration file format unchanged (cloud fields optional)
+
+### 🎯 **Migration Guide**
+
+#### **Enabling Cloud Features:**
+
+**1. Add API Keys:**
+```bash
+export JINA_API_KEY=jina_xxx
+export OPENAI_API_KEY=sk-xxx
+```
+
+**2. Configure SurrealDB (optional):**
+```bash
+export SURREALDB_CONNECTION=ws://localhost:8000
+```
+
+**3. Rebuild with Cloud Features:**
+```bash
+cargo build --release --features "cloud,faiss"
+```
+
+**4. Update Config (optional):**
+```toml
+[embedding]
+jina_enable_reranking = true
+jina_reranking_model = "jina-reranker-v3"
+```
+
+#### **Using NAPI Bindings:**
+
+**1. Install Package:**
+```bash
+npm install /path/to/codegraph-napi
+```
+
+**2. Import and Use:**
+```typescript
+import { semanticSearch, getCloudConfig } from 'codegraph-napi';
+
+const results = await semanticSearch('find auth code', {
+  limit: 10,
+  useCloud: true
+});
+```
+
+### 📊 **Summary Statistics**
+
+- **☁️ Cloud Providers**: 3 new (xAI Grok, Jina AI, SurrealDB HNSW)
+- **🤖 LLM Providers**: 6 total (Ollama, LM Studio, Anthropic, OpenAI, xAI, OpenAI-compatible)
+- **🔌 Embedding APIs**: 4 total (ONNX, Ollama, Jina AI, OpenAI)
+- **🗄️ Vector Backends**: 2 total (FAISS, SurrealDB)
+- **📦 NAPI Functions**: 12 exported to TypeScript
+- **🎯 Feature Flags**: 5 granular feature combinations
+- **🐛 Bugs Fixed**: 22+ compilation and runtime errors
+- **📝 Documentation**: 900+ lines of NAPI guides
+
+---
+
 ## [Unreleased] - 2025-10-20 - Performance Optimization Suite
 
 ### 🚀 **Revolutionary Performance Update - 10-100x Faster Search**

@@ -1,4 +1,4 @@
-use codegraph_core::{CodeNode, Result};
+use codegraph_core::Result;
 /// Pattern detection using existing CodeGraph semantic analysis
 ///
 /// This module uses your 90K+ lines of Rust semantic analysis to detect:
@@ -10,7 +10,7 @@ use codegraph_core::{CodeNode, Result};
 /// Works without external models by leveraging existing graph and vector analysis.
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
-use tracing::{debug, info};
+use tracing::info;
 
 /// Pattern detection configuration
 #[derive(Debug, Clone)]

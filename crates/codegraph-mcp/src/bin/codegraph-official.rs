@@ -134,7 +134,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             let multi_progress = MultiProgress::new();
-            let mut indexer = codegraph_mcp::ProjectIndexer::new(config, multi_progress).await?;
+            // Load global config
+            let config_mgr = codegraph_core::config_manager::ConfigManager::load()
+                .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+            let global_config = config_mgr.config();
+            let mut indexer =
+                codegraph_mcp::ProjectIndexer::new(config, global_config, multi_progress).await?;
             let stats = indexer.index_project(&path).await?;
 
             println!("INDEXING COMPLETE!");

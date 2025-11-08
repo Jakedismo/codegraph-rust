@@ -134,7 +134,7 @@ pub struct LLMConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// LLM provider: "ollama", "lmstudio", "anthropic", "openai", "openai-compatible"
+    /// LLM provider: "ollama", "lmstudio", "anthropic", "openai", "xai", "openai-compatible"
     #[serde(default = "default_llm_provider")]
     pub provider: String,
 
@@ -143,6 +143,7 @@ pub struct LLMConfig {
     /// For Ollama: model name (e.g., "qwen2.5-coder:14b")
     /// For Anthropic: model name (e.g., "claude-3-5-sonnet-20241022")
     /// For OpenAI: model name (e.g., "gpt-4o")
+    /// For xAI: model name (e.g., "grok-4-fast", "grok-4-turbo")
     /// For OpenAI-compatible: custom model name
     #[serde(default)]
     pub model: Option<String>,
@@ -167,6 +168,14 @@ pub struct LLMConfig {
     #[serde(default)]
     pub openai_api_key: Option<String>,
 
+    /// xAI API key
+    #[serde(default)]
+    pub xai_api_key: Option<String>,
+
+    /// xAI base URL (default: https://api.x.ai/v1)
+    #[serde(default = "default_xai_base_url")]
+    pub xai_base_url: String,
+
     /// Context window size
     #[serde(default = "default_context_window")]
     pub context_window: usize,
@@ -185,9 +194,9 @@ pub struct LLMConfig {
 
     /// Maximum output tokens (for Responses API and reasoning models)
     #[serde(default)]
-    pub max_output_tokens: Option<usize>,
+    pub max_completion_token: Option<usize>,
 
-    /// Reasoning effort for reasoning models: "minimal", "low", "medium", "high"
+    /// Reasoning effort for reasoning models: "minimal", "medium", "high"
     #[serde(default)]
     pub reasoning_effort: Option<String>,
 
@@ -207,12 +216,14 @@ impl Default for LLMConfig {
             openai_compatible_url: None,
             anthropic_api_key: None,
             openai_api_key: None,
+            xai_api_key: None,
+            xai_base_url: default_xai_base_url(),
             context_window: default_context_window(),
             temperature: default_temperature(),
             insights_mode: default_insights_mode(),
             max_tokens: default_max_tokens(),
-            max_output_tokens: None, // Will use max_tokens if not set
-            reasoning_effort: None,  // Only for reasoning models
+            max_completion_token: None, // Will use max_tokens if not set
+            reasoning_effort: None,     // Only for reasoning models
             timeout_secs: default_timeout_secs(),
         }
     }
@@ -272,7 +283,7 @@ impl Default for LoggingConfig {
 
 // Default value functions
 fn default_embedding_provider() -> String {
-    "lmstudio".to_string()
+    "auto".to_string()
 }
 fn default_lmstudio_url() -> String {
     "http://localhost:1234".to_string()
@@ -301,6 +312,10 @@ fn default_batch_size() -> usize {
 fn default_llm_provider() -> String {
     "lmstudio".to_string()
 }
+fn default_xai_base_url() -> String {
+    "https://api.x.ai/v1".to_string()
+}
+
 fn default_context_window() -> usize {
     32000
 } // DeepSeek Coder v2 Lite
@@ -512,6 +527,10 @@ impl ConfigManager {
             }
         }
 
+        if let Ok(effort) = std::env::var("CODEGRAPH_REASONING_EFFORT") {
+            config.llm.reasoning_effort = Some(effort);
+        }
+
         // Logging
         if let Ok(level) = std::env::var("RUST_LOG") {
             config.logging.level = level;
@@ -561,6 +580,11 @@ impl ConfigManager {
     /// Get the loaded configuration
     pub fn config(&self) -> &CodeGraphConfig {
         &self.config
+    }
+
+    /// Get the path to the config file that was loaded, if any
+    pub fn config_path(&self) -> Option<&Path> {
+        self.config_path.as_deref()
     }
 
     /// Create a default config file

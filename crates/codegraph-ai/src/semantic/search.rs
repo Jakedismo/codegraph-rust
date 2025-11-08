@@ -1,8 +1,8 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use codegraph_core::{CodeGraphError, CodeNode, GraphStore, Language, NodeId, NodeType, Result};
+use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId, NodeType, Result};
 use codegraph_graph::CodeGraph;
 use codegraph_vector::{search::SemanticSearch, EmbeddingGenerator};
 use futures::future::try_join_all;

@@ -184,7 +184,7 @@ impl GraphStore for TransactionalGraph {
             tokio::task::spawn_blocking(move || {
                 let handle = tokio::runtime::Handle::current();
                 handle.block_on(async move {
-                    let mut guard = storage.write();
+                    let guard = storage.write();
                     guard.store_content(&serialized_clone).await
                 })
             })
@@ -321,7 +321,7 @@ impl GraphStore for TransactionalGraph {
             tokio::task::spawn_blocking(move || {
                 let handle = tokio::runtime::Handle::current();
                 handle.block_on(async move {
-                    let mut guard = storage.write();
+                    let guard = storage.write();
                     guard.store_content(&serialized_clone).await
                 })
             })
@@ -341,7 +341,7 @@ impl GraphStore for TransactionalGraph {
             tokio::task::spawn_blocking(move || {
                 let handle = tokio::runtime::Handle::current();
                 handle.block_on(async move {
-                    let mut guard = storage.write();
+                    let guard = storage.write();
                     guard.store_content(&serialized_clone).await
                 })
             })

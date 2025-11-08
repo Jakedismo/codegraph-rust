@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{instrument, warn};
 use uuid::Uuid;
 
 use codegraph_core::{CodeNode, GraphStore, NodeId, Result};
@@ -251,7 +251,7 @@ impl RAGEngine {
             // Step 0: quick pre-processing for fast TTFB
             let mut quick_intro_sent = false;
             // A small helper to send progress safely
-            let mut send_progress = |msg: &str| {
+            let send_progress = |msg: &str| {
                 let tx = tx.clone();
                 let m = StreamEvent::Progress {
                     message: msg.to_string(),

@@ -8,8 +8,12 @@ CodeGraph indexes your source code, creates semantic embeddings, and exposes a *
 - 🔍 Semantic code search across your entire codebase
 - 🧠 LLM-powered code intelligence and analysis
 - 📊 Automatic dependency graphs and code relationships
-- ⚡ Fast vector search with FAISS (2-5ms query latency)
-- 🔌 MCP server for AI tool integration
+- ⚡ Fast vector search with FAISS or cloud SurrealDB HNSW (2-5ms query latency)
+- 🔌 MCP server for AI tool integration (stdio and streamable HTTP)
+- ⚙️ Easy-to-use CLI interface
+- ☁️ **NEW:** Jina AI cloud embeddings with modifiable models and dimensions and reranking
+- 🗄️ **NEW:** SurrealDB HNSW backend for cloud-native and local vector search
+- 📦 **NEW:** Node.js NAPI bindings for zero-overhead TypeScript integration
 
 ---
 
@@ -65,10 +69,11 @@ Pick the setup that matches your needs:
 **Best for:** Production use, best quality, don't want to manage local models
 
 **Providers:**
-- **Embeddings:** OpenAI
-- **LLM:** Anthropic Claude or OpenAI GPT (with o1/o3 reasoning models)
+- **Embeddings:** Jina (You get 10 million tokens for free when you just create an account!)
+- **LLM:** Anthropic Claude or OpenAI GPT-5-*
+- **Backend**: SurrealDB graph database (You get a free cloud instance up-to 1gb! Or run it completely locally!)
 
-**Pros:** ✅ Best quality, ✅ Fast, ✅ 200K context (Claude)
+**Pros:** ✅ Best quality, ✅ Fast, ✅ 1M context (sonnet[1m])
 **Cons:** ❌ API costs, ❌ Requires internet, ❌ Data sent to cloud
 
 [→ Jump to Cloud Setup Instructions](#cloud-setup-anthropic--openai)
@@ -80,9 +85,9 @@ Pick the setup that matches your needs:
 **Best for:** Balancing cost and quality
 
 **Example combinations:**
-- Local embeddings (ONNX) + Cloud LLM (Claude)
-- LM Studio embeddings + Cloud LLM (OpenAI o3)
-- OpenAI embeddings + Local LLM (Ollama)
+- Local embeddings (ONNX) + Cloud LLM (OpenAI, Claude, x.ai)
+- LMStudio embeddings + Cloud LLM (OpenAI, Claude, x.ai)
+- Jina AI embeddings + Local LLM (Ollama, LMStudio)
 
 [→ Jump to Hybrid Setup Instructions](#hybrid-setup)
 
@@ -117,12 +122,14 @@ sudo pacman -S faiss
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Or download from: https://ollama.com/download
+
+brew install onnx-runtime
 ```
 
 **Step 2: Pull models**
 ```bash
 # Pull embedding model
-ollama pull nomic-embed-code
+hf (cli) download qdrant/all-minillm-onnx
 
 # Pull LLM for code intelligence (optional)
 ollama pull qwen2.5-coder:14b
@@ -142,7 +149,7 @@ Create `~/.codegraph/config.toml`:
 ```toml
 [embedding]
 provider = "onnx"  # or "ollama" if you prefer
-model = "sentence-transformers/all-MiniLM-L6-v2"
+model = "qdrant/all-minillm-onnx"
 dimension = 384
 
 [llm]
@@ -217,11 +224,14 @@ lmstudio_url = "http://localhost:1234"
 
 ---
 
-### Cloud Setup (Anthropic & OpenAI)
+### Cloud Setup (Anthropic, OpenAI, xAI & Jina AI)
 
 **Step 1: Get API keys**
-- Anthropic: [console.anthropic.com](https://console.anthropic.com/)
-- OpenAI: [platform.openai.com](https://platform.openai.com/)
+- Anthropic: [console.anthropic.com](https://console.anthropic.com/)(Claude 4.5 models 1M/200k ctx)
+- OpenAI: [platform.openai.com](https://platform.openai.com/)(GPT-5 models 400k/200k ctx)
+- xAI: [x.ai](https://x.ai/) (Grok-4-fast with 2M ctx, $0.50-$1.50/M tokens)
+- Jina AI: [jina.ai](https://jina.ai/) (for SOTA embeddings & reranking)
+- SurrealDB [https://www.surrealdb.com] (for graph dabase backend local or cloud based setup)
 
 **Step 2: Build CodeGraph with cloud features**
 ```bash
@@ -229,6 +239,12 @@ cd codegraph-rust
 
 # Build with all cloud providers
 cargo build --release --features "anthropic,openai-llm,openai,faiss"
+
+# Or with Jina AI cloud embeddings (Matryoska dimensions + reranking)
+cargo build --release --features "cloud-jina,anthropic,faiss"
+
+# Or with SurrealDB HNSW cloud/local vector backend
+cargo build --release --features "cloud-surrealdb,openai,faiss"
 ```
 
 **Step 3: Run setup wizard (easiest)**
@@ -243,15 +259,15 @@ The wizard will guide you through configuration.
 **For Anthropic Claude:**
 ```toml
 [embedding]
-provider = "openai"
-model = "text-embedding-3-small"
+provider = "jina" # or openai
+model = "jina-code-embeddings-1.5b"
 openai_api_key = "sk-..."  # or set OPENAI_API_KEY env var
 dimension = 1536
 
 [llm]
 enabled = true
 provider = "anthropic"
-model = "claude-3-5-sonnet-20241022"
+model = "claude-haiku"
 anthropic_api_key = "sk-ant-..."  # or set ANTHROPIC_API_KEY env var
 context_window = 200000
 ```
@@ -259,18 +275,73 @@ context_window = 200000
 **For OpenAI (with reasoning models):**
 ```toml
 [embedding]
-provider = "openai"
-model = "text-embedding-3-small"
+provider = "jina" # or openai
+model = "jina-code-embeddings-1.5b"
 openai_api_key = "sk-..."
 dimension = 1536
 
 [llm]
 enabled = true
 provider = "openai"
-model = "o3-mini"  # or "gpt-4o", "o1", "o4-mini"
+model = "gpt-5-codex-mini"
 openai_api_key = "sk-..."
-max_output_tokens = 25000
-reasoning_effort = "medium"  # for reasoning models: "low", "medium", "high"
+max_completion_token = 128000
+reasoning_effort = "medium"  # reasoning models: "minimal", "medium", "high"
+```
+
+**For Jina AI (cloud embeddings with reranking):**
+```toml
+[embedding]
+provider = "jina"
+model = "jina-embeddings-v4"
+jina_api_key = "jina_..."  # or set JINA_API_KEY env var
+dimension = 2048 # or matryoshka 1024,512,256 adjust the schemas/*.surql file HNSW vector index to match your embedding model dimensions
+jina_enable_reranking = true  # Optional two-stage retrieval
+jina_reranking_model = "jina-reranker-v3"
+
+[llm]
+enabled = true
+provider = "anthropic"
+model = "claude-haiku"
+anthropic_api_key = "sk-ant-..."
+```
+
+**For xAI Grok (2M context window, $0.50-$1.50/M tokens):**
+```toml
+[embedding]
+provider = "openai"  # or "jina"
+model = "text-embedding-3-small"
+openai_api_key = "sk-..."
+dimension = 1536
+
+[llm]
+enabled = true
+provider = "xai"
+model = "grok-4-fast"  # or "grok-4-turbo"
+xai_api_key = "xai-..."  # or set XAI_API_KEY env var
+xai_base_url = "https://api.x.ai/v1"  # default, can be omitted
+reasoning_effort = "medium"  # Options: "minimal", "medium", "high"
+context_window = 2000000  # 2M tokens!
+```
+
+**For SurrealDB HNSW (graph database backend with advanced features):**
+```toml
+[embedding]
+provider = "jina"  # or "openai"
+model = "jina-code-embeddings-1.5b"
+openai_api_key = "sk-..."
+dimension = 1536
+
+[vector_store]
+backend = "surrealdb"  # Instead of "faiss"
+surrealdb_url = "ws://localhost:8000"  # or cloud instance
+surrealdb_namespace = "codegraph"
+surrealdb_database = "production"
+
+[llm]
+enabled = true
+provider = "anthropic"
+model = "claude-haiku"
 ```
 
 **Step 4: Index and run**
@@ -300,7 +371,7 @@ dimension = 384
 [llm]
 enabled = true
 provider = "anthropic"  # Best quality for analysis
-model = "claude-3-5-sonnet-20241022"
+model = "sonnet[1m]"
 anthropic_api_key = "sk-ant-..."
 ```
 
@@ -346,12 +417,12 @@ batch_size = 64
 
 [llm]
 enabled = true
-provider = "anthropic"  # or "openai", "ollama", "lmstudio"
-model = "claude-3-5-sonnet-20241022"
+provider = "anthropic"  # or "openai", "ollama", "lmstudio" or "xai"
+model = "haiku"
 anthropic_api_key = "sk-ant-..."
 context_window = 200000
 temperature = 0.1
-max_output_tokens = 4096
+max_completion_token = 4096
 
 [performance]
 num_threads = 0  # 0 = auto-detect
@@ -373,12 +444,12 @@ format = "pretty"  # pretty, json, compact
 
 ```bash
 # Index a project
-codegraph index /path/to/project
+codegraph index -r /path/to/project
 
 # Start MCP server (for Claude Desktop, LM Studio, etc.)
 codegraph start stdio
 
-# Start HTTP server (alternative)
+# Start streamable HTTP server (alternative)
 codegraph start http
 
 # List available MCP tools
@@ -419,12 +490,15 @@ When building, include features for the providers you want to use:
 |---------|------------------|----------|
 | `onnx` | ONNX embeddings | Local CPU/GPU embeddings |
 | `ollama` | Ollama embeddings + LLM | Local models via Ollama |
-| `openai` | OpenAI embeddings | Cloud embeddings |
-| `openai-llm` | OpenAI GPT/o-series LLMs | Cloud LLM (GPT-4o, o3, etc.) |
-| `anthropic` | Anthropic Claude | Cloud LLM (Claude 3.5) |
-| `openai-compatible` | LM Studio, custom APIs | OpenAI-compatible endpoints |
-| `faiss` | FAISS vector search | **Required for search** |
-| `all-cloud-providers` | All cloud features | Shortcut for all cloud providers |
+| `openai` | OpenAI embeddings | Cloud embeddings (text-embedding-3-large/small) |
+| `openai-llm` | OpenAI | Cloud LLM (gpt-5, gpt-5-codex, gpt-5-codex-mini) |
+| `anthropic` | Anthropic Claude | Cloud LLM (Claude 4.5, Haiku 4.5) |
+| `openai-compatible` | LMStudio, custom providers | OpenAI Responses API compatible | (f.ex xai/grok-4-fast)|
+| `cloud-jina` | Jina AI embeddings + reranking | Cloud embeddings & Free usage (SOTA and variable dims) |
+| `cloud-surrealdb` | SurrealDB HNSW | Local & Free Cloud-native graph database backend (up-to 1gb)|
+| `cloud` | Jina AI + SurrealDB | All cloud vector & graph features |
+| `faiss` | FAISS vector search | Local vector search graph backend (rocksdb persisted)|
+| `all-cloud-providers` | All cloud LLM providers | Shortcut for Jina + Surreal + Anthropic + OpenAI |
 
 ### Common Build Commands
 
@@ -438,8 +512,17 @@ cargo build --release --features "openai-compatible,faiss"
 # Cloud only (Anthropic + OpenAI)
 cargo build --release --features "anthropic,openai-llm,openai,faiss"
 
-# Everything
-cargo build --release --features "all-cloud-providers,onnx,ollama,faiss"
+# Jina AI cloud embeddings + local FAISS
+cargo build --release --features "cloud-jina,faiss"
+
+# SurrealDB cloud vector backend
+cargo build --release --features "cloud-surrealdb,openai,faiss"
+
+# Full cloud (Jina + SurrealDB + Anthropic)
+cargo build --release --features "cloud,anthropic,faiss"
+
+# Everything (local + cloud)
+cargo build --release --features "all-cloud-providers,onnx,ollama,cloud,faiss"
 ```
 
 ---
@@ -451,7 +534,10 @@ cargo build --release --features "all-cloud-providers,onnx,ollama,faiss"
 | Operation | Performance | Notes |
 |-----------|------------|-------|
 | **Embedding generation** | 120 embeddings/sec | LM Studio with MLX |
-| **Vector search** | 2-5ms latency | FAISS with index caching |
+| **Vector search (local)** | 2-5ms latency | FAISS with index caching |
+| **Vector search (cloud)** | 2-5ms latency | SurrealDB HNSW |
+| **Jina AI embeddings** | 50-150ms per query | Cloud API call overhead |
+| **Jina reranking** | 80-200ms for top-K | Two-stage retrieval |
 | **Ollama embeddings** | ~60 embeddings/sec | About half LM Studio speed |
 
 ### Optimizations (Enabled by Default)
@@ -501,6 +587,118 @@ sudo apt-get install libfaiss-dev  # Ubuntu
 1. Check [docs/CLOUD_PROVIDERS.md](docs/CLOUD_PROVIDERS.md) for detailed provider setup
 2. See [LMSTUDIO_SETUP.md](LMSTUDIO_SETUP.md) for LM Studio specifics
 3. Open an issue on GitHub with your error message
+
+---
+
+## 📦 Node.js Integration (NAPI Bindings)
+
+### Zero-Overhead TypeScript Integration
+
+CodeGraph provides native Node.js bindings through NAPI-RS for seamless TypeScript/JavaScript integration:
+
+**Key Features:**
+- 🚀 **Native Performance**: Direct Rust-to-Node.js bindings with zero serialization overhead
+- 📘 **Auto-Generated Types**: TypeScript definitions generated directly from Rust code
+- ⚡ **Async Runtime**: Full tokio async support integrated with Node.js event loop
+- 🔄 **Hot-Reload Config**: Update configuration without restarting your Node.js process
+- 🌐 **Dual-Mode Search**: Automatic routing between local FAISS and cloud SurrealDB
+
+### Installation
+
+**Option 1: Direct Install (Recommended)**
+```bash
+# Build the addon
+cd crates/codegraph-napi
+npm install
+npm run build
+
+# Install in your project
+cd /path/to/your-project
+npm install /path/to/codegraph-rust/crates/codegraph-napi
+```
+
+**Option 2: Pack and Install**
+```bash
+# Build and pack
+cd crates/codegraph-napi
+npm install
+npm run build
+npm pack  # Creates codegraph-napi-1.0.0.tgz
+
+# Install in your project
+cd /path/to/your-project
+npm install /path/to/codegraph-rust/crates/codegraph-napi/codegraph-napi-1.0.0.tgz
+```
+
+### API Examples
+
+**Semantic Search:**
+```typescript
+import { semanticSearch } from 'codegraph-napi';
+
+const results = await semanticSearch('find authentication code', {
+  limit: 10,
+  useCloud: true,      // Use cloud search with automatic fallback
+  reranking: true      // Enable Jina reranking (if configured)
+});
+
+console.log(`Found ${results.totalCount} results in ${results.searchTimeMs}ms`);
+console.log(`Search mode: ${results.modeUsed}`);  // "local" or "cloud"
+```
+
+**Configuration Management:**
+```typescript
+import { getCloudConfig, reloadConfig } from 'codegraph-napi';
+
+// Check cloud feature availability
+const config = await getCloudConfig();
+console.log('Jina AI enabled:', config.jina_enabled);
+console.log('SurrealDB enabled:', config.surrealdb_enabled);
+
+// Hot-reload configuration without restart
+await reloadConfig();
+```
+
+**Embedding Operations:**
+```typescript
+import { getEmbeddingStats, countTokens } from 'codegraph-napi';
+
+// Get embedding provider stats
+const stats = await getEmbeddingStats();
+console.log(`Provider: ${stats.provider}, Dimension: ${stats.dimension}`);
+
+// Count tokens for cost estimation (Jina AI)
+const tokens = await countTokens("query text");
+console.log(`Token count: ${tokens}`);
+```
+
+**Graph Navigation:**
+```typescript
+import { getNeighbors, getGraphStats } from 'codegraph-napi';
+
+// Get connected nodes
+const neighbors = await getNeighbors(nodeId);
+
+// Get graph statistics
+const stats = await getGraphStats();
+console.log(`Nodes: ${stats.node_count}, Edges: ${stats.edge_count}`);
+```
+
+### Build Options
+
+**Feature flags for selective compilation:**
+```bash
+# Local-only (FAISS, no cloud)
+npm run build  # Uses default = ["local"]
+
+# Cloud-only (no FAISS)
+npm run build -- --features cloud
+
+# Full build (local + cloud)
+npm run build -- --features full
+```
+
+**See [NAPI README](crates/codegraph-napi/README.md) for complete documentation.**
 
 ---
 
@@ -557,7 +755,9 @@ Dual-licensed under MIT and Apache 2.0. See `LICENSE-MIT` and `LICENSE-APACHE` f
 
 ## 📚 Learn More
 
+- **[NAPI Bindings Guide](crates/codegraph-napi/README.md)** - Complete TypeScript integration documentation
 - **[Cloud Providers Guide](docs/CLOUD_PROVIDERS.md)** - Detailed cloud provider setup
 - **[LM Studio Setup](LMSTUDIO_SETUP.md)** - LM Studio-specific configuration
 - **[Configuration Reference](.codegraph.toml.example)** - All configuration options
+- **[Changelog](CHANGELOG.md)** - Version history and release notes
 - **[Legacy Docs](docs/legacy/)** - Historical experiments and architecture notes

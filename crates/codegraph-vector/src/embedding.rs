@@ -62,6 +62,20 @@ impl EmbeddingGenerator {
         self.advanced = Some(engine);
     }
 
+    #[cfg(feature = "jina")]
+    pub fn set_jina_batch_size(&mut self, batch_size: usize) {
+        if let Some(ref mut provider) = self.jina_provider {
+            provider.set_batch_size(batch_size);
+        }
+    }
+
+    #[cfg(feature = "jina")]
+    pub fn set_jina_max_concurrent(&mut self, max_concurrent: usize) {
+        if let Some(ref mut provider) = self.jina_provider {
+            provider.set_max_concurrent(max_concurrent);
+        }
+    }
+
     pub fn dimension(&self) -> usize {
         self.model_config.dimension
     }
@@ -216,10 +230,11 @@ impl EmbeddingGenerator {
                 let jina_config = crate::jina_provider::JinaConfig::default();
                 match crate::jina_provider::JinaEmbeddingProvider::new(jina_config) {
                     Ok(jina_provider) => {
-                        tracing::info!("✅ Jina embeddings initialized successfully");
+                        tracing::info!("✅ Jina code embeddings initialized successfully");
+                        // Get dimension from the provider based on model
+                        let dimension = jina_provider.embedding_dimension();
                         base.jina_provider = Some(jina_provider);
-                        // Jina embeddings-v4 uses 2048 dimensions
-                        base.model_config.dimension = 2048;
+                        base.model_config.dimension = dimension;
                     }
                     Err(e) => {
                         tracing::error!("❌ Failed to initialize Jina embeddings: {}", e);
@@ -320,6 +335,11 @@ impl EmbeddingGenerator {
             return engine.embed_texts_batched(texts).await;
         }
 
+        #[cfg(feature = "jina")]
+        if let Some(provider) = &self.jina_provider {
+            return provider.embed_relationship_texts(texts).await;
+        }
+
         // Fallback: process texts sequentially
         let mut embeddings = Vec::with_capacity(texts.len());
         for text in texts {
@@ -361,6 +381,15 @@ impl EmbeddingGenerator {
     }
 
     async fn encode_text(&self, text: &str) -> Result<Vec<f32>> {
+        // Prefer Jina provider when available (cloud code embeddings with nl2code.query task)
+        #[cfg(feature = "jina")]
+        if let Some(jina) = &self.jina_provider {
+            // Use nl2code.query task type for search queries (asymmetric embeddings)
+            return jina
+                .generate_text_embedding_with_task(text, "nl2code.query")
+                .await;
+        }
+
         // Prefer Ollama provider when available (code-specialized embeddings)
         #[cfg(feature = "ollama")]
         if let Some(ollama) = &self.ollama_provider {

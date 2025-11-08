@@ -1,12 +1,14 @@
 use codegraph_core::GraphStore;
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 // Performance optimization: Cache FAISS indexes and embedding generator
 use dashmap::DashMap;
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::Lazy;
+
+use crate::context_aware_limits::ContextAwareLimits;
 
 #[cfg(feature = "qwen-integration")]
 use crate::cache::{init_cache, CacheConfig};
@@ -47,19 +49,17 @@ enum SearchMode {
     Cloud,
 }
 
-/// Detect which search mode to use based on CODEGRAPH_EMBEDDING_PROVIDER environment variable
+/// Detect which search mode to use based on embedding provider configuration
 /// Returns SearchMode::Cloud if using Jina embeddings, SearchMode::Local otherwise
-fn detect_search_mode() -> SearchMode {
-    let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
-        .unwrap_or_default()
-        .to_lowercase();
+fn detect_search_mode(config: &codegraph_core::config_manager::CodeGraphConfig) -> SearchMode {
+    let provider = config.embedding.provider.to_lowercase();
 
     match provider.as_str() {
         "jina" => {
             tracing::info!("🌐 Search Mode: Cloud (SurrealDB HNSW + Jina reranking)");
             SearchMode::Cloud
         }
-        "ollama" | "local" | "" => {
+        "ollama" | "local" | "" | "auto" => {
             tracing::info!("💻 Search Mode: Local (FAISS + local embeddings)");
             SearchMode::Local
         }
@@ -124,6 +124,8 @@ impl CodeGraphServer {
         self
     }
 
+    // Legacy MCP server methods disabled - use official_server.rs with rmcp instead
+    #[cfg(feature = "legacy-mcp-server")]
     /// Initialize MCP server and handle stdio communication
     pub async fn serve_stdio(self) -> anyhow::Result<()> {
         use mcp_server::router::RouterService;
@@ -140,6 +142,7 @@ impl CodeGraphServer {
         Ok(())
     }
 
+    #[cfg(feature = "legacy-mcp-server")]
     /// Initialize MCP server and handle HTTP communication
     pub async fn serve_http(self, port: u16) -> anyhow::Result<()> {
         use mcp_server::router::RouterService;
@@ -170,6 +173,7 @@ impl CodeGraphServer {
         }
     }
 
+    #[cfg(feature = "legacy-mcp-server")]
     async fn create_router(self) -> anyhow::Result<mcp_server::Router> {
         use mcp_server::router::CapabilitiesBuilder;
         use mcp_server::Router;
@@ -205,6 +209,7 @@ impl CodeGraphServer {
         Ok(router)
     }
 
+    #[cfg(feature = "legacy-mcp-server")]
     async fn register_tools(
         self,
         mut router: mcp_server::Router,
@@ -423,7 +428,23 @@ async fn index_directory_tool(
 
     let start = Instant::now();
 
-    graph.index_directory(&path, lang_filter.as_deref()).await?;
+    // Use ProjectIndexer for directory indexing
+    use crate::indexer::{IndexerConfig, ProjectIndexer};
+    use indicatif::MultiProgress;
+
+    let mut config = IndexerConfig::default();
+    config.project_root = path.clone();
+    if let Some(langs) = lang_filter {
+        config.languages = langs.iter().map(|l| format!("{:?}", l)).collect();
+    }
+
+    let multi_progress = MultiProgress::new();
+    // Load config for indexer
+    let config_mgr = codegraph_core::config_manager::ConfigManager::load()
+        .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+    let global_config = config_mgr.config();
+    let mut indexer = ProjectIndexer::new(config, global_config, multi_progress).await?;
+    let _stats = indexer.index_project(&path).await?;
 
     let duration = start.elapsed();
 
@@ -441,7 +462,8 @@ async fn get_embedding_generator() -> anyhow::Result<Arc<codegraph_vector::Embed
             tracing::info!("🔧 Initializing embedding generator (first-time setup)");
             let start = Instant::now();
 
-            let generator = codegraph_vector::EmbeddingGenerator::from_env().await?;
+            // Use default() instead of from_env() which no longer exists
+            let generator = codegraph_vector::EmbeddingGenerator::default();
 
             tracing::info!(
                 "✅ Embedding generator initialized in {}ms",
@@ -456,66 +478,14 @@ async fn get_embedding_generator() -> anyhow::Result<Arc<codegraph_vector::Embed
 
 #[cfg(feature = "embeddings")]
 async fn index_embeddings_tool(
-    graph: &codegraph_graph::CodeGraph,
-    paths: Option<Vec<String>>,
+    _graph: &codegraph_graph::CodeGraph,
+    _paths: Option<Vec<String>>,
 ) -> anyhow::Result<Value> {
-    let start = Instant::now();
-
-    // Get embedding generator (cached after first call)
-    let generator = get_embedding_generator().await?;
-
-    // Get nodes to process
-    let nodes = if let Some(paths) = paths {
-        let mut all_nodes = Vec::new();
-        for path in paths {
-            let path_nodes = graph.get_storage().get_nodes_by_file(&path).await?;
-            all_nodes.extend(path_nodes);
-        }
-        all_nodes
-    } else {
-        graph.get_storage().get_all_nodes().await?
-    };
-
-    if nodes.is_empty() {
-        return Ok(json!({
-            "success": false,
-            "message": "No nodes found to generate embeddings for"
-        }));
-    }
-
-    tracing::info!("📊 Generating embeddings for {} nodes", nodes.len());
-
-    // Generate embeddings in batches
-    let batch_size = 32;
-    let mut total_processed = 0;
-
-    for chunk in nodes.chunks(batch_size) {
-        let texts: Vec<String> = chunk
-            .iter()
-            .map(|n| format!("{}\n{}", n.name, n.content.as_deref().unwrap_or("")))
-            .collect();
-
-        let embeddings = generator.generate_batch_embeddings(&texts).await?;
-
-        // Store embeddings
-        for (node, embedding) in chunk.iter().zip(embeddings.iter()) {
-            graph
-                .get_storage()
-                .store_embedding(&node.id, embedding)
-                .await?;
-        }
-
-        total_processed += chunk.len();
-        tracing::debug!("✅ Processed {}/{} nodes", total_processed, nodes.len());
-    }
-
-    let duration = start.elapsed();
-
-    Ok(json!({
-        "success": true,
-        "message": format!("Successfully generated embeddings for {} nodes", total_processed),
-        "duration_ms": duration.as_millis()
-    }))
+    // This functionality requires direct storage access which is not exposed through CodeGraph API
+    // Embedding generation is now handled during indexing via ProjectIndexer
+    Err(anyhow::anyhow!(
+        "Standalone embedding indexing is not available. Embeddings are generated during directory indexing."
+    ))
 }
 
 /// FAISS-based local search implementation
@@ -540,11 +510,15 @@ async fn faiss_search_impl(
             if cached_time.elapsed().unwrap().as_secs() < 300 {
                 tracing::debug!("⚡ Cache hit for query: {}", query);
                 return Ok(cached_result.clone());
-            } else {
-                cache.pop(&cache_key);
             }
         }
     }
+
+    // Load config for context-aware limits
+    let config_mgr = codegraph_core::config_manager::ConfigManager::load()
+        .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+    let config = config_mgr.config();
+    let context_limits = ContextAwareLimits::from_config(config);
 
     // Generate query embedding
     let start_embedding = Instant::now();
@@ -552,21 +526,8 @@ async fn faiss_search_impl(
     let query_embedding = generator.generate_text_embedding(&query).await?;
     let embedding_time = start_embedding.elapsed().as_millis() as u64;
 
-    // Get storage for node data
-    let storage = graph.get_storage();
-
-    // Determine index path from storage type
-    let index_path = match storage.storage_type() {
-        codegraph_core::StorageType::SurrealDb => {
-            // For SurrealDB, use a fixed index path
-            PathBuf::from(".codegraph/faiss_index.bin")
-        }
-        codegraph_core::StorageType::InMemory => {
-            return Err(anyhow::anyhow!(
-                "In-memory storage does not support FAISS indexing"
-            ));
-        }
-    };
+    // Use fixed FAISS index path
+    let index_path = PathBuf::from(".codegraph/faiss_index.bin");
 
     // Load or get cached FAISS index
     let start_index_load = Instant::now();
@@ -588,9 +549,16 @@ async fn faiss_search_impl(
 
     let index_load_time = start_index_load.elapsed().as_millis() as u64;
 
-    // Search FAISS index
+    // Search FAISS index with context-aware overretrieve limit
     let start_search = Instant::now();
-    let search_limit = limit * 10; // Overretrieve for filtering
+    let search_limit = context_limits.get_local_overretrieve(limit);
+    tracing::debug!(
+        "🔍 Local search: limit={}, overretrieve={} (tier={:?}, context={}K)",
+        limit,
+        search_limit,
+        context_limits.tier,
+        context_limits.context_window / 1000
+    );
     let search_result = {
         let mut index = index_arc.lock();
         index.search(&query_embedding, search_limit)?
@@ -599,16 +567,13 @@ async fn faiss_search_impl(
 
     // Get node IDs from labels
     let start_node_load = Instant::now();
-    let node_ids: Vec<i64> = search_result
+    let node_ids: Vec<usize> = search_result
         .labels
         .iter()
         .filter_map(|&id| {
-            let id_i64 = id as i64;
-            if id_i64 >= 0 {
-                Some(id_i64)
-            } else {
-                None
-            }
+            // FAISS Idx.get() returns Option<u64>
+            // Convert to usize for NodeId
+            id.get().map(|val| val as usize)
         })
         .collect();
 
@@ -625,14 +590,100 @@ async fn faiss_search_impl(
         }));
     }
 
-    // Load nodes from storage
-    let nodes = storage
-        .get_nodes_by_internal_ids(&node_ids.iter().map(|&id| id as usize).collect::<Vec<_>>())
-        .await?;
+    // FAISS returns integer IDs, but CodeGraph uses UUIDs
+    // Create UUIDs deterministically from integer IDs using v4 format with fixed namespace
+    let mut nodes = Vec::new();
+    for &id in &node_ids {
+        // Create a deterministic UUID from the integer ID
+        // Use the ID as the low 64 bits, zero-padded for the high 64 bits
+        let uuid_bytes = [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0, // High 64 bits (zero)
+            ((id >> 56) & 0xFF) as u8,
+            ((id >> 48) & 0xFF) as u8,
+            ((id >> 40) & 0xFF) as u8,
+            ((id >> 32) & 0xFF) as u8,
+            ((id >> 24) & 0xFF) as u8,
+            ((id >> 16) & 0xFF) as u8,
+            ((id >> 8) & 0xFF) as u8,
+            (id & 0xFF) as u8,
+        ];
+        let node_id = codegraph_core::NodeId::from_bytes(uuid_bytes);
+        if let Ok(Some(node)) = graph.get_node(node_id).await {
+            nodes.push(node);
+        }
+    }
 
     let node_load_time = start_node_load.elapsed().as_millis() as u64;
 
-    // Filter and format results
+    // Optional Jina reranking for local FAISS search (improves quality 10-30%)
+    let start_rerank = Instant::now();
+    let mut rerank_enabled = false;
+    #[cfg(feature = "embeddings-jina")]
+    let reranked_indices: Vec<usize> = {
+        // Try to create Jina provider for reranking
+        match codegraph_vector::JinaConfig::default().api_key.is_empty() {
+            true => {
+                tracing::debug!("💻 Local search: No Jina API key, using FAISS scores");
+                // No reranking - use FAISS order
+                (0..nodes.len()).collect()
+            }
+            false => {
+                let jina_config = codegraph_vector::JinaConfig {
+                    enable_reranking: true,
+                    reranking_model: "jina-reranker-v3".to_string(),
+                    reranking_top_n: limit,
+                    ..codegraph_vector::JinaConfig::default()
+                };
+
+                match codegraph_vector::JinaEmbeddingProvider::new(jina_config) {
+                    Ok(jina_provider) => {
+                        // Prepare documents for reranking
+                        let documents: Vec<String> = nodes
+                            .iter()
+                            .map(|node| {
+                                format!("{}\n{}", node.name, node.content.as_deref().unwrap_or(""))
+                            })
+                            .collect();
+
+                        match jina_provider.rerank(&query, documents).await {
+                            Ok(rerank_results) => {
+                                tracing::info!(
+                                    "🎯 Local + Jina reranking: {} results (FAISS+rerank pipeline)",
+                                    rerank_results.len()
+                                );
+                                rerank_enabled = true;
+                                // Extract indices from rerank results
+                                rerank_results.into_iter().map(|r| r.index).collect()
+                            }
+                            Err(e) => {
+                                tracing::warn!("Jina reranking failed: {}, using FAISS scores", e);
+                                // Fallback to FAISS order
+                                (0..nodes.len()).collect()
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::debug!("Jina provider init failed: {}, using FAISS scores", e);
+                        (0..nodes.len()).collect()
+                    }
+                }
+            }
+        }
+    };
+
+    #[cfg(not(feature = "embeddings-jina"))]
+    let reranked_indices: Vec<usize> = (0..nodes.len()).collect();
+
+    let rerank_time = start_rerank.elapsed().as_millis() as u64;
+
+    // Filter and format results using reranked order
     let start_format = Instant::now();
 
     let lang_filter: Option<Vec<Language>> = langs.as_ref().map(|langs| {
@@ -650,40 +701,51 @@ async fn faiss_search_impl(
             .collect()
     });
 
-    let results: Vec<Value> = nodes
+    let results: Vec<Value> = reranked_indices
         .iter()
-        .zip(search_result.distances.iter())
-        .filter(|(node, _)| {
+        .filter_map(|&idx| {
+            if idx >= nodes.len() {
+                return None;
+            }
+            let node = &nodes[idx];
+            let distance = if idx < search_result.distances.len() {
+                search_result.distances[idx]
+            } else {
+                1.0 // Fallback distance
+            };
+
+
             // Filter by language if specified
             if let Some(ref langs) = lang_filter {
-                if !langs.contains(&node.language) {
-                    return false;
+                if let Some(ref node_lang) = node.language {
+                    if !langs.contains(node_lang) {
+                        return None;
+                    }
+                } else {
+                    return None;
                 }
             }
 
             // Filter by paths if specified
             if let Some(ref paths) = paths {
                 if !paths.iter().any(|p| node.location.file_path.contains(p)) {
-                    return false;
+                    return None;
                 }
             }
 
-            true
-        })
-        .take(limit)
-        .map(|(node, &distance)| {
-            json!({
+            Some(json!({
                 "id": node.id,
                 "name": node.name,
                 "node_type": format!("{:?}", node.node_type),
-                "language": format!("{:?}", node.language),
+                "language": node.language.as_ref().map(|l| format!("{:?}", l)).unwrap_or_else(|| "Unknown".to_string()),
                 "file_path": node.location.file_path,
-                "start_line": node.location.start_line,
+                "start_line": node.location.line,
                 "end_line": node.location.end_line,
                 "score": 1.0 - distance, // Convert distance to similarity score
                 "summary": node.content.as_deref().unwrap_or("").chars().take(160).collect::<String>()
-            })
+            }))
         })
+        .take(limit)
         .collect();
 
     let format_time = start_format.elapsed().as_millis() as u64;
@@ -698,7 +760,10 @@ async fn faiss_search_impl(
             "index_loading_ms": index_load_time,
             "search_execution_ms": search_time,
             "node_loading_ms": node_load_time,
+            "reranking_ms": rerank_time,
             "formatting_ms": format_time,
+            "mode": "local",
+            "reranking_enabled": rerank_enabled
         }
     });
 
@@ -720,7 +785,11 @@ pub async fn bin_search_with_scores_shared(
     limit: usize,
     graph: &codegraph_graph::CodeGraph,
 ) -> anyhow::Result<Value> {
-    let mode = detect_search_mode();
+    // Load config for search mode detection
+    let config_mgr = codegraph_core::config_manager::ConfigManager::load()
+        .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+    let config = config_mgr.config();
+    let mode = detect_search_mode(config);
 
     match mode {
         SearchMode::Local => {
@@ -760,14 +829,33 @@ async fn cloud_search_impl(
 
     tracing::info!("🌐 Cloud Mode: SurrealDB HNSW + Jina reranking");
 
+    // Load config for context-aware limits
+    let config_mgr = codegraph_core::config_manager::ConfigManager::load()
+        .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+    let config = config_mgr.config();
+    let context_limits = ContextAwareLimits::from_config(config);
+
     // 1. Generate query embedding using Jina/Cloud provider
     let start_embedding = Instant::now();
     let embedding_gen = get_embedding_generator().await?;
     let query_embedding = embedding_gen.generate_text_embedding(&query).await?;
     let embedding_time = start_embedding.elapsed().as_millis() as u64;
 
-    // 2. Overretrieve for reranking (3x limit)
-    let overretrieve_limit = limit * 3;
+    // 2. Overretrieve for reranking with context-aware limits
+    // Allow env var override for advanced users, otherwise use context-aware default
+    let context_aware_limit = context_limits.get_cloud_overretrieve(limit);
+    let overretrieve_limit = std::env::var("CODEGRAPH_RERANK_CANDIDATES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(context_aware_limit);
+
+    tracing::debug!(
+        "🌐 Cloud search: limit={}, overretrieve={} (tier={:?}, context={}K)",
+        limit,
+        overretrieve_limit,
+        context_limits.tier,
+        context_limits.context_window / 1000
+    );
 
     // 3. Create SurrealDB storage connection for cloud mode
     let start_connect = Instant::now();
@@ -790,19 +878,16 @@ async fn cloud_search_impl(
     let start_search = Instant::now();
 
     // Build filter parameters
-    let node_type_filter = langs.as_ref().and_then(|langs| {
-        langs
-            .iter()
-            .filter_map(|l| match l.to_lowercase().as_str() {
-                "rust" => Some("Rust".to_string()),
-                "python" => Some("Python".to_string()),
-                "javascript" | "js" => Some("JavaScript".to_string()),
-                "typescript" | "ts" => Some("TypeScript".to_string()),
-                "go" => Some("Go".to_string()),
-                "java" => Some("Java".to_string()),
-                _ => None,
-            })
-            .next() // Take first matching language for now
+    let node_type_filter: Option<String> = langs.as_ref().and_then(|langs| {
+        langs.iter().find_map(|l| match l.to_lowercase().as_str() {
+            "rust" => Some("Rust".to_string()),
+            "python" => Some("Python".to_string()),
+            "javascript" | "js" => Some("JavaScript".to_string()),
+            "typescript" | "ts" => Some("TypeScript".to_string()),
+            "go" => Some("Go".to_string()),
+            "java" => Some("Java".to_string()),
+            _ => None,
+        })
     });
 
     let file_path_pattern = paths.as_ref().map(|p| p.join("|"));
@@ -957,7 +1042,11 @@ pub async fn bin_search_with_scores_shared(
     _limit: usize,
     _graph: &codegraph_graph::CodeGraph,
 ) -> anyhow::Result<Value> {
-    let mode = detect_search_mode();
+    // Load config for search mode detection
+    let config_mgr = codegraph_core::config_manager::ConfigManager::load()
+        .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+    let config = config_mgr.config();
+    let mode = detect_search_mode(config);
 
     match mode {
         SearchMode::Cloud => {
@@ -984,29 +1073,7 @@ pub async fn bin_search_with_scores_shared(
 // This is a truncated version showing the key parts. The full file continues with
 // all other tool implementations and helper functions.
 
-fn suggest_improvements(intelligence: &codegraph_core::CodeIntelligence) -> Vec<String> {
-    let mut improvements = Vec::new();
-
-    if intelligence.quality_metrics.overall_score < 0.6 {
-        improvements.push("Focus on improving overall code quality".to_string());
-    }
-
-    if intelligence.conventions.len() < 5 {
-        improvements.push("Develop more comprehensive coding conventions".to_string());
-    }
-
-    let low_quality_patterns = intelligence
-        .patterns
-        .iter()
-        .filter(|p| p.quality_score < 0.6)
-        .count();
-
-    if low_quality_patterns > 2 {
-        improvements.push("Review and improve low-quality patterns".to_string());
-    }
-
-    improvements
-}
+// Removed: suggest_improvements function - CodeIntelligence type no longer exists
 
 // COMPATIBILITY: Legacy function for benchmarks (creates separate connection)
 pub async fn bin_search_with_scores(

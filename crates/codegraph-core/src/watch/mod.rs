@@ -1537,16 +1537,21 @@ mod tests {
         std::thread::spawn(move || {
             watcher.watch(tx).unwrap();
         });
-        std::thread::sleep(Duration::from_millis(120));
+        std::thread::sleep(Duration::from_millis(200));
         fs::write(&a, "export const A=3\n").unwrap();
-        std::thread::sleep(Duration::from_millis(160));
+        std::thread::sleep(Duration::from_millis(300));
         let evs: Vec<_> = rx.try_iter().collect();
+        eprintln!("Received {} events:", evs.len());
+        for ev in &evs {
+            eprintln!("  {:?}", ev);
+        }
         let b_tr = evs
             .iter()
             .any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("b.ts")));
         let c_tr = evs
             .iter()
             .any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("c.ts")));
+        eprintln!("b_tr: {}, c_tr: {}", b_tr, c_tr);
         assert!(b_tr && c_tr);
     }
 

@@ -1,6 +1,6 @@
 use crate::llm_provider::*;
 use crate::qwen_simple::{QwenClient, QwenConfig};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use codegraph_core::config_manager::LLMConfig;
 use std::sync::Arc;
 
@@ -32,6 +32,8 @@ impl LLMProviderFactory {
             "anthropic" => Self::create_anthropic_provider(config),
             #[cfg(feature = "openai-llm")]
             "openai" => Self::create_openai_provider(config),
+            #[cfg(feature = "openai-llm")]
+            "xai" => Self::create_xai_provider(config),
             #[cfg(feature = "openai-compatible")]
             "openai-compatible" => Self::create_openai_compatible_provider(config),
             _ => Err(anyhow!(
@@ -43,7 +45,7 @@ impl LLMProviderFactory {
                     ""
                 },
                 if cfg!(feature = "openai-llm") {
-                    ", openai"
+                    ", openai, xai"
                 } else {
                     ""
                 },
@@ -159,6 +161,36 @@ impl LLMProviderFactory {
         Ok(Arc::new(OpenAIProvider::new(openai_config)?))
     }
 
+    /// Create an xAI provider (uses OpenAI-compatible API)
+    #[cfg(feature = "openai-llm")]
+    fn create_xai_provider(config: &LLMConfig) -> Result<Arc<dyn LLMProvider>> {
+        let api_key = config
+            .xai_api_key
+            .clone()
+            .or_else(|| std::env::var("XAI_API_KEY").ok())
+            .ok_or_else(|| {
+                anyhow!(
+                    "xAI API key not found. Set 'xai_api_key' in config \
+                     or XAI_API_KEY environment variable"
+                )
+            })?;
+
+        let xai_config = OpenAIConfig {
+            api_key,
+            base_url: config.xai_base_url.clone(),
+            model: config
+                .model
+                .clone()
+                .unwrap_or_else(|| "grok-4-fast".to_string()),
+            context_window: config.context_window,
+            timeout_secs: config.timeout_secs,
+            max_retries: 3,
+            organization: None, // xAI doesn't use organization ID
+        };
+
+        Ok(Arc::new(OpenAIProvider::new(xai_config)?))
+    }
+
     /// Create an OpenAI-compatible provider
     #[cfg(feature = "openai-compatible")]
     fn create_openai_compatible_provider(config: &LLMConfig) -> Result<Arc<dyn LLMProvider>> {
@@ -203,6 +235,9 @@ impl LLMProviderFactory {
 
         #[cfg(feature = "openai-llm")]
         providers.push("openai");
+
+        #[cfg(feature = "openai-llm")]
+        providers.push("xai");
 
         providers
     }

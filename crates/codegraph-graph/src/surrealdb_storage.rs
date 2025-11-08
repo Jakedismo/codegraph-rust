@@ -6,7 +6,7 @@ use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::sync::Arc;
 use surrealdb::{engine::any::Any, opt::auth::Root, Surreal};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 
 /// SurrealDB storage implementation with flexible schema support
 #[derive(Clone)]

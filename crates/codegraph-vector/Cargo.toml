@@ -29,12 +29,14 @@ crossbeam-channel = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 num_cpus = { workspace = true }
+unicode-normalization = "0.1"
+emojis = "0.6"
 
 # Local embeddings (Candle) - optional via feature
 candle-core = { version = "0.9.1", optional = true, default-features = false, features = ["metal"] }
 candle-nn = { version = "0.9.1", optional = true, default-features = false }
 candle-transformers = { version = "0.9.1", optional = true, default-features = false }
-tokenizers = { version = "0.22", optional = true }
+tokenizers = { version = "0.20", features = ["http"] }  # Always available for token counting in Jina provider
 hf-hub = { version = "0.4", optional = true, default-features = true, features = ["tokio"] }
 lru = { workspace = true }
 
@@ -43,6 +45,7 @@ reqwest = { workspace = true, optional = true }
 
 # ONNX Runtime provider (optional)
 ort = { version = "2.0.0-rc.10", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries"] }
+semchunk-rs = "0.1.1"
 
 
 
@@ -69,10 +72,9 @@ local-embeddings = [
     "dep:candle-core",
     "dep:candle-nn",
     "dep:candle-transformers",
-    "dep:tokenizers",
     "dep:hf-hub",
 ]
-onnx = ["dep:ort", "dep:tokenizers", "dep:hf-hub", "dep:ndarray"]
+onnx = ["dep:ort", "dep:hf-hub", "dep:ndarray"]
 onnx-coreml = ["onnx"]
 ollama = ["dep:reqwest"]
 jina = ["dep:reqwest"]

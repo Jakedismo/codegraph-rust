@@ -27,8 +27,10 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_file_path ON TABLE nodes COLUMNS file_path;
 -- Edges table: Stores relationships between nodes
 DEFINE TABLE IF NOT EXISTS edges SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS id ON TABLE edges TYPE string;
-DEFINE FIELD IF NOT EXISTS from ON TABLE edges TYPE record(nodes);
-DEFINE FIELD IF NOT EXISTS to ON TABLE edges TYPE record(nodes);
+DEFINE FIELD IF NOT EXISTS from ON TABLE edges TYPE record<nodes>;
+DEFINE FIELD IF NOT EXISTS to ON TABLE edges TYPE record<nodes>;
+DEFINE FIELD IF NOT EXISTS from ON TABLE edges TYPE record<nodes>;
+DEFINE FIELD IF NOT EXISTS to ON TABLE edges TYPE record<nodes>;
 DEFINE FIELD IF NOT EXISTS edge_type ON TABLE edges TYPE string;
 DEFINE FIELD IF NOT EXISTS weight ON TABLE edges TYPE float DEFAULT 1.0;
 DEFINE FIELD IF NOT EXISTS metadata ON TABLE edges TYPE option<object>;

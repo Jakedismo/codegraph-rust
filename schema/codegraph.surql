@@ -65,11 +65,13 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_file_path ON TABLE nodes COLUMNS file_path;
 
 -- Vector similarity search index using HNSW
 -- Note: Dimension must match your embedding provider
--- - Jina embeddings-v4: 2048 dimensions
+-- - Jina code-embeddings-1.5b: 1536 dimensions (default for code tasks)
+-- - Jina code-embeddings-0.5b: 896 dimensions (currently broken on Jina's side)
+-- - Jina embeddings-v4: 1024 dimensions
 -- - Ollama nomic-embed-code: 768 dimensions
 -- - OpenAI text-embedding-3-small: 1536 dimensions
 -- Update DIMENSION parameter based on your CODEGRAPH_EMBEDDING_PROVIDER
-DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_hnsw ON TABLE nodes FIELDS embedding HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_hnsw ON TABLE nodes FIELDS embedding HNSW DIMENSION 1536 DIST COSINE EFC 200 M 16;
 
 -- =============================================================================
 -- EDGES TABLE - Relationship Storage
@@ -203,7 +205,7 @@ ON DUPLICATE KEY UPDATE description = 'Initial CodeGraph schema with nodes, edge
 
 -- Pure vector similarity search (K-nearest neighbors)
 -- Find the 10 most similar nodes to a query embedding
--- LET $query_embedding = [0.1, 0.2, ...]; -- Your query vector (2048 dimensions for Jina)
+-- LET $query_embedding = [0.1, 0.2, ...]; -- Your query vector (896 dimensions for Jina code embeddings)
 -- SELECT id, name, file_path, node_type, vector::distance::knn() AS similarity_score
 -- FROM nodes
 -- WHERE embedding <|10,100|> $query_embedding  -- K=10 results, EF=100 candidate list size

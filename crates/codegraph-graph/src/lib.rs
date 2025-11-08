@@ -20,6 +20,8 @@ pub mod update_scheduler;
 pub mod versioned_storage;
 
 #[cfg(feature = "surrealdb")]
+pub mod graph_functions;
+#[cfg(feature = "surrealdb")]
 pub mod surrealdb_migrations;
 #[cfg(feature = "surrealdb")]
 pub mod surrealdb_schema;
@@ -47,6 +49,8 @@ pub use traversal::*;
 pub use update_scheduler::*;
 pub use versioned_storage::*;
 
+#[cfg(feature = "surrealdb")]
+pub use graph_functions::*;
 #[cfg(feature = "surrealdb")]
 pub use surrealdb_migrations::*;
 #[cfg(feature = "surrealdb")]
