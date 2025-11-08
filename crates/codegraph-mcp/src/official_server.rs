@@ -1359,8 +1359,16 @@ impl CodeGraphMCPServer {
         // Create GraphToolExecutor
         let tool_executor = Arc::new(crate::GraphToolExecutor::new(graph_functions));
 
-        // Create AgenticOrchestrator
-        let orchestrator = AgenticOrchestrator::new(llm_provider, tool_executor, tier);
+        // Get max_tokens override from config if set
+        let max_tokens_override = config.llm.mcp_code_agent_max_output_tokens;
+
+        // Create AgenticOrchestrator with config override
+        let orchestrator = AgenticOrchestrator::new_with_override(
+            llm_provider,
+            tool_executor,
+            tier,
+            max_tokens_override,
+        );
 
         // Get tier-appropriate prompt from PromptSelector
         let prompt_selector = PromptSelector::new();

@@ -33,12 +33,19 @@ pub struct AgenticConfig {
 impl AgenticConfig {
     /// Create tier-aware configuration
     pub fn from_tier(tier: ContextTier) -> Self {
-        let (max_steps, max_tokens) = match tier {
+        Self::from_tier_with_override(tier, None)
+    }
+
+    /// Create tier-aware configuration with optional max_tokens override
+    pub fn from_tier_with_override(tier: ContextTier, max_tokens_override: Option<usize>) -> Self {
+        let (max_steps, default_max_tokens) = match tier {
             ContextTier::Small => (5, 2048),     // Conservative for small models
             ContextTier::Medium => (10, 4096),   // Moderate for medium models
             ContextTier::Large => (15, 8192),    // Generous for large models
             ContextTier::Massive => (20, 16384), // Very generous for massive models
         };
+
+        let max_tokens = max_tokens_override.unwrap_or(default_max_tokens);
 
         Self {
             max_steps,
@@ -204,7 +211,17 @@ impl AgenticOrchestrator {
         tool_executor: Arc<GraphToolExecutor>,
         tier: ContextTier,
     ) -> Self {
-        let config = AgenticConfig::from_tier(tier);
+        Self::new_with_override(llm_provider, tool_executor, tier, None)
+    }
+
+    /// Create a new agentic orchestrator with optional max_tokens override
+    pub fn new_with_override(
+        llm_provider: Arc<dyn LLMProvider>,
+        tool_executor: Arc<GraphToolExecutor>,
+        tier: ContextTier,
+        max_tokens_override: Option<usize>,
+    ) -> Self {
+        let config = AgenticConfig::from_tier_with_override(tier, max_tokens_override);
         Self {
             llm_provider,
             tool_executor,

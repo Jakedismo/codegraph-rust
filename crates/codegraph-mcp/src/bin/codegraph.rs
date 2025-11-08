@@ -1704,12 +1704,18 @@ async fn handle_agent_status(json: bool) -> Result<()> {
     };
 
     // Get tier-specific parameters
-    let (max_steps, base_limit) = match tier {
-        ContextTier::Small => (5, 10),
-        ContextTier::Medium => (10, 25),
-        ContextTier::Large => (15, 50),
-        ContextTier::Massive => (20, 100),
+    let (max_steps, base_limit, default_max_tokens) = match tier {
+        ContextTier::Small => (5, 10, 2048),
+        ContextTier::Medium => (10, 25, 4096),
+        ContextTier::Large => (15, 50, 8192),
+        ContextTier::Massive => (20, 100, 16384),
     };
+
+    // Get max output tokens (config override or tier default)
+    let max_output_tokens = config
+        .llm
+        .mcp_code_agent_max_output_tokens
+        .unwrap_or(default_max_tokens);
 
     // Active MCP tools
     let mcp_tools = vec![
@@ -1766,6 +1772,12 @@ async fn handle_agent_status(json: bool) -> Result<()> {
                 "base_search_limit": base_limit,
                 "cache_enabled": true,
                 "cache_size": 100,
+                "max_output_tokens": max_output_tokens,
+                "max_output_tokens_source": if config.llm.mcp_code_agent_max_output_tokens.is_some() {
+                    "custom"
+                } else {
+                    "tier_default"
+                },
             },
             "mcp_tools": mcp_tools.iter().map(|(name, desc)| {
                 serde_json::json!({
@@ -1851,7 +1863,12 @@ async fn handle_agent_status(json: bool) -> Result<()> {
             "Enabled".green(),
             "100".cyan()
         );
-        println!("   Max Output Tokens: {}", "44,200".cyan());
+        let max_tokens_display = if config.llm.mcp_code_agent_max_output_tokens.is_some() {
+            format!("{} (custom)", max_output_tokens.to_string().cyan())
+        } else {
+            format!("{} (tier default)", max_output_tokens.to_string().cyan())
+        };
+        println!("   Max Output Tokens: {}", max_tokens_display);
         println!();
 
         // MCP Tools

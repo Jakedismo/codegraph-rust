@@ -196,6 +196,11 @@ pub struct LLMConfig {
     #[serde(default)]
     pub max_completion_token: Option<usize>,
 
+    /// MCP code agent maximum output tokens (for agentic workflows)
+    /// Overrides tier-based defaults if set
+    #[serde(default)]
+    pub mcp_code_agent_max_output_tokens: Option<usize>,
+
     /// Reasoning effort for reasoning models: "minimal", "medium", "high"
     #[serde(default)]
     pub reasoning_effort: Option<String>,
@@ -223,6 +228,7 @@ impl Default for LLMConfig {
             insights_mode: default_insights_mode(),
             max_tokens: default_max_tokens(),
             max_completion_token: None, // Will use max_tokens if not set
+            mcp_code_agent_max_output_tokens: None, // Use tier-based defaults if not set
             reasoning_effort: None,     // Only for reasoning models
             timeout_secs: default_timeout_secs(),
         }
@@ -529,6 +535,12 @@ impl ConfigManager {
 
         if let Ok(effort) = std::env::var("CODEGRAPH_REASONING_EFFORT") {
             config.llm.reasoning_effort = Some(effort);
+        }
+
+        if let Ok(max_output) = std::env::var("MCP_CODE_AGENT_MAX_OUTPUT_TOKENS") {
+            if let Ok(tokens) = max_output.parse() {
+                config.llm.mcp_code_agent_max_output_tokens = Some(tokens);
+            }
         }
 
         // Logging
