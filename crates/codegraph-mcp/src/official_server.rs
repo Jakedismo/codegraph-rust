@@ -320,9 +320,10 @@ impl CodeGraphMCPServer {
     // }
 
     /// Enhanced semantic search with AI-powered analysis for finding code patterns and architectural insights
-    #[tool(
-        description = "Search code with AI insights (2-5s). Returns relevant code + analysis of patterns and architecture. Use for: understanding code behavior, finding related functionality, discovering patterns. Fast alternative: vector_search. Required: query. Optional: limit (default 5)."
-    )]
+    /// DISABLED - Use agentic_code_search instead for multi-step reasoning
+    // #[tool(
+    //     description = "Search code with AI insights (2-5s). Returns relevant code + analysis of patterns and architecture. Use for: understanding code behavior, finding related functionality, discovering patterns. Fast alternative: vector_search. Required: query. Optional: limit (default 5)."
+    // )]
     async fn enhanced_search(
         &self,
         params: Parameters<SearchRequest>,
@@ -416,9 +417,10 @@ impl CodeGraphMCPServer {
     }
 
     /// Analyze coding patterns, conventions, and team standards across your codebase
-    #[tool(
-        description = "Analyze coding patterns and conventions (1-3s). Detects naming styles, organization patterns, error handling, quality metrics. Use for: understanding team standards, onboarding, code review guidelines. No parameters required."
-    )]
+    /// DISABLED - Use agentic_architecture_analysis instead for deeper pattern analysis
+    // #[tool(
+    //     description = "Analyze coding patterns and conventions (1-3s). Detects naming styles, organization patterns, error handling, quality metrics. Use for: understanding team standards, onboarding, code review guidelines. No parameters required."
+    // )]
     async fn pattern_detection(
         &self,
         params: Parameters<EmptyRequest>,
@@ -473,9 +475,10 @@ impl CodeGraphMCPServer {
     // }
 
     /// Fast similarity search for finding code that matches your query without AI analysis
-    #[tool(
-        description = "Fast vector search (0.5s). Returns matching code with similarity scores. Use for: quick code lookups, finding similar implementations. For deeper insights use enhanced_search. Required: query. Optional: paths, langs, limit (default 5)."
-    )]
+    /// DISABLED - Use agentic_code_search instead for context-aware search
+    // #[tool(
+    //     description = "Fast vector search (0.5s). Returns matching code with similarity scores. Use for: quick code lookups, finding similar implementations. For deeper insights use enhanced_search. Required: query. Optional: paths, langs, limit (default 5)."
+    // )]
     async fn vector_search(
         &self,
         params: Parameters<VectorSearchRequest>,
@@ -508,9 +511,10 @@ impl CodeGraphMCPServer {
     }
 
     /// Find code dependencies and relationships for a specific code element (function, class, etc)
-    #[tool(
-        description = "Find dependencies for a code element (0.3s). Shows what imports/calls this code and what it depends on. Use for: impact analysis, understanding relationships. Required: node (UUID from search). Optional: limit (default 20). Get UUIDs from vector_search or enhanced_search results."
-    )]
+    /// DISABLED - Use agentic_dependency_analysis instead for autonomous dependency exploration
+    // #[tool(
+    //     description = "Find dependencies for a code element (0.3s). Shows what imports/calls this code and what it depends on. Use for: impact analysis, understanding relationships. Required: node (UUID from search). Optional: limit (default 20). Get UUIDs from vector_search or enhanced_search results."
+    // )]
     async fn graph_neighbors(
         &self,
         params: Parameters<GraphNeighborsRequest>,
@@ -561,9 +565,10 @@ impl CodeGraphMCPServer {
     }
 
     /// Explore code architecture by following dependency chains from a starting point
-    #[tool(
-        description = "Follow dependency chains through code (0.5-2s). Traces execution paths and architectural flow. Use for: understanding call chains, mapping data flow. Required: start (UUID from search). Optional: depth (default 2), limit (default 20). Get UUIDs from vector_search or enhanced_search results."
-    )]
+    /// DISABLED - Use agentic_call_chain_analysis instead for intelligent call chain tracing
+    // #[tool(
+    //     description = "Follow dependency chains through code (0.5-2s). Traces execution paths and architectural flow. Use for: understanding call chains, mapping data flow. Required: start (UUID from search). Optional: depth (default 2), limit (default 20). Get UUIDs from vector_search or enhanced_search results."
+    // )]
     async fn graph_traverse(
         &self,
         params: Parameters<GraphTraverseRequest>,
