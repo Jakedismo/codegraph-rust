@@ -287,6 +287,248 @@ const available = await isCloudAvailable();
 const configPath = await getConfigPath();
 ```
 
+### Graph Analysis Functions (SurrealDB Required)
+
+These advanced graph analysis functions require a SurrealDB connection. Configure via environment variable:
+
+```bash
+export SURREALDB_CONNECTION="ws://localhost:8000"
+```
+
+#### Available Functions
+
+##### 1. Get Transitive Dependencies
+
+Retrieve all dependencies of a node up to a specified depth.
+
+```typescript
+import { getTransitiveDependencies } from 'codegraph-napi';
+
+const deps = await getTransitiveDependencies(
+  'node:function-uuid',
+  'Calls',      // edge type
+  3             // depth (default: 3)
+);
+
+console.log(`Found ${deps.length} dependencies:`);
+deps.forEach(d => {
+  console.log(`  [depth ${d.dependencyDepth}] ${d.name} (${d.kind})`);
+  if (d.location) {
+    console.log(`    ${d.location.filePath}:${d.location.startLine}`);
+  }
+});
+```
+
+##### 2. Get Reverse Dependencies
+
+Find all dependents (reverse dependencies) of a node - who depends on this?
+
+```typescript
+import { getReverseDependencies } from 'codegraph-napi';
+
+const dependents = await getReverseDependencies(
+  'node:utility-function',
+  'Calls',
+  2  // depth (default: 3)
+);
+
+console.log(`This function is used by ${dependents.length} others:`);
+dependents.forEach(d => {
+  console.log(`  ${d.name} at depth ${d.dependentDepth}`);
+});
+```
+
+##### 3. Detect Circular Dependencies
+
+Identify circular dependencies in your codebase.
+
+```typescript
+import { detectCircularDependencies } from 'codegraph-napi';
+
+const cycles = await detectCircularDependencies('Calls');
+
+if (cycles.length > 0) {
+  console.log(`Warning: Found ${cycles.length} circular dependencies!`);
+  cycles.forEach(cycle => {
+    console.log(`\n  ${cycle.node1.name} <--> ${cycle.node2.name}`);
+    console.log(`    Type: ${cycle.dependencyType}`);
+  });
+}
+```
+
+##### 4. Trace Call Chain
+
+Trace the full call chain from a function to see what it calls.
+
+```typescript
+import { traceCallChain } from 'codegraph-napi';
+
+const chain = await traceCallChain(
+  'node:main-function',
+  5  // max depth (default: 5)
+);
+
+console.log('Call chain:');
+chain.forEach(node => {
+  const indent = '  '.repeat(node.callDepth || 0);
+  console.log(`${indent}[${node.callDepth}] ${node.name}`);
+  if (node.calledBy && node.calledBy.length > 0) {
+    console.log(`${indent}  Called by: ${node.calledBy.map(c => c.name).join(', ')}`);
+  }
+});
+```
+
+##### 5. Calculate Coupling Metrics
+
+Calculate afferent and efferent coupling metrics for a node.
+
+```typescript
+import { calculateCouplingMetrics } from 'codegraph-napi';
+
+const result = await calculateCouplingMetrics('node:class-uuid');
+
+console.log(`\nCoupling Analysis: ${result.node.name}`);
+console.log('Metrics:');
+console.log(`  Afferent coupling (Ca): ${result.metrics.afferentCoupling}`);
+console.log(`  Efferent coupling (Ce): ${result.metrics.efferentCoupling}`);
+console.log(`  Total coupling: ${result.metrics.totalCoupling}`);
+console.log(`  Instability (I): ${result.metrics.instability.toFixed(3)}`);
+console.log(`  Stability: ${result.metrics.stability.toFixed(3)}`);
+console.log(`  Category: ${result.metrics.couplingCategory}`);
+console.log(`  Is stable: ${result.metrics.isStable}`);
+
+console.log(`\n${result.dependents.length} dependents:`);
+result.dependents.forEach(d => console.log(`  - ${d.name}`));
+
+console.log(`\n${result.dependencies.length} dependencies:`);
+result.dependencies.forEach(d => console.log(`  - ${d.name}`));
+```
+
+##### 6. Get Hub Nodes
+
+Find highly connected nodes in your codebase.
+
+```typescript
+import { getHubNodes } from 'codegraph-napi';
+
+const hubs = await getHubNodes(5);  // min degree (default: 5)
+
+console.log(`Found ${hubs.length} hub nodes:`);
+hubs.forEach(hub => {
+  console.log(`\n${hub.node.name}`);
+  console.log(`  Total degree: ${hub.totalDegree}`);
+  console.log(`  Incoming: ${hub.afferentDegree}, Outgoing: ${hub.efferentDegree}`);
+
+  console.log('  Incoming by type:');
+  hub.incomingByType.forEach(t =>
+    console.log(`    ${t.edgeType}: ${t.count}`)
+  );
+
+  console.log('  Outgoing by type:');
+  hub.outgoingByType.forEach(t =>
+    console.log(`    ${t.edgeType}: ${t.count}`)
+  );
+});
+```
+
+#### TypeScript Type Definitions
+
+```typescript
+interface NodeLocation {
+  filePath: string;
+  startLine?: number;
+  endLine?: number;
+}
+
+interface DependencyNode {
+  id: string;
+  name: string;
+  kind?: string;
+  location?: NodeLocation;
+  language?: string;
+  content?: string;
+  metadata?: string;         // JSON stringified
+  dependencyDepth?: number;
+  dependentDepth?: number;
+}
+
+interface NodeInfo {
+  id: string;
+  name: string;
+  kind?: string;
+  location?: NodeLocation;
+  language?: string;
+  content?: string;
+  metadata?: string;         // JSON stringified
+}
+
+interface CircularDependency {
+  node1Id: string;
+  node2Id: string;
+  node1: NodeInfo;
+  node2: NodeInfo;
+  dependencyType: string;
+}
+
+interface CallerInfo {
+  id: string;
+  name: string;
+  kind?: string;
+}
+
+interface CallChainNode {
+  id: string;
+  name: string;
+  kind?: string;
+  location?: NodeLocation;
+  language?: string;
+  content?: string;
+  metadata?: string;         // JSON stringified
+  callDepth?: number;
+  calledBy?: CallerInfo[];
+}
+
+interface CouplingMetrics {
+  afferentCoupling: number;
+  efferentCoupling: number;
+  totalCoupling: number;
+  instability: number;
+  stability: number;
+  isStable: boolean;
+  isUnstable: boolean;
+  couplingCategory: string;
+}
+
+interface NodeReference {
+  id: string;
+  name: string;
+  kind?: string;
+  location?: NodeLocation;
+}
+
+interface CouplingMetricsResult {
+  node: NodeInfo;
+  metrics: CouplingMetrics;
+  dependents: NodeReference[];
+  dependencies: NodeReference[];
+}
+
+interface EdgeTypeCount {
+  edgeType: string;
+  count: number;
+}
+
+interface HubNode {
+  nodeId: string;
+  node: NodeInfo;
+  afferentDegree: number;
+  efferentDegree: number;
+  totalDegree: number;
+  incomingByType: EdgeTypeCount[];
+  outgoingByType: EdgeTypeCount[];
+}
+```
+
 ### Transaction Management
 
 ```typescript

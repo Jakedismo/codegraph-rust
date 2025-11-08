@@ -7,6 +7,9 @@ use napi::Result;
 use std::sync::Arc;
 use tokio::sync::{OnceCell, RwLock};
 
+#[cfg(feature = "cloud-surrealdb")]
+use codegraph_graph::GraphFunctions;
+
 use crate::errors::to_napi_error;
 
 /// NAPI application state with hot-reload support
@@ -14,6 +17,8 @@ pub struct NapiAppState {
     pub app_state: AppState,
     pub config_manager: Arc<ConfigManager>,
     pub cloud_enabled: bool,
+    #[cfg(feature = "cloud-surrealdb")]
+    pub graph_functions: Option<Arc<GraphFunctions>>,
 }
 
 impl NapiAppState {
@@ -30,10 +35,25 @@ impl NapiAppState {
             .await
             .map_err(to_napi_error)?;
 
+        #[cfg(feature = "cloud-surrealdb")]
+        let graph_functions = if let Ok(surrealdb_url) = std::env::var("SURREALDB_CONNECTION") {
+            match Self::init_graph_functions(&surrealdb_url).await {
+                Ok(gf) => Some(Arc::new(gf)),
+                Err(e) => {
+                    tracing::warn!("Failed to initialize GraphFunctions: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             app_state,
             config_manager,
             cloud_enabled,
+            #[cfg(feature = "cloud-surrealdb")]
+            graph_functions,
         })
     }
 
@@ -70,6 +90,29 @@ impl NapiAppState {
         self.config_manager = new_config;
 
         Ok(())
+    }
+
+    /// Initialize GraphFunctions from SurrealDB connection string
+    #[cfg(feature = "cloud-surrealdb")]
+    async fn init_graph_functions(url: &str) -> Result<GraphFunctions> {
+        use codegraph_graph::{SurrealDbConfig, SurrealDbStorage};
+
+        let config = SurrealDbConfig {
+            connection: url.to_string(),
+            namespace: "codegraph".to_string(),
+            database: "codegraph".to_string(),
+            username: Some("root".to_string()),
+            password: Some("root".to_string()),
+            strict_mode: false,
+            auto_migrate: true,
+            cache_enabled: true,
+        };
+
+        let storage = SurrealDbStorage::new(config)
+            .await
+            .map_err(|e| to_napi_error(format!("SurrealDB connection failed: {}", e)))?;
+
+        Ok(GraphFunctions::new(storage.db()))
     }
 }
 

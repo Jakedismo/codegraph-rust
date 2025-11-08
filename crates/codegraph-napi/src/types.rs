@@ -141,3 +141,112 @@ pub struct EmbeddingStats {
     pub total_embeddings: u32,
     pub cache_hit_rate: f64,
 }
+
+// ========================================
+// Graph Function Types
+// ========================================
+
+#[napi(object)]
+pub struct NodeLocation {
+    pub file_path: String,
+    pub start_line: Option<i32>,
+    pub end_line: Option<i32>,
+}
+
+#[napi(object)]
+pub struct DependencyNode {
+    pub id: String,
+    pub name: String,
+    pub kind: Option<String>,
+    pub location: Option<NodeLocation>,
+    pub language: Option<String>,
+    pub content: Option<String>,
+    pub metadata: Option<String>, // JSON stringified
+    pub dependency_depth: Option<i32>,
+    pub dependent_depth: Option<i32>,
+}
+
+#[napi(object)]
+pub struct NodeInfo {
+    pub id: String,
+    pub name: String,
+    pub kind: Option<String>,
+    pub location: Option<NodeLocation>,
+    pub language: Option<String>,
+    pub content: Option<String>,
+    pub metadata: Option<String>, // JSON stringified
+}
+
+#[napi(object)]
+pub struct CircularDependency {
+    pub node1_id: String,
+    pub node2_id: String,
+    pub node1: NodeInfo,
+    pub node2: NodeInfo,
+    pub dependency_type: String,
+}
+
+#[napi(object)]
+pub struct CallerInfo {
+    pub id: String,
+    pub name: String,
+    pub kind: Option<String>,
+}
+
+#[napi(object)]
+pub struct CallChainNode {
+    pub id: String,
+    pub name: String,
+    pub kind: Option<String>,
+    pub location: Option<NodeLocation>,
+    pub language: Option<String>,
+    pub content: Option<String>,
+    pub metadata: Option<String>, // JSON stringified
+    pub call_depth: Option<i32>,
+    pub called_by: Option<Vec<CallerInfo>>,
+}
+
+#[napi(object)]
+pub struct CouplingMetrics {
+    pub afferent_coupling: i32,
+    pub efferent_coupling: i32,
+    pub total_coupling: i32,
+    pub instability: f64,
+    pub stability: f64,
+    pub is_stable: bool,
+    pub is_unstable: bool,
+    pub coupling_category: String,
+}
+
+#[napi(object)]
+pub struct NodeReference {
+    pub id: String,
+    pub name: String,
+    pub kind: Option<String>,
+    pub location: Option<NodeLocation>,
+}
+
+#[napi(object)]
+pub struct CouplingMetricsResult {
+    pub node: NodeInfo,
+    pub metrics: CouplingMetrics,
+    pub dependents: Vec<NodeReference>,
+    pub dependencies: Vec<NodeReference>,
+}
+
+#[napi(object)]
+pub struct EdgeTypeCount {
+    pub edge_type: String,
+    pub count: i32,
+}
+
+#[napi(object)]
+pub struct HubNode {
+    pub node_id: String,
+    pub node: NodeInfo,
+    pub afferent_degree: i32,
+    pub efferent_degree: i32,
+    pub total_degree: i32,
+    pub incoming_by_type: Vec<EdgeTypeCount>,
+    pub outgoing_by_type: Vec<EdgeTypeCount>,
+}

@@ -36,6 +36,7 @@
     "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish -t npm",
     "test": "node test.js",
+    "example:graph": "tsx example-graph.ts",
     "universal": "napi universal",
     "version": "napi version"
   },

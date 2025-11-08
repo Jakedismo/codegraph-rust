@@ -2,6 +2,8 @@
 
 mod config;
 mod errors;
+#[cfg(feature = "cloud-surrealdb")]
+mod graph;
 mod search;
 mod state;
 mod types;
@@ -15,9 +17,32 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub use types::{
-    BranchResult, CloudConfig, CreateBranchParams, CreateVersionParams, DualModeSearchResult,
-    EmbeddingStats, MergeBranchesParams, MergeResult, SearchOptions, SearchResult,
-    TransactionResult, TransactionStats, VersionDiff, VersionResult,
+    BranchResult,
+    CallChainNode,
+    // Graph types
+    CallerInfo,
+    CircularDependency,
+    CloudConfig,
+    CouplingMetrics,
+    CouplingMetricsResult,
+    CreateBranchParams,
+    CreateVersionParams,
+    DependencyNode,
+    DualModeSearchResult,
+    EdgeTypeCount,
+    EmbeddingStats,
+    HubNode,
+    MergeBranchesParams,
+    MergeResult,
+    NodeInfo,
+    NodeLocation,
+    NodeReference,
+    SearchOptions,
+    SearchResult,
+    TransactionResult,
+    TransactionStats,
+    VersionDiff,
+    VersionResult,
 };
 
 // Global state - lazy initialized
@@ -430,3 +455,13 @@ pub async fn search_similar_functions(
 ) -> Result<Vec<SearchResult>> {
     search::search_similar_functions(node_id, limit).await
 }
+
+// ========================================
+// Graph Analysis Functions
+// ========================================
+
+#[cfg(feature = "cloud-surrealdb")]
+pub use graph::{
+    calculate_coupling_metrics, detect_circular_dependencies, get_hub_nodes,
+    get_reverse_dependencies, get_transitive_dependencies, trace_call_chain,
+};

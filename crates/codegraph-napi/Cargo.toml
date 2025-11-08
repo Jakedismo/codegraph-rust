@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 default = ["local"]
 local = ["codegraph-vector/faiss"]
 cloud-jina = ["codegraph-vector/jina"]
-cloud-surrealdb = ["surrealdb"]
+cloud-surrealdb = ["surrealdb", "codegraph-graph/surrealdb"]
 cloud = ["cloud-jina", "cloud-surrealdb"]
 full = ["local", "cloud"]
 
@@ -33,7 +33,7 @@ tracing = { workspace = true }
 # Local crates
 codegraph-core = { path = "../codegraph-core" }
 codegraph-api = { path = "../codegraph-api" }
-codegraph-graph = { path = "../codegraph-graph" }
+codegraph-graph = { path = "../codegraph-graph", features = [] }
 codegraph-vector = { path = "../codegraph-vector" }
 codegraph-ai = { path = "../codegraph-ai" }
 
