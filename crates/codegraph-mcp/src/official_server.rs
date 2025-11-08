@@ -1129,6 +1129,31 @@ impl CodeGraphMCPServer {
         }
     }
 
+    /// Read the Initial Instructions for CodeGraph MCP Server
+    ///
+    /// Provides comprehensive guidance on effective tool usage including:
+    /// - Tool selection framework with decision gates
+    /// - Metacognitive reasoning patterns
+    /// - Evidence-based workflow guidelines
+    /// - Common development workflows
+    /// - Safety requirements and best practices
+    #[tool(
+        description = "Read comprehensive CodeGraph usage guide (instant). Shows tool selection framework, decision gates, workflows, and best practices. Use when: starting with CodeGraph, need guidance on tool selection. No parameters required."
+    )]
+    async fn read_initial_instructions(
+        &self,
+        params: Parameters<EmptyRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let _request = params.0; // Extract the inner value (unused)
+
+        let content = format!(
+            "# CodeGraph MCP Initial Instructions\n\n{}\n\n---\n\n**Note:** These instructions are also available as an MCP prompt resource named 'codegraph_initial_instructions'.",
+            INITIAL_INSTRUCTIONS
+        );
+
+        Ok(CallToolResult::success(vec![Content::text(content)]))
+    }
+
     // === AGENTIC MCP TOOLS ===
     // These tools use AgenticOrchestrator for multi-step graph analysis workflows
     // with automatic tier detection based on CODEGRAPH_CONTEXT_WINDOW or config
