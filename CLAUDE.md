@@ -403,18 +403,19 @@ sudo apt-get install libfaiss-dev  # Ubuntu
 
 ---
 
-## Initial Instructions for AI Agents
+## MCP Tools Overview
 
-When working with this codebase, read the CodeGraph Initial Instructions first:
+CodeGraph provides these MCP tools for code intelligence:
 
-**How to access:**
-- Call the `read_initial_instructions` tool
-- Or request the MCP prompt `codegraph_initial_instructions`
+**Search & Discovery:**
+- `enhanced_search` - Semantic search with AI insights
+- `vector_search` - Fast similarity-based search
+- `pattern_detection` - Analyze coding patterns
 
-**Key principles:**
-1. **Evidence-Based**: Ground all claims in tool outputs
-2. **Impact-First**: Run `impact_analysis` before refactoring
-3. **Metacognitive**: Explain reasoning before tool calls
-4. **Layered Understanding**: Build context incrementally
+**Graph Analysis:**
+- `graph_neighbors` - Find direct dependencies
+- `graph_traverse` - Follow dependency chains
 
-These are *soft guidelines*, not rigid rules. Adapt to your context.
+**Advanced (feature-gated):**
+- `codebase_qa` - RAG-powered Q&A
+- `code_documentation` - AI documentation generation

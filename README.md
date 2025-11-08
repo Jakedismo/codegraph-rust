@@ -524,84 +524,35 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 
 ---
 
-## 🤖 For AI Agents: Code Insights Workflow
+## 📚 For AI Agents: Using CodeGraph MCP
 
-CodeGraph provides a comprehensive Code Insights agent workflow for AI-powered code analysis and development.
+CodeGraph provides powerful code intelligence tools via the Model Context Protocol (MCP).
 
-### Getting Started: The Complete Workflow
+### Available MCP Tools
 
-**Step 1: Index Your Codebase**
+After indexing your codebase, AI agents can use these tools:
+
+- 🔍 **`enhanced_search`** - Semantic code search with AI insights (2-5s)
+- 🔬 **`pattern_detection`** - Analyze coding patterns and conventions (1-3s)
+- ⚡ **`vector_search`** - Fast similarity-based code search (0.5s)
+- 🗺️ **`graph_neighbors`** - Find code dependencies for an element (0.3s)
+- 🌐 **`graph_traverse`** - Follow dependency chains through code (0.5-2s)
+- 💬 **`codebase_qa`** - Ask questions with RAG [feature-gated] (5-30s)
+- 📖 **`code_documentation`** - Generate AI docs [feature-gated] (10-45s)
+
+### Quick Start
+
 ```bash
-# First, make sure your codebase is indexed and embedded
+# 1. Index your codebase
 codegraph index /path/to/your/project
 
-# Verify indexing completed successfully
-# You should see: "✅ Indexing complete! X files processed"
-```
-
-**Step 2: Start the MCP Server**
-```bash
-# Start CodeGraph MCP server for AI agent access
+# 2. Start MCP server
 codegraph start stdio
 
-# Or if using HTTP transport for web clients:
-# codegraph start http --host 127.0.0.1 --port 3000
+# 3. Use tools from your AI agent
+enhanced_search("how does authentication work?")
+graph_neighbors("node-uuid-from-search-results")
 ```
-
-**Step 3: Read the Initial Instructions**
-
-Once the server is running and your AI agent is connected, **invoke the initial instructions**:
-
-```bash
-# Via MCP prompt (recommended - provides full context)
-Use prompt: codegraph_initial_instructions
-
-# Via tool call (quick access)
-Call tool: read_initial_instructions
-```
-
-**Step 4: Start Your Code Intelligence Workflow**
-
-After reading the initial instructions, you'll have access to powerful code analysis tools:
-
-- 🔍 **`enhanced_search`** - Semantic code search with LLM-powered analysis
-- 🧠 **`semantic_intelligence`** - Deep code understanding and pattern detection
-- 📊 **`impact_analysis`** - Analyze ripple effects of code changes
-- 🔬 **`pattern_detection`** - Find architectural patterns and anti-patterns
-- 🗺️ **`graph_neighbors`** - Explore code dependencies and relationships
-- 🌐 **`graph_traverse`** - Navigate complex dependency chains
-- 📈 **`performance_metrics`** - Monitor system and query performance
-
-### What the Initial Instructions Provide
-
-The initial instructions give you:
-
-- 🎯 **Tool Selection Framework** - Decision gates to choose the right tool for each task
-- 🧠 **Metacognitive Reasoning Patterns** - How to think about code analysis systematically
-- 📊 **Evidence-Based Workflow Guidelines** - Ground all decisions in actual tool outputs
-- 🔒 **Safety Requirements** - Best practices to avoid breaking changes
-- 🚀 **Common Development Workflows** - Pre-built patterns for features, debugging, and learning
-
-### Quick Start Example
-
-```bash
-# 1. After indexing, invoke initial instructions
-read_initial_instructions()
-
-# 2. Use enhanced search to understand authentication
-enhanced_search("authentication implementation")
-
-# 3. Analyze impact before refactoring
-impact_analysis("AuthService.login")
-
-# 4. Navigate dependencies
-graph_neighbors("AuthService")
-
-# 5. Detect patterns in the codebase
-pattern_detection("singleton pattern")
-```
-
-**For detailed guidance, see:** [Initial Instructions Guide](docs/INITIAL_INSTRUCTIONS_GUIDE.md)
 
 ---
 
