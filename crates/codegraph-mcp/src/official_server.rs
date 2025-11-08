@@ -7,8 +7,8 @@ use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
         CallToolResult, Content, Meta, NumberOrString, ProgressNotification,
-        ProgressNotificationParam, ProgressToken, ServerCapabilities, ServerInfo,
-        ServerNotification,
+        ProgressNotificationParam, ProgressToken, Prompt, PromptArgument, PromptMessage,
+        PromptMessageRole, ServerCapabilities, ServerInfo, ServerNotification,
     },
     tool, tool_handler, tool_router, ErrorData as McpError, Peer, RoleServer, ServerHandler,
 };
@@ -18,6 +18,8 @@ use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+use crate::prompts::INITIAL_INSTRUCTIONS;
 
 #[cfg(feature = "qwen-integration")]
 use crate::cache::{init_cache, CacheConfig};
@@ -1124,6 +1126,44 @@ impl CodeGraphMCPServer {
         }
     }
 
+    // === MCP PROMPT RESOURCES ===
+    // Note: Prompt annotations will be added once rmcp SDK supports them
+
+    async fn list_prompts(&self) -> Vec<Prompt> {
+        vec![Prompt {
+            name: "codegraph_initial_instructions".to_string(),
+            title: None,
+            description: Some(
+                "Read the Initial Instructions for CodeGraph MCP - comprehensive guide on effective tool usage with metacognitive gates and selection criteria"
+                    .to_string(),
+            ),
+            arguments: None,
+            icons: None,
+        }]
+    }
+
+    async fn get_prompt(
+        &self,
+        name: String,
+        _arguments: Option<serde_json::Value>,
+    ) -> Result<Vec<PromptMessage>, Box<dyn std::error::Error + Send + Sync>> {
+        match name.as_str() {
+            "codegraph_initial_instructions" => Ok(vec![
+                PromptMessage {
+                    role: PromptMessageRole::User,
+                    content: rmcp::model::Content::text(
+                        "Please read and acknowledge the CodeGraph Initial Instructions below. Use these guidelines to inform your tool selection and workflow patterns when using CodeGraph MCP tools.",
+                    ),
+                },
+                PromptMessage {
+                    role: PromptMessageRole::Assistant,
+                    content: rmcp::model::Content::text(INITIAL_INSTRUCTIONS),
+                },
+            ]),
+            _ => Err(format!("Unknown prompt: {}", name).into()),
+        }
+    }
+
     // === AGENTIC MCP TOOLS ===
     // These tools use AgenticOrchestrator for multi-step graph analysis workflows
     // with automatic tier detection based on CODEGRAPH_CONTEXT_WINDOW or config
@@ -1546,6 +1586,7 @@ impl ServerHandler for CodeGraphMCPServer {
             ),
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
+                .enable_prompts()
                 .enable_logging()
                 .build(),
             ..Default::default()

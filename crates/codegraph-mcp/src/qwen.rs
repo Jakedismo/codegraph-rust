@@ -123,7 +123,7 @@ impl QwenClient {
         let start_time = Instant::now();
 
         // Use optimized prompt structure for Qwen2.5-Coder
-        let prompt = crate::prompts::build_semantic_analysis_prompt(query, context);
+        let prompt = crate::qwen_prompts::build_semantic_analysis_prompt(query, context);
 
         // Build messages array for chat endpoint
         let messages = vec![
