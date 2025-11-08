@@ -1,3 +1,5 @@
+// ABOUTME: MCP server implementation for CodeGraph code intelligence tools
+// ABOUTME: Provides semantic search, graph analysis, and agentic orchestration via MCP protocol
 #![allow(dead_code, unused_variables, unused_imports)]
 
 use futures::future::BoxFuture;
