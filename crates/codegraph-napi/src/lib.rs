@@ -1,5 +1,8 @@
 #![deny(clippy::all)]
 
+mod errors;
+mod types;
+
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
@@ -7,6 +10,12 @@ use codegraph_api::state::AppState;
 use codegraph_core::{ConfigManager, IsolationLevel};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+pub use types::{
+    BranchResult, CloudConfig, CreateBranchParams, CreateVersionParams, DualModeSearchResult,
+    EmbeddingStats, MergeBranchesParams, MergeResult, SearchOptions, SearchResult,
+    TransactionResult, TransactionStats, VersionDiff, VersionResult,
+};
 
 // Global state - lazy initialized
 static STATE: tokio::sync::OnceCell<Arc<Mutex<AppState>>> = tokio::sync::OnceCell::const_new();
@@ -23,91 +32,6 @@ async fn get_or_init_state() -> Result<Arc<Mutex<AppState>>> {
         })
         .await
         .cloned()
-}
-
-// ========================================
-// Transaction Types
-// ========================================
-
-#[napi(object)]
-pub struct TransactionResult {
-    pub transaction_id: String,
-    pub isolation_level: String,
-    pub status: String,
-}
-
-#[napi(object)]
-pub struct TransactionStats {
-    pub active_transactions: u32,
-    pub committed_transactions: String,
-    pub aborted_transactions: String,
-    pub average_commit_time_ms: f64,
-}
-
-// ========================================
-// Version Types
-// ========================================
-
-#[napi(object)]
-pub struct VersionResult {
-    pub version_id: String,
-    pub name: String,
-    pub description: String,
-    pub author: String,
-    pub created_at: String,
-}
-
-#[napi(object)]
-pub struct CreateVersionParams {
-    pub name: String,
-    pub description: String,
-    pub author: String,
-    pub parents: Option<Vec<String>>,
-}
-
-#[napi(object)]
-pub struct VersionDiff {
-    pub from_version: String,
-    pub to_version: String,
-    pub added_nodes: u32,
-    pub modified_nodes: u32,
-    pub deleted_nodes: u32,
-}
-
-// ========================================
-// Branch Types
-// ========================================
-
-#[napi(object)]
-pub struct BranchResult {
-    pub name: String,
-    pub head: String,
-    pub created_at: String,
-    pub created_by: String,
-}
-
-#[napi(object)]
-pub struct CreateBranchParams {
-    pub name: String,
-    pub from: String,
-    pub author: String,
-    pub description: Option<String>,
-}
-
-#[napi(object)]
-pub struct MergeBranchesParams {
-    pub source: String,
-    pub target: String,
-    pub author: String,
-    pub message: Option<String>,
-}
-
-#[napi(object)]
-pub struct MergeResult {
-    pub success: bool,
-    pub conflicts: u32,
-    pub merged_version_id: Option<String>,
-    pub merge_commit_message: String,
 }
 
 // ========================================
