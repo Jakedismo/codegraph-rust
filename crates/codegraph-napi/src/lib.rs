@@ -1,6 +1,9 @@
 #![deny(clippy::all)]
 
+mod config;
 mod errors;
+mod search;
+mod state;
 mod types;
 
 use napi::bindgen_prelude::*;
@@ -20,10 +23,10 @@ pub use types::{
 // Global state - lazy initialized
 static STATE: tokio::sync::OnceCell<Arc<Mutex<AppState>>> = tokio::sync::OnceCell::const_new();
 
-async fn get_or_init_state() -> Result<Arc<Mutex<AppState>>> {
+pub(crate) async fn get_or_init_state() -> Result<Arc<Mutex<AppState>>> {
     STATE
         .get_or_try_init(|| async {
-            let config = ConfigManager::new(None)
+            let config = ConfigManager::load()
                 .map_err(|e| Error::from_reason(format!("Failed to load config: {}", e)))?;
             let state = AppState::new(Arc::new(config))
                 .await
@@ -196,7 +199,7 @@ pub async fn list_versions(limit: Option<u32>) -> Result<Vec<VersionResult>> {
             name: v.name,
             description: v.description,
             author: v.author,
-            created_at: v.timestamp.to_rfc3339(),
+            created_at: v.created_at.to_rfc3339(),
         })
         .collect();
 
@@ -225,7 +228,7 @@ pub async fn get_version(version_id: String) -> Result<VersionResult> {
         name: version.name,
         description: version.description,
         author: version.author,
-        created_at: version.timestamp.to_rfc3339(),
+        created_at: version.created_at.to_rfc3339(),
     })
 }
 
@@ -395,7 +398,7 @@ pub async fn merge_branches(params: MergeBranchesParams) -> Result<MergeResult> 
 
 /// Get the version of the CodeGraph addon
 #[napi]
-pub fn get_version() -> String {
+pub fn get_addon_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
@@ -404,4 +407,26 @@ pub fn get_version() -> String {
 pub async fn initialize() -> Result<bool> {
     get_or_init_state().await?;
     Ok(true)
+}
+
+// ========================================
+// Search Functions
+// ========================================
+
+/// Semantic search with dual-mode support
+#[napi]
+pub async fn semantic_search(
+    query: String,
+    options: Option<SearchOptions>,
+) -> Result<DualModeSearchResult> {
+    search::semantic_search(query, options).await
+}
+
+/// Find similar functions by node ID
+#[napi]
+pub async fn search_similar_functions(
+    node_id: String,
+    limit: Option<u32>,
+) -> Result<Vec<SearchResult>> {
+    search::search_similar_functions(node_id, limit).await
 }

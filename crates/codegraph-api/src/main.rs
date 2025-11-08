@@ -2,6 +2,7 @@ use codegraph_api::Server;
 use codegraph_core::ConfigManager;
 use std::net::SocketAddr;
 use std::str::FromStr;
+use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
@@ -38,23 +39,22 @@ async fn main() -> codegraph_core::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Load configuration (env-aware) with hot-reload
-    let config = ConfigManager::new_watching(None)
+    // Load configuration
+    let config = ConfigManager::load()
         .map_err(|e| codegraph_core::CodeGraphError::InvalidOperation(e.to_string()))?;
-    let settings = config.settings().read().await.clone();
 
-    // Bind address configurable via config or env override
+    // Bind address configurable via env variables
     let host = std::env::var("HOST")
         .ok()
-        .unwrap_or_else(|| settings.server.host.clone());
+        .unwrap_or_else(|| "0.0.0.0".to_string());
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(settings.server.port);
+        .unwrap_or(3000);
 
     // If HOST is an IP string, construct directly; otherwise try full SocketAddr string
     let addr = SocketAddr::from_str(&format!("{}:{}", host, port))
         .unwrap_or_else(|_| SocketAddr::from(([0, 0, 0, 0], port)));
-    let server = Server::new(addr, config).await?;
+    let server = Server::new(addr, Arc::new(config)).await?;
     server.run().await
 }

@@ -2,7 +2,7 @@ use crate::connection_pool::{load_base_urls_from_env, ConnectionPoolConfig, Http
 use crate::graph_stub::TransactionalGraph;
 use crate::performance::{PerformanceOptimizer, PerformanceOptimizerConfig};
 use crate::service_registry::ServiceRegistry;
-use codegraph_core::{CodeNode, ConfigManager, GraphStore, NodeId, Settings};
+use codegraph_core::{CodeNode, ConfigManager, GraphStore, NodeId};
 use codegraph_parser::TreeSitterParser;
 use codegraph_vector::{EmbeddingGenerator, FaissVectorStore, SemanticSearch};
 use std::collections::HashMap;
@@ -93,7 +93,7 @@ impl GraphStore for InMemoryGraph {
 
 #[derive(Clone)]
 pub struct AppState {
-    pub settings: Arc<RwLock<Settings>>,
+    pub settings: codegraph_core::CodeGraphConfig,
     pub config: Arc<ConfigManager>,
     pub graph: Arc<RwLock<InMemoryGraph>>,
     pub transactional_graph: Arc<TransactionalGraph>,
@@ -162,7 +162,7 @@ impl AppState {
         }
 
         Ok(Self {
-            settings: config.settings().clone(),
+            settings: config.config().clone(),
             config,
             graph,
             transactional_graph,

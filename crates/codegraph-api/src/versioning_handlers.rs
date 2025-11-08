@@ -307,7 +307,7 @@ pub async fn get_version(
         name: "version".to_string(), // Version struct doesn't have name field in stub
         description: "Version description".to_string(),
         author: "system".to_string(),
-        created_at: version.timestamp,
+        created_at: version.created_at,
         snapshot_id: SnapshotId::new_v4().to_string(),
         parent_versions: vec![],
         tags: vec![],
@@ -339,7 +339,7 @@ pub async fn list_versions(
             name: "version".to_string(),
             description: "Version description".to_string(),
             author: "system".to_string(),
-            created_at: v.timestamp,
+            created_at: v.created_at,
             snapshot_id: SnapshotId::new_v4().to_string(),
             parent_versions: vec![],
             tags: vec![],
@@ -562,7 +562,7 @@ pub async fn get_snapshot(
 
     Ok(Json(SnapshotDto {
         id: snapshot_id,
-        created_at: snapshot.timestamp,
+        created_at: snapshot.created_at,
         transaction_id: TransactionId::new_v4().to_string(),
         parent_snapshot: None,
         children_snapshots: vec![],

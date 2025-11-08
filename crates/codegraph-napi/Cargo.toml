@@ -8,6 +8,14 @@ license.workspace = true
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+default = ["local"]
+local = ["codegraph-vector/faiss"]
+cloud-jina = ["codegraph-vector/jina"]
+cloud-surrealdb = ["surrealdb"]
+cloud = ["cloud-jina", "cloud-surrealdb"]
+full = ["local", "cloud"]
+
 [dependencies]
 # NAPI-RS
 napi = { version = "2.16", features = ["async", "tokio_rt", "napi8"] }
@@ -20,11 +28,17 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+tracing = { workspace = true }
 
 # Local crates
 codegraph-core = { path = "../codegraph-core" }
 codegraph-api = { path = "../codegraph-api" }
 codegraph-graph = { path = "../codegraph-graph" }
+codegraph-vector = { path = "../codegraph-vector" }
+codegraph-ai = { path = "../codegraph-ai" }
+
+# Optional cloud dependencies
+surrealdb = { version = "2.0", optional = true }
 
 [build-dependencies]
 napi-build = "2.1"

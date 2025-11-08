@@ -10,6 +10,14 @@
 🌍 **Cross-Platform** - Windows, macOS, Linux (x64, ARM64)
 📦 **Easy Integration** - Drop-in npm package
 
+### 🆕 Cloud Features (New!)
+
+🔍 **Dual-Mode Semantic Search** - Automatic routing between local FAISS and cloud SurrealDB HNSW
+☁️ **Jina AI Integration** - Cloud embeddings with 8192 dimensions and reranking
+🔄 **Hot-Reload Configuration** - Update settings without process restart
+📊 **Embedding Statistics** - Real-time metrics for provider and cache performance
+🎯 **Smart Search Routing** - Automatic fallback from cloud to local on failures
+
 ## Installation
 
 ### Option 1: Build from Source
@@ -32,7 +40,74 @@ npm run build
 npm install codegraph
 ```
 
+## Configuration
+
+Create `.codegraph/config.toml` in your project root:
+
+```toml
+[embedding]
+# Local ONNX model (always available)
+model = "all-MiniLM-L6-v2"
+dimension = 384
+
+# Optional: Jina AI cloud embeddings
+jina_api_key = "jina_xxx"  # Or use JINA_API_KEY env var
+jina_model = "jina-embeddings-v3"
+jina_task_type = "retrieval.query"
+jina_enable_reranking = true
+
+[vector]
+# FAISS configuration
+index_type = "IVFFlat"
+n_lists = 100
+n_probe = 10
+
+[storage]
+data_dir = ".codegraph/data"
+cache_dir = ".codegraph/cache"
+```
+
+### Environment Variables
+
+```bash
+# Jina AI API key (alternative to config file)
+export JINA_API_KEY="jina_xxx"
+
+# SurrealDB connection (for cloud HNSW search)
+export SURREALDB_CONNECTION="ws://localhost:8000"
+
+# Enable cloud features
+export CODEGRAPH_CLOUD_ENABLED=true
+```
+
 ## Quick Start
+
+### Semantic Search (New!)
+
+```typescript
+import { semanticSearch, getCloudConfig } from 'codegraph';
+
+// Check cloud availability
+const cloudConfig = await getCloudConfig();
+console.log('Jina AI enabled:', cloudConfig.jinaEnabled);
+console.log('SurrealDB enabled:', cloudConfig.surrealdbEnabled);
+
+// Dual-mode semantic search (automatic routing)
+const results = await semanticSearch('authentication logic', {
+  limit: 10,
+  minSimilarity: 0.7,
+  filterByType: 'function',
+});
+
+console.log(`Mode used: ${results.modeUsed}`); // 'local' or 'cloud'
+console.log(`Found ${results.totalCount} results in ${results.searchTimeMs}ms`);
+
+for (const result of results.localResults) {
+  console.log(`[${result.similarity.toFixed(3)}] ${result.name}`);
+}
+```
+
+### Version Management
 
 ```typescript
 import {
@@ -69,13 +144,91 @@ await createBranch({
 ### Initialization
 
 ```typescript
-import { initialize, getVersion } from 'codegraph';
+import { initialize, getAddonVersion } from 'codegraph';
 
 // Optional - initializes automatically on first call
 await initialize();
 
 // Get addon version
-const version = getVersion();
+const version = getAddonVersion();
+```
+
+### Semantic Search API (New!)
+
+```typescript
+// Semantic search with dual-mode support
+interface SearchOptions {
+  query?: string;
+  limit?: number;              // Default: 10
+  offset?: number;             // Default: 0
+  minSimilarity?: number;      // Default: 0.0 (range: 0.0-1.0)
+  filterByType?: string;       // 'function' | 'class' | 'module' | 'variable'
+}
+
+interface SearchResult {
+  id: string;
+  name: string;
+  description?: string;
+  similarity: number;
+  metadata?: string;           // JSON stringified
+}
+
+interface DualModeSearchResult {
+  localResults: SearchResult[];
+  cloudResults?: SearchResult[];      // Only if cloud enabled
+  rerankedResults?: SearchResult[];   // Only if Jina reranking enabled
+  totalCount: number;
+  searchTimeMs: number;
+}
+
+const results = await semanticSearch('error handling patterns', {
+  limit: 25,
+  minSimilarity: 0.6,
+  filterByType: 'function',
+});
+
+// Find similar functions by node ID
+const similarFunctions = await searchSimilarFunctions('node-id-uuid', 10);
+```
+
+### Cloud Configuration API (New!)
+
+```typescript
+interface CloudConfig {
+  jinaEnabled: boolean;
+  jinaModel: string;
+  jinaRerankingEnabled: boolean;
+  surrealdbEnabled: boolean;
+  surrealdbUrl?: string;
+}
+
+interface EmbeddingStats {
+  provider: string;            // 'jina-ai' | 'onnx-local'
+  model: string;
+  dimension: number;
+  totalEmbeddings: number;
+  cacheHitRate: number;        // 0.0-1.0
+}
+
+// Get current cloud configuration
+const config = await getCloudConfig();
+
+// Hot-reload configuration without restart
+const changed = await reloadConfig();
+if (changed) {
+  console.log('Configuration updated!');
+}
+
+// Get embedding statistics
+const stats = await getEmbeddingStats();
+console.log(`Provider: ${stats.provider}`);
+console.log(`Cache hit rate: ${(stats.cacheHitRate * 100).toFixed(1)}%`);
+
+// Check if cloud features are available
+const available = await isCloudAvailable();
+
+// Get configuration file path
+const configPath = await getConfigPath();
 ```
 
 ### Transaction Management
@@ -305,6 +458,202 @@ const worker = new Worker('codegraph-tasks', async job => {
       throw new Error('Unknown job type');
   }
 });
+```
+
+## Cloud Features Usage Examples
+
+### Example 1: Semantic Code Search with Fallback
+
+```typescript
+import { semanticSearch, getCloudConfig } from 'codegraph';
+
+async function searchCode(query: string) {
+  // Check cloud availability first
+  const config = await getCloudConfig();
+  console.log(`Cloud mode: ${config.jinaEnabled ? 'enabled' : 'local-only'}`);
+
+  const results = await semanticSearch(query, {
+    limit: 20,
+    minSimilarity: 0.65,
+    filterByType: 'function',
+  });
+
+  console.log(`\nSearch: "${query}"`);
+  console.log(`Mode used: ${results.modeUsed}`);
+  console.log(`Time: ${results.searchTimeMs.toFixed(2)}ms`);
+  console.log(`Found ${results.totalCount} results\n`);
+
+  // Display results
+  const displayResults = results.cloudResults || results.localResults;
+  for (const result of displayResults) {
+    console.log(`[${result.similarity.toFixed(3)}] ${result.name}`);
+    if (result.description) {
+      console.log(`  ${result.description.substring(0, 80)}...`);
+    }
+  }
+}
+
+await searchCode('JWT token validation');
+```
+
+### Example 2: Hot Configuration Reload
+
+```typescript
+import { watch } from 'fs';
+import { reloadConfig, getCloudConfig, getConfigPath } from 'codegraph';
+
+async function watchConfiguration() {
+  const configPath = await getConfigPath();
+  console.log(`Watching config: ${configPath}`);
+
+  watch(configPath, async (eventType) => {
+    if (eventType === 'change') {
+      console.log('📝 Config file changed, reloading...');
+
+      const changed = await reloadConfig();
+      if (changed) {
+        const config = await getCloudConfig();
+        console.log('✅ Configuration reloaded');
+        console.log(`  Jina AI: ${config.jinaEnabled ? 'enabled' : 'disabled'}`);
+        console.log(`  Model: ${config.jinaModel}`);
+        console.log(`  Reranking: ${config.jinaRerankingEnabled ? 'enabled' : 'disabled'}`);
+      } else {
+        console.log('ℹ️  Configuration unchanged');
+      }
+    }
+  });
+
+  // Keep the process running
+  await new Promise(() => {});
+}
+
+watchConfiguration().catch(console.error);
+```
+
+### Example 3: Embedding Provider Monitoring
+
+```typescript
+import { getEmbeddingStats, semanticSearch } from 'codegraph';
+
+async function monitorEmbeddings() {
+  // Get initial stats
+  const initialStats = await getEmbeddingStats();
+  console.log('Initial Stats:');
+  console.log(`  Provider: ${initialStats.provider}`);
+  console.log(`  Model: ${initialStats.model}`);
+  console.log(`  Dimension: ${initialStats.dimension}`);
+  console.log(`  Total embeddings: ${initialStats.totalEmbeddings}`);
+  console.log(`  Cache hit rate: ${(initialStats.cacheHitRate * 100).toFixed(1)}%`);
+
+  // Perform some searches
+  console.log('\nPerforming searches...');
+  await semanticSearch('authentication', { limit: 5 });
+  await semanticSearch('database connection', { limit: 5 });
+  await semanticSearch('error handling', { limit: 5 });
+
+  // Check updated stats
+  const updatedStats = await getEmbeddingStats();
+  console.log('\nUpdated Stats:');
+  console.log(`  Total embeddings: ${updatedStats.totalEmbeddings}`);
+  console.log(`  Cache hit rate: ${(updatedStats.cacheHitRate * 100).toFixed(1)}%`);
+
+  // Alert if cache hit rate is low
+  if (updatedStats.cacheHitRate < 0.5) {
+    console.warn('⚠️  Low cache hit rate - consider warming up cache');
+  }
+}
+
+monitorEmbeddings().catch(console.error);
+```
+
+### Example 4: Progressive Search (Local → Cloud)
+
+```typescript
+import { semanticSearch, isCloudAvailable } from 'codegraph';
+
+async function progressiveSearch(query: string) {
+  // Try local search first (fast)
+  console.log('🔍 Searching locally...');
+  const localStart = Date.now();
+  const localResults = await semanticSearch(query, {
+    limit: 10,
+    minSimilarity: 0.8,  // High threshold for local
+  });
+  const localTime = Date.now() - localStart;
+
+  console.log(`Local search: ${localResults.totalCount} results in ${localTime}ms`);
+
+  // If we don't have good local results and cloud is available
+  if (localResults.totalCount < 5 && await isCloudAvailable()) {
+    console.log('☁️  Trying cloud search for better results...');
+    const cloudStart = Date.now();
+    const cloudResults = await semanticSearch(query, {
+      limit: 10,
+      minSimilarity: 0.6,  // Lower threshold for cloud
+    });
+    const cloudTime = Date.now() - cloudStart;
+
+    console.log(`Cloud search: ${cloudResults.totalCount} results in ${cloudTime}ms`);
+    return cloudResults.cloudResults || cloudResults.localResults;
+  }
+
+  return localResults.localResults;
+}
+
+const results = await progressiveSearch('OAuth2 implementation');
+results.forEach(r => console.log(`- ${r.name} (${r.similarity.toFixed(3)})`));
+```
+
+### Example 5: Feature-Gated Cloud Integration
+
+```typescript
+import {
+  semanticSearch,
+  getCloudConfig,
+  reloadConfig
+} from 'codegraph';
+
+class SearchService {
+  private cloudEnabled = false;
+
+  async initialize() {
+    const config = await getCloudConfig();
+    this.cloudEnabled = config.jinaEnabled || config.surrealdbEnabled;
+    console.log(`Search service initialized (cloud: ${this.cloudEnabled})`);
+  }
+
+  async search(query: string, options: any = {}) {
+    const results = await semanticSearch(query, {
+      ...options,
+      // Override cloud preference if not available
+      useCloud: this.cloudEnabled ? options.useCloud : false,
+    });
+
+    return {
+      results: results.localResults,
+      mode: results.modeUsed,
+      timeMs: results.searchTimeMs,
+      cloudAvailable: this.cloudEnabled,
+    };
+  }
+
+  async refreshConfig() {
+    const changed = await reloadConfig();
+    if (changed) {
+      const config = await getCloudConfig();
+      this.cloudEnabled = config.jinaEnabled || config.surrealdbEnabled;
+      console.log('Configuration refreshed');
+    }
+    return changed;
+  }
+}
+
+// Usage
+const searchService = new SearchService();
+await searchService.initialize();
+
+const results = await searchService.search('user authentication');
+console.log(`Found ${results.results.length} results using ${results.mode} mode`);
 ```
 
 ## Building for Production

@@ -126,16 +126,18 @@ pub struct DualModeSearchResult {
 
 #[napi(object)]
 pub struct CloudConfig {
-    pub api_key: Option<String>,
-    pub endpoint: Option<String>,
-    pub enabled: bool,
-    pub timeout_ms: Option<u32>,
+    pub jina_enabled: bool,
+    pub jina_model: String,
+    pub jina_reranking_enabled: bool,
+    pub surrealdb_enabled: bool,
+    pub surrealdb_url: Option<String>,
 }
 
 #[napi(object)]
 pub struct EmbeddingStats {
+    pub provider: String,
+    pub model: String,
+    pub dimension: u32,
     pub total_embeddings: u32,
-    pub cached_embeddings: u32,
     pub cache_hit_rate: f64,
-    pub average_embedding_time_ms: f64,
 }

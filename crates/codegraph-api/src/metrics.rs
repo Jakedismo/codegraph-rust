@@ -259,7 +259,7 @@ pub fn update_system_metrics() {
     sys.refresh_all();
 
     // Update system-level metrics
-    SYSTEM_CPU_USAGE_PERCENT.set(sys.global_cpu_info().cpu_usage() as f64);
+    SYSTEM_CPU_USAGE_PERCENT.set(sys.global_cpu_usage() as f64);
     SYSTEM_MEMORY_USAGE_BYTES.set(sys.used_memory() as f64);
     SYSTEM_MEMORY_AVAILABLE_BYTES.set(sys.available_memory() as f64);
 
