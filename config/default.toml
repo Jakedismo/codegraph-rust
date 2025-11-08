@@ -1,47 +1,11 @@
-env = "development"
+# Minimal configuration for compilation
 
-[server]
-host = "0.0.0.0"
-port = 3000
+[llm]
+provider = "ollama"
+model = "qwen2.5-coder:14b"
+context_window = 32768
 
-# Database configuration
-[database]
-# Backend options: "rocksdb" (default), "surrealdb"
-backend = "rocksdb"
-
-[database.rocksdb]
-path = "data/graph.db"
-read_only = false
-
-[database.surrealdb]
-# Example SurrealDB configuration (uncomment to use)
-# connection = "ws://localhost:8000"  # Standard SurrealDB WebSocket connection
-# namespace = "codegraph"
-# database = "graph"
-# auto_migrate = true
-# strict_mode = false
-# Alternative: file://data/surrealdb/graph.db for embedded mode
-
-# Deprecated: Legacy rocksdb configuration (use database.rocksdb instead)
-# This is kept for backward compatibility
-# [rocksdb]
-# path = "data/graph.db"
-# read_only = false
-
-[vector]
-dimension = 384
-index = "ivf_flat"
-
-[logging]
-level = "info"
-
-[security]
-require_auth = false
-allowed_origins = ["*"]
-rate_limit_per_minute = 1200
-
-# Secrets are loaded from environment or config/secrets.enc (encrypted)
-[secrets]
-openai_api_key = ""
-jwt_secret = ""
-
+[surrealdb]
+url = "ws://localhost:3004"
+namespace = "codegraph"
+database = "main"

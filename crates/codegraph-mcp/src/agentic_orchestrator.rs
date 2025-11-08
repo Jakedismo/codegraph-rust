@@ -7,6 +7,7 @@ use crate::graph_tool_executor::GraphToolExecutor;
 use crate::graph_tool_schemas::{GraphToolSchemas, ToolSchema};
 use crate::Result;
 use codegraph_ai::llm_provider::{GenerationConfig, LLMProvider, Message, MessageRole};
+use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use std::sync::Arc;
@@ -192,6 +193,10 @@ pub struct ToolCallStats {
     pub avg_tokens_per_step: usize,
 }
 
+/// Callback for sending progress notifications during workflow execution
+/// Takes (progress, total) and returns a future that sends the notification
+pub type ProgressCallback = Arc<dyn Fn(f64, Option<f64>) -> BoxFuture<'static, ()> + Send + Sync>;
+
 /// Agentic orchestrator that coordinates LLM reasoning with tool execution
 pub struct AgenticOrchestrator {
     /// LLM provider for reasoning and tool calling decisions
@@ -202,6 +207,8 @@ pub struct AgenticOrchestrator {
     config: AgenticConfig,
     /// Context tier for this orchestrator
     tier: ContextTier,
+    /// Optional callback for sending progress notifications
+    progress_callback: Option<ProgressCallback>,
 }
 
 impl AgenticOrchestrator {
@@ -211,15 +218,16 @@ impl AgenticOrchestrator {
         tool_executor: Arc<GraphToolExecutor>,
         tier: ContextTier,
     ) -> Self {
-        Self::new_with_override(llm_provider, tool_executor, tier, None)
+        Self::new_with_override(llm_provider, tool_executor, tier, None, None)
     }
 
-    /// Create a new agentic orchestrator with optional max_tokens override
+    /// Create a new agentic orchestrator with optional max_tokens override and progress callback
     pub fn new_with_override(
         llm_provider: Arc<dyn LLMProvider>,
         tool_executor: Arc<GraphToolExecutor>,
         tier: ContextTier,
         max_tokens_override: Option<usize>,
+        progress_callback: Option<ProgressCallback>,
     ) -> Self {
         let config = AgenticConfig::from_tier_with_override(tier, max_tokens_override);
         Self {
@@ -227,21 +235,24 @@ impl AgenticOrchestrator {
             tool_executor,
             config,
             tier,
+            progress_callback,
         }
     }
 
-    /// Create with custom configuration
+    /// Create with custom configuration and optional progress callback
     pub fn with_config(
         llm_provider: Arc<dyn LLMProvider>,
         tool_executor: Arc<GraphToolExecutor>,
         tier: ContextTier,
         config: AgenticConfig,
+        progress_callback: Option<ProgressCallback>,
     ) -> Self {
         Self {
             llm_provider,
             tool_executor,
             config,
             tier,
+            progress_callback,
         }
     }
 
@@ -272,6 +283,13 @@ impl AgenticOrchestrator {
             }
 
             debug!("📍 Agentic step {}/{}", step_number, self.config.max_steps);
+
+            // Send progress notification at step start
+            if let Some(ref callback) = self.progress_callback {
+                let progress = step_number as f64;
+                let total = Some(self.config.max_steps as f64);
+                callback(progress, total).await;
+            }
 
             // Get LLM decision
             let gen_config = GenerationConfig {
@@ -321,6 +339,13 @@ impl AgenticOrchestrator {
                 );
 
                 executed_step.tool_result = Some(tool_result.clone());
+
+                // Send progress notification after tool completion
+                if let Some(ref callback) = self.progress_callback {
+                    let progress = step_number as f64 + 0.5; // Half-step increment for tool completion
+                    let total = Some(self.config.max_steps as f64);
+                    callback(progress, total).await;
+                }
 
                 // Add tool result to conversation
                 conversation_history.push(Message {

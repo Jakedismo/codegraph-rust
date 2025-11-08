@@ -1,14 +1,20 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 
+use futures::future::BoxFuture;
 /// Clean Official MCP SDK Implementation for CodeGraph
 /// Following exact Counter pattern from rmcp SDK documentation
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
-    tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
+    model::{
+        CallToolResult, Content, Meta, NumberOrString, ProgressNotification,
+        ProgressNotificationParam, ProgressToken, ServerCapabilities, ServerInfo,
+        ServerNotification,
+    },
+    tool, tool_handler, tool_router, ErrorData as McpError, Peer, RoleServer, ServerHandler,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
+use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -1129,13 +1135,20 @@ impl CodeGraphMCPServer {
     )]
     async fn agentic_code_search(
         &self,
+        peer: Peer<RoleServer>,
+        meta: Meta,
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         #[cfg(feature = "ai-enhanced")]
         {
             let request = params.0;
-            self.execute_agentic_workflow(crate::AnalysisType::CodeSearch, &request.query)
-                .await
+            self.execute_agentic_workflow(
+                crate::AnalysisType::CodeSearch,
+                &request.query,
+                peer,
+                meta,
+            )
+            .await
         }
     }
 
@@ -1146,11 +1159,18 @@ impl CodeGraphMCPServer {
     )]
     async fn agentic_dependency_analysis(
         &self,
+        peer: Peer<RoleServer>,
+        meta: Meta,
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(crate::AnalysisType::DependencyAnalysis, &request.query)
-            .await
+        self.execute_agentic_workflow(
+            crate::AnalysisType::DependencyAnalysis,
+            &request.query,
+            peer,
+            meta,
+        )
+        .await
     }
 
     /// Agentic call chain analysis with multi-step tracing
@@ -1160,11 +1180,18 @@ impl CodeGraphMCPServer {
     )]
     async fn agentic_call_chain_analysis(
         &self,
+        peer: Peer<RoleServer>,
+        meta: Meta,
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(crate::AnalysisType::CallChainAnalysis, &request.query)
-            .await
+        self.execute_agentic_workflow(
+            crate::AnalysisType::CallChainAnalysis,
+            &request.query,
+            peer,
+            meta,
+        )
+        .await
     }
 
     /// Agentic architecture analysis with multi-step system exploration
@@ -1174,11 +1201,18 @@ impl CodeGraphMCPServer {
     )]
     async fn agentic_architecture_analysis(
         &self,
+        peer: Peer<RoleServer>,
+        meta: Meta,
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(crate::AnalysisType::ArchitectureAnalysis, &request.query)
-            .await
+        self.execute_agentic_workflow(
+            crate::AnalysisType::ArchitectureAnalysis,
+            &request.query,
+            peer,
+            meta,
+        )
+        .await
     }
 
     /// Agentic API surface analysis with multi-step exploration
@@ -1188,11 +1222,18 @@ impl CodeGraphMCPServer {
     )]
     async fn agentic_api_surface_analysis(
         &self,
+        peer: Peer<RoleServer>,
+        meta: Meta,
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(crate::AnalysisType::ApiSurfaceAnalysis, &request.query)
-            .await
+        self.execute_agentic_workflow(
+            crate::AnalysisType::ApiSurfaceAnalysis,
+            &request.query,
+            peer,
+            meta,
+        )
+        .await
     }
 
     /// Agentic context builder with multi-step comprehensive context gathering
@@ -1202,11 +1243,18 @@ impl CodeGraphMCPServer {
     )]
     async fn agentic_context_builder(
         &self,
+        peer: Peer<RoleServer>,
+        meta: Meta,
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(crate::AnalysisType::ContextBuilder, &request.query)
-            .await
+        self.execute_agentic_workflow(
+            crate::AnalysisType::ContextBuilder,
+            &request.query,
+            peer,
+            meta,
+        )
+        .await
     }
 
     /// Agentic semantic question answering with multi-step exploration
@@ -1216,11 +1264,18 @@ impl CodeGraphMCPServer {
     )]
     async fn agentic_semantic_question(
         &self,
+        peer: Peer<RoleServer>,
+        meta: Meta,
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(crate::AnalysisType::SemanticQuestion, &request.query)
-            .await
+        self.execute_agentic_workflow(
+            crate::AnalysisType::SemanticQuestion,
+            &request.query,
+            peer,
+            meta,
+        )
+        .await
     }
 }
 
@@ -1290,12 +1345,44 @@ impl CodeGraphMCPServer {
         }
     }
 
+    /// Creates a progress notification callback that sends MCP protocol notifications
+    #[cfg(feature = "ai-enhanced")]
+    fn create_progress_callback(
+        peer: Peer<RoleServer>,
+        progress_token: ProgressToken,
+    ) -> Arc<dyn Fn(f64, Option<f64>) -> BoxFuture<'static, ()> + Send + Sync> {
+        Arc::new(move |progress, total| {
+            let peer = peer.clone();
+            let progress_token = progress_token.clone();
+
+            Box::pin(async move {
+                let notification = ProgressNotification {
+                    method: Default::default(),
+                    params: ProgressNotificationParam {
+                        progress_token: progress_token.clone(),
+                        progress,
+                        total,
+                        message: None, // Optional progress message
+                    },
+                    extensions: Default::default(),
+                };
+
+                // Ignore notification errors (non-blocking)
+                let _ = peer
+                    .send_notification(ServerNotification::ProgressNotification(notification))
+                    .await;
+            })
+        })
+    }
+
     /// Execute agentic workflow with automatic tier detection and prompt selection
     #[cfg(feature = "ai-enhanced")]
     async fn execute_agentic_workflow(
         &self,
         analysis_type: crate::AnalysisType,
         query: &str,
+        peer: Peer<RoleServer>,
+        meta: Meta,
     ) -> Result<CallToolResult, McpError> {
         use crate::{AgenticOrchestrator, PromptSelector};
         use codegraph_ai::llm_factory::LLMProviderFactory;
@@ -1306,6 +1393,16 @@ impl CodeGraphMCPServer {
         let tier = Self::detect_context_tier();
 
         eprintln!("🎯 Agentic {} (tier={:?})", analysis_type.as_str(), tier);
+
+        // Extract progress token from meta or generate one
+        let progress_token = meta.get_progress_token().unwrap_or_else(|| {
+            ProgressToken(NumberOrString::String(
+                format!("agentic-{}", Uuid::new_v4()).into(),
+            ))
+        });
+
+        // Create progress callback
+        let progress_callback = Some(Self::create_progress_callback(peer, progress_token));
 
         // Load config for LLM provider
         let config_manager =
@@ -1362,12 +1459,13 @@ impl CodeGraphMCPServer {
         // Get max_tokens override from config if set
         let max_tokens_override = config.llm.mcp_code_agent_max_output_tokens;
 
-        // Create AgenticOrchestrator with config override
+        // Create AgenticOrchestrator with config override and progress callback
         let orchestrator = AgenticOrchestrator::new_with_override(
             llm_provider,
             tool_executor,
             tier,
             max_tokens_override,
+            progress_callback,
         );
 
         // Get tier-appropriate prompt from PromptSelector
