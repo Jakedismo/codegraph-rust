@@ -4,7 +4,9 @@ use anyhow::{Context, Result};
 #[cfg(feature = "ai-enhanced")]
 use codegraph_ai::SemanticSearchEngine;
 use codegraph_core::{CodeNode, EdgeRelationship, GraphStore, NodeId, NodeType};
-use codegraph_graph::{edge::CodeEdge, CodeGraph, SurrealDbConfig, SurrealDbStorage};
+use codegraph_graph::{
+    edge::CodeEdge, ProjectMetadataRecord, SurrealDbConfig, SurrealDbStorage, SymbolEmbeddingUpsert,
+};
 use codegraph_parser::{get_ai_pattern_learner, TreeSitterParser};
 #[cfg(feature = "ai-enhanced")]
 use futures::{stream, StreamExt};
@@ -23,8 +25,6 @@ use walkdir::WalkDir;
 
 use std::sync::Arc;
 
-// Integrate edge derivation using parser->graph integrator
-use codegraph_core::integration::parser_graph::{EdgeSink, ParserGraphIntegrator};
 use std::collections::HashMap;
 
 pub struct IndexerConfig {
@@ -80,40 +80,17 @@ impl From<&IndexerConfig> for codegraph_parser::file_collect::FileCollectionConf
     }
 }
 
-/// EdgeSink implementation that bridges to CodeGraph for dependency analysis
-struct CodeGraphEdgeSink {
-    graph: Arc<tokio::sync::Mutex<CodeGraph>>,
-}
-
-impl CodeGraphEdgeSink {
-    fn new(graph: Arc<tokio::sync::Mutex<CodeGraph>>) -> Self {
-        Self { graph }
-    }
-}
-
-#[async_trait::async_trait]
-impl EdgeSink for CodeGraphEdgeSink {
-    async fn add_edge(
-        &self,
-        from: codegraph_core::NodeId,
-        to: codegraph_core::NodeId,
-        edge_type: codegraph_core::EdgeType,
-        metadata: std::collections::HashMap<String, String>,
-    ) -> codegraph_core::Result<()> {
-        let mut graph = self.graph.lock().await;
-        graph
-            .add_edge_from_params(from, to, edge_type, metadata)
-            .await
-    }
-}
-
 pub struct ProjectIndexer {
     config: IndexerConfig,
     global_config: codegraph_core::config_manager::CodeGraphConfig,
     progress: MultiProgress,
     parser: TreeSitterParser,
-    graph: Option<CodeGraph>,
-    surreal: Option<Arc<TokioMutex<SurrealDbStorage>>>,
+    surreal: Arc<TokioMutex<SurrealDbStorage>>,
+    project_id: String,
+    organization_id: Option<String>,
+    repository_url: Option<String>,
+    domain: Option<String>,
+    embedding_model: String,
     vector_dim: usize,
     project_root: PathBuf,
     #[cfg(feature = "embeddings")]
@@ -154,8 +131,12 @@ impl ProjectIndexer {
     ) -> Result<Self> {
         let parser = TreeSitterParser::new();
         let project_root = config.project_root.clone();
-        let db_path = project_root.join(".codegraph/db");
-        let graph = CodeGraph::new_with_path(db_path.to_str().unwrap())?;
+        let surreal = Self::connect_surreal_from_env().await?;
+        let project_id = std::env::var("CODEGRAPH_PROJECT_ID")
+            .unwrap_or_else(|_| project_root.display().to_string());
+        let organization_id = std::env::var("CODEGRAPH_ORGANIZATION_ID").ok();
+        let repository_url = std::env::var("CODEGRAPH_REPOSITORY_URL").ok();
+        let domain = std::env::var("CODEGRAPH_DOMAIN").ok();
         let surreal = Self::connect_surreal_from_env().await?;
         #[cfg(feature = "embeddings")]
         let embedder = {
@@ -256,6 +237,11 @@ impl ProjectIndexer {
                 g
             }
         };
+        let embedding_model_name = global_config
+            .embedding
+            .model
+            .clone()
+            .unwrap_or_else(|| "jina-embeddings-v4".to_string());
         let vector_dim = {
             #[cfg(feature = "embeddings")]
             {
@@ -272,8 +258,12 @@ impl ProjectIndexer {
             global_config: global_config.clone(),
             progress: multi_progress,
             parser,
-            graph: Some(graph),
             surreal,
+            project_id,
+            organization_id,
+            repository_url,
+            domain,
+            embedding_model: embedding_model_name,
             vector_dim,
             project_root,
             #[cfg(feature = "embeddings")]
@@ -317,6 +307,10 @@ impl ProjectIndexer {
         let (mut nodes, edges, pstats) = self
             .parse_files_with_unified_extraction(files, total_files as u64)
             .await?;
+
+        for node in nodes.iter_mut() {
+            self.annotate_node(node);
+        }
 
         // Store counts for final summary (before consumption)
         let total_nodes_extracted = nodes.len();
@@ -409,6 +403,8 @@ impl ProjectIndexer {
                     n.embedding = Some(normalize(&emb));
                 }
             }
+
+            self.persist_node_embeddings(chunk).await?;
             processed += chunk.len() as u64;
             embed_pb.set_position(processed.min(total));
         }
@@ -451,200 +447,17 @@ impl ProjectIndexer {
 
         #[cfg(feature = "faiss")]
         {
-            // SimpleFaissManager not available - using direct FAISS API instead
-            // use codegraph_vector::faiss_manager::{SimpleFaissManager, SimpleIndexConfig};
-            use faiss::index::flat::FlatIndex;
-            use faiss::index::io::write_index;
-            use faiss::index::Index;
-            use faiss::MetricType;
-            use std::collections::HashMap;
-
-            info!("🚀 Using direct FAISS API for optimized index creation");
-
-            // Create index configuration - SimpleFaissManager not available
-            // let index_config = SimpleIndexConfig {
-            //     dimension: self.vector_dim,
-            //     index_type: "Flat".to_string(),
-            //     metric_type: MetricType::InnerProduct,
-            //     training_threshold: 10000,
-            // };
-
-            // Helper to write single FAISS index + id map
-            // PERFORMANCE FIX: Use IVF index for large shards (>10K vectors) for 10x speedup
-            let mut write_shard =
-                |vectors: &[f32], ids: &[codegraph_core::NodeId], path: &Path| -> Result<()> {
-                    if vectors.is_empty() {
-                        return Ok(());
-                    }
-
-                    let num_vectors = vectors.len() / self.vector_dim;
-
-                    // Use IVF index for large shards (>10K vectors) for O(sqrt(n)) complexity
-                    if num_vectors > 10000 {
-                        use faiss::index::index_factory;
-                        use faiss::index::IndexImpl;
-
-                        // Create IVF index with nlist = sqrt(num_vectors)
-                        let nlist = (num_vectors as f32).sqrt() as usize;
-                        let nlist = nlist.max(100).min(4096); // Clamp between 100 and 4096
-
-                        let index_description = format!("IVF{},Flat", nlist);
-                        let mut idx = index_factory(
-                            self.vector_dim as u32,
-                            &index_description,
-                            faiss::MetricType::InnerProduct,
-                        )
-                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-
-                        // Train the index
-                        info!(
-                            "🎓 Training IVF index with {} centroids for {} vectors",
-                            nlist, num_vectors
-                        );
-                        idx.train(vectors)
-                            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-
-                        // Add vectors
-                        idx.add(vectors)
-                            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-
-                        if let Some(dir) = path.parent() {
-                            std::fs::create_dir_all(dir)?;
-                        }
-                        write_index(&idx, path.to_string_lossy())
-                            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                        info!(
-                            "✅ Created IVF FAISS index at: {} ({} vectors, {} centroids)",
-                            path.display(),
-                            num_vectors,
-                            nlist
-                        );
-                    } else {
-                        // Use Flat index for smaller shards (faster for <10K vectors)
-                        let mut idx = FlatIndex::new_ip(self.vector_dim as u32)
-                            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                        idx.add(vectors)
-                            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                        if let Some(dir) = path.parent() {
-                            std::fs::create_dir_all(dir)?;
-                        }
-                        write_index(&idx, path.to_string_lossy())
-                            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                        info!(
-                            "✅ Created Flat FAISS index at: {} ({} vectors)",
-                            path.display(),
-                            num_vectors
-                        );
-                    }
-                    Ok(())
-                };
-
-            // Global index with DEBUGGING
-            let mut global_vecs: Vec<f32> = Vec::new();
-            let mut global_ids: Vec<codegraph_core::NodeId> = Vec::new();
-
-            // CRITICAL DEBUG: Check how many nodes actually have embeddings
-            let nodes_with_embeddings = nodes.iter().filter(|n| n.embedding.is_some()).count();
-            info!(
-                "🔍 CRITICAL DEBUG: {}/{} nodes have embeddings before FAISS creation",
-                nodes_with_embeddings,
-                nodes.len()
+            tracing::info!(
+                target: "codegraph_mcp::indexer",
+                "FAISS index generation disabled; embeddings are stored in SurrealDB"
             );
-
-            // Path shard (first segment)
-            let mut path_shards: HashMap<String, (Vec<f32>, Vec<codegraph_core::NodeId>)> =
-                HashMap::new();
-            // Language shard
-            let mut lang_shards: HashMap<String, (Vec<f32>, Vec<codegraph_core::NodeId>)> =
-                HashMap::new();
-
-            for n in &nodes {
-                if let Some(e) = &n.embedding {
-                    global_vecs.extend_from_slice(e);
-                    global_ids.push(n.id);
-
-                    // path shard
-                    let seg = n
-                        .location
-                        .file_path
-                        .trim_start_matches("./")
-                        .split('/')
-                        .next()
-                        .unwrap_or("")
-                        .to_string();
-                    if !seg.is_empty() {
-                        let entry = path_shards
-                            .entry(seg)
-                            .or_insert_with(|| (Vec::new(), Vec::new()));
-                        entry.0.extend_from_slice(e);
-                        entry.1.push(n.id);
-                    }
-
-                    // language shard
-                    if let Some(lang) = &n.language {
-                        let lname = format!("{:?}", lang).to_lowercase();
-                        let entry = lang_shards
-                            .entry(lname)
-                            .or_insert_with(|| (Vec::new(), Vec::new()));
-                        entry.0.extend_from_slice(e);
-                        entry.1.push(n.id);
-                    }
-                }
-            }
-
-            let out_dir = self.project_root.join(".codegraph");
-            tokio::fs::create_dir_all(&out_dir).await?;
-            // Global FAISS index creation with DEBUGGING
-            info!(
-                "🔍 CRITICAL DEBUG: Creating FAISS index with {} vectors ({} total f32 values)",
-                global_ids.len(),
-                global_vecs.len()
-            );
-
-            if global_vecs.is_empty() {
-                warn!("❌ CRITICAL ISSUE: global_vecs is empty - no FAISS index will be created!");
-                warn!("🔍 This means nodes don't have embeddings attached - check embedding generation!");
-            } else {
-                info!("✅ Creating FAISS index with {} nodes", global_ids.len());
-                write_shard(&global_vecs, &global_ids, &out_dir.join("faiss.index"))?;
-                tokio::fs::write(
-                    out_dir.join("faiss_ids.json"),
-                    serde_json::to_vec(&global_ids)?,
-                )
-                .await?;
-                info!("✅ FAISS index files created successfully");
-            }
-
-            // Path shards
-            let path_dir = out_dir.join("shards/path");
-            for (seg, (vecs, ids)) in path_shards {
-                let idx_path = path_dir.join(format!("{}.index", seg));
-                write_shard(&vecs, &ids, &idx_path)?;
-                tokio::fs::write(
-                    path_dir.join(format!("{}_ids.json", seg)),
-                    serde_json::to_vec(&ids)?,
-                )
-                .await?;
-            }
-
-            // Language shards
-            let lang_dir = out_dir.join("shards/lang");
-            for (lang, (vecs, ids)) in lang_shards {
-                let idx_path = lang_dir.join(format!("{}.index", lang));
-                write_shard(&vecs, &ids, &idx_path)?;
-                tokio::fs::write(
-                    lang_dir.join(format!("{}_ids.json", lang)),
-                    serde_json::to_vec(&ids)?,
-                )
-                .await?;
-            }
         }
-
-        // Save embeddings for FAISS-backed search if enabled
         #[cfg(feature = "faiss")]
         {
-            let out_path = self.project_root.join(".codegraph/embeddings.json");
-            save_embeddings_to_file(out_path, &nodes).await?;
+            tracing::info!(
+                target: "codegraph_mcp::indexer",
+                "Local embedding dumps disabled; SurrealDB is the source of truth"
+            );
         }
 
         // STAGE 4: Store nodes, compute stats, and build symbol map
@@ -694,20 +507,13 @@ impl ProjectIndexer {
                 symbol_map.insert(format!("{}::{}", trait_impl, base_name), n.id);
             }
 
-            let surreal_clone = if self.surreal.is_some() {
-                Some(n.clone())
-            } else {
-                None
-            };
-
             // Store node
-            self.graph.as_mut().unwrap().add_node(n).await?;
-            if let Some(node_for_surreal) = surreal_clone {
-                self.persist_node_to_surreal(node_for_surreal).await?;
-            }
+            self.persist_node_to_surreal(n).await?;
             store_nodes_pb.inc(1);
         }
         store_nodes_pb.finish_with_message("📈 Stored nodes & symbols");
+
+        self.log_surreal_node_count(total_nodes_extracted).await;
 
         // REVOLUTIONARY: Store edges extracted during unified parsing (MAXIMUM SPEED)
         let stored_edges;
@@ -991,25 +797,16 @@ impl ProjectIndexer {
             // OPTIMIZED: Parallel bulk edge insertion for M4 Max performance
             let bulk_start_time = std::time::Instant::now();
             let mut bulk_success = 0;
-            let surreal_enabled = self.surreal.is_some();
 
             // Process edges in parallel batches for maximum throughput
             let batch_size = 1000; // Optimized for M4 Max memory
             for batch in serializable_edges.chunks(batch_size) {
-                let mut inserted_batch = if surreal_enabled {
-                    Vec::with_capacity(batch.len())
-                } else {
-                    Vec::new()
-                };
+                let mut inserted_batch = Vec::with_capacity(batch.len());
                 for edge in batch {
-                    if let Ok(_) = self.graph.as_mut().unwrap().add_edge(edge.clone()).await {
-                        bulk_success += 1;
-                        if surreal_enabled {
-                            inserted_batch.push(edge.clone());
-                        }
-                    }
+                    inserted_batch.push(edge.clone());
+                    bulk_success += 1;
                 }
-                if surreal_enabled && !inserted_batch.is_empty() {
+                if !inserted_batch.is_empty() {
                     self.persist_edges_to_surreal(inserted_batch).await?;
                 }
                 edge_pb.set_position(bulk_success as u64);
@@ -1093,8 +890,9 @@ impl ProjectIndexer {
 
         // ELIMINATED: No separate edge processing phase needed - edges extracted during parsing!
 
-        // Save index metadata
-        self.save_index_metadata(path, &stats).await?;
+        // Persist project metadata summary into SurrealDB
+        self.persist_project_metadata(&stats, total_nodes_extracted, total_edges_extracted)
+            .await?;
 
         // COMPREHENSIVE INDEXING COMPLETION SUMMARY
         info!("🎉 INDEXING COMPLETE - REVOLUTIONARY AI DEVELOPMENT PLATFORM READY!");
@@ -1372,6 +1170,20 @@ impl ProjectIndexer {
                     for (symbol, embedding) in
                         batch.iter().cloned().zip(batch_embeddings.into_iter())
                     {
+                        if let Err(err) = self
+                            .store_symbol_embedding(
+                                &symbol,
+                                symbol_map.get(&symbol).cloned(),
+                                None,
+                                &embedding,
+                            )
+                            .await
+                        {
+                            warn!(
+                                "⚠️ Failed to persist symbol embedding for '{}': {}",
+                                symbol, err
+                            );
+                        }
                         embeddings.insert(symbol, embedding);
                         processed += 1;
                     }
@@ -1389,6 +1201,20 @@ impl ProjectIndexer {
                     for symbol in batch.into_iter() {
                         match embedder.generate_text_embedding(&symbol).await {
                             Ok(embedding) => {
+                                if let Err(err) = self
+                                    .store_symbol_embedding(
+                                        &symbol,
+                                        symbol_map.get(&symbol).cloned(),
+                                        None,
+                                        &embedding,
+                                    )
+                                    .await
+                                {
+                                    warn!(
+                                        "⚠️ Failed to persist symbol embedding for '{}': {}",
+                                        symbol, err
+                                    );
+                                }
                                 embeddings.insert(symbol, embedding);
                                 processed += 1;
                             }
@@ -1481,6 +1307,15 @@ impl ProjectIndexer {
                     for (symbol, embedding) in
                         batch.iter().cloned().zip(batch_embeddings.into_iter())
                     {
+                        if let Err(err) = self
+                            .store_symbol_embedding(&symbol, None, None, &embedding)
+                            .await
+                        {
+                            warn!(
+                                "⚠️ Failed to persist unresolved symbol embedding '{}': {}",
+                                symbol, err
+                            );
+                        }
                         embeddings.insert(symbol, embedding);
                     }
                     if embeddings.len() % 250 == 0 {
@@ -1499,6 +1334,15 @@ impl ProjectIndexer {
                     for symbol in batch.into_iter() {
                         match embedder.generate_text_embedding(&symbol).await {
                             Ok(embedding) => {
+                                if let Err(err) = self
+                                    .store_symbol_embedding(&symbol, None, None, &embedding)
+                                    .await
+                                {
+                                    warn!(
+                                        "⚠️ Failed to persist unresolved symbol embedding '{}': {}",
+                                        symbol, err
+                                    );
+                                }
                                 embeddings.insert(symbol, embedding);
                             }
                             Err(err) => {
@@ -1952,58 +1796,175 @@ impl ProjectIndexer {
         true
     }
 
-    async fn is_indexed(&self, path: &Path) -> Result<bool> {
-        let metadata_path = self.project_root.join(".codegraph/index.json");
-        if !metadata_path.exists() {
-            return Ok(false);
-        }
-
-        let content = fs::read_to_string(metadata_path).await?;
-        let metadata: IndexMetadata = serde_json::from_str(&content)?;
-        Ok(metadata.project_path == path)
-    }
-
-    async fn save_index_metadata(&self, path: &Path, stats: &IndexStats) -> Result<()> {
-        let metadata = IndexMetadata {
-            project_path: path.to_path_buf(),
-            indexed_at: chrono::Utc::now(),
-            stats: stats.clone(),
-            config: IndexConfigMetadata {
-                languages: self.config.languages.clone(),
-                recursive: self.config.recursive,
-                workers: self.config.workers,
-            },
+    async fn is_indexed(&self, _path: &Path) -> Result<bool> {
+        let db = {
+            let storage = self.surreal.lock().await;
+            storage.db()
         };
 
-        let codegraph_dir = self.project_root.join(".codegraph");
-        fs::create_dir_all(&codegraph_dir).await?;
-        let metadata_path = codegraph_dir.join("index.json");
-        let json = serde_json::to_string_pretty(&metadata)?;
-        fs::write(metadata_path, json).await?;
+        let mut response = db
+            .query("SELECT VALUE count() FROM project_metadata WHERE project_id = $project_id")
+            .bind(("project_id", self.project_id.clone()))
+            .await
+            .context("Failed to query project_metadata")?;
+        let count: Option<i64> = response.take(0)?;
+        Ok(count.unwrap_or(0) > 0)
+    }
+
+    async fn persist_project_metadata(
+        &self,
+        stats: &IndexStats,
+        node_count: usize,
+        edge_count: usize,
+    ) -> Result<()> {
+        let project_name = self
+            .project_root
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&self.project_id)
+            .to_string();
+        let root_path = self.project_root.to_string_lossy().to_string();
+        let primary_language = self.config.languages.get(0).cloned();
+        let record = ProjectMetadataRecord {
+            project_id: self.project_id.clone(),
+            name: project_name,
+            root_path,
+            primary_language,
+            file_count: stats.files as i64,
+            node_count: node_count as i64,
+            edge_count: edge_count as i64,
+            concept_collection_count: 0,
+            concept_document_count: 0,
+            avg_coverage_score: 0.0,
+            last_analyzed: chrono::Utc::now(),
+            codegraph_version: env!("CARGO_PKG_VERSION").to_string(),
+            deepwiki_version: None,
+            organization_id: self.organization_id.clone(),
+            domain: self.domain.clone(),
+        };
+
+        let storage = self.surreal.lock().await;
+        storage
+            .upsert_project_metadata(record)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
         Ok(())
+    }
+
+    fn annotate_node(&self, node: &mut CodeNode) {
+        node.metadata
+            .attributes
+            .insert("project_id".to_string(), self.project_id.clone());
+        if let Some(org) = &self.organization_id {
+            node.metadata
+                .attributes
+                .insert("organization_id".to_string(), org.clone());
+        }
+        if let Some(repo) = &self.repository_url {
+            node.metadata
+                .attributes
+                .insert("repository_url".to_string(), repo.clone());
+        }
+        if let Some(domain) = &self.domain {
+            node.metadata
+                .attributes
+                .insert("domain".to_string(), domain.clone());
+        }
     }
 
     async fn persist_node_to_surreal(&self, node: CodeNode) -> Result<()> {
-        if let Some(storage) = &self.surreal {
-            let mut guard = storage.lock().await;
-            guard.add_node(node).await?;
-        }
+        let mut guard = self.surreal.lock().await;
+        guard
+            .add_node(node)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
         Ok(())
+    }
+
+    async fn log_surreal_node_count(&self, expected: usize) {
+        let db = {
+            let storage = self.surreal.lock().await;
+            storage.db()
+        };
+
+        match db
+            .query(
+                "SELECT VALUE count() FROM nodes WHERE project_id = $project_id",
+            )
+            .bind(("project_id", self.project_id.clone()))
+            .await
+        {
+            Ok(mut resp) => match resp.take::<Option<i64>>(0) {
+                Ok(count_opt) => {
+                    let count = count_opt.unwrap_or(0);
+                    info!(
+                        "🗄️ SurrealDB nodes persisted: {} (expected ≈ {})",
+                        count,
+                        expected
+                    );
+                }
+                Err(e) => {
+                    warn!("⚠️ Failed to read SurrealDB node count: {}", e);
+                }
+            },
+            Err(e) => {
+                warn!("⚠️ SurrealDB node count query failed: {}", e);
+            }
+        }
     }
 
     async fn persist_edges_to_surreal(&self, edges: Vec<CodeEdge>) -> Result<()> {
-        if let Some(storage) = &self.surreal {
-            let mut guard = storage.lock().await;
-            guard.add_code_edges(edges).await?;
+        let mut guard = self.surreal.lock().await;
+        guard
+            .add_code_edges(edges)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
+        Ok(())
+    }
+
+    async fn persist_node_embeddings(&self, nodes: &[CodeNode]) -> Result<()> {
+        let mut guard = self.surreal.lock().await;
+        for node in nodes {
+            if let Some(embedding) = &node.embedding {
+                guard
+                    .update_node_embedding(node.id, embedding)
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e))?;
+            }
         }
         Ok(())
     }
 
-    async fn connect_surreal_from_env() -> Result<Option<Arc<TokioMutex<SurrealDbStorage>>>> {
-        let connection = match Self::surreal_env_value("CODEGRAPH_SURREALDB_URL", "SURREALDB_URL") {
-            Some(url) => url,
-            None => return Ok(None),
-        };
+    async fn store_symbol_embedding(
+        &self,
+        symbol: &str,
+        node_id: Option<NodeId>,
+        source_edge_id: Option<&str>,
+        embedding: &[f32],
+    ) -> Result<()> {
+        let normalized = Self::normalize_symbol(symbol);
+        let node_id_str = node_id.map(|id| id.to_string());
+        let mut guard = self.surreal.lock().await;
+        guard
+            .upsert_symbol_embedding(SymbolEmbeddingUpsert {
+                symbol,
+                normalized_symbol: &normalized,
+                project_id: &self.project_id,
+                organization_id: self.organization_id.as_deref(),
+                embedding,
+                embedding_model: &self.embedding_model,
+                node_id: node_id_str.as_deref(),
+                source_edge_id,
+                metadata: None,
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
+        Ok(())
+    }
+
+    async fn connect_surreal_from_env() -> Result<Arc<TokioMutex<SurrealDbStorage>>> {
+        let connection = Self::surreal_env_value("CODEGRAPH_SURREALDB_URL", "SURREALDB_URL")
+            .context("CODEGRAPH_SURREALDB_URL or SURREALDB_URL must be set")?;
         let namespace =
             Self::surreal_env_value("CODEGRAPH_SURREALDB_NAMESPACE", "SURREALDB_NAMESPACE")
                 .unwrap_or_else(|| "codegraph".to_string());
@@ -2040,7 +2001,7 @@ impl ProjectIndexer {
             database
         );
 
-        Ok(Some(Arc::new(TokioMutex::new(storage))))
+        Ok(Arc::new(TokioMutex::new(storage)))
     }
 
     fn log_surrealdb_status(&self, phase: &str) {
@@ -2098,6 +2059,10 @@ impl ProjectIndexer {
         } else {
             raw.to_string()
         }
+    }
+
+    fn normalize_symbol(symbol: &str) -> String {
+        symbol.trim().to_lowercase()
     }
 
     fn create_progress_bar(&self, total: u64, message: &str) -> ProgressBar {
@@ -2247,22 +2212,6 @@ pub fn normalize(v: &[f32]) -> Vec<f32> {
 }
 
 #[cfg(feature = "faiss")]
-async fn save_embeddings_to_file(out: PathBuf, nodes: &[CodeNode]) -> Result<()> {
-    use serde_json as json;
-    let mut items: Vec<(codegraph_core::NodeId, Vec<f32>)> = Vec::new();
-    for n in nodes {
-        if let Some(e) = &n.embedding {
-            items.push((n.id, e.clone()));
-        }
-    }
-    if let Some(dir) = out.parent() {
-        tokio::fs::create_dir_all(dir).await?;
-    }
-    let data = json::to_string(&items)?;
-    tokio::fs::write(out, data).await?;
-    Ok(())
-}
-
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IndexStats {
     pub files: usize,
@@ -2296,19 +2245,4 @@ struct FileStats {
     structs: usize,
     traits: usize,
     embeddings: usize,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct IndexMetadata {
-    project_path: PathBuf,
-    indexed_at: chrono::DateTime<chrono::Utc>,
-    stats: IndexStats,
-    config: IndexConfigMetadata,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct IndexConfigMetadata {
-    languages: Vec<String>,
-    recursive: bool,
-    workers: usize,
 }

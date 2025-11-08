@@ -1,9 +1,11 @@
 use crate::edge::CodeEdge;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId, Result};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 use surrealdb::{engine::any::Any, opt::auth::Root, sql::Thing, Surreal};
@@ -117,19 +119,12 @@ impl SurrealDbStorage {
             schema_version: Arc::new(std::sync::RwLock::new(0)),
         };
 
-        // Initialize schema
-        storage.initialize_schema().await?;
-
-        // Auto-migrate if enabled
-        if config.auto_migrate {
-            storage.migrate().await?;
-        }
-
-        info!("SurrealDB storage initialized successfully");
+        info!("SurrealDB storage initialized successfully (schema management disabled)");
         Ok(storage)
     }
 
-    /// Initialize database schema with flexible design
+    /// Initialize database schema with flexible design (unused when schema managed externally)
+    #[allow(dead_code)]
     async fn initialize_schema(&self) -> Result<()> {
         info!("Initializing SurrealDB schema");
 
@@ -163,8 +158,8 @@ impl SurrealDbStorage {
         let edge_schema = r#"
             DEFINE TABLE IF NOT EXISTS edges SCHEMAFULL;
             DEFINE FIELD IF NOT EXISTS id ON TABLE edges TYPE string;
-            DEFINE FIELD IF NOT EXISTS from ON TABLE edges TYPE record(nodes);
-            DEFINE FIELD IF NOT EXISTS to ON TABLE edges TYPE record(nodes);
+            DEFINE FIELD IF NOT EXISTS from ON TABLE edges TYPE record<nodes>;
+            DEFINE FIELD IF NOT EXISTS to ON TABLE edges TYPE record<nodes>;
             DEFINE FIELD IF NOT EXISTS edge_type ON TABLE edges TYPE string;
             DEFINE FIELD IF NOT EXISTS weight ON TABLE edges TYPE float DEFAULT 1.0;
             DEFINE FIELD IF NOT EXISTS metadata ON TABLE edges TYPE option<object>;
@@ -233,7 +228,8 @@ impl SurrealDbStorage {
         Ok(())
     }
 
-    /// Run database migrations
+    /// Run database migrations (unused when schema managed externally)
+    #[allow(dead_code)]
     async fn migrate(&self) -> Result<()> {
         let _current_version = *self.schema_version.read().unwrap();
         info!("Running migrations from version {}", _current_version);
@@ -543,6 +539,28 @@ impl SurrealDbStorage {
             serde_json::to_value(metadata_obj).unwrap(),
         );
 
+        if let Some(project_id) = node.metadata.attributes.get("project_id") {
+            data.insert(
+                "project_id".to_string(),
+                JsonValue::String(project_id.clone()),
+            );
+        }
+        if let Some(org_id) = node.metadata.attributes.get("organization_id") {
+            data.insert(
+                "organization_id".to_string(),
+                JsonValue::String(org_id.clone()),
+            );
+        }
+        if let Some(repo) = node.metadata.attributes.get("repository_url") {
+            data.insert(
+                "repository_url".to_string(),
+                JsonValue::String(repo.clone()),
+            );
+        }
+        if let Some(domain) = node.metadata.attributes.get("domain") {
+            data.insert("domain".to_string(), JsonValue::String(domain.clone()));
+        }
+
         Ok(data)
     }
 
@@ -663,6 +681,93 @@ impl SurrealDbStorage {
         }
         Ok(())
     }
+
+    pub async fn upsert_symbol_embedding(&self, record: SymbolEmbeddingUpsert<'_>) -> Result<()> {
+        let record_id = symbol_embedding_record_id(record.project_id, record.normalized_symbol);
+        let embedding_json: Vec<JsonValue> = record
+            .embedding
+            .iter()
+            .map(|f| JsonValue::from(*f as f64))
+            .collect();
+
+        let payload = json!({
+            "symbol": record.symbol,
+            "normalized_symbol": record.normalized_symbol,
+            "project_id": record.project_id,
+            "organization_id": record.organization_id,
+            "embedding_2048": embedding_json,
+            "embedding_model": record.embedding_model,
+            "node_id": record.node_id,
+            "source_edge_id": record.source_edge_id,
+            "metadata": record.metadata,
+            "last_computed_at": Utc::now(),
+            "access_count": surrealdb::sql::Number::Int(0),
+        });
+
+        let _: Option<HashMap<String, JsonValue>> = self
+            .db
+            .update(("symbol_embeddings", record_id))
+            .content(payload)
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to upsert symbol embedding: {}", e))
+            })?;
+
+        Ok(())
+    }
+
+    pub async fn upsert_project_metadata(&self, record: ProjectMetadataRecord) -> Result<()> {
+        let payload = json!({
+            "project_id": record.project_id,
+            "name": record.name,
+            "root_path": record.root_path,
+            "primary_language": record.primary_language,
+            "file_count": record.file_count,
+            "node_count": record.node_count,
+            "edge_count": record.edge_count,
+            "concept_collection_count": record.concept_collection_count,
+            "concept_document_count": record.concept_document_count,
+            "avg_coverage_score": record.avg_coverage_score,
+            "last_analyzed": record.last_analyzed,
+            "codegraph_version": record.codegraph_version,
+            "deepwiki_version": record.deepwiki_version,
+            "organization_id": record.organization_id,
+            "domain": record.domain,
+            "metadata": json!({}),
+        });
+
+        let _: Option<HashMap<String, JsonValue>> = self
+            .db
+            .update(("project_metadata", record.project_id.clone()))
+            .content(payload)
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to upsert project metadata: {}", e))
+            })?;
+
+        Ok(())
+    }
+
+    pub async fn update_node_embedding(&self, node_id: NodeId, embedding: &[f32]) -> Result<()> {
+        let embedding_json: Vec<JsonValue> = embedding
+            .iter()
+            .map(|&f| JsonValue::from(f as f64))
+            .collect();
+
+        let payload = json!({
+            "embedding": embedding_json,
+            "updated_at": Utc::now(),
+        });
+
+        let _: Option<HashMap<String, JsonValue>> = self
+            .db
+            .update(("nodes", node_id.to_string()))
+            .merge(payload)
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("Failed to update node embedding: {}", e)))?;
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -778,6 +883,45 @@ impl GraphStore for SurrealDbStorage {
             .map(|data| self.surreal_to_node(data))
             .collect()
     }
+}
+
+fn symbol_embedding_record_id(project_id: &str, normalized_symbol: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(project_id.as_bytes());
+    hasher.update(b":");
+    hasher.update(normalized_symbol.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+pub struct SymbolEmbeddingUpsert<'a> {
+    pub symbol: &'a str,
+    pub normalized_symbol: &'a str,
+    pub project_id: &'a str,
+    pub organization_id: Option<&'a str>,
+    pub embedding: &'a [f32],
+    pub embedding_model: &'a str,
+    pub node_id: Option<&'a str>,
+    pub source_edge_id: Option<&'a str>,
+    pub metadata: Option<JsonValue>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectMetadataRecord {
+    pub project_id: String,
+    pub name: String,
+    pub root_path: String,
+    pub primary_language: Option<String>,
+    pub file_count: i64,
+    pub node_count: i64,
+    pub edge_count: i64,
+    pub concept_collection_count: i64,
+    pub concept_document_count: i64,
+    pub avg_coverage_score: f32,
+    pub last_analyzed: DateTime<Utc>,
+    pub codegraph_version: String,
+    pub deepwiki_version: Option<String>,
+    pub organization_id: Option<String>,
+    pub domain: Option<String>,
 }
 
 #[cfg(test)]
