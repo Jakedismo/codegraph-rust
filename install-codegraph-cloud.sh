@@ -1,11 +1,11 @@
 #!/bin/bash
 # CodeGraph Cloud-Enhanced Installation Script
-# Features: Jina embeddings, cloud LLM providers (Anthropic/x.AI/OpenAI), SurrealDB backend
+# Features: Jina embeddings, cloud LLM providers (Anthropic/x.AI/OpenAI), SurrealDB backend, HTTP transport
 
 set -e  # Exit on any error
 
 echo "🚀 Installing CodeGraph with Cloud & SurrealDB Support..."
-echo "📋 Features: Jina embeddings, Cloud LLM providers, SurrealDB backend"
+echo "📋 Features: Jina embeddings, Cloud LLM providers, SurrealDB backend, HTTP transport"
 echo ""
 
 # Color codes for output
@@ -56,6 +56,7 @@ echo "📊 Languages: Rust, Python, JavaScript, TypeScript, Swift, C#, Ruby, PHP
 echo "🛠️  Tools: enhanced_search, semantic_intelligence, impact_analysis, pattern_detection, vector_search, graph_neighbors, graph_traverse, performance_metrics"
 echo "☁️  Cloud: Jina embeddings, Anthropic/x.AI/OpenAI LLM providers"
 echo "💾 Database: SurrealDB backend"
+echo "🌐 Transport: STDIO, HTTP with SSE streaming, Dual mode"
 echo ""
 
 # Load environment variables from .env file if it exists
@@ -86,7 +87,8 @@ echo ""
 # - codegraph-vector/jina: Jina embeddings provider
 # - codegraph-graph/surrealdb: SurrealDB backend support
 # - codegraph-ai/all-cloud-providers: Anthropic, OpenAI, x.AI and OpenAI-compatible providers
-FEATURE_FLAGS="ai-enhanced,codegraph-vector/jina,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers"
+# - server-http: HTTP transport with SSE streaming for MCP server
+FEATURE_FLAGS="ai-enhanced,codegraph-vector/jina,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers,server-http"
 INSTALL_DIR="${CODEGRAPH_INSTALL_DIR:-$HOME/.local/bin}"
 
 echo -e "${BLUE}🚀 Building CodeGraph with Cloud Features...${NC}"
@@ -120,6 +122,7 @@ if [ $? -eq 0 ]; then
     echo "   ☁️  Cloud Embeddings: Jina reranking and embeddings"
     echo "   🤖 Cloud LLM: Anthropic (Claude), OpenAI, and compatible providers"
     echo "   💾 Database: SurrealDB backend for scalable graph storage"
+    echo "   🌐 MCP Transports: STDIO, HTTP (with SSE streaming), and Dual mode"
     echo ""
     echo -e "${BLUE}🗄️  SurrealDB Setup:${NC}"
     echo "   Before using CodeGraph, you need to start SurrealDB:"
@@ -165,6 +168,19 @@ if [ $? -eq 0 ]; then
     echo "   4. Run: ${GREEN}codegraph index .${NC} (auto-detects all 11 languages)"
     echo "   5. Ensure ${INSTALL_DIR} is on your PATH (add to ~/.zshrc: export PATH=\"${INSTALL_DIR}:\$PATH\")"
     echo "   6. Use CodeGraph tools in Claude Code!"
+    echo ""
+    echo -e "${BLUE}🌐 MCP Server Transport Options:${NC}"
+    echo "   ${GREEN}# STDIO transport (default, for Claude Desktop)${NC}"
+    echo "   codegraph start stdio"
+    echo ""
+    echo "   ${GREEN}# HTTP transport with SSE streaming (for web clients)${NC}"
+    echo "   codegraph start http --host 127.0.0.1 --port 3000"
+    echo ""
+    echo "   ${GREEN}# Dual mode (both STDIO and HTTP simultaneously)${NC}"
+    echo "   codegraph start dual --host 127.0.0.1 --port 3000"
+    echo ""
+    echo "   ${GREEN}# HTTP with TLS (production)${NC}"
+    echo "   codegraph start http --tls --cert cert.pem --key key.pem"
     echo ""
     echo -e "${BLUE}⚙️  Note:${NC}"
     echo "   • All configuration now uses ${GREEN}.env${NC} files (no exports needed)"
