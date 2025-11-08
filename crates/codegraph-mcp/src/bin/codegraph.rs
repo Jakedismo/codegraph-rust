@@ -468,6 +468,12 @@ enum ConfigAction {
 
     #[command(about = "Validate configuration")]
     Validate,
+
+    #[command(about = "Show orchestrator-agent configuration metadata")]
+    AgentStatus {
+        #[arg(long, help = "Show as JSON")]
+        json: bool,
+    },
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -1669,6 +1675,212 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
         ConfigAction::Validate => {
             println!("✓ Configuration is valid");
         }
+        ConfigAction::AgentStatus { json } => {
+            handle_agent_status(json).await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_agent_status(json: bool) -> Result<()> {
+    use codegraph_core::config_manager::ConfigManager;
+    use codegraph_mcp::context_aware_limits::ContextTier;
+
+    // Load configuration
+    let config_mgr = ConfigManager::load().context("Failed to load configuration")?;
+    let config = config_mgr.config();
+
+    // Determine context tier
+    let context_window = config.llm.context_window;
+    let tier = ContextTier::from_context_window(context_window);
+
+    // Determine prompt verbosity based on tier
+    let prompt_verbosity = match tier {
+        ContextTier::Small => "TERSE",
+        ContextTier::Medium => "BALANCED",
+        ContextTier::Large => "DETAILED",
+        ContextTier::Massive => "EXPLORATORY",
+    };
+
+    // Get tier-specific parameters
+    let (max_steps, base_limit) = match tier {
+        ContextTier::Small => (5, 10),
+        ContextTier::Medium => (10, 25),
+        ContextTier::Large => (15, 50),
+        ContextTier::Massive => (20, 100),
+    };
+
+    // Active MCP tools
+    let mcp_tools = vec![
+        ("enhanced_search", "Search code with AI insights (2-5s)"),
+        (
+            "pattern_detection",
+            "Analyze coding patterns and conventions (1-3s)",
+        ),
+        ("vector_search", "Fast vector search (0.5s)"),
+        (
+            "graph_neighbors",
+            "Find dependencies for a code element (0.3s)",
+        ),
+        (
+            "graph_traverse",
+            "Follow dependency chains through code (0.5-2s)",
+        ),
+        (
+            "codebase_qa",
+            "Ask questions about code and get AI answers (5-30s)",
+        ),
+        (
+            "semantic_intelligence",
+            "Deep architectural analysis (30-120s)",
+        ),
+    ];
+
+    // Analysis types and their prompts
+    let analysis_types = vec![
+        "code_search",
+        "dependency_analysis",
+        "call_chain_analysis",
+        "architecture_analysis",
+        "api_surface_analysis",
+        "context_builder",
+        "semantic_question",
+    ];
+
+    if json {
+        // JSON output
+        let output = serde_json::json!({
+            "llm": {
+                "provider": config.llm.provider,
+                "model": config.llm.model.as_deref().unwrap_or("auto-detected"),
+                "enabled": config.llm.enabled,
+            },
+            "context": {
+                "tier": format!("{:?}", tier),
+                "window_size": context_window,
+                "prompt_verbosity": prompt_verbosity,
+            },
+            "orchestrator": {
+                "max_steps": max_steps,
+                "base_search_limit": base_limit,
+                "cache_enabled": true,
+                "cache_size": 100,
+            },
+            "mcp_tools": mcp_tools.iter().map(|(name, desc)| {
+                serde_json::json!({
+                    "name": name,
+                    "description": desc,
+                    "prompt_type": prompt_verbosity,
+                })
+            }).collect::<Vec<_>>(),
+            "analysis_types": analysis_types.iter().map(|name| {
+                serde_json::json!({
+                    "name": name,
+                    "prompt_type": prompt_verbosity,
+                })
+            }).collect::<Vec<_>>(),
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        // Human-readable output
+        println!(
+            "{}",
+            "╔══════════════════════════════════════════════════════════════════════╗"
+                .blue()
+                .bold()
+        );
+        println!(
+            "{}",
+            "║          CodeGraph Orchestrator-Agent Configuration                  ║"
+                .blue()
+                .bold()
+        );
+        println!(
+            "{}",
+            "╚══════════════════════════════════════════════════════════════════════╝"
+                .blue()
+                .bold()
+        );
+        println!();
+
+        // LLM Configuration
+        println!("{}", "🤖 LLM Configuration".green().bold());
+        println!("   Provider: {}", config.llm.provider.yellow());
+        println!(
+            "   Model: {}",
+            config
+                .llm
+                .model
+                .as_deref()
+                .unwrap_or("auto-detected")
+                .yellow()
+        );
+        println!(
+            "   Status: {}",
+            if config.llm.enabled {
+                "Enabled".green()
+            } else {
+                "Context-only mode".yellow()
+            }
+        );
+        println!();
+
+        // Context Configuration
+        println!("{}", "📊 Context Configuration".green().bold());
+        println!(
+            "   Tier: {} ({} tokens)",
+            format!("{:?}", tier).yellow(),
+            context_window.to_string().cyan()
+        );
+        println!("   Prompt Verbosity: {}", prompt_verbosity.cyan());
+        println!(
+            "   Base Search Limit: {} results",
+            base_limit.to_string().cyan()
+        );
+        println!();
+
+        // Orchestrator Configuration
+        println!("{}", "⚙️  Orchestrator Settings".green().bold());
+        println!(
+            "   Max Steps per Workflow: {}",
+            max_steps.to_string().cyan()
+        );
+        println!(
+            "   Cache: {} (size: {} entries)",
+            "Enabled".green(),
+            "100".cyan()
+        );
+        println!("   Max Output Tokens: {}", "44,200".cyan());
+        println!();
+
+        // MCP Tools
+        println!("{}", "🛠️  Available MCP Tools".green().bold());
+        for (name, desc) in &mcp_tools {
+            println!("   • {} [{}]", name.yellow(), prompt_verbosity.cyan());
+            println!("     {}", desc.dimmed());
+        }
+        println!();
+
+        // Analysis Types
+        println!("{}", "🔍 Analysis Types & Prompt Variants".green().bold());
+        for analysis_type in &analysis_types {
+            println!(
+                "   • {} → {}",
+                analysis_type.yellow(),
+                prompt_verbosity.cyan()
+            );
+        }
+        println!();
+
+        // Tier Details
+        println!("{}", "📈 Context Tier Details".green().bold());
+        println!("   Small (< 50K):        5 steps,  10 results, TERSE prompts");
+        println!("   Medium (50K-150K):   10 steps,  25 results, BALANCED prompts");
+        println!("   Large (150K-500K):   15 steps,  50 results, DETAILED prompts");
+        println!("   Massive (> 500K):    20 steps, 100 results, EXPLORATORY prompts");
+        println!();
+        println!("   Current tier: {}", format!("{:?}", tier).green().bold());
     }
 
     Ok(())
