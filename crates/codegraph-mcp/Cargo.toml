@@ -57,6 +57,9 @@ faiss = { workspace = true, optional = true }
 # codegraph-api not used directly here; avoid pulling heavy deps
 ## core-rag-mcp-server intentionally not linked to keep binary lean
 
+# AutoAgents framework for agentic workflows
+autoagents = { git = "https://github.com/liquidos-ai/AutoAgents", optional = true }
+
 axum = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true }
 
@@ -86,3 +89,4 @@ cloud = ["embeddings-jina", "codegraph-graph/surrealdb"]
 server-http = ["dep:axum", "dep:hyper"]
 qwen-integration = []
 ai-enhanced = ["dep:codegraph-ai", "faiss", "embeddings"]
+autoagents-experimental = ["dep:autoagents"]

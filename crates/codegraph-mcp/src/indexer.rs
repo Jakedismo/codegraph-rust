@@ -356,6 +356,57 @@ impl ProjectIndexer {
             );
         }
 
+        // STAGE 4: Persist nodes before embedding so SurrealDB reflects progress
+        let store_nodes_pb =
+            self.create_progress_bar(nodes.len() as u64, "📈 Storing nodes & symbols");
+        let mut stats = IndexStats {
+            files: pstats.parsed_files,
+            skipped: pstats.total_files - pstats.parsed_files,
+            ..Default::default()
+        };
+        let mut symbol_map: std::collections::HashMap<String, NodeId> =
+            std::collections::HashMap::new();
+
+        for node in nodes.iter() {
+            match node.node_type {
+                Some(NodeType::Function) => stats.functions += 1,
+                Some(NodeType::Class) => stats.classes += 1,
+                Some(NodeType::Struct) => stats.structs += 1,
+                Some(NodeType::Trait) => stats.traits += 1,
+                _ => {}
+            }
+            if let Some(ref c) = node.content {
+                stats.lines += c.lines().count();
+            }
+
+            let base_name = node.name.to_string();
+            symbol_map.insert(base_name.clone(), node.id);
+            if let Some(qname) = node.metadata.attributes.get("qualified_name") {
+                symbol_map.insert(qname.clone(), node.id);
+            }
+            if let Some(node_type) = &node.node_type {
+                symbol_map.insert(format!("{:?}::{}", node_type, base_name), node.id);
+            }
+            symbol_map.insert(
+                format!("{}::{}", node.location.file_path, base_name),
+                node.id,
+            );
+            if let Some(short_name) = base_name.split("::").last() {
+                symbol_map.insert(short_name.to_string(), node.id);
+            }
+            if let Some(method_of) = node.metadata.attributes.get("method_of") {
+                symbol_map.insert(format!("{}::{}", method_of, base_name), node.id);
+            }
+            if let Some(trait_impl) = node.metadata.attributes.get("implements_trait") {
+                symbol_map.insert(format!("{}::{}", trait_impl, base_name), node.id);
+            }
+
+            self.persist_node_to_surreal(node).await?;
+            store_nodes_pb.inc(1);
+        }
+        store_nodes_pb.finish_with_message("📈 Stored nodes & symbols");
+        self.log_surreal_node_count(total_nodes_extracted).await;
+
         // Generate semantic embeddings for vector search capabilities
         let total = nodes.len() as u64;
         let embed_pb = self.create_batch_progress_bar(total, self.config.batch_size);
@@ -421,6 +472,8 @@ impl ProjectIndexer {
         );
         embed_pb.finish_with_message(embed_completion_msg);
 
+        stats.embeddings = nodes.iter().filter(|n| n.embedding.is_some()).count();
+
         // Enhanced embedding completion statistics
         info!("💾 Semantic embedding generation results:");
         info!(
@@ -459,61 +512,6 @@ impl ProjectIndexer {
                 "Local embedding dumps disabled; SurrealDB is the source of truth"
             );
         }
-
-        // STAGE 4: Store nodes, compute stats, and build symbol map
-        let store_nodes_pb =
-            self.create_progress_bar(nodes.len() as u64, "📈 Storing nodes & symbols");
-        let mut stats = IndexStats {
-            files: pstats.parsed_files,
-            skipped: pstats.total_files - pstats.parsed_files,
-            ..Default::default()
-        };
-        let mut symbol_map: std::collections::HashMap<String, NodeId> =
-            std::collections::HashMap::new();
-
-        for n in nodes {
-            // Stats collection
-            match n.node_type {
-                Some(NodeType::Function) => stats.functions += 1,
-                Some(NodeType::Class) => stats.classes += 1,
-                Some(NodeType::Struct) => stats.structs += 1,
-                Some(NodeType::Trait) => stats.traits += 1,
-                _ => {}
-            }
-            if let Some(ref c) = n.content {
-                stats.lines += c.lines().count();
-            }
-            if n.embedding.is_some() {
-                stats.embeddings += 1;
-            }
-
-            // Symbol map building
-            let base_name = n.name.to_string();
-            symbol_map.insert(base_name.clone(), n.id);
-            if let Some(qname) = n.metadata.attributes.get("qualified_name") {
-                symbol_map.insert(qname.clone(), n.id);
-            }
-            if let Some(node_type) = &n.node_type {
-                symbol_map.insert(format!("{:?}::{}", node_type, base_name), n.id);
-            }
-            symbol_map.insert(format!("{}::{}", n.location.file_path, base_name), n.id);
-            if let Some(short_name) = base_name.split("::").last() {
-                symbol_map.insert(short_name.to_string(), n.id);
-            }
-            if let Some(method_of) = n.metadata.attributes.get("method_of") {
-                symbol_map.insert(format!("{}::{}", method_of, base_name), n.id);
-            }
-            if let Some(trait_impl) = n.metadata.attributes.get("implements_trait") {
-                symbol_map.insert(format!("{}::{}", trait_impl, base_name), n.id);
-            }
-
-            // Store node
-            self.persist_node_to_surreal(n).await?;
-            store_nodes_pb.inc(1);
-        }
-        store_nodes_pb.finish_with_message("📈 Stored nodes & symbols");
-
-        self.log_surreal_node_count(total_nodes_extracted).await;
 
         // REVOLUTIONARY: Store edges extracted during unified parsing (MAXIMUM SPEED)
         let stored_edges;
@@ -1872,10 +1870,10 @@ impl ProjectIndexer {
         }
     }
 
-    async fn persist_node_to_surreal(&self, node: CodeNode) -> Result<()> {
+    async fn persist_node_to_surreal(&self, node: &CodeNode) -> Result<()> {
         let mut guard = self.surreal.lock().await;
         guard
-            .add_node(node)
+            .add_node(node.clone())
             .await
             .map_err(|e| anyhow::anyhow!(e))?;
         Ok(())
@@ -1888,9 +1886,7 @@ impl ProjectIndexer {
         };
 
         match db
-            .query(
-                "SELECT VALUE count() FROM nodes WHERE project_id = $project_id",
-            )
+            .query("SELECT VALUE count() FROM nodes WHERE project_id = $project_id")
             .bind(("project_id", self.project_id.clone()))
             .await
         {
@@ -1899,8 +1895,7 @@ impl ProjectIndexer {
                     let count = count_opt.unwrap_or(0);
                     info!(
                         "🗄️ SurrealDB nodes persisted: {} (expected ≈ {})",
-                        count,
-                        expected
+                        count, expected
                     );
                 }
                 Err(e) => {
