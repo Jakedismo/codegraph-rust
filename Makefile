@@ -11,6 +11,10 @@ build:
 build-release:
 	cargo build --workspace --release
 
+# Build MCP server with AutoAgents experimental feature
+build-mcp-autoagents:
+	cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,ollama"
+
 # Build API with size-optimized profile and strip/compress
 build-api-size:
 	cargo build --profile release-size --bin codegraph-api

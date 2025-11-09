@@ -93,8 +93,14 @@ cargo doc --workspace --no-deps --open
 ### Running the MCP Server
 
 ```bash
-# Build the MCP server binary
-cargo build --release -p codegraph-mcp --bin codegraph
+# Build the MCP server binary (with AutoAgents experimental feature)
+cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,ollama"
+
+# Or use Makefile target
+make build-mcp-autoagents
+
+# Or build without AutoAgents (uses legacy orchestrator)
+cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,faiss,ollama"
 
 # Start MCP server (stdio mode - RECOMMENDED)
 ./target/release/codegraph start stdio
@@ -191,7 +197,44 @@ CodeGraph uses a **layered workspace architecture** with 16 specialized crates:
 
 ## Key Architectural Decisions
 
-### 1. MCP Server Architecture Change (v1.0.0)
+### 1. AutoAgents Integration (v1.1.0 - Experimental)
+**🔬 EXPERIMENTAL**: AutoAgents framework integration for agentic orchestration.
+
+**What is it:**
+- Replaces custom ~1,200-line `agentic_orchestrator.rs` with AutoAgents ReAct framework
+- 6 inner graph analysis tools for agent: GetTransitiveDependencies, GetReverseDependencies, TraceCallChain, DetectCycles, CalculateCoupling, GetHubNodes
+- Maintains all 7 existing agentic MCP tools: `agentic_code_search`, `agentic_dependency_analysis`, `agentic_call_chain_analysis`, `agentic_architecture_analysis`, `agentic_api_surface_analysis`, `agentic_context_builder`, `agentic_semantic_question`
+- Tier-aware prompting preserved (Small/Medium/Large/Massive context tiers)
+
+**Feature flag:** `autoagents-experimental`
+
+**Status:**
+- ✅ Implementation complete (Tasks 1-12 from integration plan)
+- ⏳ Testing in progress (Tasks 13-18)
+- 📝 Documentation updates in progress
+- 🔄 Legacy orchestrator remains as fallback
+
+**Build with AutoAgents:**
+```bash
+make build-mcp-autoagents
+# or
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,ollama"
+```
+
+**Architecture:**
+```
+Claude Desktop → agentic_* MCP tools → CodeGraphExecutor
+                                       ↓
+                                    CodeGraphAgentBuilder
+                                       ↓
+                                    ReActAgent (AutoAgents)
+                                       ↓
+                              6 inner graph analysis tools
+                                       ↓
+                                GraphToolExecutor → SurrealDB
+```
+
+### 2. MCP Server Architecture Change (v1.0.0)
 **⚠️ IMPORTANT**: The MCP server deprecated FAISS+RocksDB in favor of SurrealDB.
 
 **Why this matters:**
@@ -392,7 +435,8 @@ sudo apt-get install libfaiss-dev  # Ubuntu
 
 **MCP tests fail**
 - Check binary exists: `./target/release/codegraph` or `./target/debug/codegraph`
-- Try building: `cargo build -p codegraph-mcp --bin codegraph --features "ai-enhanced,faiss,ollama"`
+- Try building with AutoAgents: `cargo build -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,ollama"`
+- Or without AutoAgents (legacy): `cargo build -p codegraph-mcp --bin codegraph --features "ai-enhanced,faiss,ollama"`
 
 ## Additional Resources
 
