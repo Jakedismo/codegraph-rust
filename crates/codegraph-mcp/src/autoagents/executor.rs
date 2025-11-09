@@ -103,13 +103,14 @@ impl CodeGraphExecutor {
     /// Execute agent and convert output
     async fn run_agent(
         &self,
-        mut agent_handle: AgentHandle,
+        agent_handle: AgentHandle,
         query: String,
     ) -> Result<CodeGraphAgentOutput, ExecutorError> {
-        use autoagents::core::agent::Agent;
+        use autoagents::core::agent::AgentExecutor;
 
         // Execute the agent with the query
         let react_output = agent_handle
+            .agent
             .agent
             .run(&query)
             .await

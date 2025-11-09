@@ -174,7 +174,6 @@ impl ChatResponse for CodeGraphChatResponse {
 // Agent Builder
 // ============================================================================
 
-use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use crate::autoagents::tier_plugin::TierAwarePromptPlugin;
 use crate::autoagents::tools::tool_executor_adapter::GraphToolFactory;
 use crate::autoagents::tools::graph_tools::*;
@@ -184,8 +183,39 @@ use crate::context_aware_limits::ContextTier;
 use autoagents::core::agent::AgentBuilder;
 use autoagents::core::agent::prebuilt::executor::ReActAgent;
 use autoagents::core::agent::memory::SlidingWindowMemory;
+use autoagents::core::agent::{AgentDeriveT, AgentHooks, DirectAgentHandle};
 use autoagents::core::error::Error as AutoAgentsError;
-use autoagents::core::tool::ToolT;
+use autoagents::core::tool::{shared_tools_to_boxes, ToolT};
+use autoagents_derive::AgentHooks;
+use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
+
+/// Agent implementation for CodeGraph with manual tool registration
+#[derive(Debug)]
+pub struct CodeGraphReActAgent {
+    tools: Vec<Arc<dyn ToolT>>,
+}
+
+impl AgentDeriveT for CodeGraphReActAgent {
+    type Output = CodeGraphAgentOutput;
+
+    fn description(&self) -> &'static str {
+        "CodeGraph agent for analyzing code dependencies and architecture"
+    }
+
+    fn name(&self) -> &'static str {
+        "codegraph_agent"
+    }
+
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        Some(CodeGraphAgentOutput::structured_output_format())
+    }
+
+    fn tools(&self) -> Vec<Box<dyn ToolT>> {
+        shared_tools_to_boxes(&self.tools)
+    }
+}
+
+impl AgentHooks for CodeGraphReActAgent {}
 
 /// Builder for CodeGraph AutoAgents workflows
 pub struct CodeGraphAgentBuilder {
@@ -224,18 +254,21 @@ impl CodeGraphAgentBuilder {
         // Get executor adapter for tool construction
         let executor_adapter = self.tool_factory.adapter();
 
-        // Manually construct all 6 tools with the executor
-        let tools: Vec<Box<dyn ToolT>> = vec![
-            Box::new(GetTransitiveDependencies::new(executor_adapter.clone())),
-            Box::new(GetReverseDependencies::new(executor_adapter.clone())),
-            Box::new(TraceCallChain::new(executor_adapter.clone())),
-            Box::new(DetectCycles::new(executor_adapter.clone())),
-            Box::new(CalculateCoupling::new(executor_adapter.clone())),
-            Box::new(GetHubNodes::new(executor_adapter.clone())),
+        // Manually construct all 6 tools with the executor (Arc-wrapped for sharing)
+        let tools: Vec<Arc<dyn ToolT>> = vec![
+            Arc::new(GetTransitiveDependencies::new(executor_adapter.clone())),
+            Arc::new(GetReverseDependencies::new(executor_adapter.clone())),
+            Arc::new(TraceCallChain::new(executor_adapter.clone())),
+            Arc::new(DetectCycles::new(executor_adapter.clone())),
+            Arc::new(CalculateCoupling::new(executor_adapter.clone())),
+            Arc::new(GetHubNodes::new(executor_adapter.clone())),
         ];
 
-        // Build ReAct agent with manually constructed tools
-        let react_agent = ReActAgent::with_tools(tools);
+        // Create CodeGraph agent with tools
+        let codegraph_agent = CodeGraphReActAgent { tools };
+
+        // Build ReAct agent with our CodeGraph agent
+        let react_agent = ReActAgent::new(codegraph_agent);
 
         // Build full agent with configuration
         let agent = AgentBuilder::new(react_agent)
@@ -256,7 +289,7 @@ impl CodeGraphAgentBuilder {
 
 /// Handle for executing CodeGraph agent
 pub struct AgentHandle {
-    pub agent: Box<dyn autoagents::core::agent::Agent>,
+    pub agent: DirectAgentHandle<ReActAgent<CodeGraphReActAgent>>,
     pub tier: ContextTier,
     pub analysis_type: AnalysisType,
 }

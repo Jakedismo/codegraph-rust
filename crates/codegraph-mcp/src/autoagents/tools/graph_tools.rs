@@ -4,7 +4,6 @@
 use autoagents::core::tool::{ToolCallError, ToolInputT, ToolRuntime, ToolT};
 use autoagents_derive::{tool, ToolInput};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::sync::Arc;
 use crate::autoagents::tools::tool_executor_adapter::GraphToolExecutorAdapter;
 
@@ -59,7 +58,7 @@ impl ToolRuntime for GetTransitiveDependencies {
                 "edge_type": typed_args.edge_type,
                 "depth": typed_args.depth
             })
-        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
 
         Ok(result)
     }
@@ -106,7 +105,7 @@ impl ToolRuntime for GetReverseDependencies {
                 "edge_type": typed_args.edge_type,
                 "depth": typed_args.depth
             })
-        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
 
         Ok(result)
     }
@@ -153,7 +152,7 @@ impl ToolRuntime for TraceCallChain {
                 "start_node_id": typed_args.start_node_id,
                 "max_depth": typed_args.max_depth
             })
-        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
 
         Ok(result)
     }
@@ -201,7 +200,7 @@ impl ToolRuntime for DetectCycles {
                 "edge_type": typed_args.edge_type,
                 "max_cycle_length": typed_args.max_cycle_length
             })
-        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
 
         Ok(result)
     }
@@ -244,7 +243,7 @@ impl ToolRuntime for CalculateCoupling {
                 "node_id": typed_args.node_id,
                 "edge_type": typed_args.edge_type
             })
-        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
 
         Ok(result)
     }
@@ -300,7 +299,7 @@ impl ToolRuntime for GetHubNodes {
                 "min_connections": typed_args.min_connections,
                 "limit": typed_args.limit
             })
-        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
 
         Ok(result)
     }
