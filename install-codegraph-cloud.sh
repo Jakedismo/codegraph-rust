@@ -88,7 +88,8 @@ echo ""
 # - codegraph-graph/surrealdb: SurrealDB backend support
 # - codegraph-ai/all-cloud-providers: Anthropic, OpenAI, x.AI and OpenAI-compatible providers
 # - server-http: HTTP transport with SSE streaming for MCP server
-FEATURE_FLAGS="ai-enhanced,codegraph-vector/jina,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers,server-http"
+# - autoagents-experimental: EXPERIMENTAL AutoAgents framework for improved agentic orchestration
+FEATURE_FLAGS="ai-enhanced,codegraph-vector/jina,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers,server-http,autoagents-experimental"
 INSTALL_DIR="${CODEGRAPH_INSTALL_DIR:-$HOME/.local/bin}"
 
 echo -e "${BLUE}🚀 Building CodeGraph with Cloud Features...${NC}"
@@ -123,6 +124,7 @@ if [ $? -eq 0 ]; then
     echo "   🤖 Cloud LLM: Anthropic (Claude), OpenAI, and compatible providers"
     echo "   💾 Database: SurrealDB backend for scalable graph storage"
     echo "   🌐 MCP Transports: STDIO, HTTP (with SSE streaming), and Dual mode"
+    echo "   🔬 EXPERIMENTAL: AutoAgents framework for improved agentic orchestration"
     echo ""
     echo -e "${BLUE}🗄️  SurrealDB Setup:${NC}"
     echo "   Before using CodeGraph, you need to start SurrealDB:"
