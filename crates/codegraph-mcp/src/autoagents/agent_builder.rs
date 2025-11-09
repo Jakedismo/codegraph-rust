@@ -3,6 +3,9 @@
 
 use autoagents::llm::chat::{ChatMessage, ChatMessageBuilder, ChatRole, ChatResponse, Tool};
 use autoagents::llm::chat::ChatProvider;
+use autoagents::llm::completion::{CompletionProvider, CompletionRequest, CompletionResponse};
+use autoagents::llm::embedding::EmbeddingProvider;
+use autoagents::llm::models::{ModelListRequest, ModelListResponse, ModelsProvider};
 use autoagents::llm::error::LLMError;
 use autoagents::llm::ToolCall;
 use codegraph_ai::llm_provider::{Message, MessageRole, LLMProvider as CodeGraphLLM};
@@ -105,6 +108,40 @@ impl ChatProvider for CodeGraphChatAdapter {
     > {
         Err(LLMError::Generic(
             "Structured streaming not supported".to_string(),
+        ))
+    }
+}
+
+#[async_trait]
+impl CompletionProvider for CodeGraphChatAdapter {
+    async fn complete(
+        &self,
+        _req: &CompletionRequest,
+        _json_schema: Option<autoagents::llm::chat::StructuredOutputFormat>,
+    ) -> Result<CompletionResponse, LLMError> {
+        Err(LLMError::Generic(
+            "Completion not supported - use ChatProvider instead".to_string(),
+        ))
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for CodeGraphChatAdapter {
+    async fn embed(&self, _text: Vec<String>) -> Result<Vec<Vec<f32>>, LLMError> {
+        Err(LLMError::Generic(
+            "Embedding not supported - CodeGraph uses separate embedding providers".to_string(),
+        ))
+    }
+}
+
+#[async_trait]
+impl ModelsProvider for CodeGraphChatAdapter {
+    async fn list_models(
+        &self,
+        _request: Option<&ModelListRequest>,
+    ) -> Result<Box<dyn ModelListResponse>, LLMError> {
+        Err(LLMError::Generic(
+            "Model listing not supported".to_string(),
         ))
     }
 }
