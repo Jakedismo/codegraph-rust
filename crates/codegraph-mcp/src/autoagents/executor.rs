@@ -106,13 +106,13 @@ impl CodeGraphExecutor {
         agent_handle: AgentHandle,
         query: String,
     ) -> Result<CodeGraphAgentOutput, ExecutorError> {
-        use autoagents::core::agent::AgentExecutor;
+        use autoagents::core::agent::task::Task;
 
-        // Execute the agent with the query
+        // Execute the agent with the query wrapped in a Task
         let react_output = agent_handle
             .agent
             .agent
-            .run(&query)
+            .run(Task::new(&query))
             .await
             .map_err(|e| ExecutorError::ExecutionFailed(e.to_string()))?;
 

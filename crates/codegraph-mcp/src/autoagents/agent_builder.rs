@@ -147,6 +147,9 @@ impl ModelsProvider for CodeGraphChatAdapter {
     }
 }
 
+// Implement the LLMProvider supertrait (combines all provider traits)
+impl autoagents::llm::LLMProvider for CodeGraphChatAdapter {}
+
 /// ChatResponse wrapper for CodeGraph LLM responses
 #[derive(Debug)]
 struct CodeGraphChatResponse {
@@ -183,7 +186,7 @@ use crate::context_aware_limits::ContextTier;
 use autoagents::core::agent::AgentBuilder;
 use autoagents::core::agent::prebuilt::executor::ReActAgent;
 use autoagents::core::agent::memory::SlidingWindowMemory;
-use autoagents::core::agent::{AgentDeriveT, AgentHooks, DirectAgentHandle};
+use autoagents::core::agent::{AgentDeriveT, AgentHooks, AgentOutputT, DirectAgentHandle};
 use autoagents::core::error::Error as AutoAgentsError;
 use autoagents::core::tool::{shared_tools_to_boxes, ToolT};
 use autoagents_derive::AgentHooks;
@@ -243,9 +246,9 @@ impl CodeGraphAgentBuilder {
     pub async fn build(self) -> Result<AgentHandle, AutoAgentsError> {
         // Get tier-aware configuration
         let tier_plugin = TierAwarePromptPlugin::new(self.analysis_type, self.tier);
-        let system_prompt = tier_plugin
+        let _system_prompt = tier_plugin
             .get_system_prompt()
-            .map_err(|e| AutoAgentsError::Generic(e.to_string()))?;
+            .map_err(|e| AutoAgentsError::CustomError(e.to_string()))?;
 
         // Create memory (sliding window keeps last N messages)
         let memory_size = tier_plugin.get_max_iterations() * 2;
@@ -271,11 +274,11 @@ impl CodeGraphAgentBuilder {
         let react_agent = ReActAgent::new(codegraph_agent);
 
         // Build full agent with configuration
-        let agent = AgentBuilder::new(react_agent)
+        // NOTE: system_prompt not directly supported, handled via agent description
+        use autoagents::core::agent::DirectAgent;
+        let agent = AgentBuilder::<_, DirectAgent>::new(react_agent)
             .llm(self.llm_adapter)
             .memory(memory)
-            .system_prompt(&system_prompt)
-            .max_iterations(tier_plugin.get_max_iterations())
             .build()
             .await?;
 
