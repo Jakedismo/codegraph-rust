@@ -9,10 +9,18 @@ use serde_json::Value;
 ///
 /// AutoAgents tools must be synchronous, but GraphToolExecutor is async.
 /// This wrapper uses tokio::runtime::Handle to bridge the gap.
-#[derive(Debug)]
 pub struct GraphToolExecutorAdapter {
     executor: Arc<GraphToolExecutor>,
     runtime_handle: tokio::runtime::Handle,
+}
+
+impl std::fmt::Debug for GraphToolExecutorAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GraphToolExecutorAdapter")
+            .field("executor", &"<GraphToolExecutor>")
+            .field("runtime_handle", &self.runtime_handle)
+            .finish()
+    }
 }
 
 impl GraphToolExecutorAdapter {

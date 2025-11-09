@@ -18,14 +18,14 @@ pub struct GetTransitiveDependenciesArgs {
     edge_type: String,
     #[input(description = "Maximum traversal depth (1-10, default: 3)")]
     #[serde(default = "default_depth")]
-    depth: usize,
+    depth: i32,
 }
 
 fn default_edge_type() -> String {
     "Calls".to_string()
 }
 
-fn default_depth() -> usize {
+fn default_depth() -> i32 {
     3
 }
 
@@ -38,8 +38,9 @@ fn default_depth() -> usize {
 )]
 pub struct GetTransitiveDependencies {}
 
+#[async_trait::async_trait]
 impl ToolRuntime for GetTransitiveDependencies {
-    fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
+    async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
         let typed_args: GetTransitiveDependenciesArgs = serde_json::from_value(args)?;
 
         // TODO: Need executor instance - for now return placeholder
@@ -69,7 +70,7 @@ mod tests {
         let args: GetTransitiveDependenciesArgs = serde_json::from_value(json).unwrap();
         assert_eq!(args.node_id, "nodes:123");
         assert_eq!(args.edge_type, "Imports");
-        assert_eq!(args.depth, 5);
+        assert_eq!(args.depth, 5_i32);
     }
 
     #[test]
@@ -80,6 +81,6 @@ mod tests {
 
         let args: GetTransitiveDependenciesArgs = serde_json::from_value(json).unwrap();
         assert_eq!(args.edge_type, "Calls");
-        assert_eq!(args.depth, 3);
+        assert_eq!(args.depth, 3_i32);
     }
 }
