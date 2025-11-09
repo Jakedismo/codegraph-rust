@@ -1,5 +1,6 @@
 // ABOUTME: Factory for creating AutoAgents with CodeGraph-specific configuration
 // ABOUTME: Bridges codegraph_ai LLM providers to AutoAgents ChatProvider
+// ABOUTME: Builder for tier-aware CodeGraph agents with graph analysis tools
 
 use autoagents::llm::chat::{ChatMessage, ChatMessageBuilder, ChatRole, ChatResponse, Tool};
 use autoagents::llm::chat::ChatProvider;
@@ -167,6 +168,82 @@ impl ChatResponse for CodeGraphChatResponse {
     fn tool_calls(&self) -> Option<Vec<ToolCall>> {
         None // CodeGraph doesn't use tool calls in responses
     }
+}
+
+// ============================================================================
+// Agent Builder
+// ============================================================================
+
+use crate::autoagents::codegraph_agent::CodeGraphAgent;
+use crate::autoagents::tier_plugin::TierAwarePromptPlugin;
+use crate::autoagents::tools::tool_executor_adapter::GraphToolFactory;
+use crate::{AnalysisType, GraphToolExecutor};
+use crate::context_aware_limits::ContextTier;
+
+use autoagents::core::agent::AgentBuilder;
+use autoagents::core::agent::prebuilt::executor::ReActAgent;
+use autoagents::core::agent::memory::SlidingWindowMemory;
+use autoagents::core::error::Error as AutoAgentsError;
+
+/// Builder for CodeGraph AutoAgents workflows
+pub struct CodeGraphAgentBuilder {
+    llm_adapter: Arc<CodeGraphChatAdapter>,
+    tool_factory: GraphToolFactory,
+    tier: ContextTier,
+    analysis_type: AnalysisType,
+}
+
+impl CodeGraphAgentBuilder {
+    pub fn new(
+        llm_provider: Arc<dyn codegraph_ai::llm_provider::LLMProvider>,
+        tool_executor: Arc<GraphToolExecutor>,
+        tier: ContextTier,
+        analysis_type: AnalysisType,
+    ) -> Self {
+        Self {
+            llm_adapter: Arc::new(CodeGraphChatAdapter::new(llm_provider)),
+            tool_factory: GraphToolFactory::new(tool_executor),
+            tier,
+            analysis_type,
+        }
+    }
+
+    pub async fn build(self) -> Result<AgentHandle, AutoAgentsError> {
+        // Get tier-aware configuration
+        let tier_plugin = TierAwarePromptPlugin::new(self.analysis_type, self.tier);
+        let system_prompt = tier_plugin
+            .get_system_prompt()
+            .map_err(|e| AutoAgentsError::Generic(e.to_string()))?;
+
+        // Create memory (sliding window keeps last N messages)
+        let memory_size = tier_plugin.get_max_iterations() * 2;
+        let memory = Box::new(SlidingWindowMemory::new(memory_size));
+
+        // Build ReAct agent with our tools
+        let react_agent = ReActAgent::new(CodeGraphAgent::default());
+
+        // Build full agent with configuration
+        let agent = AgentBuilder::new(react_agent)
+            .llm(self.llm_adapter)
+            .memory(memory)
+            .system_prompt(&system_prompt)
+            .max_iterations(tier_plugin.get_max_iterations())
+            .build()
+            .await?;
+
+        Ok(AgentHandle {
+            agent,
+            tier: self.tier,
+            analysis_type: self.analysis_type,
+        })
+    }
+}
+
+/// Handle for executing CodeGraph agent
+pub struct AgentHandle {
+    pub agent: Box<dyn autoagents::core::agent::Agent>,
+    pub tier: ContextTier,
+    pub analysis_type: AnalysisType,
 }
 
 #[cfg(test)]
