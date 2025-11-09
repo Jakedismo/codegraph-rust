@@ -1,5 +1,15 @@
-// ABOUTME: Agentic LLM orchestrator for multi-step graph analysis workflows
+// ABOUTME: Agentic LLM orchestrator for multi-step graph analysis workflows (DEPRECATED - see autoagents module)
 // ABOUTME: Coordinates LLM reasoning with SurrealDB graph tool calls for comprehensive code intelligence
+//
+// DEPRECATION NOTICE:
+// This custom orchestrator is being replaced by the AutoAgents framework integration.
+// See crates/codegraph-mcp/src/autoagents/ for the new implementation.
+//
+// To use the new AutoAgents implementation, build with:
+//   cargo build --features "autoagents-experimental"
+//
+// This legacy orchestrator remains available as a fallback when the autoagents-experimental
+// feature is not enabled. It will be maintained until AutoAgents integration is stable.
 
 use crate::context_aware_limits::ContextTier;
 use crate::error::McpError;
@@ -198,6 +208,15 @@ pub struct ToolCallStats {
 pub type ProgressCallback = Arc<dyn Fn(f64, Option<f64>) -> BoxFuture<'static, ()> + Send + Sync>;
 
 /// Agentic orchestrator that coordinates LLM reasoning with tool execution
+///
+/// # Deprecation
+/// This custom orchestrator is deprecated in favor of the AutoAgents framework.
+/// Enable the `autoagents-experimental` feature to use the new implementation.
+/// See `crates/codegraph-mcp/src/autoagents/` for details.
+#[deprecated(
+    since = "1.1.0",
+    note = "Use AutoAgents framework with autoagents-experimental feature. See crates/codegraph-mcp/src/autoagents/"
+)]
 pub struct AgenticOrchestrator {
     /// LLM provider for reasoning and tool calling decisions
     llm_provider: Arc<dyn LLMProvider>,
