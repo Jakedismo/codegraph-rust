@@ -255,6 +255,6 @@ mod tests {
         let messages = vec![ChatMessage::user().content("Hello").build()];
         let response = adapter.chat(&messages, None, None).await.unwrap();
 
-        assert_eq!(response.text(), "Echo: Hello");
+        assert_eq!(response.text(), Some("Echo: Hello".to_string()));
     }
 }
