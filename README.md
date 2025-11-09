@@ -15,6 +15,7 @@ CodeGraph indexes your source code to a graph database, creates semantic embeddi
 - 🗄️ **NEW:** SurrealDB HNSW backend for cloud-native and local vector search
 - 📦 **NEW:** Node.js NAPI bindings for zero-overhead TypeScript integration
 - 🤖 **NEW:** Agentic code-agent tools with tier-aware multi-step reasoning
+- 🔬 **EXPERIMENTAL:** AutoAgents framework integration for improved agent orchestration
 
 ---
 
@@ -57,6 +58,42 @@ surreal start --bind 127.0.0.1:3004 --user root --pass root memory
 - **Reduced complexity**: Eliminates custom RocksDB integration layer
 
 **See [CHANGELOG.md](CHANGELOG.md) for detailed migration guide.**
+
+---
+
+## 🔬 Experimental: AutoAgents Framework
+
+CodeGraph now supports the **AutoAgents framework** for agentic orchestration as an experimental feature.
+
+### What is AutoAgents?
+- Modern Rust-based agent framework with ReAct (Reasoning + Acting) pattern
+- Replaces ~1,200 lines of custom orchestration code
+- Maintains compatibility with all 7 existing agentic MCP tools
+- Same tier-aware prompting system (Small/Medium/Large/Massive)
+
+### Enabling AutoAgents
+
+**Build with experimental feature:**
+```bash
+# Using Makefile
+make build-mcp-autoagents
+
+# Or directly with cargo
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,ollama"
+```
+
+**Without AutoAgents (default):**
+```bash
+cargo build --release -p codegraph-mcp --features "ai-enhanced,faiss,ollama"
+```
+
+### Status
+- ✅ Core implementation complete
+- ⏳ Testing and validation in progress
+- 📝 Feedback welcome via GitHub issues
+- 🔄 Legacy orchestrator remains as stable fallback
+
+The experimental feature is opt-in via build flag and does not affect existing functionality when disabled.
 
 ---
 
