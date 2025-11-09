@@ -30,6 +30,9 @@ pub mod server;
 pub mod transport;
 pub mod version;
 
+#[cfg(feature = "autoagents-experimental")]
+pub mod autoagents;
+
 #[cfg(feature = "qwen-integration")]
 pub mod cache;
 pub mod config_manager;
