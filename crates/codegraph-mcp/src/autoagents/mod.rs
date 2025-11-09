@@ -11,12 +11,13 @@ pub mod agent_builder;
 pub mod executor;
 #[cfg(feature = "autoagents-experimental")]
 pub mod progress_notifier;
+#[cfg(feature = "autoagents-experimental")]
+pub mod codegraph_agent;
 
+// Re-exports
 #[cfg(feature = "autoagents-experimental")]
-pub use tier_plugin::{TierAwarePromptPlugin, TierAwareAgentExt};
+pub use tier_plugin::TierAwarePromptPlugin;
 #[cfg(feature = "autoagents-experimental")]
-pub use agent_builder::CodeGraphAgentBuilder;
+pub use agent_builder::CodeGraphChatAdapter;
 #[cfg(feature = "autoagents-experimental")]
-pub use executor::CodeGraphAgenticExecutor;
-#[cfg(feature = "autoagents-experimental")]
-pub use progress_notifier::McpProgressObserver;
+pub use codegraph_agent::{CodeGraphAgent, CodeGraphAgentOutput};
