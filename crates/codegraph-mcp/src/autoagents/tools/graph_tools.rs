@@ -1,5 +1,5 @@
 // ABOUTME: AutoAgents tool definitions for SurrealDB graph analysis
-// ABOUTME: Type-safe wrappers using AutoAgents derive macros
+// ABOUTME: Type-safe wrappers using AutoAgents derive macros with stateful executor access
 
 use autoagents::core::tool::{ToolCallError, ToolInputT, ToolRuntime, ToolT};
 use autoagents_derive::{tool, ToolInput};
@@ -36,22 +36,32 @@ fn default_depth() -> i32 {
                    Follows dependency edges recursively to find all nodes this node depends on.",
     input = GetTransitiveDependenciesArgs,
 )]
-pub struct GetTransitiveDependencies {}
+pub struct GetTransitiveDependencies {
+    executor: Arc<GraphToolExecutorAdapter>,
+}
+
+impl GetTransitiveDependencies {
+    pub fn new(executor: Arc<GraphToolExecutorAdapter>) -> Self {
+        Self { executor }
+    }
+}
 
 #[async_trait::async_trait]
 impl ToolRuntime for GetTransitiveDependencies {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
         let typed_args: GetTransitiveDependenciesArgs = serde_json::from_value(args)?;
 
-        // TODO: Need executor instance - for now return placeholder
-        Ok(serde_json::json!({
-            "status": "not_implemented",
-            "params": {
+        // Call the actual executor
+        let result = self.executor.execute_sync(
+            "get_transitive_dependencies",
+            serde_json::json!({
                 "node_id": typed_args.node_id,
                 "edge_type": typed_args.edge_type,
-                "depth": typed_args.depth,
-            }
-        }))
+                "depth": typed_args.depth
+            })
+        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+
+        Ok(result)
     }
 }
 
@@ -74,13 +84,31 @@ pub struct GetReverseDependenciesArgs {
     description = "Get all nodes that depend on the specified node. Useful for impact analysis.",
     input = GetReverseDependenciesArgs,
 )]
-pub struct GetReverseDependencies {}
+pub struct GetReverseDependencies {
+    executor: Arc<GraphToolExecutorAdapter>,
+}
+
+impl GetReverseDependencies {
+    pub fn new(executor: Arc<GraphToolExecutorAdapter>) -> Self {
+        Self { executor }
+    }
+}
 
 #[async_trait::async_trait]
 impl ToolRuntime for GetReverseDependencies {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
-        let _typed_args: GetReverseDependenciesArgs = serde_json::from_value(args)?;
-        Ok(serde_json::json!({"status": "not_implemented"}))
+        let typed_args: GetReverseDependenciesArgs = serde_json::from_value(args)?;
+
+        let result = self.executor.execute_sync(
+            "get_reverse_dependencies",
+            serde_json::json!({
+                "node_id": typed_args.node_id,
+                "edge_type": typed_args.edge_type,
+                "depth": typed_args.depth
+            })
+        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+
+        Ok(result)
     }
 }
 
@@ -104,13 +132,30 @@ fn default_call_chain_depth() -> i32 {
     description = "Trace the execution flow from a starting function through all called functions.",
     input = TraceCallChainArgs,
 )]
-pub struct TraceCallChain {}
+pub struct TraceCallChain {
+    executor: Arc<GraphToolExecutorAdapter>,
+}
+
+impl TraceCallChain {
+    pub fn new(executor: Arc<GraphToolExecutorAdapter>) -> Self {
+        Self { executor }
+    }
+}
 
 #[async_trait::async_trait]
 impl ToolRuntime for TraceCallChain {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
-        let _typed_args: TraceCallChainArgs = serde_json::from_value(args)?;
-        Ok(serde_json::json!({"status": "not_implemented"}))
+        let typed_args: TraceCallChainArgs = serde_json::from_value(args)?;
+
+        let result = self.executor.execute_sync(
+            "trace_call_chain",
+            serde_json::json!({
+                "start_node_id": typed_args.start_node_id,
+                "max_depth": typed_args.max_depth
+            })
+        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+
+        Ok(result)
     }
 }
 
@@ -135,13 +180,30 @@ fn default_max_cycle_length() -> i32 {
     description = "Detect circular dependencies and cycles in the codebase graph.",
     input = DetectCyclesArgs,
 )]
-pub struct DetectCycles {}
+pub struct DetectCycles {
+    executor: Arc<GraphToolExecutorAdapter>,
+}
+
+impl DetectCycles {
+    pub fn new(executor: Arc<GraphToolExecutorAdapter>) -> Self {
+        Self { executor }
+    }
+}
 
 #[async_trait::async_trait]
 impl ToolRuntime for DetectCycles {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
-        let _typed_args: DetectCyclesArgs = serde_json::from_value(args)?;
-        Ok(serde_json::json!({"status": "not_implemented"}))
+        let typed_args: DetectCyclesArgs = serde_json::from_value(args)?;
+
+        let result = self.executor.execute_sync(
+            "detect_cycles",
+            serde_json::json!({
+                "edge_type": typed_args.edge_type,
+                "max_cycle_length": typed_args.max_cycle_length
+            })
+        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+
+        Ok(result)
     }
 }
 
@@ -161,13 +223,30 @@ pub struct CalculateCouplingArgs {
     description = "Calculate afferent/efferent coupling and instability metrics for a node.",
     input = CalculateCouplingArgs,
 )]
-pub struct CalculateCoupling {}
+pub struct CalculateCoupling {
+    executor: Arc<GraphToolExecutorAdapter>,
+}
+
+impl CalculateCoupling {
+    pub fn new(executor: Arc<GraphToolExecutorAdapter>) -> Self {
+        Self { executor }
+    }
+}
 
 #[async_trait::async_trait]
 impl ToolRuntime for CalculateCoupling {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
-        let _typed_args: CalculateCouplingArgs = serde_json::from_value(args)?;
-        Ok(serde_json::json!({"status": "not_implemented"}))
+        let typed_args: CalculateCouplingArgs = serde_json::from_value(args)?;
+
+        let result = self.executor.execute_sync(
+            "calculate_coupling",
+            serde_json::json!({
+                "node_id": typed_args.node_id,
+                "edge_type": typed_args.edge_type
+            })
+        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+
+        Ok(result)
     }
 }
 
@@ -199,13 +278,31 @@ fn default_limit() -> i32 {
     description = "Find highly connected hub nodes in the dependency graph.",
     input = GetHubNodesArgs,
 )]
-pub struct GetHubNodes {}
+pub struct GetHubNodes {
+    executor: Arc<GraphToolExecutorAdapter>,
+}
+
+impl GetHubNodes {
+    pub fn new(executor: Arc<GraphToolExecutorAdapter>) -> Self {
+        Self { executor }
+    }
+}
 
 #[async_trait::async_trait]
 impl ToolRuntime for GetHubNodes {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
-        let _typed_args: GetHubNodesArgs = serde_json::from_value(args)?;
-        Ok(serde_json::json!({"status": "not_implemented"}))
+        let typed_args: GetHubNodesArgs = serde_json::from_value(args)?;
+
+        let result = self.executor.execute_sync(
+            "get_hub_nodes",
+            serde_json::json!({
+                "edge_type": typed_args.edge_type,
+                "min_connections": typed_args.min_connections,
+                "limit": typed_args.limit
+            })
+        ).map_err(|e| ToolCallError::ExecutionFailed(e))?;
+
+        Ok(result)
     }
 }
 

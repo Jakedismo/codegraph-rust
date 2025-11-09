@@ -1,42 +1,22 @@
 // ABOUTME: CodeGraph agent definition for AutoAgents ReAct workflow
-// ABOUTME: Defines tools, output format, and behavior for graph analysis
+// ABOUTME: Defines output format and behavior for graph analysis (tools registered manually)
 
 use autoagents::core::agent::prebuilt::executor::ReActAgentOutput;
-use autoagents_derive::{agent, AgentHooks, AgentOutput};
+use autoagents_derive::AgentOutput;
 use serde::{Deserialize, Serialize};
-
-use crate::autoagents::tools::graph_tools::*;
 
 /// CodeGraph agent output format
 #[derive(Debug, Serialize, Deserialize, AgentOutput)]
 pub struct CodeGraphAgentOutput {
     #[output(description = "Final answer to the query")]
-    answer: String,
+    pub answer: String,
 
     #[output(description = "Key findings from graph analysis")]
-    findings: String,
+    pub findings: String,
 
     #[output(description = "Number of analysis steps performed")]
-    steps_taken: String,
+    pub steps_taken: String,
 }
-
-/// CodeGraph agent for code analysis via graph traversal
-#[agent(
-    name = "codegraph_agent",
-    description = "You are a code analysis agent with access to graph database tools. \
-                   Analyze code dependencies, call chains, and architectural patterns.",
-    tools = [
-        GetTransitiveDependencies,
-        GetReverseDependencies,
-        TraceCallChain,
-        DetectCycles,
-        CalculateCoupling,
-        GetHubNodes
-    ],
-    output = CodeGraphAgentOutput,
-)]
-#[derive(Default, Clone, AgentHooks)]
-pub struct CodeGraphAgent {}
 
 impl From<ReActAgentOutput> for CodeGraphAgentOutput {
     fn from(output: ReActAgentOutput) -> Self {

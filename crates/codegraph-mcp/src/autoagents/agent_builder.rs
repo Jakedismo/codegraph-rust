@@ -174,9 +174,10 @@ impl ChatResponse for CodeGraphChatResponse {
 // Agent Builder
 // ============================================================================
 
-use crate::autoagents::codegraph_agent::CodeGraphAgent;
+use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use crate::autoagents::tier_plugin::TierAwarePromptPlugin;
 use crate::autoagents::tools::tool_executor_adapter::GraphToolFactory;
+use crate::autoagents::tools::graph_tools::*;
 use crate::{AnalysisType, GraphToolExecutor};
 use crate::context_aware_limits::ContextTier;
 
@@ -184,6 +185,7 @@ use autoagents::core::agent::AgentBuilder;
 use autoagents::core::agent::prebuilt::executor::ReActAgent;
 use autoagents::core::agent::memory::SlidingWindowMemory;
 use autoagents::core::error::Error as AutoAgentsError;
+use autoagents::core::tool::ToolT;
 
 /// Builder for CodeGraph AutoAgents workflows
 pub struct CodeGraphAgentBuilder {
@@ -219,8 +221,21 @@ impl CodeGraphAgentBuilder {
         let memory_size = tier_plugin.get_max_iterations() * 2;
         let memory = Box::new(SlidingWindowMemory::new(memory_size));
 
-        // Build ReAct agent with our tools
-        let react_agent = ReActAgent::new(CodeGraphAgent::default());
+        // Get executor adapter for tool construction
+        let executor_adapter = self.tool_factory.adapter();
+
+        // Manually construct all 6 tools with the executor
+        let tools: Vec<Box<dyn ToolT>> = vec![
+            Box::new(GetTransitiveDependencies::new(executor_adapter.clone())),
+            Box::new(GetReverseDependencies::new(executor_adapter.clone())),
+            Box::new(TraceCallChain::new(executor_adapter.clone())),
+            Box::new(DetectCycles::new(executor_adapter.clone())),
+            Box::new(CalculateCoupling::new(executor_adapter.clone())),
+            Box::new(GetHubNodes::new(executor_adapter.clone())),
+        ];
+
+        // Build ReAct agent with manually constructed tools
+        let react_agent = ReActAgent::with_tools(tools);
 
         // Build full agent with configuration
         let agent = AgentBuilder::new(react_agent)
