@@ -18,6 +18,8 @@ pub mod codegraph_agent;
 #[cfg(feature = "autoagents-experimental")]
 pub use tier_plugin::TierAwarePromptPlugin;
 #[cfg(feature = "autoagents-experimental")]
-pub use agent_builder::CodeGraphChatAdapter;
+pub use agent_builder::{CodeGraphChatAdapter, CodeGraphAgentBuilder, AgentHandle};
 #[cfg(feature = "autoagents-experimental")]
 pub use codegraph_agent::{CodeGraphAgent, CodeGraphAgentOutput};
+#[cfg(feature = "autoagents-experimental")]
+pub use executor::{CodeGraphExecutor, CodeGraphExecutorBuilder, ExecutorError};
