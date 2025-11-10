@@ -32,6 +32,8 @@ use std::sync::Arc;
 
 use std::collections::HashMap;
 
+const SYMBOL_EMBEDDING_DB_BATCH_LIMIT: usize = 256;
+
 #[derive(Clone, Debug)]
 pub struct IndexerConfig {
     pub languages: Vec<String>,
@@ -2009,9 +2011,12 @@ impl ProjectIndexer {
         if records.is_empty() {
             return Ok(());
         }
-        self.surreal_writer_handle()?
-            .enqueue_symbol_embeddings(records)
-            .await
+        let batch_size = symbol_embedding_db_batch_size();
+        let handle = self.surreal_writer_handle()?;
+        for chunk in records.chunks(batch_size) {
+            handle.enqueue_symbol_embeddings(chunk.to_vec()).await?;
+        }
+        Ok(())
     }
 
     fn surreal_writer_handle(&self) -> Result<&SurrealWriterHandle> {
@@ -2252,6 +2257,38 @@ impl ProjectIndexer {
             }
         }
         Ok(())
+    }
+}
+
+fn symbol_embedding_db_batch_size() -> usize {
+    const MAX: usize = 512;
+    std::env::var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .map(|parsed| parsed.clamp(1, MAX))
+        .unwrap_or(SYMBOL_EMBEDDING_DB_BATCH_LIMIT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn symbol_embedding_batch_size_defaults() {
+        std::env::remove_var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE");
+        assert_eq!(
+            symbol_embedding_db_batch_size(),
+            SYMBOL_EMBEDDING_DB_BATCH_LIMIT
+        );
+    }
+
+    #[test]
+    fn symbol_embedding_batch_size_respects_env_and_clamps() {
+        std::env::set_var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE", "1024");
+        assert_eq!(symbol_embedding_db_batch_size(), 512);
+        std::env::set_var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE", "0");
+        assert_eq!(symbol_embedding_db_batch_size(), 1);
+        std::env::remove_var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE");
     }
 }
 
