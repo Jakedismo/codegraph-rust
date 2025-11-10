@@ -144,16 +144,11 @@ impl ServiceRegistry {
 
         let address = registration.address.clone();
         let port = registration.port;
-        
+
         let mut services = self.services.write().await;
         services.insert(service_id.clone(), registration);
 
-        tracing::info!(
-            "Registered service: {} ({}:{})",
-            service_id,
-            address,
-            port
-        );
+        tracing::info!("Registered service: {} ({}:{})", service_id, address, port);
 
         Ok(ServiceRegistrationResponse {
             service_id,

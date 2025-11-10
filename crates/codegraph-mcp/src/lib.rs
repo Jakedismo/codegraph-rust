@@ -15,6 +15,7 @@ pub mod context_builder_prompts;
 #[cfg(feature = "ai-enhanced")]
 pub mod dependency_analysis_prompts;
 pub mod error;
+pub mod estimation;
 pub mod graph_tool_executor;
 pub mod graph_tool_schemas;
 pub mod heartbeat;
@@ -56,6 +57,10 @@ pub use agentic_orchestrator::{
 pub use connection::*;
 pub use context_aware_limits::{ContextAwareLimits, ContextTier};
 pub use error::{McpError, Result};
+pub use estimation::{
+    build_symbol_index, EmbeddingThroughputConfig, RepositoryEstimate, RepositoryEstimator,
+    TimeEstimates,
+};
 pub use graph_tool_executor::{CacheStats, GraphToolExecutor};
 pub use graph_tool_schemas::{GraphToolSchemas, ToolSchema};
 pub use heartbeat::*;

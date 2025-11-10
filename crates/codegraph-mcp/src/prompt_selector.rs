@@ -1,29 +1,36 @@
 // ABOUTME: Context-tier aware prompt selector for agentic analysis workflows
 // ABOUTME: Selects optimized system prompts based on analysis type and LLM context window size
 
+#[cfg(feature = "ai-enhanced")]
 use crate::agentic_api_surface_prompts::{
     API_SURFACE_BALANCED, API_SURFACE_DETAILED, API_SURFACE_EXPLORATORY, API_SURFACE_TERSE,
 };
+#[cfg(feature = "ai-enhanced")]
 use crate::architecture_analysis_prompts::{
     ARCHITECTURE_ANALYSIS_BALANCED, ARCHITECTURE_ANALYSIS_DETAILED,
     ARCHITECTURE_ANALYSIS_EXPLORATORY, ARCHITECTURE_ANALYSIS_TERSE,
 };
+#[cfg(feature = "ai-enhanced")]
 use crate::call_chain_prompts::{
     CALL_CHAIN_BALANCED, CALL_CHAIN_DETAILED, CALL_CHAIN_EXPLORATORY, CALL_CHAIN_TERSE,
 };
+#[cfg(feature = "ai-enhanced")]
 use crate::code_search_prompts::{
     CODE_SEARCH_BALANCED, CODE_SEARCH_DETAILED, CODE_SEARCH_EXPLORATORY, CODE_SEARCH_TERSE,
 };
 use crate::context_aware_limits::ContextTier;
+#[cfg(feature = "ai-enhanced")]
 use crate::context_builder_prompts::{
     CONTEXT_BUILDER_BALANCED, CONTEXT_BUILDER_DETAILED, CONTEXT_BUILDER_EXPLORATORY,
     CONTEXT_BUILDER_TERSE,
 };
+#[cfg(feature = "ai-enhanced")]
 use crate::dependency_analysis_prompts::{
     DEPENDENCY_ANALYSIS_BALANCED, DEPENDENCY_ANALYSIS_DETAILED, DEPENDENCY_ANALYSIS_EXPLORATORY,
     DEPENDENCY_ANALYSIS_TERSE,
 };
 use crate::error::McpError;
+#[cfg(feature = "ai-enhanced")]
 use crate::semantic_question_prompts::{
     SEMANTIC_QUESTION_BALANCED, SEMANTIC_QUESTION_DETAILED, SEMANTIC_QUESTION_EXPLORATORY,
     SEMANTIC_QUESTION_TERSE,
@@ -146,6 +153,7 @@ impl PromptSelector {
     }
 
     /// Select appropriate prompt for given analysis type and context tier
+    #[cfg(feature = "ai-enhanced")]
     pub fn select_prompt(&self, analysis_type: AnalysisType, tier: ContextTier) -> Result<&str> {
         let verbosity = PromptVerbosity::from(tier);
         debug!(
@@ -162,6 +170,14 @@ impl PromptSelector {
                     analysis_type, verbosity
                 ))
             })
+    }
+
+    #[cfg(not(feature = "ai-enhanced"))]
+    pub fn select_prompt(&self, analysis_type: AnalysisType, tier: ContextTier) -> Result<&str> {
+        let _ = (analysis_type, tier);
+        Err(McpError::Protocol(
+            "Prompt selection requires the `ai-enhanced` feature".to_string(),
+        ))
     }
 
     /// Register a custom prompt for a specific analysis type and verbosity
@@ -202,20 +218,24 @@ impl PromptSelector {
     ///
     /// These will be replaced by subagent-generated prompts in Phase 2B
     fn load_default_prompts(&mut self) {
-        for analysis_type in AnalysisType::all() {
-            for verbosity in [
-                PromptVerbosity::Terse,
-                PromptVerbosity::Balanced,
-                PromptVerbosity::Detailed,
-                PromptVerbosity::Exploratory,
-            ] {
-                let prompt = self.generate_default_prompt(analysis_type, verbosity);
-                self.register_prompt(analysis_type, verbosity, prompt);
+        #[cfg(feature = "ai-enhanced")]
+        {
+            for analysis_type in AnalysisType::all() {
+                for verbosity in [
+                    PromptVerbosity::Terse,
+                    PromptVerbosity::Balanced,
+                    PromptVerbosity::Detailed,
+                    PromptVerbosity::Exploratory,
+                ] {
+                    let prompt = self.generate_default_prompt(analysis_type, verbosity);
+                    self.register_prompt(analysis_type, verbosity, prompt);
+                }
             }
         }
     }
 
     /// Generate a default prompt (now using specialized prompts for all analysis types)
+    #[cfg(feature = "ai-enhanced")]
     fn generate_default_prompt(
         &self,
         analysis_type: AnalysisType,
@@ -266,6 +286,15 @@ impl PromptSelector {
                 PromptVerbosity::Exploratory => SEMANTIC_QUESTION_EXPLORATORY.to_string(),
             },
         }
+    }
+
+    #[cfg(not(feature = "ai-enhanced"))]
+    fn generate_default_prompt(
+        &self,
+        _analysis_type: AnalysisType,
+        _verbosity: PromptVerbosity,
+    ) -> String {
+        String::new()
     }
 
     /// Get statistics about loaded prompts

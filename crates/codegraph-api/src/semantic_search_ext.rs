@@ -1,6 +1,6 @@
 // Extension methods for SemanticSearch to support health checks
-use codegraph_vector::SemanticSearch;
 use codegraph_core::Result;
+use codegraph_vector::SemanticSearch;
 
 #[derive(Debug, Clone)]
 pub struct IndexStats {
@@ -24,17 +24,17 @@ pub trait SemanticSearchExt {
 impl SemanticSearchExt for SemanticSearch {
     async fn get_index_stats(&self) -> Result<IndexStats> {
         Ok(IndexStats {
-            total_vectors: 0,  // Would need actual implementation
-            dimension: 384,    // Default dimension
+            total_vectors: 0, // Would need actual implementation
+            dimension: 384,   // Default dimension
             index_type: "FlatL2".to_string(),
         })
     }
-    
+
     async fn test_search(&self) -> Result<bool> {
         // Simple test - just return true for now
         Ok(true)
     }
-    
+
     fn get_performance_stats(&self) -> PerformanceStats {
         PerformanceStats {
             total_searches: 0,

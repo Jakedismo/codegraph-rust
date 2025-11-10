@@ -1,12 +1,12 @@
 // Temporary stub types for codegraph-graph until it's fixed
 // These are placeholder implementations to allow compilation
 
+use chrono::{DateTime, Utc};
 use codegraph_core::{CodeNode, NodeId, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 /// Temporary stub for CodeGraph from codegraph-graph crate
 #[derive(Debug, Clone, Default)]
@@ -38,8 +38,13 @@ impl CodeGraph {
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
-    
-    pub async fn astar_shortest_path<F>(&self, from: NodeId, to: NodeId, _heuristic: F) -> Result<Vec<NodeId>>
+
+    pub async fn astar_shortest_path<F>(
+        &self,
+        from: NodeId,
+        to: NodeId,
+        _heuristic: F,
+    ) -> Result<Vec<NodeId>>
     where
         F: Fn(&NodeId) -> f64,
     {
@@ -50,7 +55,7 @@ impl CodeGraph {
             Ok(vec![])
         }
     }
-    
+
     pub async fn shortest_path(&self, from: NodeId, to: NodeId) -> Result<Vec<NodeId>> {
         // Simple stub implementation - just return direct path
         if self.nodes.contains_key(&from) && self.nodes.contains_key(&to) {
@@ -82,8 +87,8 @@ impl TransactionalGraph {
     /// Create a new TransactionalGraph with real storage-backed managers
     pub async fn with_storage(storage_path: &str) -> Result<Self> {
         use codegraph_graph::VersionedRocksDbStorage;
-        use tokio::sync::RwLock as TokioRwLock;
         use std::sync::Arc;
+        use tokio::sync::RwLock as TokioRwLock;
 
         // Initialize storage
         let storage = VersionedRocksDbStorage::new(storage_path).await?;
@@ -266,13 +271,18 @@ impl ConcurrentTransactionManager {
         Self { storage: None }
     }
 
-    pub fn with_storage(storage: Arc<tokio::sync::RwLock<codegraph_graph::VersionedRocksDbStorage>>) -> Self {
+    pub fn with_storage(
+        storage: Arc<tokio::sync::RwLock<codegraph_graph::VersionedRocksDbStorage>>,
+    ) -> Self {
         Self {
             storage: Some(storage),
         }
     }
 
-    pub async fn begin_transaction(&self, _isolation_level: IsolationLevel) -> Result<TransactionId> {
+    pub async fn begin_transaction(
+        &self,
+        _isolation_level: IsolationLevel,
+    ) -> Result<TransactionId> {
         // Stub implementation - just generate a transaction ID
         Ok(Uuid::new_v4())
     }
@@ -311,7 +321,13 @@ impl GitLikeVersionManager {
         }
     }
 
-    pub async fn create_version(&self, _name: String, _description: String, _author: String, _parent_versions: Vec<VersionId>) -> Result<VersionId> {
+    pub async fn create_version(
+        &self,
+        _name: String,
+        _description: String,
+        _author: String,
+        _parent_versions: Vec<VersionId>,
+    ) -> Result<VersionId> {
         // Stub implementation - just generate a version ID
         Ok(Uuid::new_v4())
     }

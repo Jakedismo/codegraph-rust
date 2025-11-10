@@ -8,9 +8,8 @@ pub mod test_utils {
         /// Creates a new AppState instance specifically for testing purposes.
         /// This method initializes AppState with default test configuration.
         pub async fn new_for_testing() -> Self {
-            let config = Arc::new(
-                ConfigManager::new().expect("Failed to create test config manager")
-            );
+            let config =
+                Arc::new(ConfigManager::new().expect("Failed to create test config manager"));
             Self::new(config)
                 .await
                 .expect("Failed to create test AppState")

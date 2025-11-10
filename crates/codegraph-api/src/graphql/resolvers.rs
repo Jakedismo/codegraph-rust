@@ -1,6 +1,6 @@
 use async_graphql::{dataloader::DataLoader, Context, Object, Result, ID};
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, NodeId, GraphStore};
+use codegraph_core::{CodeGraphError, GraphStore, NodeId};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Instant;
@@ -14,13 +14,13 @@ use crate::graphql::loaders::{
     TraversalKey,
 };
 use crate::graphql::types::GraphQLEdge;
+use crate::graphql::types::UpdateNodeInput;
 use crate::graphql::types::{
     CodeSearchInput, CodeSearchResult, GraphQLCodeNode, GraphTraversalInput, GraphTraversalResult,
     PageInfo, ScoredNode, SearchMetadata, SearchSortBy, SemanticSearchInput,
     SemanticSearchMetadata, SemanticSearchResult, SubgraphExtractionInput, SubgraphMetadata,
     SubgraphResult, TraversalMetadata,
 };
-use crate::graphql::types::UpdateNodeInput;
 use crate::state::AppState;
 
 pub struct QueryRoot;
@@ -68,15 +68,17 @@ impl QueryRoot {
         if let Some(ref language_filters) = input.language_filter {
             nodes.retain(|node| {
                 node.language.as_ref().map_or(false, |lang| {
-                    language_filters.iter().any(|filter_lang| lang == filter_lang)
+                    language_filters
+                        .iter()
+                        .any(|filter_lang| lang == filter_lang)
                 })
             });
         }
         if let Some(ref node_type_filters) = input.node_type_filter {
             nodes.retain(|node| {
-                node.node_type.as_ref().map_or(false, |nt| {
-                    node_type_filters.iter().any(|f| nt == f)
-                })
+                node.node_type
+                    .as_ref()
+                    .map_or(false, |nt| node_type_filters.iter().any(|f| nt == f))
             });
         }
         if let Some(ref file_pattern) = input.file_path_pattern {
@@ -84,10 +86,11 @@ impl QueryRoot {
         }
         if let Some(ref content_filter) = input.content_filter {
             let needle = content_filter.to_lowercase();
-            nodes.retain(|node| node
-                .content
-                .as_ref()
-                .map_or(false, |c| c.to_lowercase().contains(&needle)));
+            nodes.retain(|node| {
+                node.content
+                    .as_ref()
+                    .map_or(false, |c| c.to_lowercase().contains(&needle))
+            });
         }
 
         // Sorting

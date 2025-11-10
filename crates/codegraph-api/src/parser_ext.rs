@@ -1,6 +1,6 @@
 // Extension methods for TreeSitterParser to support health checks
+use codegraph_core::{CodeNode, Result};
 use codegraph_parser::TreeSitterParser;
-use codegraph_core::{Result, CodeNode};
 use std::sync::Arc;
 
 pub trait TreeSitterParserExt {

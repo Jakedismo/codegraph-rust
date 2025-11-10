@@ -23,7 +23,10 @@ impl Loader<NodeId> for NodeLoader {
     type Error = CodeGraphError;
 
     #[instrument(skip(self, keys), fields(batch_size = keys.len()))]
-    async fn load(&self, keys: &[NodeId]) -> std::result::Result<HashMap<NodeId, GraphQLCodeNode>, CodeGraphError> {
+    async fn load(
+        &self,
+        keys: &[NodeId],
+    ) -> std::result::Result<HashMap<NodeId, GraphQLCodeNode>, CodeGraphError> {
         let start_time = Instant::now();
         debug!("Loading batch of {} nodes", keys.len());
 
@@ -111,7 +114,10 @@ impl Loader<NodeId> for EdgesBySourceLoader {
     type Error = CodeGraphError;
 
     #[instrument(skip(self, keys), fields(batch_size = keys.len()))]
-    async fn load(&self, keys: &[NodeId]) -> std::result::Result<HashMap<NodeId, Vec<GraphQLEdge>>, CodeGraphError> {
+    async fn load(
+        &self,
+        keys: &[NodeId],
+    ) -> std::result::Result<HashMap<NodeId, Vec<GraphQLEdge>>, CodeGraphError> {
         let start_time = Instant::now();
         debug!("Loading edges for {} source nodes", keys.len());
 
@@ -177,7 +183,10 @@ impl Loader<String> for SemanticSearchLoader {
     type Error = CodeGraphError;
 
     #[instrument(skip(self, keys), fields(batch_size = keys.len()))]
-    async fn load(&self, keys: &[String]) -> std::result::Result<HashMap<String, Vec<RetrievalResult>>, CodeGraphError> {
+    async fn load(
+        &self,
+        keys: &[String],
+    ) -> std::result::Result<HashMap<String, Vec<RetrievalResult>>, CodeGraphError> {
         let start_time = Instant::now();
         debug!("Semantic search batch for {} queries", keys.len());
 
@@ -209,7 +218,8 @@ impl Loader<String> for SemanticSearchLoader {
                         node_id: res.node_id,
                         node: res.node,
                         relevance_score: res.score,
-                        retrieval_method: codegraph_vector::rag::RetrievalMethod::SemanticSimilarity,
+                        retrieval_method:
+                            codegraph_vector::rag::RetrievalMethod::SemanticSimilarity,
                         context_snippet: snippet,
                     }
                 })

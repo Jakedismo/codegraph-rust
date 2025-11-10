@@ -4,7 +4,9 @@ use surrealdb::{engine::remote::ws::Ws, opt::auth::Root, Surreal};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    dotenvy::from_filename(".env").or_else(|_| dotenvy::dotenv()).context("Failed to load .env")?;
+    dotenvy::from_filename(".env")
+        .or_else(|_| dotenvy::dotenv())
+        .context("Failed to load .env")?;
 
     let url = std::env::var("CODEGRAPH_SURREALDB_URL")?;
     let namespace = std::env::var("CODEGRAPH_SURREALDB_NAMESPACE")?;

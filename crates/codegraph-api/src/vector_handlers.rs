@@ -1,6 +1,6 @@
-use crate::{ApiError, ApiResult, AppState};
-use crate::vector_store_ext::FaissVectorStoreExt;
 use crate::semantic_search_ext::SemanticSearchExt;
+use crate::vector_store_ext::FaissVectorStoreExt;
+use crate::{ApiError, ApiResult, AppState};
 use axum::{
     extract::{Query, State},
     Json,
@@ -19,7 +19,9 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
         na += a[i] * a[i];
         nb += b[i] * b[i];
     }
-    if na == 0.0 || nb == 0.0 { return 0.0; }
+    if na == 0.0 || nb == 0.0 {
+        return 0.0;
+    }
     dot / (na.sqrt() * nb.sqrt())
 }
 
@@ -227,7 +229,9 @@ pub async fn vector_search(
         // Compute similarity score if possible
         let score = if let Ok(Some(node_emb)) = state.vector_store.get_embedding(node_id).await {
             cosine_similarity(&request.query_embedding, &node_emb)
-        } else { 0.0 };
+        } else {
+            0.0
+        };
         let distance = 1.0 - score;
 
         let metadata = if let Ok(Some(node)) = graph.get_node(node_id).await {
@@ -287,7 +291,9 @@ pub async fn batch_vector_search(
         for id in ids {
             let score = if let Ok(Some(node_emb)) = state.vector_store.get_embedding(id).await {
                 cosine_similarity(&q.embedding, &node_emb)
-            } else { 0.0 };
+            } else {
+                0.0
+            };
             let distance = 1.0 - score;
             pairs.push((id, distance));
         }

@@ -1,6 +1,6 @@
 // Extension methods for FaissVectorStore
+use codegraph_core::{NodeId, Result};
 use codegraph_vector::FaissVectorStore;
-use codegraph_core::{Result, NodeId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -18,7 +18,7 @@ impl FaissVectorStoreExt for Arc<FaissVectorStore> {
         }
         Ok(results)
     }
-    
+
     async fn get_embedding(&self, _node_id: NodeId) -> Result<Option<Vec<f32>>> {
         // Return a dummy embedding
         Ok(Some(vec![0.0; 384]))

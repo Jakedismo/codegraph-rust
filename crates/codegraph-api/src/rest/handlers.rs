@@ -7,7 +7,7 @@ use axum::{
     },
     Json,
 };
-use codegraph_core::GraphStore;  // Import GraphStore trait
+use codegraph_core::GraphStore; // Import GraphStore trait
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use utoipa::{IntoParams, ToSchema};

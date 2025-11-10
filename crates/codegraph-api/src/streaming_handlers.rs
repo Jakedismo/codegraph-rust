@@ -1,5 +1,5 @@
-use crate::{ApiError, ApiResult, AppState};
 use crate::state::InMemoryGraph;
+use crate::{ApiError, ApiResult, AppState};
 use axum::{
     extract::{Path, Query, State},
     response::IntoResponse,

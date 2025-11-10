@@ -20,6 +20,7 @@ pub mod metrics;
 // pub mod middleware;
 // Legacy mutations module is disabled to avoid conflicts; mutations live in GraphQL resolvers
 // pub mod mutations;
+pub mod parser_ext;
 pub mod performance;
 #[cfg(feature = "graphql")]
 pub mod queries;
@@ -28,16 +29,15 @@ pub mod rest;
 pub mod routes;
 #[cfg(feature = "graphql")]
 pub mod schema;
-pub mod server;
-pub mod parser_ext;
 pub mod semantic_search_ext;
-pub mod vector_store_ext;
+pub mod server;
 pub mod service_registry;
 pub mod state;
 pub mod streaming_handlers;
 #[cfg(feature = "graphql")]
 pub mod subscriptions;
 pub mod vector_handlers;
+pub mod vector_store_ext;
 pub mod versioning_handlers;
 
 #[cfg(test)]

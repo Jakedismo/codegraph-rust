@@ -83,11 +83,12 @@ pub async fn auth_middleware(
     mut req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let api_key = req.headers()
+    let api_key = req
+        .headers()
         .get("X-API-KEY")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    
+
     if let Some(api_key) = api_key {
         return api_key_auth(&api_key, req, next).await;
     }
@@ -137,11 +138,7 @@ pub async fn auth_middleware(
     Ok(next.run(req).await)
 }
 
-async fn api_key_auth(
-    api_key: &str,
-    mut req: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
+async fn api_key_auth(api_key: &str, mut req: Request, next: Next) -> Result<Response, StatusCode> {
     // In a real application, you would look up the API key in a database.
     // For this example, we'll use a hardcoded key.
     if api_key == "test-api-key" {

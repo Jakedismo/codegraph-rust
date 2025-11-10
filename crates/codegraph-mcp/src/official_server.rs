@@ -1163,7 +1163,6 @@ impl CodeGraphMCPServer {
     // with automatic tier detection based on CODEGRAPH_CONTEXT_WINDOW or config
 
     /// Agentic code search with multi-step graph exploration
-    #[cfg(feature = "ai-enhanced")]
     #[tool(
         description = "Multi-step code search using agentic graph exploration. The LLM autonomously decides which graph analysis tools to call based on your query. Use for: finding code patterns, exploring unfamiliar codebases, discovering relationships. Required: query. Note: Uses automatic tier detection based on LLM context window."
     )]
@@ -1173,21 +1172,12 @@ impl CodeGraphMCPServer {
         meta: Meta,
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
-        #[cfg(feature = "ai-enhanced")]
-        {
-            let request = params.0;
-            self.execute_agentic_workflow(
-                crate::AnalysisType::CodeSearch,
-                &request.query,
-                peer,
-                meta,
-            )
+        let request = params.0;
+        self.execute_agentic_workflow(crate::AnalysisType::CodeSearch, &request.query, peer, meta)
             .await
-        }
     }
 
     /// Agentic dependency analysis with multi-step exploration
-    #[cfg(feature = "ai-enhanced")]
     #[tool(
         description = "Multi-step dependency analysis using agentic graph exploration. The LLM autonomously explores dependency chains and impact. Use for: understanding dependency relationships, impact analysis. Required: query."
     )]
@@ -1208,7 +1198,6 @@ impl CodeGraphMCPServer {
     }
 
     /// Agentic call chain analysis with multi-step tracing
-    #[cfg(feature = "ai-enhanced")]
     #[tool(
         description = "Multi-step call chain analysis using agentic graph exploration. The LLM autonomously traces execution paths and call sequences. Use for: understanding execution flow, debugging call chains. Required: query."
     )]
@@ -1229,7 +1218,6 @@ impl CodeGraphMCPServer {
     }
 
     /// Agentic architecture analysis with multi-step system exploration
-    #[cfg(feature = "ai-enhanced")]
     #[tool(
         description = "Multi-step architecture analysis using agentic graph exploration. The LLM autonomously analyzes architectural patterns and system design. Use for: understanding system architecture, design patterns. Required: query."
     )]
@@ -1250,7 +1238,6 @@ impl CodeGraphMCPServer {
     }
 
     /// Agentic API surface analysis with multi-step exploration
-    #[cfg(feature = "ai-enhanced")]
     #[tool(
         description = "Multi-step API surface analysis using agentic graph exploration. The LLM autonomously analyzes public interfaces and contracts. Use for: understanding API design, public interfaces. Required: query."
     )]
@@ -1271,7 +1258,6 @@ impl CodeGraphMCPServer {
     }
 
     /// Agentic context builder with multi-step comprehensive context gathering
-    #[cfg(feature = "ai-enhanced")]
     #[tool(
         description = "Multi-step context building using agentic graph exploration. The LLM autonomously gathers comprehensive context for code generation. Use for: preparing context for code generation, understanding code context. Required: query."
     )]
@@ -1292,7 +1278,6 @@ impl CodeGraphMCPServer {
     }
 
     /// Agentic semantic question answering with multi-step exploration
-    #[cfg(feature = "ai-enhanced")]
     #[tool(
         description = "Multi-step semantic question answering using agentic graph exploration. The LLM autonomously explores the codebase to answer complex questions. Use for: answering complex codebase questions, semantic analysis. Required: query."
     )]
@@ -1516,7 +1501,7 @@ impl CodeGraphMCPServer {
     }
 
     /// Execute agentic workflow using legacy orchestrator
-    #[cfg(not(feature = "autoagents-experimental"))]
+    #[cfg(all(feature = "ai-enhanced", not(feature = "autoagents-experimental")))]
     async fn execute_agentic_workflow(
         &self,
         analysis_type: crate::AnalysisType,
@@ -1647,6 +1632,22 @@ impl CodeGraphMCPServer {
             serde_json::to_string_pretty(&response_json)
                 .unwrap_or_else(|_| "Error formatting agentic result".to_string()),
         )]))
+    }
+
+    /// Stub when ai-enhanced feature is disabled
+    #[cfg(not(feature = "ai-enhanced"))]
+    async fn execute_agentic_workflow(
+        &self,
+        analysis_type: crate::AnalysisType,
+        query: &str,
+        _peer: Peer<RoleServer>,
+        _meta: Meta,
+    ) -> Result<CallToolResult, McpError> {
+        let _ = (analysis_type, query);
+        Err(McpError::invalid_request(
+            "Agentic tools require the `ai-enhanced` feature to be enabled",
+            None,
+        ))
     }
 }
 

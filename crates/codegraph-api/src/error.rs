@@ -23,7 +23,7 @@ pub enum ApiError {
 
     #[error("Bad request: {0}")]
     BadRequest(String),
-    
+
     #[error("Service unavailable: {0}")]
     ServiceUnavailable(String),
 }

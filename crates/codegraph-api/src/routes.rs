@@ -12,14 +12,12 @@ use http::header::{HeaderName, HeaderValue, CACHE_CONTROL, CONNECTION};
 use std::str::FromStr;
 use std::time::Duration;
 use tower_http::{
-    compression::CompressionLayer,
-    cors::CorsLayer,
-    set_header::SetResponseHeaderLayer,
+    compression::CompressionLayer, cors::CorsLayer, set_header::SetResponseHeaderLayer,
     trace::TraceLayer,
 };
+use utoipa::OpenApi;
 #[cfg(feature = "openapi-ui")]
 use utoipa_swagger_ui::SwaggerUi;
-use utoipa::OpenApi;
 
 pub fn create_router(state: AppState) -> Router {
     // GraphQL schema disabled in this build
@@ -205,10 +203,9 @@ pub fn create_router(state: AppState) -> Router {
 
     #[cfg(feature = "openapi-ui")]
     {
-        app = app.merge(SwaggerUi::new("/v1/docs").url(
-            "/v1/openapi.json",
-            crate::rest::ApiDoc::openapi(),
-        ));
+        app = app.merge(
+            SwaggerUi::new("/v1/docs").url("/v1/openapi.json", crate::rest::ApiDoc::openapi()),
+        );
     }
 
     // Memory leak detection routes (only when feature enabled)

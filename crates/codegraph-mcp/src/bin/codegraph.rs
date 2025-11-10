@@ -3,7 +3,10 @@ use atty::Stream;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use codegraph_core::GraphStore;
-use codegraph_mcp::{IndexerConfig, ProcessManager, ProjectIndexer};
+use codegraph_mcp::{
+    EmbeddingThroughputConfig, IndexerConfig, ProcessManager, ProjectIndexer, RepositoryEstimate,
+    RepositoryEstimator,
+};
 use colored::*;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rmcp::ServiceExt;
@@ -11,10 +14,15 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tracing::info;
 use tracing_subscriber::{
     filter::EnvFilter, fmt::writer::BoxMakeWriter, layer::SubscriberExt, Registry,
 };
+
+const DEFAULT_JINA_BATCH_SIZE: usize = 2000;
+const DEFAULT_JINA_BATCH_MINUTES: f64 = 9.0;
+const DEFAULT_LOCAL_EMBEDDINGS_PER_WORKER_PER_MINUTE: f64 = 3600.0;
 
 #[derive(Parser)]
 #[command(
@@ -153,6 +161,61 @@ enum Commands {
             value_parser = clap::value_parser!(usize)
         )]
         symbol_max_concurrent: Option<usize>,
+    },
+
+    #[command(
+        about = "Estimate indexing cost (node/edge counts + embedding ETA) without writing to SurrealDB"
+    )]
+    Estimate {
+        #[arg(help = "Path to project directory")]
+        path: PathBuf,
+
+        #[arg(short, long, help = "Languages to scan", value_delimiter = ',')]
+        languages: Option<Vec<String>>,
+
+        #[arg(long, help = "Exclude patterns (gitignore format)")]
+        exclude: Vec<String>,
+
+        #[arg(long, help = "Include only these patterns")]
+        include: Vec<String>,
+
+        #[arg(short, long, help = "Recursively walk subdirectories")]
+        recursive: bool,
+
+        #[arg(
+            long,
+            help = "Worker concurrency to assume for parsing/local embeddings",
+            default_value = "4"
+        )]
+        workers: usize,
+
+        #[arg(
+            long,
+            help = "Parser batch size baseline (affects local estimate heuristics)",
+            default_value = "100"
+        )]
+        batch_size: usize,
+
+        #[arg(
+            long,
+            help = "Override Jina batch size (defaults to 2000 based on current limits)"
+        )]
+        jina_batch_size: Option<usize>,
+
+        #[arg(
+            long,
+            help = "Override minutes per Jina batch (defaults to 9 based on observed throughput)"
+        )]
+        jina_batch_minutes: Option<f64>,
+
+        #[arg(
+            long,
+            help = "Override local embedding throughput (embeddings per minute)"
+        )]
+        local_throughput: Option<f64>,
+
+        #[arg(short, long, help = "Output format", default_value = "human")]
+        format: StatsFormat,
     },
 
     #[command(
@@ -564,6 +627,35 @@ async fn main() -> Result<()> {
                 symbol_batch_size,
                 symbol_max_concurrent,
                 cli.debug,
+            )
+            .await?;
+        }
+        Commands::Estimate {
+            path,
+            languages,
+            exclude,
+            include,
+            recursive,
+            workers,
+            batch_size,
+            jina_batch_size,
+            jina_batch_minutes,
+            local_throughput,
+            format,
+        } => {
+            handle_estimate(
+                config,
+                path,
+                languages,
+                exclude,
+                include,
+                recursive,
+                workers,
+                batch_size,
+                jina_batch_size,
+                jina_batch_minutes,
+                local_throughput,
+                format,
             )
             .await?;
         }
@@ -1244,6 +1336,282 @@ async fn handle_index(
     }
 
     Ok(())
+}
+
+async fn handle_estimate(
+    config: &codegraph_core::config_manager::CodeGraphConfig,
+    path: PathBuf,
+    languages: Option<Vec<String>>,
+    exclude: Vec<String>,
+    include: Vec<String>,
+    recursive: bool,
+    workers: usize,
+    batch_size: usize,
+    jina_batch_size: Option<usize>,
+    jina_batch_minutes: Option<f64>,
+    local_throughput: Option<f64>,
+    format: StatsFormat,
+) -> Result<()> {
+    let project_root = path.clone().canonicalize().unwrap_or(path.clone());
+    let languages_list = languages.clone().unwrap_or_default();
+
+    let mut estimator_config = IndexerConfig {
+        languages: languages_list.clone(),
+        exclude_patterns: exclude,
+        include_patterns: include,
+        recursive,
+        workers,
+        batch_size,
+        ..Default::default()
+    };
+    estimator_config.project_root = project_root.clone();
+
+    let estimator = RepositoryEstimator::new(estimator_config);
+    let throughput = resolve_throughput_config(
+        jina_batch_size,
+        jina_batch_minutes,
+        local_throughput,
+        workers,
+    );
+
+    println!(
+        "{} {}",
+        "🔍 Estimating repository:".cyan().bold(),
+        project_root.to_string_lossy()
+    );
+
+    let start = std::time::Instant::now();
+    let report = estimator.analyze(&path, &throughput).await?;
+    let elapsed = start.elapsed();
+
+    present_estimate_output(
+        format,
+        &project_root,
+        &languages_list,
+        &throughput,
+        &report,
+        workers,
+        batch_size,
+        config.embedding.provider.as_str(),
+        elapsed,
+    )
+}
+
+fn present_estimate_output(
+    format: StatsFormat,
+    project_root: &Path,
+    languages: &[String],
+    throughput: &EmbeddingThroughputConfig,
+    report: &RepositoryEstimate,
+    workers: usize,
+    batch_size: usize,
+    provider: &str,
+    elapsed: Duration,
+) -> Result<()> {
+    let parsing_minutes = report.parsing_duration.as_secs_f64() / 60.0;
+    let total_jina_minutes = parsing_minutes + report.timings.jina_minutes;
+    let total_local_minutes = report
+        .timings
+        .local_minutes
+        .map(|local| parsing_minutes + local);
+
+    let payload = serde_json::json!({
+        "path": project_root.to_string_lossy(),
+        "languages": if languages.is_empty() { serde_json::Value::Null } else { serde_json::Value::from(languages.to_vec()) },
+        "counts": {
+            "total_files": report.counts.total_files,
+            "parsed_files": report.counts.parsed_files,
+            "failed_files": report.counts.failed_files,
+            "nodes": report.counts.nodes,
+            "edges": report.counts.edges,
+            "symbols": report.counts.symbols,
+        },
+        "parsing": {
+            "minutes": parsing_minutes,
+            "duration_seconds": report.parsing_duration.as_secs_f64(),
+            "total_lines": report.parsing.total_lines,
+            "files_per_second": report.parsing.files_per_second,
+            "lines_per_second": report.parsing.lines_per_second,
+        },
+        "timings": {
+            "jina": {
+                "batches": report.timings.jina_batches,
+                "batch_size": report.timings.jina_batch_size,
+                "batch_minutes": report.timings.jina_batch_minutes,
+                "minutes": report.timings.jina_minutes,
+                "total_minutes_with_parsing": total_jina_minutes,
+            },
+            "local": {
+                "rate_per_minute": report.timings.local_rate_per_minute,
+                "minutes": report.timings.local_minutes,
+                "total_minutes_with_parsing": total_local_minutes,
+            }
+        },
+        "workers": workers,
+        "batch_size": batch_size,
+        "embedding_provider": provider,
+        "assumptions": {
+            "jina_batch_size": throughput.jina_batch_size,
+            "jina_batch_minutes": throughput.jina_batch_minutes,
+            "local_embeddings_per_minute": throughput.local_embeddings_per_minute,
+        },
+        "estimate_runtime_seconds": elapsed.as_secs_f64(),
+    });
+
+    match format {
+        StatsFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+        }
+        StatsFormat::Yaml => {
+            let yaml = serde_yaml::to_string(&payload)?;
+            println!("{yaml}");
+        }
+        StatsFormat::Table | StatsFormat::Human => {
+            println!();
+            println!("{}", "📊 Indexing Estimate".cyan().bold());
+            println!("Path: {}", project_root.display());
+            println!(
+                "Languages: {}",
+                if languages.is_empty() {
+                    "auto-detect".to_string()
+                } else {
+                    languages.join(", ")
+                }
+            );
+            println!("Embedding provider (config): {}", provider);
+            println!();
+            println!(
+                "Files parsed: {} / {} (failed: {})",
+                report.counts.parsed_files, report.counts.total_files, report.counts.failed_files
+            );
+            println!("Nodes: {}", report.counts.nodes);
+            println!("Edges: {}", report.counts.edges);
+            println!("Symbols: {}", report.counts.symbols);
+            println!(
+                "Parsing time (measured): {}",
+                format_duration_minutes(parsing_minutes)
+            );
+            println!(
+                "Jina embeddings: {} ({} batches × {} nodes)",
+                format_duration_minutes(report.timings.jina_minutes),
+                report.timings.jina_batches,
+                report.timings.jina_batch_size
+            );
+            println!(
+                "Total time (parsing + Jina): {}",
+                format_duration_minutes(total_jina_minutes)
+            );
+            if let Some(local_minutes) = report.timings.local_minutes {
+                let rate = report
+                    .timings
+                    .local_rate_per_minute
+                    .unwrap_or(default_local_rate(workers));
+                println!(
+                    "Local embeddings: {} ({:.0} embeddings/min)",
+                    format_duration_minutes(local_minutes),
+                    rate
+                );
+                if let Some(total_local) = total_local_minutes {
+                    println!(
+                        "Total time (parsing + local): {}",
+                        format_duration_minutes(total_local)
+                    );
+                }
+            } else {
+                println!(
+                    "{}",
+                    "Local embeddings: set --local-throughput to compare speed.".dimmed()
+                );
+            }
+            println!(
+                "Assumptions: {} nodes/batch @ {:.1} min, local {:.0} embeddings/min baseline.",
+                throughput.jina_batch_size,
+                throughput.jina_batch_minutes,
+                throughput
+                    .local_embeddings_per_minute
+                    .unwrap_or(default_local_rate(workers))
+            );
+            println!(
+                "Estimation runtime: {} (parser only, no DB writes)",
+                format_duration_minutes(elapsed.as_secs_f64() / 60.0)
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn resolve_throughput_config(
+    jina_batch_size_cli: Option<usize>,
+    jina_batch_minutes_cli: Option<f64>,
+    local_throughput_cli: Option<f64>,
+    workers: usize,
+) -> EmbeddingThroughputConfig {
+    let jina_size = jina_batch_size_cli
+        .or_else(|| env_usize("CODEGRAPH_JINA_BATCH_SIZE"))
+        .unwrap_or(DEFAULT_JINA_BATCH_SIZE)
+        .max(1);
+
+    let jina_minutes = jina_batch_minutes_cli
+        .or_else(|| env_f64("CODEGRAPH_JINA_BATCH_MINUTES"))
+        .unwrap_or(DEFAULT_JINA_BATCH_MINUTES)
+        .max(0.1);
+
+    let local_rate = sanitize_positive(local_throughput_cli)
+        .or_else(|| sanitize_positive(env_f64("CODEGRAPH_LOCAL_EMBEDDINGS_PER_MINUTE")))
+        .or_else(|| Some(default_local_rate(workers)));
+
+    EmbeddingThroughputConfig {
+        jina_batch_size: jina_size,
+        jina_batch_minutes: jina_minutes,
+        local_embeddings_per_minute: local_rate,
+    }
+}
+
+fn default_local_rate(workers: usize) -> f64 {
+    DEFAULT_LOCAL_EMBEDDINGS_PER_WORKER_PER_MINUTE * workers.max(1) as f64
+}
+
+fn sanitize_positive(value: Option<f64>) -> Option<f64> {
+    value.and_then(|v| {
+        if v.is_finite() && v > 0.0 {
+            Some(v)
+        } else {
+            None
+        }
+    })
+}
+
+fn env_usize(key: &str) -> Option<usize> {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+}
+
+fn env_f64(key: &str) -> Option<f64> {
+    std::env::var(key).ok().and_then(|v| v.parse::<f64>().ok())
+}
+
+fn format_duration_minutes(minutes: f64) -> String {
+    if !minutes.is_finite() {
+        return "unknown".to_string();
+    }
+    let total_seconds = (minutes * 60.0).round() as i64;
+    let hours = total_seconds / 3600;
+    let minutes_part = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+
+    let mut parts = Vec::new();
+    if hours > 0 {
+        parts.push(format!("{hours}h"));
+    }
+    if minutes_part > 0 {
+        parts.push(format!("{minutes_part}m"));
+    }
+    if seconds > 0 || parts.is_empty() {
+        parts.push(format!("{seconds}s"));
+    }
+    parts.join(" ")
 }
 
 async fn handle_search(

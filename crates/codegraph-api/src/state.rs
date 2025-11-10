@@ -2,6 +2,7 @@ use crate::connection_pool::{load_base_urls_from_env, ConnectionPoolConfig, Http
 use crate::graph_stub::TransactionalGraph;
 use crate::performance::{PerformanceOptimizer, PerformanceOptimizerConfig};
 use crate::service_registry::ServiceRegistry;
+use async_trait::async_trait;
 use codegraph_core::{CodeNode, ConfigManager, GraphStore, NodeId};
 use codegraph_parser::TreeSitterParser;
 use codegraph_vector::{EmbeddingGenerator, FaissVectorStore, SemanticSearch};
@@ -9,7 +10,6 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use async_trait::async_trait;
 
 // Simple in-memory graph implementation for now
 pub struct InMemoryGraph {
@@ -22,18 +22,18 @@ impl InMemoryGraph {
             nodes: HashMap::new(),
         }
     }
-    
+
     pub async fn get_stats(&self) -> codegraph_core::Result<GraphStats> {
         let node_count = self.nodes.len();
-        let edge_count = 0;  // Not tracking edges in this simple implementation
+        let edge_count = 0; // Not tracking edges in this simple implementation
         Ok(GraphStats::new(node_count, edge_count, 0))
     }
-    
+
     pub async fn test_connection(&self) -> codegraph_core::Result<bool> {
         // Always return true for in-memory graph
         Ok(true)
     }
-    
+
     pub async fn get_neighbors(&self, _node_id: NodeId) -> codegraph_core::Result<Vec<NodeId>> {
         // Simple stub - no edges tracked
         Ok(vec![])
@@ -45,8 +45,8 @@ pub struct GraphStats {
     pub node_count: usize,
     pub edge_count: usize,
     pub total_size_bytes: usize,
-    pub total_nodes: usize,  // Alias for node_count
-    pub total_edges: usize,  // Alias for edge_count
+    pub total_nodes: usize, // Alias for node_count
+    pub total_edges: usize, // Alias for edge_count
 }
 
 impl GraphStats {
@@ -83,7 +83,8 @@ impl GraphStore for InMemoryGraph {
     }
 
     async fn find_nodes_by_name(&self, name: &str) -> codegraph_core::Result<Vec<CodeNode>> {
-        Ok(self.nodes
+        Ok(self
+            .nodes
             .values()
             .filter(|n| n.name.as_str() == name)
             .cloned()
@@ -118,11 +119,17 @@ impl AppState {
 
         let transactional_graph = match TransactionalGraph::with_storage(&storage_path).await {
             Ok(tg) => {
-                tracing::info!("Initialized TransactionalGraph with real storage at {}", storage_path);
+                tracing::info!(
+                    "Initialized TransactionalGraph with real storage at {}",
+                    storage_path
+                );
                 Arc::new(tg)
             }
             Err(e) => {
-                tracing::warn!("Failed to initialize real storage ({}), using stub fallback", e);
+                tracing::warn!(
+                    "Failed to initialize real storage ({}), using stub fallback",
+                    e
+                );
                 Arc::new(TransactionalGraph::new())
             }
         };

@@ -1,13 +1,17 @@
+// ABOUTME: Builds async-graphql schema bindings for CodeGraph endpoints.
+// ABOUTME: Configures loader wiring and feature-gated mutation/subscription roots.
+#![cfg(feature = "graphql")]
+
 use crate::graphql::loaders::{
     EdgesBySourceLoader, GraphTraversalLoader, LoaderFactory, NodeLoader, SemanticSearchLoader,
 };
-use crate::queries::Query;
-use crate::state::AppState;
-use async_graphql::{dataloader::DataLoader, Schema, EmptyMutation, EmptySubscription};
 #[cfg(not(feature = "minimal"))]
 use crate::graphql::resolvers::MutationRoot;
+use crate::queries::Query;
+use crate::state::AppState;
 #[cfg(not(feature = "minimal"))]
 use crate::subscriptions::SubscriptionRoot;
+use async_graphql::{dataloader::DataLoader, EmptyMutation, EmptySubscription, Schema};
 use std::sync::Arc;
 
 #[cfg(not(feature = "minimal"))]
@@ -61,4 +65,3 @@ pub fn create_schema(state: AppState) -> CodeGraphSchema {
         .limit_complexity(20_000)
         .finish()
 }
-#![cfg(feature = "graphql")]

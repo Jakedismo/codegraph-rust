@@ -2,9 +2,9 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::graph_stub::CodeGraph;
 use async_graphql::ID;
 use codegraph_core::{CodeGraphError, NodeId, Result};
-use crate::graph_stub::CodeGraph;
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use serde::{de::DeserializeOwned, Serialize};

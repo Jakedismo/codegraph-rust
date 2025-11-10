@@ -1,5 +1,8 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 
+use crate::estimation::{
+    extend_symbol_index, parse_files_with_unified_extraction as shared_unified_parse,
+};
 use anyhow::{anyhow, Context, Result};
 #[cfg(feature = "ai-enhanced")]
 use codegraph_ai::SemanticSearchEngine;
@@ -29,6 +32,7 @@ use std::sync::Arc;
 
 use std::collections::HashMap;
 
+#[derive(Clone, Debug)]
 pub struct IndexerConfig {
     pub languages: Vec<String>,
     pub exclude_patterns: Vec<String>,
@@ -559,27 +563,7 @@ impl ProjectIndexer {
                 stats.lines += c.lines().count();
             }
 
-            let base_name = node.name.to_string();
-            symbol_map.insert(base_name.clone(), node.id);
-            if let Some(qname) = node.metadata.attributes.get("qualified_name") {
-                symbol_map.insert(qname.clone(), node.id);
-            }
-            if let Some(node_type) = &node.node_type {
-                symbol_map.insert(format!("{:?}::{}", node_type, base_name), node.id);
-            }
-            symbol_map.insert(
-                format!("{}::{}", node.location.file_path, base_name),
-                node.id,
-            );
-            if let Some(short_name) = base_name.split("::").last() {
-                symbol_map.insert(short_name.to_string(), node.id);
-            }
-            if let Some(method_of) = node.metadata.attributes.get("method_of") {
-                symbol_map.insert(format!("{}::{}", method_of, base_name), node.id);
-            }
-            if let Some(trait_impl) = node.metadata.attributes.get("implements_trait") {
-                symbol_map.insert(format!("{}::{}", trait_impl, base_name), node.id);
-            }
+            extend_symbol_index(&mut symbol_map, node);
         }
         let storage_batch = self.config.batch_size.max(1);
         for chunk in nodes.chunks(storage_batch) {
@@ -1139,124 +1123,7 @@ impl ProjectIndexer {
         Vec<codegraph_core::EdgeRelationship>,
         codegraph_parser::ParsingStatistics,
     )> {
-        use futures::stream::{self, StreamExt};
-        use std::sync::Arc;
-        use tokio::sync::Semaphore;
-
-        // Process files and collect both nodes and edges
-        let mut all_nodes = Vec::new();
-        let mut all_edges = Vec::new();
-        let total_lines = 0;
-        let mut parsed_files = 0;
-        let mut failed_files = 0;
-
-        let semaphore = Arc::new(Semaphore::new(4));
-        let start_time = std::time::Instant::now();
-
-        let mut stream = stream::iter(files.into_iter().map(|(file_path, _)| {
-            let semaphore = semaphore.clone();
-            let parser = &self.parser;
-            async move {
-                let _permit = semaphore.acquire().await.unwrap();
-                let result = parser
-                    .parse_file_with_edges(&file_path.to_string_lossy())
-                    .await;
-                result
-            }
-        }))
-        .buffer_unordered(4);
-
-        while let Some(result) = stream.next().await {
-            match result {
-                Ok(extraction_result) => {
-                    let node_count = extraction_result.nodes.len();
-                    let edge_count = extraction_result.edges.len();
-
-                    if node_count > 0 {
-                        debug!(
-                            "🌳 AST extraction: {} nodes, {} edges from file",
-                            node_count, edge_count
-                        );
-                    }
-
-                    all_nodes.extend(extraction_result.nodes);
-                    all_edges.extend(extraction_result.edges);
-                    parsed_files += 1;
-                }
-                Err(e) => {
-                    failed_files += 1;
-                    warn!("Failed to parse file: {}", e);
-                }
-            }
-        }
-
-        let parsing_duration = start_time.elapsed();
-        let files_per_second = if parsing_duration.as_secs_f64() > 0.0 {
-            parsed_files as f64 / parsing_duration.as_secs_f64()
-        } else {
-            0.0
-        };
-        let lines_per_second = if parsing_duration.as_secs_f64() > 0.0 {
-            total_lines as f64 / parsing_duration.as_secs_f64()
-        } else {
-            0.0
-        };
-
-        let stats = codegraph_parser::ParsingStatistics {
-            total_files: total_files.try_into().unwrap_or(usize::MAX),
-            parsed_files,
-            failed_files,
-            total_lines,
-            parsing_duration,
-            files_per_second,
-            lines_per_second,
-        };
-
-        info!("🌳 UNIFIED AST EXTRACTION COMPLETE:");
-        info!(
-            "   📊 Files processed: {}/{} ({:.1}% success rate)",
-            parsed_files,
-            total_files,
-            if total_files > 0 {
-                parsed_files as f64 / total_files as f64 * 100.0
-            } else {
-                100.0
-            }
-        );
-        info!(
-            "   🌳 Semantic nodes extracted: {} (functions, structs, classes, imports, etc.)",
-            all_nodes.len()
-        );
-        info!(
-            "   🔗 Code relationships found: {} (function calls, imports, dependencies)",
-            all_edges.len()
-        );
-        info!(
-            "   ⚡ Processing performance: {:.1} files/s | {:.0} lines/s",
-            files_per_second, lines_per_second
-        );
-        info!(
-            "   🎯 Extraction efficiency: {:.1} nodes/file | {:.1} edges/file",
-            if parsed_files > 0 {
-                all_nodes.len() as f64 / parsed_files as f64
-            } else {
-                0.0
-            },
-            if parsed_files > 0 {
-                all_edges.len() as f64 / parsed_files as f64
-            } else {
-                0.0
-            }
-        );
-
-        if failed_files > 0 {
-            warn!(
-                "   ⚠️ Parse failures: {} files failed TreeSitter analysis",
-                failed_files
-            );
-        }
-
-        Ok((all_nodes, all_edges, stats))
+        shared_unified_parse(&self.parser, files, total_files).await
     }
 
     /// Estimate available system memory for informative logging
@@ -2439,7 +2306,6 @@ pub fn normalize(v: &[f32]) -> Vec<f32> {
     out
 }
 
-#[cfg(feature = "faiss")]
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IndexStats {
     pub files: usize,
