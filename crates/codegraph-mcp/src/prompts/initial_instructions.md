@@ -6,25 +6,14 @@ CodeGraph is an **autonomous code intelligence system** powered by multi-step re
 
 **Critical principle:** Use CodeGraph's agentic tools for **all codebase exploration**. These tools provide condensed, semantically-relevant, graph-analyzed context without burning your context window.
 
+Utilising CodeGraph gives you access to a frontier reasoning models 2M token ctx window and deep multi-step analysis results over the whole codebase.
+
 ---
 
-## Core Philosophy: Autonomous Graph Intelligence
-
-### ❌ The Old Way (Manual Graph Exploration)
-```
-Agent manually calls:
-1. search_code("authentication")
-2. get_dependencies(node_id_1)
-3. get_dependencies(node_id_2)
-4. get_dependencies(node_id_3)
-5. trace_call_chain(node_id_1)
-... 15 more manual tool calls
-
-Result: Burned 500 lines of context, still incomplete picture
-```
+## Core Philosophy: Autonomous Codebase Intelligence
 
 ### ✅ The CodeGraph Way (Autonomous Agentic)
-```
+
 Agent: agentic_dependency_analysis("how does authentication integrate with the database?")
 
 CodeGraph autonomously:
@@ -36,17 +25,12 @@ CodeGraph autonomously:
 - Synthesizes findings
 
 Result: Comprehensive answer in 150 lines, complete architectural understanding
-```
-
-**The difference:** CodeGraph's LLM agent autonomously orchestrates graph exploration. You just ask the question.
-
 ---
 
 ## How Agentic Tools Work
 
 ### Architecture Overview
 
-```
 Your Query
     ↓
 Agentic Tool (with multi-step reasoning)
@@ -66,20 +50,6 @@ SurrealDB Graph Functions:
   - fn::detect_circular_dependencies()
     ↓
 Synthesized, Context-Efficient Answer
-```
-
-### 4-Tier Context System
-
-CodeGraph automatically selects the appropriate tier based on your LLM's context window:
-
-| Tier | Context Window | Output Tokens | Best For |
-|------|----------------|---------------|----------|
-| **Tier 1: Nano** | <32k | 2,048 | Quick lookups, simple queries |
-| **Tier 2: Standard** | 32k-128k | 8,192 | Most queries, balanced depth |
-| **Tier 3: Extended** | 128k-200k | 32,768 | Complex analysis, deep exploration |
-| **Tier 4: Mega** | 200k+ | 131,072 | Comprehensive architectural analysis |
-
-**You don't configure this** - CodeGraph detects your context window and auto-selects the tier.
 
 ---
 
@@ -107,6 +77,7 @@ All agentic tools follow the same pattern:
 - Provides context-rich results with explanations
 
 **Example:**
+
 ```javascript
 agentic_code_search("how does JWT token validation work in this codebase?")
 
@@ -139,6 +110,7 @@ agentic_code_search("how does JWT token validation work in this codebase?")
 - Identifies stability vs instability
 
 **Example:**
+
 ```javascript
 agentic_dependency_analysis("analyze dependencies of the AuthService module")
 
@@ -323,7 +295,6 @@ agentic_semantic_question("how does error handling work across the application, 
 
 ### Quick Selection Guide
 
-```
 What do you need?
 
 ├─ 🔍 FIND & UNDERSTAND CODE
@@ -353,7 +324,6 @@ What do you need?
 └─ ❓ COMPLEX QUESTIONS
    └─ agentic_semantic_question
       "How does X relate to Y?" | "Explain Z across system"
-```
 
 ### When in Doubt
 
@@ -369,7 +339,6 @@ What do you need?
 
 ### 🚀 Workflow 1: Implementing a New Feature
 
-```
 Task: "Add rate limiting middleware to the API"
 
 Step 1: Understand existing patterns
@@ -386,7 +355,6 @@ Step 4: Analyze integration points
 
 Step 5: Implement using gathered context
   → Now you have complete understanding without reading 50 files
-```
 
 **Context efficiency:** One tool call vs reading middleware/, config/, routes/ directories manually.
 
@@ -394,7 +362,6 @@ Step 5: Implement using gathered context
 
 ### 🐛 Workflow 2: Debugging an Issue
 
-```
 Task: "Users report authentication tokens expiring too quickly"
 
 Step 1: Find the token logic
@@ -411,7 +378,6 @@ Step 4: Understand the system
 
 Step 5: Fix with full context
   → Now you understand the complete token system
-```
 
 **Context efficiency:** Complete understanding in 4 tool calls vs manually tracing through 20+ files.
 
@@ -419,7 +385,6 @@ Step 5: Fix with full context
 
 ### 📚 Workflow 3: Learning a New Codebase
 
-```
 Task: "Onboard to this React application"
 
 Step 1: Architecture overview
@@ -439,7 +404,6 @@ Step 5: API contracts
 
 Step 6: Deep dive areas
   → agentic_code_search for specific features you'll work on
-```
 
 **Context efficiency:** Comprehensive codebase map without reading hundreds of files.
 
@@ -447,7 +411,6 @@ Step 6: Deep dive areas
 
 ### 🔄 Workflow 4: Refactoring Code
 
-```
 Task: "Extract database logic into repository layer"
 
 Step 1: Find current implementation
@@ -470,7 +433,6 @@ Step 6: Verify safety
 
 Step 7: Refactor with confidence
   → Full impact understanding before touching any code
-```
 
 **Context efficiency:** Complete refactoring plan without manually mapping 100+ call sites.
 
@@ -484,9 +446,9 @@ Step 7: Refactor with confidence
    - ✅ "how does authentication integrate with the database?"
    - ✅ "what will break if I refactor the UserService?"
 
-2. **Trust autonomous exploration** - Let CodeGraph decide which graph functions to call
+2. **Trust autonomous exploration** - Let CodeGraph decide which how to analyse the codebase
    - ✅ One tool call with comprehensive question
-   - ❌ Not manually calling multiple graph functions
+   - ❌ Not manually calling multiple tools
 
 3. **Use specialized tools** - Each tool is optimized for specific analysis types
    - ✅ `agentic_dependency_analysis` for impact analysis
@@ -502,15 +464,15 @@ Step 7: Refactor with confidence
    - ❌ Reading src/auth/*.rs before understanding the system
    - ✅ `agentic_code_search("authentication system")` first
 
-2. **Don't bypass agentic tools** - They provide autonomy and graph intelligence
-   - ❌ Trying to call SurrealDB functions directly
-   - ✅ Using agentic tools which autonomously orchestrate graph functions
+2. **Don't bypass agentic tools** - They provide autonomy and codebase intelligence
+   - ❌ Trying to revert back to manual exploration when tool calls last long
+   - ✅ Insights agent is doing your work for you it takes its time
 
 3. **Don't ask overly narrow questions initially** - Start with context
    - ❌ "find the validateToken function"
    - ✅ "how does token validation work in the authentication system?"
 
-4. **Don't ignore the autonomous results** - CodeGraph explored the graph intelligently
+4. **Don't ignore the autonomous results** - CodeGraph explored the codebase intelligently
    - ❌ Immediately searching for more after getting results
    - ✅ Reading and understanding what CodeGraph autonomously discovered
 
@@ -519,7 +481,7 @@ Step 7: Refactor with confidence
 ## Context Efficiency Comparison
 
 ### Manual Exploration (Old Way)
-```
+
 Task: "Understand authentication system"
 
 Manual approach:
@@ -534,10 +496,9 @@ Total: 1,950 lines read
 Relevant: ~200 lines (10%)
 Context burned: 90% waste
 Time: 30+ minutes of reading
-```
 
 ### Agentic Exploration (CodeGraph Way)
-```
+
 Task: "Understand authentication system"
 
 Agentic approach:
@@ -554,7 +515,6 @@ Total: ~250 lines of RELEVANT content
 Relevant: ~250 lines (100%)
 Context efficiency: 87% reduction
 Time: 5-10 seconds for complete understanding
-```
 
 **Result:** 7.8x more efficient with better understanding.
 
@@ -566,8 +526,8 @@ Time: 5-10 seconds for complete understanding
 
 When you call an agentic tool, here's what happens behind the scenes:
 
-1. **Your query is analyzed** by an LLM agent
-2. **The agent reasons** about which graph functions to call
+1. **Your query is analyzed** by an insights agent
+2. **The agent reasons** about what data it needs to answer the query
 3. **Multi-step exploration** happens autonomously:
    - Search for relevant nodes
    - Follow dependency chains
@@ -575,28 +535,7 @@ When you call an agentic tool, here's what happens behind the scenes:
    - Detect patterns
    - Trace call paths
 4. **Results are synthesized** into a coherent answer
-
-**You don't:**
-- Specify which graph functions to call
-- Decide traversal depth
-- Choose analysis order
-- Manage intermediate results
-
-**CodeGraph does all of this autonomously.**
-
-### The Graph Functions (Under the Hood)
-
-CodeGraph uses these SurrealDB functions autonomously:
-
-- `fn::get_transitive_dependencies()` - Follow dependency chains forward
-- `fn::get_reverse_dependencies()` - Follow dependency chains backward
-- `fn::trace_call_chain()` - Trace execution paths
-- `fn::calculate_coupling_metrics()` - Compute afferent/efferent coupling
-- `fn::get_hub_nodes()` - Find highly connected nodes
-- `fn::detect_circular_dependencies()` - Find dependency cycles
-
-**You never call these directly** - the agentic tools orchestrate them autonomously.
-
+5. **Massive Context Savings** manual exploration is offloaded to a 2M ctx reasoning model
 ---
 
 ## Quick Start Checklist
@@ -609,7 +548,7 @@ When starting work on a codebase with CodeGraph:
 - [ ] Use specialized tools for specific analysis types
 - [ ] Read the comprehensive results before making decisions
 - [ ] Only read source files after CodeGraph narrows down locations
-- [ ] Trust the multi-step reasoning - it explored the graph intelligently
+- [ ] Trust the multi-step reasoning - it explored the codebase intelligently
 
 ---
 
@@ -618,10 +557,9 @@ When starting work on a codebase with CodeGraph:
 **CodeGraph provides autonomous, graph-powered code intelligence.**
 
 The goals:
-1. **Autonomous exploration** - The LLM agent orchestrates graph analysis
+1. **Autonomous exploration** - The insights agent orchestrates codebase analysis
 2. **Context efficiency** - Get comprehensive understanding in minimal context
-3. **Graph-powered insights** - Leverage SurrealDB graph functions automatically
-4. **Multi-step reasoning** - Complex analysis happens in one tool call
+3. **Multi-step reasoning** - Complex analysis happens in one tool call
 
 **Key principle:** Just ask your question in natural language. CodeGraph autonomously:
 - Decides which graph functions to call

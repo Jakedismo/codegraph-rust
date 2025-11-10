@@ -131,7 +131,7 @@ impl ToolRuntime for GetReverseDependencies {
 #[derive(Serialize, Deserialize, ToolInput, Debug)]
 pub struct TraceCallChainArgs {
     #[input(description = "Starting node ID for call chain tracing")]
-    start_node_id: String,
+    from_node: String,
     #[input(description = "Maximum depth to trace (default: 5)")]
     #[serde(default = "default_call_chain_depth")]
     max_depth: i32,
@@ -167,7 +167,7 @@ impl ToolRuntime for TraceCallChain {
             .execute_sync(
                 "trace_call_chain",
                 serde_json::json!({
-                    "start_node_id": typed_args.start_node_id,
+                    "from_node": typed_args.from_node,
                     "max_depth": typed_args.max_depth
                 }),
             )
@@ -188,13 +188,6 @@ pub struct DetectCyclesArgs {
     #[input(description = "Type of dependency edge to check (default: 'Calls')")]
     #[serde(default = "default_edge_type")]
     edge_type: String,
-    #[input(description = "Maximum cycle length to detect (default: 10)")]
-    #[serde(default = "default_max_cycle_length")]
-    max_cycle_length: i32,
-}
-
-fn default_max_cycle_length() -> i32 {
-    10
 }
 
 /// Detect circular dependencies
@@ -221,10 +214,9 @@ impl ToolRuntime for DetectCycles {
         let result = self
             .executor
             .execute_sync(
-                "detect_cycles",
+                "detect_circular_dependencies",
                 serde_json::json!({
-                    "edge_type": typed_args.edge_type,
-                    "max_cycle_length": typed_args.max_cycle_length
+                    "edge_type": typed_args.edge_type
                 }),
             )
             .map_err(|e| {
@@ -243,9 +235,6 @@ impl ToolRuntime for DetectCycles {
 pub struct CalculateCouplingArgs {
     #[input(description = "Node ID to analyze coupling for")]
     node_id: String,
-    #[input(description = "Type of dependency edge (default: 'Calls')")]
-    #[serde(default = "default_edge_type")]
-    edge_type: String,
 }
 
 /// Calculate coupling metrics
@@ -272,10 +261,9 @@ impl ToolRuntime for CalculateCoupling {
         let result = self
             .executor
             .execute_sync(
-                "calculate_coupling",
+                "calculate_coupling_metrics",
                 serde_json::json!({
-                    "node_id": typed_args.node_id,
-                    "edge_type": typed_args.edge_type
+                    "node_id": typed_args.node_id
                 }),
             )
             .map_err(|e| {
@@ -292,23 +280,13 @@ impl ToolRuntime for CalculateCoupling {
 /// Parameters for get_hub_nodes
 #[derive(Serialize, Deserialize, ToolInput, Debug)]
 pub struct GetHubNodesArgs {
-    #[input(description = "Type of dependency edge (default: 'Calls')")]
-    #[serde(default = "default_edge_type")]
-    edge_type: String,
-    #[input(description = "Minimum connections (default: 5)")]
-    #[serde(default = "default_min_connections")]
-    min_connections: i32,
-    #[input(description = "Max results (default: 20)")]
-    #[serde(default = "default_limit")]
-    limit: i32,
+    #[input(description = "Minimum degree (connections) to consider a node a hub (default: 5)")]
+    #[serde(default = "default_min_degree")]
+    min_degree: i32,
 }
 
-fn default_min_connections() -> i32 {
+fn default_min_degree() -> i32 {
     5
-}
-
-fn default_limit() -> i32 {
-    20
 }
 
 /// Get highly connected hub nodes
@@ -337,9 +315,7 @@ impl ToolRuntime for GetHubNodes {
             .execute_sync(
                 "get_hub_nodes",
                 serde_json::json!({
-                    "edge_type": typed_args.edge_type,
-                    "min_connections": typed_args.min_connections,
-                    "limit": typed_args.limit
+                    "min_degree": typed_args.min_degree
                 }),
             )
             .map_err(|e| {
