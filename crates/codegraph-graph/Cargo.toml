@@ -33,10 +33,11 @@ notify = { workspace = true }
 
 # SurrealDB support (optional)
 surrealdb = { version = "2.2", optional = true }
+dotenvy = { version = "0.15", optional = true }
 
 [features]
 default = []
-surrealdb = ["dep:surrealdb"]
+surrealdb = ["dep:surrealdb", "dep:dotenvy"]
 
 [dev-dependencies]
 tokio-test = { workspace = true }
@@ -47,3 +48,8 @@ fastrand = "2.0"
 [[bench]]
 name = "simple_traversal_benchmarks"
 harness = false
+
+[[bin]]
+name = "surreal_smoke_test"
+path = "src/bin/surreal_smoke_test.rs"
+required-features = ["surrealdb"]

@@ -37,10 +37,7 @@ pub struct CodeGraphExecutor {
 }
 
 impl CodeGraphExecutor {
-    pub fn new(
-        llm_provider: Arc<dyn LLMProvider>,
-        tool_executor: Arc<GraphToolExecutor>,
-    ) -> Self {
+    pub fn new(llm_provider: Arc<dyn LLMProvider>, tool_executor: Arc<GraphToolExecutor>) -> Self {
         Self {
             llm_provider,
             tool_executor,

@@ -1,11 +1,11 @@
 // ABOUTME: AutoAgents tool definitions for SurrealDB graph analysis
 // ABOUTME: Type-safe wrappers using AutoAgents derive macros with stateful executor access
 
+use crate::autoagents::tools::tool_executor_adapter::GraphToolExecutorAdapter;
 use autoagents::core::tool::{ToolCallError, ToolInputT, ToolRuntime, ToolT};
 use autoagents_derive::{tool, ToolInput};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::autoagents::tools::tool_executor_adapter::GraphToolExecutorAdapter;
 
 /// Parameters for get_transitive_dependencies
 #[derive(Serialize, Deserialize, ToolInput, Debug)]
@@ -51,14 +51,22 @@ impl ToolRuntime for GetTransitiveDependencies {
         let typed_args: GetTransitiveDependenciesArgs = serde_json::from_value(args)?;
 
         // Call the actual executor
-        let result = self.executor.execute_sync(
-            "get_transitive_dependencies",
-            serde_json::json!({
-                "node_id": typed_args.node_id,
-                "edge_type": typed_args.edge_type,
-                "depth": typed_args.depth
-            })
-        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
+        let result = self
+            .executor
+            .execute_sync(
+                "get_transitive_dependencies",
+                serde_json::json!({
+                    "node_id": typed_args.node_id,
+                    "edge_type": typed_args.edge_type,
+                    "depth": typed_args.depth
+                }),
+            )
+            .map_err(|e| {
+                ToolCallError::RuntimeError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e,
+                )))
+            })?;
 
         Ok(result)
     }
@@ -98,14 +106,22 @@ impl ToolRuntime for GetReverseDependencies {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
         let typed_args: GetReverseDependenciesArgs = serde_json::from_value(args)?;
 
-        let result = self.executor.execute_sync(
-            "get_reverse_dependencies",
-            serde_json::json!({
-                "node_id": typed_args.node_id,
-                "edge_type": typed_args.edge_type,
-                "depth": typed_args.depth
-            })
-        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
+        let result = self
+            .executor
+            .execute_sync(
+                "get_reverse_dependencies",
+                serde_json::json!({
+                    "node_id": typed_args.node_id,
+                    "edge_type": typed_args.edge_type,
+                    "depth": typed_args.depth
+                }),
+            )
+            .map_err(|e| {
+                ToolCallError::RuntimeError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e,
+                )))
+            })?;
 
         Ok(result)
     }
@@ -146,13 +162,21 @@ impl ToolRuntime for TraceCallChain {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
         let typed_args: TraceCallChainArgs = serde_json::from_value(args)?;
 
-        let result = self.executor.execute_sync(
-            "trace_call_chain",
-            serde_json::json!({
-                "start_node_id": typed_args.start_node_id,
-                "max_depth": typed_args.max_depth
-            })
-        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
+        let result = self
+            .executor
+            .execute_sync(
+                "trace_call_chain",
+                serde_json::json!({
+                    "start_node_id": typed_args.start_node_id,
+                    "max_depth": typed_args.max_depth
+                }),
+            )
+            .map_err(|e| {
+                ToolCallError::RuntimeError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e,
+                )))
+            })?;
 
         Ok(result)
     }
@@ -194,13 +218,21 @@ impl ToolRuntime for DetectCycles {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
         let typed_args: DetectCyclesArgs = serde_json::from_value(args)?;
 
-        let result = self.executor.execute_sync(
-            "detect_cycles",
-            serde_json::json!({
-                "edge_type": typed_args.edge_type,
-                "max_cycle_length": typed_args.max_cycle_length
-            })
-        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
+        let result = self
+            .executor
+            .execute_sync(
+                "detect_cycles",
+                serde_json::json!({
+                    "edge_type": typed_args.edge_type,
+                    "max_cycle_length": typed_args.max_cycle_length
+                }),
+            )
+            .map_err(|e| {
+                ToolCallError::RuntimeError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e,
+                )))
+            })?;
 
         Ok(result)
     }
@@ -237,13 +269,21 @@ impl ToolRuntime for CalculateCoupling {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
         let typed_args: CalculateCouplingArgs = serde_json::from_value(args)?;
 
-        let result = self.executor.execute_sync(
-            "calculate_coupling",
-            serde_json::json!({
-                "node_id": typed_args.node_id,
-                "edge_type": typed_args.edge_type
-            })
-        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
+        let result = self
+            .executor
+            .execute_sync(
+                "calculate_coupling",
+                serde_json::json!({
+                    "node_id": typed_args.node_id,
+                    "edge_type": typed_args.edge_type
+                }),
+            )
+            .map_err(|e| {
+                ToolCallError::RuntimeError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e,
+                )))
+            })?;
 
         Ok(result)
     }
@@ -292,14 +332,22 @@ impl ToolRuntime for GetHubNodes {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
         let typed_args: GetHubNodesArgs = serde_json::from_value(args)?;
 
-        let result = self.executor.execute_sync(
-            "get_hub_nodes",
-            serde_json::json!({
-                "edge_type": typed_args.edge_type,
-                "min_connections": typed_args.min_connections,
-                "limit": typed_args.limit
-            })
-        ).map_err(|e| ToolCallError::RuntimeError(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
+        let result = self
+            .executor
+            .execute_sync(
+                "get_hub_nodes",
+                serde_json::json!({
+                    "edge_type": typed_args.edge_type,
+                    "min_connections": typed_args.min_connections,
+                    "limit": typed_args.limit
+                }),
+            )
+            .map_err(|e| {
+                ToolCallError::RuntimeError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e,
+                )))
+            })?;
 
         Ok(result)
     }

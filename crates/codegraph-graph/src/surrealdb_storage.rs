@@ -8,7 +8,12 @@ use serde_json::{json, Value as JsonValue};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
-use surrealdb::{engine::any::Any, opt::auth::Root, sql::Thing, Surreal};
+use surrealdb::{
+    engine::any::Any,
+    opt::auth::Root,
+    sql::{Id, Thing},
+    Error as SurrealError, Surreal,
+};
 use tracing::{debug, info};
 
 /// SurrealDB storage implementation with flexible schema support
@@ -478,90 +483,151 @@ impl SurrealDbStorage {
     }
 
     /// Convert CodeNode to SurrealDB-compatible format
-    fn node_to_surreal(&self, node: &CodeNode) -> Result<HashMap<String, JsonValue>> {
-        let mut data = HashMap::new();
+    fn node_to_surreal(&self, node: &CodeNode) -> Result<SurrealNodeRecord> {
+        let metadata = if node.metadata.attributes.is_empty() {
+            None
+        } else {
+            Some(node.metadata.attributes.clone())
+        };
 
-        data.insert("id".to_string(), JsonValue::String(node.id.to_string()));
-        data.insert("name".to_string(), JsonValue::String(node.name.to_string()));
+        let embedding = node
+            .embedding
+            .as_ref()
+            .map(|values| values.iter().map(|&f| f as f64).collect());
 
-        if let Some(node_type) = &node.node_type {
-            data.insert(
-                "node_type".to_string(),
-                JsonValue::String(format!("{:?}", node_type)),
-            );
-        }
+        Ok(SurrealNodeRecord {
+            id: node.id.to_string(),
+            name: node.name.to_string(),
+            node_type: node.node_type.as_ref().map(|value| format!("{:?}", value)),
+            language: node.language.as_ref().map(|value| format!("{:?}", value)),
+            content: node.content.as_ref().map(|c| c.to_string()),
+            file_path: node.location.file_path.to_string(),
+            start_line: node.location.line,
+            end_line: node.location.end_line,
+            embedding,
+            complexity: node.complexity,
+            metadata,
+            project_id: node.metadata.attributes.get("project_id").cloned(),
+            organization_id: node.metadata.attributes.get("organization_id").cloned(),
+            repository_url: node.metadata.attributes.get("repository_url").cloned(),
+            domain: node.metadata.attributes.get("domain").cloned(),
+        })
+    }
 
-        if let Some(language) = &node.language {
-            data.insert(
-                "language".to_string(),
-                JsonValue::String(format!("{:?}", language)),
-            );
-        }
-
-        if let Some(content) = &node.content {
-            data.insert(
-                "content".to_string(),
-                JsonValue::String(content.to_string()),
-            );
-        }
-
-        data.insert(
-            "file_path".to_string(),
-            JsonValue::String(node.location.file_path.to_string()),
-        );
-        data.insert(
-            "start_line".to_string(),
-            JsonValue::Number(node.location.line.into()),
-        );
-        if let Some(end_line) = node.location.end_line {
-            data.insert("end_line".to_string(), JsonValue::Number(end_line.into()));
+    pub async fn upsert_nodes_batch(&mut self, nodes: &[CodeNode]) -> Result<()> {
+        if nodes.is_empty() {
+            return Ok(());
         }
 
-        if let Some(embedding) = &node.embedding {
-            let emb_values: Vec<JsonValue> = embedding
-                .iter()
-                .map(|&f| JsonValue::from(f as f64))
-                .collect();
-            data.insert("embedding".to_string(), JsonValue::Array(emb_values));
+        let mut records = Vec::with_capacity(nodes.len());
+        for node in nodes {
+            records.push(self.node_to_surreal(node)?);
         }
 
-        if let Some(complexity) = node.complexity {
-            data.insert("complexity".to_string(), JsonValue::from(complexity as f64));
+        self.db
+            .query(UPSERT_NODES_QUERY)
+            .bind(("data", records.clone()))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Failed to upsert node batch ({} items): {}",
+                    records.len(),
+                    truncate_surreal_error(&e)
+                ))
+            })?;
+
+        if self.config.cache_enabled {
+            for node in nodes {
+                self.node_cache.insert(node.id, node.clone());
+            }
         }
 
-        // Store metadata as nested object
-        let mut metadata_obj = HashMap::new();
-        for (key, value) in &node.metadata.attributes {
-            metadata_obj.insert(key.clone(), JsonValue::String(value.clone()));
-        }
-        data.insert(
-            "metadata".to_string(),
-            serde_json::to_value(metadata_obj).unwrap(),
-        );
+        Ok(())
+    }
 
-        if let Some(project_id) = node.metadata.attributes.get("project_id") {
-            data.insert(
-                "project_id".to_string(),
-                JsonValue::String(project_id.clone()),
-            );
-        }
-        if let Some(org_id) = node.metadata.attributes.get("organization_id") {
-            data.insert(
-                "organization_id".to_string(),
-                JsonValue::String(org_id.clone()),
-            );
-        }
-        if let Some(repo) = node.metadata.attributes.get("repository_url") {
-            data.insert(
-                "repository_url".to_string(),
-                JsonValue::String(repo.clone()),
-            );
-        }
-        if let Some(domain) = node.metadata.attributes.get("domain") {
-            data.insert("domain".to_string(), JsonValue::String(domain.clone()));
+    pub async fn upsert_edges_batch(&mut self, edges: &[CodeEdge]) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
         }
 
-        Ok(data)
+        let payloads: Vec<JsonValue> = edges
+            .iter()
+            .map(|record| {
+                let metadata_value =
+                    serde_json::to_value(&record.metadata).unwrap_or_else(|_| JsonValue::Null);
+                json!({
+                    "id": record.id.to_string(),
+                    "from": record.from.to_string(),
+                    "to": record.to.to_string(),
+                    "edge_type": record.edge_type.to_string(),
+                    "weight": record.weight,
+                    "metadata": metadata_value,
+                })
+            })
+            .collect();
+
+        self.db
+            .query(UPSERT_EDGES_QUERY)
+            .bind(("data", payloads))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Failed to upsert edge batch ({} items): {}",
+                    edges.len(),
+                    truncate_surreal_error(&e)
+                ))
+            })?;
+
+        Ok(())
+    }
+
+    pub async fn upsert_symbol_embeddings_batch(
+        &self,
+        records: &[SymbolEmbeddingRecord],
+    ) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+
+        self.db
+            .query(UPSERT_SYMBOL_EMBEDDINGS_QUERY)
+            .bind(("data", records.to_vec()))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Failed to upsert symbol embedding batch ({} items): {}",
+                    records.len(),
+                    truncate_surreal_error(&e)
+                ))
+            })?;
+
+        Ok(())
+    }
+
+    pub async fn update_node_embeddings_batch(
+        &self,
+        records: &[NodeEmbeddingRecord],
+    ) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+
+        for record in records {
+            let label = format!("node embedding {}", record.id);
+            let _: Option<JsonValue> = self
+                .db
+                .update(("nodes", &record.id))
+                .merge(json!({
+                    "embedding": record.embedding,
+                    "updated_at": record.updated_at,
+                }))
+                .await
+                .map_err(|e| {
+                    CodeGraphError::Database(format!("Failed to update {}: {}", label, e))
+                })?;
+        }
+
+        Ok(())
     }
 
     /// Convert SurrealDB result to CodeNode
@@ -651,69 +717,17 @@ impl SurrealDbStorage {
     }
 
     pub async fn add_code_edge(&mut self, edge: CodeEdge) -> Result<()> {
-        let edge_id = edge.id.to_string();
-        let from_ref = Thing::from(("nodes".to_string(), edge.from.to_string()));
-        let to_ref = Thing::from(("nodes".to_string(), edge.to.to_string()));
-        let metadata_value =
-            serde_json::to_value(&edge.metadata).unwrap_or_else(|_| JsonValue::Null);
-
-        let record = json!({
-            "from": from_ref,
-            "to": to_ref,
-            "edge_type": edge.edge_type.to_string(),
-            "weight": edge.weight,
-            "metadata": metadata_value,
-        });
-
-        let _: Option<HashMap<String, JsonValue>> = self
-            .db
-            .create(("edges", edge_id))
-            .content(record)
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to create edge: {}", e)))?;
-
-        Ok(())
+        self.upsert_edges_batch(std::slice::from_ref(&edge)).await
     }
 
     pub async fn add_code_edges(&mut self, edges: Vec<CodeEdge>) -> Result<()> {
-        for edge in edges {
-            self.add_code_edge(edge).await?;
-        }
-        Ok(())
+        self.upsert_edges_batch(&edges).await
     }
 
     pub async fn upsert_symbol_embedding(&self, record: SymbolEmbeddingUpsert<'_>) -> Result<()> {
-        let record_id = symbol_embedding_record_id(record.project_id, record.normalized_symbol);
-        let embedding_json: Vec<JsonValue> = record
-            .embedding
-            .iter()
-            .map(|f| JsonValue::from(*f as f64))
-            .collect();
-
-        let payload = json!({
-            "symbol": record.symbol,
-            "normalized_symbol": record.normalized_symbol,
-            "project_id": record.project_id,
-            "organization_id": record.organization_id,
-            "embedding_2048": embedding_json,
-            "embedding_model": record.embedding_model,
-            "node_id": record.node_id,
-            "source_edge_id": record.source_edge_id,
-            "metadata": record.metadata,
-            "last_computed_at": Utc::now(),
-            "access_count": surrealdb::sql::Number::Int(0),
-        });
-
-        let _: Option<HashMap<String, JsonValue>> = self
-            .db
-            .update(("symbol_embeddings", record_id))
-            .content(payload)
+        let owned = SymbolEmbeddingRecord::from(&record);
+        self.upsert_symbol_embeddings_batch(std::slice::from_ref(&owned))
             .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to upsert symbol embedding: {}", e))
-            })?;
-
-        Ok(())
     }
 
     pub async fn upsert_project_metadata(&self, record: ProjectMetadataRecord) -> Result<()> {
@@ -749,48 +763,20 @@ impl SurrealDbStorage {
     }
 
     pub async fn update_node_embedding(&self, node_id: NodeId, embedding: &[f32]) -> Result<()> {
-        let embedding_json: Vec<JsonValue> = embedding
-            .iter()
-            .map(|&f| JsonValue::from(f as f64))
-            .collect();
-
-        let payload = json!({
-            "embedding": embedding_json,
-            "updated_at": Utc::now(),
-        });
-
-        let _: Option<HashMap<String, JsonValue>> = self
-            .db
-            .update(("nodes", node_id.to_string()))
-            .merge(payload)
+        let record = NodeEmbeddingRecord {
+            id: node_id.to_string(),
+            embedding: embedding.iter().map(|&f| f as f64).collect(),
+            updated_at: Utc::now(),
+        };
+        self.update_node_embeddings_batch(std::slice::from_ref(&record))
             .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to update node embedding: {}", e)))?;
-
-        Ok(())
     }
 }
 
 #[async_trait]
 impl GraphStore for SurrealDbStorage {
     async fn add_node(&mut self, node: CodeNode) -> Result<()> {
-        debug!("Adding node: {}", node.id);
-
-        let data = self.node_to_surreal(&node)?;
-        let node_id = node.id.to_string();
-
-        let _: Option<HashMap<String, JsonValue>> = self
-            .db
-            .create(("nodes", &node_id))
-            .content(data)
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to create node: {}", e)))?;
-
-        // Update cache
-        if self.config.cache_enabled {
-            self.node_cache.insert(node.id, node);
-        }
-
-        Ok(())
+        self.upsert_nodes_batch(std::slice::from_ref(&node)).await
     }
 
     async fn get_node(&self, id: NodeId) -> Result<Option<CodeNode>> {
@@ -905,6 +891,71 @@ pub struct SymbolEmbeddingUpsert<'a> {
     pub metadata: Option<JsonValue>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SymbolEmbeddingRecord {
+    pub id: String,
+    pub symbol: String,
+    pub normalized_symbol: String,
+    pub project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub organization_id: Option<String>,
+    pub embedding_2048: Vec<f64>,
+    pub embedding_model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_edge_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<JsonValue>,
+    pub last_computed_at: DateTime<Utc>,
+    pub access_count: i64,
+}
+
+impl SymbolEmbeddingRecord {
+    pub fn new(
+        project_id: &str,
+        organization_id: Option<&str>,
+        symbol: &str,
+        normalized_symbol: &str,
+        embedding: &[f32],
+        embedding_model: &str,
+        node_id: Option<&str>,
+        source_edge_id: Option<&str>,
+        metadata: Option<JsonValue>,
+    ) -> Self {
+        SymbolEmbeddingRecord {
+            id: symbol_embedding_record_id(project_id, normalized_symbol),
+            symbol: symbol.to_string(),
+            normalized_symbol: normalized_symbol.to_string(),
+            project_id: project_id.to_string(),
+            organization_id: organization_id.map(|s| s.to_string()),
+            embedding_2048: embedding.iter().map(|&f| f as f64).collect(),
+            embedding_model: embedding_model.to_string(),
+            node_id: node_id.map(|s| s.to_string()),
+            source_edge_id: source_edge_id.map(|s| s.to_string()),
+            metadata,
+            last_computed_at: Utc::now(),
+            access_count: 0,
+        }
+    }
+}
+
+impl<'a> From<&SymbolEmbeddingUpsert<'a>> for SymbolEmbeddingRecord {
+    fn from(record: &SymbolEmbeddingUpsert<'a>) -> Self {
+        SymbolEmbeddingRecord::new(
+            record.project_id,
+            record.organization_id,
+            record.symbol,
+            record.normalized_symbol,
+            record.embedding,
+            record.embedding_model,
+            record.node_id,
+            record.source_edge_id,
+            record.metadata.clone(),
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ProjectMetadataRecord {
     pub project_id: String,
@@ -922,6 +973,92 @@ pub struct ProjectMetadataRecord {
     pub deepwiki_version: Option<String>,
     pub organization_id: Option<String>,
     pub domain: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SurrealNodeRecord {
+    id: String,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    node_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+    file_path: String,
+    start_line: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    end_line: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    embedding: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    complexity: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    organization_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repository_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    domain: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SurrealEdgeRecord {
+    id: String,
+    from: String,
+    to: String,
+    edge_type: String,
+    weight: f64,
+    metadata: JsonValue,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeEmbeddingRecord {
+    pub id: String,
+    pub embedding: Vec<f64>,
+    pub updated_at: DateTime<Utc>,
+}
+
+const UPSERT_NODES_QUERY: &str = r#"
+LET $batch = $data;
+FOR $doc IN $batch {
+    UPSERT type::thing('nodes', $doc.id) CONTENT $doc;
+}
+"#;
+
+const UPSERT_EDGES_QUERY: &str = r#"
+LET $batch = $data;
+FOR $doc IN $batch {
+    UPSERT type::thing('edges', $doc.id) CONTENT {
+        id: $doc.id,
+        from: type::thing('nodes', $doc.from),
+        to: type::thing('nodes', $doc.to),
+        edge_type: $doc.edge_type,
+        weight: $doc.weight,
+        metadata: $doc.metadata,
+        created_at: time::now()
+    };
+}
+"#;
+
+const UPSERT_SYMBOL_EMBEDDINGS_QUERY: &str = r#"
+LET $batch = $data;
+FOR $doc IN $batch {
+    UPSERT type::thing('symbol_embeddings', $doc.id) CONTENT $doc;
+}
+"#;
+
+fn truncate_surreal_error(e: &SurrealError) -> String {
+    const MAX_LEN: usize = 512;
+    let mut msg = e.to_string();
+    if msg.len() > MAX_LEN {
+        msg.truncate(MAX_LEN);
+        msg.push_str("…");
+    }
+    msg
 }
 
 #[cfg(test)]

@@ -1,18 +1,46 @@
--- ABOUTME: Defines CodeGraph's SurrealDB schema, indexes, metadata, and graph helpers.
--- ABOUTME: Serves as the single migration file for all CodeGraph database objects.
+-- ABOUTME: Unified DeepWiki + CodeGraph schema for intent-driven development with seed memory generation
+-- ABOUTME: Combines AST-driven code structure analysis with semantic documentation and business context
 
 -- =============================================================================
--- CodeGraph SurrealDB Schema Definition
+-- Unified DeepWiki + CodeGraph SurrealDB Schema
+-- Version: 1.0.0-alpha.0
+-- =============================================================================
+--
+-- This schema unifies:
+-- 1. CodeGraph: AST-driven code structure analysis (nodes, edges, functions)
+-- 2. DeepWiki: Semantic documentation and business context (concepts, domains)
+-- 3. Seed Memory: Automated population of Ouroboros Memory DB
+--
+-- Design Principles:
+-- - 100% backward compatible with existing CodeGraph MCP server
+-- - Simpler than Ouroboros Memory Graph (13 tables, 19 functions)
+-- - Graph-first design for intuitive agent exploration
+-- - Cross-project ready (project_id, organization_id, domain fields)
+-- - No data duplication (single source of truth)
+--
 -- =============================================================================
 
 -- Optional namespace/database selection
--- USE NS codegraph;
--- USE DB codegraph;
+-- USE NS unified;
+-- USE DB deepwiki_codegraph;
 
 -- =============================================================================
--- NODES TABLE - Code Entity Storage
+-- ANALYZER
 -- =============================================================================
-DEFINE TABLE IF NOT EXISTS nodes SCHEMAFULL;
+
+DEFINE ANALYZER code_analyzer TOKENIZERS BLANK,CLASS FILTERS LOWERCASE,SNOWBALL(ENGLISH);
+
+-- =============================================================================
+-- CORE TABLES (CodeGraph Preserved)
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- TABLE: nodes (UNCHANGED from CodeGraph)
+-- -----------------------------------------------------------------------------
+DEFINE TABLE IF NOT EXISTS nodes SCHEMAFULL
+  COMMENT 'Code entities from AST parsing with semantic embeddings';
+
+-- Core fields (preserved exactly)
 DEFINE FIELD IF NOT EXISTS id          ON TABLE nodes TYPE string;
 DEFINE FIELD IF NOT EXISTS name        ON TABLE nodes TYPE string;
 DEFINE FIELD IF NOT EXISTS node_type   ON TABLE nodes TYPE option<string>;
@@ -24,90 +52,166 @@ DEFINE FIELD IF NOT EXISTS end_line    ON TABLE nodes TYPE option<int>;
 DEFINE FIELD IF NOT EXISTS embedding   ON TABLE nodes TYPE option<array<float>>;
 DEFINE FIELD IF NOT EXISTS complexity  ON TABLE nodes TYPE option<float>;
 DEFINE FIELD IF NOT EXISTS metadata    ON TABLE nodes TYPE option<object>;
-DEFINE FIELD IF NOT EXISTS created_at  ON TABLE nodes TYPE datetime DEFAULT time::now();
-DEFINE FIELD IF NOT EXISTS updated_at  ON TABLE nodes TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS created_at  ON TABLE nodes TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD IF NOT EXISTS updated_at  ON TABLE nodes TYPE datetime VALUE time::now();
 
+-- New fields for unified schema (non-breaking additions)
+DEFINE FIELD IF NOT EXISTS project_id       ON TABLE nodes TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS organization_id  ON TABLE nodes TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS repository_url   ON TABLE nodes TYPE option<string>;
+
+-- Indexes (preserved exactly)
 DEFINE INDEX IF NOT EXISTS idx_nodes_id         ON TABLE nodes COLUMNS id UNIQUE;
 DEFINE INDEX IF NOT EXISTS idx_nodes_name       ON TABLE nodes COLUMNS name;
 DEFINE INDEX IF NOT EXISTS idx_nodes_type       ON TABLE nodes COLUMNS node_type;
 DEFINE INDEX IF NOT EXISTS idx_nodes_language   ON TABLE nodes COLUMNS language;
 DEFINE INDEX IF NOT EXISTS idx_nodes_file_path  ON TABLE nodes COLUMNS file_path;
+DEFINE INDEX IF NOT EXISTS idx_nodes_project    ON TABLE nodes COLUMNS project_id;
 DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_hnsw
     ON TABLE nodes FIELDS embedding HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
 
--- =============================================================================
--- EDGES TABLE - Relationship Storage
--- =============================================================================
-DEFINE TABLE IF NOT EXISTS edges SCHEMAFULL;
+-- Composite indexes for common query patterns (P0 Enhancement)
+DEFINE INDEX IF NOT EXISTS idx_nodes_project_type ON TABLE nodes COLUMNS project_id, node_type;
+DEFINE INDEX IF NOT EXISTS idx_nodes_file_type ON TABLE nodes COLUMNS file_path, node_type;
+
+-- -----------------------------------------------------------------------------
+-- TABLE: edges (UNCHANGED from CodeGraph)
+-- -----------------------------------------------------------------------------
+DEFINE TABLE IF NOT EXISTS edges SCHEMAFULL
+  COMMENT 'Code relationships (Calls, Imports, Uses, Extends, Implements, References)';
+
 DEFINE FIELD IF NOT EXISTS id         ON TABLE edges TYPE string;
 DEFINE FIELD IF NOT EXISTS from       ON TABLE edges TYPE record<nodes>;
 DEFINE FIELD IF NOT EXISTS to         ON TABLE edges TYPE record<nodes>;
 DEFINE FIELD IF NOT EXISTS edge_type  ON TABLE edges TYPE string;
-DEFINE FIELD IF NOT EXISTS weight     ON TABLE edges TYPE float DEFAULT 1.0;
+DEFINE FIELD IF NOT EXISTS weight     ON TABLE edges TYPE float DEFAULT 1.0
+  ASSERT $value > 0.0;
 DEFINE FIELD IF NOT EXISTS metadata   ON TABLE edges TYPE option<object>;
-DEFINE FIELD IF NOT EXISTS created_at ON TABLE edges TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS created_at ON TABLE edges TYPE datetime DEFAULT time::now() READONLY;
 
-DEFINE INDEX IF NOT EXISTS idx_edges_from    ON TABLE edges COLUMNS from;
-DEFINE INDEX IF NOT EXISTS idx_edges_to      ON TABLE edges COLUMNS to;
-DEFINE INDEX IF NOT EXISTS idx_edges_type    ON TABLE edges COLUMNS edge_type;
-DEFINE INDEX IF NOT EXISTS idx_edges_from_to ON TABLE edges COLUMNS from, to;
+DEFINE INDEX IF NOT EXISTS idx_edges_from      ON TABLE edges COLUMNS from;
+DEFINE INDEX IF NOT EXISTS idx_edges_to        ON TABLE edges COLUMNS to;
+DEFINE INDEX IF NOT EXISTS idx_edges_type      ON TABLE edges COLUMNS edge_type;
+DEFINE INDEX IF NOT EXISTS idx_edges_from_to   ON TABLE edges COLUMNS from, to;
 
--- =============================================================================
--- SCHEMA_VERSIONS TABLE - Migration Tracking
--- =============================================================================
+-- Composite index for common query patterns (P0 Enhancement)
+DEFINE INDEX IF NOT EXISTS idx_edges_type_from ON TABLE edges COLUMNS edge_type, from;
+
+-- -----------------------------------------------------------------------------
+-- TABLE: schema_versions (from CodeGraph)
+-- -----------------------------------------------------------------------------
 DEFINE TABLE IF NOT EXISTS schema_versions SCHEMAFULL;
+
 DEFINE FIELD IF NOT EXISTS version    ON TABLE schema_versions TYPE int;
 DEFINE FIELD IF NOT EXISTS name       ON TABLE schema_versions TYPE string;
 DEFINE FIELD IF NOT EXISTS description ON TABLE schema_versions TYPE option<string>;
-DEFINE FIELD IF NOT EXISTS applied_at ON TABLE schema_versions TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS applied_at ON TABLE schema_versions TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD IF NOT EXISTS checksum   ON TABLE schema_versions TYPE option<string>;
+
 DEFINE INDEX IF NOT EXISTS idx_schema_version ON TABLE schema_versions COLUMNS version UNIQUE;
 
--- =============================================================================
--- METADATA TABLE - System Metadata
--- =============================================================================
+-- -----------------------------------------------------------------------------
+-- TABLE: metadata (from CodeGraph)
+-- -----------------------------------------------------------------------------
 DEFINE TABLE IF NOT EXISTS metadata SCHEMAFULL;
+
 DEFINE FIELD IF NOT EXISTS key        ON TABLE metadata TYPE string;
 DEFINE FIELD IF NOT EXISTS value      ON TABLE metadata TYPE option<string | number | bool | object | array>;
-DEFINE FIELD IF NOT EXISTS updated_at ON TABLE metadata TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated_at ON TABLE metadata TYPE datetime VALUE time::now();
+
 DEFINE INDEX IF NOT EXISTS idx_metadata_key ON TABLE metadata COLUMNS key UNIQUE;
 
--- =============================================================================
--- PROJECT METADATA TABLE - Project Summary
--- =============================================================================
-DEFINE TABLE IF NOT EXISTS project_metadata SCHEMAFULL;
+-- -----------------------------------------------------------------------------
+-- TABLE: project_metadata (Enhanced from CodeGraph)
+-- -----------------------------------------------------------------------------
+DEFINE TABLE IF NOT EXISTS project_metadata SCHEMAFULL
+  COMMENT 'Project registry with CodeGraph and DeepWiki statistics';
+
+-- Core fields
 DEFINE FIELD IF NOT EXISTS project_id       ON TABLE project_metadata TYPE string;
 DEFINE FIELD IF NOT EXISTS name             ON TABLE project_metadata TYPE string;
 DEFINE FIELD IF NOT EXISTS root_path        ON TABLE project_metadata TYPE string;
 DEFINE FIELD IF NOT EXISTS primary_language ON TABLE project_metadata TYPE option<string>;
-DEFINE FIELD IF NOT EXISTS last_analyzed    ON TABLE project_metadata TYPE option<datetime>;
+
+-- CodeGraph statistics
 DEFINE FIELD IF NOT EXISTS file_count       ON TABLE project_metadata TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS node_count       ON TABLE project_metadata TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS edge_count       ON TABLE project_metadata TYPE int DEFAULT 0;
+
+-- DeepWiki statistics
+DEFINE FIELD IF NOT EXISTS concept_collection_count ON TABLE project_metadata TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS concept_document_count   ON TABLE project_metadata TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS avg_coverage_score       ON TABLE project_metadata TYPE float DEFAULT 0.0;
+
+-- Indexing metadata
+DEFINE FIELD IF NOT EXISTS last_analyzed    ON TABLE project_metadata TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS codegraph_version ON TABLE project_metadata TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS deepwiki_version  ON TABLE project_metadata TYPE option<string>;
+
+-- Cross-project fields
+DEFINE FIELD IF NOT EXISTS organization_id  ON TABLE project_metadata TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS domain           ON TABLE project_metadata TYPE option<string>;
+
+-- Metadata
 DEFINE FIELD IF NOT EXISTS metadata         ON TABLE project_metadata TYPE option<object>;
-DEFINE FIELD IF NOT EXISTS created_at       ON TABLE project_metadata TYPE datetime DEFAULT time::now();
-DEFINE FIELD IF NOT EXISTS updated_at       ON TABLE project_metadata TYPE datetime DEFAULT time::now();
-DEFINE INDEX IF NOT EXISTS idx_project_id   ON TABLE project_metadata COLUMNS project_id UNIQUE;
-DEFINE INDEX IF NOT EXISTS idx_project_name ON TABLE project_metadata COLUMNS name;
+DEFINE FIELD IF NOT EXISTS created_at       ON TABLE project_metadata TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD IF NOT EXISTS updated_at       ON TABLE project_metadata TYPE datetime VALUE time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_project_id     ON TABLE project_metadata COLUMNS project_id UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_project_name   ON TABLE project_metadata COLUMNS name;
+DEFINE INDEX IF NOT EXISTS idx_project_org    ON TABLE project_metadata COLUMNS organization_id;
+DEFINE INDEX IF NOT EXISTS idx_project_domain ON TABLE project_metadata COLUMNS domain;
+
+-- -----------------------------------------------------------------------------
+-- TABLE: symbol_embeddings (AI-assisted symbol resolution cache)
+-- -----------------------------------------------------------------------------
+DEFINE TABLE IF NOT EXISTS symbol_embeddings SCHEMAFULL
+    COMMENT 'Cached embeddings for normalized symbols used during edge resolution'
+    PERMISSIONS FULL;
+
+DEFINE FIELD IF NOT EXISTS id                 ON symbol_embeddings TYPE string;
+DEFINE FIELD IF NOT EXISTS symbol             ON symbol_embeddings TYPE string;
+DEFINE FIELD IF NOT EXISTS normalized_symbol  ON symbol_embeddings TYPE string;
+DEFINE FIELD IF NOT EXISTS project_id         ON symbol_embeddings TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS organization_id    ON symbol_embeddings TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS embedding_2048     ON symbol_embeddings TYPE array<float>
+  ASSERT array::len($value) = 2048;
+DEFINE FIELD IF NOT EXISTS embedding_2048[*]  ON symbol_embeddings TYPE float;
+DEFINE FIELD IF NOT EXISTS embedding_model    ON symbol_embeddings TYPE string DEFAULT 'jina-embeddings-v4';
+DEFINE FIELD IF NOT EXISTS last_computed_at   ON symbol_embeddings TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD IF NOT EXISTS access_count       ON symbol_embeddings TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS metadata           ON symbol_embeddings TYPE option<object>;
+
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_id
+    ON symbol_embeddings COLUMNS id UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_symbol
+    ON symbol_embeddings COLUMNS normalized_symbol;
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_project_symbol
+    ON symbol_embeddings COLUMNS project_id, normalized_symbol;
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector
+    ON symbol_embeddings FIELDS embedding_2048
+    HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+
+DEFINE FIELD IF NOT EXISTS node_id ON symbol_embeddings
+  TYPE option<record<nodes>>;
+DEFINE FIELD IF NOT EXISTS source_edge_id ON symbol_embeddings
+  TYPE option<record<edges>>;
+
+-- Indexes for relation fields (UNCHANGED)
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_node
+    ON symbol_embeddings COLUMNS node_id;
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_edge
+    ON symbol_embeddings COLUMNS source_edge_id;
+
+
 
 -- =============================================================================
--- MIGRATION BOOKKEEPING
+-- FUNCTIONS (CodeGraph Preserved)
 -- =============================================================================
-INSERT INTO schema_versions (version, name, description, applied_at, checksum)
-VALUES (1, 'initial_schema', 'Nodes, edges, metadata, and project tables', time::now(), 'schema_v1')
-ON DUPLICATE KEY UPDATE description = 'Nodes, edges, metadata, and project tables';
 
-INSERT INTO schema_versions (version, name, description, applied_at, checksum)
-VALUES (2, 'graph_functions', 'SurrealDB functions for graph analysis', time::now(), 'graph_functions_v1')
-ON DUPLICATE KEY UPDATE description = 'SurrealDB functions for graph analysis';
-
--- =============================================================================
--- Helper Functions
--- =============================================================================
--- Optional but recommended: index to speed edge-type filtering
-DEFINE INDEX idx_edges_edge_type ON TABLE edges COLUMNS edge_type;
-
--- ===== Node info helper (fixed) =====
+-- -----------------------------------------------------------------------------
+-- FUNCTION: node_info (UNCHANGED)
+-- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::node_info($node_id: string) {
     LET $res = SELECT
         id,
@@ -127,6 +231,9 @@ DEFINE FUNCTION fn::node_info($node_id: string) {
     RETURN $res[0];
 };
 
+-- -----------------------------------------------------------------------------
+-- FUNCTION: node_reference (UNCHANGED)
+-- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::node_reference($node_id: string) {
     LET $info = fn::node_info($node_id);
     IF $info = NONE {
@@ -140,14 +247,16 @@ DEFINE FUNCTION fn::node_reference($node_id: string) {
     };
 };
 
+-- -----------------------------------------------------------------------------
+-- FUNCTION: edge_types (UNCHANGED)
+-- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::edge_types() {
     RETURN ['Calls', 'Imports', 'Uses', 'Extends', 'Implements', 'References'];
 };
 
--- =============================================================================
--- GRAPH ANALYSIS FUNCTIONS
--- =============================================================================
-
+-- -----------------------------------------------------------------------------
+-- FUNCTION: get_transitive_dependencies (UNCHANGED)
+-- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::get_transitive_dependencies($node_id: string, $edge_type: string, $depth: int) {
     LET $safe_depth = IF $depth > 0 AND $depth <= 10 THEN $depth ELSE 3 END;
     LET $edge_name  = $edge_type ?? 'Calls';
@@ -226,10 +335,12 @@ DEFINE FUNCTION fn::get_transitive_dependencies($node_id: string, $edge_type: st
     WHERE node != NONE;
 };
 
+-- -----------------------------------------------------------------------------
+-- FUNCTION: detect_circular_dependencies (UNCHANGED)
+-- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::detect_circular_dependencies($edge_type: string) {
     LET $edge_name = $edge_type ?? 'Calls';
 
-    -- Candidate directed pairs (exclude self-loops early)
     LET $pairs = (
         SELECT
             from AS node1_id,
@@ -239,7 +350,6 @@ DEFINE FUNCTION fn::detect_circular_dependencies($edge_type: string) {
           AND from != to
     );
 
-    -- Keep undirected pairs once (node1_id < node2_id) that have the reverse edge
     LET $cycles = (
         SELECT
             node1_id,
@@ -256,7 +366,6 @@ DEFINE FUNCTION fn::detect_circular_dependencies($edge_type: string) {
         GROUP BY node1_id, node2_id
     );
 
-    -- Enrich with node info
     LET $raw = (
         SELECT
             node1_id,
@@ -266,7 +375,6 @@ DEFINE FUNCTION fn::detect_circular_dependencies($edge_type: string) {
         FROM $cycles
     );
 
-    -- Final shape, filter missing nodes defensively
     RETURN SELECT
         node1_id,
         node2_id,
@@ -277,6 +385,9 @@ DEFINE FUNCTION fn::detect_circular_dependencies($edge_type: string) {
     WHERE node1 != NONE AND node2 != NONE;
 };
 
+-- -----------------------------------------------------------------------------
+-- FUNCTION: trace_call_chain (UNCHANGED)
+-- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::trace_call_chain($from_node: string, $max_depth: int) {
     LET $safe_depth = IF $max_depth > 0 AND $max_depth <= 10 THEN $max_depth ELSE 5 END;
 
@@ -309,6 +420,9 @@ DEFINE FUNCTION fn::trace_call_chain($from_node: string, $max_depth: int) {
     WHERE node != NONE;
 };
 
+-- -----------------------------------------------------------------------------
+-- FUNCTION: calculate_coupling_metrics (UNCHANGED)
+-- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::calculate_coupling_metrics($node_id: string) {
     LET $edge_list = fn::edge_types();
 
@@ -362,6 +476,9 @@ DEFINE FUNCTION fn::calculate_coupling_metrics($node_id: string) {
     };
 };
 
+-- -----------------------------------------------------------------------------
+-- FUNCTION: get_hub_nodes (UNCHANGED)
+-- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::get_hub_nodes($min_degree: int) {
     LET $threshold = IF $min_degree != NONE AND $min_degree > 0 THEN $min_degree ELSE 5 END;
     LET $edge_list = fn::edge_types();
@@ -404,7 +521,6 @@ DEFINE FUNCTION fn::get_hub_nodes($min_degree: int) {
         GROUP BY from
     );
 
-    -- safest: concat then dedupe
     LET $candidates = array::distinct(
       array::concat(
         (SELECT VALUE node_id FROM $incoming_totals),
@@ -447,7 +563,9 @@ DEFINE FUNCTION fn::get_hub_nodes($min_degree: int) {
     ORDER BY total_degree DESC;
 };
 
-
+-- -----------------------------------------------------------------------------
+-- FUNCTION: get_reverse_dependencies (UNCHANGED)
+-- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::get_reverse_dependencies($node_id: string, $edge_type: string, $depth: int) {
     LET $safe_depth = IF $depth > 0 AND $depth <= 10 THEN $depth ELSE 3 END;
     LET $edge_name  = $edge_type ?? 'Calls';
@@ -525,3 +643,4 @@ DEFINE FUNCTION fn::get_reverse_dependencies($node_id: string, $edge_type: strin
     FROM $raw
     WHERE node != NONE;
 };
+-- =============================================================================

@@ -2,8 +2,8 @@
 // ABOUTME: Synchronous wrapper around async GraphToolExecutor for AutoAgents tools
 
 use crate::graph_tool_executor::GraphToolExecutor;
-use std::sync::Arc;
 use serde_json::Value;
+use std::sync::Arc;
 
 /// Synchronous wrapper around async GraphToolExecutor
 ///

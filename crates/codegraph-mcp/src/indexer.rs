@@ -1,11 +1,12 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 #[cfg(feature = "ai-enhanced")]
 use codegraph_ai::SemanticSearchEngine;
-use codegraph_core::{CodeNode, EdgeRelationship, GraphStore, NodeId, NodeType};
+use codegraph_core::{CodeNode, EdgeRelationship, NodeId, NodeType};
 use codegraph_graph::{
-    edge::CodeEdge, ProjectMetadataRecord, SurrealDbConfig, SurrealDbStorage, SymbolEmbeddingUpsert,
+    edge::CodeEdge, NodeEmbeddingRecord, ProjectMetadataRecord, SurrealDbConfig, SurrealDbStorage,
+    SymbolEmbeddingRecord,
 };
 use codegraph_parser::{get_ai_pattern_learner, TreeSitterParser};
 #[cfg(feature = "ai-enhanced")]
@@ -18,8 +19,9 @@ use std::env;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use tokio::fs;
-use tokio::sync::{mpsc, Mutex as TokioMutex};
-use tracing::{debug, info, warn};
+use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex};
+use tokio::task::JoinHandle;
+use tracing::{debug, error, info, warn};
 use url::Url;
 use walkdir::WalkDir;
 
@@ -86,6 +88,7 @@ pub struct ProjectIndexer {
     progress: MultiProgress,
     parser: TreeSitterParser,
     surreal: Arc<TokioMutex<SurrealDbStorage>>,
+    surreal_writer: Option<SurrealWriterHandle>,
     project_id: String,
     organization_id: Option<String>,
     repository_url: Option<String>,
@@ -95,6 +98,181 @@ pub struct ProjectIndexer {
     project_root: PathBuf,
     #[cfg(feature = "embeddings")]
     embedder: codegraph_vector::EmbeddingGenerator,
+}
+
+enum SurrealWriteJob {
+    Nodes(Vec<CodeNode>),
+    Edges(Vec<CodeEdge>),
+    NodeEmbeddings(Vec<NodeEmbeddingRecord>),
+    SymbolEmbeddings(Vec<SymbolEmbeddingRecord>),
+    ProjectMetadata(ProjectMetadataRecord),
+    Flush(oneshot::Sender<Result<()>>),
+    Shutdown(oneshot::Sender<Result<()>>),
+}
+
+struct SurrealWriterHandle {
+    tx: mpsc::Sender<SurrealWriteJob>,
+    join: JoinHandle<()>,
+}
+
+impl SurrealWriterHandle {
+    fn new(storage: Arc<TokioMutex<SurrealDbStorage>>) -> Self {
+        let (tx, mut rx) = mpsc::channel(8);
+        let join = tokio::spawn(async move {
+            let mut last_error: Option<anyhow::Error> = None;
+            while let Some(job) = rx.recv().await {
+                match job {
+                    SurrealWriteJob::Nodes(nodes) => {
+                        if nodes.is_empty() {
+                            continue;
+                        }
+                        let result = {
+                            let mut guard = storage.lock().await;
+                            guard.upsert_nodes_batch(&nodes).await
+                        };
+                        if let Err(err) = result {
+                            error!("Surreal node batch failed: {}", err);
+                            last_error = Some(anyhow!(err.to_string()));
+                        }
+                    }
+                    SurrealWriteJob::Edges(edges) => {
+                        if edges.is_empty() {
+                            continue;
+                        }
+                        let result = {
+                            let mut guard = storage.lock().await;
+                            guard.upsert_edges_batch(&edges).await
+                        };
+                        if let Err(err) = result {
+                            error!("Surreal edge batch failed: {}", err);
+                            last_error = Some(anyhow!(err.to_string()));
+                        }
+                    }
+                    SurrealWriteJob::NodeEmbeddings(records) => {
+                        if records.is_empty() {
+                            continue;
+                        }
+                        let result = {
+                            let guard = storage.lock().await;
+                            guard.update_node_embeddings_batch(&records).await
+                        };
+                        if let Err(err) = result {
+                            error!("Surreal node embedding batch failed: {}", err);
+                            last_error = Some(anyhow!(err.to_string()));
+                        }
+                    }
+                    SurrealWriteJob::SymbolEmbeddings(records) => {
+                        if records.is_empty() {
+                            continue;
+                        }
+                        let result = {
+                            let guard = storage.lock().await;
+                            guard.upsert_symbol_embeddings_batch(&records).await
+                        };
+                        if let Err(err) = result {
+                            error!("Surreal symbol embedding batch failed: {}", err);
+                            last_error = Some(anyhow!(err.to_string()));
+                        }
+                    }
+                    SurrealWriteJob::ProjectMetadata(record) => {
+                        let result = {
+                            let guard = storage.lock().await;
+                            guard.upsert_project_metadata(record).await
+                        };
+                        if let Err(err) = result {
+                            error!("Surreal project metadata write failed: {}", err);
+                            last_error = Some(anyhow!(err.to_string()));
+                        }
+                    }
+                    SurrealWriteJob::Flush(resp) => {
+                        let _ = resp.send(Self::current_error(&last_error));
+                    }
+                    SurrealWriteJob::Shutdown(resp) => {
+                        let _ = resp.send(Self::current_error(&last_error));
+                        break;
+                    }
+                }
+            }
+        });
+
+        Self { tx, join }
+    }
+
+    fn current_error(error: &Option<anyhow::Error>) -> Result<()> {
+        if let Some(err) = error {
+            Err(anyhow!(err.to_string()))
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn enqueue_nodes(&self, nodes: Vec<CodeNode>) -> Result<()> {
+        if nodes.is_empty() {
+            return Ok(());
+        }
+        self.tx
+            .send(SurrealWriteJob::Nodes(nodes))
+            .await
+            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
+    }
+
+    async fn enqueue_edges(&self, edges: Vec<CodeEdge>) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+        self.tx
+            .send(SurrealWriteJob::Edges(edges))
+            .await
+            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
+    }
+
+    async fn enqueue_node_embeddings(&self, records: Vec<NodeEmbeddingRecord>) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        self.tx
+            .send(SurrealWriteJob::NodeEmbeddings(records))
+            .await
+            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
+    }
+
+    async fn enqueue_symbol_embeddings(&self, records: Vec<SymbolEmbeddingRecord>) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        self.tx
+            .send(SurrealWriteJob::SymbolEmbeddings(records))
+            .await
+            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
+    }
+
+    async fn enqueue_project_metadata(&self, record: ProjectMetadataRecord) -> Result<()> {
+        self.tx
+            .send(SurrealWriteJob::ProjectMetadata(record))
+            .await
+            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
+    }
+
+    async fn flush(&self) -> Result<()> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx
+            .send(SurrealWriteJob::Flush(resp_tx))
+            .await
+            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))?;
+        resp_rx
+            .await
+            .map_err(|_| anyhow!("Surreal writer task ended unexpectedly"))?
+    }
+
+    async fn shutdown(self) -> Result<()> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        let _ = self.tx.send(SurrealWriteJob::Shutdown(resp_tx)).await;
+        let result = resp_rx
+            .await
+            .unwrap_or_else(|_| Err(anyhow!("Surreal writer task ended unexpectedly")));
+        let _ = self.join.await;
+        result
+    }
 }
 
 impl ProjectIndexer {
@@ -132,12 +310,12 @@ impl ProjectIndexer {
         let parser = TreeSitterParser::new();
         let project_root = config.project_root.clone();
         let surreal = Self::connect_surreal_from_env().await?;
+        let surreal_writer = SurrealWriterHandle::new(surreal.clone());
         let project_id = std::env::var("CODEGRAPH_PROJECT_ID")
             .unwrap_or_else(|_| project_root.display().to_string());
         let organization_id = std::env::var("CODEGRAPH_ORGANIZATION_ID").ok();
         let repository_url = std::env::var("CODEGRAPH_REPOSITORY_URL").ok();
         let domain = std::env::var("CODEGRAPH_DOMAIN").ok();
-        let surreal = Self::connect_surreal_from_env().await?;
         #[cfg(feature = "embeddings")]
         let embedder = {
             use codegraph_vector::EmbeddingGenerator;
@@ -259,6 +437,7 @@ impl ProjectIndexer {
             progress: multi_progress,
             parser,
             surreal,
+            surreal_writer: Some(surreal_writer),
             project_id,
             organization_id,
             repository_url,
@@ -289,6 +468,7 @@ impl ProjectIndexer {
             )
             .map(|f| f.len())
             .unwrap_or(0);
+            self.shutdown_surreal_writer().await?;
             return Ok(stats);
         }
 
@@ -400,10 +580,13 @@ impl ProjectIndexer {
             if let Some(trait_impl) = node.metadata.attributes.get("implements_trait") {
                 symbol_map.insert(format!("{}::{}", trait_impl, base_name), node.id);
             }
-
-            self.persist_node_to_surreal(node).await?;
-            store_nodes_pb.inc(1);
         }
+        let storage_batch = self.config.batch_size.max(1);
+        for chunk in nodes.chunks(storage_batch) {
+            self.persist_nodes_batch(chunk).await?;
+            store_nodes_pb.inc(chunk.len() as u64);
+        }
+        self.flush_surreal_writer().await?;
         store_nodes_pb.finish_with_message("📈 Stored nodes & symbols");
         self.log_surreal_node_count(total_nodes_extracted).await;
 
@@ -805,7 +988,8 @@ impl ProjectIndexer {
                     bulk_success += 1;
                 }
                 if !inserted_batch.is_empty() {
-                    self.persist_edges_to_surreal(inserted_batch).await?;
+                    self.enqueue_edges(inserted_batch).await?;
+                    self.log_surrealdb_status("edges-batch-queued");
                 }
                 edge_pb.set_position(bulk_success as u64);
             }
@@ -891,6 +1075,7 @@ impl ProjectIndexer {
         // Persist project metadata summary into SurrealDB
         self.persist_project_metadata(&stats, total_nodes_extracted, total_edges_extracted)
             .await?;
+        self.flush_surreal_writer().await?;
 
         // COMPREHENSIVE INDEXING COMPLETION SUMMARY
         info!("🎉 INDEXING COMPLETE - REVOLUTIONARY AI DEVELOPMENT PLATFORM READY!");
@@ -938,6 +1123,8 @@ impl ProjectIndexer {
         info!("│ ✅ Conversational AI: codebase_qa and code_documentation tools │");
         info!("└─────────────────────────────────────────────────────────────────┘");
         info!("🚀 CodeGraph Universal AI Development Platform: FULLY OPERATIONAL");
+
+        self.shutdown_surreal_writer().await?;
 
         Ok(stats)
     }
@@ -1165,25 +1352,21 @@ impl ProjectIndexer {
         while let Some((batch, result)) = batch_stream.next().await {
             match result {
                 Ok(batch_embeddings) => {
+                    let mut records = Vec::with_capacity(batch.len());
                     for (symbol, embedding) in
                         batch.iter().cloned().zip(batch_embeddings.into_iter())
                     {
-                        if let Err(err) = self
-                            .store_symbol_embedding(
-                                &symbol,
-                                symbol_map.get(&symbol).cloned(),
-                                None,
-                                &embedding,
-                            )
-                            .await
-                        {
-                            warn!(
-                                "⚠️ Failed to persist symbol embedding for '{}': {}",
-                                symbol, err
-                            );
-                        }
+                        records.push(self.build_symbol_embedding_record(
+                            &symbol,
+                            symbol_map.get(&symbol).cloned(),
+                            None,
+                            &embedding,
+                        ));
                         embeddings.insert(symbol, embedding);
                         processed += 1;
+                    }
+                    if let Err(err) = self.persist_symbol_embedding_records(records).await {
+                        warn!("⚠️ Failed to persist batch symbol embeddings: {}", err);
                     }
                     info!(
                         "✅ Generated {} embeddings so far (parallel batch mode)",
@@ -1199,14 +1382,14 @@ impl ProjectIndexer {
                     for symbol in batch.into_iter() {
                         match embedder.generate_text_embedding(&symbol).await {
                             Ok(embedding) => {
-                                if let Err(err) = self
-                                    .store_symbol_embedding(
-                                        &symbol,
-                                        symbol_map.get(&symbol).cloned(),
-                                        None,
-                                        &embedding,
-                                    )
-                                    .await
+                                let record = self.build_symbol_embedding_record(
+                                    &symbol,
+                                    symbol_map.get(&symbol).cloned(),
+                                    None,
+                                    &embedding,
+                                );
+                                if let Err(err) =
+                                    self.persist_symbol_embedding_records(vec![record]).await
                                 {
                                     warn!(
                                         "⚠️ Failed to persist symbol embedding for '{}': {}",
@@ -1302,19 +1485,20 @@ impl ProjectIndexer {
         while let Some((batch, result)) = batch_stream.next().await {
             match result {
                 Ok(batch_embeddings) => {
+                    let mut records = Vec::with_capacity(batch.len());
                     for (symbol, embedding) in
                         batch.iter().cloned().zip(batch_embeddings.into_iter())
                     {
-                        if let Err(err) = self
-                            .store_symbol_embedding(&symbol, None, None, &embedding)
-                            .await
-                        {
-                            warn!(
-                                "⚠️ Failed to persist unresolved symbol embedding '{}': {}",
-                                symbol, err
-                            );
-                        }
+                        records.push(
+                            self.build_symbol_embedding_record(&symbol, None, None, &embedding),
+                        );
                         embeddings.insert(symbol, embedding);
+                    }
+                    if let Err(err) = self.persist_symbol_embedding_records(records).await {
+                        warn!(
+                            "⚠️ Failed to persist unresolved symbol embeddings batch: {}",
+                            err
+                        );
                     }
                     if embeddings.len() % 250 == 0 {
                         info!(
@@ -1332,9 +1516,10 @@ impl ProjectIndexer {
                     for symbol in batch.into_iter() {
                         match embedder.generate_text_embedding(&symbol).await {
                             Ok(embedding) => {
-                                if let Err(err) = self
-                                    .store_symbol_embedding(&symbol, None, None, &embedding)
-                                    .await
+                                let record = self
+                                    .build_symbol_embedding_record(&symbol, None, None, &embedding);
+                                if let Err(err) =
+                                    self.persist_symbol_embedding_records(vec![record]).await
                                 {
                                     warn!(
                                         "⚠️ Failed to persist unresolved symbol embedding '{}': {}",
@@ -1841,12 +2026,7 @@ impl ProjectIndexer {
             domain: self.domain.clone(),
         };
 
-        let storage = self.surreal.lock().await;
-        storage
-            .upsert_project_metadata(record)
-            .await
-            .map_err(|e| anyhow::anyhow!(e))?;
-        Ok(())
+        self.enqueue_project_metadata_record(record).await
     }
 
     fn annotate_node(&self, node: &mut CodeNode) {
@@ -1870,13 +2050,8 @@ impl ProjectIndexer {
         }
     }
 
-    async fn persist_node_to_surreal(&self, node: &CodeNode) -> Result<()> {
-        let mut guard = self.surreal.lock().await;
-        guard
-            .add_node(node.clone())
-            .await
-            .map_err(|e| anyhow::anyhow!(e))?;
-        Ok(())
+    async fn persist_nodes_batch(&self, chunk: &[CodeNode]) -> Result<()> {
+        self.enqueue_nodes_chunk(chunk).await
     }
 
     async fn log_surreal_node_count(&self, expected: usize) {
@@ -1908,26 +2083,23 @@ impl ProjectIndexer {
         }
     }
 
-    async fn persist_edges_to_surreal(&self, edges: Vec<CodeEdge>) -> Result<()> {
-        let mut guard = self.surreal.lock().await;
-        guard
-            .add_code_edges(edges)
-            .await
-            .map_err(|e| anyhow::anyhow!(e))?;
-        Ok(())
-    }
-
     async fn persist_node_embeddings(&self, nodes: &[CodeNode]) -> Result<()> {
-        let mut guard = self.surreal.lock().await;
+        let mut records = Vec::new();
         for node in nodes {
             if let Some(embedding) = &node.embedding {
-                guard
-                    .update_node_embedding(node.id, embedding)
-                    .await
-                    .map_err(|e| anyhow::anyhow!(e))?;
+                records.push(NodeEmbeddingRecord {
+                    id: node.id.to_string(),
+                    embedding: embedding.iter().map(|&v| v as f64).collect(),
+                    updated_at: chrono::Utc::now(),
+                });
             }
         }
-        Ok(())
+        if records.is_empty() {
+            return Ok(());
+        }
+        self.surreal_writer_handle()?
+            .enqueue_node_embeddings(records)
+            .await
     }
 
     async fn store_symbol_embedding(
@@ -1937,24 +2109,85 @@ impl ProjectIndexer {
         source_edge_id: Option<&str>,
         embedding: &[f32],
     ) -> Result<()> {
+        let record = self.build_symbol_embedding_record(symbol, node_id, source_edge_id, embedding);
+        self.persist_symbol_embedding_records(vec![record]).await
+    }
+
+    fn build_symbol_embedding_record(
+        &self,
+        symbol: &str,
+        node_id: Option<NodeId>,
+        source_edge_id: Option<&str>,
+        embedding: &[f32],
+    ) -> SymbolEmbeddingRecord {
         let normalized = Self::normalize_symbol(symbol);
-        let node_id_str = node_id.map(|id| id.to_string());
-        let mut guard = self.surreal.lock().await;
-        guard
-            .upsert_symbol_embedding(SymbolEmbeddingUpsert {
-                symbol,
-                normalized_symbol: &normalized,
-                project_id: &self.project_id,
-                organization_id: self.organization_id.as_deref(),
-                embedding,
-                embedding_model: &self.embedding_model,
-                node_id: node_id_str.as_deref(),
-                source_edge_id,
-                metadata: None,
-            })
+        let node_id_string = node_id.map(|id| id.to_string());
+        SymbolEmbeddingRecord::new(
+            &self.project_id,
+            self.organization_id.as_deref(),
+            symbol,
+            &normalized,
+            embedding,
+            &self.embedding_model,
+            node_id_string.as_deref(),
+            source_edge_id,
+            None,
+        )
+    }
+
+    async fn persist_symbol_embedding_records(
+        &self,
+        records: Vec<SymbolEmbeddingRecord>,
+    ) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        self.surreal_writer_handle()?
+            .enqueue_symbol_embeddings(records)
             .await
-            .map_err(|e| anyhow::anyhow!(e))?;
-        Ok(())
+    }
+
+    fn surreal_writer_handle(&self) -> Result<&SurrealWriterHandle> {
+        self.surreal_writer
+            .as_ref()
+            .ok_or_else(|| anyhow!("Surreal writer not initialized"))
+    }
+
+    async fn enqueue_nodes_chunk(&self, nodes: &[CodeNode]) -> Result<()> {
+        if nodes.is_empty() {
+            return Ok(());
+        }
+        let batch: Vec<CodeNode> = nodes.iter().cloned().collect();
+        self.surreal_writer_handle()?.enqueue_nodes(batch).await
+    }
+
+    async fn enqueue_edges(&self, edges: Vec<CodeEdge>) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+        self.surreal_writer_handle()?.enqueue_edges(edges).await
+    }
+
+    async fn enqueue_project_metadata_record(&self, record: ProjectMetadataRecord) -> Result<()> {
+        self.surreal_writer_handle()?
+            .enqueue_project_metadata(record)
+            .await
+    }
+
+    async fn flush_surreal_writer(&self) -> Result<()> {
+        if let Some(writer) = &self.surreal_writer {
+            writer.flush().await
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn shutdown_surreal_writer(&mut self) -> Result<()> {
+        if let Some(writer) = self.surreal_writer.take() {
+            writer.shutdown().await
+        } else {
+            Ok(())
+        }
     }
 
     async fn connect_surreal_from_env() -> Result<Arc<TokioMutex<SurrealDbStorage>>> {

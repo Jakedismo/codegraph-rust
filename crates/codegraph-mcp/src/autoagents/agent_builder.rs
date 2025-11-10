@@ -2,15 +2,15 @@
 // ABOUTME: Bridges codegraph_ai LLM providers to AutoAgents ChatProvider
 // ABOUTME: Builder for tier-aware CodeGraph agents with graph analysis tools
 
-use autoagents::llm::chat::{ChatMessage, ChatMessageBuilder, ChatRole, ChatResponse, Tool};
+use async_trait::async_trait;
 use autoagents::llm::chat::ChatProvider;
+use autoagents::llm::chat::{ChatMessage, ChatMessageBuilder, ChatResponse, ChatRole, Tool};
 use autoagents::llm::completion::{CompletionProvider, CompletionRequest, CompletionResponse};
 use autoagents::llm::embedding::EmbeddingProvider;
-use autoagents::llm::models::{ModelListRequest, ModelListResponse, ModelsProvider};
 use autoagents::llm::error::LLMError;
+use autoagents::llm::models::{ModelListRequest, ModelListResponse, ModelsProvider};
 use autoagents::llm::ToolCall;
-use codegraph_ai::llm_provider::{Message, MessageRole, LLMProvider as CodeGraphLLM};
-use async_trait::async_trait;
+use codegraph_ai::llm_provider::{LLMProvider as CodeGraphLLM, Message, MessageRole};
 use std::sync::Arc;
 
 /// Convert CodeGraph Message to AutoAgents ChatMessage
@@ -91,9 +91,7 @@ impl ChatProvider for CodeGraphChatAdapter {
         std::pin::Pin<Box<dyn futures::Stream<Item = Result<String, LLMError>> + Send>>,
         LLMError,
     > {
-        Err(LLMError::Generic(
-            "Streaming not supported".to_string(),
-        ))
+        Err(LLMError::Generic("Streaming not supported".to_string()))
     }
 
     async fn chat_stream_struct(
@@ -103,7 +101,10 @@ impl ChatProvider for CodeGraphChatAdapter {
         _json_schema: Option<autoagents::llm::chat::StructuredOutputFormat>,
     ) -> Result<
         std::pin::Pin<
-            Box<dyn futures::Stream<Item = Result<autoagents::llm::chat::StreamResponse, LLMError>> + Send>,
+            Box<
+                dyn futures::Stream<Item = Result<autoagents::llm::chat::StreamResponse, LLMError>>
+                    + Send,
+            >,
         >,
         LLMError,
     > {
@@ -141,9 +142,7 @@ impl ModelsProvider for CodeGraphChatAdapter {
         &self,
         _request: Option<&ModelListRequest>,
     ) -> Result<Box<dyn ModelListResponse>, LLMError> {
-        Err(LLMError::Generic(
-            "Model listing not supported".to_string(),
-        ))
+        Err(LLMError::Generic("Model listing not supported".to_string()))
     }
 }
 
@@ -178,31 +177,34 @@ impl ChatResponse for CodeGraphChatResponse {
 // ============================================================================
 
 use crate::autoagents::tier_plugin::TierAwarePromptPlugin;
-use crate::autoagents::tools::tool_executor_adapter::GraphToolFactory;
 use crate::autoagents::tools::graph_tools::*;
-use crate::{AnalysisType, GraphToolExecutor};
+use crate::autoagents::tools::tool_executor_adapter::GraphToolFactory;
 use crate::context_aware_limits::ContextTier;
+use crate::{AnalysisType, GraphToolExecutor};
 
-use autoagents::core::agent::AgentBuilder;
-use autoagents::core::agent::prebuilt::executor::ReActAgent;
+use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use autoagents::core::agent::memory::SlidingWindowMemory;
+use autoagents::core::agent::prebuilt::executor::ReActAgent;
+use autoagents::core::agent::AgentBuilder;
 use autoagents::core::agent::{AgentDeriveT, AgentHooks, AgentOutputT, DirectAgentHandle};
 use autoagents::core::error::Error as AutoAgentsError;
 use autoagents::core::tool::{shared_tools_to_boxes, ToolT};
 use autoagents_derive::AgentHooks;
-use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 
 /// Agent implementation for CodeGraph with manual tool registration
 #[derive(Debug)]
 pub struct CodeGraphReActAgent {
     tools: Vec<Arc<dyn ToolT>>,
+    system_prompt: String,
 }
 
 impl AgentDeriveT for CodeGraphReActAgent {
     type Output = CodeGraphAgentOutput;
 
     fn description(&self) -> &'static str {
-        "CodeGraph agent for analyzing code dependencies and architecture"
+        // Use Box::leak to convert runtime String to &'static str
+        // This is the standard AutoAgents pattern for dynamic descriptions
+        Box::leak(self.system_prompt.clone().into_boxed_str())
     }
 
     fn name(&self) -> &'static str {
@@ -244,9 +246,9 @@ impl CodeGraphAgentBuilder {
     }
 
     pub async fn build(self) -> Result<AgentHandle, AutoAgentsError> {
-        // Get tier-aware configuration
+        // Get tier-aware configuration and system prompt
         let tier_plugin = TierAwarePromptPlugin::new(self.analysis_type, self.tier);
-        let _system_prompt = tier_plugin
+        let system_prompt = tier_plugin
             .get_system_prompt()
             .map_err(|e| AutoAgentsError::CustomError(e.to_string()))?;
 
@@ -267,14 +269,17 @@ impl CodeGraphAgentBuilder {
             Arc::new(GetHubNodes::new(executor_adapter.clone())),
         ];
 
-        // Create CodeGraph agent with tools
-        let codegraph_agent = CodeGraphReActAgent { tools };
+        // Create CodeGraph agent with tools and tier-aware system prompt
+        let codegraph_agent = CodeGraphReActAgent {
+            tools,
+            system_prompt,
+        };
 
         // Build ReAct agent with our CodeGraph agent
         let react_agent = ReActAgent::new(codegraph_agent);
 
         // Build full agent with configuration
-        // NOTE: system_prompt not directly supported, handled via agent description
+        // System prompt injected via AgentDeriveT::description() using Box::leak pattern
         use autoagents::core::agent::DirectAgent;
         let agent = AgentBuilder::<_, DirectAgent>::new(react_agent)
             .llm(self.llm_adapter)

@@ -1,9 +1,9 @@
 // ABOUTME: AutoAgents plugin for tier-aware prompt injection
 // ABOUTME: Selects prompts based on LLM context window and analysis type
 
-use crate::{PromptSelector, AnalysisType};
 use crate::context_aware_limits::ContextTier;
 use crate::McpError;
+use crate::{AnalysisType, PromptSelector};
 
 /// Plugin that provides tier-aware system prompts and limits
 pub struct TierAwarePromptPlugin {
