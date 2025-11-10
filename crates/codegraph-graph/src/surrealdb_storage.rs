@@ -613,17 +613,20 @@ impl SurrealDbStorage {
         }
 
         for record in records {
-            let label = format!("node embedding {}", record.id);
-            let _: Option<JsonValue> = self
+            self
                 .db
-                .update(("nodes", &record.id))
-                .merge(json!({
-                    "embedding": record.embedding,
-                    "updated_at": record.updated_at,
-                }))
+                .query(
+                    "UPDATE type::thing('nodes', $id) SET embedding = $embedding, updated_at = time::now();",
+                )
+                .bind(("id", record.id.clone()))
+                .bind(("embedding", record.embedding.clone()))
                 .await
                 .map_err(|e| {
-                    CodeGraphError::Database(format!("Failed to update {}: {}", label, e))
+                    CodeGraphError::Database(format!(
+                        "Failed to update node embedding {}: {}",
+                        record.id,
+                        truncate_surreal_error(&e)
+                    ))
                 })?;
         }
 
