@@ -31,6 +31,9 @@ pub mod server;
 pub mod transport;
 pub mod version;
 
+#[cfg(feature = "server-http")]
+pub mod http_config;
+
 #[cfg(feature = "autoagents-experimental")]
 pub mod autoagents;
 
