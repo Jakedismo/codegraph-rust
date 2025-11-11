@@ -64,6 +64,8 @@ autoagents-derive = { git = "https://github.com/liquidos-ai/AutoAgents", optiona
 
 axum = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+http-body-util = { version = "0.1", optional = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
@@ -89,7 +91,7 @@ embeddings-openai = ["embeddings", "codegraph-vector/openai"]
 embeddings-ollama = ["embeddings", "codegraph-vector/ollama"]
 embeddings-jina = ["embeddings", "codegraph-vector/jina"]
 cloud = ["embeddings-jina", "codegraph-graph/surrealdb"]
-server-http = ["dep:axum", "dep:hyper"]
+server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
 qwen-integration = []
 ai-enhanced = ["dep:codegraph-ai", "faiss", "embeddings"]
 autoagents-experimental = ["dep:autoagents", "dep:autoagents-derive"]

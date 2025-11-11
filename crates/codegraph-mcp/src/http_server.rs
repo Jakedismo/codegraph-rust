@@ -68,14 +68,62 @@ async fn health_check() -> &'static str {
 
 /// Handle MCP POST requests
 async fn handle_mcp_request(
-    axum::extract::State(_service): axum::extract::State<
+    axum::extract::State(service): axum::extract::State<
         StreamableHttpService<CodeGraphMCPServer, LocalSessionManager>,
     >,
-    _headers: axum::http::HeaderMap,
-    _body: axum::body::Bytes,
-) -> impl axum::response::IntoResponse {
-    // Implementation placeholder - will be completed in next task
-    axum::http::StatusCode::NOT_IMPLEMENTED
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    use http_body_util::Full;
+    use tower::ServiceExt;
+    use tracing::warn;
+
+    // Build HTTP request for Tower service
+    let mut builder = axum::http::Request::builder()
+        .method(axum::http::Method::POST)
+        .uri("/mcp")
+        .header(axum::http::header::CONTENT_TYPE, "application/json")
+        .header(
+            axum::http::header::ACCEPT,
+            "application/json, text/event-stream",
+        );
+
+    // Forward session ID header if present
+    if let Some(session_id) = headers.get("Mcp-Session-Id") {
+        builder = builder.header("Mcp-Session-Id", session_id);
+    }
+
+    // Create request with body
+    let http_request = match builder.body(Full::new(body)) {
+        Ok(req) => req,
+        Err(e) => {
+            warn!("Failed to build HTTP request: {}", e);
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Request build error: {}", e),
+            )
+                .into_response();
+        }
+    };
+
+    // Call Tower service using oneshot
+    match service.oneshot(http_request).await {
+        Ok(response) => {
+            // Response is already in the correct format (BoxBody)
+            // Just need to convert it to an Axum response
+            let (parts, body) = response.into_parts();
+            axum::http::Response::from_parts(parts, body).into_response()
+        }
+        Err(e) => {
+            warn!("Service call failed: {:?}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Service error: {:?}", e),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// Handle SSE streaming connections
