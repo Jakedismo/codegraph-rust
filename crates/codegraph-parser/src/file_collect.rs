@@ -1,5 +1,6 @@
-use codegraph_core::{CodeGraphError, Result};
-use ignore::{overrides::OverrideBuilder, WalkBuilder};
+use codegraph_core::Result;
+use globset::{Glob, GlobSet, GlobSetBuilder};
+use ignore::WalkBuilder;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
@@ -35,9 +36,6 @@ pub fn collect_source_files_with_config(
         config.recursive, config.languages
     );
 
-    let mut ovr = OverrideBuilder::new(dir);
-
-    // Add default exclusions for common non-source directories
     let default_excludes = vec![
         "**/target/**",
         "**/.git/**",
@@ -52,30 +50,16 @@ pub fn collect_source_files_with_config(
         "**/.codegraph/**",
     ];
 
-    for exclude in default_excludes {
-        let _ = ovr.add(exclude);
-    }
+    let mut combined_excludes: Vec<String> =
+        default_excludes.iter().map(|s| s.to_string()).collect();
+    combined_excludes.extend(config.exclude_patterns.clone());
 
-    // Add user-specified exclude patterns
-    for exclude in &config.exclude_patterns {
-        let _ = ovr.add(exclude);
-        debug!("Added exclude pattern: {}", exclude);
-    }
-
-    // Add user-specified include patterns
-    for include in &config.include_patterns {
-        let pattern = if include.starts_with('!') {
-            include.clone()
-        } else {
-            format!("!{}", include)
-        };
-        let _ = ovr.add(&pattern);
-        debug!("Added include pattern: {}", pattern);
-    }
-
-    let overrides = ovr
-        .build()
-        .map_err(|e| CodeGraphError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+    let exclude_set = build_globset(&combined_excludes);
+    let include_set = if config.include_patterns.is_empty() {
+        None
+    } else {
+        build_globset(&config.include_patterns)
+    };
 
     // Build walker with recursive setting
     let mut walker_builder = WalkBuilder::new(dir);
@@ -83,8 +67,7 @@ pub fn collect_source_files_with_config(
         .hidden(false)
         .git_ignore(true)
         .git_exclude(true)
-        .ignore(true)
-        .overrides(overrides);
+        .ignore(true);
 
     // Set max depth based on recursive flag
     if !config.recursive {
@@ -120,6 +103,18 @@ pub fn collect_source_files_with_config(
 
         total_files += 1;
 
+        if let Some(ref set) = exclude_set {
+            if set.is_match(path) {
+                continue;
+            }
+        }
+
+        if let Some(ref set) = include_set {
+            if !set.is_match(path) {
+                continue;
+            }
+        }
+
         // Filter by file extension if languages specified
         if !config.languages.is_empty() {
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
@@ -154,6 +149,31 @@ pub fn collect_source_files_with_config(
     }
 
     Ok(paths)
+}
+
+fn build_globset<S, I>(patterns: I) -> Option<GlobSet>
+where
+    S: AsRef<str>,
+    I: IntoIterator<Item = S>,
+{
+    let mut builder = GlobSetBuilder::new();
+    let mut added = false;
+
+    for pattern in patterns {
+        match Glob::new(pattern.as_ref()) {
+            Ok(glob) => {
+                builder.add(glob);
+                added = true;
+            }
+            Err(e) => warn!("Invalid glob pattern '{}': {}", pattern.as_ref(), e),
+        }
+    }
+
+    if added {
+        builder.build().ok()
+    } else {
+        None
+    }
 }
 
 /// Get supported file extensions for specified languages
