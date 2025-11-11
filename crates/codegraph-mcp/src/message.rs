@@ -313,12 +313,7 @@ mod tests {
         let msg = JsonRpcMessage::V2(JsonRpcV2Message::Request(valid_req));
         assert!(validate_message(&msg).is_ok());
 
-        let invalid_req = JsonRpcRequest {
-            jsonrpc: "1.0".to_string(),
-            id: json!(1),
-            method: "test".to_string(),
-            params: None,
-        };
+        let invalid_req = JsonRpcRequest::new(json!(1), "", None);
         let msg = JsonRpcMessage::V2(JsonRpcV2Message::Request(invalid_req));
         assert!(validate_message(&msg).is_err());
     }

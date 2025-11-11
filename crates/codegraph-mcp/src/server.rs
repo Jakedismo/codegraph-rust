@@ -1281,56 +1281,68 @@ mod tests {
     fn test_detect_search_mode_jina() {
         // Test that Jina provider triggers Cloud mode
         std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "jina");
-        assert_eq!(detect_search_mode(), SearchMode::Cloud);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Cloud);
 
         // Test case-insensitive
         std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "JINA");
-        assert_eq!(detect_search_mode(), SearchMode::Cloud);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Cloud);
 
         std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "Jina");
-        assert_eq!(detect_search_mode(), SearchMode::Cloud);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Cloud);
     }
 
     #[test]
     fn test_detect_search_mode_local() {
         // Test that 'local' provider triggers Local mode
         std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "local");
-        assert_eq!(detect_search_mode(), SearchMode::Local);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Local);
 
         // Test 'ollama' provider
         std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "ollama");
-        assert_eq!(detect_search_mode(), SearchMode::Local);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Local);
 
         // Test case-insensitive
         std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "LOCAL");
-        assert_eq!(detect_search_mode(), SearchMode::Local);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Local);
 
         std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "OLLAMA");
-        assert_eq!(detect_search_mode(), SearchMode::Local);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Local);
     }
 
     #[test]
     fn test_detect_search_mode_default() {
         // Test that empty string defaults to Local mode
         std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "");
-        assert_eq!(detect_search_mode(), SearchMode::Local);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Local);
 
         // Test that unset variable defaults to Local mode
         std::env::remove_var("CODEGRAPH_EMBEDDING_PROVIDER");
-        assert_eq!(detect_search_mode(), SearchMode::Local);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Local);
     }
 
     #[test]
     fn test_detect_search_mode_unknown() {
         // Test that unknown provider defaults to Local mode
         std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "unknown-provider");
-        assert_eq!(detect_search_mode(), SearchMode::Local);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Local);
 
         std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "anthropic");
-        assert_eq!(detect_search_mode(), SearchMode::Local);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Local);
 
         std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "openai");
-        assert_eq!(detect_search_mode(), SearchMode::Local);
+        let config_mgr = codegraph_core::config_manager::ConfigManager::load().unwrap();
+        assert_eq!(detect_search_mode(config_mgr.config()), SearchMode::Local);
     }
 
     #[test]
