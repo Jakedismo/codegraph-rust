@@ -67,8 +67,14 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_type       ON TABLE nodes COLUMNS node_type
 DEFINE INDEX IF NOT EXISTS idx_nodes_language   ON TABLE nodes COLUMNS language;
 DEFINE INDEX IF NOT EXISTS idx_nodes_file_path  ON TABLE nodes COLUMNS file_path;
 DEFINE INDEX IF NOT EXISTS idx_nodes_project    ON TABLE nodes COLUMNS project_id;
-DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_hnsw
+DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_384
+    ON TABLE nodes FIELDS embedding HNSW DIMENSION 384 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_1024
+    ON TABLE nodes FIELDS embedding HNSW DIMENSION 1024 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_2048
     ON TABLE nodes FIELDS embedding HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_4096
+    ON TABLE nodes FIELDS embedding HNSW DIMENSION 4096 DIST COSINE EFC 200 M 16;
 
 -- Composite indexes for common query patterns (P0 Enhancement)
 DEFINE INDEX IF NOT EXISTS idx_nodes_project_type ON TABLE nodes COLUMNS project_id, node_type;
