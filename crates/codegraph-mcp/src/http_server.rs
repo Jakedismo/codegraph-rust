@@ -16,7 +16,7 @@ use tracing::info;
 pub async fn start_http_server(
     server: CodeGraphMCPServer,
     config: HttpServerConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("Starting HTTP server at {}", config.bind_address());
 
     // Create session manager for stateful HTTP connections

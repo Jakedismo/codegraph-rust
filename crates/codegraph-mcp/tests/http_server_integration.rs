@@ -20,7 +20,9 @@ async fn test_http_server_health_check() {
     };
 
     let server_handle = tokio::spawn(async move {
-        let _ = start_http_server(server, config).await;
+        if let Err(e) = start_http_server(server, config).await {
+            eprintln!("Server error: {}", e);
+        }
     });
 
     // Wait for server to start
@@ -52,7 +54,9 @@ async fn test_http_mcp_initialize_request() {
     };
 
     let server_handle = tokio::spawn(async move {
-        let _ = start_http_server(server, config).await;
+        if let Err(e) = start_http_server(server, config).await {
+            eprintln!("Server error: {}", e);
+        }
     });
 
     sleep(Duration::from_millis(100)).await;
