@@ -109,11 +109,54 @@ cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,f
 ./target/release/codegraph config agent-status
 ```
 
-**Note on HTTP Transport:**
-- HTTP transport is **not yet implemented** with the official rmcp SDK
-- STDIO transport is the recommended and fully-supported mode
-- Use `codegraph start stdio` for Claude Desktop and other MCP clients
-- HTTP implementation is planned but currently incomplete
+**HTTP Transport (Experimental):**
+- HTTP transport with SSE streaming is now available
+- Requires `server-http` feature flag
+- Build: `cargo build --release --features "ai-enhanced,autoagents-experimental,faiss,ollama,server-http"`
+- Start: `./target/release/codegraph-official serve --transport http --port 3000`
+- Endpoints:
+  - `POST /mcp` - Send MCP requests (returns SSE stream)
+  - `GET /sse` - Reconnect to existing session
+  - `GET /health` - Health check
+- **Production Status**: Experimental - use STDIO for production
+- **Best For**: Web integrations, multi-client scenarios, debugging
+
+### HTTP Server Mode
+
+```bash
+# Build with HTTP support
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,ollama,server-http"
+
+# Start HTTP server (default: http://127.0.0.1:3000)
+./target/release/codegraph-official serve --transport http
+
+# Custom host and port
+./target/release/codegraph-official serve --transport http --host 0.0.0.0 --port 8080
+
+# Test with curl
+curl http://127.0.0.1:3000/health  # Should return "OK"
+
+# Send MCP initialize request
+curl -X POST http://127.0.0.1:3000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2025-06-18",
+      "capabilities": {},
+      "clientInfo": {"name": "curl", "version": "1.0"}
+    }
+  }'
+```
+
+**Environment Variables:**
+```bash
+CODEGRAPH_HTTP_HOST=127.0.0.1  # Bind address
+CODEGRAPH_HTTP_PORT=3000        # Listen port
+CODEGRAPH_HTTP_KEEP_ALIVE=15   # SSE keep-alive seconds
+```
 
 ### NAPI (Node.js Bindings)
 
