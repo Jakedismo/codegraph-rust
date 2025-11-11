@@ -96,6 +96,9 @@ make build-mcp-autoagents
 
 # Or directly with cargo
 cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,ollama"
+
+# HTTP server with AutoAgents
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,embeddings-ollama,server-http"
 ```
 
 **Without AutoAgents (default):**
@@ -650,6 +653,9 @@ cargo build --release --features "cloud,anthropic,faiss"
 
 # Everything (local + cloud)
 cargo build --release --features "all-cloud-providers,onnx,ollama,cloud,faiss"
+
+# HTTP server with AutoAgents (experimental)
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,embeddings-ollama,server-http"
 ```
 
 ---
