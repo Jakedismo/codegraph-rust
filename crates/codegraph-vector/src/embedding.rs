@@ -3,6 +3,8 @@ use crate::embeddings::generator::TextEmbeddingEngine;
 use crate::prep::chunker::{
     aggregate_chunk_embeddings, build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode,
 };
+#[cfg(feature = "ollama")]
+use crate::providers::EmbeddingProvider;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use std::{path::PathBuf, sync::Arc};
 use tokenizers::Tokenizer;
