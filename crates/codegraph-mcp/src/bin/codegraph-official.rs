@@ -5,6 +5,9 @@ use rmcp::{transport::stdio, ServiceExt};
 use std::path::PathBuf;
 use tracing::info;
 
+#[cfg(feature = "server-http")]
+use codegraph_mcp::{http_config::HttpServerConfig, http_server::start_http_server};
+
 #[derive(Parser, Debug)]
 #[command(
     name = "codegraph-official",
@@ -84,8 +87,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     service.waiting().await?;
                 }
                 "http" => {
-                    info!("HTTP transport not yet implemented in official SDK migration");
-                    return Err("HTTP transport not implemented".into());
+                    #[cfg(feature = "server-http")]
+                    {
+                        info!("Using HTTP transport with SSE streaming (official MCP protocol)");
+
+                        let http_config = HttpServerConfig {
+                            host: _host,
+                            port: _port,
+                            keep_alive_seconds: 15,
+                        };
+
+                        start_http_server(server, http_config).await?;
+                    }
+
+                    #[cfg(not(feature = "server-http"))]
+                    {
+                        return Err("HTTP transport requires 'server-http' feature. Build with: cargo build --features server-http".into());
+                    }
                 }
                 _ => {
                     return Err(format!("Unknown transport: {}", transport).into());
