@@ -24,8 +24,6 @@ pub mod graph_functions;
 #[cfg(feature = "surrealdb")]
 pub mod surrealdb_migrations;
 #[cfg(feature = "surrealdb")]
-pub mod surrealdb_schema;
-#[cfg(feature = "surrealdb")]
 pub mod surrealdb_storage;
 
 pub use cache::*;
@@ -53,7 +51,5 @@ pub use versioned_storage::*;
 pub use graph_functions::*;
 #[cfg(feature = "surrealdb")]
 pub use surrealdb_migrations::*;
-#[cfg(feature = "surrealdb")]
-pub use surrealdb_schema::*;
 #[cfg(feature = "surrealdb")]
 pub use surrealdb_storage::*;

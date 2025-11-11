@@ -62,27 +62,6 @@ impl Default for SurrealDbConfig {
     }
 }
 
-/// Flexible node representation for SurrealDB
-/// Uses serde_json::Value for schema flexibility
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SurrealNode {
-    id: String,
-    #[serde(flatten)]
-    data: HashMap<String, JsonValue>,
-}
-
-/// Edge representation for graph relationships
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SurrealEdge {
-    id: String,
-    from: String,
-    to: String,
-    edge_type: String,
-    weight: f64,
-    #[serde(flatten)]
-    metadata: HashMap<String, JsonValue>,
-}
-
 /// Schema version tracking for migrations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SchemaVersion {
@@ -1054,16 +1033,6 @@ struct SurrealNodeRecord {
     repository_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     domain: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct SurrealEdgeRecord {
-    id: String,
-    from: String,
-    to: String,
-    edge_type: String,
-    weight: f64,
-    metadata: JsonValue,
 }
 
 pub const SURR_EMBEDDING_COLUMN_384: &str = "embedding_384";

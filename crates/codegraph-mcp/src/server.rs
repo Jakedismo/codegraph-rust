@@ -1,13 +1,15 @@
-use codegraph_core::{CodeNode, GraphStore};
+use codegraph_core::CodeNode;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 // Performance optimization: Cache FAISS indexes and embedding generator
+#[cfg(feature = "faiss")]
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 
+#[cfg(feature = "cloud")]
 use crate::context_aware_limits::ContextAwareLimits;
 
 #[cfg(feature = "qwen-integration")]
@@ -35,6 +37,7 @@ static EMBEDDING_GENERATOR: Lazy<tokio::sync::OnceCell<Arc<codegraph_vector::Emb
 static JINA_RERANKER: Lazy<tokio::sync::OnceCell<Arc<codegraph_vector::JinaEmbeddingProvider>>> =
     Lazy::new(|| tokio::sync::OnceCell::new());
 
+#[cfg(feature = "embeddings")]
 static LMSTUDIO_RERANKER: Lazy<
     tokio::sync::OnceCell<Option<Arc<codegraph_vector::LmStudioReranker>>>,
 > = Lazy::new(|| tokio::sync::OnceCell::new());
@@ -892,6 +895,7 @@ async fn run_jina_reranker(_query: &str, nodes: &[CodeNode], _limit: usize) -> (
     (identity_rerank_indices(nodes.len()), false)
 }
 
+#[cfg(feature = "embeddings")]
 async fn run_lmstudio_reranker(
     query: &str,
     nodes: &[CodeNode],
@@ -932,6 +936,18 @@ async fn run_lmstudio_reranker(
     }
 }
 
+#[cfg(not(feature = "embeddings"))]
+async fn run_lmstudio_reranker(
+    _query: &str,
+    nodes: &[CodeNode],
+    _limit: usize,
+) -> (Vec<usize>, bool) {
+    tracing::debug!(
+        "LM Studio reranking requested but embeddings feature is disabled; using FAISS order"
+    );
+    (identity_rerank_indices(nodes.len()), false)
+}
+
 #[cfg(feature = "embeddings-jina")]
 async fn jina_reranker_handle() -> anyhow::Result<Arc<codegraph_vector::JinaEmbeddingProvider>> {
     JINA_RERANKER
@@ -945,6 +961,7 @@ async fn jina_reranker_handle() -> anyhow::Result<Arc<codegraph_vector::JinaEmbe
         .map(|arc| arc.clone())
 }
 
+#[cfg(feature = "embeddings")]
 async fn lmstudio_reranker_handle() -> Option<Arc<codegraph_vector::LmStudioReranker>> {
     LMSTUDIO_RERANKER
         .get_or_init(|| async { codegraph_vector::LmStudioReranker::from_env().map(Arc::new) })

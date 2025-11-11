@@ -280,19 +280,6 @@ impl<'a> RubyCollector<'a> {
             .map(|child| self.node_text(&child))
     }
 
-    fn extract_string_argument(&self, node: &Node) -> Option<String> {
-        // Extract string argument from method calls like require "gem_name"
-        for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
-                if child.kind() == "string" {
-                    let text = self.node_text(&child);
-                    return Some(text.trim_matches('"').trim_matches('\'').to_string());
-                }
-            }
-        }
-        None
-    }
-
     fn node_text(&self, node: &Node) -> String {
         node.utf8_text(self.content.as_bytes())
             .unwrap_or("")

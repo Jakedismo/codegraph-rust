@@ -67,57 +67,6 @@ impl TreeSitterParser {
         self
     }
 
-    fn get_parser_from_pool(&self, language: &Language) -> Option<Parser> {
-        let mut pool = self.parser_pool.lock();
-
-        for parser_set in pool.iter_mut() {
-            if let Some(parser) = parser_set.remove(language) {
-                return Some(parser);
-            }
-        }
-
-        // Create new parser if pool is empty
-        self.registry.create_parser(language)
-    }
-
-    fn return_parser_to_pool(&self, language: Language, parser: Parser) {
-        let mut pool = self.parser_pool.lock();
-
-        if let Some(parser_set) = pool.first_mut() {
-            parser_set.insert(language, parser);
-        } else {
-            let mut new_set = HashMap::new();
-            new_set.insert(language, parser);
-            pool.push(new_set);
-        }
-    }
-
-    async fn collect_files_recursive(&self, dir_path: &Path) -> Result<Vec<std::path::PathBuf>> {
-        // Use ignore's fast walker (in blocking context) to honor gitignore and be faster
-        let dir = dir_path.to_path_buf();
-        let registry = self.registry.clone();
-        let files: Vec<std::path::PathBuf> = tokio::task::spawn_blocking(move || {
-            let mut out = Vec::new();
-            match collect_source_files(&dir) {
-                Ok(paths) => {
-                    for (p, _size) in paths {
-                        if let Some(s) = p.to_str() {
-                            if registry.detect_language(s).is_some() {
-                                out.push(p);
-                            }
-                        }
-                    }
-                }
-                Err(_) => {}
-            }
-            out
-        })
-        .await
-        .unwrap_or_default();
-
-        Ok(files)
-    }
-
     pub async fn parse_directory_parallel(
         &self,
         dir_path: &str,

@@ -160,22 +160,8 @@ node.metadata.attributes.insert("new_field", "value");
 storage.update_node(node).await?;
 ```
 
-With migration (recommended for production):
-
-```rust
-use codegraph_graph::surrealdb_schema::*;
-
-// Create a new field definition
-let field = FieldDefinition {
-    name: "new_field".to_string(),
-    field_type: FieldType::String,
-    optional: true,
-    default: None,
-};
-
-// Add to schema
-schema_manager.add_field("nodes", field).await?;
-```
+With migration (recommended for production), add the field inside a `Migration` in
+`surrealdb_migrations.rs` so it is tracked with the rest of the schema.
 
 ### Running Migrations
 
@@ -318,20 +304,9 @@ let results = storage.db.query(query).await?;
 
 ### Schema Export/Import
 
-```rust
-use codegraph_graph::surrealdb_schema::*;
-
-let manager = SchemaManager::new(db);
-
-// Export current schema
-let schema_json = manager.export_schema().await?;
-std::fs::write("schema_backup.json", schema_json)?;
-
-// Import schema
-let schema_json = std::fs::read_to_string("schema_backup.json")?;
-manager.import_schema(&schema_json)?;
-manager.apply_schemas().await?;
-```
+Schema definitions now live entirely inside the versioned migrations. To export /
+import, snapshot the `migration_history` table or re-run migrations in a fresh
+database rather than using the old `SchemaManager` helpers.
 
 ## Performance Optimization
 
@@ -348,19 +323,9 @@ let config = SurrealDbConfig {
 
 ### Indexes
 
-Add custom indexes for common queries:
-
-```rust
-use codegraph_graph::surrealdb_schema::*;
-
-let index = IndexDefinition {
-    name: "idx_custom".to_string(),
-    columns: vec!["field1".to_string(), "field2".to_string()],
-    unique: false,
-};
-
-schema_manager.add_index("nodes", index).await?;
-```
+Add custom indexes by creating a new migration and adding the appropriate
+`DEFINE INDEX` statements. This keeps SurrealDB in sync across environments
+without relying on the removed schema manager helpers.
 
 ### Batch Operations
 
