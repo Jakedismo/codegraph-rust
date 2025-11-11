@@ -2,3 +2,4 @@
 # Install with: pip install -r requirements-test.txt
 
 python-dotenv>=1.0.0
+sseclient-py>=1.8.0
