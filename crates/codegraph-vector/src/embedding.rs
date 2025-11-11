@@ -3,7 +3,6 @@ use crate::embeddings::generator::TextEmbeddingEngine;
 use crate::prep::chunker::{
     aggregate_chunk_embeddings, build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode,
 };
-use crate::providers::EmbeddingProvider;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use std::{path::PathBuf, sync::Arc};
 use tokenizers::Tokenizer;
@@ -271,6 +270,7 @@ impl EmbeddingGenerator {
     /// This enables TOML configuration file support in addition to environment variables
     pub async fn with_config(config: &codegraph_core::CodeGraphConfig) -> Self {
         let embedding_config = &config.embedding;
+        #[allow(unused_mut)]
         let mut base = Self::new(ModelConfig {
             dimension: embedding_config.dimension,
             max_tokens: 512, // Default, could be added to config if needed

@@ -1,13 +1,16 @@
 use crate::{CacheEntry, CacheSizeEstimator, CacheStats};
 use async_trait::async_trait;
+use bincode::{
+    config::standard,
+    serde::{decode_from_slice, encode_to_vec},
+};
 use codegraph_core::{CodeGraphError, Result};
-use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, WriteBatch, DB};
+use rocksdb::{ColumnFamilyDescriptor, Options, WriteBatch, DB};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::task;
-use tracing::{debug, error, info};
+use tracing::info;
 
 /// Persistent storage backend for AI cache
 #[derive(Clone)]
@@ -135,7 +138,7 @@ impl PersistentStorage {
         T: Serialize + Send + 'static,
     {
         let stored_entry: StoredCacheEntry<T> = entry.into();
-        let serialized = bincode::serialize(&stored_entry)
+        let serialized = encode_to_vec(&stored_entry, standard())
             .map_err(|e| CodeGraphError::Database(format!("Serialization failed: {}", e)))?;
 
         let db = self.db.clone();
@@ -177,8 +180,10 @@ impl PersistentStorage {
         .map_err(|e| CodeGraphError::Database(format!("Task failed: {}", e)))??;
 
         if let Some(bytes) = data {
-            let stored_entry: StoredCacheEntry<T> = bincode::deserialize(&bytes)
-                .map_err(|e| CodeGraphError::Database(format!("Deserialization failed: {}", e)))?;
+            let (stored_entry, _bytes_read): (StoredCacheEntry<T>, usize) =
+                decode_from_slice(&bytes, standard()).map_err(|e| {
+                    CodeGraphError::Database(format!("Deserialization failed: {}", e))
+                })?;
 
             Ok(Some(stored_entry.into()))
         } else {
@@ -235,7 +240,7 @@ impl PersistentStorage {
 
             for (key, entry) in entries {
                 let stored_entry: StoredCacheEntry<T> = entry.into();
-                let serialized = bincode::serialize(&stored_entry).map_err(|e| {
+                let serialized = encode_to_vec(&stored_entry, standard()).map_err(|e| {
                     CodeGraphError::Database(format!("Serialization failed: {}", e))
                 })?;
 
@@ -325,7 +330,9 @@ impl PersistentStorage {
                     item.map_err(|e| CodeGraphError::Database(format!("Iterator failed: {}", e)))?;
 
                 // Try to deserialize and check expiration
-                if let Ok(stored_entry) = bincode::deserialize::<StoredCacheEntry<T>>(&value) {
+                if let Ok((stored_entry, _bytes_read)) =
+                    decode_from_slice::<StoredCacheEntry<T>, _>(&value, standard())
+                {
                     if let Some(ttl_secs) = stored_entry.ttl_secs {
                         if stored_entry.created_at + ttl_secs < now {
                             expired_keys.push(key.to_vec());

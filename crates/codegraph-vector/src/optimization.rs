@@ -66,14 +66,14 @@ impl OptimizationResult {
 
 pub struct ModelOptimizer {
     dimension: usize,
-    calibration_data: Option<Vec<Vec<f32>>>,
+    _calibration_data: Option<Vec<Vec<f32>>>,
 }
 
 impl ModelOptimizer {
     pub fn new(dimension: usize) -> Self {
         Self {
             dimension,
-            calibration_data: None,
+            _calibration_data: None,
         }
     }
 

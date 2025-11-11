@@ -82,7 +82,7 @@ path = "src/bin/codegraph-official.rs"
 [features]
 default = []
 faiss = ["dep:faiss"]
-embeddings = ["dep:codegraph-vector"]
+embeddings = ["dep:codegraph-vector", "codegraph-vector/lmstudio-reranker"]
 embeddings-local = ["embeddings", "codegraph-vector/local-embeddings"]
 embeddings-openai = ["embeddings", "codegraph-vector/openai"]
 embeddings-ollama = ["embeddings", "codegraph-vector/ollama"]

@@ -130,8 +130,8 @@ impl LmStudioReranker {
         let mut results: Vec<LmStudioRerankResult> = doc_embeddings
             .into_iter()
             .enumerate()
-            .map(|(idx, emb)| {
-                let score = cosine_similarity(&query_embedding, &emb);
+            .map(|(idx, emb_vec)| {
+                let score = cosine_similarity(query_embedding.as_slice(), emb_vec.as_slice());
                 LmStudioRerankResult { index: idx, score }
             })
             .collect();

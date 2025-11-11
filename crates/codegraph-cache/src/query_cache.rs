@@ -2,12 +2,10 @@ use crate::{AiCache, CacheConfig, CacheEntry, CacheSizeEstimator, CacheStats};
 use async_trait::async_trait;
 use codegraph_core::{NodeId, Result};
 use dashmap::DashMap;
-use ndarray::{Array1, Array2};
-use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use tokio::sync::RwLock as AsyncRwLock;
 
 /// Query result with metadata
@@ -302,8 +300,6 @@ impl AiCache<String, CachedQuery> for QueryCache {
     }
 
     async fn get(&mut self, key: &String) -> Result<Option<CachedQuery>> {
-        let start_time = SystemTime::now();
-
         if let Some(mut entry) = self.cache.get_mut(key) {
             // Check if expired
             if entry.is_expired() {

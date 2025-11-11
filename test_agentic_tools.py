@@ -3,12 +3,17 @@
 #
 # Automatic tester for CodeGraph Agentic MCP tools using `codegraph start stdio`.
 # - Tests all 7 agentic analysis tools with multi-step reasoning workflows
+# - Uses AutoAgents ReAct framework (experimental) for orchestration
 # - Handles long-running tasks (10-60 seconds per tool)
 # - Shows real-time progress as reasoning steps complete
 # - Loads configuration from .env file automatically
 #
 # REQUIREMENTS:
 #   - SurrealDB must be running (local or cloud)
+#   - Binary built with autoagents-experimental feature:
+#     make build-mcp-autoagents
+#     OR
+#     cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,ollama"
 #   - Python dependencies:
 #     uv sync  # Recommended (installs from pyproject.toml)
 #     OR
@@ -52,8 +57,9 @@ LLM_PROVIDER = os.environ.get("CODEGRAPH_LLM_PROVIDER", "ollama")
 LLM_MODEL = os.environ.get("CODEGRAPH_MODEL", "qwen2.5-coder:14b")
 CONTEXT_WINDOW = int(os.environ.get("CODEGRAPH_CONTEXT_WINDOW", "32768"))
 
-# Feature flags - agentic tools require ai-enhanced feature
-DEFAULT_FEATURES = "ai-enhanced,faiss,ollama"
+# Feature flags - agentic tools require ai-enhanced + autoagents-experimental
+# NOTE: The legacy orchestrator is deprecated. AutoAgents is required for agentic tools.
+DEFAULT_FEATURES = "ai-enhanced,autoagents-experimental,faiss,ollama"
 
 # Agentic tool tests - these are LONG RUNNING (10-60 seconds each)
 AGENTIC_TESTS = [
@@ -292,20 +298,26 @@ def print_config():
 def resolve_codegraph_command():
     """Determine which command should launch the CodeGraph MCP server."""
     if cmd := os.environ.get("CODEGRAPH_CMD"):
+        print(f"Using CODEGRAPH_CMD from environment")
+        print(f"⚠️  Ensure it was built with: --features \"{DEFAULT_FEATURES}\"")
         return shlex.split(cmd)
 
     if binary := os.environ.get("CODEGRAPH_BIN"):
+        print(f"Using CODEGRAPH_BIN from environment: {binary}")
+        print(f"⚠️  Ensure it was built with: --features \"{DEFAULT_FEATURES}\"")
         return [binary]
 
     repo_root = Path(__file__).resolve().parent
     release_bin = repo_root / "target" / "release" / "codegraph"
     if release_bin.exists():
         print(f"Using release binary: {release_bin}")
+        print(f"⚠️  Ensure it was built with: --features \"{DEFAULT_FEATURES}\"")
         return [str(release_bin)]
 
     debug_bin = repo_root / "target" / "debug" / "codegraph"
     if debug_bin.exists():
         print(f"Using debug binary: {debug_bin}")
+        print(f"⚠️  Ensure it was built with: --features \"{DEFAULT_FEATURES}\"")
         return [str(debug_bin)]
 
     print(f"No binary found, using cargo run with features: {DEFAULT_FEATURES}")

@@ -1,6 +1,5 @@
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
-use std::collections::HashMap;
+use codegraph_core::{CodeNode, NodeId, Result};
 use std::time::{Duration, SystemTime};
 
 /// Cache key types for different cache strategies
@@ -164,21 +163,5 @@ impl CacheSizeEstimator for String {
 impl CacheSizeEstimator for Vec<NodeId> {
     fn estimate_size(&self) -> usize {
         self.len() * std::mem::size_of::<NodeId>()
-    }
-}
-
-/// Duration extension trait for convenience
-trait DurationExt {
-    fn from_hours(hours: u64) -> Duration;
-    fn from_minutes(minutes: u64) -> Duration;
-}
-
-impl DurationExt for Duration {
-    fn from_hours(hours: u64) -> Duration {
-        Duration::from_secs(hours * 3600)
-    }
-
-    fn from_minutes(minutes: u64) -> Duration {
-        Duration::from_secs(minutes * 60)
     }
 }

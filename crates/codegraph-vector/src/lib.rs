@@ -45,6 +45,7 @@ pub mod persistent;
 pub mod storage;
 
 pub mod insights_generator;
+#[cfg(feature = "lmstudio-reranker")]
 pub mod lmstudio_reranker;
 pub mod ml;
 pub mod rag;
@@ -90,6 +91,7 @@ pub use persistent::*;
 pub use storage::*;
 
 pub use insights_generator::*;
+#[cfg(feature = "lmstudio-reranker")]
 pub use lmstudio_reranker::*;
 pub use rag::*;
 pub use reranker::*; // Re-export reranker types // Re-export insights types

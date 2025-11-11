@@ -1,6 +1,6 @@
-use crate::{AiCache, CacheEntry, CacheKey};
+use crate::AiCache;
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, NodeId, Result};
+use codegraph_core::{NodeId, Result};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -49,7 +49,7 @@ pub enum InvalidationEvent {
 /// Cache invalidation manager
 pub struct InvalidationManager {
     /// Active invalidation strategies
-    strategies: Vec<InvalidationStrategy>,
+    _strategies: Vec<InvalidationStrategy>,
     /// File to cache key mappings
     file_mappings: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     /// Node to cache key mappings
@@ -95,7 +95,7 @@ impl Default for InvalidationPolicy {
 impl InvalidationManager {
     pub fn new(strategies: Vec<InvalidationStrategy>) -> Self {
         Self {
-            strategies,
+            _strategies: strategies,
             file_mappings: Arc::new(RwLock::new(HashMap::new())),
             node_mappings: Arc::new(RwLock::new(HashMap::new())),
             dependency_mappings: Arc::new(RwLock::new(HashMap::new())),
@@ -106,7 +106,7 @@ impl InvalidationManager {
 
     /// Start automatic cleanup with specified interval
     pub fn start_cleanup(&mut self, interval_duration: Duration) {
-        let mut cleanup_interval = interval(interval_duration);
+        let cleanup_interval = interval(interval_duration);
         self.cleanup_interval = Some(cleanup_interval);
     }
 
@@ -217,7 +217,7 @@ impl InvalidationManager {
     where
         T: Clone + Send + Sync,
     {
-        let mut removed_count = 0;
+        let removed_count = 0;
 
         // This is a simplified implementation
         // In a real implementation, we'd need access to cache internals

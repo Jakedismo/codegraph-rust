@@ -1,12 +1,11 @@
-use crate::{AiCache, CacheConfig, CacheEntry, CacheKey, CacheSizeEstimator, CacheStats};
+use crate::{AiCache, CacheConfig, CacheEntry, CacheSizeEstimator, CacheStats};
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};
+use codegraph_core::{CodeNode, NodeId, Result};
 use dashmap::DashMap;
-use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use tokio::sync::RwLock as AsyncRwLock;
 
 /// High-performance embedding cache with LRU eviction and compression
@@ -185,8 +184,6 @@ impl EmbeddingCache {
 #[async_trait]
 impl AiCache<String, Vec<f32>> for EmbeddingCache {
     async fn insert(&mut self, key: String, value: Vec<f32>, ttl: Option<Duration>) -> Result<()> {
-        let start_time = SystemTime::now();
-
         // Compress if configured
         let compressed_value = self.maybe_compress(value);
         let size_bytes = compressed_value.estimate_size() + key.len();
@@ -221,8 +218,6 @@ impl AiCache<String, Vec<f32>> for EmbeddingCache {
     }
 
     async fn get(&mut self, key: &String) -> Result<Option<Vec<f32>>> {
-        let start_time = SystemTime::now();
-
         if let Some(mut entry) = self.cache.get_mut(key) {
             // Check if expired
             if entry.is_expired() {

@@ -555,7 +555,7 @@ impl MLPipeline {
         let mut feature_count = 0;
 
         // Compare syntactic features
-        if let (Some(recent_syntactic), Some(baseline_syntactic)) = (
+        if let (Some(_recent_syntactic), Some(_baseline_syntactic)) = (
             recent_features.first().and_then(|f| f.syntactic.as_ref()),
             baseline_features.first().and_then(|f| f.syntactic.as_ref()),
         ) {
