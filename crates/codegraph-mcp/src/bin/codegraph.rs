@@ -884,7 +884,7 @@ async fn handle_start(
             }
 
             // Create and initialize the revolutionary CodeGraph server with official SDK
-            let mut server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
+            let server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
             server.initialize_qwen().await;
 
             if atty::is(Stream::Stderr) {
@@ -912,11 +912,11 @@ async fn handle_start(
                 .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
         }
         TransportType::Http {
-            host,
-            port,
-            tls,
-            cert,
-            key,
+            host: _host,
+            port: _port,
+            tls: _tls,
+            cert: _cert,
+            key: _key,
             cors: _,
         } => {
             #[cfg(not(feature = "server-http"))]
@@ -1637,6 +1637,8 @@ async fn handle_search(
     langs: Option<Vec<String>>,
     expand_graph: usize,
 ) -> Result<()> {
+    #[cfg(not(feature = "faiss"))]
+    let _ = (&limit, &format, &paths, &langs, &expand_graph);
     println!("{}", format!("Searching for: '{}'", query).magenta().bold());
     println!("Search type: {:?}", search_type);
     println!();
@@ -1654,6 +1656,9 @@ async fn handle_search(
         let e = codegraph_mcp::indexer::simple_text_embedding(&query, dimension);
         codegraph_mcp::indexer::normalize(&e)
     };
+
+    #[cfg(not(feature = "faiss"))]
+    let _ = &emb;
 
     #[cfg(feature = "faiss")]
     {

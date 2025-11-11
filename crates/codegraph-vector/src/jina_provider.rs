@@ -101,6 +101,67 @@ impl Default for JinaConfig {
     }
 }
 
+impl From<&codegraph_core::EmbeddingConfig> for JinaConfig {
+    fn from(config: &codegraph_core::EmbeddingConfig) -> Self {
+        // Get API key from config or env var
+        let api_key = config
+            .jina_api_key
+            .clone()
+            .or_else(|| std::env::var("JINA_API_KEY").ok())
+            .unwrap_or_default();
+
+        // Get model from config, fallback to env var, then to default
+        let model = config
+            .model
+            .clone()
+            .or_else(|| std::env::var("CODEGRAPH_EMBEDDING_MODEL").ok())
+            .or_else(|| std::env::var("JINA_EMBEDDINGS_MODEL").ok())
+            .unwrap_or_else(|| "jina-embeddings-v4".to_string());
+
+        Self {
+            api_key,
+            model,
+            api_base: config.jina_api_base.clone(),
+            max_retries: 3,
+            timeout: Duration::from_secs(30),
+            task: config.jina_task.clone(),
+            late_chunking: config.jina_late_chunking,
+            truncate: std::env::var("JINA_TRUNCATE")
+                .map(|v| v != "false")
+                .unwrap_or(true),
+            enable_reranking: config.jina_enable_reranking,
+            reranking_model: config.jina_reranking_model.clone(),
+            reranking_top_n: config.jina_reranking_top_n,
+            batch_size: config.batch_size.max(1),
+            max_concurrent: 10,
+            max_tokens_per_text: std::env::var("JINA_MAX_TOKENS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2048),
+            max_texts_per_request: std::env::var("JINA_MAX_TEXTS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(16)
+                .clamp(1, MAX_NODE_TEXTS_HARD_LIMIT),
+            request_delay_ms: std::env::var("JINA_REQUEST_DELAY_MS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
+            relationship_batch_size: std::env::var("JINA_REL_BATCH_SIZE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(32)
+                .max(1)
+                .min(MAX_REL_TEXTS_HARD_LIMIT),
+            relationship_max_texts_per_request: std::env::var("JINA_REL_MAX_TEXTS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(32)
+                .clamp(1, MAX_REL_TEXTS_HARD_LIMIT),
+        }
+    }
+}
+
 /// Jina API request structure for embeddings
 #[derive(Debug, Serialize)]
 struct EmbeddingRequest {

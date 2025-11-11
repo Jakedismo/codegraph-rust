@@ -3,6 +3,7 @@ use crate::embeddings::generator::TextEmbeddingEngine;
 use crate::prep::chunker::{
     aggregate_chunk_embeddings, build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode,
 };
+use crate::providers::EmbeddingProvider;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use std::{path::PathBuf, sync::Arc};
 use tokenizers::Tokenizer;
@@ -263,6 +264,79 @@ impl EmbeddingGenerator {
                 }
             }
         }
+        base
+    }
+
+    /// Construct an EmbeddingGenerator from a CodeGraphConfig
+    /// This enables TOML configuration file support in addition to environment variables
+    pub async fn with_config(config: &codegraph_core::CodeGraphConfig) -> Self {
+        let embedding_config = &config.embedding;
+        let mut base = Self::new(ModelConfig {
+            dimension: embedding_config.dimension,
+            max_tokens: 512, // Default, could be added to config if needed
+            model_name: embedding_config
+                .model
+                .clone()
+                .unwrap_or_else(|| "auto".to_string()),
+        });
+
+        let provider = embedding_config.provider.to_lowercase();
+
+        if provider == "ollama" {
+            #[cfg(feature = "ollama")]
+            {
+                let ollama_config =
+                    crate::ollama_embedding_provider::OllamaEmbeddingConfig::from(embedding_config);
+                let ollama_provider =
+                    crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(ollama_config);
+
+                match ollama_provider.check_availability().await {
+                    Ok(true) => {
+                        tracing::info!(
+                            "✅ Ollama {} available for embeddings (from config)",
+                            embedding_config
+                                .model
+                                .as_ref()
+                                .unwrap_or(&"nomic-embed-code".to_string())
+                        );
+                        base.model_config.dimension = ollama_provider.embedding_dimension();
+                        base.ollama_provider = Some(ollama_provider);
+                    }
+                    Ok(false) => {
+                        tracing::warn!(
+                            "⚠️ Ollama model {} not found. Install with: ollama pull <model>",
+                            embedding_config
+                                .model
+                                .as_ref()
+                                .unwrap_or(&"nomic-embed-code".to_string())
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to connect to Ollama for embeddings: {}", e);
+                    }
+                }
+            }
+        } else if provider == "jina" {
+            #[cfg(feature = "jina")]
+            {
+                let jina_config = crate::jina_provider::JinaConfig::from(embedding_config);
+                match crate::jina_provider::JinaEmbeddingProvider::new(jina_config) {
+                    Ok(provider) => {
+                        tracing::info!("✅ Jina embeddings initialized (from config)");
+                        base.model_config.dimension = provider.embedding_dimension();
+                        base.jina_provider = Some(provider);
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to initialize Jina embeddings: {}", e);
+                        tracing::error!(
+                            "   Make sure jina_api_key is set in config or JINA_API_KEY env var"
+                        );
+                    }
+                }
+            }
+        }
+        // Add other providers (ONNX, local, etc.) as needed following the same pattern
+
         base
     }
 

@@ -860,7 +860,6 @@ impl ProjectIndexer {
                 )
             };
 
-            let mut stored_edges_local = 0;
             let mut unresolved_edges = 0;
             let mut exact_matches = 0;
             let mut pattern_matches = 0;
@@ -1032,7 +1031,7 @@ impl ProjectIndexer {
                 edge_pb.set_position(bulk_success as u64);
             }
 
-            stored_edges_local = bulk_success;
+            let stored_edges_local = bulk_success;
             let bulk_time = bulk_start_time.elapsed();
             info!(
                 "💾 M4 MAX OPTIMIZED: {} edges stored in {:.2}s ({:.0} edges/s)",

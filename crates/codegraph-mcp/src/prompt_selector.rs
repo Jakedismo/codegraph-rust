@@ -37,6 +37,7 @@ use crate::semantic_question_prompts::{
 };
 use crate::Result;
 use std::collections::HashMap;
+#[cfg(feature = "ai-enhanced")]
 use tracing::debug;
 
 /// Types of code analysis that can be performed
@@ -286,15 +287,6 @@ impl PromptSelector {
                 PromptVerbosity::Exploratory => SEMANTIC_QUESTION_EXPLORATORY.to_string(),
             },
         }
-    }
-
-    #[cfg(not(feature = "ai-enhanced"))]
-    fn generate_default_prompt(
-        &self,
-        _analysis_type: AnalysisType,
-        _verbosity: PromptVerbosity,
-    ) -> String {
-        String::new()
     }
 
     /// Get statistics about loaded prompts

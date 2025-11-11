@@ -292,7 +292,7 @@ impl MigrationRunner {
 
     /// List all migrations and their status
     pub async fn status(&self) -> Result<Vec<MigrationStatus>> {
-        let current_version = self.get_current_version().await?;
+        let _current_version = self.get_current_version().await?;
 
         let query = "SELECT * FROM schema_versions ORDER BY version";
         let mut result =

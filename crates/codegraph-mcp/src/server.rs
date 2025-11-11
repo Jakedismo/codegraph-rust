@@ -1,12 +1,22 @@
+#[cfg(any(feature = "faiss", feature = "cloud"))]
 use codegraph_core::CodeNode;
-use serde_json::{json, Value};
+use serde_json::Value;
+#[cfg(any(feature = "faiss", feature = "cloud", feature = "legacy-mcp-server"))]
+use serde_json::json;
+#[cfg(any(feature = "faiss", feature = "legacy-mcp-server"))]
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(any(feature = "faiss", feature = "cloud", feature = "legacy-mcp-server"))]
 use std::time::Instant;
 
 // Performance optimization: Cache FAISS indexes and embedding generator
 #[cfg(feature = "faiss")]
 use dashmap::DashMap;
+#[cfg(any(
+    feature = "faiss",
+    feature = "embeddings",
+    feature = "embeddings-jina"
+))]
 use once_cell::sync::Lazy;
 
 #[cfg(feature = "cloud")]
@@ -37,12 +47,13 @@ static EMBEDDING_GENERATOR: Lazy<tokio::sync::OnceCell<Arc<codegraph_vector::Emb
 static JINA_RERANKER: Lazy<tokio::sync::OnceCell<Arc<codegraph_vector::JinaEmbeddingProvider>>> =
     Lazy::new(|| tokio::sync::OnceCell::new());
 
-#[cfg(feature = "embeddings")]
+#[cfg(all(feature = "embeddings", any(feature = "faiss", feature = "cloud")))]
 static LMSTUDIO_RERANKER: Lazy<
     tokio::sync::OnceCell<Option<Arc<codegraph_vector::LmStudioReranker>>>,
 > = Lazy::new(|| tokio::sync::OnceCell::new());
 
 // Query result cache for 100x speedup on repeated queries
+#[cfg(feature = "faiss")]
 static QUERY_RESULT_CACHE: Lazy<
     parking_lot::Mutex<lru::LruCache<String, (Value, std::time::SystemTime)>>,
 > = Lazy::new(|| {
@@ -84,6 +95,7 @@ fn detect_search_mode(config: &codegraph_core::config_manager::CodeGraphConfig) 
     }
 }
 
+#[cfg(feature = "faiss")]
 fn resolve_embedding_dimension(config: &codegraph_core::config_manager::CodeGraphConfig) -> usize {
     std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
         .ok()
@@ -93,31 +105,7 @@ fn resolve_embedding_dimension(config: &codegraph_core::config_manager::CodeGrap
 }
 
 /// Performance timing breakdown for search operations
-#[derive(Debug, Clone)]
-struct SearchTiming {
-    embedding_generation_ms: u64,
-    index_loading_ms: u64,
-    search_execution_ms: u64,
-    node_loading_ms: u64,
-    formatting_ms: u64,
-    total_ms: u64,
-}
-
-impl SearchTiming {
-    fn to_json(&self) -> Value {
-        json!({
-            "timing_breakdown_ms": {
-                "embedding_generation": self.embedding_generation_ms,
-                "index_loading": self.index_loading_ms,
-                "search_execution": self.search_execution_ms,
-                "node_loading": self.node_loading_ms,
-                "formatting": self.formatting_ms,
-                "total": self.total_ms
-            }
-        })
-    }
-}
-
+#[cfg(feature = "legacy-mcp-server")]
 #[derive(Clone)]
 pub struct CodeGraphServer {
     graph: Arc<codegraph_graph::CodeGraph>,
@@ -126,6 +114,7 @@ pub struct CodeGraphServer {
     qwen_client: Option<Arc<QwenClient>>,
 }
 
+#[cfg(feature = "legacy-mcp-server")]
 impl CodeGraphServer {
     /// Create a new CodeGraphServer with a shared graph instance
     pub fn new(graph: Arc<codegraph_graph::CodeGraph>) -> Self {
@@ -418,8 +407,9 @@ impl CodeGraphServer {
 
 // --- Tool Implementation Functions ---
 
+#[cfg(feature = "legacy-mcp-server")]
 async fn index_directory_tool(
-    graph: &codegraph_graph::CodeGraph,
+    _graph: &codegraph_graph::CodeGraph,
     path: &str,
     languages: Option<Vec<String>>,
 ) -> anyhow::Result<Value> {
@@ -495,7 +485,7 @@ async fn get_embedding_generator() -> anyhow::Result<Arc<codegraph_vector::Embed
         .map(|arc| arc.clone())
 }
 
-#[cfg(feature = "embeddings")]
+#[cfg(all(feature = "legacy-mcp-server", feature = "embeddings"))]
 async fn index_embeddings_tool(
     _graph: &codegraph_graph::CodeGraph,
     _paths: Option<Vec<String>>,
@@ -753,10 +743,12 @@ async fn faiss_search_impl(
     Ok(result)
 }
 
+#[cfg(any(feature = "faiss", feature = "cloud"))]
 fn identity_rerank_indices(len: usize) -> Vec<usize> {
     (0..len).collect()
 }
 
+#[cfg(any(feature = "faiss", feature = "cloud"))]
 fn rerank_candidate_limit(nodes_len: usize, limit: usize) -> usize {
     let env_override = std::env::var("CODEGRAPH_RERANK_CANDIDATES")
         .ok()
@@ -772,6 +764,7 @@ fn rerank_candidate_limit(nodes_len: usize, limit: usize) -> usize {
     env_override.unwrap_or(default_window).min(nodes_len).max(1)
 }
 
+#[cfg(any(feature = "faiss", feature = "cloud"))]
 fn build_rerank_documents(nodes: &[CodeNode], count: usize) -> Vec<String> {
     nodes
         .iter()
@@ -789,6 +782,7 @@ fn build_rerank_documents(nodes: &[CodeNode], count: usize) -> Vec<String> {
         .collect()
 }
 
+#[cfg(any(feature = "faiss", feature = "cloud"))]
 fn merge_rerank_indices(
     nodes_len: usize,
     candidate_count: usize,
@@ -817,6 +811,7 @@ fn merge_rerank_indices(
     merged
 }
 
+#[cfg(any(feature = "faiss", feature = "cloud"))]
 async fn run_reranker_if_available(
     query: &str,
     nodes: &[CodeNode],
@@ -887,7 +882,7 @@ async fn run_jina_reranker(query: &str, nodes: &[CodeNode], limit: usize) -> (Ve
     }
 }
 
-#[cfg(not(feature = "embeddings-jina"))]
+#[cfg(all(any(feature = "faiss", feature = "cloud"), not(feature = "embeddings-jina")))]
 async fn run_jina_reranker(_query: &str, nodes: &[CodeNode], _limit: usize) -> (Vec<usize>, bool) {
     tracing::debug!(
         "Jina reranking requested but embeddings-jina feature is disabled; using FAISS order"
@@ -895,7 +890,7 @@ async fn run_jina_reranker(_query: &str, nodes: &[CodeNode], _limit: usize) -> (
     (identity_rerank_indices(nodes.len()), false)
 }
 
-#[cfg(feature = "embeddings")]
+#[cfg(all(feature = "embeddings", any(feature = "faiss", feature = "cloud")))]
 async fn run_lmstudio_reranker(
     query: &str,
     nodes: &[CodeNode],
@@ -936,7 +931,7 @@ async fn run_lmstudio_reranker(
     }
 }
 
-#[cfg(not(feature = "embeddings"))]
+#[cfg(all(any(feature = "faiss", feature = "cloud"), not(feature = "embeddings")))]
 async fn run_lmstudio_reranker(
     _query: &str,
     nodes: &[CodeNode],
@@ -961,7 +956,7 @@ async fn jina_reranker_handle() -> anyhow::Result<Arc<codegraph_vector::JinaEmbe
         .map(|arc| arc.clone())
 }
 
-#[cfg(feature = "embeddings")]
+#[cfg(all(feature = "embeddings", any(feature = "faiss", feature = "cloud")))]
 async fn lmstudio_reranker_handle() -> Option<Arc<codegraph_vector::LmStudioReranker>> {
     LMSTUDIO_RERANKER
         .get_or_init(|| async { codegraph_vector::LmStudioReranker::from_env().map(Arc::new) })
@@ -970,6 +965,7 @@ async fn lmstudio_reranker_handle() -> Option<Arc<codegraph_vector::LmStudioRera
 }
 
 /// Shared implementation for bin_search_with_scores with dual-mode support
+#[cfg(feature = "faiss")]
 #[cfg(feature = "faiss")]
 pub async fn bin_search_with_scores_shared(
     query: String,

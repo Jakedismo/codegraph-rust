@@ -214,7 +214,7 @@ impl GraphDeltaProcessor {
         let affected_nodes_set: Arc<DashMap<NodeId, ()>> = Arc::new(DashMap::new());
 
         // Process removals
-        old_nodes.par_iter().for_each(|(old_id, old_node)| {
+        old_nodes.par_iter().for_each(|(old_id, _old_node)| {
             if !new_nodes.contains_key(old_id) {
                 operations_map.insert(old_id.clone(), DeltaOperation::RemoveNode(old_id.clone()));
                 affected_nodes_set.insert(old_id.clone(), ());

@@ -44,8 +44,12 @@ DEFINE FIELD IF NOT EXISTS embedding_384   ON TABLE nodes TYPE option<array<floa
     ASSERT array::len($value) = 384;
 DEFINE FIELD IF NOT EXISTS embedding_1024   ON TABLE nodes TYPE option<array<float>>
     ASSERT array::len($value) = 1024;
+DEFINE FIELD IF NOT EXISTS embedding_1536   ON TABLE nodes TYPE option<array<float>>
+    ASSERT array::len($value) = 1536;
 DEFINE FIELD IF NOT EXISTS embedding_2048   ON TABLE nodes TYPE option<array<float>>
     ASSERT array::len($value) = 2048;
+DEFINE FIELD IF NOT EXISTS embedding_3072   ON TABLE nodes TYPE option<array<float>>
+    ASSERT array::len($value) = 3072;
 DEFINE FIELD IF NOT EXISTS embedding_4096   ON TABLE nodes TYPE option<array<float>>
     ASSERT array::len($value) = 4096;
 DEFINE FIELD IF NOT EXISTS embedding_model ON nodes TYPE option<string> DEFAULT 'jina-embeddings-v4';
@@ -70,8 +74,12 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_384
     ON TABLE nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 200 M 16;
 DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_1024
     ON TABLE nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_1536
+    ON TABLE nodes FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE EFC 200 M 16;
 DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_2048
     ON TABLE nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_3072
+    ON TABLE nodes FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE EFC 200 M 16;
 DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_4096
     ON TABLE nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 200 M 16;
 
@@ -177,8 +185,12 @@ DEFINE FIELD IF NOT EXISTS embedding_384   ON TABLE symbol_embeddings TYPE optio
     ASSERT array::len($value) = 384;
 DEFINE FIELD IF NOT EXISTS embedding_1024   ON TABLE symbol_embeddings TYPE option<array<float>>
     ASSERT array::len($value) = 1024;
+DEFINE FIELD IF NOT EXISTS embedding_1536   ON TABLE symbol_embeddings TYPE option<array<float>>
+    ASSERT array::len($value) = 1536;
 DEFINE FIELD IF NOT EXISTS embedding_2048   ON TABLE symbol_embeddings TYPE option<array<float>>
     ASSERT array::len($value) = 2048;
+DEFINE FIELD IF NOT EXISTS embedding_3072   ON TABLE symbol_embeddings TYPE option<array<float>>
+    ASSERT array::len($value) = 3072;
 DEFINE FIELD IF NOT EXISTS embedding_4096   ON TABLE symbol_embeddings TYPE option<array<float>>
     ASSERT array::len($value) = 4096;
 DEFINE FIELD IF NOT EXISTS embedding_384[*]  ON symbol_embeddings TYPE float;
@@ -202,9 +214,15 @@ DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector_384
 DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector_1024
     ON symbol_embeddings FIELDS embedding_1024
     HNSW DIMENSION 1024 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector_1536
+    ON symbol_embeddings FIELDS embedding_1536
+    HNSW DIMENSION 1536 DIST COSINE EFC 200 M 16;
 DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector_2048
     ON symbol_embeddings FIELDS embedding_2048
     HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector_3072
+    ON symbol_embeddings FIELDS embedding_3072
+    HNSW DIMENSION 3072 DIST COSINE EFC 200 M 16;
 DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector_4096
     ON symbol_embeddings FIELDS embedding_4096
     HNSW DIMENSION 4096 DIST COSINE EFC 200 M 16;

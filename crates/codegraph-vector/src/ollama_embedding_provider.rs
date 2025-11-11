@@ -8,7 +8,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::providers::{
     BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
@@ -37,6 +37,28 @@ impl Default for OllamaEmbeddingConfig {
                 .unwrap_or_else(|_| "nomic-embed-code".to_string()),
             base_url: std::env::var("CODEGRAPH_OLLAMA_URL")
                 .unwrap_or_else(|_| "http://localhost:11434".to_string()),
+            timeout: Duration::from_secs(60),
+            batch_size,
+            max_retries: 3,
+        }
+    }
+}
+
+impl From<&codegraph_core::EmbeddingConfig> for OllamaEmbeddingConfig {
+    fn from(config: &codegraph_core::EmbeddingConfig) -> Self {
+        // Use model from config, fallback to env var, then to default
+        let model_name = config
+            .model
+            .clone()
+            .or_else(|| std::env::var("CODEGRAPH_EMBEDDING_MODEL").ok())
+            .unwrap_or_else(|| "nomic-embed-code".to_string());
+
+        // Use batch_size from config (already has env var fallback in config loading)
+        let batch_size = config.batch_size.clamp(1, 4096);
+
+        Self {
+            model_name,
+            base_url: config.ollama_url.clone(),
             timeout: Duration::from_secs(60),
             batch_size,
             max_retries: 3,
@@ -321,7 +343,7 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
     }
 
     /// Get the embedding dimension for this provider
-    pub fn embedding_dimension(&self) -> usize {
+    fn embedding_dimension(&self) -> usize {
         infer_dimension_for_model(&self.config.model_name)
     }
 
@@ -354,7 +376,7 @@ pub fn create_ollama_provider_with_model(model_name: String) -> OllamaEmbeddingP
 }
 
 fn infer_dimension_for_model(model: &str) -> usize {
-    if let Ok(dim) = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
+    if let Some(dim) = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
     {
