@@ -613,11 +613,26 @@ impl SurrealDbStorage {
         }
 
         for record in records {
-            self
-                .db
-                .query(
-                    "UPDATE type::thing('nodes', $id) SET embedding = $embedding, updated_at = time::now();",
-                )
+            let column = match record.column {
+                SURR_EMBEDDING_COLUMN_384 => SURR_EMBEDDING_COLUMN_384,
+                SURR_EMBEDDING_COLUMN_1024 => SURR_EMBEDDING_COLUMN_1024,
+                SURR_EMBEDDING_COLUMN_2048 => SURR_EMBEDDING_COLUMN_2048,
+                SURR_EMBEDDING_COLUMN_4096 => SURR_EMBEDDING_COLUMN_4096,
+                other => {
+                    return Err(CodeGraphError::Database(format!(
+                        "Unsupported embedding column '{}'",
+                        other
+                    )))
+                }
+            };
+
+            let query = format!(
+                "UPDATE type::thing('nodes', $id) SET {} = $embedding, updated_at = time::now();",
+                column
+            );
+
+            self.db
+                .query(query)
                 .bind(("id", record.id.clone()))
                 .bind(("embedding", record.embedding.clone()))
                 .await
@@ -768,6 +783,7 @@ impl SurrealDbStorage {
     pub async fn update_node_embedding(&self, node_id: NodeId, embedding: &[f32]) -> Result<()> {
         let record = NodeEmbeddingRecord {
             id: node_id.to_string(),
+            column: SURR_EMBEDDING_COLUMN_2048,
             embedding: embedding.iter().map(|&f| f as f64).collect(),
             updated_at: Utc::now(),
         };
@@ -1018,9 +1034,15 @@ struct SurrealEdgeRecord {
     metadata: JsonValue,
 }
 
-#[derive(Debug, Clone, Serialize)]
+pub const SURR_EMBEDDING_COLUMN_384: &str = "embedding_384";
+pub const SURR_EMBEDDING_COLUMN_1024: &str = "embedding_1024";
+pub const SURR_EMBEDDING_COLUMN_2048: &str = "embedding_2048";
+pub const SURR_EMBEDDING_COLUMN_4096: &str = "embedding_4096";
+
+#[derive(Debug, Clone)]
 pub struct NodeEmbeddingRecord {
     pub id: String,
+    pub column: &'static str,
     pub embedding: Vec<f64>,
     pub updated_at: DateTime<Utc>,
 }

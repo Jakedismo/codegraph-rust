@@ -9,7 +9,8 @@ use codegraph_ai::SemanticSearchEngine;
 use codegraph_core::{CodeNode, EdgeRelationship, NodeId, NodeType};
 use codegraph_graph::{
     edge::CodeEdge, NodeEmbeddingRecord, ProjectMetadataRecord, SurrealDbConfig, SurrealDbStorage,
-    SymbolEmbeddingRecord,
+    SymbolEmbeddingRecord, SURR_EMBEDDING_COLUMN_1024, SURR_EMBEDDING_COLUMN_2048,
+    SURR_EMBEDDING_COLUMN_384, SURR_EMBEDDING_COLUMN_4096,
 };
 use codegraph_parser::{get_ai_pattern_learner, TreeSitterParser};
 #[cfg(feature = "ai-enhanced")]
@@ -33,6 +34,34 @@ use std::sync::Arc;
 use std::collections::HashMap;
 
 const SYMBOL_EMBEDDING_DB_BATCH_LIMIT: usize = 256;
+
+#[derive(Clone, Copy, Debug)]
+enum SurrealEmbeddingColumn {
+    Embedding384,
+    Embedding1024,
+    Embedding2048,
+    Embedding4096,
+}
+
+impl SurrealEmbeddingColumn {
+    fn column_name(&self) -> &'static str {
+        match self {
+            SurrealEmbeddingColumn::Embedding384 => SURR_EMBEDDING_COLUMN_384,
+            SurrealEmbeddingColumn::Embedding1024 => SURR_EMBEDDING_COLUMN_1024,
+            SurrealEmbeddingColumn::Embedding2048 => SURR_EMBEDDING_COLUMN_2048,
+            SurrealEmbeddingColumn::Embedding4096 => SURR_EMBEDDING_COLUMN_4096,
+        }
+    }
+
+    fn dimension(&self) -> usize {
+        match self {
+            SurrealEmbeddingColumn::Embedding384 => 384,
+            SurrealEmbeddingColumn::Embedding1024 => 1024,
+            SurrealEmbeddingColumn::Embedding2048 => 2048,
+            SurrealEmbeddingColumn::Embedding4096 => 4096,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct IndexerConfig {
@@ -101,6 +130,7 @@ pub struct ProjectIndexer {
     domain: Option<String>,
     embedding_model: String,
     vector_dim: usize,
+    embedding_column: SurrealEmbeddingColumn,
     project_root: PathBuf,
     #[cfg(feature = "embeddings")]
     embedder: codegraph_vector::EmbeddingGenerator,
@@ -426,7 +456,8 @@ impl ProjectIndexer {
             .model
             .clone()
             .unwrap_or_else(|| "jina-embeddings-v4".to_string());
-        let vector_dim = {
+
+        let embedder_dimension = {
             #[cfg(feature = "embeddings")]
             {
                 embedder.dimension()
@@ -436,6 +467,17 @@ impl ProjectIndexer {
                 config.vector_dimension
             }
         };
+
+        let env_vector_dim = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok());
+        let vector_dim = env_vector_dim.unwrap_or(embedder_dimension);
+        let embedding_column = resolve_surreal_embedding_column(vector_dim).with_context(|| {
+            format!(
+                "Unsupported embedding dimension {}. Supported dimensions: 384, 1024, 2048, 4096.",
+                vector_dim
+            )
+        })?;
 
         Ok(Self {
             config,
@@ -450,6 +492,7 @@ impl ProjectIndexer {
             domain,
             embedding_model: embedding_model_name,
             vector_dim,
+            embedding_column,
             project_root,
             #[cfg(feature = "embeddings")]
             embedder,
@@ -589,6 +632,10 @@ impl ProjectIndexer {
             "   🤖 Provider: {} ({}-dimensional embeddings)",
             provider, self.vector_dim
         );
+        info!(
+            "   🗄️ SurrealDB column: {}",
+            self.embedding_column.column_name()
+        );
         info!("   📊 Nodes to embed: {} semantic entities", total);
         info!(
             "   ⚡ Batch size: {} (optimized for {} system)",
@@ -636,8 +683,13 @@ impl ProjectIndexer {
 
         let provider = &self.global_config.embedding.provider;
         let embed_completion_msg = format!(
-            "💾 Semantic embeddings complete: {}/{} nodes (✅ {:.1}% success) | 🤖 {} | 📐 384-dim | 🚀 Batch: {}",
-            processed, total, embedding_rate, provider, self.config.batch_size
+            "💾 Semantic embeddings complete: {}/{} nodes (✅ {:.1}% success) | 🤖 {} | 📐 {}-dim | 🚀 Batch: {}",
+            processed,
+            total,
+            embedding_rate,
+            provider,
+            self.vector_dim,
+            self.config.batch_size
         );
         embed_pb.finish_with_message(embed_completion_msg);
 
@@ -649,7 +701,7 @@ impl ProjectIndexer {
             "   🎯 Vector search enabled: {} nodes embedded for similarity matching",
             processed
         );
-        info!("   📐 Embedding dimensions: 384 (all-MiniLM-L6-v2 compatible)");
+        info!("   📐 Embedding dimensions: {}", self.vector_dim);
         info!(
             "   🤖 Provider performance: {} with batch optimization",
             provider
@@ -1057,6 +1109,7 @@ impl ProjectIndexer {
         }
 
         // ELIMINATED: No separate edge processing phase needed - edges extracted during parsing!
+        self.log_surreal_edge_count(stored_edges).await;
 
         // Persist project metadata summary into SurrealDB
         self.persist_project_metadata(&stats, total_nodes_extracted, total_edges_extracted)
@@ -1086,8 +1139,8 @@ impl ProjectIndexer {
             total_edges_extracted
         );
         info!(
-            "│ 💾 Vector embeddings: {} (384-dim {})                         │",
-            stats.embeddings, provider
+            "│ 💾 Vector embeddings: {} ({}-dim {})                         │",
+            stats.embeddings, self.vector_dim, provider
         );
         info!(
             "│ 🎯 Dependency resolution: {:.1}% success ({}/{} edges stored)   │",
@@ -1952,12 +2005,40 @@ impl ProjectIndexer {
         }
     }
 
+    async fn log_surreal_edge_count(&self, expected: usize) {
+        let db = {
+            let storage = self.surreal.lock().await;
+            storage.db()
+        };
+
+        match db.query("SELECT VALUE count() FROM edges").await {
+            Ok(mut resp) => match resp.take::<Option<i64>>(0) {
+                Ok(count_opt) => {
+                    let count = count_opt.unwrap_or(0);
+                    info!(
+                        "🗄️ SurrealDB edges persisted: {} (expected ≈ {})",
+                        count, expected
+                    );
+                    if count < expected as i64 {
+                        warn!(
+                            "⚠️ Edge count ({}) is lower than resolved edges ({}). Verify SurrealDB schema and filters.",
+                            count, expected
+                        );
+                    }
+                }
+                Err(e) => warn!("⚠️ Failed to read SurrealDB edge count: {}", e),
+            },
+            Err(e) => warn!("⚠️ SurrealDB edge count query failed: {}", e),
+        }
+    }
+
     async fn persist_node_embeddings(&self, nodes: &[CodeNode]) -> Result<()> {
         let mut records = Vec::new();
         for node in nodes {
             if let Some(embedding) = &node.embedding {
                 records.push(NodeEmbeddingRecord {
                     id: node.id.to_string(),
+                    column: self.embedding_column.column_name(),
                     embedding: embedding.iter().map(|&v| v as f64).collect(),
                     updated_at: chrono::Utc::now(),
                 });
@@ -2267,6 +2348,19 @@ fn symbol_embedding_db_batch_size() -> usize {
         .and_then(|value| value.parse::<usize>().ok())
         .map(|parsed| parsed.clamp(1, MAX))
         .unwrap_or(SYMBOL_EMBEDDING_DB_BATCH_LIMIT)
+}
+
+fn resolve_surreal_embedding_column(dim: usize) -> Result<SurrealEmbeddingColumn> {
+    match dim {
+        384 => Ok(SurrealEmbeddingColumn::Embedding384),
+        1024 => Ok(SurrealEmbeddingColumn::Embedding1024),
+        2048 => Ok(SurrealEmbeddingColumn::Embedding2048),
+        4096 => Ok(SurrealEmbeddingColumn::Embedding4096),
+        other => Err(anyhow!(
+            "Unsupported embedding dimension {}. Supported: 384, 1024, 2048, 4096",
+            other
+        )),
+    }
 }
 
 #[cfg(test)]

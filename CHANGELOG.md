@@ -47,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - JSON output support for automation
 - **Configuration visibility**: Understand how config affects system behavior
 
+### ✅ **Added - Local Surreal Embeddings & Reranking**
+- SurrealDB indexing now honors local embedding providers (Ollama + LM Studio) using the same workflow as Jina—set `CODEGRAPH_EMBEDDING_PROVIDER/MODEL/DIMENSION` and we stream vectors into the matching `embedding_<dim>` column automatically
+- Supported combinations today: `all-mini-llm` (384), `qwen3-embedding:0.6b` (1024), `qwen3-embedding:4b` (2048), `qwen3-embedding:8b` (4096), plus `jina-embeddings-v4`
+- LM Studio’s OpenAI-compatible reranker endpoint can now be used for local reranking, so hybrid/local deployments keep the same two-stage retrieval experience as Jina Cloud
+- CLI/indexer logs explicitly call out the active dimension + Surreal column so it’s obvious which field is being populated
+
+### 🛠️ **Improved - Surreal Edge Persistence Diagnostics**
+- After dependency resolution we now query `edges` directly and log the stored count vs. expected total; any mismatch is surfaced immediately with a warning, making it easier to spot schema or auth issues during indexing
+
 ### ⚠️ **Deprecated - MCP Server FAISS+RocksDB Support**
 
 **IMPORTANT**: The MCP server's FAISS+RocksDB graph database solution is now **deprecated** in favor of SurrealDB-based architecture.

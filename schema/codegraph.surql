@@ -49,7 +49,10 @@ DEFINE FIELD IF NOT EXISTS content     ON TABLE nodes TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS file_path   ON TABLE nodes TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS start_line  ON TABLE nodes TYPE option<int>;
 DEFINE FIELD IF NOT EXISTS end_line    ON TABLE nodes TYPE option<int>;
-DEFINE FIELD IF NOT EXISTS embedding   ON TABLE nodes TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_384   ON TABLE nodes TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_1024   ON TABLE nodes TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_2048   ON TABLE nodes TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_4096   ON TABLE nodes TYPE option<array<float>>;
 DEFINE FIELD IF NOT EXISTS complexity  ON TABLE nodes TYPE option<float>;
 DEFINE FIELD IF NOT EXISTS metadata    ON TABLE nodes TYPE option<object>;
 DEFINE FIELD IF NOT EXISTS created_at  ON TABLE nodes TYPE datetime DEFAULT time::now() READONLY;
@@ -68,13 +71,13 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_language   ON TABLE nodes COLUMNS language;
 DEFINE INDEX IF NOT EXISTS idx_nodes_file_path  ON TABLE nodes COLUMNS file_path;
 DEFINE INDEX IF NOT EXISTS idx_nodes_project    ON TABLE nodes COLUMNS project_id;
 DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_384
-    ON TABLE nodes FIELDS embedding HNSW DIMENSION 384 DIST COSINE EFC 200 M 16;
+    ON TABLE nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 200 M 16;
 DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_1024
-    ON TABLE nodes FIELDS embedding HNSW DIMENSION 1024 DIST COSINE EFC 200 M 16;
+    ON TABLE nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 200 M 16;
 DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_2048
-    ON TABLE nodes FIELDS embedding HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+    ON TABLE nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
 DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_4096
-    ON TABLE nodes FIELDS embedding HNSW DIMENSION 4096 DIST COSINE EFC 200 M 16;
+    ON TABLE nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 200 M 16;
 
 -- Composite indexes for common query patterns (P0 Enhancement)
 DEFINE INDEX IF NOT EXISTS idx_nodes_project_type ON TABLE nodes COLUMNS project_id, node_type;

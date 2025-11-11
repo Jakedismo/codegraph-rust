@@ -5,6 +5,7 @@
 CodeGraph indexes your source code to a graph database, creates semantic embeddings, and exposes a **Model Context Protocol (MCP)** server that AI tools (Claude Desktop, LM Studio, etc.) can query for project-aware context.
 
 **✨ What you get:**
+- 🧩 **NEW:** SurrealDB indexing now supports local embeddings (Ollama + LM Studio) and local reranking—just set the env vars and we’ll write to the right HNSW column automatically
 - 🔍 Semantic code search across your entire codebase
 - 🧠 LLM-powered code intelligence and analysis
 - 📊 Automatic dependency graphs and code relationships
@@ -16,6 +17,21 @@ CodeGraph indexes your source code to a graph database, creates semantic embeddi
 - 📦 **NEW:** Node.js NAPI bindings for zero-overhead TypeScript integration
 - 🤖 **NEW:** Agentic code-agent tools with tier-aware multi-step reasoning
 - 🔬 **EXPERIMENTAL:** AutoAgents framework integration for improved agent orchestration
+
+### Local Embeddings & Reranking (SurrealDB)
+
+CodeGraph now writes Ollama/LM Studio embeddings directly into SurrealDB’s dedicated HNSW columns. Pick the model you want and set the matching env vars before running `codegraph index`:
+
+```bash
+export CODEGRAPH_EMBEDDING_PROVIDER=ollama
+export CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b   # or all-mini-llm, qwen3-embedding:4b, etc.
+export CODEGRAPH_EMBEDDING_DIMENSION=1024               # 384, 1024, 2048, or 4096
+
+# Optional local reranking (LM Studio exposes an OpenAI-compatible reranker endpoint)
+export CODEGRAPH_RERANKING_PROVIDER=lmstudio
+```
+
+We automatically route embeddings to `embedding_384`, `embedding_1024`, `embedding_2048`, or `embedding_4096` and keep reranking disabled unless a provider is configured. No FAISS/RocksDB plumbing is needed for MCP anymore.
 
 ---
 
