@@ -50,6 +50,7 @@ impl HttpServerConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_default_http_config() {
@@ -67,5 +68,55 @@ mod tests {
             keep_alive_seconds: 30,
         };
         assert_eq!(config.bind_address(), "0.0.0.0:8080");
+    }
+
+    #[test]
+    #[serial]
+    fn test_from_env_with_valid_values() {
+        std::env::set_var("CODEGRAPH_HTTP_HOST", "0.0.0.0");
+        std::env::set_var("CODEGRAPH_HTTP_PORT", "8080");
+        std::env::set_var("CODEGRAPH_HTTP_KEEP_ALIVE", "30");
+
+        let config = HttpServerConfig::from_env();
+        assert_eq!(config.host, "0.0.0.0");
+        assert_eq!(config.port, 8080);
+        assert_eq!(config.keep_alive_seconds, 30);
+
+        // Cleanup
+        std::env::remove_var("CODEGRAPH_HTTP_HOST");
+        std::env::remove_var("CODEGRAPH_HTTP_PORT");
+        std::env::remove_var("CODEGRAPH_HTTP_KEEP_ALIVE");
+    }
+
+    #[test]
+    #[serial]
+    fn test_from_env_with_invalid_port() {
+        std::env::set_var("CODEGRAPH_HTTP_HOST", "localhost");
+        std::env::set_var("CODEGRAPH_HTTP_PORT", "not_a_number");
+        std::env::set_var("CODEGRAPH_HTTP_KEEP_ALIVE", "invalid");
+
+        let config = HttpServerConfig::from_env();
+        assert_eq!(config.host, "localhost");
+        assert_eq!(config.port, 3000); // Falls back to default
+        assert_eq!(config.keep_alive_seconds, 15); // Falls back to default
+
+        // Cleanup
+        std::env::remove_var("CODEGRAPH_HTTP_HOST");
+        std::env::remove_var("CODEGRAPH_HTTP_PORT");
+        std::env::remove_var("CODEGRAPH_HTTP_KEEP_ALIVE");
+    }
+
+    #[test]
+    #[serial]
+    fn test_from_env_with_missing_vars() {
+        // Ensure vars are not set
+        std::env::remove_var("CODEGRAPH_HTTP_HOST");
+        std::env::remove_var("CODEGRAPH_HTTP_PORT");
+        std::env::remove_var("CODEGRAPH_HTTP_KEEP_ALIVE");
+
+        let config = HttpServerConfig::from_env();
+        assert_eq!(config.host, "127.0.0.1"); // Default
+        assert_eq!(config.port, 3000); // Default
+        assert_eq!(config.keep_alive_seconds, 15); // Default
     }
 }

@@ -69,6 +69,7 @@ hyper = { workspace = true, optional = true }
 tokio-test = { workspace = true }
 tempfile = { workspace = true }
 anyhow = { workspace = true }
+serial_test = "3.2"
 # rmcp already available through main dependencies for testing
 
 [[bin]]
