@@ -1,5 +1,5 @@
 -- ABOUTME: CodeGraph schema
--- ABOUTME: Combines AST-driven code structure analysis with embeddings
+-- ABOUTME: Combines AST-driven code structure analysis with embeddings and graph structure
 
 -- =============================================================================
 -- CodeGraph SurrealDB Schema
@@ -40,11 +40,11 @@ DEFINE FIELD IF NOT EXISTS content     ON TABLE nodes TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS file_path   ON TABLE nodes TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS start_line  ON TABLE nodes TYPE option<int>;
 DEFINE FIELD IF NOT EXISTS end_line    ON TABLE nodes TYPE option<int>;
-DEFINE FIELD IF NOT EXISTS embedding_384   ON TABLE nodes TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_384   ON TABLE nodes TYPE option<array<float>>
     ASSERT array::len($value) = 384;
-DEFINE FIELD IF NOT EXISTS embedding_1024   ON TABLE nodes TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_1024   ON TABLE nodes TYPE option<array<float>>
     ASSERT array::len($value) = 1024;
-DEFINE FIELD IF NOT EXISTS embedding_2048   ON TABLE nodes TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_2048   ON TABLE nodes TYPE option<array<float>>
     ASSERT array::len($value) = 2048;
 DEFINE FIELD IF NOT EXISTS embedding_4096   ON TABLE nodes TYPE option<array<float>>
     ASSERT array::len($value) = 4096;
@@ -173,11 +173,11 @@ DEFINE FIELD IF NOT EXISTS symbol             ON symbol_embeddings TYPE string;
 DEFINE FIELD IF NOT EXISTS normalized_symbol  ON symbol_embeddings TYPE string;
 DEFINE FIELD IF NOT EXISTS project_id         ON symbol_embeddings TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS organization_id    ON symbol_embeddings TYPE option<string>;
-DEFINE FIELD IF NOT EXISTS embedding_384   ON TABLE symbol_embeddings TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_384   ON TABLE symbol_embeddings TYPE option<array<float>>
     ASSERT array::len($value) = 384;
-DEFINE FIELD IF NOT EXISTS embedding_1024   ON TABLE symbol_embeddings TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_1024   ON TABLE symbol_embeddings TYPE option<array<float>>
     ASSERT array::len($value) = 1024;
-DEFINE FIELD IF NOT EXISTS embedding_2048   ON TABLE symbol_embeddings TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS embedding_2048   ON TABLE symbol_embeddings TYPE option<array<float>>
     ASSERT array::len($value) = 2048;
 DEFINE FIELD IF NOT EXISTS embedding_4096   ON TABLE symbol_embeddings TYPE option<array<float>>
     ASSERT array::len($value) = 4096;

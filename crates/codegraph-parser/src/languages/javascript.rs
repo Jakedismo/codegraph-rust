@@ -208,10 +208,10 @@ impl<'a> TypeScriptCollector<'a> {
 
 /// Backward compatibility wrapper
 pub fn extract_js_ts_nodes(
-    language: Language,
-    file_path: &str,
-    source: &str,
-    root: Node,
+    _language: Language,
+    _file_path: &str,
+    _source: &str,
+    _root: Node,
 ) -> Vec<CodeNode> {
     // This should be replaced with proper tree usage, but for now return empty
     // to maintain compatibility while unified extraction is being implemented

@@ -283,7 +283,7 @@ impl AstToGraphConverter {
 
     fn analyze_variable_relationships(
         &mut self,
-        entity: &CodeEntity,
+        _entity: &CodeEntity,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }

@@ -212,7 +212,6 @@ impl<'a> RubyCollector<'a> {
                 self.nodes.push(code);
             }
 
-            // Ruby attr_* declarations
             "call" => {
                 let call_text = self.node_text(&node);
                 if call_text.starts_with("attr_") {
@@ -244,33 +243,21 @@ impl<'a> RubyCollector<'a> {
                         .attributes
                         .insert("kind".into(), "attribute".into());
                     self.nodes.push(code);
-                }
-            }
+                } else if call_text.starts_with("require") {
+                    let loc = self.location(&node);
+                    let mut code = CodeNode::new(
+                        call_text.clone(),
+                        Some(NodeType::Import),
+                        Some(Language::Ruby),
+                        loc,
+                    )
+                    .with_content(call_text.clone());
 
-            // Ruby require/load statements
-            "call" if self.node_text(&node).starts_with("require") => {
-                let require_text = self.node_text(&node);
-                let loc = self.location(&node);
-                let mut code = CodeNode::new(
-                    require_text.clone(),
-                    Some(NodeType::Import),
-                    Some(Language::Ruby),
-                    loc,
-                )
-                .with_content(require_text.clone());
-
-                code.metadata
-                    .attributes
-                    .insert("kind".into(), "require".into());
-
-                // Extract required gem/file name
-                if let Some(arg) = self.extract_string_argument(&node) {
                     code.metadata
                         .attributes
-                        .insert("required_module".into(), arg);
+                        .insert("kind".into(), "require".into());
+                    self.nodes.push(code);
                 }
-
-                self.nodes.push(code);
             }
 
             _ => {}

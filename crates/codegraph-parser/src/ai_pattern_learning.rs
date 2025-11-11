@@ -5,7 +5,7 @@
 ///
 /// Core Principle: Use the 2,534+ successful AI matches to identify patterns that
 /// improve initial symbol extraction, reducing the need for expensive AI resolution.
-use codegraph_core::{EdgeRelationship, EdgeType, ExtractionResult, Language, NodeId};
+use codegraph_core::{EdgeRelationship, ExtractionResult, Language};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};

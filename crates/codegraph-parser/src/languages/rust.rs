@@ -70,10 +70,6 @@ impl<'a> Collector<'a> {
         }
     }
 
-    fn into_nodes(self) -> Vec<CodeNode> {
-        self.nodes
-    }
-
     /// REVOLUTIONARY: Return both nodes and edges from single AST traversal
     fn into_result(self) -> ExtractionResult {
         ExtractionResult {
@@ -436,11 +432,6 @@ impl<'a> Collector<'a> {
         }
     }
 
-    fn with_meta<F: FnOnce(&mut HashMap<String, String>)>(&mut self, mut node: CodeNode, f: F) {
-        f(&mut node.metadata.attributes);
-        self.nodes.push(node);
-    }
-
     fn location(&self, node: &Node) -> Location {
         Location {
             file_path: self.file_path.to_string(),
@@ -767,7 +758,6 @@ fn has_child_kind(node: Node, kind: &str) -> bool {
 }
 
 fn subtree_contains_kind(node: &Node, kind: &str) -> bool {
-    let c = node.walk();
     // DFS
     let mut stack = vec![*node];
     while let Some(n) = stack.pop() {
