@@ -39,17 +39,17 @@ pub fn collect_source_files_with_config(
 
     // Add default exclusions for common non-source directories
     let default_excludes = vec![
-        "!**/target/**",
-        "!**/.git/**",
-        "!**/node_modules/**",
-        "!**/dist/**",
-        "!**/build/**",
-        "!**/.next/**",
-        "!**/.nuxt/**",
-        "!**/coverage/**",
-        "!**/__pycache__/**",
-        "!**/.pytest_cache/**",
-        "!**/.codegraph/**",
+        "**/target/**",
+        "**/.git/**",
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/build/**",
+        "**/.next/**",
+        "**/.nuxt/**",
+        "**/coverage/**",
+        "**/__pycache__/**",
+        "**/.pytest_cache/**",
+        "**/.codegraph/**",
     ];
 
     for exclude in default_excludes {
@@ -58,19 +58,19 @@ pub fn collect_source_files_with_config(
 
     // Add user-specified exclude patterns
     for exclude in &config.exclude_patterns {
-        let pattern = if exclude.starts_with('!') {
-            exclude.clone()
-        } else {
-            format!("!{}", exclude)
-        };
-        let _ = ovr.add(&pattern);
-        debug!("Added exclude pattern: {}", pattern);
+        let _ = ovr.add(exclude);
+        debug!("Added exclude pattern: {}", exclude);
     }
 
     // Add user-specified include patterns
     for include in &config.include_patterns {
-        let _ = ovr.add(include);
-        debug!("Added include pattern: {}", include);
+        let pattern = if include.starts_with('!') {
+            include.clone()
+        } else {
+            format!("!{}", include)
+        };
+        let _ = ovr.add(&pattern);
+        debug!("Added include pattern: {}", pattern);
     }
 
     let overrides = ovr

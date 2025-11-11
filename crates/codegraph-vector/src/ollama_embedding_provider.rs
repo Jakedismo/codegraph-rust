@@ -4,7 +4,6 @@
 /// Complements Qwen2.5-Coder analysis with specialized code embeddings
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
-use futures::future;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -27,13 +26,19 @@ pub struct OllamaEmbeddingConfig {
 
 impl Default for OllamaEmbeddingConfig {
     fn default() -> Self {
+        let batch_size = std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .map(|value| value.clamp(1, 4096))
+            .unwrap_or(32);
+
         Self {
             model_name: std::env::var("CODEGRAPH_EMBEDDING_MODEL")
                 .unwrap_or_else(|_| "nomic-embed-code".to_string()),
             base_url: std::env::var("CODEGRAPH_OLLAMA_URL")
                 .unwrap_or_else(|_| "http://localhost:11434".to_string()),
             timeout: Duration::from_secs(60),
-            batch_size: 32, // Smaller batches for embedding model
+            batch_size,
             max_retries: 3,
         }
     }
@@ -41,15 +46,17 @@ impl Default for OllamaEmbeddingConfig {
 
 /// Ollama API request for embeddings
 #[derive(Debug, Serialize)]
-struct OllamaEmbeddingRequest {
-    model: String,
-    prompt: String,
+struct OllamaEmbeddingRequest<'a> {
+    model: &'a str,
+    input: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    truncate: Option<bool>,
 }
 
 /// Ollama API response for embeddings
 #[derive(Debug, Deserialize)]
 struct OllamaEmbeddingResponse {
-    embedding: Vec<f32>,
+    embeddings: Vec<Vec<f32>>,
 }
 
 /// Ollama embedding provider using nomic-embed-code
@@ -80,8 +87,8 @@ impl OllamaEmbeddingProvider {
     /// Check if nomic-embed-code model is available
     pub async fn check_availability(&self) -> Result<bool> {
         debug!(
-            "Checking nomic-embed-code availability at {}",
-            self.config.base_url
+            "Checking {} availability at {}",
+            self.config.model_name, self.config.base_url
         );
 
         let response = timeout(
@@ -103,6 +110,7 @@ impl OllamaEmbeddingProvider {
             .await
             .map_err(|_| CodeGraphError::Parse("Failed to parse models response".to_string()))?;
 
+        let desired = self.config.model_name.to_lowercase();
         let has_model = models["models"]
             .as_array()
             .map(|models| {
@@ -110,34 +118,60 @@ impl OllamaEmbeddingProvider {
                     model["name"]
                         .as_str()
                         .map(|name| {
-                            name.contains("nomic-embed")
-                                || name.contains(&self.config.model_name)
-                                || name == "nomic-embed-code"
+                            let lower = name.to_lowercase();
+                            lower == desired
+                                || lower.contains(&desired)
+                                || lower.contains("nomic-embed")
                         })
                         .unwrap_or(false)
                 })
             })
             .unwrap_or(false);
 
-        info!("nomic-embed-code availability: {}", has_model);
+        info!("{} availability: {}", self.config.model_name, has_model);
         Ok(has_model)
     }
 
-    /// Generate embedding for single text
-    pub async fn generate_single_embedding(&self, text: &str) -> Result<Vec<f32>> {
-        let start_time = Instant::now();
+    fn format_node_text(node: &CodeNode) -> String {
+        let mut header = format!(
+            "{} {} {}",
+            node.language
+                .as_ref()
+                .map_or("unknown".to_string(), |l| format!("{:?}", l)),
+            node.node_type
+                .as_ref()
+                .map_or("unknown".to_string(), |t| format!("{:?}", t)),
+            node.name.as_str()
+        );
+
+        if let Some(content) = &node.content {
+            header.push(' ');
+            header.push_str(content);
+        }
+
+        header
+    }
+
+    async fn call_embed_endpoint(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
 
         let request = OllamaEmbeddingRequest {
-            model: self.config.model_name.clone(),
-            prompt: text.to_string(),
+            model: &self.config.model_name,
+            input: texts,
+            truncate: Some(true),
         };
 
-        debug!("Generating embedding for {} chars", text.len());
+        let request_start = Instant::now();
 
         let response = timeout(
             self.config.timeout,
             self.client
-                .post(&format!("{}/api/embeddings", self.config.base_url))
+                .post(format!(
+                    "{}/api/embed",
+                    self.config.base_url.trim_end_matches('/')
+                ))
                 .json(&request)
                 .send(),
         )
@@ -165,15 +199,61 @@ impl OllamaEmbeddingProvider {
             CodeGraphError::Parse(format!("Failed to parse Ollama embedding response: {}", e))
         })?;
 
-        let processing_time = start_time.elapsed();
+        if response_data.embeddings.len() != texts.len() {
+            return Err(CodeGraphError::Vector(format!(
+                "Ollama returned {} embeddings for {} inputs",
+                response_data.embeddings.len(),
+                texts.len()
+            )));
+        }
 
         debug!(
-            "Ollama embedding generated: {}ms, dimension: {}",
-            processing_time.as_millis(),
-            response_data.embedding.len()
+            "Ollama embed batch: {} texts in {}ms",
+            texts.len(),
+            request_start.elapsed().as_millis()
         );
 
-        Ok(response_data.embedding)
+        Ok(response_data.embeddings)
+    }
+
+    async fn generate_embeddings_for_texts(
+        &self,
+        texts: &[String],
+        batch_size: usize,
+    ) -> Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut all_embeddings = Vec::with_capacity(texts.len());
+
+        for (batch_idx, batch) in texts.chunks(batch_size).enumerate() {
+            debug!(
+                "Sending Ollama embed batch {} ({} items)",
+                batch_idx + 1,
+                batch.len()
+            );
+            let batch_embeddings = self.call_embed_endpoint(batch).await?;
+            all_embeddings.extend(batch_embeddings);
+        }
+
+        Ok(all_embeddings)
+    }
+
+    fn effective_batch_size(&self, requested: usize) -> usize {
+        let provider_limit = self.config.batch_size.max(1);
+        requested.max(1).min(provider_limit)
+    }
+
+    /// Generate embedding for single text
+    pub async fn generate_single_embedding(&self, text: &str) -> Result<Vec<f32>> {
+        let payload = vec![text.to_string()];
+        let mut embeddings = self
+            .generate_embeddings_for_texts(&payload, self.config.batch_size)
+            .await?;
+        embeddings
+            .pop()
+            .ok_or_else(|| CodeGraphError::Vector("Ollama returned no embedding".to_string()))
     }
 }
 
@@ -181,25 +261,8 @@ impl OllamaEmbeddingProvider {
 impl EmbeddingProvider for OllamaEmbeddingProvider {
     /// Generate embedding for a single code node
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
-        // Prepare text from code node (similar to other providers)
-        let text = format!(
-            "{} {} {}",
-            node.language
-                .as_ref()
-                .map_or("unknown".to_string(), |l| format!("{:?}", l)),
-            node.node_type
-                .as_ref()
-                .map_or("unknown".to_string(), |t| format!("{:?}", t)),
-            node.name.as_str()
-        );
-
-        let full_text = if let Some(content) = &node.content {
-            format!("{} {}", text, content)
-        } else {
-            text
-        };
-
-        self.generate_single_embedding(&full_text).await
+        let formatted = Self::format_node_text(node);
+        self.generate_single_embedding(&formatted).await
     }
 
     /// Generate embeddings for multiple code nodes with batch optimization
@@ -209,59 +272,20 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
         }
 
         info!(
-            "Generating {} embeddings with nomic-embed-code",
-            nodes.len()
+            "Generating {} embeddings with Ollama model {}",
+            nodes.len(),
+            self.config.model_name
         );
         let start_time = Instant::now();
 
         // Prepare texts from nodes
-        let texts: Vec<String> = nodes
-            .iter()
-            .map(|node| {
-                let text = format!(
-                    "{} {} {}",
-                    node.language
-                        .as_ref()
-                        .map_or("unknown".to_string(), |l| format!("{:?}", l)),
-                    node.node_type
-                        .as_ref()
-                        .map_or("unknown".to_string(), |t| format!("{:?}", t)),
-                    node.name.as_str()
-                );
-
-                if let Some(content) = &node.content {
-                    format!("{} {}", text, content)
-                } else {
-                    text
-                }
-            })
-            .collect();
-
-        // Process in batches for optimal performance
-        let mut all_embeddings = Vec::new();
-        let batch_size = self.config.batch_size;
-
-        for (batch_idx, batch) in texts.chunks(batch_size).enumerate() {
-            debug!("Processing batch {} ({} texts)", batch_idx + 1, batch.len());
-
-            // Process batch items in parallel but limited concurrency
-            let batch_futures: Vec<_> = batch
-                .iter()
-                .map(|text| self.generate_single_embedding(text))
-                .collect();
-
-            // Wait for all embeddings in batch
-            let batch_results = futures::future::try_join_all(batch_futures).await?;
-            all_embeddings.extend(batch_results);
-
-            // Small delay between batches to avoid overwhelming local model
-            if batch_idx + 1 < texts.chunks(batch_size).len() {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-        }
+        let texts: Vec<String> = nodes.iter().map(Self::format_node_text).collect();
+        let embeddings = self
+            .generate_embeddings_for_texts(&texts, self.config.batch_size)
+            .await?;
 
         let total_time = start_time.elapsed();
-        let embeddings_per_second = nodes.len() as f64 / total_time.as_secs_f64();
+        let embeddings_per_second = nodes.len() as f64 / total_time.as_secs_f64().max(0.001);
 
         info!(
             "Ollama embeddings complete: {} embeddings in {:.2}s ({:.1} emb/s)",
@@ -270,33 +294,40 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
             embeddings_per_second
         );
 
-        Ok(all_embeddings)
+        Ok(embeddings)
     }
 
     /// Generate embeddings with batch configuration and metrics
     async fn generate_embeddings_with_config(
         &self,
         nodes: &[CodeNode],
-        _config: &BatchConfig,
+        config: &BatchConfig,
     ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)> {
         let start_time = Instant::now();
-        let embeddings = self.generate_embeddings(nodes).await?;
+        let texts: Vec<String> = nodes.iter().map(Self::format_node_text).collect();
+        let batch_size = self.effective_batch_size(config.batch_size);
+        let embeddings = self
+            .generate_embeddings_for_texts(&texts, batch_size)
+            .await?;
         let duration = start_time.elapsed();
 
-        let metrics =
-            EmbeddingMetrics::new("ollama-nomic-embed-code".to_string(), nodes.len(), duration);
+        let metrics = EmbeddingMetrics::new(
+            format!("ollama-{}", self.config.model_name),
+            nodes.len(),
+            duration,
+        );
 
         Ok((embeddings, metrics))
     }
 
-    /// Get the embedding dimension for this provider (nomic-embed-code = 768)
-    fn embedding_dimension(&self) -> usize {
-        768 // nomic-embed-code dimension
+    /// Get the embedding dimension for this provider
+    pub fn embedding_dimension(&self) -> usize {
+        infer_dimension_for_model(&self.config.model_name)
     }
 
     /// Get provider name for identification
     fn provider_name(&self) -> &str {
-        "ollama-nomic-embed-code"
+        &self.config.model_name
     }
 
     /// Check if provider is available (model loaded in Ollama)
@@ -320,4 +351,30 @@ pub fn create_ollama_provider_with_model(model_name: String) -> OllamaEmbeddingP
     let mut config = OllamaEmbeddingConfig::default();
     config.model_name = model_name;
     OllamaEmbeddingProvider::new(config)
+}
+
+fn infer_dimension_for_model(model: &str) -> usize {
+    if let Ok(dim) = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        return dim;
+    }
+
+    let normalized = model.to_lowercase();
+    if normalized.contains("all-mini") {
+        384
+    } else if normalized.contains("0.6b") {
+        1024
+    } else if normalized.contains("4b") {
+        2048
+    } else if normalized.contains("8b") {
+        4096
+    } else if normalized.contains("2048") {
+        2048
+    } else if normalized.contains("1024") {
+        1024
+    } else {
+        768
+    }
 }

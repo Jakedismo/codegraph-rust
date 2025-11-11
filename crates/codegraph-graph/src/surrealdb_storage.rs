@@ -7,13 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::env;
 use std::sync::Arc;
-use surrealdb::{
-    engine::any::Any,
-    opt::auth::Root,
-    sql::{Id, Thing},
-    Error as SurrealError, Surreal,
-};
+use surrealdb::{engine::any::Any, opt::auth::Root, Error as SurrealError, Surreal};
 use tracing::{debug, info};
 
 /// SurrealDB storage implementation with flexible schema support
@@ -40,12 +36,25 @@ pub struct SurrealDbConfig {
 
 impl Default for SurrealDbConfig {
     fn default() -> Self {
+        let connection = env::var("CODEGRAPH_SURREALDB_URL")
+            .unwrap_or_else(|_| "ws://localhost:3004".to_string());
+        let namespace =
+            env::var("CODEGRAPH_SURREALDB_NAMESPACE").unwrap_or_else(|_| "ouroboros".to_string());
+        let database =
+            env::var("CODEGRAPH_SURREALDB_DATABASE").unwrap_or_else(|_| "codegraph".to_string());
+        let username = env::var("CODEGRAPH_SURREALDB_USERNAME")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+        let password = env::var("CODEGRAPH_SURREALDB_PASSWORD")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+
         Self {
-            connection: "ws://localhost:3004".to_string(),
-            namespace: "ouroboros".to_string(),
-            database: "codegraph".to_string(),
-            username: Some("root".to_string()),
-            password: Some("root".to_string()),
+            connection,
+            namespace,
+            database,
+            username,
+            password,
             strict_mode: false,
             auto_migrate: true,
             cache_enabled: true,
@@ -243,70 +252,31 @@ impl SurrealDbStorage {
         Ok(())
     }
 
-    /*
-    async fn _migrate_disabled(&self) -> Result<()> {
-        let current_version = *self.schema_version.read().unwrap();
-        info!("Running migrations from version {}", current_version);
-
-        // Define migrations as functions for easy addition
-        async fn migration_2(db: &Surreal<Any>) -> Result<()> {
-            db.query(
-                r#"
-                DEFINE INDEX IF NOT EXISTS idx_nodes_created_at ON TABLE nodes COLUMNS created_at;
-                DEFINE INDEX IF NOT EXISTS idx_edges_created_at ON TABLE edges COLUMNS created_at;
-            "#,
-            )
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Migration 2 failed: {}", e)))?;
-            Ok(())
-        }
-
-        let migrations: Vec<(u32, &str, fn(&Surreal<Any>) -> _)> = vec![
-            // Migration 2: Add indexes for performance
-            (2u32, "Add performance indexes", |db| {
-                Box::pin(migration_2(db)) as _
-            }),
-        ];
-
-        for (version, description, migration) in migrations {
-            if version > current_version {
-                info!("Applying migration {}: {}", version, description);
-                migration(&self.db).await?;
-
-                // Record migration
-                let _: Option<SchemaVersion> = self
-                    .db
-                    .create(("schema_versions", format!("v{}", version)))
-                    .content(SchemaVersion {
-                        version,
-                        applied_at: chrono::Utc::now().to_rfc3339(),
-                        description: description.to_string(),
-                    })
-                    .await
-                    .map_err(|e| {
-                        CodeGraphError::Database(format!("Failed to record migration: {}", e))
-                    })?;
-
-                *self.schema_version.write().unwrap() = version;
-            }
-        }
-
-        info!("Migrations completed successfully");
-        Ok(())
-    }
-    */
-
     /// Vector search using SurrealDB HNSW indexes
     /// Returns node IDs and similarity scores
     pub async fn vector_search_knn(
         &self,
+        embedding_column: &str,
         query_embedding: Vec<f32>,
         limit: usize,
         ef_search: usize,
     ) -> Result<Vec<(String, f32)>> {
+        let column = match embedding_column {
+            SURR_EMBEDDING_COLUMN_384 => SURR_EMBEDDING_COLUMN_384,
+            SURR_EMBEDDING_COLUMN_1024 => SURR_EMBEDDING_COLUMN_1024,
+            SURR_EMBEDDING_COLUMN_2048 => SURR_EMBEDDING_COLUMN_2048,
+            SURR_EMBEDDING_COLUMN_4096 => SURR_EMBEDDING_COLUMN_4096,
+            other => {
+                return Err(CodeGraphError::Configuration(format!(
+                    "Unsupported embedding column '{}'",
+                    other
+                )))
+            }
+        };
+
         info!(
-            "Executing HNSW vector search with limit={}, ef_search={}",
-            limit, ef_search
+            "Executing HNSW vector search on {} with limit={}, ef_search={}",
+            column, limit, ef_search
         );
 
         // Convert f32 to f64 for SurrealDB
@@ -314,17 +284,19 @@ impl SurrealDbStorage {
 
         // SurrealDB HNSW search using <|K,EF|> operator
         // vector::distance::knn() reuses pre-computed distance from HNSW
-        let query = r#"
+        let query = format!(
+            r#"
             SELECT id, vector::distance::knn() AS score
             FROM nodes
-            WHERE embedding <|$limit,$ef_search|> $query_embedding
+            WHERE {column} <|$limit,$ef_search|> $query_embedding
             ORDER BY score ASC
             LIMIT $limit
-        "#;
+        "#
+        );
 
         let mut result = self
             .db
-            .query(query)
+            .query(&query)
             .bind(("query_embedding", query_vec))
             .bind(("limit", limit))
             .bind(("ef_search", ef_search))
@@ -350,6 +322,7 @@ impl SurrealDbStorage {
     /// Vector search with metadata filtering
     pub async fn vector_search_with_metadata(
         &self,
+        embedding_column: &str,
         query_embedding: Vec<f32>,
         limit: usize,
         ef_search: usize,
@@ -357,16 +330,28 @@ impl SurrealDbStorage {
         language: Option<String>,
         file_path_pattern: Option<String>,
     ) -> Result<Vec<(String, f32)>> {
+        let column = match embedding_column {
+            SURR_EMBEDDING_COLUMN_384 => SURR_EMBEDDING_COLUMN_384,
+            SURR_EMBEDDING_COLUMN_1024 => SURR_EMBEDDING_COLUMN_1024,
+            SURR_EMBEDDING_COLUMN_2048 => SURR_EMBEDDING_COLUMN_2048,
+            SURR_EMBEDDING_COLUMN_4096 => SURR_EMBEDDING_COLUMN_4096,
+            other => {
+                return Err(CodeGraphError::Configuration(format!(
+                    "Unsupported embedding column '{}'",
+                    other
+                )))
+            }
+        };
+
         info!(
-            "Executing filtered HNSW search: type={:?}, lang={:?}, path={:?}",
-            node_type, language, file_path_pattern
+            "Executing filtered HNSW search on {}: type={:?}, lang={:?}, path={:?}",
+            column, node_type, language, file_path_pattern
         );
 
         let query_vec: Vec<f64> = query_embedding.iter().map(|&f| f as f64).collect();
 
         // Build dynamic WHERE clause
-        let mut where_clauses =
-            vec!["embedding <|$limit,$ef_search|> $query_embedding".to_string()];
+        let mut where_clauses = vec![format!("{column} <|$limit,$ef_search|> $query_embedding")];
 
         if let Some(ref nt) = node_type {
             where_clauses.push(format!("node_type = '{}'", nt));
@@ -490,10 +475,20 @@ impl SurrealDbStorage {
             Some(node.metadata.attributes.clone())
         };
 
-        let embedding = node
-            .embedding
-            .as_ref()
-            .map(|values| values.iter().map(|&f| f as f64).collect());
+        let (embedding_384, embedding_1024, embedding_2048, embedding_4096) =
+            if let Some(values) = &node.embedding {
+                let embedding_vec: Vec<f64> = values.iter().map(|&f| f as f64).collect();
+                match values.len() {
+                    384 => (Some(embedding_vec), None, None, None),
+                    1024 => (None, Some(embedding_vec), None, None),
+                    4096 => (None, None, None, Some(embedding_vec)),
+                    _ => (None, None, Some(embedding_vec), None),
+                }
+            } else {
+                (None, None, None, None)
+            };
+
+        let embedding_model = node.metadata.attributes.get("embedding_model").cloned();
 
         Ok(SurrealNodeRecord {
             id: node.id.to_string(),
@@ -504,7 +499,11 @@ impl SurrealDbStorage {
             file_path: node.location.file_path.to_string(),
             start_line: node.location.line,
             end_line: node.location.end_line,
-            embedding,
+            embedding_384,
+            embedding_1024,
+            embedding_2048,
+            embedding_4096,
+            embedding_model,
             complexity: node.complexity,
             metadata,
             project_id: node.metadata.attributes.get("project_id").cloned(),
@@ -685,7 +684,15 @@ impl SurrealDbStorage {
 
         let end_line = data.get("end_line").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
-        let embedding = data.get("embedding").and_then(|v| v.as_array()).map(|arr| {
+        let embedding = [
+            "embedding_4096",
+            "embedding_2048",
+            "embedding_1024",
+            "embedding_384",
+        ]
+        .iter()
+        .find_map(|field| data.get(*field).and_then(|v| v.as_array()))
+        .map(|arr| {
             arr.iter()
                 .filter_map(|v| v.as_f64().map(|f| f as f32))
                 .collect()
@@ -757,12 +764,9 @@ impl SurrealDbStorage {
             "file_count": record.file_count,
             "node_count": record.node_count,
             "edge_count": record.edge_count,
-            "concept_collection_count": record.concept_collection_count,
-            "concept_document_count": record.concept_document_count,
             "avg_coverage_score": record.avg_coverage_score,
             "last_analyzed": record.last_analyzed,
             "codegraph_version": record.codegraph_version,
-            "deepwiki_version": record.deepwiki_version,
             "organization_id": record.organization_id,
             "domain": record.domain,
             "metadata": json!({}),
@@ -781,9 +785,10 @@ impl SurrealDbStorage {
     }
 
     pub async fn update_node_embedding(&self, node_id: NodeId, embedding: &[f32]) -> Result<()> {
+        let embedding_column = surreal_embedding_column_for_dimension(embedding.len());
         let record = NodeEmbeddingRecord {
             id: node_id.to_string(),
-            column: SURR_EMBEDDING_COLUMN_2048,
+            column: embedding_column,
             embedding: embedding.iter().map(|&f| f as f64).collect(),
             updated_at: Utc::now(),
         };
@@ -905,6 +910,7 @@ pub struct SymbolEmbeddingUpsert<'a> {
     pub organization_id: Option<&'a str>,
     pub embedding: &'a [f32],
     pub embedding_model: &'a str,
+    pub embedding_column: &'a str,
     pub node_id: Option<&'a str>,
     pub source_edge_id: Option<&'a str>,
     pub metadata: Option<JsonValue>,
@@ -918,7 +924,14 @@ pub struct SymbolEmbeddingRecord {
     pub project_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_id: Option<String>,
-    pub embedding_2048: Vec<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_384: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_1024: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_2048: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_4096: Option<Vec<f64>>,
     pub embedding_model: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
@@ -938,17 +951,30 @@ impl SymbolEmbeddingRecord {
         normalized_symbol: &str,
         embedding: &[f32],
         embedding_model: &str,
+        embedding_column: &str,
         node_id: Option<&str>,
         source_edge_id: Option<&str>,
         metadata: Option<JsonValue>,
     ) -> Self {
+        let embedding_vec: Vec<f64> = embedding.iter().map(|&f| f as f64).collect();
+        let (embedding_384, embedding_1024, embedding_2048, embedding_4096) = match embedding_column
+        {
+            SURR_EMBEDDING_COLUMN_384 => (Some(embedding_vec), None, None, None),
+            SURR_EMBEDDING_COLUMN_1024 => (None, Some(embedding_vec), None, None),
+            SURR_EMBEDDING_COLUMN_4096 => (None, None, None, Some(embedding_vec)),
+            _ => (None, None, Some(embedding_vec), None),
+        };
+
         SymbolEmbeddingRecord {
             id: symbol_embedding_record_id(project_id, normalized_symbol),
             symbol: symbol.to_string(),
             normalized_symbol: normalized_symbol.to_string(),
             project_id: project_id.to_string(),
             organization_id: organization_id.map(|s| s.to_string()),
-            embedding_2048: embedding.iter().map(|&f| f as f64).collect(),
+            embedding_384,
+            embedding_1024,
+            embedding_2048,
+            embedding_4096,
             embedding_model: embedding_model.to_string(),
             node_id: node_id.map(|s| s.to_string()),
             source_edge_id: source_edge_id.map(|s| s.to_string()),
@@ -968,6 +994,7 @@ impl<'a> From<&SymbolEmbeddingUpsert<'a>> for SymbolEmbeddingRecord {
             record.normalized_symbol,
             record.embedding,
             record.embedding_model,
+            record.embedding_column,
             record.node_id,
             record.source_edge_id,
             record.metadata.clone(),
@@ -984,12 +1011,9 @@ pub struct ProjectMetadataRecord {
     pub file_count: i64,
     pub node_count: i64,
     pub edge_count: i64,
-    pub concept_collection_count: i64,
-    pub concept_document_count: i64,
     pub avg_coverage_score: f32,
     pub last_analyzed: DateTime<Utc>,
     pub codegraph_version: String,
-    pub deepwiki_version: Option<String>,
     pub organization_id: Option<String>,
     pub domain: Option<String>,
 }
@@ -1009,7 +1033,15 @@ struct SurrealNodeRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     end_line: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    embedding: Option<Vec<f64>>,
+    embedding_384: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    embedding_1024: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    embedding_2048: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    embedding_4096: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    embedding_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     complexity: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1038,6 +1070,15 @@ pub const SURR_EMBEDDING_COLUMN_384: &str = "embedding_384";
 pub const SURR_EMBEDDING_COLUMN_1024: &str = "embedding_1024";
 pub const SURR_EMBEDDING_COLUMN_2048: &str = "embedding_2048";
 pub const SURR_EMBEDDING_COLUMN_4096: &str = "embedding_4096";
+
+pub fn surreal_embedding_column_for_dimension(dim: usize) -> &'static str {
+    match dim {
+        384 => SURR_EMBEDDING_COLUMN_384,
+        1024 => SURR_EMBEDDING_COLUMN_1024,
+        4096 => SURR_EMBEDDING_COLUMN_4096,
+        _ => SURR_EMBEDDING_COLUMN_2048,
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct NodeEmbeddingRecord {

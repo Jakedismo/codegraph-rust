@@ -1,28 +1,19 @@
--- ABOUTME: Unified DeepWiki + CodeGraph schema for intent-driven development with seed memory generation
--- ABOUTME: Combines AST-driven code structure analysis with semantic documentation and business context
+-- ABOUTME: CodeGraph schema
+-- ABOUTME: Combines AST-driven code structure analysis with embeddings
 
 -- =============================================================================
--- Unified DeepWiki + CodeGraph SurrealDB Schema
+-- CodeGraph SurrealDB Schema
 -- Version: 1.0.0-alpha.0
 -- =============================================================================
 --
 -- This schema unifies:
 -- 1. CodeGraph: AST-driven code structure analysis (nodes, edges, functions)
--- 2. DeepWiki: Semantic documentation and business context (concepts, domains)
--- 3. Seed Memory: Automated population of Ouroboros Memory DB
---
--- Design Principles:
--- - 100% backward compatible with existing CodeGraph MCP server
--- - Simpler than Ouroboros Memory Graph (13 tables, 19 functions)
--- - Graph-first design for intuitive agent exploration
--- - Cross-project ready (project_id, organization_id, domain fields)
--- - No data duplication (single source of truth)
 --
 -- =============================================================================
 
 -- Optional namespace/database selection
 -- USE NS unified;
--- USE DB deepwiki_codegraph;
+-- USE DB codegraph;
 
 -- =============================================================================
 -- ANALYZER
@@ -31,11 +22,11 @@
 DEFINE ANALYZER code_analyzer TOKENIZERS BLANK,CLASS FILTERS LOWERCASE,SNOWBALL(ENGLISH);
 
 -- =============================================================================
--- CORE TABLES (CodeGraph Preserved)
+-- CORE TABLES
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- TABLE: nodes (UNCHANGED from CodeGraph)
+-- TABLE: nodes
 -- -----------------------------------------------------------------------------
 DEFINE TABLE IF NOT EXISTS nodes SCHEMAFULL
   COMMENT 'Code entities from AST parsing with semantic embeddings';
@@ -50,9 +41,14 @@ DEFINE FIELD IF NOT EXISTS file_path   ON TABLE nodes TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS start_line  ON TABLE nodes TYPE option<int>;
 DEFINE FIELD IF NOT EXISTS end_line    ON TABLE nodes TYPE option<int>;
 DEFINE FIELD IF NOT EXISTS embedding_384   ON TABLE nodes TYPE option<array<float>>;
+    ASSERT array::len($value) = 384;
 DEFINE FIELD IF NOT EXISTS embedding_1024   ON TABLE nodes TYPE option<array<float>>;
+    ASSERT array::len($value) = 1024;
 DEFINE FIELD IF NOT EXISTS embedding_2048   ON TABLE nodes TYPE option<array<float>>;
-DEFINE FIELD IF NOT EXISTS embedding_4096   ON TABLE nodes TYPE option<array<float>>;
+    ASSERT array::len($value) = 2048;
+DEFINE FIELD IF NOT EXISTS embedding_4096   ON TABLE nodes TYPE option<array<float>>
+    ASSERT array::len($value) = 4096;
+DEFINE FIELD IF NOT EXISTS embedding_model ON nodes TYPE option<string> DEFAULT 'jina-embeddings-v4';
 DEFINE FIELD IF NOT EXISTS complexity  ON TABLE nodes TYPE option<float>;
 DEFINE FIELD IF NOT EXISTS metadata    ON TABLE nodes TYPE option<object>;
 DEFINE FIELD IF NOT EXISTS created_at  ON TABLE nodes TYPE datetime DEFAULT time::now() READONLY;
@@ -84,7 +80,7 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_project_type ON TABLE nodes COLUMNS project
 DEFINE INDEX IF NOT EXISTS idx_nodes_file_type ON TABLE nodes COLUMNS file_path, node_type;
 
 -- -----------------------------------------------------------------------------
--- TABLE: edges (UNCHANGED from CodeGraph)
+-- TABLE: edges
 -- -----------------------------------------------------------------------------
 DEFINE TABLE IF NOT EXISTS edges SCHEMAFULL
   COMMENT 'Code relationships (Calls, Imports, Uses, Extends, Implements, References)';
@@ -107,7 +103,7 @@ DEFINE INDEX IF NOT EXISTS idx_edges_from_to   ON TABLE edges COLUMNS from, to;
 DEFINE INDEX IF NOT EXISTS idx_edges_type_from ON TABLE edges COLUMNS edge_type, from;
 
 -- -----------------------------------------------------------------------------
--- TABLE: schema_versions (from CodeGraph)
+-- TABLE: schema_versions
 -- -----------------------------------------------------------------------------
 DEFINE TABLE IF NOT EXISTS schema_versions SCHEMAFULL;
 
@@ -120,7 +116,7 @@ DEFINE FIELD IF NOT EXISTS checksum   ON TABLE schema_versions TYPE option<strin
 DEFINE INDEX IF NOT EXISTS idx_schema_version ON TABLE schema_versions COLUMNS version UNIQUE;
 
 -- -----------------------------------------------------------------------------
--- TABLE: metadata (from CodeGraph)
+-- TABLE: metadata
 -- -----------------------------------------------------------------------------
 DEFINE TABLE IF NOT EXISTS metadata SCHEMAFULL;
 
@@ -131,10 +127,10 @@ DEFINE FIELD IF NOT EXISTS updated_at ON TABLE metadata TYPE datetime VALUE time
 DEFINE INDEX IF NOT EXISTS idx_metadata_key ON TABLE metadata COLUMNS key UNIQUE;
 
 -- -----------------------------------------------------------------------------
--- TABLE: project_metadata (Enhanced from CodeGraph)
+-- TABLE: project_metadata
 -- -----------------------------------------------------------------------------
 DEFINE TABLE IF NOT EXISTS project_metadata SCHEMAFULL
-  COMMENT 'Project registry with CodeGraph and DeepWiki statistics';
+  COMMENT 'Project registry with CodeGraph statistics';
 
 -- Core fields
 DEFINE FIELD IF NOT EXISTS project_id       ON TABLE project_metadata TYPE string;
@@ -147,15 +143,9 @@ DEFINE FIELD IF NOT EXISTS file_count       ON TABLE project_metadata TYPE int D
 DEFINE FIELD IF NOT EXISTS node_count       ON TABLE project_metadata TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS edge_count       ON TABLE project_metadata TYPE int DEFAULT 0;
 
--- DeepWiki statistics
-DEFINE FIELD IF NOT EXISTS concept_collection_count ON TABLE project_metadata TYPE int DEFAULT 0;
-DEFINE FIELD IF NOT EXISTS concept_document_count   ON TABLE project_metadata TYPE int DEFAULT 0;
-DEFINE FIELD IF NOT EXISTS avg_coverage_score       ON TABLE project_metadata TYPE float DEFAULT 0.0;
-
 -- Indexing metadata
 DEFINE FIELD IF NOT EXISTS last_analyzed    ON TABLE project_metadata TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS codegraph_version ON TABLE project_metadata TYPE option<string>;
-DEFINE FIELD IF NOT EXISTS deepwiki_version  ON TABLE project_metadata TYPE option<string>;
 
 -- Cross-project fields
 DEFINE FIELD IF NOT EXISTS organization_id  ON TABLE project_metadata TYPE option<string>;
@@ -183,9 +173,18 @@ DEFINE FIELD IF NOT EXISTS symbol             ON symbol_embeddings TYPE string;
 DEFINE FIELD IF NOT EXISTS normalized_symbol  ON symbol_embeddings TYPE string;
 DEFINE FIELD IF NOT EXISTS project_id         ON symbol_embeddings TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS organization_id    ON symbol_embeddings TYPE option<string>;
-DEFINE FIELD IF NOT EXISTS embedding_2048     ON symbol_embeddings TYPE array<float>
-  ASSERT array::len($value) = 2048;
+DEFINE FIELD IF NOT EXISTS embedding_384   ON TABLE symbol_embeddings TYPE option<array<float>>;
+    ASSERT array::len($value) = 384;
+DEFINE FIELD IF NOT EXISTS embedding_1024   ON TABLE symbol_embeddings TYPE option<array<float>>;
+    ASSERT array::len($value) = 1024;
+DEFINE FIELD IF NOT EXISTS embedding_2048   ON TABLE symbol_embeddings TYPE option<array<float>>;
+    ASSERT array::len($value) = 2048;
+DEFINE FIELD IF NOT EXISTS embedding_4096   ON TABLE symbol_embeddings TYPE option<array<float>>
+    ASSERT array::len($value) = 4096;
+DEFINE FIELD IF NOT EXISTS embedding_384[*]  ON symbol_embeddings TYPE float;
+DEFINE FIELD IF NOT EXISTS embedding_1024[*]  ON symbol_embeddings TYPE float;
 DEFINE FIELD IF NOT EXISTS embedding_2048[*]  ON symbol_embeddings TYPE float;
+DEFINE FIELD IF NOT EXISTS embedding_4096[*]  ON symbol_embeddings TYPE float;
 DEFINE FIELD IF NOT EXISTS embedding_model    ON symbol_embeddings TYPE string DEFAULT 'jina-embeddings-v4';
 DEFINE FIELD IF NOT EXISTS last_computed_at   ON symbol_embeddings TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD IF NOT EXISTS access_count       ON symbol_embeddings TYPE int DEFAULT 0;
@@ -197,9 +196,18 @@ DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_symbol
     ON symbol_embeddings COLUMNS normalized_symbol;
 DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_project_symbol
     ON symbol_embeddings COLUMNS project_id, normalized_symbol;
-DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector_384
+    ON symbol_embeddings FIELDS embedding_384
+    HNSW DIMENSION 384 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector_1024
+    ON symbol_embeddings FIELDS embedding_1024
+    HNSW DIMENSION 1024 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector_2048
     ON symbol_embeddings FIELDS embedding_2048
     HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_vector_4096
+    ON symbol_embeddings FIELDS embedding_4096
+    HNSW DIMENSION 4096 DIST COSINE EFC 200 M 16;
 
 DEFINE FIELD IF NOT EXISTS node_id ON symbol_embeddings
   TYPE option<record<nodes>>;
@@ -215,7 +223,7 @@ DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_edge
 
 
 -- =============================================================================
--- FUNCTIONS (CodeGraph Preserved)
+-- FUNCTIONS
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------

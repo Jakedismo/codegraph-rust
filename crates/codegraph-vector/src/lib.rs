@@ -45,6 +45,7 @@ pub mod persistent;
 pub mod storage;
 
 pub mod insights_generator;
+pub mod lmstudio_reranker;
 pub mod ml;
 pub mod rag;
 pub mod reranker; // NEW: Fast reranking pipeline for insights generation // NEW: High-performance insights with reranking
@@ -89,6 +90,7 @@ pub use persistent::*;
 pub use storage::*;
 
 pub use insights_generator::*;
+pub use lmstudio_reranker::*;
 pub use rag::*;
 pub use reranker::*; // Re-export reranker types // Re-export insights types
 

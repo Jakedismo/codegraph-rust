@@ -1,4 +1,4 @@
-use codegraph_core::GraphStore;
+use codegraph_core::{CodeNode, GraphStore};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -30,6 +30,14 @@ static INDEX_CACHE: Lazy<DashMap<PathBuf, Arc<parking_lot::Mutex<IndexImpl>>>> =
 #[cfg(feature = "embeddings")]
 static EMBEDDING_GENERATOR: Lazy<tokio::sync::OnceCell<Arc<codegraph_vector::EmbeddingGenerator>>> =
     Lazy::new(|| tokio::sync::OnceCell::new());
+
+#[cfg(feature = "embeddings-jina")]
+static JINA_RERANKER: Lazy<tokio::sync::OnceCell<Arc<codegraph_vector::JinaEmbeddingProvider>>> =
+    Lazy::new(|| tokio::sync::OnceCell::new());
+
+static LMSTUDIO_RERANKER: Lazy<
+    tokio::sync::OnceCell<Option<Arc<codegraph_vector::LmStudioReranker>>>,
+> = Lazy::new(|| tokio::sync::OnceCell::new());
 
 // Query result cache for 100x speedup on repeated queries
 static QUERY_RESULT_CACHE: Lazy<
@@ -71,6 +79,14 @@ fn detect_search_mode(config: &codegraph_core::config_manager::CodeGraphConfig) 
             SearchMode::Local
         }
     }
+}
+
+fn resolve_embedding_dimension(config: &codegraph_core::config_manager::CodeGraphConfig) -> usize {
+    std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|dim| *dim > 0)
+        .unwrap_or_else(|| config.embedding.dimension.max(1))
 }
 
 /// Performance timing breakdown for search operations
@@ -519,6 +535,20 @@ async fn faiss_search_impl(
         .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
     let config = config_mgr.config();
     let context_limits = ContextAwareLimits::from_config(config);
+    let vector_dim = resolve_embedding_dimension(config);
+    let embedding_column = codegraph_graph::surreal_embedding_column_for_dimension(vector_dim);
+    tracing::debug!(
+        "📐 Cloud search using {}-dimensional embeddings (Surreal column = {})",
+        vector_dim,
+        embedding_column
+    );
+    let vector_dim = resolve_embedding_dimension(config);
+    let embedding_column = codegraph_graph::surreal_embedding_column_for_dimension(vector_dim);
+    tracing::debug!(
+        "📐 Cloud search using {}-dimensional embeddings (column = {})",
+        vector_dim,
+        embedding_column
+    );
 
     // Generate query embedding
     let start_embedding = Instant::now();
@@ -622,64 +652,8 @@ async fn faiss_search_impl(
 
     let node_load_time = start_node_load.elapsed().as_millis() as u64;
 
-    // Optional Jina reranking for local FAISS search (improves quality 10-30%)
     let start_rerank = Instant::now();
-    let mut rerank_enabled = false;
-    #[cfg(feature = "embeddings-jina")]
-    let reranked_indices: Vec<usize> = {
-        // Try to create Jina provider for reranking
-        match codegraph_vector::JinaConfig::default().api_key.is_empty() {
-            true => {
-                tracing::debug!("💻 Local search: No Jina API key, using FAISS scores");
-                // No reranking - use FAISS order
-                (0..nodes.len()).collect()
-            }
-            false => {
-                let jina_config = codegraph_vector::JinaConfig {
-                    enable_reranking: true,
-                    reranking_model: "jina-reranker-v3".to_string(),
-                    reranking_top_n: limit,
-                    ..codegraph_vector::JinaConfig::default()
-                };
-
-                match codegraph_vector::JinaEmbeddingProvider::new(jina_config) {
-                    Ok(jina_provider) => {
-                        // Prepare documents for reranking
-                        let documents: Vec<String> = nodes
-                            .iter()
-                            .map(|node| {
-                                format!("{}\n{}", node.name, node.content.as_deref().unwrap_or(""))
-                            })
-                            .collect();
-
-                        match jina_provider.rerank(&query, documents).await {
-                            Ok(rerank_results) => {
-                                tracing::info!(
-                                    "🎯 Local + Jina reranking: {} results (FAISS+rerank pipeline)",
-                                    rerank_results.len()
-                                );
-                                rerank_enabled = true;
-                                // Extract indices from rerank results
-                                rerank_results.into_iter().map(|r| r.index).collect()
-                            }
-                            Err(e) => {
-                                tracing::warn!("Jina reranking failed: {}, using FAISS scores", e);
-                                // Fallback to FAISS order
-                                (0..nodes.len()).collect()
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::debug!("Jina provider init failed: {}, using FAISS scores", e);
-                        (0..nodes.len()).collect()
-                    }
-                }
-            }
-        }
-    };
-
-    #[cfg(not(feature = "embeddings-jina"))]
-    let reranked_indices: Vec<usize> = (0..nodes.len()).collect();
+    let (reranked_indices, rerank_enabled) = run_reranker_if_available(&query, &nodes, limit).await;
 
     let rerank_time = start_rerank.elapsed().as_millis() as u64;
 
@@ -774,6 +748,208 @@ async fn faiss_search_impl(
     }
 
     Ok(result)
+}
+
+fn identity_rerank_indices(len: usize) -> Vec<usize> {
+    (0..len).collect()
+}
+
+fn rerank_candidate_limit(nodes_len: usize, limit: usize) -> usize {
+    let env_override = std::env::var("CODEGRAPH_RERANK_CANDIDATES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|value| *value > 0);
+
+    let default_window = if limit == 0 {
+        nodes_len
+    } else {
+        (limit * 2).max(32)
+    };
+
+    env_override.unwrap_or(default_window).min(nodes_len).max(1)
+}
+
+fn build_rerank_documents(nodes: &[CodeNode], count: usize) -> Vec<String> {
+    nodes
+        .iter()
+        .take(count)
+        .map(|node| {
+            let snippet: String = node
+                .content
+                .as_deref()
+                .unwrap_or("")
+                .chars()
+                .take(2048)
+                .collect();
+            format!("{}\n{}\n{}", node.name, node.location.file_path, snippet)
+        })
+        .collect()
+}
+
+fn merge_rerank_indices(
+    nodes_len: usize,
+    candidate_count: usize,
+    ordered_subset: impl IntoIterator<Item = usize>,
+) -> Vec<usize> {
+    let mut merged = Vec::with_capacity(nodes_len);
+    let mut seen = vec![false; candidate_count];
+
+    for idx in ordered_subset {
+        if idx < candidate_count && !seen[idx] {
+            seen[idx] = true;
+            merged.push(idx);
+        }
+    }
+
+    for idx in 0..candidate_count {
+        if !seen[idx] {
+            merged.push(idx);
+        }
+    }
+
+    if nodes_len > candidate_count {
+        merged.extend(candidate_count..nodes_len);
+    }
+
+    merged
+}
+
+async fn run_reranker_if_available(
+    query: &str,
+    nodes: &[CodeNode],
+    limit: usize,
+) -> (Vec<usize>, bool) {
+    if nodes.is_empty() {
+        return (Vec::new(), false);
+    }
+
+    let provider = std::env::var("CODEGRAPH_RERANKING_PROVIDER")
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+
+    match provider.as_str() {
+        "jina" => run_jina_reranker(query, nodes, limit).await,
+        "lmstudio" => run_lmstudio_reranker(query, nodes, limit).await,
+        "" => (identity_rerank_indices(nodes.len()), false),
+        other => {
+            tracing::warn!(
+                "Unknown reranking provider '{}', falling back to FAISS ordering",
+                other
+            );
+            (identity_rerank_indices(nodes.len()), false)
+        }
+    }
+}
+
+#[cfg(feature = "embeddings-jina")]
+async fn run_jina_reranker(query: &str, nodes: &[CodeNode], limit: usize) -> (Vec<usize>, bool) {
+    let preview_config = codegraph_vector::JinaConfig::default();
+    if preview_config.api_key.is_empty() {
+        tracing::warn!("Jina reranking requested but JINA_API_KEY is not set");
+        return (identity_rerank_indices(nodes.len()), false);
+    }
+
+    let candidate_count = rerank_candidate_limit(nodes.len(), limit);
+    let documents = build_rerank_documents(nodes, candidate_count);
+    if documents.is_empty() {
+        return (identity_rerank_indices(nodes.len()), false);
+    }
+
+    match jina_reranker_handle().await {
+        Ok(provider) => match provider.rerank(query, documents).await {
+            Ok(results) => {
+                if results.is_empty() {
+                    tracing::debug!("Jina reranker returned no results, keeping FAISS order");
+                    return (identity_rerank_indices(nodes.len()), false);
+                }
+                let ordered: Vec<usize> = results.into_iter().map(|r| r.index).collect();
+                let merged = merge_rerank_indices(nodes.len(), candidate_count, ordered);
+                tracing::info!(
+                    "Jina reranking applied to {} candidates (limit {})",
+                    candidate_count,
+                    limit
+                );
+                (merged, true)
+            }
+            Err(e) => {
+                tracing::warn!("Jina reranking failed: {}", e);
+                (identity_rerank_indices(nodes.len()), false)
+            }
+        },
+        Err(e) => {
+            tracing::warn!("Failed to initialize Jina reranker: {}", e);
+            (identity_rerank_indices(nodes.len()), false)
+        }
+    }
+}
+
+#[cfg(not(feature = "embeddings-jina"))]
+async fn run_jina_reranker(_query: &str, nodes: &[CodeNode], _limit: usize) -> (Vec<usize>, bool) {
+    tracing::debug!(
+        "Jina reranking requested but embeddings-jina feature is disabled; using FAISS order"
+    );
+    (identity_rerank_indices(nodes.len()), false)
+}
+
+async fn run_lmstudio_reranker(
+    query: &str,
+    nodes: &[CodeNode],
+    limit: usize,
+) -> (Vec<usize>, bool) {
+    let Some(client) = lmstudio_reranker_handle().await else {
+        tracing::warn!(
+            "LM Studio reranking requested but LMSTUDIO_URL / CODEGRAPH_RERANKING_PROVIDER are not configured"
+        );
+        return (identity_rerank_indices(nodes.len()), false);
+    };
+
+    let candidate_count = rerank_candidate_limit(nodes.len(), limit);
+    let documents = build_rerank_documents(nodes, candidate_count);
+    if documents.is_empty() {
+        return (identity_rerank_indices(nodes.len()), false);
+    }
+
+    match client.rerank(query, &documents).await {
+        Ok(results) => {
+            if results.is_empty() {
+                tracing::debug!("LM Studio reranker returned no results, keeping FAISS order");
+                return (identity_rerank_indices(nodes.len()), false);
+            }
+            let ordered: Vec<usize> = results.into_iter().map(|r| r.index).collect();
+            let merged = merge_rerank_indices(nodes.len(), candidate_count, ordered);
+            tracing::info!(
+                "LM Studio reranking applied to {} candidates (limit {})",
+                candidate_count,
+                limit
+            );
+            (merged, true)
+        }
+        Err(e) => {
+            tracing::warn!("LM Studio reranking failed: {}", e);
+            (identity_rerank_indices(nodes.len()), false)
+        }
+    }
+}
+
+#[cfg(feature = "embeddings-jina")]
+async fn jina_reranker_handle() -> anyhow::Result<Arc<codegraph_vector::JinaEmbeddingProvider>> {
+    JINA_RERANKER
+        .get_or_try_init(|| async {
+            let config = codegraph_vector::JinaConfig::default();
+            codegraph_vector::JinaEmbeddingProvider::new(config)
+                .map(Arc::new)
+                .map_err(|e| anyhow::anyhow!(e.to_string()))
+        })
+        .await
+        .map(|arc| arc.clone())
+}
+
+async fn lmstudio_reranker_handle() -> Option<Arc<codegraph_vector::LmStudioReranker>> {
+    LMSTUDIO_RERANKER
+        .get_or_init(|| async { codegraph_vector::LmStudioReranker::from_env().map(Arc::new) })
+        .await
+        .clone()
 }
 
 /// Shared implementation for bin_search_with_scores with dual-mode support
@@ -894,6 +1070,7 @@ async fn cloud_search_impl(
 
     let search_results = surrealdb_storage
         .vector_search_with_metadata(
+            embedding_column,
             query_embedding.clone(),
             overretrieve_limit,
             100, // ef_search parameter for HNSW
@@ -925,74 +1102,30 @@ async fn cloud_search_impl(
     let nodes = surrealdb_storage.get_nodes_by_ids(&node_ids).await?;
     let load_time = start_load.elapsed().as_millis() as u64;
 
-    // 6. Jina reranking (if available)
+    // 6. Reranking (Jina cloud or local providers)
     let start_rerank = Instant::now();
-    let mut rerank_enabled = false;
-    let mut rerank_time = 0u64;
+    let (rerank_indices, rerank_enabled) = run_reranker_if_available(&query, &nodes, limit).await;
+    let rerank_time = start_rerank.elapsed().as_millis() as u64;
 
-    // Try to create Jina provider for reranking
-    #[cfg(feature = "embeddings-jina")]
-    let reranked_results: Vec<(usize, f32)> = {
-        match codegraph_vector::JinaConfig::default().api_key.is_empty() {
-            true => {
-                tracing::warn!("JINA_API_KEY not set, skipping reranking");
-                // Return HNSW order
-                (0..nodes.len()).map(|i| (i, search_results[i].1)).collect()
-            }
-            false => {
-                let jina_config = codegraph_vector::JinaConfig {
-                    enable_reranking: true,
-                    reranking_model: "jina-reranker-v3".to_string(),
-                    reranking_top_n: limit,
-                    ..codegraph_vector::JinaConfig::default()
-                };
-
-                match codegraph_vector::JinaEmbeddingProvider::new(jina_config) {
-                    Ok(jina_provider) => {
-                        // Prepare documents for reranking
-                        let documents: Vec<String> = nodes
-                            .iter()
-                            .map(|node| {
-                                format!("{}\n{}", node.name, node.content.as_deref().unwrap_or(""))
-                            })
-                            .collect();
-
-                        match jina_provider.rerank(&query, documents).await {
-                            Ok(rerank_results) => {
-                                tracing::info!(
-                                    "🎯 Jina reranking: {} results",
-                                    rerank_results.len()
-                                );
-                                rerank_enabled = true;
-                                // Map rerank results to (index, score)
-                                rerank_results
-                                    .into_iter()
-                                    .map(|r| (r.index, r.relevance_score))
-                                    .collect()
-                            }
-                            Err(e) => {
-                                tracing::warn!("Jina reranking failed: {}, using HNSW scores", e);
-                                // Fallback to HNSW order
-                                (0..nodes.len()).map(|i| (i, search_results[i].1)).collect()
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to create Jina provider: {}, using HNSW scores", e);
-                        (0..nodes.len()).map(|i| (i, search_results[i].1)).collect()
-                    }
-                }
-            }
-        }
+    let base_order = if rerank_indices.is_empty() {
+        identity_rerank_indices(nodes.len())
+    } else {
+        rerank_indices
     };
 
-    #[cfg(not(feature = "embeddings-jina"))]
-    let reranked_results: Vec<(usize, f32)> = {
-        tracing::info!("Jina feature not enabled, using HNSW scores only");
-        (0..nodes.len()).map(|i| (i, search_results[i].1)).collect()
-    };
-
-    rerank_time = start_rerank.elapsed().as_millis() as u64;
+    let reranked_results: Vec<(usize, f32)> = base_order
+        .into_iter()
+        .filter_map(|idx| {
+            if idx >= nodes.len() {
+                return None;
+            }
+            let score = search_results
+                .get(idx)
+                .map(|(_, s)| *s as f32)
+                .unwrap_or_default();
+            Some((idx, score))
+        })
+        .collect();
 
     // 7. Format results using reranked order
     let start_format = Instant::now();

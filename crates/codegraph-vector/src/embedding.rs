@@ -188,8 +188,9 @@ impl EmbeddingGenerator {
                             match ollama_provider.check_availability().await {
                                 Ok(true) => {
                                     tracing::info!("✅ Fallback successful: Ollama nomic-embed-code available for AI semantic matching");
+                                    base.model_config.dimension =
+                                        ollama_provider.embedding_dimension();
                                     base.ollama_provider = Some(ollama_provider);
-                                    base.model_config.dimension = 768;
                                 }
                                 Ok(false) => {
                                     tracing::error!("❌ Ollama fallback failed: nomic-embed-code model not found");
@@ -231,9 +232,8 @@ impl EmbeddingGenerator {
                 match ollama_provider.check_availability().await {
                     Ok(true) => {
                         tracing::info!("✅ Ollama nomic-embed-code available for embeddings");
+                        base.model_config.dimension = ollama_provider.embedding_dimension();
                         base.ollama_provider = Some(ollama_provider);
-                        // Update dimension to match nomic-embed-code
-                        base.model_config.dimension = 768;
                     }
                     Ok(false) => {
                         tracing::warn!("⚠️ nomic-embed-code model not found. Install with: ollama pull hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M");

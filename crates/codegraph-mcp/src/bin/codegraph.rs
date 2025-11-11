@@ -90,6 +90,7 @@ enum Commands {
         about = "Index a project or directory",
         long_about = "Index a project with dual-mode support:\n\
                       • Local Mode (FAISS): Set CODEGRAPH_EMBEDDING_PROVIDER=local or ollama\n\
+                      • Local Mode (SurrealDB HNSW + Ollama Embeddings + LMStudio Rerank): Set CODEGRAPH_EMBEDDING_PROVIDER=ollama and Set CODEGRAPH_RERANKING_PROVIDER=lmstudio\n\
                       • Cloud Mode (SurrealDB HNSW + Jina reranking): Set CODEGRAPH_EMBEDDING_PROVIDER=jina\n\
                       \n\
                       Some flags are mode-specific (see individual flag help for details)."
@@ -1262,11 +1263,22 @@ async fn handle_index(
         languages_list.join(", ")
     );
 
-    let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or("default".to_string());
+    let provider =
+        std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or_else(|_| "default".to_string());
     if provider == "ollama" {
         println!(
-            "{}",
-            "🧠 Using SOTA Code-Specialized Embeddings (nomic-embed-code)".green()
+            "{}\n   • {}\n   • {}\n   • {}\n   • {}",
+            "🧠 Using Local Embeddings".green(),
+            "384-dim all-mini-llm".green(),
+            "1024-dim qwen3-embedding:0.6b".green(),
+            "2048-dim qwen3-embedding:4b".green(),
+            "4096-dim qwen3-embedding:8b".green()
+        );
+    } else if provider == "jina" {
+        println!(
+            "{}\n   • {}",
+            "🧠 Using SOTA Embeddings".green(),
+            "2048-dim jina-embeddings-v4".green()
         );
     } else if provider == "onnx" {
         println!("{}", "⚡ Using Speed-Optimized Embeddings (ONNX)".yellow());
@@ -1311,11 +1323,11 @@ async fn handle_index(
     println!();
     println!(
         "{}",
-        "🚀 Ready for Revolutionary MCP Intelligence!"
+        "🚀 Ready for CodeGraph Agentic MCP Intelligence!"
             .green()
             .bold()
     );
-    println!("Next: Start MCP server with 'codegraph start stdio'");
+    println!("Next: Start MCP server with 'codegraph start http' or 'codegraph start stdio'");
 
     if stats.errors > 0 {
         println!("  {} Errors: {}", "⚠".yellow(), stats.errors);
