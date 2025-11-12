@@ -55,6 +55,7 @@ echo -e "${BLUE}🔧 Building CodeGraph with cloud features...${NC}"
 echo "📊 Languages: Rust, Python, JavaScript, TypeScript, Swift, C#, Ruby, PHP, Go, Java, C++"
 echo "🛠️  Tools: enhanced_search, semantic_intelligence, impact_analysis, pattern_detection, vector_search, graph_neighbors, graph_traverse, performance_metrics"
 echo "☁️  Cloud: Jina embeddings, Anthropic/x.AI/OpenAI LLM providers"
+echo "🏠 Local: Ollama embeddings (local models)"
 echo "💾 Database: SurrealDB backend"
 echo "🌐 Transport: STDIO, HTTP with SSE streaming, Dual mode"
 echo ""
@@ -85,11 +86,12 @@ echo ""
 # Feature flags for cloud setup:
 # - ai-enhanced: Core AI features (includes faiss + embeddings + codegraph-ai)
 # - codegraph-vector/jina: Jina embeddings provider
+# - embeddings-ollama: Ollama embeddings provider (local models)
 # - codegraph-graph/surrealdb: SurrealDB backend support
 # - codegraph-ai/all-cloud-providers: Anthropic, OpenAI, x.AI and OpenAI-compatible providers
 # - server-http: HTTP transport with SSE streaming for MCP server
 # - autoagents-experimental: EXPERIMENTAL AutoAgents framework for improved agentic orchestration
-FEATURE_FLAGS="ai-enhanced,codegraph-vector/jina,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers,server-http,autoagents-experimental"
+FEATURE_FLAGS="ai-enhanced,codegraph-vector/jina,embeddings-ollama,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers,server-http,autoagents-experimental"
 INSTALL_DIR="${CODEGRAPH_INSTALL_DIR:-$HOME/.local/bin}"
 
 echo -e "${BLUE}🚀 Building CodeGraph with Cloud Features...${NC}"
@@ -121,6 +123,7 @@ if [ $? -eq 0 ]; then
     echo "   🔍 Graph Navigation Tools: 3 dependency analysis tools"
     echo "   📊 Performance Tools: 1 system monitoring tool"
     echo "   ☁️  Cloud Embeddings: Jina reranking and embeddings"
+    echo "   🏠 Local Embeddings: Ollama (local models)"
     echo "   🤖 Cloud LLM: Anthropic (Claude), OpenAI, and compatible providers"
     echo "   💾 Database: SurrealDB backend for scalable graph storage"
     echo "   🌐 MCP Transports: STDIO, HTTP (with SSE streaming), and Dual mode"
