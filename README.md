@@ -580,6 +580,40 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 
 ---
 
+### HTTP Server Mode (Experimental)
+
+For web integrations and multi-client scenarios:
+
+```bash
+# Build with HTTP support
+make build-mcp-http
+
+# Start server
+./target/release/codegraph start http
+
+# Test endpoints
+curl http://127.0.0.1:3000/health
+curl -X POST http://127.0.0.1:3000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+```
+
+**Features:**
+- ✅ Session-based stateful connections
+- ✅ SSE streaming for real-time progress
+- ✅ Automatic session management
+- ✅ Reconnection support with Last-Event-Id
+
+**Use Cases:**
+- Web-based code analysis dashboards
+- Multi-client collaborative environments
+- API integrations
+- Development/debugging (easier to inspect than STDIO)
+
+**Note:** For production use with Claude Desktop, use STDIO mode.
+
+---
+
 ## 📚 For AI Agents: Using CodeGraph MCP
 
 CodeGraph provides powerful code intelligence tools via the Model Context Protocol (MCP).
