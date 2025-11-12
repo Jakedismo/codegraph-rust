@@ -4,7 +4,7 @@ Test HTTP MCP server with SSE streaming for agentic tools.
 
 REQUIREMENTS:
   - Binary built with: cargo build --release --features "ai-enhanced,autoagents-experimental,faiss,ollama,server-http"
-  - Start server: ./target/release/codegraph-official serve --transport http --port 3000
+  - Start server: ./target/release/codegraph start http --port 3000
 
 Usage:
   python3 test_http_mcp_client.py
