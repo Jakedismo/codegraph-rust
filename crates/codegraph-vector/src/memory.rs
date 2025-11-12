@@ -50,7 +50,7 @@ struct MemoryBlock {
     ptr: *mut u8,
     size: usize,
     used: bool,
-    allocation_id: usize,
+    _allocation_id: usize,
 }
 
 unsafe impl Send for MemoryBlock {}
@@ -72,7 +72,7 @@ impl MemoryBlock {
             ptr,
             size,
             used: true,
-            allocation_id,
+            _allocation_id: allocation_id,
         })
     }
 

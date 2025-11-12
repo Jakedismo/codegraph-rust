@@ -188,14 +188,6 @@ impl ContextRetriever {
         Ok(results)
     }
 
-    #[cfg(not(feature = "faiss"))]
-    async fn semantic_similarity_search(
-        &self,
-        _query_embedding: &[f32],
-    ) -> Result<Vec<RetrievalResult>> {
-        Ok(Vec::new())
-    }
-
     async fn keyword_matching_search(&self, keywords: &[String]) -> Result<Vec<RetrievalResult>> {
         let mut results = Vec::new();
 
@@ -397,6 +389,7 @@ impl ContextRetriever {
         }
     }
 
+    #[cfg(feature = "faiss")]
     async fn get_node(&self, node_id: NodeId) -> Result<Option<CodeNode>> {
         Ok(self.node_cache.get(&node_id).cloned())
     }
@@ -462,14 +455,6 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     } else {
         dot_product / (norm_a * norm_b)
     }
-}
-
-fn simple_hash(text: &str) -> u32 {
-    let mut hash = 5381u32;
-    for byte in text.bytes() {
-        hash = hash.wrapping_mul(33).wrapping_add(byte as u32);
-    }
-    hash
 }
 
 #[cfg(test)]

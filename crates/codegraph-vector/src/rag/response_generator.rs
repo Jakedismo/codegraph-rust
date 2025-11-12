@@ -62,7 +62,6 @@ pub struct ResponseGenerator {
 struct ResponseTemplate {
     pattern: String,
     template: String,
-    confidence_boost: f32,
 }
 
 impl ResponseGenerator {
@@ -687,22 +686,18 @@ impl ResponseGenerator {
             ResponseTemplate {
                 pattern: "how".to_string(),
                 template: "To accomplish this, you can use {node_name} which is a {node_type}:\n\n{content}".to_string(),
-                confidence_boost: 0.2,
             },
             ResponseTemplate {
                 pattern: "what".to_string(),
                 template: "{node_name} is a {node_type} that provides the following functionality:\n\n{content}".to_string(),
-                confidence_boost: 0.1,
             },
             ResponseTemplate {
                 pattern: "find".to_string(),
                 template: "I found {node_name} ({node_type}) which matches your criteria:\n\n{content}".to_string(),
-                confidence_boost: 0.1,
             },
             ResponseTemplate {
                 pattern: "error".to_string(),
                 template: "For error handling, consider using {node_name}:\n\n{content}".to_string(),
-                confidence_boost: 0.3,
             },
         ]
     }

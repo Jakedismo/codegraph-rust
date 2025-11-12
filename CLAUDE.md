@@ -92,34 +92,28 @@ cargo doc --workspace --no-deps --open
 
 ### Running the MCP Server
 
-**Note:** The MCP server has two binaries:
-- `codegraph-official` (recommended): Uses official rmcp SDK, supports both STDIO and HTTP transports
-- `codegraph` (legacy): Original implementation, STDIO only
-
-All examples below use `codegraph-official` for consistency.
-
 ```bash
 # Build the MCP server binary (with AutoAgents experimental feature)
-cargo build --release -p codegraph-mcp --bin codegraph-official --features "ai-enhanced,autoagents-experimental,faiss,ollama"
+cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,ollama"
 
 # Or use Makefile target
 make build-mcp-autoagents
 
 # Or build without AutoAgents (uses legacy orchestrator)
-cargo build --release -p codegraph-mcp --bin codegraph-official --features "ai-enhanced,faiss,ollama"
+cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,faiss,ollama"
 
 # Start MCP server (stdio mode - RECOMMENDED)
-./target/release/codegraph-official serve --transport stdio
+./target/release/codegraph start stdio
 
 # Check agentic tool configuration
-./target/release/codegraph-official config agent-status
+./target/release/codegraph config agent-status
 ```
 
 **HTTP Transport (Experimental):**
 - HTTP transport with SSE streaming is now available
 - Requires `server-http` feature flag
 - Build: `cargo build --release --features "ai-enhanced,autoagents-experimental,faiss,ollama,server-http"`
-- Start: `./target/release/codegraph-official serve --transport http --port 3000`
+- Start: `./target/release/codegraph start http --port 3000`
 - Endpoints:
   - `POST /mcp` - Send MCP requests (returns SSE stream)
   - `GET /sse` - Reconnect to existing session
@@ -134,10 +128,10 @@ cargo build --release -p codegraph-mcp --bin codegraph-official --features "ai-e
 cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,ollama,server-http"
 
 # Start HTTP server (default: http://127.0.0.1:3000)
-./target/release/codegraph-official serve --transport http
+./target/release/codegraph start http
 
 # Custom host and port
-./target/release/codegraph-official serve --transport http --host 0.0.0.0 --port 8080
+./target/release/codegraph start http --host 0.0.0.0 --port 8080
 
 # Test with curl
 curl http://127.0.0.1:3000/health  # Should return "OK"
@@ -483,9 +477,9 @@ sudo apt-get install libfaiss-dev  # Ubuntu
 - Verify SurrealDB connection is working
 
 **MCP tests fail**
-- Check binary exists: `./target/release/codegraph-official` or `./target/debug/codegraph-official`
-- Try building with AutoAgents: `cargo build -p codegraph-mcp --bin codegraph-official --features "ai-enhanced,autoagents-experimental,faiss,ollama"`
-- Or without AutoAgents (legacy): `cargo build -p codegraph-mcp --bin codegraph-official --features "ai-enhanced,faiss,ollama"`
+- Check binary exists: `./target/release/codegraph` or `./target/debug/codegraph`
+- Try building with AutoAgents: `cargo build -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,ollama"`
+- Or without AutoAgents (legacy): `cargo build -p codegraph-mcp --bin codegraph --features "ai-enhanced,faiss,ollama"`
 
 ## Additional Resources
 

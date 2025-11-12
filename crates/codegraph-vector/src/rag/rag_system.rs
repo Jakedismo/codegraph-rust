@@ -2,6 +2,7 @@ use crate::rag::{
     ContextRetriever, GeneratedResponse, GenerationConfig, ProcessedQuery, QueryProcessor,
     RankedResult, RankingConfig, ResponseGenerator, ResultRanker, RetrievalConfig,
 };
+#[cfg(feature = "faiss")]
 use crate::EmbeddingGenerator;
 #[cfg(feature = "faiss")]
 use crate::{FaissVectorStore, SemanticSearch};
@@ -71,6 +72,7 @@ pub struct RAGSystem {
     response_generator: ResponseGenerator,
     #[cfg(feature = "faiss")]
     semantic_search: Option<Arc<SemanticSearch>>,
+    #[cfg(feature = "faiss")]
     embedding_generator: Arc<EmbeddingGenerator>,
     query_cache: Arc<RwLock<HashMap<String, QueryResult>>>,
     #[cfg(feature = "cache")]
@@ -99,6 +101,7 @@ impl RAGSystem {
             config.ranking.clone(),
         )));
         let response_generator = ResponseGenerator::with_config(config.generation.clone());
+        #[cfg(feature = "faiss")]
         let embedding_generator = Arc::new(EmbeddingGenerator::default());
 
         #[cfg(feature = "cache")]
@@ -126,6 +129,7 @@ impl RAGSystem {
             response_generator,
             #[cfg(feature = "faiss")]
             semantic_search: None,
+            #[cfg(feature = "faiss")]
             embedding_generator,
             query_cache: Arc::new(RwLock::new(HashMap::new())),
             #[cfg(feature = "cache")]

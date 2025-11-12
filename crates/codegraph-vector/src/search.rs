@@ -524,6 +524,7 @@ impl SemanticSearch {
     }
 }
 
+#[cfg(feature = "faiss")]
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         return 0.0;
@@ -540,6 +541,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     }
 }
 
+#[cfg(feature = "faiss")]
 fn simple_hash(text: &str) -> u32 {
     let mut hash = 5381u32;
     for byte in text.bytes() {
@@ -548,6 +550,7 @@ fn simple_hash(text: &str) -> u32 {
     hash
 }
 
+#[cfg(feature = "faiss")]
 fn build_filter_signature(filters: Option<&SearchFilters>) -> String {
     if let Some(f) = filters {
         let mut langs: Vec<String> = f
@@ -579,6 +582,7 @@ fn build_filter_signature(filters: Option<&SearchFilters>) -> String {
     }
 }
 
+#[cfg(feature = "faiss")]
 fn normalize_scores(results: &mut [SearchResult]) {
     if results.is_empty() {
         return;

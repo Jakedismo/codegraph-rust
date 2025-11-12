@@ -44,7 +44,7 @@ impl GpuMemoryAllocation {
 
 #[derive(Debug)]
 pub struct GpuVectorData {
-    allocation: GpuMemoryAllocation,
+    _allocation: GpuMemoryAllocation,
     vector_count: usize,
     dimension: usize,
     uploaded: bool,
@@ -53,7 +53,7 @@ pub struct GpuVectorData {
 impl GpuVectorData {
     pub fn new(allocation: GpuMemoryAllocation, vector_count: usize, dimension: usize) -> Self {
         Self {
-            allocation,
+            _allocation: allocation,
             vector_count,
             dimension,
             uploaded: false,
