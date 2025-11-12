@@ -434,7 +434,7 @@ impl ProjectIndexer {
                     g
                 }
             } else {
-                let mut g = EmbeddingGenerator::with_auto_from_env().await;
+                let mut g = EmbeddingGenerator::with_config(global_config).await;
                 // Set batch_size and max_concurrent for Jina provider if applicable
                 #[cfg(feature = "embeddings-jina")]
                 {

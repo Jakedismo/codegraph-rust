@@ -13,7 +13,7 @@ build-release:
 
 # Build MCP server with AutoAgents experimental feature
 build-mcp-autoagents:
-	cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,ollama"
+	cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,embeddings-ollama"
 
 # Build MCP HTTP server with experimental HTTP transport
 .PHONY: build-mcp-http

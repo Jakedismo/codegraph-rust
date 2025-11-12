@@ -382,8 +382,13 @@ impl ConfigManager {
         info!("✅ Configuration loaded successfully");
         if let Some(ref path) = config_path {
             info!("   📄 Config file: {}", path.display());
+        } else {
+            info!("   📄 Config file: NONE (using defaults)");
         }
         info!("   🤖 Embedding provider: {}", config.embedding.provider);
+        info!("   🔧 Embedding model: {:?}", config.embedding.model);
+        info!("   📐 Embedding dimension: {}", config.embedding.dimension);
+        info!("   🌐 Ollama URL: {}", config.embedding.ollama_url);
         info!(
             "   💬 LLM insights: {}",
             if config.llm.enabled {

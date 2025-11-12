@@ -1,5 +1,12 @@
 # Minimal configuration for compilation
 
+[embedding]
+provider = "ollama"
+model = "qwen3-embedding:0.6b"
+dimension = 1024
+batch_size = 32
+ollama_url = "http://localhost:11434"
+
 [llm]
 provider = "ollama"
 model = "qwen2.5-coder:14b"

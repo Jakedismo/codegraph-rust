@@ -283,40 +283,52 @@ impl EmbeddingGenerator {
         });
 
         let provider = embedding_config.provider.to_lowercase();
+        tracing::info!(
+            "🔍 EmbeddingGenerator::with_config called with provider='{}', model={:?}, dimension={}",
+            provider,
+            embedding_config.model,
+            embedding_config.dimension
+        );
 
         if provider == "ollama" {
+            tracing::info!("🎯 Provider matches 'ollama', attempting to initialize...");
             #[cfg(feature = "ollama")]
             {
+                tracing::info!("✅ 'ollama' feature is ENABLED");
                 let ollama_config =
                     crate::ollama_embedding_provider::OllamaEmbeddingConfig::from(embedding_config);
+                tracing::info!("🔧 Created OllamaEmbeddingConfig: model='{}', url='{}'",
+                    ollama_config.model_name, ollama_config.base_url);
                 let ollama_provider =
                     crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(ollama_config);
 
+                tracing::info!("🔍 Checking Ollama availability...");
                 match ollama_provider.check_availability().await {
                     Ok(true) => {
+                        use crate::providers::EmbeddingProvider;
                         tracing::info!(
                             "✅ Ollama {} available for embeddings (from config)",
-                            embedding_config
-                                .model
-                                .as_ref()
-                                .unwrap_or(&"nomic-embed-code".to_string())
+                            ollama_provider.provider_name()
                         );
                         base.model_config.dimension = ollama_provider.embedding_dimension();
                         base.ollama_provider = Some(ollama_provider);
+                        tracing::info!("✅ ollama_provider successfully set!");
                     }
                     Ok(false) => {
-                        tracing::warn!(
-                            "⚠️ Ollama model {} not found. Install with: ollama pull <model>",
-                            embedding_config
-                                .model
-                                .as_ref()
-                                .unwrap_or(&"nomic-embed-code".to_string())
+                        use crate::providers::EmbeddingProvider;
+                        tracing::error!(
+                            "❌ Ollama model {} not found. Install with: ollama pull <model>",
+                            ollama_provider.provider_name()
                         );
                     }
                     Err(e) => {
                         tracing::error!("❌ Failed to connect to Ollama for embeddings: {}", e);
                     }
                 }
+            }
+            #[cfg(not(feature = "ollama"))]
+            {
+                tracing::error!("❌ 'ollama' feature is NOT ENABLED - cannot use Ollama provider!");
             }
         } else if provider == "jina" {
             #[cfg(feature = "jina")]
@@ -376,12 +388,13 @@ impl EmbeddingGenerator {
         // Prefer Ollama provider for batch processing (code-specialized embeddings)
         #[cfg(feature = "ollama")]
         if let Some(ollama) = &self.ollama_provider {
+            use crate::providers::EmbeddingProvider;
             tracing::info!(
                 target: "codegraph_vector::embeddings",
-                "Using Ollama nomic-embed-code for batch: {} items",
+                "Using Ollama {} for batch: {} items",
+                ollama.provider_name(),
                 nodes.len()
             );
-            use crate::providers::EmbeddingProvider;
             let embs = ollama.generate_embeddings(nodes).await?;
             if embs.len() != nodes.len() {
                 return Err(CodeGraphError::Vector(format!(
