@@ -15,6 +15,16 @@ build-release:
 build-mcp-autoagents:
 	cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,ollama"
 
+# Build MCP HTTP server with experimental HTTP transport
+.PHONY: build-mcp-http
+build-mcp-http:
+	cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,embeddings-ollama,server-http"
+
+# Run HTTP server (depends on build)
+.PHONY: run-http-server
+run-http-server: build-mcp-http
+	./target/release/codegraph start http --port 3000
+
 # Build API with size-optimized profile and strip/compress
 build-api-size:
 	cargo build --profile release-size --bin codegraph-api
