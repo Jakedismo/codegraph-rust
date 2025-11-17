@@ -9,6 +9,17 @@ Implementation of incremental indexing with file change tracking for CodeGraph. 
 
 ## Implementation Progress
 
+**Overall Status:** ✅ 75% Complete (Phases 1-3 done, Phase 4 pending)
+
+- ✅ **Phase 1:** File Metadata Tracking (Foundation) - COMPLETE
+- ✅ **Phase 2:** Cleanup for --force (Clean Slate) - COMPLETE
+- ✅ **Phase 3:** Differential Indexing - COMPLETE
+- ⏳ **Phase 4:** Edge Cases & Polish - NOT STARTED
+
+**Latest Commit:** feat: complete incremental indexing implementation (Phase 3) - 29d3321
+
+---
+
 ### ✅ Phase 1: File Metadata Tracking (Foundation) - COMPLETED
 
 #### Task 1.1: Schema Updates ✅
@@ -56,25 +67,32 @@ Implementation of incremental indexing with file change tracking for CodeGraph. 
 
 ---
 
-### 🔄 Phase 3: Differential Indexing (PARTIAL PROGRESS)
+### ✅ Phase 3: Differential Indexing - COMPLETED
 
-#### Task 3.1: File Change Detection Utilities 🚧 IN PROGRESS
+#### Task 3.1: File Change Detection Utilities ✅
 **File**: `crates/codegraph-mcp/src/indexer.rs`
 
 **Completed:**
 - Added imports: `sha2`, `HashSet`, `std::fs`, `std::io::Read` (lines 22-29)
 - Added `FileMetadataRecord` to imports (line 11)
-- Created `FileChangeType` enum: `Added`, `Modified`, `Deleted`, `Unchanged` (lines 334-340)
-- Created `FileChange` struct with path, type, current/previous hashes (lines 342-348)
-- Implemented `calculate_file_hash()` static method (lines 351-374)
+- Created `FileChangeType` enum: `Added`, `Modified`, `Deleted`, `Unchanged` (lines 42-48)
+- Created `FileChange` struct with path, type, current/previous hashes (lines 50-56)
+- Implemented `calculate_file_hash()` static method (lines 1987-2009)
   - Resolves symlinks via `fs::canonicalize()`
   - SHA-256 hashing with 8KB buffer
   - Proper error context
-
-**Still Needed:**
-- [ ] `detect_file_changes()` method to compare current vs stored metadata
-- [ ] `delete_data_for_files()` method to remove nodes/edges for deleted files
-- [ ] `has_file_metadata()` check for migration compatibility
+- Implemented `detect_file_changes()` method (lines 2011-2125)
+  - Compares current files vs stored metadata
+  - Categories: Added, Modified, Deleted, Unchanged
+  - SHA-256 hash comparison for change detection
+- Implemented `delete_data_for_files()` method (lines 2127-2170)
+  - Deletes nodes matching file paths
+  - Deletes connected edges
+  - Removes file metadata records
+- Implemented `has_file_metadata()` check (lines 1971-1984)
+  - Checks if project has any file metadata records
+  - Enables migration compatibility (old indexes without metadata)
+- **Status**: All 3 helper methods complete and tested
 
 **Implementation Plan for Remaining Work:**
 
@@ -313,16 +331,47 @@ else if self.is_indexed(path).await? {
 }
 ```
 
-**Key Change**: The existing code after this block needs to be modified to use `files_to_index` instead of `files` when in incremental mode.
-
-#### Task 3.3: Update File Metadata After Indexing ❌ NOT STARTED
+#### Task 3.2: Integrate Differential Logic into index_project() ✅
 **File**: `crates/codegraph-mcp/src/indexer.rs`
-**Location**: End of `index_project()` method, after `persist_project_metadata()` call
+**Location**: Lines 539-633
 
-**Implementation:**
+**Completed:**
+- Replaced early-return when project is indexed with differential logic
+- Three-branch conditional:
+  1. Has metadata → Run incremental indexing with change detection
+  2. Old index (no metadata) → Fall back to full index with warning
+  3. Fresh index → Standard full indexing
+- Incremental branch implementation:
+  - Collects current files from filesystem
+  - Calls `detect_file_changes()` to compare with stored metadata
+  - Categorizes changes (added, modified, deleted, unchanged)
+  - Logs comprehensive change summary
+  - Early returns if no changes detected
+  - Deletes data for deleted files via `delete_data_for_files()`
+  - Collects only changed files (added + modified) for re-indexing
+  - Early returns if only deletions (no files to index)
+- Type handling: Properly handles `Vec<(PathBuf, u64)>` from file collection
+- **Status**: Complete - incremental indexing fully integrated
+
+#### Task 3.3: Update File Metadata After Indexing ✅
+**File**: `crates/codegraph-mcp/src/indexer.rs`
+**Location**: Lines 1228-1231, 2172-2239
+
+**Completed:**
+- Added `persist_file_metadata()` call after project metadata persistence (line 1231)
+- Implemented `persist_file_metadata()` method (lines 2172-2239):
+  - Iterates over indexed files
+  - Calculates SHA-256 hash for each file
+  - Extracts file metadata (size, modified_at)
+  - Counts nodes and edges per file
+  - Creates `FileMetadataRecord` for each file
+  - Batch upserts via `storage.upsert_file_metadata_batch()`
+- Type safety: Accepts `&[EdgeRelationship]` to match actual edge type
+- **Status**: Complete - metadata persistence working
+
+**Original Implementation Plan:**
 ```rust
-// After line that calls self.persist_project_metadata(...).await?
-// Add this code:
+// Already implemented as described:
 
 // Update file metadata for tracking incremental changes
 info!("💾 Updating file metadata for change tracking");
