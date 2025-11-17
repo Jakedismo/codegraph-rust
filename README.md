@@ -647,6 +647,91 @@ agentic_code_search("how does authentication work?")
 agentic_dependency_analysis("what depends on AuthService?")
 ```
 
+### Agentic Workflow Architecture
+
+The following diagram shows how CodeGraph's agentic MCP tools work internally:
+
+```mermaid
+flowchart TD
+    subgraph "External: AI Agent (Claude Desktop, etc.)"
+        A[AI Agent] -->|MCP Tool Call| B[agentic_code_search<br/>agentic_dependency_analysis<br/>etc.]
+    end
+
+    subgraph "CodeGraph MCP Server"
+        B --> C{Tier Detection}
+        C -->|Read LLM Context<br/>Window Config| D[Determine Tier]
+
+        D -->|< 50K tokens| E1[Small Tier<br/>TERSE prompts<br/>5 max steps<br/>2,048 tokens]
+        D -->|50K-150K tokens| E2[Medium Tier<br/>BALANCED prompts<br/>10 max steps<br/>4,096 tokens]
+        D -->|150K-500K tokens| E3[Large Tier<br/>DETAILED prompts<br/>15 max steps<br/>8,192 tokens]
+        D -->|> 500K tokens| E4[Massive Tier<br/>EXPLORATORY prompts<br/>20 max steps<br/>16,384 tokens]
+
+        E1 & E2 & E3 & E4 --> F[Load Tier-Specific<br/>System Prompt]
+
+        F --> G[ReAct Agent<br/>Multi-Step Reasoning]
+
+        subgraph "Internal Graph Analysis Tools"
+            G -->|Step 1-N| H1[get_transitive_dependencies]
+            G -->|Step 1-N| H2[detect_circular_dependencies]
+            G -->|Step 1-N| H3[trace_call_chain]
+            G -->|Step 1-N| H4[calculate_coupling_metrics]
+            G -->|Step 1-N| H5[get_hub_nodes]
+            G -->|Step 1-N| H6[get_reverse_dependencies]
+        end
+
+        H1 & H2 & H3 & H4 & H5 & H6 --> I[SurrealDB Graph<br/>Query Execution]
+
+        I -->|Cached Results| J[LRU Cache<br/>100 entries]
+        I -->|Raw Data| K[Agent Reasoning]
+        J -->|Cache Hit| K
+
+        K -->|Iterative| G
+        K -->|Final Analysis| L[Structured Response]
+    end
+
+    L -->|Return via MCP| A
+
+    subgraph "Initial Codegraph Instructions Flow"
+        M[Agent Reads<br/>MCP Server Info] -->|Auto-loaded| N[Read Initial<br/>Codegraph Instructions]
+        N --> O[Tool Discovery:<br/>7 agentic_* tools listed]
+        N --> P[Tier Configuration:<br/>Context window limits]
+        N --> Q[Cache Settings:<br/>LRU enabled, size]
+        N --> R[Orchestrator Config:<br/>Max steps per tier]
+        O & P & Q & R --> S[Agent Ready<br/>to Use Tools]
+        S -.->|Invokes| B
+    end
+
+    style B fill:#e1f5ff
+    style G fill:#fff4e1
+    style I fill:#f0e1ff
+    style L fill:#e1ffe1
+    style N fill:#ffe1e1
+
+```
+
+**Key Components:**
+
+1. **Tier Detection**: Automatically adapts prompt complexity based on LLM's context window
+   - Small (<50K): Fast, terse responses for limited context models
+   - Medium (50K-150K): Balanced analysis for Claude Haiku, GPT-4
+   - Large (150K-500K): Detailed exploration for Claude Sonnet
+   - Massive (>500K): Comprehensive deep-dives for Claude Opus, GPT-5
+
+2. **Multi-Step Reasoning**: ReAct pattern with tier-specific limits
+   - Each step can call internal graph analysis tools
+   - LRU cache prevents redundant SurrealDB queries
+   - Iterative refinement until analysis complete
+
+3. **Internal Tools**: 6 graph analysis primitives
+   - Zero heuristics—LLM infers from structured data only
+   - Results cached transparently (100 entries default)
+   - Tool call logging for debugging
+
+4. **Initial Instructions**: Auto-loaded when MCP server connects
+   - Agent discovers available tools and their capabilities
+   - Learns tier configuration and limits
+   - Understands caching and orchestration settings
+
 ---
 
 ## 📊 Feature Flags Reference
