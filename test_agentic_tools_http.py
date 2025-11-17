@@ -6,7 +6,7 @@
 # - Uses HTTP POST /mcp endpoint with SSE streaming
 # - Handles long-running tasks (10-60 seconds per tool)
 # - Shows real-time progress as reasoning steps complete
-# - Loads configuration from .env file automatically
+# - Automatically loads configuration from .env file (RECOMMENDED)
 #
 # REQUIREMENTS:
 #   - SurrealDB must be running (local or cloud)
@@ -15,13 +15,25 @@
 #   - Python dependencies:
 #     pip install requests python-dotenv sseclient-py
 #
+# CONFIGURATION (create .env file in project root):
+#   # HTTP Server
+#   CODEGRAPH_HTTP_PORT=3000
+#   CODEGRAPH_HTTP_HOST=127.0.0.1
+#
+#   # SurrealDB (local)
+#   SURREALDB_URL=ws://localhost:3004
+#   SURREALDB_NAMESPACE=ouroboros
+#   SURREALDB_DATABASE=codegraph
+#   SURREALDB_USERNAME=root
+#   SURREALDB_PASSWORD=root
+#
+#   # LLM Configuration
+#   CODEGRAPH_LLM_PROVIDER=ollama
+#   CODEGRAPH_MODEL=qwen2.5-coder:14b
+#   CODEGRAPH_CONTEXT_WINDOW=32768
+#
 # Usage:
 #   python3 test_agentic_tools_http.py
-#
-# Environment variables (from .env or shell):
-#   CODEGRAPH_HTTP_PORT=3000  # HTTP server port
-#   CODEGRAPH_HTTP_HOST=127.0.0.1  # HTTP server host
-#   (plus all the SurrealDB and LLM config from original)
 
 import json, os, signal, subprocess, sys, time
 import shlex
@@ -37,14 +49,17 @@ except ImportError:
     sys.exit(1)
 
 # Load .env file if python-dotenv is available
+ENV_LOADED = False
 try:
     from dotenv import load_dotenv
     env_path = Path(__file__).resolve().parent / ".env"
     if env_path.exists():
-        load_dotenv(env_path)
+        load_dotenv(env_path, override=True)
+        ENV_LOADED = True
         print(f"✓ Loaded configuration from {env_path}")
     else:
         print(f"⚠️  No .env file found at {env_path}")
+        print(f"   Create one with your SurrealDB and LLM configuration")
 except ImportError:
     print("⚠️  python-dotenv not installed. Install with: pip install python-dotenv")
     print("   Falling back to environment variables only")
@@ -207,22 +222,30 @@ def send_http_request(url, payload, timeout=60):
 def check_surrealdb():
     """Check if SurrealDB configuration is present."""
     url = os.environ.get("SURREALDB_URL")
+    namespace = os.environ.get("SURREALDB_NAMESPACE")
+    database = os.environ.get("SURREALDB_DATABASE")
+    username = os.environ.get("SURREALDB_USERNAME")
+    password = os.environ.get("SURREALDB_PASSWORD")
+
     if not url:
         print("\n" + "=" * 72)
         print("⚠️  WARNING: SURREALDB_URL not configured!")
         print("=" * 72)
         print("\nAgentic tools require SurrealDB to be running.")
+        print("\n📝 RECOMMENDED: Create a .env file in the project root with:")
         print("\nOption 1: Local SurrealDB")
         print("  1. Install: curl -sSf https://install.surrealdb.com | sh")
         print("  2. Run: surreal start --bind 127.0.0.1:3004 --user root --pass root memory")
-        print("  3. Set in .env:")
+        print("  3. Add to .env file:")
         print("     SURREALDB_URL=ws://localhost:3004")
-        print("     SURREALDB_NAMESPACE=codegraph")
-        print("     SURREALDB_DATABASE=main")
+        print("     SURREALDB_NAMESPACE=ouroboros")
+        print("     SURREALDB_DATABASE=codegraph")
+        print("     SURREALDB_USERNAME=root")
+        print("     SURREALDB_PASSWORD=root")
         print("\nOption 2: SurrealDB Cloud (Free 1GB instance)")
         print("  1. Sign up at https://surrealdb.com/cloud")
         print("  2. Get connection details from dashboard")
-        print("  3. Set in .env:")
+        print("  3. Add to .env file:")
         print("     SURREALDB_URL=wss://your-instance.surrealdb.cloud")
         print("     SURREALDB_NAMESPACE=codegraph")
         print("     SURREALDB_DATABASE=main")
@@ -234,12 +257,17 @@ def check_surrealdb():
         if response.lower() != 'y':
             sys.exit(1)
     else:
-        print(f"✓ SurrealDB configured: {url}")
+        print(f"✓ SurrealDB URL: {url}")
+        print(f"  Namespace: {namespace or 'codegraph (default)'}")
+        print(f"  Database: {database or 'main (default)'}")
+        if username:
+            print(f"  Authentication: {username} / {'*' * len(password) if password else '(no password)'}")
 
 def print_config():
     """Print configuration being used."""
     print("\n" + "=" * 72)
-    print("CodeGraph Agentic Tools Configuration (HTTP Mode):")
+    config_source = "from .env file" if ENV_LOADED else "from environment variables"
+    print(f"CodeGraph Agentic Tools Configuration ({config_source}):")
     print("=" * 72)
     print(f"  HTTP Server: http://{HTTP_HOST}:{HTTP_PORT}")
     print(f"  LLM Provider: {LLM_PROVIDER}")
