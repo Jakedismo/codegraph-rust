@@ -322,18 +322,40 @@ async def run_http_tests():
     print(f"  URL: {mcp_url}")
 
     # Quick check if server is reachable
+    print(f"\nChecking HTTP server health...")
+    print(f"  Endpoint: http://{HTTP_HOST}:{HTTP_PORT}/health")
+
     try:
         import httpx
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"http://{HTTP_HOST}:{HTTP_PORT}/health", timeout=2.0)
+            response = await client.get(
+                f"http://{HTTP_HOST}:{HTTP_PORT}/health",
+                timeout=2.0,
+                follow_redirects=True
+            )
             if response.status_code != 200:
-                print(f"❌ Server health check failed: {response.status_code}")
+                print(f"❌ Health check failed: HTTP {response.status_code}")
+                print(f"   Response: {response.text[:200] if response.text else 'empty'}")
+                print(f"\n⚠️  Common port configuration issues:")
+                print(f"   - Port {HTTP_PORT} may be wrong")
+                print(f"   - Default HTTP server port: 3000")
+                print(f"   - SurrealDB port (NOT for HTTP): 3004")
+                print(f"   - Check CODEGRAPH_HTTP_PORT in .env file")
+                print(f"\nStart CodeGraph HTTP server on correct port:")
+                print(f"  ./target/release/codegraph start http --host {HTTP_HOST} --port 3000")
                 return 1
         print("✓ Server is reachable\n")
     except Exception as e:
         print(f"❌ Cannot reach server: {e}")
-        print(f"\nStart server with:")
-        print(f"  ./target/release/codegraph start http --host {HTTP_HOST} --port {HTTP_PORT}")
+        print(f"\n⚠️  Troubleshooting:")
+        print(f"   - Is the server running? Check: ps aux | grep codegraph")
+        print(f"   - Wrong port? Common mistake: using 3004 (SurrealDB) instead of 3000 (HTTP)")
+        print(f"   - Check firewall/network: curl http://{HTTP_HOST}:{HTTP_PORT}/health")
+        print(f"\nExpected .env configuration:")
+        print(f"  CODEGRAPH_HTTP_HOST=127.0.0.1")
+        print(f"  CODEGRAPH_HTTP_PORT=3000  # HTTP server port (NOT SurrealDB 3004)")
+        print(f"\nStart HTTP server with:")
+        print(f"  ./target/release/codegraph start http --host 127.0.0.1 --port 3000")
         return 1
 
     results = []
