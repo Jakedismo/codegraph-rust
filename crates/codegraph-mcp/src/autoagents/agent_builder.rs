@@ -9,8 +9,9 @@ use autoagents::llm::completion::{CompletionProvider, CompletionRequest, Complet
 use autoagents::llm::embedding::EmbeddingProvider;
 use autoagents::llm::error::LLMError;
 use autoagents::llm::models::{ModelListRequest, ModelListResponse, ModelsProvider};
-use autoagents::llm::ToolCall;
+use autoagents::llm::{FunctionCall, ToolCall};
 use codegraph_ai::llm_provider::{LLMProvider as CodeGraphLLM, Message, MessageRole};
+use serde::Deserialize;
 use std::sync::Arc;
 
 /// Convert CodeGraph Message to AutoAgents ChatMessage
@@ -162,13 +163,54 @@ impl std::fmt::Display for CodeGraphChatResponse {
     }
 }
 
+/// Helper struct to parse CodeGraph LLM response format
+#[derive(Debug, Deserialize)]
+struct CodeGraphLLMResponse {
+    #[serde(default)]
+    reasoning: Option<String>,
+    #[serde(default)]
+    tool_call: Option<CodeGraphToolCall>,
+    #[serde(default)]
+    is_final: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct CodeGraphToolCall {
+    tool_name: String,
+    parameters: serde_json::Value,
+}
+
 impl ChatResponse for CodeGraphChatResponse {
     fn text(&self) -> Option<String> {
         Some(self.content.clone())
     }
 
     fn tool_calls(&self) -> Option<Vec<ToolCall>> {
-        None // CodeGraph doesn't use tool calls in responses
+        // Try to parse the response as CodeGraph's JSON format
+        if let Ok(parsed) = serde_json::from_str::<CodeGraphLLMResponse>(&self.content) {
+            // If there's a tool_call and is_final is false, convert to AutoAgents format
+            if let Some(tool_call) = parsed.tool_call {
+                if !parsed.is_final {
+                    // Convert parameters to JSON string
+                    let arguments = serde_json::to_string(&tool_call.parameters)
+                        .unwrap_or_else(|_| "{}".to_string());
+
+                    let autoagents_tool_call = ToolCall {
+                        id: format!("call_{}", uuid::Uuid::new_v4()),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: tool_call.tool_name,
+                            arguments,
+                        },
+                    };
+
+                    return Some(vec![autoagents_tool_call]);
+                }
+            }
+        }
+
+        // No tool calls in response
+        None
     }
 }
 
