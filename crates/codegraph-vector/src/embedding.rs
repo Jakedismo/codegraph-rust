@@ -368,7 +368,7 @@ impl EmbeddingGenerator {
         // Prefer Jina provider for batch processing (cloud-based embeddings)
         #[cfg(feature = "jina")]
         if let Some(jina) = &self.jina_provider {
-            tracing::info!(
+            tracing::debug!(
                 target: "codegraph_vector::embeddings",
                 "Using Jina embeddings for batch: {} items",
                 nodes.len()
@@ -389,7 +389,7 @@ impl EmbeddingGenerator {
         #[cfg(feature = "ollama")]
         if let Some(ollama) = &self.ollama_provider {
             use crate::providers::EmbeddingProvider;
-            tracing::info!(
+            tracing::debug!(
                 target: "codegraph_vector::embeddings",
                 "Using Ollama {} for batch: {} items",
                 ollama.provider_name(),
@@ -409,7 +409,7 @@ impl EmbeddingGenerator {
         #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
         if let Some(engine) = &self.advanced {
             let plan = self.build_plan_for_nodes(nodes);
-            tracing::info!(
+            tracing::debug!(
                 target: "codegraph_vector::embeddings",
                 "Advanced engine chunk plan: {} nodes -> {} chunks",
                 plan.stats.total_nodes,
@@ -418,7 +418,7 @@ impl EmbeddingGenerator {
             let chunk_to_node = plan.chunk_to_node();
             let chunk_texts: Vec<String> =
                 plan.chunks.into_iter().map(|chunk| chunk.text).collect();
-            tracing::info!(
+            tracing::debug!(
                 target: "codegraph_vector::embeddings",
                 "Using advanced embedding engine for batch: {} chunks",
                 chunk_texts.len()

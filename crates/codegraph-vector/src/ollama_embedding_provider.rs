@@ -293,7 +293,7 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
             return Ok(Vec::new());
         }
 
-        info!(
+        debug!(
             "Generating {} embeddings with Ollama model {}",
             nodes.len(),
             self.config.model_name
