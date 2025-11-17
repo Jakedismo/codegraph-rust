@@ -20,20 +20,23 @@ pub struct CodeGraphAgentOutput {
 
 impl From<ReActAgentOutput> for CodeGraphAgentOutput {
     fn from(output: ReActAgentOutput) -> Self {
-        let resp = output.response;
+        let resp = output.response.clone();
+        let num_steps = output.tool_calls.len();
 
         if output.done && !resp.trim().is_empty() {
             // Try to parse as structured JSON
-            if let Ok(value) = serde_json::from_str::<CodeGraphAgentOutput>(&resp) {
+            if let Ok(mut value) = serde_json::from_str::<CodeGraphAgentOutput>(&resp) {
+                // Override steps_taken with actual count from ReActAgentOutput
+                value.steps_taken = num_steps.to_string();
                 return value;
             }
         }
 
-        // Fallback: create output from raw response
+        // Fallback: create output from raw response with actual step count
         CodeGraphAgentOutput {
             answer: resp,
             findings: String::new(),
-            steps_taken: "0".to_string(),
+            steps_taken: num_steps.to_string(),
         }
     }
 }

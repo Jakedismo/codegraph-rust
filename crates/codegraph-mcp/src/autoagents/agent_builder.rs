@@ -190,9 +190,15 @@ impl ChatResponse for CodeGraphChatResponse {
     }
 
     fn tool_calls(&self) -> Option<Vec<ToolCall>> {
+        tracing::info!("tool_calls() called with content length: {}", self.content.len());
+        tracing::debug!("Content preview: {}", &self.content.chars().take(200).collect::<String>());
+
         // Try to parse the response as CodeGraph's JSON format
         match serde_json::from_str::<CodeGraphLLMResponse>(&self.content) {
             Ok(parsed) => {
+                tracing::info!("Successfully parsed CodeGraphLLMResponse. has_tool_call={}, is_final={}",
+                    parsed.tool_call.is_some(), parsed.is_final);
+
                 // If there's a tool_call and is_final is false, convert to AutoAgents format
                 if let Some(tool_call) = parsed.tool_call {
                     if !parsed.is_final {
@@ -200,7 +206,7 @@ impl ChatResponse for CodeGraphChatResponse {
                         let arguments = match serde_json::to_string(&tool_call.parameters) {
                             Ok(json) => json,
                             Err(e) => {
-                                tracing::warn!(
+                                tracing::error!(
                                     "Failed to serialize tool call parameters: {}",
                                     e
                                 );
@@ -211,36 +217,38 @@ impl ChatResponse for CodeGraphChatResponse {
                         // Generate unique ID using atomic counter
                         let call_id = TOOL_CALL_COUNTER.fetch_add(1, Ordering::SeqCst);
 
-                        tracing::debug!(
-                            "Parsed tool call: {} with args: {}",
-                            tool_call.tool_name,
-                            arguments
-                        );
-
                         let autoagents_tool_call = ToolCall {
                             id: format!("call_{}", call_id),
                             call_type: "function".to_string(),
                             function: FunctionCall {
-                                name: tool_call.tool_name,
-                                arguments,
+                                name: tool_call.tool_name.clone(),
+                                arguments: arguments.clone(),
                             },
                         };
 
+                        tracing::info!(
+                            "Returning tool call: name='{}', args='{}', id='{}'",
+                            tool_call.tool_name,
+                            arguments,
+                            autoagents_tool_call.id
+                        );
+
                         return Some(vec![autoagents_tool_call]);
                     } else {
-                        tracing::debug!("is_final is true, not returning tool calls");
+                        tracing::info!("is_final is true, not returning tool calls");
                     }
                 } else {
-                    tracing::debug!("No tool_call in parsed response");
+                    tracing::info!("No tool_call field in parsed response");
                 }
             }
             Err(e) => {
                 // Not a JSON response or doesn't match our format - that's fine
-                tracing::trace!("Response is not CodeGraph JSON format: {}", e);
+                tracing::warn!("Response is not CodeGraph JSON format: {}. Content: {}",
+                    e, &self.content.chars().take(500).collect::<String>());
             }
         }
 
-        // No tool calls in response
+        tracing::info!("tool_calls() returning None");
         None
     }
 }
