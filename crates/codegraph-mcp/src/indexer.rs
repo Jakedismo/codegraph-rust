@@ -1370,6 +1370,9 @@ impl ProjectIndexer {
             max_concurrent
         );
 
+        // Create progress bar for symbol embedding generation
+        let symbol_pb = self.create_batch_progress_bar(top_symbols.len() as u64, batch_size);
+
         let batches: Vec<Vec<String>> = top_symbols
             .chunks(batch_size)
             .map(|chunk| chunk.iter().cloned().collect())
@@ -1405,10 +1408,7 @@ impl ProjectIndexer {
                     if let Err(err) = self.persist_symbol_embedding_records(records).await {
                         warn!("⚠️ Failed to persist batch symbol embeddings: {}", err);
                     }
-                    info!(
-                        "✅ Generated {} embeddings so far (parallel batch mode)",
-                        processed
-                    );
+                    symbol_pb.set_position(processed as u64);
                 }
                 Err(e) => {
                     warn!(
@@ -1435,6 +1435,7 @@ impl ProjectIndexer {
                                 }
                                 embeddings.insert(symbol, embedding);
                                 processed += 1;
+                                symbol_pb.set_position(processed as u64);
                             }
                             Err(err) => {
                                 warn!(
@@ -1447,6 +1448,22 @@ impl ProjectIndexer {
                 }
             }
         }
+
+        // Finish progress bar with summary
+        let provider = &self.global_config.embedding.provider;
+        let success_rate = if top_symbols.len() > 0 {
+            embeddings.len() as f64 / top_symbols.len() as f64 * 100.0
+        } else {
+            100.0
+        };
+        let completion_msg = format!(
+            "🧠 Symbol embeddings complete: {}/{} symbols (✅ {:.1}% success) | 🤖 {} | 🔗 AI semantic matching ready",
+            embeddings.len(),
+            top_symbols.len(),
+            success_rate,
+            provider
+        );
+        symbol_pb.finish_with_message(completion_msg);
 
         info!(
             "🧠 Pre-computed {} symbol embeddings for fast AI resolution",
@@ -1505,6 +1522,9 @@ impl ProjectIndexer {
             max_concurrent
         );
 
+        // Create progress bar for unresolved symbol embedding generation
+        let unresolved_pb = self.create_batch_progress_bar(symbols_vec.len() as u64, batch_size);
+
         let batches: Vec<Vec<String>> = symbols_vec
             .chunks(batch_size)
             .map(|chunk| chunk.iter().cloned().collect())
@@ -1537,12 +1557,7 @@ impl ProjectIndexer {
                             err
                         );
                     }
-                    if embeddings.len() % 250 == 0 {
-                        info!(
-                            "✅ Generated {} unresolved embeddings so far (parallel mode)",
-                            embeddings.len()
-                        );
-                    }
+                    unresolved_pb.set_position(embeddings.len() as u64);
                 }
                 Err(e) => {
                     warn!(
@@ -1564,6 +1579,7 @@ impl ProjectIndexer {
                                     );
                                 }
                                 embeddings.insert(symbol, embedding);
+                                unresolved_pb.set_position(embeddings.len() as u64);
                             }
                             Err(err) => {
                                 warn!(
@@ -1576,6 +1592,22 @@ impl ProjectIndexer {
                 }
             }
         }
+
+        // Finish progress bar with summary
+        let provider = &self.global_config.embedding.provider;
+        let success_rate = if symbols_vec.len() > 0 {
+            embeddings.len() as f64 / symbols_vec.len() as f64 * 100.0
+        } else {
+            100.0
+        };
+        let completion_msg = format!(
+            "🔗 Unresolved symbol embeddings complete: {}/{} symbols (✅ {:.1}% success) | 🤖 {} | ⚡ AI matching enhanced",
+            embeddings.len(),
+            symbols_vec.len(),
+            success_rate,
+            provider
+        );
+        unresolved_pb.finish_with_message(completion_msg);
 
         info!(
             "🧠 Pre-computed {} unresolved symbol embeddings for professional AI matching",
