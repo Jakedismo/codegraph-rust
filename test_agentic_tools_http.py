@@ -8,6 +8,10 @@
 # - Shows real-time progress as reasoning steps complete
 # - Automatically loads configuration from .env file (RECOMMENDED)
 #
+# NOTE: This is a simple HTTP/SSE test client. For production use, consider
+#       migrating to the official MCP Python SDK (pip install mcp) which now
+#       supports Streamable HTTP transport as of 2025.
+#
 # REQUIREMENTS:
 #   - SurrealDB must be running (local or cloud)
 #   - Binary built with server-http feature:
@@ -163,7 +167,12 @@ AGENTIC_TESTS = [
 ]
 
 def send_http_request(url, payload, timeout=60):
-    """Send HTTP POST request and parse SSE stream responses."""
+    """Send HTTP POST request and parse SSE stream responses.
+
+    NOTE: This is a simplified HTTP/SSE implementation for testing.
+    For production, use the official MCP Python SDK which properly
+    implements the MCP protocol lifecycle and Streamable HTTP transport.
+    """
     print(f"\n→ Sending to {url}")
     print(f"   Payload: {str(payload)[:200]}...")
     print("=" * 72)
@@ -341,22 +350,23 @@ def resolve_codegraph_command():
     ]
 
 def run():
-    check_surrealdb()
-    print_config()
-
     base_url = f"http://{HTTP_HOST}:{HTTP_PORT}"
 
-    # Check if server is already running
-    print(f"\nChecking if CodeGraph HTTP server is already running at {base_url}...")
+    # Check if server is already running FIRST (before printing config)
+    print(f"Checking if CodeGraph HTTP server is running at {base_url}...")
     server_already_running = False
     try:
         health_response = requests.get(f"{base_url}/health", timeout=2)
         if health_response.status_code == 200:
-            print(f"✓ Server is already running!")
+            print(f"✓ Server is already running!\n")
             server_already_running = True
             proc = None
     except requests.exceptions.RequestException:
-        print(f"  Server not running, will start new instance")
+        print(f"  Server not running, will start new instance\n")
+
+    # Now print configuration
+    check_surrealdb()
+    print_config()
 
     # Start server if not already running
     if not server_already_running:
