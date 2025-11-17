@@ -170,6 +170,40 @@ DEFINE INDEX IF NOT EXISTS idx_project_org    ON TABLE project_metadata COLUMNS 
 DEFINE INDEX IF NOT EXISTS idx_project_domain ON TABLE project_metadata COLUMNS domain;
 
 -- -----------------------------------------------------------------------------
+-- TABLE: file_metadata (incremental indexing support)
+-- -----------------------------------------------------------------------------
+DEFINE TABLE IF NOT EXISTS file_metadata SCHEMAFULL
+  COMMENT 'Tracks file state for incremental indexing and change detection';
+
+-- Core identification
+DEFINE FIELD IF NOT EXISTS file_path    ON TABLE file_metadata TYPE string;
+DEFINE FIELD IF NOT EXISTS project_id   ON TABLE file_metadata TYPE string;
+
+-- Change detection
+DEFINE FIELD IF NOT EXISTS content_hash ON TABLE file_metadata TYPE string;
+DEFINE FIELD IF NOT EXISTS modified_at  ON TABLE file_metadata TYPE datetime;
+DEFINE FIELD IF NOT EXISTS file_size    ON TABLE file_metadata TYPE int;
+
+-- Indexing metadata
+DEFINE FIELD IF NOT EXISTS last_indexed_at ON TABLE file_metadata TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS node_count      ON TABLE file_metadata TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS edge_count      ON TABLE file_metadata TYPE int DEFAULT 0;
+
+-- Additional metadata
+DEFINE FIELD IF NOT EXISTS language     ON TABLE file_metadata TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS parse_errors ON TABLE file_metadata TYPE option<array<string>>;
+
+-- Timestamps
+DEFINE FIELD IF NOT EXISTS created_at   ON TABLE file_metadata TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD IF NOT EXISTS updated_at   ON TABLE file_metadata TYPE datetime VALUE time::now();
+
+-- Indexes for efficient queries
+DEFINE INDEX IF NOT EXISTS idx_file_metadata_composite ON TABLE file_metadata COLUMNS project_id, file_path UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_file_metadata_project   ON TABLE file_metadata COLUMNS project_id;
+DEFINE INDEX IF NOT EXISTS idx_file_metadata_hash      ON TABLE file_metadata COLUMNS content_hash;
+DEFINE INDEX IF NOT EXISTS idx_file_metadata_modified  ON TABLE file_metadata COLUMNS modified_at;
+
+-- -----------------------------------------------------------------------------
 -- TABLE: symbol_embeddings (AI-assisted symbol resolution cache)
 -- -----------------------------------------------------------------------------
 DEFINE TABLE IF NOT EXISTS symbol_embeddings SCHEMAFULL

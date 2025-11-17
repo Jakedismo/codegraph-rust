@@ -763,6 +763,275 @@ impl SurrealDbStorage {
         Ok(())
     }
 
+    /// Upsert single file metadata record
+    pub async fn upsert_file_metadata(&self, record: &FileMetadataRecord) -> Result<()> {
+        let record_id = record.id();
+        let payload = json!({
+            "file_path": record.file_path,
+            "project_id": record.project_id,
+            "content_hash": record.content_hash,
+            "modified_at": record.modified_at,
+            "file_size": record.file_size,
+            "last_indexed_at": record.last_indexed_at,
+            "node_count": record.node_count,
+            "edge_count": record.edge_count,
+            "language": record.language,
+            "parse_errors": record.parse_errors,
+        });
+
+        let _: Option<HashMap<String, JsonValue>> = self
+            .db
+            .update(("file_metadata", record_id))
+            .content(payload)
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to upsert file metadata: {}", e))
+            })?;
+
+        Ok(())
+    }
+
+    /// Batch upsert file metadata records
+    pub async fn upsert_file_metadata_batch(&self, records: &[FileMetadataRecord]) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+
+        let query = r#"
+            LET $batch = $data;
+            FOR $doc IN $batch {
+                UPSERT type::thing('file_metadata', $doc.id) CONTENT $doc;
+            }
+        "#;
+
+        let payloads: Vec<JsonValue> = records
+            .iter()
+            .map(|r| {
+                json!({
+                    "id": r.id(),
+                    "file_path": r.file_path,
+                    "project_id": r.project_id,
+                    "content_hash": r.content_hash,
+                    "modified_at": r.modified_at,
+                    "file_size": r.file_size,
+                    "last_indexed_at": r.last_indexed_at,
+                    "node_count": r.node_count,
+                    "edge_count": r.edge_count,
+                    "language": r.language,
+                    "parse_errors": r.parse_errors,
+                })
+            })
+            .collect();
+
+        self.db
+            .query(query)
+            .bind(("data", payloads))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Failed to batch upsert file metadata ({} items): {}",
+                    records.len(),
+                    truncate_surreal_error(&e)
+                ))
+            })?;
+
+        debug!("Batch upserted {} file metadata records", records.len());
+        Ok(())
+    }
+
+    /// Get all file metadata for a project
+    pub async fn get_file_metadata_for_project(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<FileMetadataRecord>> {
+        let query = "SELECT * FROM file_metadata WHERE project_id = $project_id";
+        let mut result = self
+            .db
+            .query(query)
+            .bind(("project_id", project_id))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to query file metadata: {}", e))
+            })?;
+
+        let records: Vec<FileMetadataRecord> = result.take(0).map_err(|e| {
+            CodeGraphError::Database(format!("Failed to extract file metadata results: {}", e))
+        })?;
+
+        debug!(
+            "Retrieved {} file metadata records for project {}",
+            records.len(),
+            project_id
+        );
+        Ok(records)
+    }
+
+    /// Delete file metadata records for specific files
+    pub async fn delete_file_metadata_for_files(
+        &self,
+        project_id: &str,
+        file_paths: &[String],
+    ) -> Result<()> {
+        if file_paths.is_empty() {
+            return Ok(());
+        }
+
+        let query =
+            "DELETE file_metadata WHERE project_id = $project_id AND file_path IN $file_paths";
+        self.db
+            .query(query)
+            .bind(("project_id", project_id))
+            .bind(("file_paths", file_paths))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to delete file metadata: {}", e))
+            })?;
+
+        debug!(
+            "Deleted {} file metadata records for project {}",
+            file_paths.len(),
+            project_id
+        );
+        Ok(())
+    }
+
+    /// Delete all nodes for a project
+    pub async fn delete_nodes_for_project(&self, project_id: &str) -> Result<usize> {
+        let query = "DELETE nodes WHERE project_id = $project_id RETURN BEFORE";
+        let mut result = self
+            .db
+            .query(query)
+            .bind(("project_id", project_id))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to delete nodes: {}", e))
+            })?;
+
+        let deleted: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
+        let count = deleted.len();
+
+        // Clear cache for deleted nodes
+        if self.config.cache_enabled {
+            for data in deleted {
+                if let Some(id_str) = data.get("id").and_then(|v| v.as_str()) {
+                    if let Ok(id) = NodeId::parse_str(id_str) {
+                        self.node_cache.remove(&id);
+                    }
+                }
+            }
+        }
+
+        info!("Deleted {} nodes for project {}", count, project_id);
+        Ok(count)
+    }
+
+    /// Delete all edges where from or to node belongs to project
+    pub async fn delete_edges_for_project(&self, project_id: &str) -> Result<usize> {
+        // First get all node IDs for the project
+        let query = "SELECT VALUE id FROM nodes WHERE project_id = $project_id";
+        let mut result = self
+            .db
+            .query(query)
+            .bind(("project_id", project_id))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to query node IDs: {}", e))
+            })?;
+
+        let node_ids: Vec<String> = result.take(0).unwrap_or_default();
+
+        if node_ids.is_empty() {
+            return Ok(0);
+        }
+
+        // Delete edges where from or to is in node_ids
+        let delete_query = r#"
+            LET $node_ids = $ids;
+            DELETE edges WHERE
+                string::split(string::trim(from), ':')[1] IN $node_ids OR
+                string::split(string::trim(to), ':')[1] IN $node_ids
+            RETURN BEFORE
+        "#;
+
+        let mut result = self
+            .db
+            .query(delete_query)
+            .bind(("ids", node_ids))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to delete edges: {}", e))
+            })?;
+
+        let deleted: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
+        let count = deleted.len();
+
+        info!("Deleted {} edges for project {}", count, project_id);
+        Ok(count)
+    }
+
+    /// Delete all symbol embeddings for a project
+    pub async fn delete_symbol_embeddings_for_project(&self, project_id: &str) -> Result<usize> {
+        let query = "DELETE symbol_embeddings WHERE project_id = $project_id RETURN BEFORE";
+        let mut result = self
+            .db
+            .query(query)
+            .bind(("project_id", project_id))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to delete symbol embeddings: {}", e))
+            })?;
+
+        let deleted: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
+        let count = deleted.len();
+
+        info!(
+            "Deleted {} symbol embeddings for project {}",
+            count, project_id
+        );
+        Ok(count)
+    }
+
+    /// Delete all file metadata for a project
+    pub async fn delete_file_metadata_for_project(&self, project_id: &str) -> Result<usize> {
+        let query = "DELETE file_metadata WHERE project_id = $project_id RETURN BEFORE";
+        let mut result = self
+            .db
+            .query(query)
+            .bind(("project_id", project_id))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to delete file metadata: {}", e))
+            })?;
+
+        let deleted: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
+        let count = deleted.len();
+
+        info!(
+            "Deleted {} file metadata records for project {}",
+            count, project_id
+        );
+        Ok(count)
+    }
+
+    /// Clean slate: Delete ALL data for a project (nodes, edges, embeddings, file metadata)
+    /// Used when --force flag is set
+    pub async fn clean_project_data(&self, project_id: &str) -> Result<()> {
+        info!("🧹 Starting clean slate deletion for project: {}", project_id);
+
+        // Delete in order: edges first (referential integrity), then nodes, then metadata
+        let edges_deleted = self.delete_edges_for_project(project_id).await?;
+        let nodes_deleted = self.delete_nodes_for_project(project_id).await?;
+        let symbols_deleted = self.delete_symbol_embeddings_for_project(project_id).await?;
+        let files_deleted = self.delete_file_metadata_for_project(project_id).await?;
+
+        info!(
+            "🧹 Clean slate complete: {} edges, {} nodes, {} symbols, {} files deleted",
+            edges_deleted, nodes_deleted, symbols_deleted, files_deleted
+        );
+
+        Ok(())
+    }
+
     pub async fn update_node_embedding(&self, node_id: NodeId, embedding: &[f32]) -> Result<()> {
         let embedding_column = surreal_embedding_column_for_dimension(embedding.len());
         let record = NodeEmbeddingRecord {
@@ -995,6 +1264,31 @@ pub struct ProjectMetadataRecord {
     pub codegraph_version: String,
     pub organization_id: Option<String>,
     pub domain: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileMetadataRecord {
+    pub file_path: String,
+    pub project_id: String,
+    pub content_hash: String,
+    pub modified_at: DateTime<Utc>,
+    pub file_size: i64,
+    pub last_indexed_at: DateTime<Utc>,
+    pub node_count: i64,
+    pub edge_count: i64,
+    pub language: Option<String>,
+    pub parse_errors: Option<Vec<String>>,
+}
+
+impl FileMetadataRecord {
+    /// Generate a unique record ID based on project_id and file_path
+    pub fn id(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.project_id.as_bytes());
+        hasher.update(b":");
+        hasher.update(self.file_path.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

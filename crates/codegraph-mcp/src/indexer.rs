@@ -8,9 +8,9 @@ use anyhow::{anyhow, Context, Result};
 use codegraph_ai::SemanticSearchEngine;
 use codegraph_core::{CodeNode, EdgeRelationship, NodeId, NodeType};
 use codegraph_graph::{
-    edge::CodeEdge, NodeEmbeddingRecord, ProjectMetadataRecord, SurrealDbConfig, SurrealDbStorage,
-    SymbolEmbeddingRecord, SURR_EMBEDDING_COLUMN_1024, SURR_EMBEDDING_COLUMN_2048,
-    SURR_EMBEDDING_COLUMN_384, SURR_EMBEDDING_COLUMN_4096,
+    edge::CodeEdge, FileMetadataRecord, NodeEmbeddingRecord, ProjectMetadataRecord,
+    SurrealDbConfig, SurrealDbStorage, SymbolEmbeddingRecord, SURR_EMBEDDING_COLUMN_1024,
+    SURR_EMBEDDING_COLUMN_2048, SURR_EMBEDDING_COLUMN_384, SURR_EMBEDDING_COLUMN_4096,
 };
 use codegraph_parser::{get_ai_pattern_learner, TreeSitterParser};
 #[cfg(feature = "ai-enhanced")]
@@ -19,10 +19,14 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use num_cpus;
 use rayon::prelude::*;
 use regex::Regex;
+use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
+use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use tokio::fs;
+use tokio::fs as tokio_fs;
 use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
@@ -34,6 +38,22 @@ use std::sync::Arc;
 use std::collections::HashMap;
 
 const SYMBOL_EMBEDDING_DB_BATCH_LIMIT: usize = 256;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FileChangeType {
+    Added,
+    Modified,
+    Deleted,
+    Unchanged,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileChange {
+    pub file_path: String,
+    pub change_type: FileChangeType,
+    pub current_hash: Option<String>,
+    pub previous_hash: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug)]
 enum SurrealEmbeddingColumn {
@@ -311,7 +331,48 @@ impl SurrealWriterHandle {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum FileChangeType {
+    Added,
+    Modified,
+    Deleted,
+    Unchanged,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileChange {
+    pub file_path: String,
+    pub change_type: FileChangeType,
+    pub current_hash: Option<String>,
+    pub previous_hash: Option<String>,
+}
+
 impl ProjectIndexer {
+    /// Calculate SHA-256 hash of file content
+    fn calculate_file_hash(file_path: &Path) -> Result<String> {
+        // Resolve symlinks to actual file
+        let canonical_path = fs::canonicalize(file_path)
+            .with_context(|| format!("Failed to resolve path: {:?}", file_path))?;
+
+        let mut file = fs::File::open(&canonical_path)
+            .with_context(|| format!("Failed to open file: {:?}", canonical_path))?;
+
+        let mut hasher = Sha256::new();
+        let mut buffer = [0u8; 8192];
+
+        loop {
+            let bytes_read = file
+                .read(&mut buffer)
+                .with_context(|| format!("Failed to read file: {:?}", canonical_path))?;
+            if bytes_read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..bytes_read]);
+        }
+
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+
     #[cfg(feature = "ai-enhanced")]
     fn symbol_embedding_batch_settings(&self) -> (usize, usize) {
         let config_batch = self
@@ -507,8 +568,16 @@ impl ProjectIndexer {
         let file_config: codegraph_parser::file_collect::FileCollectionConfig =
             (&self.config).into();
 
-        // Check if already indexed
-        if !self.config.force_reindex && self.is_indexed(path).await? {
+        // FORCE REINDEX: Clean slate approach
+        if self.config.force_reindex {
+            info!("🧹 --force flag detected: Performing clean slate deletion");
+            let storage = self.surreal.lock().await;
+            storage.clean_project_data(&self.project_id).await?;
+            drop(storage);
+            info!("✅ Clean slate complete, starting fresh index");
+        }
+        // INCREMENTAL INDEXING: Check if already indexed
+        else if self.is_indexed(path).await? {
             warn!("Project already indexed. Use --force to reindex.");
             let mut stats = IndexStats::default();
             stats.skipped = codegraph_parser::file_collect::collect_source_files_with_config(
@@ -1913,6 +1982,156 @@ impl ProjectIndexer {
             .context("Failed to query project_metadata")?;
         let count: Option<i64> = response.take(0)?;
         Ok(count.unwrap_or(0) > 0)
+    }
+
+    async fn has_file_metadata(&self) -> Result<bool> {
+        let db = {
+            let storage = self.surreal.lock().await;
+            storage.db()
+        };
+
+        let mut response = db
+            .query("SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id")
+            .bind(("project_id", &self.project_id))
+            .await
+            .context("Failed to query file_metadata count")?;
+        let count: Option<i64> = response.take(0)?;
+        Ok(count.unwrap_or(0) > 0)
+    }
+
+    /// Calculate SHA-256 hash of file content
+    fn calculate_file_hash(file_path: &Path) -> Result<String> {
+        // Resolve symlinks to actual file
+        let canonical_path = fs::canonicalize(file_path)
+            .with_context(|| format!("Failed to resolve path: {:?}", file_path))?;
+
+        let mut file = fs::File::open(&canonical_path)
+            .with_context(|| format!("Failed to open file: {:?}", canonical_path))?;
+
+        let mut hasher = Sha256::new();
+        let mut buffer = [0u8; 8192];
+
+        loop {
+            let bytes_read = file.read(&mut buffer)
+                .with_context(|| format!("Failed to read file: {:?}", canonical_path))?;
+            if bytes_read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..bytes_read]);
+        }
+
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+
+    /// Detect changes between current filesystem and stored file metadata
+    async fn detect_file_changes(&self, current_files: &[PathBuf]) -> Result<Vec<FileChange>> {
+        let storage = self.surreal.lock().await;
+        let stored_metadata = storage.get_file_metadata_for_project(&self.project_id).await?;
+        drop(storage);
+
+        // Create lookup map of stored files
+        let stored_map: HashMap<String, FileMetadataRecord> = stored_metadata
+            .into_iter()
+            .map(|record| (record.file_path.clone(), record))
+            .collect();
+
+        let mut changes = Vec::new();
+        let mut current_file_set = HashSet::new();
+
+        // Check current files for additions or modifications
+        for file_path in current_files {
+            let file_path_str = file_path.to_string_lossy().to_string();
+            current_file_set.insert(file_path_str.clone());
+
+            let current_hash = Self::calculate_file_hash(file_path)?;
+
+            match stored_map.get(&file_path_str) {
+                Some(stored) => {
+                    if stored.content_hash != current_hash {
+                        changes.push(FileChange {
+                            file_path: file_path_str,
+                            change_type: FileChangeType::Modified,
+                            current_hash: Some(current_hash),
+                            previous_hash: Some(stored.content_hash.clone()),
+                        });
+                    } else {
+                        changes.push(FileChange {
+                            file_path: file_path_str,
+                            change_type: FileChangeType::Unchanged,
+                            current_hash: Some(current_hash),
+                            previous_hash: Some(stored.content_hash.clone()),
+                        });
+                    }
+                }
+                None => {
+                    changes.push(FileChange {
+                        file_path: file_path_str,
+                        change_type: FileChangeType::Added,
+                        current_hash: Some(current_hash),
+                        previous_hash: None,
+                    });
+                }
+            }
+        }
+
+        // Check for deleted files
+        for (stored_path, stored_record) in stored_map {
+            if !current_file_set.contains(&stored_path) {
+                changes.push(FileChange {
+                    file_path: stored_path,
+                    change_type: FileChangeType::Deleted,
+                    current_hash: None,
+                    previous_hash: Some(stored_record.content_hash),
+                });
+            }
+        }
+
+        Ok(changes)
+    }
+
+    /// Delete nodes and edges for specific files
+    async fn delete_data_for_files(&self, file_paths: &[String]) -> Result<()> {
+        if file_paths.is_empty() {
+            return Ok(());
+        }
+
+        let storage = self.surreal.lock().await;
+
+        // Delete nodes for these files
+        let query = "DELETE nodes WHERE project_id = $project_id AND file_path IN $file_paths RETURN BEFORE";
+        let mut result = storage.db()
+            .query(query)
+            .bind(("project_id", &self.project_id))
+            .bind(("file_paths", file_paths))
+            .await
+            .map_err(|e| anyhow!("Failed to delete nodes: {}", e))?;
+
+        let deleted_nodes: Vec<HashMap<String, serde_json::Value>> = result.take(0).unwrap_or_default();
+        let node_ids: Vec<String> = deleted_nodes
+            .iter()
+            .filter_map(|n| n.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .collect();
+
+        if !node_ids.is_empty() {
+            // Delete edges connected to these nodes
+            let edge_query = r#"
+                LET $node_ids = $ids;
+                DELETE edges WHERE
+                    string::split(string::trim(from), ':')[1] IN $node_ids OR
+                    string::split(string::trim(to), ':')[1] IN $node_ids
+            "#;
+            storage.db()
+                .query(edge_query)
+                .bind(("ids", node_ids))
+                .await
+                .map_err(|e| anyhow!("Failed to delete edges: {}", e))?;
+        }
+
+        // Delete file metadata
+        storage.delete_file_metadata_for_files(&self.project_id, file_paths).await?;
+
+        info!("Deleted data for {} files", file_paths.len());
+        Ok(())
     }
 
     async fn persist_project_metadata(
