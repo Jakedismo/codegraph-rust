@@ -36,7 +36,7 @@ impl Default for OpenAICompatibleConfig {
             max_retries: 3,
             api_key: None,
             provider_name: "openai-compatible".to_string(),
-            use_responses_api: true, // Default to new Responses API
+            use_responses_api: true, // All providers support Responses API
         }
     }
 }
@@ -294,6 +294,7 @@ impl OpenAICompatibleProvider {
             response_type: "response".to_string(),
             status: choice.finish_reason.clone(),
             output_text: choice.message.content.clone(),
+            output: Vec::new(), // Chat Completions uses output_text, not output array
             usage: chat_response.usage.map(|u| Usage {
                 prompt_tokens: u.prompt_tokens,
                 output_tokens: u.completion_tokens,
@@ -313,8 +314,20 @@ impl LLMProvider for OpenAICompatibleProvider {
     ) -> LLMResult<LLMResponse> {
         let response = self.send_request(messages, config).await?;
 
+        // Handle both old output_text field and new output array format
+        let content = if !response.output_text.is_empty() {
+            response.output_text
+        } else if !response.output.is_empty() {
+            response.output.iter()
+                .map(|o| o.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            String::new()
+        };
+
         Ok(LLMResponse {
-            content: response.output_text,
+            content,
             total_tokens: response.usage.as_ref().map(|u| u.total_tokens),
             prompt_tokens: response.usage.as_ref().map(|u| u.prompt_tokens),
             completion_tokens: response.usage.as_ref().map(|u| u.output_tokens),
@@ -446,10 +459,22 @@ struct ResponseAPIResponse {
     id: String,
     #[serde(rename = "type")]
     response_type: String,
+    #[serde(default)]
     status: Option<String>,
+    #[serde(default)]
     output_text: String,
     #[serde(default)]
+    output: Vec<ResponseOutput>,
+    #[serde(default)]
     usage: Option<Usage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseOutput {
+    #[serde(rename = "type")]
+    output_type: String,
+    #[serde(default)]
+    content: String,
 }
 
 #[derive(Debug, Deserialize)]
