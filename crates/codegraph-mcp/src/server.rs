@@ -1,5 +1,7 @@
 #[cfg(any(feature = "faiss", feature = "cloud"))]
 use codegraph_core::CodeNode;
+#[cfg(feature = "faiss")]
+use codegraph_core::GraphStore;
 use serde_json::Value;
 #[cfg(any(feature = "faiss", feature = "cloud", feature = "legacy-mcp-server"))]
 use serde_json::json;
@@ -19,8 +21,8 @@ use dashmap::DashMap;
 ))]
 use once_cell::sync::Lazy;
 
-#[cfg(feature = "cloud")]
-use crate::context_aware_limits::ContextAwareLimits;
+#[cfg(any(feature = "faiss", feature = "cloud"))]
+use crate::ContextAwareLimits;
 
 #[cfg(feature = "qwen-integration")]
 use crate::cache::{init_cache, CacheConfig};
