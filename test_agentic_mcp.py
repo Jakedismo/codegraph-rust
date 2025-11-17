@@ -120,7 +120,7 @@ def print_config():
     print(f"  Transport: {TRANSPORT}")
 
     if TRANSPORT == "http":
-        print(f"  HTTP Server: http://{HTTP_HOST}:{HTTP_PORT}/sse")
+        print(f"  HTTP Server: http://{HTTP_HOST}:{HTTP_PORT}/mcp")
     else:
         binary = resolve_codegraph_binary()
         print(f"  Binary: {binary}")
@@ -141,9 +141,9 @@ def print_config():
     print(f"  Tier: {tier} | {prompt_type} | {max_steps} steps")
 
     # SurrealDB
-    url = os.environ.get("SURREALDB_URL", "NOT SET")
-    ns = os.environ.get("SURREALDB_NAMESPACE", "codegraph")
-    db = os.environ.get("SURREALDB_DATABASE", "main")
+    url = os.environ.get("CODEGRAPH_SURREALDB_URL", "localhost:3004")
+    ns = os.environ.get("CODEGRAPH_SURREALDB_NAMESPACE", "ouroboros")
+    db = os.environ.get("CODEGRAPH_SURREALDB_DATABASE", "codegraph")
     print(f"\n  SurrealDB: {url}")
     print(f"  Namespace/DB: {ns}/{db}")
     print("=" * 72)
@@ -318,8 +318,8 @@ async def run_http_tests():
     """Run tests using SSE (HTTP) transport."""
     print("\n🌐 Using HTTP/SSE transport")
 
-    sse_url = f"http://{HTTP_HOST}:{HTTP_PORT}/sse"
-    print(f"  URL: {sse_url}")
+    mcp_url = f"http://{HTTP_HOST}:{HTTP_PORT}/mcp"
+    print(f"  URL: {mcp_url}")
 
     # Quick check if server is reachable
     try:
@@ -339,7 +339,7 @@ async def run_http_tests():
     results = []
 
     try:
-        async with sse_client(url=sse_url) as streams:
+        async with sse_client(url=mcp_url) as streams:
             async with ClientSession(*streams) as session:
                 # Initialize
                 await session.initialize()
