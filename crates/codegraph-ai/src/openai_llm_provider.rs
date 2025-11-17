@@ -179,10 +179,24 @@ impl OpenAIProvider {
             return Err(anyhow!("OpenAI API error ({}): {}", status, error_text));
         }
 
-        response
-            .json::<OpenAIResponse>()
+        // Get raw response text for debugging
+        let response_text = response
+            .text()
             .await
-            .context("Failed to parse OpenAI Responses API response")
+            .context("Failed to read OpenAI Responses API response body")?;
+
+        // Log the raw response for debugging
+        tracing::debug!(
+            model = %self.config.model,
+            response = %response_text,
+            "Raw OpenAI Responses API response"
+        );
+
+        // Parse the response
+        serde_json::from_str::<OpenAIResponse>(&response_text).context(format!(
+            "Failed to parse OpenAI Responses API response. Raw response: {}",
+            response_text
+        ))
     }
 }
 
@@ -196,22 +210,22 @@ impl LLMProvider for OpenAIProvider {
         let start = Instant::now();
         let response = self.send_request(messages, config).await?;
 
-        // Handle both old output_text field and new output array format
-        let content = if !response.output_text.is_empty() {
-            response.output_text
-        } else if !response.output.is_empty() {
-            response.output.iter()
-                .map(|o| o.content.as_str())
-                .collect::<Vec<_>>()
-                .join("\n")
-        } else {
-            String::new()
-        };
+        // Extract text from output array
+        // OpenAI GPT-5 returns: output[{type: "message", content: [{type: "output_text", text: "..."}]}]
+        let content = response
+            .output
+            .iter()
+            .filter(|item| item.output_type == "message")
+            .flat_map(|item| &item.content)
+            .filter(|c| c.content_type == "output_text")
+            .map(|c| c.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
 
         Ok(LLMResponse {
             content,
             total_tokens: response.usage.as_ref().map(|u| u.total_tokens),
-            prompt_tokens: response.usage.as_ref().map(|u| u.prompt_tokens),
+            prompt_tokens: response.usage.as_ref().map(|u| u.input_tokens),
             completion_tokens: response.usage.as_ref().map(|u| u.output_tokens),
             finish_reason: response.status.clone(),
             model: self.config.model.clone(),
@@ -356,34 +370,36 @@ struct OpenAIRequest {
 #[derive(Debug, Deserialize)]
 struct OpenAIResponse {
     id: String,
-    #[serde(rename = "type")]
-    response_type: String,
+    object: String,
     #[serde(default)]
     status: Option<String>,
     #[serde(default)]
-    output_text: String,
+    output: Vec<OutputItem>,
     #[serde(default)]
-    output: Vec<ResponseOutput>,
-    #[serde(default)]
-    usage: Option<Usage>,
+    usage: Option<OpenAIUsage>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ResponseOutput {
+struct OutputItem {
     #[serde(rename = "type")]
     output_type: String,
     #[serde(default)]
-    content: String,
+    content: Vec<OutputContent>,
 }
 
 #[derive(Debug, Deserialize)]
-struct Usage {
-    prompt_tokens: usize,
-    #[serde(alias = "completion_tokens")]
+struct OutputContent {
+    #[serde(rename = "type")]
+    content_type: String,
+    #[serde(default)]
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIUsage {
+    input_tokens: usize,
     output_tokens: usize,
     total_tokens: usize,
-    #[serde(default)]
-    reasoning_tokens: Option<usize>,
 }
 
 #[cfg(test)]

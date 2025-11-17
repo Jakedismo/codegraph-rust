@@ -282,6 +282,9 @@ async def run_stdio_tests():
                     except Exception as e:
                         duration = asyncio.get_event_loop().time() - start_time
                         print(f"  ❌ ERROR: {e}")
+                        print(f"\n  📋 Full error details:")
+                        import traceback
+                        traceback.print_exc()
                         results.append({
                             "test": tool_name,
                             "success": False,
@@ -413,6 +416,9 @@ async def run_http_tests():
                     except Exception as e:
                         duration = asyncio.get_event_loop().time() - start_time
                         print(f"  ❌ ERROR: {e}")
+                        print(f"\n  📋 Full error details:")
+                        import traceback
+                        traceback.print_exc()
                         results.append({
                             "test": tool_name,
                             "success": False,

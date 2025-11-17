@@ -13,7 +13,7 @@ build-release:
 
 # Build MCP server with AutoAgents experimental feature
 build-mcp-autoagents:
-	cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,embeddings-ollama"
+	LIBRARY_PATH=/opt/homebrew/lib:$$LIBRARY_PATH cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,embeddings-ollama,codegraph-ai/anthropic,codegraph-ai/openai-llm,codegraph-ai/openai-compatible"
 
 # Build MCP HTTP server with experimental HTTP transport
 .PHONY: build-mcp-http

@@ -36,7 +36,7 @@ impl Default for OpenAICompatibleConfig {
             max_retries: 3,
             api_key: None,
             provider_name: "openai-compatible".to_string(),
-            use_responses_api: true, // All providers support Responses API
+            use_responses_api: false, // Most providers only support Chat Completions API
         }
     }
 }
@@ -49,7 +49,7 @@ impl OpenAICompatibleConfig {
             model,
             context_window: 256_000,
             provider_name: "lmstudio".to_string(),
-            use_responses_api: true,
+            use_responses_api: false, // LM Studio doesn't support Responses API
             ..Default::default()
         }
     }
@@ -61,7 +61,7 @@ impl OpenAICompatibleConfig {
             model,
             context_window: 256_000,
             provider_name: "ollama".to_string(),
-            use_responses_api: true,
+            use_responses_api: false, // Ollama doesn't support Responses API
             ..Default::default()
         }
     }
@@ -72,7 +72,7 @@ impl OpenAICompatibleConfig {
             base_url,
             model,
             provider_name,
-            use_responses_api: true,
+            use_responses_api: false, // Default to Chat Completions API for compatibility
             ..Default::default()
         }
     }
@@ -214,13 +214,25 @@ impl OpenAICompatibleProvider {
             ));
         }
 
-        response
-            .json::<ResponseAPIResponse>()
-            .await
-            .context(format!(
-                "Failed to parse {} Responses API response",
-                self.config.provider_name
-            ))
+        // Get raw response text for debugging
+        let response_text = response.text().await.context(format!(
+            "Failed to read {} Responses API response body",
+            self.config.provider_name
+        ))?;
+
+        // Log the raw response for debugging
+        tracing::debug!(
+            provider = %self.config.provider_name,
+            response = %response_text,
+            "Raw Responses API response"
+        );
+
+        // Parse the response
+        serde_json::from_str::<ResponseAPIResponse>(&response_text).context(format!(
+            "Failed to parse {} Responses API response. Raw response: {}",
+            self.config.provider_name,
+            response_text
+        ))
     }
 
     /// Try request using Chat Completions API (fallback for older systems)
