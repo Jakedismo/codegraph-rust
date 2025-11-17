@@ -712,10 +712,10 @@ flowchart TD
 **Key Components:**
 
 1. **Tier Detection**: Automatically adapts prompt complexity based on LLM's context window
-   - Small (<50K): Fast, terse responses for limited context models
-   - Medium (50K-150K): Balanced analysis for Claude Haiku, GPT-4
-   - Large (150K-500K): Detailed exploration for Claude Sonnet
-   - Massive (>500K): Comprehensive deep-dives for Claude Opus, GPT-5
+   - Small (<50K): Fast, terse responses for limited context models f.ex. local
+   - Medium (50K-150K): Balanced analysis for Claude Haiku, gpt-5.1-codex-mini
+   - Large (150K-400K): Detailed exploration for Sonnet, Opus, gpt-5.1
+   - Massive (>400K): Comprehensive deep-dives for grok-4-fast, gemini-2.5-pro, Sonnet[1m]
 
 2. **Multi-Step Reasoning**: ReAct pattern with tier-specific limits
    - Each step can call internal graph analysis tools
