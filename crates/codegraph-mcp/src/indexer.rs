@@ -1234,6 +1234,7 @@ impl ProjectIndexer {
         info!("💾 Updating file metadata for change tracking");
         let file_paths_only: Vec<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
         self.persist_file_metadata(&file_paths_only, &nodes, &edges).await?;
+        self.flush_surreal_writer().await?;
 
         // COMPREHENSIVE INDEXING COMPLETION SUMMARY
         info!("🎉 INDEXING COMPLETE - REVOLUTIONARY AI DEVELOPMENT PLATFORM READY!");
