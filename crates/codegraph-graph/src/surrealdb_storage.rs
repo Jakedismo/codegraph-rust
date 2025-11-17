@@ -848,7 +848,7 @@ impl SurrealDbStorage {
         let mut result = self
             .db
             .query(query)
-            .bind(("project_id", project_id))
+            .bind(("project_id", project_id.to_string()))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!("Failed to query file metadata: {}", e))
@@ -880,8 +880,8 @@ impl SurrealDbStorage {
             "DELETE file_metadata WHERE project_id = $project_id AND file_path IN $file_paths";
         self.db
             .query(query)
-            .bind(("project_id", project_id))
-            .bind(("file_paths", file_paths))
+            .bind(("project_id", project_id.to_string()))
+            .bind(("file_paths", file_paths.to_vec()))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!("Failed to delete file metadata: {}", e))
@@ -901,7 +901,7 @@ impl SurrealDbStorage {
         let mut result = self
             .db
             .query(query)
-            .bind(("project_id", project_id))
+            .bind(("project_id", project_id.to_string()))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!("Failed to delete nodes: {}", e))
@@ -932,7 +932,7 @@ impl SurrealDbStorage {
         let mut result = self
             .db
             .query(query)
-            .bind(("project_id", project_id))
+            .bind(("project_id", project_id.to_string()))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!("Failed to query node IDs: {}", e))
@@ -975,7 +975,7 @@ impl SurrealDbStorage {
         let mut result = self
             .db
             .query(query)
-            .bind(("project_id", project_id))
+            .bind(("project_id", project_id.to_string()))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!("Failed to delete symbol embeddings: {}", e))
@@ -997,7 +997,7 @@ impl SurrealDbStorage {
         let mut result = self
             .db
             .query(query)
-            .bind(("project_id", project_id))
+            .bind(("project_id", project_id.to_string()))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!("Failed to delete file metadata: {}", e))

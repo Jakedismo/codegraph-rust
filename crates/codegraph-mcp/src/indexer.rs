@@ -331,48 +331,7 @@ impl SurrealWriterHandle {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum FileChangeType {
-    Added,
-    Modified,
-    Deleted,
-    Unchanged,
-}
-
-#[derive(Debug, Clone)]
-pub struct FileChange {
-    pub file_path: String,
-    pub change_type: FileChangeType,
-    pub current_hash: Option<String>,
-    pub previous_hash: Option<String>,
-}
-
 impl ProjectIndexer {
-    /// Calculate SHA-256 hash of file content
-    fn calculate_file_hash(file_path: &Path) -> Result<String> {
-        // Resolve symlinks to actual file
-        let canonical_path = fs::canonicalize(file_path)
-            .with_context(|| format!("Failed to resolve path: {:?}", file_path))?;
-
-        let mut file = fs::File::open(&canonical_path)
-            .with_context(|| format!("Failed to open file: {:?}", canonical_path))?;
-
-        let mut hasher = Sha256::new();
-        let mut buffer = [0u8; 8192];
-
-        loop {
-            let bytes_read = file
-                .read(&mut buffer)
-                .with_context(|| format!("Failed to read file: {:?}", canonical_path))?;
-            if bytes_read == 0 {
-                break;
-            }
-            hasher.update(&buffer[..bytes_read]);
-        }
-
-        Ok(format!("{:x}", hasher.finalize()))
-    }
-
     #[cfg(feature = "ai-enhanced")]
     fn symbol_embedding_batch_settings(&self) -> (usize, usize) {
         let config_batch = self
@@ -576,23 +535,105 @@ impl ProjectIndexer {
             drop(storage);
             info!("✅ Clean slate complete, starting fresh index");
         }
-        // INCREMENTAL INDEXING: Check if already indexed
-        else if self.is_indexed(path).await? {
-            warn!("Project already indexed. Use --force to reindex.");
-            let mut stats = IndexStats::default();
-            stats.skipped = codegraph_parser::file_collect::collect_source_files_with_config(
+        // INCREMENTAL INDEXING: Check if already indexed and has file metadata
+        let files_to_index = if self.is_indexed(path).await? && self.has_file_metadata().await? {
+            info!("📊 Project already indexed, checking for file changes...");
+
+            // Collect current files (returns Vec<(PathBuf, u64)>)
+            let files_with_sizes = codegraph_parser::file_collect::collect_source_files_with_config(
                 path,
                 &file_config,
-            )
-            .map(|f| f.len())
-            .unwrap_or(0);
-            self.shutdown_surreal_writer().await?;
-            return Ok(stats);
+            )?;
+
+            // Extract just the paths for change detection
+            let file_paths: Vec<PathBuf> = files_with_sizes.iter().map(|(p, _)| p.clone()).collect();
+
+            // Detect changes
+            let changes = self.detect_file_changes(&file_paths).await?;
+
+            // Categorize changes
+            let added: Vec<_> = changes
+                .iter()
+                .filter(|c| matches!(c.change_type, FileChangeType::Added))
+                .collect();
+            let modified: Vec<_> = changes
+                .iter()
+                .filter(|c| matches!(c.change_type, FileChangeType::Modified))
+                .collect();
+            let deleted: Vec<_> = changes
+                .iter()
+                .filter(|c| matches!(c.change_type, FileChangeType::Deleted))
+                .collect();
+            let unchanged: Vec<_> = changes
+                .iter()
+                .filter(|c| matches!(c.change_type, FileChangeType::Unchanged))
+                .collect();
+
+            info!(
+                "📈 Change summary: {} added, {} modified, {} deleted, {} unchanged",
+                added.len(),
+                modified.len(),
+                deleted.len(),
+                unchanged.len()
+            );
+
+            // If no changes, skip indexing
+            if added.is_empty() && modified.is_empty() && deleted.is_empty() {
+                info!("✅ No changes detected, index is up to date");
+                let mut stats = IndexStats::default();
+                stats.skipped = unchanged.len();
+                self.shutdown_surreal_writer().await?;
+                return Ok(stats);
+            }
+
+            // Handle deletions
+            if !deleted.is_empty() {
+                info!("🗑️  Removing data for {} deleted files", deleted.len());
+                let deleted_paths: Vec<String> = deleted.iter().map(|c| c.file_path.clone()).collect();
+                self.delete_data_for_files(&deleted_paths).await?;
+            }
+
+            // Collect files that need re-indexing (added + modified) with their sizes
+            let files_to_reindex: Vec<(PathBuf, u64)> = added
+                .iter()
+                .chain(modified.iter())
+                .filter_map(|c| {
+                    let path = PathBuf::from(&c.file_path);
+                    // Find the file size from original collection
+                    files_with_sizes
+                        .iter()
+                        .find(|(p, _)| p == &path)
+                        .cloned()
+                })
+                .collect();
+
+            if files_to_reindex.is_empty() {
+                info!("✅ Only deletions processed, no files to index");
+                let mut stats = IndexStats::default();
+                stats.skipped = unchanged.len();
+                self.shutdown_surreal_writer().await?;
+                return Ok(stats);
+            }
+
+            info!(
+                "🔄 Incrementally indexing {} changed files",
+                files_to_reindex.len()
+            );
+
+            files_to_reindex
         }
+        // Old index without metadata - fall back to full reindex
+        else if self.is_indexed(path).await? {
+            warn!("⚠️  Project indexed without file metadata. Use --force to reindex, or continuing with full index.");
+            codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?
+        }
+        // Fresh index - index all files
+        else {
+            codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?
+        };
 
         // STAGE 1: File Collection & Parsing
-        let files =
-            codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?;
+        let files = files_to_index;
         let total_files = files.len();
         info!(
             "🌳 Starting TreeSitter AST parsing for {} files across {} languages",
@@ -602,8 +643,9 @@ impl ProjectIndexer {
         info!("🔗 Unified extraction: Nodes + Edges + Relationships in single pass");
 
         // REVOLUTIONARY: Use unified extraction for nodes + edges in single pass (FASTEST approach)
+        // Clone files for parsing (we need them again for metadata persistence)
         let (mut nodes, edges, pstats) = self
-            .parse_files_with_unified_extraction(files, total_files as u64)
+            .parse_files_with_unified_extraction(files.clone(), total_files as u64)
             .await?;
 
         for node in nodes.iter_mut() {
@@ -1183,6 +1225,11 @@ impl ProjectIndexer {
         self.persist_project_metadata(&stats, total_nodes_extracted, total_edges_extracted)
             .await?;
         self.flush_surreal_writer().await?;
+
+        // Task 3.3: Update file metadata for incremental indexing
+        info!("💾 Updating file metadata for change tracking");
+        let file_paths_only: Vec<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
+        self.persist_file_metadata(&file_paths_only, &nodes, &edges).await?;
 
         // COMPREHENSIVE INDEXING COMPLETION SUMMARY
         info!("🎉 INDEXING COMPLETE - REVOLUTIONARY AI DEVELOPMENT PLATFORM READY!");
@@ -1835,7 +1882,7 @@ impl ProjectIndexer {
         let mut stats = FileStats::default();
 
         // Read file content
-        let content = fs::read_to_string(&path).await?;
+        let content = tokio_fs::read_to_string(&path).await?;
         stats.lines = content.lines().count();
 
         // Very rough heuristics for functions/classes counts per common languages
@@ -1992,7 +2039,7 @@ impl ProjectIndexer {
 
         let mut response = db
             .query("SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id")
-            .bind(("project_id", &self.project_id))
+            .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to query file_metadata count")?;
         let count: Option<i64> = response.take(0)?;
@@ -2101,8 +2148,8 @@ impl ProjectIndexer {
         let query = "DELETE nodes WHERE project_id = $project_id AND file_path IN $file_paths RETURN BEFORE";
         let mut result = storage.db()
             .query(query)
-            .bind(("project_id", &self.project_id))
-            .bind(("file_paths", file_paths))
+            .bind(("project_id", self.project_id.clone()))
+            .bind(("file_paths", file_paths.to_vec()))
             .await
             .map_err(|e| anyhow!("Failed to delete nodes: {}", e))?;
 
@@ -2131,6 +2178,75 @@ impl ProjectIndexer {
         storage.delete_file_metadata_for_files(&self.project_id, file_paths).await?;
 
         info!("Deleted data for {} files", file_paths.len());
+        Ok(())
+    }
+
+    /// Persist file metadata for incremental indexing change tracking
+    async fn persist_file_metadata(
+        &self,
+        files: &[PathBuf],
+        nodes: &[CodeNode],
+        edges: &[EdgeRelationship],
+    ) -> Result<()> {
+        let storage = self.surreal.lock().await;
+        let mut file_metadata_records = Vec::new();
+
+        for file_path in files {
+            let file_path_str = file_path.to_string_lossy().to_string();
+
+            // Calculate hash and get file info
+            let content_hash =
+                Self::calculate_file_hash(file_path).unwrap_or_else(|_| "error".to_string());
+
+            let metadata = fs::metadata(file_path).ok();
+            let file_size = metadata.as_ref().map(|m| m.len() as i64).unwrap_or(0);
+
+            let modified_at = metadata
+                .as_ref()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| {
+                    let duration = t.duration_since(std::time::UNIX_EPOCH).ok()?;
+                    Some(
+                        chrono::DateTime::from_timestamp(duration.as_secs() as i64, 0)
+                            .unwrap_or_else(chrono::Utc::now),
+                    )
+                })
+                .unwrap_or_else(chrono::Utc::now);
+
+            // Count nodes and edges for this file
+            let node_count = nodes
+                .iter()
+                .filter(|n| n.location.file_path == file_path_str)
+                .count() as i64;
+
+            let edge_count = edges
+                .iter()
+                .filter(|e| {
+                    // Check if edge is from a node in this file
+                    nodes
+                        .iter()
+                        .any(|n| n.id == e.from && n.location.file_path == file_path_str)
+                })
+                .count() as i64;
+
+            file_metadata_records.push(FileMetadataRecord {
+                file_path: file_path_str,
+                project_id: self.project_id.clone(),
+                content_hash,
+                modified_at,
+                file_size,
+                last_indexed_at: chrono::Utc::now(),
+                node_count,
+                edge_count,
+                language: None, // Will be inferred from file extension if needed
+                parse_errors: None,
+            });
+        }
+
+        // Batch upsert file metadata
+        storage.upsert_file_metadata_batch(&file_metadata_records).await?;
+
+        info!("💾 Persisted metadata for {} files", files.len());
         Ok(())
     }
 
