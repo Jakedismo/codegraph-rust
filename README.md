@@ -736,21 +736,40 @@ flowchart TD
 
 ## 📊 Feature Flags Reference
 
-When building, include features for the providers you want to use:
+CodeGraph uses feature flags to enable only the components you need. Build with the features that match your deployment.
 
-| Feature | Providers Enabled | Use Case |
-|---------|------------------|----------|
-| `onnx` | ONNX embeddings | Local CPU/GPU embeddings |
-| `ollama` | Ollama embeddings + LLM | Local models via Ollama |
-| `openai` | OpenAI embeddings | Cloud embeddings (text-embedding-3-large/small) |
-| `openai-llm` | OpenAI | Cloud LLM (gpt-5, gpt-5-codex, gpt-5-codex-mini) |
-| `anthropic` | Anthropic Claude | Cloud LLM (Claude 4.5, Haiku 4.5) |
-| `openai-compatible` | LMStudio, custom providers | OpenAI Responses API compatible | (f.ex xai/grok-4-fast)|
-| `cloud-jina` | Jina AI embeddings + reranking | Cloud embeddings & Free usage (SOTA and variable dims) |
-| `cloud-surrealdb` | SurrealDB HNSW | Local & Free Cloud-native graph database backend (up-to 1gb)|
-| `cloud` | Jina AI + SurrealDB | All cloud vector & graph features |
-| `faiss` | FAISS vector search | Local vector search graph backend (rocksdb persisted)|
-| `all-cloud-providers` | All cloud LLM providers | Shortcut for Jina + Surreal + Anthropic + OpenAI |
+### Core Features
+
+| Feature | Description | Use Case |
+|---------|-------------|----------|
+| `faiss` | FAISS vector search + RocksDB | Local vector search with persistent graph storage |
+| `ai-enhanced` | Agentic MCP tools | Enables 7 agentic workflows with multi-step reasoning |
+| `server-http` | HTTP/SSE transport | Experimental HTTP server (use STDIO for production) |
+| `autoagents-experimental` | AutoAgents framework | ReAct orchestration (experimental, replaces custom orchestrator) |
+
+### Embedding Providers
+
+| Feature | Provider | Models/Notes |
+|---------|----------|--------------|
+| `embeddings-local` | ONNX Runtime | Local CPU/GPU embeddings (all-MiniLM-L6-v2, etc.) |
+| `embeddings-ollama` | Ollama | Local embeddings (qwen3-embedding, all-mini-llm, etc.) |
+| `embeddings-openai` | OpenAI | Cloud embeddings (text-embedding-3-large/small) |
+| `embeddings-jina` | Jina AI | Cloud embeddings (jina-embeddings-v4) + reranking |
+
+### LLM Providers (for Agentic Tools)
+
+| Feature | Provider | Models/Notes |
+|---------|----------|--------------|
+| `anthropic` | Anthropic Claude | Claude Sonnet 4.5, Haiku 4.5, Opus 4.5 |
+| `openai-llm` | OpenAI | GPT-4o, GPT-4o-mini, o1, o1-mini |
+| `openai-compatible` | LM Studio, xAI, custom | OpenAI-compatible APIs (Grok, local models) |
+
+### Convenience Bundles
+
+| Feature | Includes | Use Case |
+|---------|----------|----------|
+| `cloud` | `embeddings-jina` + SurrealDB | Jina embeddings + cloud graph database |
+| `all-cloud-providers` | `anthropic` + `openai-llm` + `openai-compatible` | All LLM providers for agentic tools |
 
 ### Common Build Commands
 
