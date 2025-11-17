@@ -2341,6 +2341,10 @@ impl ProjectIndexer {
                 .attributes
                 .insert("domain".to_string(), domain.clone());
         }
+        // Add embedding model name for tracking which embedding provider was used
+        node.metadata
+            .attributes
+            .insert("embedding_model".to_string(), self.embedding_model.clone());
     }
 
     async fn persist_nodes_batch(&self, chunk: &[CodeNode]) -> Result<()> {
