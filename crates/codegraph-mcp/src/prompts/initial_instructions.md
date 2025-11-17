@@ -33,7 +33,7 @@ Result: Comprehensive answer in 150 lines, complete architectural understanding
 
 Your Query
     ↓
-Agentic Tool (with multi-step reasoning)
+Codegraph MCP (with multi-step reasoning)
     ↓
 Autonomous LLM Decision-Making:
   - Which graph functions to call?
@@ -49,7 +49,7 @@ SurrealDB Graph Functions:
   - fn::get_hub_nodes()
   - fn::detect_circular_dependencies()
     ↓
-Synthesized, Context-Efficient Answer
+Synthesized, Context-Efficient Answer That You Can Use To Drill Down Further If Necessary
 
 ---
 
