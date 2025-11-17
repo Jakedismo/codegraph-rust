@@ -1241,10 +1241,10 @@ impl ProjectIndexer {
         );
 
         // ARCHITECTURAL IMPROVEMENT: Use existing working embedder instead of creating fresh one
-        // This avoids ONNX re-initialization issues that caused random hash fallback
-        info!("🤖 Using preserved ONNX embedder for AI semantic matching");
+        // This avoids re-initialization issues that could cause random hash fallback
+        info!("🤖 Using configured embedder ({}) for AI semantic matching", self.global_config.embedding.provider);
         let embedder = &self.embedder;
-        info!("✅ Using working ONNX embedder session (guaranteed real embeddings)");
+        info!("✅ Using working embedder session (guaranteed real embeddings)");
         let (batch_size, max_concurrent) = self.symbol_embedding_batch_settings();
         let total_batches = (top_symbols.len() + batch_size - 1) / batch_size;
         info!(

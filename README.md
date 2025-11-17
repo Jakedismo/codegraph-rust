@@ -620,15 +620,17 @@ CodeGraph provides powerful code intelligence tools via the Model Context Protoc
 
 ### Available MCP Tools
 
-After indexing your codebase, AI agents can use these tools:
+After indexing your codebase, AI agents can use these agentic workflows (requires SurrealDB-backed graphs):
 
-- 🔍 **`enhanced_search`** - Semantic code search with AI insights (2-5s)
-- 🔬 **`pattern_detection`** - Analyze coding patterns and conventions (1-3s)
-- ⚡ **`vector_search`** - Fast similarity-based code search (0.5s)
-- 🗺️ **`graph_neighbors`** - Find code dependencies for an element (0.3s)
-- 🌐 **`graph_traverse`** - Follow dependency chains through code (0.5-2s)
-- 💬 **`codebase_qa`** - Ask questions with RAG [feature-gated] (5-30s)
-- 📖 **`code_documentation`** - Generate AI docs [feature-gated] (10-45s)
+- 🔍 **`agentic_code_search`** - Autonomous semantic exploration for finding and understanding code
+- 📊 **`agentic_dependency_analysis`** - Impact and coupling analysis across forward and reverse dependencies
+- 🔗 **`agentic_call_chain_analysis`** - Execution path tracing through controllers, services, and downstream systems
+- 🏗️ **`agentic_architecture_analysis`** - Architectural pattern assessment plus layer and cohesion breakdowns
+- 🌐 **`agentic_api_surface_analysis`** - Public API surface analysis with consumer mapping and change risk detection
+- 📦 **`agentic_context_builder`** - Comprehensive context gathering ahead of implementing or modifying features
+- ❓ **`agentic_semantic_question`** - Deep semantic Q&A that synthesizes answers across multiple subsystems
+
+These multi-step workflows typically take 30–90 seconds to complete because they traverse the code graph and build detailed reasoning summaries.
 
 ### Quick Start
 
@@ -640,8 +642,8 @@ codegraph index /path/to/your/project
 codegraph start stdio
 
 # 3. Use tools from your AI agent
-enhanced_search("how does authentication work?")
-graph_neighbors("node-uuid-from-search-results")
+agentic_code_search("how does authentication work?")
+agentic_dependency_analysis("what depends on AuthService?")
 ```
 
 ---
