@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 tokio = { workspace = true }
 tokio-stream = "0.1"
-priority-queue = "2.5.0"
+priority-queue = "2.7.0"
 uuid = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
