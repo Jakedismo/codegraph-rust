@@ -760,9 +760,9 @@ CodeGraph uses feature flags to enable only the components you need. Build with 
 
 | Feature | Provider | Models/Notes |
 |---------|----------|--------------|
-| `anthropic` | Anthropic Claude | Claude Sonnet 4.5, Haiku 4.5, Opus 4.5 |
-| `openai-llm` | OpenAI | GPT-4o, GPT-4o-mini, o1, o1-mini |
-| `openai-compatible` | LM Studio, xAI, custom | OpenAI-compatible APIs (Grok, local models) |
+| `anthropic` | Anthropic Claude | Claude Sonnet 4.5, Haiku 4.5, Opus 4.1 |
+| `openai-llm` | OpenAI | gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-mini |
+| `openai-compatible` | LM Studio, xAI, Ollama, custom | OpenAI-compatible APIs (grok-4-fast, local models) |
 
 ### Convenience Bundles
 
