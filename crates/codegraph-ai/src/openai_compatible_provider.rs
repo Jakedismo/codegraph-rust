@@ -301,17 +301,24 @@ impl OpenAICompatibleProvider {
             .first()
             .ok_or_else(|| anyhow!("No choices in response"))?;
 
+        // Create output array structure matching GPT-5.1 format
+        let output = vec![ResponseOutputItem {
+            output_type: "message".to_string(),
+            content: vec![ResponseOutputContent {
+                content_type: "output_text".to_string(),
+                text: choice.message.content.clone(),
+            }],
+        }];
+
         Ok(ResponseAPIResponse {
             id: chat_response.id,
-            response_type: "response".to_string(),
+            object: "response".to_string(),
             status: choice.finish_reason.clone(),
-            output_text: choice.message.content.clone(),
-            output: Vec::new(), // Chat Completions uses output_text, not output array
-            usage: chat_response.usage.map(|u| Usage {
-                prompt_tokens: u.prompt_tokens,
+            output,
+            usage: chat_response.usage.map(|u| ResponseUsage {
+                input_tokens: u.prompt_tokens,
                 output_tokens: u.completion_tokens,
                 total_tokens: u.total_tokens,
-                reasoning_tokens: None,
             }),
         })
     }
@@ -326,22 +333,22 @@ impl LLMProvider for OpenAICompatibleProvider {
     ) -> LLMResult<LLMResponse> {
         let response = self.send_request(messages, config).await?;
 
-        // Handle both old output_text field and new output array format
-        let content = if !response.output_text.is_empty() {
-            response.output_text
-        } else if !response.output.is_empty() {
-            response.output.iter()
-                .map(|o| o.content.as_str())
-                .collect::<Vec<_>>()
-                .join("\n")
-        } else {
-            String::new()
-        };
+        // Extract text from output array (matches OpenAI GPT-5.1 structure)
+        // Response format: output[{type: "message", content: [{type: "output_text", text: "..."}]}]
+        let content = response
+            .output
+            .iter()
+            .filter(|item| item.output_type == "message")
+            .flat_map(|item| &item.content)
+            .filter(|c| c.content_type == "output_text")
+            .map(|c| c.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
 
         Ok(LLMResponse {
             content,
             total_tokens: response.usage.as_ref().map(|u| u.total_tokens),
-            prompt_tokens: response.usage.as_ref().map(|u| u.prompt_tokens),
+            prompt_tokens: response.usage.as_ref().map(|u| u.input_tokens),
             completion_tokens: response.usage.as_ref().map(|u| u.output_tokens),
             finish_reason: response.status.clone(),
             model: self.config.model.clone(),
@@ -469,34 +476,36 @@ struct ResponsesAPIRequest {
 #[derive(Debug, Deserialize)]
 struct ResponseAPIResponse {
     id: String,
-    #[serde(rename = "type")]
-    response_type: String,
+    object: String,
     #[serde(default)]
     status: Option<String>,
     #[serde(default)]
-    output_text: String,
+    output: Vec<ResponseOutputItem>,
     #[serde(default)]
-    output: Vec<ResponseOutput>,
-    #[serde(default)]
-    usage: Option<Usage>,
+    usage: Option<ResponseUsage>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ResponseOutput {
+struct ResponseOutputItem {
     #[serde(rename = "type")]
     output_type: String,
     #[serde(default)]
-    content: String,
+    content: Vec<ResponseOutputContent>,
 }
 
 #[derive(Debug, Deserialize)]
-struct Usage {
-    prompt_tokens: usize,
-    #[serde(alias = "completion_tokens")]
+struct ResponseOutputContent {
+    #[serde(rename = "type")]
+    content_type: String,
+    #[serde(default)]
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseUsage {
+    input_tokens: usize,
     output_tokens: usize,
     total_tokens: usize,
-    #[serde(default)]
-    reasoning_tokens: Option<usize>,
 }
 
 // API request/response types for Chat Completions API (fallback)
@@ -553,7 +562,7 @@ mod tests {
         let config = OpenAICompatibleConfig::lm_studio("test-model".to_string());
         assert_eq!(config.base_url, "http://localhost:1234/v1");
         assert_eq!(config.provider_name, "lmstudio");
-        assert!(config.use_responses_api);
+        assert!(!config.use_responses_api); // LM Studio uses Chat Completions API
     }
 
     #[test]
@@ -561,6 +570,6 @@ mod tests {
         let config = OpenAICompatibleConfig::ollama("llama3".to_string());
         assert_eq!(config.base_url, "http://localhost:11434/v1");
         assert_eq!(config.provider_name, "ollama");
-        assert!(config.use_responses_api);
+        assert!(!config.use_responses_api); // Ollama uses Chat Completions API
     }
 }
