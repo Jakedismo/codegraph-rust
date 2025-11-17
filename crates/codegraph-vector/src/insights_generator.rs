@@ -192,7 +192,7 @@ impl InsightsGenerator {
                     if let Some(ref node_type) = node.node_type {
                         context.push_str(&format!("**Type**: {:?}\n", node_type));
                     }
-                    context.push_str("\n");
+                    context.push('\n');
                 }
 
                 context.push_str("**Content**:\n```\n");

@@ -2,7 +2,6 @@ use codegraph_core::{
     AdvancedConfig, ConfigurationManager, EmbeddingModelConfig, EmbeddingPreset, PerformanceMode,
     PerformanceModeConfig, PerformanceProfile,
 };
-use std::fs;
 use tempfile::TempDir;
 
 #[test]

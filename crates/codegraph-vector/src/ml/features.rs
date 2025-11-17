@@ -283,9 +283,7 @@ impl FeatureExtractor {
                     max_depth = max_depth.max(current_depth);
                 }
                 '}' | ')' | ']' => {
-                    if current_depth > 0 {
-                        current_depth -= 1;
-                    }
+                    current_depth = current_depth.saturating_sub(1);
                 }
                 _ => {}
             }
@@ -439,18 +437,32 @@ mod tests {
         let embedding_generator = Arc::new(crate::EmbeddingGenerator::default());
         let extractor = FeatureExtractor::new(config, embedding_generator);
 
+        let node_id = codegraph_core::NodeId::new_v4();
         let node = CodeNode {
-            id: "test_node".to_string(),
-            name: "test_function".to_string(),
+            id: node_id,
+            name: "test_function".into(),
             language: Some(Language::Rust),
             node_type: Some(NodeType::Function),
-            content: Some("fn test_function(a: i32, b: i32) -> i32 {\n    if a > b {\n        return a;\n    }\n    return b;\n}".to_string()),
-            children: None,
+            content: Some("fn test_function(a: i32, b: i32) -> i32 {\n    if a > b {\n        return a;\n    }\n    return b;\n}".into()),
+            location: codegraph_core::Location {
+                file_path: "test.rs".to_string(),
+                line: 1,
+                column: 0,
+                end_line: Some(5),
+                end_column: Some(1),
+            },
+            metadata: codegraph_core::Metadata {
+                attributes: std::collections::HashMap::new(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            },
+            embedding: None,
+            complexity: None,
         };
 
         let features = extractor.extract_features(&node).await.unwrap();
 
-        assert_eq!(features.node_id, "test_node");
+        assert_eq!(features.node_id, node_id.to_string());
         assert!(features.syntactic.is_some());
         assert!(features.semantic.is_some());
         assert!(features.complexity.is_some());

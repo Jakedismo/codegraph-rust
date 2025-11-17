@@ -371,48 +371,55 @@ impl PerformanceMonitor {
     /// Check if performance targets are met
     pub fn targets_achieved(&self) -> TargetAchievementReport {
         let metrics = self.metrics.read();
-        let mut report = TargetAchievementReport::default();
 
         // Check latency targets (use last observed value to reflect most recent performance)
-        report.node_query_latency_achieved = metrics
+        let node_query_latency_achieved = metrics
             .node_query_latency_ms
             .last_value()
             .map(|v| v <= self.targets.node_query_latency_ms.1)
             .unwrap_or(false);
-        report.vector_search_latency_achieved = metrics
+        let vector_search_latency_achieved = metrics
             .vector_search_latency_ms
             .last_value()
             .map(|v| v <= self.targets.vector_search_latency_ms.1)
             .unwrap_or(false);
 
         // Check memory targets
-        report.graph_memory_achieved = metrics.graph_memory_mb <= self.targets.graph_memory_mb.1;
-        report.cache_memory_achieved = metrics.cache_memory_mb <= self.targets.cache_memory_mb.1;
+        let graph_memory_achieved = metrics.graph_memory_mb <= self.targets.graph_memory_mb.1;
+        let cache_memory_achieved = metrics.cache_memory_mb <= self.targets.cache_memory_mb.1;
 
         // Check throughput targets
-        report.concurrent_throughput_achieved = metrics.concurrent_queries_per_sec.average()
+        let concurrent_throughput_achieved = metrics.concurrent_queries_per_sec.average()
             >= self.targets.concurrent_queries_per_sec.1;
-        report.processing_throughput_achieved =
+        let processing_throughput_achieved =
             metrics.nodes_processed_per_sec.average() >= self.targets.nodes_processed_per_sec.1;
 
         // Calculate overall achievement
         let total_targets = 6;
         let achieved_targets = [
-            report.node_query_latency_achieved,
-            report.vector_search_latency_achieved,
-            report.graph_memory_achieved,
-            report.cache_memory_achieved,
-            report.concurrent_throughput_achieved,
-            report.processing_throughput_achieved,
+            node_query_latency_achieved,
+            vector_search_latency_achieved,
+            graph_memory_achieved,
+            cache_memory_achieved,
+            concurrent_throughput_achieved,
+            processing_throughput_achieved,
         ]
         .iter()
         .filter(|&&x| x)
         .count();
 
-        report.overall_achievement_percentage =
+        let overall_achievement_percentage =
             (achieved_targets as f64 / total_targets as f64) * 100.0;
 
-        report
+        TargetAchievementReport {
+            node_query_latency_achieved,
+            vector_search_latency_achieved,
+            graph_memory_achieved,
+            cache_memory_achieved,
+            concurrent_throughput_achieved,
+            processing_throughput_achieved,
+            overall_achievement_percentage,
+        }
     }
 
     /// Subscribe to performance events

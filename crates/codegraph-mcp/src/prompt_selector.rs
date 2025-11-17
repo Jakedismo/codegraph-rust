@@ -74,7 +74,7 @@ impl AnalysisType {
     }
 
     /// Parse from string identifier
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "code_search" => Some(AnalysisType::CodeSearch),
             "dependency_analysis" => Some(AnalysisType::DependencyAnalysis),
@@ -327,7 +327,7 @@ mod tests {
     fn test_analysis_type_round_trip() {
         for analysis_type in AnalysisType::all() {
             let s = analysis_type.as_str();
-            let parsed = AnalysisType::from_str(s).expect("Should parse");
+            let parsed = AnalysisType::parse(s).expect("Should parse");
             assert_eq!(analysis_type, parsed);
         }
     }

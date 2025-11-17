@@ -22,6 +22,6 @@ disallowed-methods = [
 
 disallowed-types = [
     # Avoid raw pointers where safe abstractions exist
-    "*const _",
-    "*mut _",
+    # Note: Wildcard patterns like "*const _" are not supported
+    # Use specific types if needed, e.g., "*const std::ffi::c_void"
 ]

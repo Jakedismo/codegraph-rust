@@ -135,8 +135,8 @@ impl IncrementalCache {
         }
         items.sort_by_key(|(_f, t)| *t);
         let to_remove = items.len().saturating_sub(self.max_files);
-        for i in 0..to_remove {
-            self.invalidate_file(&items[i].0);
+        for (file, _) in items.iter().take(to_remove) {
+            self.invalidate_file(file);
         }
     }
 }
@@ -438,8 +438,6 @@ mod tests {
     use crate::traits::VectorStore;
     use crate::CodeGraphError;
     use async_trait::async_trait;
-    use crossbeam_channel::{unbounded, Receiver, Sender};
-    use tokio_test::block_on;
 
     struct InMemoryParser {
         files: DashMap<String, Vec<CodeNode>>,

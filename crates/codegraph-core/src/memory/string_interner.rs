@@ -50,6 +50,10 @@ impl StringInterner {
         self.map.read().len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.map.read().is_empty()
+    }
+
     pub fn clear(&self) {
         let mut map = self.map.write();
         // Not tracking exact freed bytes here; external snapshotting can infer reductions

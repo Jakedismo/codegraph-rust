@@ -14,7 +14,7 @@ impl McpProtocol {
         Self { version }
     }
 
-    pub fn default() -> Self {
+    pub fn with_latest_version() -> Self {
         Self {
             version: ProtocolVersion::latest(),
         }

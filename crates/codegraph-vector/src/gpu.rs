@@ -83,12 +83,18 @@ pub struct CpuFallback {
     thread_count: usize,
 }
 
-impl CpuFallback {
-    pub fn new() -> Self {
+impl Default for CpuFallback {
+    fn default() -> Self {
         Self {
             available: true,
             thread_count: num_cpus::get(),
         }
+    }
+}
+
+impl CpuFallback {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn is_available(&self) -> bool {
@@ -224,7 +230,7 @@ impl GpuAcceleration {
         }
 
         let vector_count = vectors.len() / dimension;
-        let size_bytes = vectors.len() * std::mem::size_of::<f32>();
+        let size_bytes = std::mem::size_of_val(vectors);
 
         // Simulate GPU memory allocation and upload
         let allocation = GpuMemoryAllocation::new(size_bytes);

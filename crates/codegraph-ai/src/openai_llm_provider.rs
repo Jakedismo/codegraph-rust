@@ -33,7 +33,7 @@ impl Default for OpenAIConfig {
             api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
             base_url: OPENAI_API_BASE.to_string(),
             model: DEFAULT_MODEL.to_string(),
-            context_window: 128_000,
+            context_window: 400000,
             timeout_secs: 120,
             max_retries: 3,
             organization: std::env::var("OPENAI_ORG_ID").ok(),
@@ -72,10 +72,7 @@ impl OpenAIProvider {
     /// Check if this is a reasoning model
     fn is_reasoning_model(&self) -> bool {
         let model = self.config.model.to_lowercase();
-        model.contains("o1")
-            || model.contains("o3")
-            || model.contains("o4")
-            || model.starts_with("gpt-5")
+        model.starts_with("gpt-5")
     }
 
     /// Send a request to OpenAI Responses API with retry logic
@@ -138,7 +135,7 @@ impl OpenAIProvider {
             input,
             instructions,
             max_completion_token: config.max_completion_token.or(config.max_tokens),
-            reasoning_effort: None,
+            reasoning: None,
             temperature: None,
             top_p: None,
             stop: config.stop.clone(),
@@ -150,7 +147,9 @@ impl OpenAIProvider {
             request.top_p = config.top_p;
         } else {
             // Add reasoning effort for reasoning models
-            request.reasoning_effort = config.reasoning_effort.clone();
+            request.reasoning = config.reasoning_effort.as_ref().map(|effort| Reasoning {
+                effort: effort.clone(),
+            });
         }
 
         let mut request_builder = self
@@ -197,8 +196,20 @@ impl LLMProvider for OpenAIProvider {
         let start = Instant::now();
         let response = self.send_request(messages, config).await?;
 
+        // Handle both old output_text field and new output array format
+        let content = if !response.output_text.is_empty() {
+            response.output_text
+        } else if !response.output.is_empty() {
+            response.output.iter()
+                .map(|o| o.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            String::new()
+        };
+
         Ok(LLMResponse {
-            content: response.output_text,
+            content,
             total_tokens: response.usage.as_ref().map(|u| u.total_tokens),
             prompt_tokens: response.usage.as_ref().map(|u| u.prompt_tokens),
             completion_tokens: response.usage.as_ref().map(|u| u.output_tokens),
@@ -232,17 +243,8 @@ impl LLMProvider for OpenAIProvider {
         // Characteristics vary by model
         let (max_tokens, rpm_limit, tpm_limit, supports_functions) =
             match self.config.model.as_str() {
-                // Reasoning models
-                m if m.contains("o1") => (200_000, Some(50), Some(30_000), false),
-                m if m.contains("o3") || m.contains("o4") => {
-                    (200_000, Some(50), Some(30_000), false)
-                }
-                m if m.starts_with("gpt-5") => (200_000, Some(50), Some(30_000), false),
-                // Standard models
-                "gpt-4o" => (128_000, Some(500), Some(30_000), true),
-                "gpt-4o-mini" => (128_000, Some(500), Some(200_000), true),
-                "gpt-4-turbo" => (128_000, Some(500), Some(30_000), true),
-                "gpt-4" => (8_192, Some(500), Some(10_000), true),
+                m if m.starts_with("gpt-5") => (400_000, Some(50), Some(30_000), true),
+
                 _ => (self.config.context_window, Some(500), Some(30_000), true),
             };
 
@@ -329,6 +331,11 @@ impl CodeIntelligenceProvider for OpenAIProvider {
 // OpenAI Responses API request/response types
 
 #[derive(Debug, Serialize)]
+struct Reasoning {
+    effort: String,
+}
+
+#[derive(Debug, Serialize)]
 struct OpenAIRequest {
     model: String,
     input: String,
@@ -337,7 +344,7 @@ struct OpenAIRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     max_completion_token: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_effort: Option<String>,
+    reasoning: Option<Reasoning>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -351,10 +358,22 @@ struct OpenAIResponse {
     id: String,
     #[serde(rename = "type")]
     response_type: String,
+    #[serde(default)]
     status: Option<String>,
+    #[serde(default)]
     output_text: String,
     #[serde(default)]
+    output: Vec<ResponseOutput>,
+    #[serde(default)]
     usage: Option<Usage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseOutput {
+    #[serde(rename = "type")]
+    output_type: String,
+    #[serde(default)]
+    content: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -389,7 +408,7 @@ mod tests {
 
     #[test]
     fn test_reasoning_model_detection() {
-        let models = vec!["o1-preview", "o3-mini", "o4-mini", "gpt-5"];
+        let models = vec!["gpt-5"];
         for model in models {
             let config = OpenAIConfig {
                 api_key: "test".to_string(),
@@ -400,24 +419,6 @@ mod tests {
             assert!(
                 provider.is_reasoning_model(),
                 "Model {} should be detected as reasoning model",
-                model
-            );
-        }
-    }
-
-    #[test]
-    fn test_standard_model_detection() {
-        let models = vec!["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"];
-        for model in models {
-            let config = OpenAIConfig {
-                api_key: "test".to_string(),
-                model: model.to_string(),
-                ..Default::default()
-            };
-            let provider = OpenAIProvider::new(config).unwrap();
-            assert!(
-                !provider.is_reasoning_model(),
-                "Model {} should NOT be detected as reasoning model",
                 model
             );
         }

@@ -874,6 +874,31 @@ async fn handle_start(
 
     match transport {
         TransportType::Stdio { buffer_size: _ } => {
+            // Configure logging to file for stdio transport (stdout/stderr are used for MCP protocol)
+            // Logs will be written to .codegraph/logs/mcp-server.log
+            let log_dir = std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join(".codegraph")
+                .join("logs");
+
+            std::fs::create_dir_all(&log_dir).ok();
+
+            // Use tracing_appender for non-blocking file writes
+            let file_appender = tracing_appender::rolling::never(&log_dir, "mcp-server.log");
+            let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+            let subscriber = tracing_subscriber::fmt()
+                .with_writer(non_blocking)
+                .with_max_level(tracing_subscriber::filter::LevelFilter::INFO)
+                .with_ansi(false)
+                .with_target(false)
+                .with_line_number(true)
+                .finish();
+
+            tracing::subscriber::set_global_default(subscriber).ok();
+
+            // Keep the guard alive for the duration of the server
+            std::mem::forget(_guard);
             if atty::is(Stream::Stderr) {
                 eprintln!(
                     "{}",

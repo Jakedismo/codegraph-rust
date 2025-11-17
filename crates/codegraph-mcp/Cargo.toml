@@ -18,6 +18,7 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-appender = "0.2"
 uuid = { workspace = true }
 chrono = { workspace = true }
 url = { workspace = true }

@@ -534,7 +534,7 @@ impl PatternDetector {
                 / depths.len() as f32
                 / avg_depth);
 
-        depth_consistency.max(0.0).min(1.0)
+        depth_consistency.clamp(0.0, 1.0)
     }
 
     fn build_naming_examples(&self, examples: &[String], results: &[Value]) -> Vec<CodeExample> {

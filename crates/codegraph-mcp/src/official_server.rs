@@ -226,38 +226,52 @@ pub struct CodeGraphMCPServer {
 #[tool_router]
 impl CodeGraphMCPServer {
     pub fn new() -> Self {
-        // Create read-only database connection for concurrent multi-agent access
-        let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        let db_root = current_dir.join(".codegraph");
-        let db_path = db_root.join("db");
+        // Check if we're using SurrealDB (agentic tools don't need RocksDB)
+        let using_surrealdb = std::env::var("SURREALDB_URL")
+            .or_else(|_| std::env::var("CODEGRAPH_SURREALDB_URL"))
+            .is_ok();
 
-        if let Err(err) = std::fs::create_dir_all(&db_root) {
-            eprintln!(
-                "⚠️ Unable to create .codegraph directory at {:?}: {}",
-                db_root, err
-            );
-        }
-        if let Err(err) = std::fs::create_dir_all(&db_path) {
-            eprintln!(
-                "⚠️ Unable to create RocksDB directory at {:?}: {}",
-                db_path, err
-            );
-        }
+        let graph = if using_surrealdb {
+            // When using SurrealDB, skip RocksDB entirely and use a minimal temp graph
+            // The legacy `self.graph` field is only used by disabled non-agentic tools
+            tracing::info!("Using SurrealDB for agentic tools. Skipping RocksDB initialization.");
+            let temp_dir = std::env::temp_dir().join(format!("codegraph-temp-{}", uuid::Uuid::new_v4()));
+            codegraph_graph::CodeGraph::new_with_path(temp_dir.to_str().unwrap())
+                .expect("Failed to create temporary graph")
+        } else {
+            // Legacy mode: Try to open RocksDB for non-agentic tools
+            let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let db_root = current_dir.join(".codegraph");
+            let db_path = db_root.join("db");
 
-        // Attempt a full read/write graph first, then gracefully fall back to read-only mode
-        let graph = match codegraph_graph::CodeGraph::new() {
-            Ok(graph) => graph,
-            Err(err) => {
-                eprintln!(
-                    "⚠️ Primary CodeGraph open failed ({}). Falling back to read-only mode.",
-                    err
+            if let Err(err) = std::fs::create_dir_all(&db_root) {
+                tracing::warn!(
+                    "Unable to create .codegraph directory at {:?}: {}",
+                    db_root, err
                 );
-                match codegraph_graph::CodeGraph::new_read_only() {
-                    Ok(read_only_graph) => read_only_graph,
-                    Err(ro_err) => panic!(
-                        "Failed to initialize CodeGraph database. rw={} ro={}",
-                        err, ro_err
-                    ),
+            }
+            if let Err(err) = std::fs::create_dir_all(&db_path) {
+                tracing::warn!(
+                    "Unable to create RocksDB directory at {:?}: {}",
+                    db_path, err
+                );
+            }
+
+            // Attempt a full read/write graph first, then gracefully fall back to read-only mode
+            match codegraph_graph::CodeGraph::new() {
+                Ok(graph) => graph,
+                Err(err) => {
+                    tracing::warn!(
+                        "Primary CodeGraph open failed ({}). Falling back to read-only mode.",
+                        err
+                    );
+                    match codegraph_graph::CodeGraph::new_read_only() {
+                        Ok(read_only_graph) => read_only_graph,
+                        Err(ro_err) => panic!(
+                            "Failed to initialize CodeGraph database. rw={} ro={}",
+                            err, ro_err
+                        ),
+                    }
                 }
             }
         };
@@ -285,8 +299,8 @@ impl CodeGraphMCPServer {
 
         // Try to open existing database first, create new if needed
         let graph = codegraph_graph::CodeGraph::new().or_else(|err| {
-            eprintln!(
-                "⚠️ CodeGraph open failed in writable mode ({}). Falling back to read-only mode.",
+            tracing::warn!(
+                "CodeGraph open failed in writable mode ({}). Falling back to read-only mode.",
                 err
             );
             codegraph_graph::CodeGraph::new_read_only().map_err(|ro_err| {
@@ -621,10 +635,11 @@ impl CodeGraphMCPServer {
     }
 
     /// REVOLUTIONARY: Intelligent codebase Q&A using RAG (Retrieval-Augmented Generation)
+    /// DISABLED - Use agentic_semantic_question instead for multi-step Q&A
     #[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
-    #[tool(
-        description = "Ask questions about code and get AI answers with citations (5-30s). Examples: 'How does auth work?', 'Explain data flow'. Use for: complex questions requiring context. SLOW - use enhanced_search for simpler queries. Required: question. Optional: max_results (default 5), streaming (default false)."
-    )]
+    // #[tool(
+    //     description = "Ask questions about code and get AI answers with citations (5-30s). Examples: 'How does auth work?', 'Explain data flow'. Use for: complex questions requiring context. SLOW - use enhanced_search for simpler queries. Required: question. Optional: max_results (default 5), streaming (default false)."
+    // )]
     async fn codebase_qa(
         &self,
         params: Parameters<CodebaseQaRequest>,
@@ -685,9 +700,9 @@ impl CodeGraphMCPServer {
     }
 
     #[cfg(not(all(feature = "ai-enhanced", feature = "qwen-integration")))]
-    #[tool(
-        description = "codebase_qa (disabled – enable `ai-enhanced` and `qwen-integration` features to activate this tool)."
-    )]
+    // #[tool(
+    //     description = "codebase_qa (disabled – enable `ai-enhanced` and `qwen-integration` features to activate this tool)."
+    // )]
     async fn codebase_qa(
         &self,
         params: Parameters<CodebaseQaRequest>,
@@ -700,18 +715,19 @@ impl CodeGraphMCPServer {
     }
 
     /// REVOLUTIONARY: AI-powered code documentation generation with graph context
+    /// DISABLED - Use agentic_context_builder instead for comprehensive context gathering
     #[cfg(all(feature = "ai-enhanced", feature = "qwen-integration"))]
-    #[tool(
-        description = "Generate AI documentation for functions/classes (10-45s). Includes dependencies, usage patterns, examples. Use for: creating comprehensive docs. VERY SLOW - consider manual docs for simple cases. Required: target_name. Optional: file_path, style (comprehensive/concise/tutorial, default comprehensive)."
-    )]
+    // #[tool(
+    //     description = "Generate AI documentation for functions/classes (10-45s). Includes dependencies, usage patterns, examples. Use for: creating comprehensive docs. VERY SLOW - consider manual docs for simple cases. Required: target_name. Optional: file_path, style (comprehensive/concise/tutorial, default comprehensive)."
+    // )]
     async fn code_documentation(
         &self,
         params: Parameters<CodeDocumentationRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
 
-        eprintln!(
-            "📘 Generating documentation for '{}' (style: {})",
+        tracing::info!(
+            "Generating documentation for '{}' (style: {})",
             request.target_name, request.style
         );
 
@@ -745,7 +761,7 @@ impl CodeGraphMCPServer {
         // First, gather RAG insights so we always have citations/fallback ready
         let rag_result = rag_engine.answer(&doc_query).await;
         if rag_result.is_ok() {
-            eprintln!("🗂 RAG context assembled for '{}'", request.target_name);
+            tracing::debug!("RAG context assembled for '{}'", request.target_name);
         }
         let citations: Vec<serde_json::Value> = rag_result
             .as_ref()
@@ -777,8 +793,8 @@ impl CodeGraphMCPServer {
             )
             .await
             {
-                eprintln!(
-                    "🤖 Qwen synthesis in progress for '{}' (context ~{} chars)",
+                tracing::debug!(
+                    "Qwen synthesis in progress for '{}' (context ~{} chars)",
                     request.target_name,
                     context.len()
                 );
@@ -802,8 +818,8 @@ impl CodeGraphMCPServer {
                             }
                         });
 
-                        eprintln!(
-                            "✅ Qwen documentation ready for '{}' in {}ms",
+                        tracing::info!(
+                            "Qwen documentation ready for '{}' in {}ms",
                             request.target_name,
                             doc_result.processing_time.as_millis()
                         );
@@ -815,7 +831,7 @@ impl CodeGraphMCPServer {
                         )]));
                     }
                     Err(e) => {
-                        eprintln!("⚠️ Qwen documentation generation failed: {}", e);
+                        tracing::warn!("Qwen documentation generation failed: {}", e);
                     }
                 }
             }
@@ -862,9 +878,9 @@ impl CodeGraphMCPServer {
     }
 
     #[cfg(not(all(feature = "ai-enhanced", feature = "qwen-integration")))]
-    #[tool(
-        description = "code_documentation (disabled – enable `ai-enhanced` and `qwen-integration` features to activate this tool)."
-    )]
+    // #[tool(
+    //     description = "code_documentation (disabled – enable `ai-enhanced` and `qwen-integration` features to activate this tool)."
+    // )]
     async fn code_documentation(
         &self,
         params: Parameters<CodeDocumentationRequest>,
@@ -1016,9 +1032,10 @@ impl CodeGraphMCPServer {
     // }
 
     /// Deep AI-powered analysis of your entire codebase architecture and system design
-    #[tool(
-        description = "⚠️ VERY SLOW (30-120s): Deep architectural analysis of entire codebase. Explains system design, components, architecture. Use ONLY for: major architectural questions, system-wide analysis. For specific code use enhanced_search. Required: query. Optional: max_context_tokens (default 20000, max 80000)."
-    )]
+    /// DISABLED - Use agentic_architecture_analysis instead for deep architectural analysis
+    // #[tool(
+    //     description = "⚠️ VERY SLOW (30-120s): Deep architectural analysis of entire codebase. Explains system design, components, architecture. Use ONLY for: major architectural questions, system-wide analysis. For specific code use enhanced_search. Required: query. Optional: max_context_tokens (default 20000, max 80000)."
+    // )]
     async fn semantic_intelligence(
         &self,
         params: Parameters<SemanticIntelligenceRequest>,
@@ -1077,9 +1094,10 @@ impl CodeGraphMCPServer {
     }
 
     /// Predict what code will break before you modify a function or class
-    #[tool(
-        description = "Predict refactoring impact with AI (3-15s). Shows dependent code and breakage risks. Use for: pre-refactoring safety checks, understanding blast radius. Required: target_function, file_path. Optional: change_type (modify/delete/rename, default modify)."
-    )]
+    /// DISABLED - Use agentic_dependency_analysis instead for impact analysis
+    // #[tool(
+    //     description = "Predict refactoring impact with AI (3-15s). Shows dependent code and breakage risks. Use for: pre-refactoring safety checks, understanding blast radius. Required: target_function, file_path. Optional: change_type (modify/delete/rename, default modify)."
+    // )]
     async fn impact_analysis(
         &self,
         params: Parameters<ImpactAnalysisRequest>,
@@ -1143,9 +1161,10 @@ impl CodeGraphMCPServer {
     /// - Tool selection decision framework
     /// - Context efficiency best practices
     /// - Common workflows and anti-patterns
-    #[tool(
-        description = "Read CodeGraph usage guide for AI agents. Learn when to use CodeGraph tools instead of reading files manually for maximum context efficiency. Essential reading before starting codebase work."
-    )]
+    /// DISABLED - Instructions available via MCP prompt 'codegraph_initial_instructions'
+    // #[tool(
+    //     description = "Read CodeGraph usage guide for AI agents. Learn when to use CodeGraph tools instead of reading files manually for maximum context efficiency. Essential reading before starting codebase work."
+    // )]
     async fn read_initial_instructions(
         &self,
         _params: Parameters<EmptyRequest>,
@@ -1312,24 +1331,24 @@ impl CodeGraphMCPServer {
 
             match client.check_availability().await {
                 Ok(true) => {
-                    eprintln!("✅ Qwen2.5-Coder-14B-128K available for CodeGraph intelligence");
+                    tracing::info!("Qwen2.5-Coder-14B-128K available for CodeGraph intelligence");
                     let mut qwen_lock = self.qwen_client.lock().await;
                     *qwen_lock = Some(client);
                 }
                 Ok(false) => {
-                    eprintln!(
-                        "⚠️ Qwen2.5-Coder model not found. Install with: ollama pull {}",
+                    tracing::warn!(
+                        "Qwen2.5-Coder model not found. Install with: ollama pull {}",
                         config.model_name
                     );
                 }
                 Err(e) => {
-                    eprintln!("❌ Failed to connect to Qwen2.5-Coder: {}", e);
+                    tracing::error!("Failed to connect to Qwen2.5-Coder: {}", e);
                 }
             }
         }
         #[cfg(not(feature = "qwen-integration"))]
         {
-            eprintln!("💡 Qwen integration not enabled in this build");
+            tracing::debug!("Qwen integration not enabled in this build");
         }
     }
 
@@ -1358,7 +1377,7 @@ impl CodeGraphMCPServer {
             }
             Err(_) => {
                 // Default to Medium tier if config can't be loaded
-                eprintln!("⚠️ Failed to load config, defaulting to Medium context tier");
+                tracing::warn!("Failed to load config, defaulting to Medium context tier");
                 crate::ContextTier::Medium
             }
         }
@@ -1411,7 +1430,7 @@ impl CodeGraphMCPServer {
         // Auto-detect context tier
         let tier = Self::detect_context_tier();
 
-        eprintln!("🎯 AutoAgents {} (tier={:?})", analysis_type.as_str(), tier);
+        tracing::info!("AutoAgents {} (tier={:?})", analysis_type.as_str(), tier);
 
         // Load config for LLM provider
         let config_manager =
@@ -1517,7 +1536,7 @@ impl CodeGraphMCPServer {
         // Auto-detect context tier
         let tier = Self::detect_context_tier();
 
-        eprintln!("🎯 Agentic {} (tier={:?})", analysis_type.as_str(), tier);
+        tracing::info!("Agentic {} (tier={:?})", analysis_type.as_str(), tier);
 
         // Extract progress token from meta or generate one
         let progress_token = meta.get_progress_token().unwrap_or_else(|| {

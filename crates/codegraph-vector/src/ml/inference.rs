@@ -903,7 +903,6 @@ mod tests {
     use super::*;
     use crate::ml::features::FeatureConfig;
     use crate::EmbeddingGenerator;
-    use codegraph_core::{Language, NodeType};
 
     #[tokio::test]
     async fn test_inference_engine_creation() {

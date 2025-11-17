@@ -89,7 +89,7 @@ impl McpConnection {
             writer,
             incoming,
             negotiator: VersionNegotiator::new(),
-            protocol: RwLock::new(McpProtocol::default()),
+            protocol: RwLock::new(McpProtocol::with_latest_version()),
             pending: DashMap::new(),
             in_flight: AtomicU64::new(0),
             notify_handler: RwLock::new(None),

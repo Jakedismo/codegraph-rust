@@ -149,7 +149,7 @@ impl OptNodeType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "function" => Self::Function,
             "class" => Self::Class,

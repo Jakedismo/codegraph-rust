@@ -460,7 +460,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegraph_core::{Language, NodeType};
+    use codegraph_core::{Language, Location, Metadata, NodeType};
     use uuid::Uuid;
 
     fn create_test_node(name: &str, content: &str, node_type: NodeType) -> CodeNode {

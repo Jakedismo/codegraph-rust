@@ -450,7 +450,7 @@ fn simple_hash(text: &str) -> u32 {
 mod tests {
     use super::*;
     use crate::rag::RetrievalMethod;
-    use codegraph_core::{Language, NodeType};
+    use codegraph_core::{Language, Location, Metadata, NodeType};
     use uuid::Uuid;
 
     fn create_test_retrieval_result(name: &str, content: &str, score: f32) -> RetrievalResult {
@@ -459,10 +459,10 @@ mod tests {
             node_id: Uuid::new_v4(),
             node: Some(CodeNode {
                 id: Uuid::new_v4(),
-                name: name.to_string(),
+                name: name.into(),
                 node_type: Some(NodeType::Function),
                 language: Some(Language::Rust),
-                content: Some(content.to_string()),
+                content: Some(content.into()),
                 embedding: None,
                 location: Location {
                     file_path: "test.rs".to_string(),

@@ -187,7 +187,7 @@ impl MemoryOptimizer {
         let mut allocations = Vec::new();
         let mut total_allocated = 0;
 
-        for (_i, vector) in vectors.iter().enumerate() {
+        for vector in vectors.iter() {
             let size = vector.len() * std::mem::size_of::<f32>();
             let allocation_id = self.next_allocation_id.fetch_add(1, Ordering::SeqCst);
 

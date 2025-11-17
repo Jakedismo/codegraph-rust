@@ -88,7 +88,7 @@ pub struct PooledBuffer {
 }
 
 impl PooledBuffer {
-    pub fn as_mut(&mut self) -> &mut Vec<u8> {
+    pub fn buffer_mut(&mut self) -> &mut Vec<u8> {
         self.buf.as_mut().unwrap()
     }
 

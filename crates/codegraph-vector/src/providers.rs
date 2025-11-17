@@ -179,7 +179,7 @@ impl HybridEmbeddingPipeline {
             FallbackStrategy::ReliabilityBased => {
                 // Use health checker to determine most reliable provider
                 self.health_checker
-                    .select_most_reliable(&self.primary, &self.fallbacks)
+                    .select_most_reliable(self.primary.as_ref(), &self.fallbacks)
                     .await
             }
         }
@@ -267,17 +267,17 @@ impl ProviderHealthChecker {
 
     pub async fn select_most_reliable<'a>(
         &self,
-        primary: &'a Box<dyn EmbeddingProvider>,
+        primary: &'a dyn EmbeddingProvider,
         fallbacks: &'a [Box<dyn EmbeddingProvider>],
     ) -> &'a dyn EmbeddingProvider {
         // For now, just return the primary if available, otherwise first fallback
         // In a full implementation, this would track historical reliability
         if primary.is_available().await {
-            primary.as_ref()
+            primary
         } else if let Some(fallback) = fallbacks.first() {
             fallback.as_ref()
         } else {
-            primary.as_ref()
+            primary
         }
     }
 }

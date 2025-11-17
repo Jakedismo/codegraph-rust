@@ -641,8 +641,8 @@ async fn collect_source_files(dir: &str) -> Result<Vec<PathBuf>> {
 }
 
 fn is_supported_source(path: &Path) -> bool {
-    match path.extension().and_then(|s| s.to_str()) {
-        Some("rs" | "ts" | "js" | "py" | "go" | "java" | "cpp" | "cc" | "cxx") => true,
-        _ => false,
-    }
+    matches!(
+        path.extension().and_then(|s| s.to_str()),
+        Some("rs" | "ts" | "js" | "py" | "go" | "java" | "cpp" | "cc" | "cxx")
+    )
 }

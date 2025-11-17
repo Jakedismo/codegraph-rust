@@ -580,8 +580,10 @@ impl ProjectIndexer {
             // If no changes, skip indexing
             if added.is_empty() && modified.is_empty() && deleted.is_empty() {
                 info!("✅ No changes detected, index is up to date");
-                let mut stats = IndexStats::default();
-                stats.skipped = unchanged.len();
+                let stats = IndexStats {
+                    skipped: unchanged.len(),
+                    ..IndexStats::default()
+                };
                 self.shutdown_surreal_writer().await?;
                 return Ok(stats);
             }
@@ -609,8 +611,10 @@ impl ProjectIndexer {
 
             if files_to_reindex.is_empty() {
                 info!("✅ Only deletions processed, no files to index");
-                let mut stats = IndexStats::default();
-                stats.skipped = unchanged.len();
+                let stats = IndexStats {
+                    skipped: unchanged.len(),
+                    ..IndexStats::default()
+                };
                 self.shutdown_surreal_writer().await?;
                 return Ok(stats);
             }
@@ -2295,7 +2299,7 @@ impl ProjectIndexer {
             .unwrap_or(&self.project_id)
             .to_string();
         let root_path = self.project_root.to_string_lossy().to_string();
-        let primary_language = self.config.languages.get(0).cloned();
+        let primary_language = self.config.languages.first().cloned();
         let record = ProjectMetadataRecord {
             project_id: self.project_id.clone(),
             name: project_name,
@@ -2474,7 +2478,7 @@ impl ProjectIndexer {
         if nodes.is_empty() {
             return Ok(());
         }
-        let batch: Vec<CodeNode> = nodes.iter().cloned().collect();
+        let batch: Vec<CodeNode> = nodes.to_vec();
         self.surreal_writer_handle()?.enqueue_nodes(batch).await
     }
 
@@ -2528,12 +2532,14 @@ impl ProjectIndexer {
             database
         );
 
-        let mut config = SurrealDbConfig::default();
-        config.connection = connection.clone();
-        config.namespace = namespace.clone();
-        config.database = database.clone();
-        config.username = username.clone();
-        config.password = password.clone();
+        let config = SurrealDbConfig {
+            connection: connection.clone(),
+            namespace: namespace.clone(),
+            database: database.clone(),
+            username: username.clone(),
+            password: password.clone(),
+            ..SurrealDbConfig::default()
+        };
 
         let storage = SurrealDbStorage::new(config)
             .await
@@ -2783,9 +2789,9 @@ pub fn simple_text_embedding(text: &str, dimension: usize) -> Vec<f32> {
         hash = hash.wrapping_mul(33).wrapping_add(b as u32);
     }
     let mut state = hash;
-    for i in 0..dimension {
+    for value in &mut embedding {
         state = state.wrapping_mul(1103515245).wrapping_add(12345);
-        embedding[i] = ((state as f32 / u32::MAX as f32) - 0.5) * 2.0;
+        *value = ((state as f32 / u32::MAX as f32) - 0.5) * 2.0;
     }
     embedding
 }

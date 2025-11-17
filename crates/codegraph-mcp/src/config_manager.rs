@@ -14,7 +14,7 @@ use std::time::Duration;
 use tracing::{debug, info, warn};
 
 /// Complete configuration for CodeGraph MCP server
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CodeGraphConfig {
     pub server: ServerConfig,
     pub qwen: QwenModelConfig,
@@ -101,19 +101,6 @@ pub struct AgenticWorkflowConfig {
     pub tool_calling_temperature: Option<f32>,
     /// Enable detailed reasoning traces in logs
     pub enable_reasoning_traces: bool,
-}
-
-impl Default for CodeGraphConfig {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            qwen: QwenModelConfig::default(),
-            cache: CacheConfig::default(),
-            performance: PerformanceConfig::default(),
-            features: FeatureConfig::default(),
-            agentic: AgenticWorkflowConfig::default(),
-        }
-    }
 }
 
 impl Default for ServerConfig {
@@ -238,7 +225,7 @@ impl ConfigManager {
     /// Load configuration from TOML file
     fn load_from_file(path: &PathBuf) -> Result<CodeGraphConfig> {
         let content =
-            std::fs::read_to_string(path).map_err(|e| codegraph_core::CodeGraphError::Io(e))?;
+            std::fs::read_to_string(path).map_err(codegraph_core::CodeGraphError::Io)?;
 
         let config: CodeGraphConfig = toml::from_str(&content).map_err(|e| {
             codegraph_core::CodeGraphError::Parse(format!("Invalid TOML config: {}", e))
@@ -502,14 +489,14 @@ impl ConfigManager {
     pub fn get_config_summary(config: &CodeGraphConfig) -> String {
         format!(
             "CodeGraph MCP Configuration:\n\
-            🌐 Server: {}:{} ({})\n\
+            🌐 Server: {}:{} ({:?})\n\
             🧠 Model: {} ({}K context)\n\
             💾 Cache: {} entries, {}MB limit\n\
             📊 Performance: {} concurrent, logging {}\n\
             🎛️  Features: Qwen={}, Cache={}, Patterns={}, Monitoring={}",
             config.server.host,
             config.server.port,
-            format!("{:?}", config.server.transport),
+            config.server.transport,
             config.qwen.model_name,
             config.qwen.context_window / 1000,
             config.cache.max_entries,
@@ -623,7 +610,7 @@ impl ConfigManager {
     pub fn create_default_config_file(path: &PathBuf) -> Result<()> {
         let config_content = Self::generate_example_config();
 
-        std::fs::write(path, config_content).map_err(|e| codegraph_core::CodeGraphError::Io(e))?;
+        std::fs::write(path, config_content).map_err(codegraph_core::CodeGraphError::Io)?;
 
         info!("Created default configuration file: {:?}", path);
         Ok(())
@@ -631,8 +618,7 @@ impl ConfigManager {
 
     /// Get environment variable documentation
     pub fn get_environment_docs() -> String {
-        format!(
-            "# CodeGraph Environment Variables\n\n\
+        "# CodeGraph Environment Variables\n\n\
             ## Server Configuration\n\
             CODEGRAPH_HOST=127.0.0.1          # Server host address\n\
             CODEGRAPH_PORT=3000               # Server port number\n\
@@ -662,8 +648,7 @@ impl ConfigManager {
             export CODEGRAPH_MODEL=qwen2.5-coder-14b-128k\n\
             export CODEGRAPH_CONTEXT_WINDOW=64000\n\
             export CODEGRAPH_CACHE_SIZE=500\n\
-            export CODEGRAPH_ENABLE_CACHE=true\n"
-        )
+            export CODEGRAPH_ENABLE_CACHE=true\n".to_string()
     }
 }
 

@@ -213,6 +213,10 @@ impl<T> ChunkArena<T> {
         self.len
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
     /// Push an element, moving it into the arena.
     pub fn push(&mut self, value: T) {
         self.ensure_chunk();

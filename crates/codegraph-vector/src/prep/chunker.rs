@@ -43,7 +43,7 @@ impl ChunkerConfig {
     }
 
     pub fn max_texts_per_request(mut self, max: usize) -> Self {
-        self.max_texts_per_request = max.min(DEFAULT_MAX_TEXTS_PER_REQUEST).max(1);
+        self.max_texts_per_request = max.clamp(1, DEFAULT_MAX_TEXTS_PER_REQUEST);
         self
     }
 }

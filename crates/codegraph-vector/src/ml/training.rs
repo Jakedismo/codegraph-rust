@@ -645,11 +645,11 @@ impl ModelTrainer {
             count += 1; // density score
         }
 
-        if let Some(_) = sample.complexity {
+        if sample.complexity.is_some() {
             count += 5; // Complexity features
         }
 
-        if let Some(_) = sample.dependencies {
+        if sample.dependencies.is_some() {
             count += 4; // Dependency features
         }
 

@@ -4,7 +4,6 @@ use std::arch::x86_64::*;
 
 /// SIMD-optimized vector operations for high-performance embedding computations
 /// Provides 4-8x speedup over scalar operations using AVX2/AVX-512 instructions
-
 pub struct SIMDVectorOps;
 
 impl SIMDVectorOps {
@@ -423,6 +422,7 @@ impl ParallelVectorOps {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
     use approx::assert_abs_diff_eq;
 
     #[test]

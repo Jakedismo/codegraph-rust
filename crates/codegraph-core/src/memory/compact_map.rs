@@ -32,27 +32,27 @@ impl<K: Eq + Hash, V> CompactHashMap<K, V> {
     pub fn clear(&mut self) {
         self.0.clear()
     }
-    pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
+    pub fn get<Q>(&self, k: &Q) -> Option<&V>
     where
+        Q: ?Sized + std::hash::Hash + Eq,
         K: std::borrow::Borrow<Q>,
-        Q: std::hash::Hash + Eq,
     {
         self.0.get(k)
     }
-    pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
+    pub fn get_mut<Q>(&mut self, k: &Q) -> Option<&mut V>
     where
+        Q: ?Sized + std::hash::Hash + Eq,
         K: std::borrow::Borrow<Q>,
-        Q: std::hash::Hash + Eq,
     {
         self.0.get_mut(k)
     }
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
         self.0.insert(k, v)
     }
-    pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V>
+    pub fn remove<Q>(&mut self, k: &Q) -> Option<V>
     where
+        Q: ?Sized + std::hash::Hash + Eq,
         K: std::borrow::Borrow<Q>,
-        Q: std::hash::Hash + Eq,
     {
         self.0.remove(k)
     }

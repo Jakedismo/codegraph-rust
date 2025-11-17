@@ -433,7 +433,7 @@ impl RAGSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegraph_core::{Language, NodeType};
+    use codegraph_core::{Language, Location, Metadata, NodeType};
 
     fn create_test_node(name: &str, content: &str, node_type: NodeType) -> CodeNode {
         let now = chrono::Utc::now();

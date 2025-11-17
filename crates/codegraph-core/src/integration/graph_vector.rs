@@ -5,10 +5,17 @@ use dashmap::DashMap;
 use memmap2::Mmap;
 use std::collections::HashSet;
 use std::fs::File;
+use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+/// Type alias for async embedding function
+type EmbeddingFn = Arc<
+    dyn Fn(CodeNode) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send>> + Send + Sync,
+>;
 
 /// Embedding service abstraction used by the integrator.
 ///
@@ -76,9 +83,9 @@ impl EmbeddingService for HasherEmbeddingService {
         }
         let mut state = hash;
         let mut v = vec![0.0f32; self.dim];
-        for i in 0..self.dim {
+        for val in v.iter_mut().take(self.dim) {
             state = state.wrapping_mul(1103515245).wrapping_add(12345);
-            v[i] = ((state as f32 / u32::MAX as f32) - 0.5) * 2.0;
+            *val = ((state as f32 / u32::MAX as f32) - 0.5) * 2.0;
         }
         let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {
@@ -90,15 +97,10 @@ impl EmbeddingService for HasherEmbeddingService {
     }
 }
 
-use std::future::Future;
-use std::pin::Pin;
-
 /// Adapter to build an embedding service from an async function/closure.
 pub struct FnEmbeddingService {
     dim: usize,
-    func: Arc<
-        dyn Fn(CodeNode) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send>> + Send + Sync,
-    >,
+    func: EmbeddingFn,
 }
 
 impl FnEmbeddingService {
@@ -107,11 +109,7 @@ impl FnEmbeddingService {
         F: Fn(CodeNode) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Vec<f32>>> + Send + 'static,
     {
-        let func: Arc<
-            dyn Fn(CodeNode) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send>>
-                + Send
-                + Sync,
-        > = Arc::new(move |n: CodeNode| {
+        let func: EmbeddingFn = Arc::new(move |n: CodeNode| {
             let fut = f(n);
             Box::pin(fut)
         });
@@ -233,7 +231,7 @@ impl SnippetExtractor {
 /// Maintains a vector index synced with the code graph and provides semantic search returning graph nodes.
 pub struct GraphVectorIntegrator {
     graph: Arc<dyn GraphStore>,
-    vector: Arc<Mutex<Box<dyn VectorStore>>>,
+    vector: Arc<Mutex<Box<dyn VectorStore + Send>>>,
     embedder: Arc<dyn EmbeddingService>,
     extractor: SnippetExtractor,
     // Track node signatures for incremental updates
@@ -243,7 +241,7 @@ pub struct GraphVectorIntegrator {
 impl GraphVectorIntegrator {
     pub fn new(
         graph: Arc<dyn GraphStore>,
-        vector: Box<dyn VectorStore>,
+        vector: Box<dyn VectorStore + Send>,
         embedder: Arc<dyn EmbeddingService>,
     ) -> Self {
         Self {
@@ -429,7 +427,6 @@ impl GraphVectorIntegrator {
 mod tests {
     use super::*;
     use crate::{Language, Location, Metadata, NodeType};
-    use crossbeam_channel::{unbounded, Receiver, Sender};
     use std::collections::HashMap;
     use tokio_test::block_on;
 

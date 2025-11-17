@@ -468,7 +468,7 @@ impl PerformanceModeConfig {
         }
 
         // Adjust cache size based on available memory
-        self.cache.max_size_mb = (available_memory_mb / 4).min(1024).max(64);
+        self.cache.max_size_mb = (available_memory_mb / 4).clamp(64, 1024);
 
         // Adjust workers based on CPU cores
         self.processing.parallel_workers = match self.mode {

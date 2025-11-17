@@ -35,8 +35,8 @@ pub struct CacheStats {
     pub hit_ratio: f64,
 }
 
-impl CacheStats {
-    pub fn new() -> Self {
+impl Default for CacheStats {
+    fn default() -> Self {
         Self {
             hits: 0,
             misses: 0,
@@ -44,6 +44,12 @@ impl CacheStats {
             entries: 0,
             hit_ratio: 0.0,
         }
+    }
+}
+
+impl CacheStats {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn update_hit_ratio(&mut self) {

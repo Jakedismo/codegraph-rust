@@ -422,6 +422,9 @@ async def run_http_tests():
 
     except Exception as e:
         print(f"\n❌ Failed to connect via SSE: {e}")
+        print(f"\n📋 Full error details:")
+        import traceback
+        traceback.print_exc()
         print(f"\n⚠️  Troubleshooting:")
         print(f"   - Is the server running? Check: ps aux | grep codegraph")
         print(f"   - Verify server is listening on port {HTTP_PORT}")

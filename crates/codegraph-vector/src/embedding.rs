@@ -37,6 +37,12 @@ impl Default for ModelConfig {
     }
 }
 
+impl Default for EmbeddingGenerator {
+    fn default() -> Self {
+        Self::new(ModelConfig::default())
+    }
+}
+
 impl EmbeddingGenerator {
     pub fn new(config: ModelConfig) -> Self {
         let tokenizer_path = PathBuf::from(concat!(
@@ -60,10 +66,6 @@ impl EmbeddingGenerator {
             jina_provider: None,
             tokenizer: Arc::new(tokenizer),
         }
-    }
-
-    pub fn default() -> Self {
-        Self::new(ModelConfig::default())
     }
 
     #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
