@@ -33,9 +33,13 @@ impl GraphToolExecutorAdapter {
 
     /// Execute a graph tool synchronously (blocks on async call)
     pub fn execute_sync(&self, function_name: &str, params: Value) -> Result<Value, String> {
-        self.runtime_handle
-            .block_on(self.executor.execute(function_name, params))
-            .map_err(|e| e.to_string())
+        // Use block_in_place to avoid "runtime within runtime" panic
+        // This allows blocking the current thread without blocking the runtime
+        tokio::task::block_in_place(|| {
+            self.runtime_handle
+                .block_on(self.executor.execute(function_name, params))
+        })
+        .map_err(|e| e.to_string())
     }
 }
 
