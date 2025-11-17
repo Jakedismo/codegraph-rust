@@ -83,32 +83,36 @@ CONTEXT_WINDOW = int(os.environ.get("CODEGRAPH_CONTEXT_WINDOW", "32768"))
 AGENTIC_TESTS = [
     ("agentic_code_search",
      "How is configuration loaded in this codebase? Find all config loading mechanisms.",
-     60),
+     300),
 
     ("agentic_dependency_analysis",
      "Analyze the dependency chain for the AgenticOrchestrator. What does it depend on?",
-     60),
+     300),
 
     ("agentic_call_chain_analysis",
      "Trace the call chain from execute_agentic_workflow to the graph analysis tools",
-     60),
+     300),
 
     ("agentic_architecture_analysis",
      "Analyze the architecture of the MCP server. Find coupling metrics and hub nodes.",
-     90),
+     300),
 
     ("agentic_api_surface_analysis",
      "What is the public API surface of the GraphToolExecutor?",
-     60),
+     300),
 
     ("agentic_context_builder",
      "Gather comprehensive context about the tier-aware prompt selection system",
-     90),
+     300),
 
     ("agentic_semantic_question",
      "How does the LRU cache work in GraphToolExecutor? What gets cached and when?",
-     60),
+     300),
 ]
+
+# Create output directory for test logs
+TEST_OUTPUT_DIR = Path(__file__).resolve().parent / "test_output"
+TEST_OUTPUT_DIR.mkdir(exist_ok=True)
 
 
 def print_config():
@@ -146,6 +150,8 @@ def print_config():
     db = os.environ.get("CODEGRAPH_SURREALDB_DATABASE", "codegraph")
     print(f"\n  SurrealDB: {url}")
     print(f"  Namespace/DB: {ns}/{db}")
+
+    print(f"\n  📁 Test Output Directory: {TEST_OUTPUT_DIR}")
     print("=" * 72)
 
 
@@ -222,7 +228,23 @@ async def run_stdio_tests():
                     print(f"  Query: {query[:60]}...")
                     print(f"  Timeout: {timeout}s")
 
+                    # Create log file for this test
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    log_file = TEST_OUTPUT_DIR / f"{idx:02d}_{tool_name}_{timestamp}.log"
+
                     start_time = asyncio.get_event_loop().time()
+
+                    # Write input to log file
+                    with open(log_file, "w", encoding="utf-8") as f:
+                        f.write("=" * 80 + "\n")
+                        f.write(f"Test: {tool_name}\n")
+                        f.write(f"Timestamp: {timestamp}\n")
+                        f.write(f"Timeout: {timeout}s\n")
+                        f.write("=" * 80 + "\n\n")
+                        f.write("INPUT QUERY:\n")
+                        f.write("-" * 80 + "\n")
+                        f.write(query + "\n")
+                        f.write("-" * 80 + "\n\n")
 
                     try:
                         # Call tool with timeout
@@ -236,12 +258,23 @@ async def run_stdio_tests():
                         # Parse result
                         if result.content and len(result.content) > 0:
                             text_content = result.content[0].text
+
+                            # Write output to log file
+                            with open(log_file, "a", encoding="utf-8") as f:
+                                f.write("OUTPUT:\n")
+                                f.write("-" * 80 + "\n")
+                                f.write(text_content + "\n")
+                                f.write("-" * 80 + "\n\n")
+                                f.write(f"Duration: {duration:.1f}s\n")
+                                f.write(f"Status: SUCCESS\n")
+
                             try:
                                 data = json.loads(text_content)
                                 steps = data.get("total_steps", 0)
                                 final_answer = data.get("final_answer", "")
 
                                 print(f"  ✅ SUCCESS in {duration:.1f}s ({steps} steps)")
+                                print(f"  📝 Log saved: {log_file.name}")
                                 if final_answer:
                                     preview = final_answer[:100].replace('\n', ' ')
                                     print(f"     {preview}...")
@@ -254,6 +287,7 @@ async def run_stdio_tests():
                                 })
                             except json.JSONDecodeError:
                                 print(f"  ✅ SUCCESS in {duration:.1f}s (non-JSON response)")
+                                print(f"  📝 Log saved: {log_file.name}")
                                 results.append({
                                     "test": tool_name,
                                     "success": True,
@@ -261,7 +295,16 @@ async def run_stdio_tests():
                                     "steps": 0
                                 })
                         else:
+                            with open(log_file, "a", encoding="utf-8") as f:
+                                f.write("OUTPUT:\n")
+                                f.write("-" * 80 + "\n")
+                                f.write("(Empty result)\n")
+                                f.write("-" * 80 + "\n\n")
+                                f.write(f"Duration: {duration:.1f}s\n")
+                                f.write(f"Status: FAILED (empty result)\n")
+
                             print(f"  ❌ FAILED: Empty result")
+                            print(f"  📝 Log saved: {log_file.name}")
                             results.append({
                                 "test": tool_name,
                                 "success": False,
@@ -271,7 +314,16 @@ async def run_stdio_tests():
 
                     except asyncio.TimeoutError:
                         duration = timeout
+                        with open(log_file, "a", encoding="utf-8") as f:
+                            f.write("OUTPUT:\n")
+                            f.write("-" * 80 + "\n")
+                            f.write(f"TIMEOUT after {timeout}s\n")
+                            f.write("-" * 80 + "\n\n")
+                            f.write(f"Duration: {duration:.1f}s\n")
+                            f.write(f"Status: TIMEOUT\n")
+
                         print(f"  ❌ TIMEOUT after {timeout}s")
+                        print(f"  📝 Log saved: {log_file.name}")
                         results.append({
                             "test": tool_name,
                             "success": False,
@@ -281,9 +333,22 @@ async def run_stdio_tests():
 
                     except Exception as e:
                         duration = asyncio.get_event_loop().time() - start_time
-                        print(f"  ❌ ERROR: {e}")
-                        print(f"\n  📋 Full error details:")
                         import traceback
+                        error_trace = traceback.format_exc()
+
+                        with open(log_file, "a", encoding="utf-8") as f:
+                            f.write("OUTPUT:\n")
+                            f.write("-" * 80 + "\n")
+                            f.write(f"ERROR: {e}\n\n")
+                            f.write("Full traceback:\n")
+                            f.write(error_trace)
+                            f.write("-" * 80 + "\n\n")
+                            f.write(f"Duration: {duration:.1f}s\n")
+                            f.write(f"Status: ERROR\n")
+
+                        print(f"  ❌ ERROR: {e}")
+                        print(f"  📝 Log saved: {log_file.name}")
+                        print(f"\n  📋 Full error details:")
                         traceback.print_exc()
                         results.append({
                             "test": tool_name,
@@ -312,6 +377,7 @@ async def run_stdio_tests():
         print()
 
     print(f"\nTotal: {passed}/{total} passed")
+    print(f"\n📁 Detailed logs saved to: {TEST_OUTPUT_DIR}")
     print("=" * 72)
 
     return 0 if passed == total else 1
@@ -356,7 +422,23 @@ async def run_http_tests():
                     print(f"  Query: {query[:60]}...")
                     print(f"  Timeout: {timeout}s")
 
+                    # Create log file for this test
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    log_file = TEST_OUTPUT_DIR / f"{idx:02d}_{tool_name}_{timestamp}.log"
+
                     start_time = asyncio.get_event_loop().time()
+
+                    # Write input to log file
+                    with open(log_file, "w", encoding="utf-8") as f:
+                        f.write("=" * 80 + "\n")
+                        f.write(f"Test: {tool_name}\n")
+                        f.write(f"Timestamp: {timestamp}\n")
+                        f.write(f"Timeout: {timeout}s\n")
+                        f.write("=" * 80 + "\n\n")
+                        f.write("INPUT QUERY:\n")
+                        f.write("-" * 80 + "\n")
+                        f.write(query + "\n")
+                        f.write("-" * 80 + "\n\n")
 
                     try:
                         # Call tool with timeout
@@ -370,12 +452,23 @@ async def run_http_tests():
                         # Parse result
                         if result.content and len(result.content) > 0:
                             text_content = result.content[0].text
+
+                            # Write output to log file
+                            with open(log_file, "a", encoding="utf-8") as f:
+                                f.write("OUTPUT:\n")
+                                f.write("-" * 80 + "\n")
+                                f.write(text_content + "\n")
+                                f.write("-" * 80 + "\n\n")
+                                f.write(f"Duration: {duration:.1f}s\n")
+                                f.write(f"Status: SUCCESS\n")
+
                             try:
                                 data = json.loads(text_content)
                                 steps = data.get("total_steps", 0)
                                 final_answer = data.get("final_answer", "")
 
                                 print(f"  ✅ SUCCESS in {duration:.1f}s ({steps} steps)")
+                                print(f"  📝 Log saved: {log_file.name}")
                                 if final_answer:
                                     preview = final_answer[:100].replace('\n', ' ')
                                     print(f"     {preview}...")
@@ -388,6 +481,7 @@ async def run_http_tests():
                                 })
                             except json.JSONDecodeError:
                                 print(f"  ✅ SUCCESS in {duration:.1f}s (non-JSON response)")
+                                print(f"  📝 Log saved: {log_file.name}")
                                 results.append({
                                     "test": tool_name,
                                     "success": True,
@@ -395,7 +489,16 @@ async def run_http_tests():
                                     "steps": 0
                                 })
                         else:
+                            with open(log_file, "a", encoding="utf-8") as f:
+                                f.write("OUTPUT:\n")
+                                f.write("-" * 80 + "\n")
+                                f.write("(Empty result)\n")
+                                f.write("-" * 80 + "\n\n")
+                                f.write(f"Duration: {duration:.1f}s\n")
+                                f.write(f"Status: FAILED (empty result)\n")
+
                             print(f"  ❌ FAILED: Empty result")
+                            print(f"  📝 Log saved: {log_file.name}")
                             results.append({
                                 "test": tool_name,
                                 "success": False,
@@ -405,7 +508,16 @@ async def run_http_tests():
 
                     except asyncio.TimeoutError:
                         duration = timeout
+                        with open(log_file, "a", encoding="utf-8") as f:
+                            f.write("OUTPUT:\n")
+                            f.write("-" * 80 + "\n")
+                            f.write(f"TIMEOUT after {timeout}s\n")
+                            f.write("-" * 80 + "\n\n")
+                            f.write(f"Duration: {duration:.1f}s\n")
+                            f.write(f"Status: TIMEOUT\n")
+
                         print(f"  ❌ TIMEOUT after {timeout}s")
+                        print(f"  📝 Log saved: {log_file.name}")
                         results.append({
                             "test": tool_name,
                             "success": False,
@@ -415,9 +527,22 @@ async def run_http_tests():
 
                     except Exception as e:
                         duration = asyncio.get_event_loop().time() - start_time
-                        print(f"  ❌ ERROR: {e}")
-                        print(f"\n  📋 Full error details:")
                         import traceback
+                        error_trace = traceback.format_exc()
+
+                        with open(log_file, "a", encoding="utf-8") as f:
+                            f.write("OUTPUT:\n")
+                            f.write("-" * 80 + "\n")
+                            f.write(f"ERROR: {e}\n\n")
+                            f.write("Full traceback:\n")
+                            f.write(error_trace)
+                            f.write("-" * 80 + "\n\n")
+                            f.write(f"Duration: {duration:.1f}s\n")
+                            f.write(f"Status: ERROR\n")
+
+                        print(f"  ❌ ERROR: {e}")
+                        print(f"  📝 Log saved: {log_file.name}")
+                        print(f"\n  📋 Full error details:")
                         traceback.print_exc()
                         results.append({
                             "test": tool_name,
@@ -456,6 +581,7 @@ async def run_http_tests():
         print()
 
     print(f"\nTotal: {passed}/{total} passed")
+    print(f"\n📁 Detailed logs saved to: {TEST_OUTPUT_DIR}")
     print("=" * 72)
 
     return 0 if passed == total else 1

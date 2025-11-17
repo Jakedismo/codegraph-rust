@@ -179,3 +179,4 @@ OUROBOROS.md
 SESSION-MEMORY.md
 .serena/
 .codegraph.toml
+/test_output/
