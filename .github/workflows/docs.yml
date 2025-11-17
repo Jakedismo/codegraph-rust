@@ -380,7 +380,7 @@ jobs:
         EOF
 
     - name: Upload documentation artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: documentation
         path: target/final-docs/
