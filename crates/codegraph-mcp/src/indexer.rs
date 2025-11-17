@@ -975,6 +975,9 @@ impl ProjectIndexer {
                 )
             };
 
+            // Flush symbol embeddings to database before edge resolution
+            self.flush_surreal_writer().await?;
+
             let mut unresolved_edges = 0;
             let mut exact_matches = 0;
             let mut pattern_matches = 0;
