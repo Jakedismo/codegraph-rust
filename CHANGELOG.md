@@ -50,8 +50,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ✅ **Added - Local Surreal Embeddings & Reranking**
 - SurrealDB indexing now honors local embedding providers (Ollama + LM Studio) using the same workflow as Jina—set `CODEGRAPH_EMBEDDING_PROVIDER/MODEL/DIMENSION` and we stream vectors into the matching `embedding_<dim>` column automatically
 - Supported combinations today: `all-mini-llm` (384), `qwen3-embedding:0.6b` (1024), `qwen3-embedding:4b` (2048), `qwen3-embedding:8b` (4096), plus `jina-embeddings-v4`
-- LM Studio’s OpenAI-compatible reranker endpoint can now be used for local reranking, so hybrid/local deployments keep the same two-stage retrieval experience as Jina Cloud
-- CLI/indexer logs explicitly call out the active dimension + Surreal column so it’s obvious which field is being populated
+- LM Studio's OpenAI-compatible reranker endpoint can now be used for local reranking, so hybrid/local deployments keep the same two-stage retrieval experience as Jina Cloud
+- CLI/indexer logs explicitly call out the active dimension + Surreal column so it's obvious which field is being populated
+
+### ✅ **Added - Incremental Indexing with File Change Detection**
+- SHA-256-based file change detection tracks added, modified, deleted, and unchanged files between indexing runs
+- Differential re-indexing processes only changed files (added + modified), dramatically reducing re-index time for large codebases
+- File metadata persistence (`file_metadata` table) stores content hash, size, timestamps, and node/edge counts per file
+- Smart cleanup automatically removes orphaned data (nodes, edges, embeddings) for deleted/renamed files
+- Backward compatible with existing indexes—falls back to full re-index if metadata unavailable
+- `--force` flag now performs clean slate deletion before re-indexing, preventing data accumulation
 
 ### 🛠️ **Improved - Surreal Edge Persistence Diagnostics**
 - After dependency resolution we now query `edges` directly and log the stored count vs. expected total; any mismatch is surfaced immediately with a warning, making it easier to spot schema or auth issues during indexing

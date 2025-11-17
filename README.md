@@ -16,6 +16,7 @@ CodeGraph indexes your source code to a graph database, creates semantic embeddi
 - 🗄️ **NEW:** SurrealDB HNSW backend for cloud-native and local vector search
 - 📦 **NEW:** Node.js NAPI bindings for zero-overhead TypeScript integration
 - 🤖 **NEW:** Agentic code-agent tools with tier-aware multi-step reasoning
+- 🔄 **NEW:** Incremental indexing with SHA-256 file change detection—only re-index modified files
 - 🔬 **EXPERIMENTAL:** AutoAgents framework integration for improved agent orchestration
 
 ### Local Embeddings & Reranking (SurrealDB)
