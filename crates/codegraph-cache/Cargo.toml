@@ -13,13 +13,10 @@ ndarray = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true }
-thiserror = { workspace = true }
-anyhow = { workspace = true }
 tracing = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 parking_lot = { workspace = true }
-uuid = { workspace = true }
 backtrace = { workspace = true }
 memmap2 = { workspace = true, optional = true }
 flate2 = { workspace = true, optional = true }
@@ -38,7 +35,6 @@ tower-http = { workspace = true, features = ["cors", "fs"] }
 http = { workspace = true }
 tower = { workspace = true }
 tokio-tungstenite = { workspace = true }
-url = { workspace = true }
 zstd = { workspace = true }
 lz4_flex = { workspace = true }
 fastrand = { workspace = true }

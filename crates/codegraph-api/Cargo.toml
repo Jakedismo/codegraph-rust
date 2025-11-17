@@ -20,7 +20,6 @@ tower-http = { workspace = true, features = ["compression-br", "compression-gzip
 hyper = { workspace = true }
 http = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
 reqwest = { workspace = true }
 url = { workspace = true }
 parking_lot = { workspace = true }
@@ -50,7 +49,6 @@ toml = { workspace = true }
 
 # GraphQL
 async-graphql = { workspace = true, features = ["chrono", "dataloader"] }
-async-graphql-axum = { workspace = true }
 async-stream = "0.3.6"
 # Streaming responses for large datasets
 axum-streams = { version = "0.23.1", features = ["json", "csv", "text"] }

@@ -18,7 +18,7 @@ members = [
     "crates/core-rag-mcp-server",
     "tests/integration"
 ]
-exclude = ["scripts"]
+exclude = ["scripts", "vendor/rmcp", "vendor/semchunk-rs"]
 default-members = [
     "crates/codegraph-core"
 ]

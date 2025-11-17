@@ -24,7 +24,6 @@ tower = { workspace = true }
 
 # Async Runtime
 tokio = { workspace = true }
-async-trait = { workspace = true }
 futures = { workspace = true }
 
 # Serialization
@@ -34,7 +33,6 @@ regex = { workspace = true }
 
 # Error Handling
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 
 # Utilities
 uuid = { workspace = true }
@@ -55,7 +53,6 @@ codegraph-parser = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
-tempfile = { workspace = true }
 
 [features]
 default = ["stdio", "http"]

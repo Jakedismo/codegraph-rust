@@ -26,15 +26,12 @@ tree-sitter-php = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
-rayon = { workspace = true }
 notify = { workspace = true }
 similar = { workspace = true }
-memmap2 = { workspace = true }
 sha2 = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
@@ -43,7 +40,6 @@ parking_lot = { workspace = true }
 dashmap = { workspace = true }
 uuid = { workspace = true }
 num_cpus = { workspace = true }
-regex = { workspace = true }
 globset = { workspace = true }
 ignore = { workspace = true }
 
@@ -58,5 +54,4 @@ experimental = []
 io-uring = ["tokio-uring"]
 
 [dev-dependencies]
-tokio-test = { workspace = true }
 tempfile = { workspace = true }

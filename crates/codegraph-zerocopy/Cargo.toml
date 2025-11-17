@@ -8,17 +8,12 @@ description = "Zero-copy data structures and serialization for CodeGraph"
 
 [dependencies]
 # Core dependencies
-codegraph-core = { workspace = true }
-serde = { workspace = true }
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 tracing = { workspace = true }
-async-trait = { workspace = true }
 
 # Zero-copy serialization
 rkyv = { workspace = true }
 bytecheck = { workspace = true, optional = true }
-rend = { workspace = true }
 
 # Memory management
 memmap2 = { workspace = true }
@@ -27,17 +22,10 @@ arc-swap = { workspace = true }
 
 # Concurrency
 parking_lot = { workspace = true }
-crossbeam-utils = { workspace = true }
 crossbeam-queue = { workspace = true }
 
-# Utilities
-uuid = { workspace = true }
-chrono = { workspace = true }
-
 [dev-dependencies]
-tokio-test = { workspace = true }
 tempfile = { workspace = true }
-criterion = { workspace = true }
 
 [features]
 default = ["validation"]

@@ -13,6 +13,7 @@ use autoagents::llm::{FunctionCall, ToolCall};
 use codegraph_ai::llm_provider::{LLMProvider as CodeGraphLLM, Message, MessageRole};
 use serde::Deserialize;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Convert CodeGraph Message to AutoAgents ChatMessage
 pub(crate) fn convert_to_chat_message(msg: &Message) -> ChatMessage {
@@ -180,6 +181,9 @@ struct CodeGraphToolCall {
     parameters: serde_json::Value,
 }
 
+// Static counter for generating unique tool call IDs
+static TOOL_CALL_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 impl ChatResponse for CodeGraphChatResponse {
     fn text(&self) -> Option<String> {
         Some(self.content.clone())
@@ -187,25 +191,52 @@ impl ChatResponse for CodeGraphChatResponse {
 
     fn tool_calls(&self) -> Option<Vec<ToolCall>> {
         // Try to parse the response as CodeGraph's JSON format
-        if let Ok(parsed) = serde_json::from_str::<CodeGraphLLMResponse>(&self.content) {
-            // If there's a tool_call and is_final is false, convert to AutoAgents format
-            if let Some(tool_call) = parsed.tool_call {
-                if !parsed.is_final {
-                    // Convert parameters to JSON string
-                    let arguments = serde_json::to_string(&tool_call.parameters)
-                        .unwrap_or_else(|_| "{}".to_string());
+        match serde_json::from_str::<CodeGraphLLMResponse>(&self.content) {
+            Ok(parsed) => {
+                // If there's a tool_call and is_final is false, convert to AutoAgents format
+                if let Some(tool_call) = parsed.tool_call {
+                    if !parsed.is_final {
+                        // Convert parameters to JSON string
+                        let arguments = match serde_json::to_string(&tool_call.parameters) {
+                            Ok(json) => json,
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to serialize tool call parameters: {}",
+                                    e
+                                );
+                                return None;
+                            }
+                        };
 
-                    let autoagents_tool_call = ToolCall {
-                        id: format!("call_{}", uuid::Uuid::new_v4()),
-                        call_type: "function".to_string(),
-                        function: FunctionCall {
-                            name: tool_call.tool_name,
-                            arguments,
-                        },
-                    };
+                        // Generate unique ID using atomic counter
+                        let call_id = TOOL_CALL_COUNTER.fetch_add(1, Ordering::SeqCst);
 
-                    return Some(vec![autoagents_tool_call]);
+                        tracing::debug!(
+                            "Parsed tool call: {} with args: {}",
+                            tool_call.tool_name,
+                            arguments
+                        );
+
+                        let autoagents_tool_call = ToolCall {
+                            id: format!("call_{}", call_id),
+                            call_type: "function".to_string(),
+                            function: FunctionCall {
+                                name: tool_call.tool_name,
+                                arguments,
+                            },
+                        };
+
+                        return Some(vec![autoagents_tool_call]);
+                    } else {
+                        tracing::debug!("is_final is true, not returning tool calls");
+                    }
+                } else {
+                    tracing::debug!("No tool_call in parsed response");
                 }
+            }
+            Err(e) => {
+                // Not a JSON response or doesn't match our format - that's fine
+                tracing::trace!("Response is not CodeGraph JSON format: {}", e);
             }
         }
 

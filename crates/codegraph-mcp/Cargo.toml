@@ -24,7 +24,6 @@ chrono = { workspace = true }
 url = { workspace = true }
 dashmap = { workspace = true }
 parking_lot = { workspace = true }
-tokio-util = { workspace = true }
 fastrand = { workspace = true }
 reqwest = { workspace = true }
 sha2 = { workspace = true }
@@ -41,7 +40,6 @@ colored = { workspace = true }
 indicatif = { workspace = true }
 dirs = "5.0"
 dotenv = "0.15"
-which = "8.0"
 nix = { version = "0.30.1", features = ["process", "signal"] }
 notify = "8.2.0"
 walkdir = "2.5"
@@ -69,7 +67,6 @@ tower = { workspace = true, optional = true }
 http-body-util = { version = "0.1", optional = true }
 
 [dev-dependencies]
-tokio-test = { workspace = true }
 tempfile = { workspace = true }
 anyhow = { workspace = true }
 serial_test = "3.2"

@@ -353,23 +353,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-graphql-axum"
-version = "7.0.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8725874ecfbf399e071150b8619c4071d7b2b7a2f117e173dddef53c6bdb6bb1"
-dependencies = [
- "async-graphql",
- "axum",
- "bytes",
- "futures-util",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tower-service",
-]
-
-[[package]]
 name = "async-graphql-derive"
 version = "7.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -977,12 +960,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bytecount"
-version = "0.6.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "175812e0be2bccb6abe50bb8d566126198344f707e304f45c648fd8f2cc0365e"
-
-[[package]]
 name = "bytemuck"
 version = "1.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1326,7 +1303,7 @@ version = "4.5.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a0b5487afeab2deb2ff4e03a807ad1a03ac532ff5a2cee5d86884440c7f7671"
 dependencies = [
- "heck 0.5.0",
+ "heck",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -1349,7 +1326,6 @@ dependencies = [
  "codegraph-core",
  "codegraph-graph",
  "codegraph-vector",
- "dashmap 6.1.0",
  "futures",
  "num_cpus",
  "parking_lot",
@@ -1357,7 +1333,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "similar",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -1370,7 +1345,6 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-graphql",
- "async-graphql-axum",
  "async-stream",
  "async-trait",
  "axum",
@@ -1403,7 +1377,6 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "tokio-test",
- "tokio-util",
  "toml",
  "tower",
  "tower-http",
@@ -1420,7 +1393,6 @@ dependencies = [
 name = "codegraph-cache"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "approx 0.5.1",
  "async-trait",
  "axum",
@@ -1450,15 +1422,12 @@ dependencies = [
  "sha2",
  "sysinfo 0.37.2",
  "tempfile",
- "thiserror 2.0.17",
  "tokio",
  "tokio-test",
  "tokio-tungstenite 0.28.0",
  "tower",
  "tower-http",
  "tracing",
- "url",
- "uuid",
  "zstd",
 ]
 
@@ -1471,11 +1440,9 @@ dependencies = [
  "clap",
  "codegraph-api",
  "codegraph-core",
- "codegraph-graph",
  "colored 2.2.0",
  "serde",
  "serde_json",
- "tabled",
  "tokio",
  "uuid",
 ]
@@ -1484,20 +1451,15 @@ dependencies = [
 name = "codegraph-concurrent"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "arc-swap",
  "async-trait",
- "chrono",
  "codegraph-core",
  "crossbeam-queue",
  "crossbeam-skiplist",
  "crossbeam-utils",
  "loom",
- "serde",
  "thiserror 2.0.17",
  "tokio",
- "tokio-test",
- "tracing",
  "uuid",
 ]
 
@@ -1510,7 +1472,6 @@ dependencies = [
  "base64 0.22.1",
  "bincode 2.0.1",
  "bumpalo",
- "bytecheck 0.8.1",
  "bytes",
  "chacha20poly1305",
  "chrono",
@@ -1521,7 +1482,6 @@ dependencies = [
  "dashmap 6.1.0",
  "dirs 5.0.1",
  "dotenv",
- "faiss",
  "futures",
  "hashbrown 0.16.0",
  "indicatif 0.18.0",
@@ -1536,14 +1496,12 @@ dependencies = [
  "rustc-hash",
  "schemars 1.0.4",
  "secrecy",
- "semchunk-rs",
  "serde",
  "serde_json",
  "serde_yaml",
  "sha2",
  "tempfile",
  "thiserror 2.0.17",
- "tikv-jemalloc-ctl",
  "tikv-jemallocator",
  "tokio",
  "tokio-test",
@@ -1557,24 +1515,11 @@ dependencies = [
 name = "codegraph-git"
 version = "1.0.0"
 dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "codegraph-core",
- "crossbeam-channel",
- "dashmap 6.1.0",
  "git2",
  "notify",
- "parking_lot",
- "rayon",
  "serde",
- "serde_json",
  "tempfile",
  "thiserror 2.0.17",
- "tokio",
- "tokio-test",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -1603,7 +1548,6 @@ dependencies = [
  "sha2",
  "surrealdb",
  "tempfile",
- "thiserror 2.0.17",
  "tokio",
  "tokio-test",
  "tracing",
@@ -1620,14 +1564,10 @@ dependencies = [
  "codegraph-api",
  "codegraph-core",
  "futures",
- "http",
- "serde",
  "serde_json",
  "serial_test",
  "tempfile",
  "tokio",
- "tracing",
- "tracing-subscriber",
  "uuid",
 ]
 
@@ -1637,25 +1577,16 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "criterion",
- "dashmap 6.1.0",
- "futures",
  "governor",
  "http",
- "hyper",
  "once_cell",
  "parking_lot",
  "prometheus",
  "rand 0.9.2",
  "reqwest",
  "serde",
- "serde_json",
  "sha2",
- "thiserror 2.0.17",
  "tokio",
- "tokio-test",
- "tower",
- "tower-http",
  "tracing",
  "uuid",
 ]
@@ -1706,9 +1637,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
- "tokio-test",
  "tokio-tungstenite 0.28.0",
- "tokio-util",
  "toml",
  "tower",
  "tracing",
@@ -1717,26 +1646,20 @@ dependencies = [
  "url",
  "uuid",
  "walkdir",
- "which",
 ]
 
 [[package]]
 name = "codegraph-napi"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "chrono",
- "codegraph-ai",
  "codegraph-api",
  "codegraph-core",
  "codegraph-graph",
- "codegraph-vector",
  "napi",
  "napi-build",
  "napi-derive",
- "serde",
  "serde_json",
- "surrealdb",
  "tokio",
  "tracing",
  "uuid",
@@ -1755,20 +1678,15 @@ dependencies = [
  "futures",
  "globset",
  "ignore",
- "memmap2",
  "notify",
  "num_cpus",
  "parking_lot",
- "rayon",
- "regex",
  "serde",
  "serde_json",
  "sha2",
  "similar",
  "tempfile",
- "thiserror 2.0.17",
  "tokio",
- "tokio-test",
  "tokio-uring",
  "tracing",
  "tree-sitter",
@@ -1793,8 +1711,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "codegraph-concurrent",
- "codegraph-core",
- "futures",
  "metrics",
  "priority-queue",
  "serde",
@@ -1802,7 +1718,6 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "tokio-stream",
- "tokio-test",
  "tracing",
  "uuid",
 ]
@@ -1811,7 +1726,6 @@ dependencies = [
 name = "codegraph-vector"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "approx 0.5.1",
  "async-trait",
  "bincode 2.0.1",
@@ -1824,7 +1738,6 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "dashmap 6.1.0",
- "emojis",
  "faiss",
  "fastrand",
  "flate2",
@@ -1856,26 +1769,16 @@ dependencies = [
 name = "codegraph-zerocopy"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "arc-swap",
- "async-trait",
  "bytecheck 0.8.1",
  "bytes",
- "chrono",
- "codegraph-core",
- "criterion",
  "crossbeam-queue",
- "crossbeam-utils",
  "memmap2",
  "parking_lot",
- "rend 0.5.2",
  "rkyv",
- "serde",
  "tempfile",
  "thiserror 2.0.17",
- "tokio-test",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -2073,8 +1976,6 @@ dependencies = [
 name = "core-rag-mcp-server"
 version = "1.0.0"
 dependencies = [
- "anyhow",
- "async-trait",
  "axum",
  "chrono",
  "codegraph-cache",
@@ -2087,7 +1988,6 @@ dependencies = [
  "rmcp",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "tokio-test",
@@ -2656,15 +2556,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emojis"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99e1f1df1f181f2539bac8bf027d31ca5ffbf9e559e3f2d09413b9107b5c02f4"
-dependencies = [
- "phf",
-]
-
-[[package]]
 name = "ena"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2700,17 +2591,11 @@ version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1e6a265c649f3f5979b601d26f1d05ada116434c87741c9493cb56218f76cbc"
 dependencies = [
- "heck 0.5.0",
+ "heck",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
 ]
-
-[[package]]
-name = "env_home"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
 
 [[package]]
 name = "equivalent"
@@ -3606,12 +3491,6 @@ dependencies = [
  "hash32",
  "stable_deref_trait",
 ]
-
-[[package]]
-name = "heck"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "heck"
@@ -5325,17 +5204,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "papergrid"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7419ad52a7de9b60d33e11085a0fe3df1fbd5926aa3f93d3dd53afbc9e86725"
-dependencies = [
- "bytecount",
- "fnv",
- "unicode-width 0.1.11",
-]
-
-[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5683,30 +5551,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "219cb19e96be00ab2e37d6e299658a0cfa83e52429179969b0f0121b4ac46983"
 dependencies = [
  "toml_edit",
-]
-
-[[package]]
-name = "proc-macro-error"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
-dependencies = [
- "proc-macro-error-attr",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
- "version_check",
-]
-
-[[package]]
-name = "proc-macro-error-attr"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
-dependencies = [
- "proc-macro2",
- "quote",
- "version_check",
 ]
 
 [[package]]
@@ -6230,12 +6074,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rend"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a35e8a6bf28cd121053a66aa2e6a2e3eaffad4a60012179f0e864aa5ffeff215"
-
-[[package]]
 name = "reqwest"
 version = "0.12.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6343,7 +6181,7 @@ dependencies = [
  "bytes",
  "hashbrown 0.12.3",
  "ptr_meta 0.1.4",
- "rend 0.4.2",
+ "rend",
  "rkyv_derive",
  "seahash",
  "tinyvec",
@@ -7349,7 +7187,7 @@ version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
 dependencies = [
- "heck 0.5.0",
+ "heck",
  "proc-macro2",
  "quote",
  "rustversion",
@@ -7362,7 +7200,7 @@ version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
 dependencies = [
- "heck 0.5.0",
+ "heck",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -7630,29 +7468,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tabled"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77c9303ee60b9bedf722012ea29ae3711ba13a67c9b9ae28993838b63057cb1b"
-dependencies = [
- "papergrid",
- "tabled_derive",
-]
-
-[[package]]
-name = "tabled_derive"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf0fb8bfdc709786c154e24a66777493fb63ae97e3036d914c8666774c477069"
-dependencies = [
- "heck 0.4.1",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7761,17 +7576,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "tikv-jemalloc-ctl"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f21f216790c8df74ce3ab25b534e0718da5a1916719771d3fec23315c99e468b"
-dependencies = [
- "libc",
- "paste",
- "tikv-jemalloc-sys",
 ]
 
 [[package]]
@@ -9040,17 +8844,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "which"
-version = "8.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3fabb953106c3c8eea8306e4393700d7657561cb43122571b172bbfb7c7ba1d"
-dependencies = [
- "env_home",
- "rustix 1.1.2",
- "winsafe",
-]
-
-[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9501,12 +9294,6 @@ checksum = "21a0236b59786fed61e2a80582dd500fe61f18b5dca67a4a067d0bc9039339cf"
 dependencies = [
  "memchr",
 ]
-
-[[package]]
-name = "winsafe"
-version = "0.0.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
 
 [[package]]
 name = "wit-bindgen"

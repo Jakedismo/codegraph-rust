@@ -14,7 +14,6 @@ rocksdb = { workspace = true, features = ["zstd"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true }
-thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 async-trait = { workspace = true }

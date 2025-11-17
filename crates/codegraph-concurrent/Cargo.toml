@@ -4,12 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = { workspace = true }
 thiserror = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-tracing = { workspace = true }
 uuid = { workspace = true }
-chrono = { workspace = true }
 crossbeam-utils = { workspace = true }
 crossbeam-queue = { workspace = true }
 crossbeam-skiplist = { workspace = true }
@@ -20,7 +16,6 @@ async-trait = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
-tokio-test = { workspace = true }
 loom = "0.7"
 
 [features]

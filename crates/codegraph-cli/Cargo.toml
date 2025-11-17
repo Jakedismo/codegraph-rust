@@ -24,10 +24,6 @@ clap = { version = "4.5", features = ["derive", "env"] }
 # Colored terminal output
 colored = "2.1"
 
-# Table formatting
-tabled = "0.16"
-
 # Local crates
 codegraph-core = { path = "../codegraph-core" }
 codegraph-api = { path = "../codegraph-api" }
-codegraph-graph = { path = "../codegraph-graph" }

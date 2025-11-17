@@ -18,12 +18,10 @@ anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-dashmap = { workspace = true }
 parking_lot = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
-similar = { workspace = true }
 arc-swap = { workspace = true }
 num_cpus = { workspace = true }
 prometheus = { workspace = true }
