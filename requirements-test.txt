@@ -1,5 +1,15 @@
 # Python dependencies for testing CodeGraph MCP server
 # Install with: pip install -r requirements-test.txt
 
+# Configuration management
 python-dotenv>=1.0.0
+
+# Official MCP Python SDK (for test_agentic_mcp.py)
+mcp>=1.0.0
+
+# HTTP client for health checks and legacy tests
+httpx>=0.27.0
+requests>=2.31.0
+
+# SSE client for legacy test_agentic_tools_http.py
 sseclient-py>=1.8.0
