@@ -344,40 +344,55 @@ def run():
     check_surrealdb()
     print_config()
 
-    base_cmd = resolve_codegraph_command()
-    launch_cmd = base_cmd + ["start", "http", "--host", HTTP_HOST, "--port", str(HTTP_PORT)]
-
-    print(f"Starting CodeGraph HTTP server...")
-    print(f"Command: {' '.join(launch_cmd)}\n")
-
-    # Start server
-    proc = subprocess.Popen(
-        launch_cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-
-    # Wait for server to be ready
     base_url = f"http://{HTTP_HOST}:{HTTP_PORT}"
-    print(f"Waiting for HTTP server at {base_url}...")
 
-    for i in range(30):  # Wait up to 30 seconds
-        try:
-            health_response = requests.get(f"{base_url}/health", timeout=1)
-            if health_response.status_code == 200:
-                print(f"✓ Server ready after {i+1}s")
-                break
-        except requests.exceptions.RequestException:
-            time.sleep(1)
-    else:
-        print("❌ Server failed to start within 30 seconds")
-        try:
-            proc.terminate()
-        except Exception:
-            pass
-        sys.exit(1)
+    # Check if server is already running
+    print(f"\nChecking if CodeGraph HTTP server is already running at {base_url}...")
+    server_already_running = False
+    try:
+        health_response = requests.get(f"{base_url}/health", timeout=2)
+        if health_response.status_code == 200:
+            print(f"✓ Server is already running!")
+            server_already_running = True
+            proc = None
+    except requests.exceptions.RequestException:
+        print(f"  Server not running, will start new instance")
+
+    # Start server if not already running
+    if not server_already_running:
+        base_cmd = resolve_codegraph_command()
+        launch_cmd = base_cmd + ["start", "http", "--host", HTTP_HOST, "--port", str(HTTP_PORT)]
+
+        print(f"\nStarting CodeGraph HTTP server...")
+        print(f"Command: {' '.join(launch_cmd)}\n")
+
+        # Start server
+        proc = subprocess.Popen(
+            launch_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+
+        # Wait for server to be ready
+        print(f"Waiting for HTTP server to start...")
+
+        for i in range(30):  # Wait up to 30 seconds
+            try:
+                health_response = requests.get(f"{base_url}/health", timeout=1)
+                if health_response.status_code == 200:
+                    print(f"✓ Server ready after {i+1}s")
+                    break
+            except requests.exceptions.RequestException:
+                time.sleep(1)
+        else:
+            print("❌ Server failed to start within 30 seconds")
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            sys.exit(1)
 
     # MCP handshake
     print("\n" + "=" * 72)
@@ -472,15 +487,21 @@ def run():
         else:
             print(f"\n❌ FAILED or TIMEOUT after {duration:.1f}s")
 
-    # Graceful shutdown
-    try:
-        proc.terminate()
-        proc.wait(timeout=2)
-    except Exception:
+    # Graceful shutdown (only if we started the server)
+    if proc is not None:
+        print("\n🛑 Shutting down server...")
         try:
-            proc.kill()
+            proc.terminate()
+            proc.wait(timeout=2)
+            print("✓ Server stopped")
         except Exception:
-            pass
+            try:
+                proc.kill()
+                print("✓ Server killed")
+            except Exception:
+                print("⚠️  Could not stop server")
+    else:
+        print("\n⚠️  Leaving server running (was already running when test started)")
 
     # Print summary
     print("\n" + "=" * 72)
