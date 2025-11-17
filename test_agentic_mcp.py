@@ -319,50 +319,8 @@ async def run_http_tests():
     print("\n🌐 Using HTTP/SSE transport")
 
     mcp_url = f"http://{HTTP_HOST}:{HTTP_PORT}/mcp"
-    print(f"  URL: {mcp_url}")
-
-    # Quick check if server is reachable
-    print(f"\nChecking HTTP server health...")
-    print(f"  Endpoint: http://{HTTP_HOST}:{HTTP_PORT}/health")
-
-    try:
-        import httpx
-        async with httpx.AsyncClient() as client:
-            # Try health check with SSE headers (server may require them)
-            response = await client.get(
-                f"http://{HTTP_HOST}:{HTTP_PORT}/health",
-                timeout=2.0,
-                follow_redirects=True,
-                headers={
-                    "Accept": "text/event-stream, application/json, */*"
-                }
-            )
-            if response.status_code != 200:
-                print(f"❌ Health check failed: HTTP {response.status_code}")
-                print(f"   Response: {response.text[:200] if response.text else 'empty'}")
-                print(f"\n⚠️  Troubleshooting:")
-                print(f"   - Is the CodeGraph HTTP server running on port {HTTP_PORT}?")
-                print(f"   - Check: ps aux | grep codegraph")
-                print(f"   - Try: curl -H 'Accept: text/event-stream' http://{HTTP_HOST}:{HTTP_PORT}/health")
-                print(f"\nStart HTTP server with:")
-                print(f"  ./target/release/codegraph start http --host {HTTP_HOST} --port {HTTP_PORT}")
-                return 1
-        print("✓ Server is reachable\n")
-    except Exception as e:
-        print(f"❌ Cannot reach server: {e}")
-        print(f"\n⚠️  Troubleshooting:")
-        print(f"   - Is the server running? Check: ps aux | grep codegraph")
-        print(f"   - Wrong port? Common ports:")
-        print(f"     - 3000: Default HTTP server port")
-        print(f"     - 3003: Your configured port (CODEGRAPH_HTTP_PORT)")
-        print(f"     - 3004: SurrealDB (NOT for HTTP)")
-        print(f"   - Check firewall/network: curl http://{HTTP_HOST}:{HTTP_PORT}/health")
-        print(f"\nExpected .env configuration:")
-        print(f"  CODEGRAPH_HTTP_HOST={HTTP_HOST}")
-        print(f"  CODEGRAPH_HTTP_PORT={HTTP_PORT}")
-        print(f"\nStart HTTP server with:")
-        print(f"  ./target/release/codegraph start http --host {HTTP_HOST} --port {HTTP_PORT}")
-        return 1
+    print(f"  Connecting to: {mcp_url}")
+    print(f"  (Server must be running: ./target/release/codegraph start http --port {HTTP_PORT})\n")
 
     results = []
 
@@ -464,8 +422,13 @@ async def run_http_tests():
 
     except Exception as e:
         print(f"\n❌ Failed to connect via SSE: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"\n⚠️  Troubleshooting:")
+        print(f"   - Is the server running? Check: ps aux | grep codegraph")
+        print(f"   - Verify server is listening on port {HTTP_PORT}")
+        print(f"   - Check server logs for errors")
+        print(f"\nStart server with:")
+        print(f"  ./target/release/codegraph start http --host {HTTP_HOST} --port {HTTP_PORT}")
+        print(f"\nIf you need detailed error info, run with RUST_LOG=debug")
         return 1
 
     # Print summary
