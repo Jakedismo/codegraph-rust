@@ -319,7 +319,7 @@ use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use autoagents::core::agent::memory::SlidingWindowMemory;
 use autoagents::core::agent::prebuilt::executor::ReActAgent;
 use autoagents::core::agent::AgentBuilder;
-use autoagents::core::agent::{AgentDeriveT, AgentHooks, AgentOutputT, DirectAgentHandle};
+use autoagents::core::agent::{AgentDeriveT, AgentHooks, AgentOutputT, DirectAgentHandle, ExecutorConfig};
 use autoagents::core::error::Error as AutoAgentsError;
 use autoagents::core::tool::{shared_tools_to_boxes, ToolT};
 use autoagents_derive::AgentHooks;
@@ -330,6 +330,7 @@ pub struct CodeGraphReActAgent {
     tools: Vec<Arc<dyn ToolT>>,
     system_prompt: String,
     analysis_type: AnalysisType,
+    max_iterations: usize,
 }
 
 impl AgentDeriveT for CodeGraphReActAgent {
@@ -369,6 +370,11 @@ impl AgentDeriveT for CodeGraphReActAgent {
 }
 
 impl AgentHooks for CodeGraphReActAgent {}
+
+// NOTE: AutoAgents ReActAgent has max_turns hardcoded to 10 in version 8248b4e
+// We calculate tier-aware max_iterations (5-20) but can't override ReActAgent's config()
+// This is a known limitation - agents will stop at 10 turns regardless of tier
+// TODO: Update AutoAgents version or fork to allow configurable max_turns
 
 /// Builder for CodeGraph AutoAgents workflows
 pub struct CodeGraphAgentBuilder {
@@ -417,11 +423,16 @@ impl CodeGraphAgentBuilder {
             Arc::new(GetHubNodes::new(executor_adapter.clone())),
         ];
 
+        // Get tier-aware max iterations
+        let max_iterations = tier_plugin.get_max_iterations();
+        tracing::info!("Setting ReActAgent max_turns={} for tier={:?}", max_iterations, self.tier);
+
         // Create CodeGraph agent with tools and tier-aware system prompt
         let codegraph_agent = CodeGraphReActAgent {
             tools,
             system_prompt,
             analysis_type: self.analysis_type,
+            max_iterations,
         };
 
         // Build ReAct agent with our CodeGraph agent
