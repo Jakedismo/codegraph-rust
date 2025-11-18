@@ -222,9 +222,9 @@ struct CodeGraphLLMResponse {
 
 #[derive(Debug, Deserialize)]
 struct CodeGraphToolCall {
-    #[serde(alias = "name")]
+    #[serde(alias = "name", alias = "function", alias = "tool")]
     tool_name: String,
-    #[serde(alias = "arguments")]
+    #[serde(alias = "arguments", alias = "args")]
     parameters: serde_json::Value,
 }
 
@@ -635,6 +635,74 @@ mod tests {
         assert_eq!(tool_calls.len(), 1);
         assert_eq!(tool_calls[0].function.name, "get_hub_nodes");
         assert_eq!(tool_calls[0].function.arguments, "{\"min_degree\":4}");
+    }
+
+    #[test]
+    fn test_tool_calls_accepts_args_field() {
+        let response = CodeGraphChatResponse {
+            content: r#"{
+                "reasoning": "Trace chain",
+                "tool_call": {
+                    "tool_name": "trace_call_chain",
+                    "args": {
+                        "from_node": "GraphToolExecutor",
+                        "max_depth": 4
+                    }
+                },
+                "is_final": false
+            }"#
+            .to_string(),
+            _total_tokens: 0,
+        };
+
+        let tool_calls = response.tool_calls().expect("tool call not parsed");
+        assert_eq!(tool_calls[0].function.name, "trace_call_chain");
+        assert_eq!(tool_calls[0].function.arguments, "{\"from_node\":\"GraphToolExecutor\",\"max_depth\":4}");
+    }
+
+    #[test]
+    fn test_tool_calls_accepts_function_field() {
+        let response = CodeGraphChatResponse {
+            content: r#"{
+                "reasoning": "Find hubs",
+                "tool_call": {
+                    "function": "get_hub_nodes",
+                    "arguments": {
+                        "min_degree": 6
+                    }
+                },
+                "is_final": false
+            }"#
+            .to_string(),
+            _total_tokens: 0,
+        };
+
+        let tool_calls = response.tool_calls().expect("tool call not parsed");
+        assert_eq!(tool_calls[0].function.name, "get_hub_nodes");
+        assert_eq!(tool_calls[0].function.arguments, "{\"min_degree\":6}");
+    }
+
+    #[test]
+    fn test_tool_calls_accepts_tool_field() {
+        let response = CodeGraphChatResponse {
+            content: r#"{
+                "reasoning": "Dependencies",
+                "tool_call": {
+                    "tool": "get_transitive_dependencies",
+                    "parameters": {
+                        "node_id": "AgenticOrchestrator",
+                        "edge_type": "Imports",
+                        "depth": 2
+                    }
+                },
+                "is_final": false
+            }"#
+            .to_string(),
+            _total_tokens: 0,
+        };
+
+        let tool_calls = response.tool_calls().expect("tool call not parsed");
+        assert_eq!(tool_calls[0].function.name, "get_transitive_dependencies");
     }
 
     // Integration test for ChatProvider

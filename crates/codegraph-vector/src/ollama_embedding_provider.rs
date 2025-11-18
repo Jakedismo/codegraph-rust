@@ -421,8 +421,18 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
         // Accumulate chunk embeddings for each node
         for (chunk_idx, chunk_embedding) in chunk_embeddings.into_iter().enumerate() {
             let node_idx = chunk_to_node[chunk_idx];
-            for (i, &val) in chunk_embedding.iter().enumerate() {
-                node_embeddings[node_idx][i] += val;
+            if chunk_embedding.len() != dimension {
+                warn!(
+                    "⚠️ Ollama embedding dimension mismatch: expected {}, got {}",
+                    dimension,
+                    chunk_embedding.len()
+                );
+            }
+            for (slot, value) in node_embeddings[node_idx]
+                .iter_mut()
+                .zip(chunk_embedding.iter())
+            {
+                *slot += *value;
             }
             node_chunk_counts[node_idx] += 1;
         }

@@ -533,10 +533,13 @@ impl AgenticOrchestrator {
                 let name = tool_call
                     .get("tool_name")
                     .or_else(|| tool_call.get("name"))
+                    .or_else(|| tool_call.get("function"))
+                    .or_else(|| tool_call.get("tool"))
                     .and_then(|v| v.as_str());
                 let params = tool_call
                     .get("parameters")
                     .or_else(|| tool_call.get("arguments"))
+                    .or_else(|| tool_call.get("args"))
                     .cloned();
                 (name.map(|s| s.to_string()), params)
             } else {
@@ -659,5 +662,79 @@ mod tests {
             7
         );
         assert!(!step.is_final);
+    }
+
+    #[test]
+    fn test_parse_tool_call_with_args_field() {
+        let json_response = r#"{
+            "reasoning": "Trace call chain",
+            "tool_call": {
+                "tool_name": "trace_call_chain",
+                "args": {
+                    "from_node": "GraphToolExecutor",
+                    "max_depth": 4
+                }
+            },
+            "is_final": false
+        }"#;
+
+        let step = AgenticOrchestrator::parse_llm_response_internal(3, json_response)
+            .expect("Should parse args field");
+
+        assert_eq!(step.tool_name, Some("trace_call_chain".to_string()));
+        assert_eq!(
+            step.tool_params
+                .as_ref()
+                .and_then(|p| p["max_depth"].as_i64())
+                .unwrap_or_default(),
+            4
+        );
+    }
+
+    #[test]
+    fn test_parse_tool_call_with_function_field() {
+        let json_response = r#"{
+            "reasoning": "Check hubs",
+            "tool_call": {
+                "function": "get_hub_nodes",
+                "arguments": {
+                    "min_degree": 9
+                }
+            },
+            "is_final": false
+        }"#;
+
+        let step = AgenticOrchestrator::parse_llm_response_internal(4, json_response)
+            .expect("Should parse function field");
+
+        assert_eq!(step.tool_name, Some("get_hub_nodes".to_string()));
+        assert_eq!(
+            step.tool_params
+                .as_ref()
+                .and_then(|p| p["min_degree"].as_i64())
+                .unwrap_or_default(),
+            9
+        );
+    }
+
+    #[test]
+    fn test_parse_tool_call_with_tool_field() {
+        let json_response = r#"{
+            "reasoning": "Check dependencies",
+            "tool_call": {
+                "tool": "get_transitive_dependencies",
+                "parameters": {
+                    "node_id": "AgenticOrchestrator",
+                    "edge_type": "Imports",
+                    "depth": 2
+                }
+            },
+            "is_final": false
+        }"#;
+
+        let step = AgenticOrchestrator::parse_llm_response_internal(5, json_response)
+            .expect("Should parse tool field");
+
+        assert_eq!(step.tool_name, Some("get_transitive_dependencies".to_string()));
     }
 }

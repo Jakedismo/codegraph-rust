@@ -2795,12 +2795,12 @@ fn optimize_for_memory(
         if embedding_provider == "ollama" {
             // Ollama models work better with smaller batches for stability
             match memory_gb {
-                128.. => 1024,   // 128GB+: Large but stable batch size
-                96..=127 => 768, // 96-127GB: Medium-large batch
-                64..=95 => 512,  // 64-95GB: Medium batch
-                32..=63 => 256,  // 32-63GB: Small batch
-                16..=31 => 128,  // 16-31GB: Very small batch
-                _ => 64,         // <16GB: Minimal batch
+                128.. => 64,    // 128GB+: Even high-memory boxes benefit from modest batches with Ollama
+                96..=127 => 64, // 96-127GB: Keep batches capped for GPU/CPU stability
+                64..=95 => 48,  // 64-95GB: Slightly leaner batch for steady throughput
+                32..=63 => 32,  // 32-63GB: Conservative batch to prevent throttling
+                16..=31 => 24,  // 16-31GB: Small batch keeps latency predictable
+                _ => 16,        // <16GB: Minimal batch on constrained systems
             }
         } else {
             // ONNX/OpenAI can handle much larger batches
