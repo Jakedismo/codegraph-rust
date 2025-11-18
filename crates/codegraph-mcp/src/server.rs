@@ -8,7 +8,6 @@ use serde_json::Value;
 #[cfg(any(feature = "faiss", feature = "legacy-mcp-server"))]
 use std::path::PathBuf;
 use std::sync::Arc;
-#[cfg(any(feature = "faiss", feature = "cloud", feature = "legacy-mcp-server"))]
 use std::time::Instant;
 
 // Performance optimization: Cache FAISS indexes and embedding generator
@@ -1197,14 +1196,14 @@ pub async fn bin_search_with_scores_shared(
 
     match mode {
         SearchMode::Cloud => {
-            #[cfg(feature = "embeddings")]
+            #[cfg(feature = "cloud")]
             {
                 cloud_search_impl(_query, _paths, _langs, _limit, _graph).await
             }
-            #[cfg(not(feature = "embeddings"))]
+            #[cfg(not(feature = "cloud"))]
             {
                 Err(anyhow::anyhow!(
-                    "Cloud mode requires embeddings feature. Rebuild with --features embeddings"
+                    "Cloud mode requires cloud feature. Rebuild with --features cloud"
                 ))
             }
         }
