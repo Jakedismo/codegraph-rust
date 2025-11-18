@@ -294,12 +294,14 @@ DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_edge
 -- FUNCTION: node_info (UNCHANGED)
 -- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::node_info($node_id: string) {
-    LET $record_id = IF string::contains($node_id, ':') THEN
-        type::thing($node_id)
+    -- Build full record ID string ("nodes:uuid" format)
+    LET $full_id = IF string::starts_with($node_id, 'nodes:') THEN
+        $node_id
     ELSE
-        type::thing('nodes', $node_id)
+        string::concat('nodes:', $node_id)
     END;
 
+    -- Cast string to record and query
     LET $res = SELECT
         id,
         name,
@@ -312,10 +314,9 @@ DEFINE FUNCTION fn::node_info($node_id: string) {
             start_line: start_line,
             end_line: end_line
         } AS location
-    FROM ONLY $record_id
-    LIMIT 1;
+    FROM ONLY <record> $full_id;
 
-    RETURN $res[0];
+    RETURN $res;
 };
 
 -- -----------------------------------------------------------------------------
