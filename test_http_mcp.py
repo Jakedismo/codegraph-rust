@@ -25,15 +25,15 @@ HTTP_HOST = os.environ.get("CODEGRAPH_HTTP_HOST", "127.0.0.1")
 HTTP_PORT = os.environ.get("CODEGRAPH_HTTP_PORT", "3003")
 SERVER_URL = f"http://{HTTP_HOST}:{HTTP_PORT}/mcp"
 
-# Test cases (same as STDIO version)
+# Test cases (same as STDIO version, extended timeouts)
 AGENTIC_TESTS = [
-    ("agentic_code_search", "How is configuration loaded in this codebase? Find all config loading mechanisms.", 60),
-    ("agentic_dependency_analysis", "Analyze the dependency chain for the AgenticOrchestrator. What does it depend on?", 60),
-    ("agentic_call_chain_analysis", "Trace the call chain from execute_agentic_workflow to the graph analysis tools", 60),
-    ("agentic_architecture_analysis", "Analyze the architecture of the MCP server. Find coupling metrics and hub nodes.", 90),
-    ("agentic_api_surface_analysis", "What is the public API surface of the GraphToolExecutor?", 60),
-    ("agentic_context_builder", "Gather comprehensive context about the tier-aware prompt selection system", 90),
-    ("agentic_semantic_question", "How does the LRU cache work in GraphToolExecutor? What gets cached and when?", 60),
+    ("agentic_code_search", "How is configuration loaded in this codebase? Find all config loading mechanisms.", 300),
+    ("agentic_dependency_analysis", "Analyze the dependency chain for the AgenticOrchestrator. What does it depend on?", 300),
+    ("agentic_call_chain_analysis", "Trace the call chain from execute_agentic_workflow to the graph analysis tools", 300),
+    ("agentic_architecture_analysis", "Analyze the architecture of the MCP server. Find coupling metrics and hub nodes.", 300),
+    ("agentic_api_surface_analysis", "What is the public API surface of the GraphToolExecutor?", 300),
+    ("agentic_context_builder", "Gather comprehensive context about the tier-aware prompt selection system", 300),
+    ("agentic_semantic_question", "How does the LRU cache work in GraphToolExecutor? What gets cached and when?", 300),
 ]
 
 async def run_tests():
@@ -56,12 +56,21 @@ async def run_tests():
 
                 results = []
 
-                for tool_name, query, timeout in AGENTIC_TESTS:
+                # Create output directory
+                os.makedirs("test_output_http", exist_ok=True)
+
+                for i, (tool_name, query, timeout) in enumerate(AGENTIC_TESTS, 1):
                     print(f"{'=' * 72}")
                     print(f"Testing: {tool_name}")
                     print(f"Query: {query}")
                     print(f"Timeout: {timeout}s")
                     print('=' * 72)
+
+                    start_time = asyncio.get_event_loop().time()
+                    result_text = None
+                    structured_output = None
+                    file_locations = []
+                    success = False
 
                     try:
                         # Call tool with timeout
@@ -71,13 +80,9 @@ async def run_tests():
                         )
 
                         # Parse result
-                        success = False
-                        structured_output = None
-                        file_locations = []
-
                         if result and len(result.content) > 0:
-                            text = result.content[0].text
-                            data = json.loads(text)
+                            result_text = result.content[0].text
+                            data = json.loads(result_text)
 
                             if "structured_output" in data:
                                 structured_output = data["structured_output"]
@@ -90,9 +95,11 @@ async def run_tests():
                                             if isinstance(item, dict) and 'file_path' in item:
                                                 file_locations.append(item)
 
+                        duration = asyncio.get_event_loop().time() - start_time
+
                         if success:
                             steps = data.get("steps_taken", "?")
-                            print(f"\n✅ SUCCESS ({steps} steps)")
+                            print(f"\n✅ SUCCESS in {duration:.1f}s ({steps} steps)")
                             if structured_output:
                                 print(f"   📊 Structured Output: ✅ PRESENT")
                                 if file_locations:
@@ -110,11 +117,55 @@ async def run_tests():
                         })
 
                     except asyncio.TimeoutError:
-                        print(f"\n❌ TIMEOUT after {timeout}s")
+                        duration = asyncio.get_event_loop().time() - start_time
+                        print(f"\n❌ TIMEOUT after {duration:.1f}s")
                         results.append({"test": tool_name, "success": False, "files": 0})
                     except Exception as e:
+                        duration = asyncio.get_event_loop().time() - start_time
                         print(f"\n❌ ERROR: {e}")
                         results.append({"test": tool_name, "success": False, "files": 0})
+
+                    # Write log file
+                    try:
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        log_filename = f"test_output_http/{str(i).zfill(2)}_{tool_name}_{timestamp}.log"
+
+                        with open(log_filename, "w") as f:
+                            f.write("=" * 80 + "\n")
+                            f.write(f"Test: {tool_name}\n")
+                            f.write(f"Transport: HTTP (MCP SDK)\n")
+                            f.write(f"Timestamp: {timestamp}\n")
+                            f.write(f"Timeout: {timeout}s\n")
+                            f.write("=" * 80 + "\n\n")
+
+                            f.write("INPUT QUERY:\n")
+                            f.write("-" * 80 + "\n")
+                            f.write(f"{query}\n")
+                            f.write("-" * 80 + "\n\n")
+
+                            f.write("OUTPUT:\n")
+                            f.write("-" * 80 + "\n")
+
+                            if structured_output:
+                                f.write(json.dumps(structured_output, indent=2))
+                                f.write("\n\n")
+                                f.write("FILE LOCATIONS EXTRACTED:\n")
+                                f.write("-" * 80 + "\n")
+                                for loc in file_locations:
+                                    line_info = f":{loc['line_number']}" if loc.get('line_number') else ""
+                                    f.write(f"  {loc['name']} in {loc['file_path']}{line_info}\n")
+                            elif result_text:
+                                f.write(result_text)
+                            else:
+                                f.write("(No result received)\n")
+
+                            f.write("-" * 80 + "\n\n")
+                            f.write(f"Duration: {duration:.1f}s\n")
+                            f.write(f"Status: {'SUCCESS' if success else 'FAILED'}\n")
+
+                        print(f"   💾 Log saved: {log_filename}")
+                    except Exception as e:
+                        print(f"   ⚠️  Failed to write log: {e}")
 
                 # Summary
                 print("\n" + "=" * 72)
