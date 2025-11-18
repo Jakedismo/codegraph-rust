@@ -242,6 +242,21 @@ impl OpenAICompatibleProvider {
         messages: &[Message],
         config: &GenerationConfig,
     ) -> Result<ResponseAPIResponse> {
+        // Extract Ollama-native format from response_format for compatibility
+        let ollama_format = config.response_format.as_ref().and_then(|rf| {
+            match rf {
+                crate::llm_provider::ResponseFormat::JsonSchema { json_schema } => {
+                    // For Ollama: Use just the schema object, not the nested structure
+                    Some(json_schema.schema.clone())
+                }
+                crate::llm_provider::ResponseFormat::JsonObject => {
+                    // For basic JSON mode
+                    Some(serde_json::json!("json"))
+                }
+                crate::llm_provider::ResponseFormat::Text => None,
+            }
+        });
+
         let request = ChatCompletionsRequest {
             model: self.config.model.clone(),
             messages: messages
@@ -257,6 +272,7 @@ impl OpenAICompatibleProvider {
             top_p: config.top_p,
             stop: config.stop.clone(),
             response_format: config.response_format.clone(),
+            format: ollama_format,
         };
 
         let mut request_builder = self
@@ -530,6 +546,9 @@ struct ChatCompletionsRequest {
     stop: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     response_format: Option<crate::llm_provider::ResponseFormat>,
+    /// Ollama-native format field (extracted from response_format for Ollama compatibility)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
