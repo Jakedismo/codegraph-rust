@@ -74,6 +74,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **6 prompts updated**: code_search, dependency_analysis, call_chain, architecture, context_builder, semantic_question, api_surface
 - **Migration**: Prompts now work in conjunction with schema enforcement
 
+### 🐛 **Fixed - AutoAgents and Structured Output Issues**
+
+#### **Tier-Aware Token Limits**
+- **Fixed**: AutoAgents ignored tier-based max_tokens (always used default ~4K)
+- **Now**: Respects tier limits (Small: 2K, Medium: 4K, Large: 8K, Massive: 16K)
+- **Override**: Set `MCP_CODE_AGENT_MAX_OUTPUT_TOKENS` environment variable
+- **Impact**: Massive tier (xAI Grok 2M) now outputs detailed 16K responses
+
+#### **Prompt Format Clarification**
+- **Fixed**: Architecture and semantic_question tools outputting both old wrapper format AND new structured format
+- **Cause**: Prompts showed intermediate format alongside final format
+- **Fix**: Clarified final response should be ONLY structured JSON (no reasoning/tool_call/is_final wrapper)
+
+#### **HTTP Transport Testing**
+- **Replaced**: Custom SSE parser (1,293 lines) with official MCP SDK `streamablehttp_client`
+- **Added**: `test_http_mcp.py` using proper MCP protocol
+- **Fixed**: Session management via `Mcp-Session-Id` header
+- **Timeouts**: Extended to 300s for complex analysis
+
 ### 🐛 **Fixed - Critical Database Persistence Bugs**
 
 #### **Async Writer Flush Bugs**
