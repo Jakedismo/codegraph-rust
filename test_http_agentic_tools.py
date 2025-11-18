@@ -182,7 +182,7 @@ class MCPHttpSession:
 
             # Add session ID if we have one
             if self.session_id:
-                headers["X-Session-ID"] = self.session_id
+                headers["Mcp-Session-Id"] = self.session_id
 
             response = self.session.post(
                 f"{self.base_url}/mcp",
@@ -193,21 +193,20 @@ class MCPHttpSession:
             )
 
             if response.status_code == 200:
-                # Parse SSE stream for JSON-RPC responses and session ID
+                # Extract session ID from response header (first request only)
+                if self.session_id is None and "Mcp-Session-Id" in response.headers:
+                    self.session_id = response.headers["Mcp-Session-Id"]
+                    print(f"   📝 Session ID: {self.session_id[:16]}...")
+
+                # Parse SSE stream for JSON-RPC responses
                 result_data = None
 
                 for line in response.iter_lines(decode_unicode=True):
                     if not line:
                         continue
 
-                    # SSE comments (session info)
+                    # Skip SSE comments
                     if line.startswith(':'):
-                        # Check for session ID in comments
-                        if 'session:' in line:
-                            session_id = line.split('session:')[1].strip()
-                            if self.session_id is None:
-                                self.session_id = session_id
-                                print(f"   📝 Session ID: {session_id[:16]}...")
                         continue
 
                     # SSE data events
