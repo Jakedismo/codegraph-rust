@@ -1367,29 +1367,61 @@ pub struct NodeEmbeddingRecord {
 const UPSERT_NODES_QUERY: &str = r#"
 LET $batch = $data;
 FOR $doc IN $batch {
-    UPSERT type::thing('nodes', $doc.id) CONTENT $doc;
+    UPSERT type::thing('nodes', $doc.id) SET
+        name = $doc.name,
+        node_type = $doc.node_type,
+        language = $doc.language,
+        content = $doc.content,
+        file_path = $doc.file_path,
+        start_line = $doc.start_line,
+        end_line = $doc.end_line,
+        embedding_384 = $doc.embedding_384,
+        embedding_768 = $doc.embedding_768,
+        embedding_1024 = $doc.embedding_1024,
+        embedding_2048 = $doc.embedding_2048,
+        embedding_4096 = $doc.embedding_4096,
+        embedding_model = $doc.embedding_model,
+        complexity = $doc.complexity,
+        metadata = $doc.metadata,
+        project_id = $doc.project_id,
+        organization_id = $doc.organization_id,
+        repository_url = $doc.repository_url,
+        domain = $doc.domain,
+        updated_at = time::now();
 }
 "#;
 
 const UPSERT_EDGES_QUERY: &str = r#"
 LET $batch = $data;
 FOR $doc IN $batch {
-    UPSERT type::thing('edges', $doc.id) CONTENT {
-        id: $doc.id,
-        from: type::thing('nodes', $doc.from),
-        to: type::thing('nodes', $doc.to),
-        edge_type: $doc.edge_type,
-        weight: $doc.weight,
-        metadata: $doc.metadata,
-        created_at: time::now()
-    };
+    UPSERT type::thing('edges', $doc.id) SET
+        from = type::thing('nodes', $doc.from),
+        to = type::thing('nodes', $doc.to),
+        edge_type = $doc.edge_type,
+        weight = $doc.weight,
+        metadata = $doc.metadata,
+        created_at = time::now();
 }
 "#;
 
 const UPSERT_SYMBOL_EMBEDDINGS_QUERY: &str = r#"
 LET $batch = $data;
 FOR $doc IN $batch {
-    UPSERT type::thing('symbol_embeddings', $doc.id) CONTENT $doc;
+    UPSERT type::thing('symbol_embeddings', $doc.id) SET
+        symbol = $doc.symbol,
+        normalized_symbol = $doc.normalized_symbol,
+        project_id = $doc.project_id,
+        organization_id = $doc.organization_id,
+        embedding_384 = $doc.embedding_384,
+        embedding_768 = $doc.embedding_768,
+        embedding_1024 = $doc.embedding_1024,
+        embedding_2048 = $doc.embedding_2048,
+        embedding_4096 = $doc.embedding_4096,
+        embedding_model = $doc.embedding_model,
+        node_id = $doc.node_id,
+        source_edge_id = $doc.source_edge_id,
+        metadata = $doc.metadata,
+        access_count = $doc.access_count;
 }
 "#;
 
