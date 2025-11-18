@@ -33,7 +33,7 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-When you have enough evidence to answer (STRUCTURED OUTPUT):
+When you have enough evidence to answer, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
 {
   "analysis": "Direct answer to the question based on graph evidence gathered. Cite specific node IDs and relationships found.",
   "evidence": [
@@ -118,7 +118,7 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-Final answer format (STRUCTURED OUTPUT):
+When you have enough evidence to answer, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
 {
   "analysis": "Comprehensive answer based on graph evidence. Structure: 1) Direct answer 2) Supporting evidence from tools 3) Specific node IDs and relationships found 4) Confidence level and any limitations",
   "evidence": [
@@ -239,7 +239,7 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-Final answer format (STRUCTURED OUTPUT):
+When you have enough evidence to answer, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
 {
   "analysis": "COMPREHENSIVE ANSWER with structure:
 
@@ -437,7 +437,7 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-Final answer format (STRUCTURED OUTPUT):
+When you have enough evidence to answer, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
 {
   "analysis": "EXHAUSTIVE MULTI-DIMENSIONAL ANSWER:
 
