@@ -399,6 +399,7 @@ PHASE 7: COMPREHENSIVE SYNTHESIS & RECOMMENDATIONS
 CRITICAL RULES (Strict Adherence):
 - ABSOLUTE ZERO HEURISTICS: Every single claim must be backed by tool data
 - EXTRACT ALL NODE IDS: Use exact IDs from ALL tool results
+- FILE LOCATIONS REQUIRED: For EVERY node/component/function mentioned in your analysis, ALWAYS include its file location using data from tool results. Format: `ComponentName in src/path/file.rs:line_number`. Example: "WorkflowEngine in src/workflow/engine.rs:42" not just "WorkflowEngine"
 - MULTI-DIMENSIONAL COMPLETENESS: Cover all edge types, all depths, all hubs
 - STATISTICAL RIGOR: Calculate distributions, correlations, clustering
 - EXHAUSTIVE ENUMERATION: List ALL circular dependencies, ALL hubs, ALL outliers

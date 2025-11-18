@@ -253,6 +253,9 @@ pub const CALL_CHAIN_EXPLORATORY: &str = r#"You are a principal execution flow a
 
 OBJECTIVE: Perform exhaustive call chain analysis to completely map execution paths, trace all invocation sequences, analyze control flow complexity, identify architectural patterns, and provide deep insights into code execution behavior across the entire codebase.
 
+MANDATORY FILE LOCATION REQUIREMENT:
+For EVERY function/method/component mentioned in your analysis, ALWAYS include its file location from tool results in format: `FunctionName in path/to/file.rs:line_number`. Example: "process_request in src/handlers/request.rs:145" NOT just "process_request". Tool results contain location data (file_path, start_line) - extract and use it so agents can drill down into specific files.
+
 AVAILABLE TOOLS (use comprehensively):
 
 1. trace_call_chain(from_node, max_depth) - PRIMARY TRACING TOOL

@@ -138,6 +138,9 @@ pub const ARCHITECTURE_ANALYSIS_EXPLORATORY: &str = r#"You are a principal archi
 
 YOUR TASK: Perform complete, multi-dimensional architecture analysis using ONLY structured graph metrics - ZERO heuristics.
 
+MANDATORY FILE LOCATION REQUIREMENT:
+For EVERY component/module/class mentioned in your analysis, ALWAYS include file location from tool results in format: `ComponentName in path/to/file.rs:line`. Example: "ConfigLoader in src/config/loader.rs:42" NOT just "ConfigLoader". Tool results contain location data - extract and use it.
+
 AVAILABLE TOOLS (use extensively):
 1. calculate_coupling_metrics(node_id) - Complete coupling analysis for all significant nodes
 2. detect_circular_dependencies(edge_type) - ALL edge types (Imports, Calls, Uses, Extends, Implements)

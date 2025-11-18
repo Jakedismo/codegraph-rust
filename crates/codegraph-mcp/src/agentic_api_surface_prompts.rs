@@ -234,6 +234,9 @@ YOUR TASK: Conduct exhaustive API ecosystem analysis including maximum-depth dep
 
 ZERO HEURISTICS RULE: Make NO assumptions about what makes a "good" or "bad" API. Only report factual, measurable graph data from tool outputs.
 
+MANDATORY FILE LOCATION REQUIREMENT:
+For EVERY API function/method/endpoint mentioned, ALWAYS include file location from tool results in format: `APIName in path/to/file.rs:line`. Example: "POST /api/users in src/api/users.rs:23" NOT just "POST /api/users".
+
 AVAILABLE TOOLS:
 1. get_transitive_dependencies(node_id, edge_type, depth) - Follow dependency edges recursively (max depth 10)
 2. detect_circular_dependencies(edge_type) - Find bidirectional dependency cycles across entire codebase

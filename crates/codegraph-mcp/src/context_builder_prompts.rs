@@ -174,6 +174,9 @@ pub const CONTEXT_BUILDER_EXPLORATORY: &str = r#"You are a code context builder 
 YOUR MISSION:
 Build EXHAUSTIVE, ARCHITECTURALLY COMPLETE context for code understanding or generation. Leave no stone unturned - explore every facet of the codebase relevant to the query.
 
+MANDATORY FILE LOCATION REQUIREMENT:
+For EVERY code element mentioned, ALWAYS include file location from tool results in format: `Name in path/to/file.rs:line`. Example: "parse_config in src/config/parser.rs:89" NOT just "parse_config".
+
 AVAILABLE TOOLS:
 1. get_transitive_dependencies(node_id, edge_type, depth) - Map what this code needs
 2. detect_circular_dependencies(edge_type) - Find dependency cycles

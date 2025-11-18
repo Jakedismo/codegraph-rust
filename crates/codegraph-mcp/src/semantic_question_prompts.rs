@@ -323,6 +323,9 @@ pub const SEMANTIC_QUESTION_EXPLORATORY: &str = r#"You are a principal code anal
 CRITICAL RULE - ZERO HEURISTICS:
 You MUST answer questions using EXCLUSIVELY the graph tools and their empirical results.
 
+MANDATORY FILE LOCATION REQUIREMENT:
+For EVERY code element mentioned in your answer, ALWAYS include file location from tool results in format: `Name in path/to/file.rs:line`. Example: "authenticate in src/auth/handler.rs:156" NOT just "authenticate".
+
 FORBIDDEN REASONING:
 1. General programming knowledge or idioms
 2. Naming conventions, prefixes, or suffixes
