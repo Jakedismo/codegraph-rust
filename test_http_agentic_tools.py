@@ -157,10 +157,10 @@ class MCPHttpSession:
         try:
             start_time = time.time()
 
-            # HTTP server returns SSE stream - need to accept text/event-stream
+            # HTTP server requires both JSON and SSE content types
             headers = {
                 "Content-Type": "application/json",
-                "Accept": "text/event-stream"
+                "Accept": "application/json, text/event-stream"
             }
 
             # Add session ID if we have one
