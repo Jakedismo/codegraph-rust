@@ -2235,6 +2235,38 @@ impl ProjectIndexer {
         let storage = self.surreal.lock().await;
         let mut file_metadata_records = Vec::new();
 
+        // Create progress bar for file metadata
+        let metadata_pb = self.progress.add(ProgressBar::new(files.len() as u64));
+        metadata_pb.set_style(
+            ProgressStyle::with_template("{spinner:.blue} {msg} [{bar:40.cyan/blue}] {pos}/{len}")
+                .unwrap()
+                .progress_chars("█▓▒░  "),
+        );
+        metadata_pb.set_message("💾 Processing file metadata");
+
+        // Build HashMap for O(1) lookups instead of O(N) iterations
+        let mut file_stats: HashMap<String, (i64, i64)> = HashMap::new();
+
+        // Count nodes per file - O(nodes)
+        for node in nodes {
+            let entry = file_stats.entry(node.location.file_path.clone()).or_insert((0, 0));
+            entry.0 += 1;
+        }
+
+        // Build node-to-file mapping for edge counting - O(nodes)
+        let node_file_map: HashMap<NodeId, String> = nodes
+            .iter()
+            .map(|n| (n.id, n.location.file_path.clone()))
+            .collect();
+
+        // Count edges per file - O(edges)
+        for edge in edges {
+            if let Some(file_path) = node_file_map.get(&edge.from) {
+                let entry = file_stats.entry(file_path.clone()).or_insert((0, 0));
+                entry.1 += 1;
+            }
+        }
+
         for file_path in files {
             let file_path_str = file_path.to_string_lossy().to_string();
 
@@ -2257,21 +2289,8 @@ impl ProjectIndexer {
                 })
                 .unwrap_or_else(chrono::Utc::now);
 
-            // Count nodes and edges for this file
-            let node_count = nodes
-                .iter()
-                .filter(|n| n.location.file_path == file_path_str)
-                .count() as i64;
-
-            let edge_count = edges
-                .iter()
-                .filter(|e| {
-                    // Check if edge is from a node in this file
-                    nodes
-                        .iter()
-                        .any(|n| n.id == e.from && n.location.file_path == file_path_str)
-                })
-                .count() as i64;
+            // Get counts from HashMap - O(1) lookup
+            let (node_count, edge_count) = file_stats.get(&file_path_str).copied().unwrap_or((0, 0));
 
             file_metadata_records.push(FileMetadataRecord {
                 file_path: file_path_str,
@@ -2285,10 +2304,16 @@ impl ProjectIndexer {
                 language: None, // Will be inferred from file extension if needed
                 parse_errors: None,
             });
+            metadata_pb.inc(1);
         }
 
         // Batch upsert file metadata
         storage.upsert_file_metadata_batch(&file_metadata_records).await?;
+
+        metadata_pb.finish_with_message(format!(
+            "💾 File metadata complete: {} files tracked",
+            files.len()
+        ));
 
         info!("💾 Persisted metadata for {} files", files.len());
         Ok(())
