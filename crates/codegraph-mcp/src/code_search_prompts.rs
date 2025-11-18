@@ -302,8 +302,8 @@ CRITICAL RULES (ABSOLUTELY MANDATORY):
 
 3. FILE LOCATIONS REQUIRED:
    - For EVERY node/function/class/component mentioned, ALWAYS include its file location from tool results
-   - Format: `ComponentName in path/to/file.rs:line_number` or `ComponentName (path/to/file.rs:line_number)`
-   - Example: "ConfigLoader in src/config/loader.rs:42" NOT just "ConfigLoader"
+   - Format: ComponentName in path/to/file.rs:line_number or ComponentName (path/to/file.rs:line_number)
+   - Example: \"ConfigLoader in src/config/loader.rs:42\" NOT just \"ConfigLoader\"
    - Tool results contain location data (file_path, start_line) - extract and use it
    - This allows agents to drill down into specific files when needed
 
