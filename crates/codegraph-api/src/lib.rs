@@ -16,10 +16,7 @@ pub mod http2_optimizer;
 pub mod lb_proxy;
 pub mod leak_guard;
 pub mod metrics;
-// Disabled legacy middleware module; use `auth` for request auth instead
-// pub mod middleware;
-// Legacy mutations module is disabled to avoid conflicts; mutations live in GraphQL resolvers
-// pub mod mutations;
+
 pub mod parser_ext;
 pub mod performance;
 #[cfg(feature = "graphql")]
@@ -56,8 +53,7 @@ pub use http2_optimizer::*;
 #[cfg(feature = "lb")]
 pub use lb_proxy::*;
 pub use metrics::*;
-// pub use middleware::*;
-// pub use mutations::*;
+
 pub use performance::*;
 #[cfg(feature = "graphql")]
 pub use queries::*;

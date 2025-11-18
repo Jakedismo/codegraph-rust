@@ -1,7 +1,7 @@
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use codegraph_core::GraphStore;
-use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result as CgResult};
+use codegraph_core::{CodeNode, NodeId, Result as CgResult};
 use crossbeam_skiplist::SkipMap;
 use std::sync::Arc;
 use thiserror::Error;

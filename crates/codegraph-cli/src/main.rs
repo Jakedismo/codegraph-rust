@@ -265,7 +265,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Initialize configuration
-    let config = ConfigManager::new(None).context("Failed to load configuration")?;
+    let config = ConfigManager::load().context("Failed to load configuration")?;
 
     // Initialize app state (for now, we'll create a temporary one)
     // In production, this would connect to the actual storage
@@ -432,7 +432,7 @@ async fn execute_version_command(
                     name: v.name,
                     description: v.description,
                     author: v.author,
-                    created_at: v.timestamp.to_rfc3339(),
+                    created_at: v.created_at.to_rfc3339(),
                 })
                 .collect();
 
@@ -455,7 +455,7 @@ async fn execute_version_command(
                 name: version.name,
                 description: version.description,
                 author: version.author,
-                created_at: version.timestamp.to_rfc3339(),
+                created_at: version.created_at.to_rfc3339(),
             };
 
             Ok(serde_json::to_value(result)?)
@@ -516,7 +516,7 @@ async fn execute_branch_command(
             name,
             from,
             author,
-            description,
+            description: _description,
         } => {
             let from_id = Uuid::parse_str(from).context("Invalid version ID")?;
 
@@ -627,7 +627,7 @@ async fn execute_search_command(
     }))
 }
 
-async fn execute_status_command(state: AppState) -> Result<serde_json::Value> {
+async fn execute_status_command(_state: AppState) -> Result<serde_json::Value> {
     let result = StatusResult {
         storage_path: "~/.codegraph".to_string(),
         status: "ok".to_string(),
