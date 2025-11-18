@@ -1294,7 +1294,8 @@ async fn handle_index(
         println!(
             "{}\n   • {}\n   • {}\n   • {}\n   • {}",
             "🧠 Using Local Embeddings".green(),
-            "384-dim all-mini-llm".green(),
+            "384-dim all-minilm:latest".green(),
+            "768-dim embeddingsgemma:latest".green(),
             "1024-dim qwen3-embedding:0.6b".green(),
             "2048-dim qwen3-embedding:4b".green(),
             "4096-dim qwen3-embedding:8b".green()

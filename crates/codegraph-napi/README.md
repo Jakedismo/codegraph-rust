@@ -106,7 +106,7 @@ dimension = 384
 
 # Optional: Jina AI cloud embeddings
 jina_api_key = "jina_xxx"  # Or use JINA_API_KEY env var
-jina_model = "jina-embeddings-v3"
+jina_model = "jina-embeddings-v4"
 jina_task_type = "retrieval.query"
 jina_enable_reranking = true
 

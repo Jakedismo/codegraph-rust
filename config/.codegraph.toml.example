@@ -13,10 +13,10 @@ provider = "lmstudio"
 # Model path or identifier
 # For ONNX: Absolute path to model directory (auto-detected from HuggingFace cache)
 # For Ollama: Model name (e.g., "all-minilm:latest")
-# For LM Studio: Model name (e.g., "jinaai/jina-embeddings-v3")
+# For LM Studio: Model name (e.g., "jinaai/jina-embeddings-v4")
 # For OpenAI: Model name (e.g., "text-embedding-3-small")
-# Recommended: jinaai/jina-embeddings-v3 (1536-dim, optimized for code)
-model = "jinaai/jina-embeddings-v3"
+# Recommended: jinaai/jina-embeddings-v4 (2048-dim, optimized for code)
+model = "jinaai/jina-embeddings-v4"
 
 # LM Studio URL (default port 1234)
 lmstudio_url = "http://localhost:1234"
@@ -28,8 +28,11 @@ ollama_url = "http://localhost:11434"
 # Can also be set via OPENAI_API_KEY environment variable
 # openai_api_key = "sk-..."
 
-# Embedding dimension (1536 for jina-code-embeddings-1.5b, 384 for all-MiniLM)
-dimension = 1536
+# Embedding dimension (2048 for jina-embeddings-v4, 384 for all-MiniLM, 1024 for qwen3-embedding:0.6b etc. check your model and what's available in the schema)
+# All mini-minilm:latest (ollama for speed)
+# embeddingsgemma or qwen3-embedding:0.6b or 4b or8b for local SOTA
+# Jina for SOTA accuracy
+dimension = 2048
 
 # Batch size for embedding generation (GPU optimization)
 batch_size = 64
