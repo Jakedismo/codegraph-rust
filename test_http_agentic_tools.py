@@ -6,11 +6,14 @@
 # Same test cases, same inputs, same output structure as STDIO version
 #
 # REQUIREMENTS:
-#   - HTTP server running: ./start_http_server.sh
-#   - Python dependencies:
-#     uv sync  # Recommended
+#   - HTTP server running on port 3003:
+#     codegraph start http --port 3003
 #     OR
-#     pip install requests python-dotenv
+#     ./start_http_server.sh
+#   - Python dependencies:
+#     pip install -r requirements-test.txt  # Includes requests, python-dotenv
+#     OR
+#     uv sync
 #
 # Usage:
 #   python3 test_http_agentic_tools.py
