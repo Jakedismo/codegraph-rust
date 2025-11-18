@@ -177,9 +177,16 @@ class MCPHttpSession:
 
             if response.status_code == 200:
                 # Extract session ID from response header (first request only)
-                if self.session_id is None and "Mcp-Session-Id" in response.headers:
-                    self.session_id = response.headers["Mcp-Session-Id"]
-                    print(f"   📝 Session ID: {self.session_id[:16]}...")
+                # Headers are case-insensitive in requests
+                if self.session_id is None:
+                    # Try different case variations
+                    for key in ['Mcp-Session-Id', 'mcp-session-id', 'MCP-SESSION-ID']:
+                        if key in response.headers:
+                            self.session_id = response.headers[key]
+                            print(f"   📝 Session ID: {self.session_id[:16]}...")
+                            break
+                    if self.session_id is None:
+                        print(f"   ⚠️  No session ID in headers: {list(response.headers.keys())}")
 
                 # Parse SSE stream for JSON-RPC responses
                 result_data = None
