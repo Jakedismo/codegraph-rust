@@ -31,8 +31,7 @@ DEFINE ANALYZER code_analyzer TOKENIZERS BLANK,CLASS FILTERS LOWERCASE,SNOWBALL(
 DEFINE TABLE IF NOT EXISTS nodes SCHEMAFULL
   COMMENT 'Code entities from AST parsing with semantic embeddings';
 
--- Core fields (preserved exactly)
-DEFINE FIELD IF NOT EXISTS id          ON TABLE nodes TYPE string;
+-- Core fields (id is built-in record type, no need to define it)
 DEFINE FIELD IF NOT EXISTS name        ON TABLE nodes TYPE string;
 DEFINE FIELD IF NOT EXISTS node_type   ON TABLE nodes TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS language    ON TABLE nodes TYPE option<string>;
@@ -97,7 +96,7 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_file_type ON TABLE nodes COLUMNS file_path,
 DEFINE TABLE IF NOT EXISTS edges SCHEMAFULL
   COMMENT 'Code relationships (Calls, Imports, Uses, Extends, Implements, References)';
 
-DEFINE FIELD IF NOT EXISTS id         ON TABLE edges TYPE string;
+-- id is built-in record type, no need to define it
 DEFINE FIELD IF NOT EXISTS from       ON TABLE edges TYPE record<nodes>;
 DEFINE FIELD IF NOT EXISTS to         ON TABLE edges TYPE record<nodes>;
 DEFINE FIELD IF NOT EXISTS edge_type  ON TABLE edges TYPE string;
@@ -214,7 +213,7 @@ DEFINE TABLE IF NOT EXISTS symbol_embeddings SCHEMAFULL
     COMMENT 'Cached embeddings for normalized symbols used during edge resolution'
     PERMISSIONS FULL;
 
-DEFINE FIELD IF NOT EXISTS id                 ON symbol_embeddings TYPE string;
+-- id is built-in record type, no need to define it
 DEFINE FIELD IF NOT EXISTS symbol             ON symbol_embeddings TYPE string;
 DEFINE FIELD IF NOT EXISTS normalized_symbol  ON symbol_embeddings TYPE string;
 DEFINE FIELD IF NOT EXISTS project_id         ON symbol_embeddings TYPE option<string>;
@@ -293,15 +292,7 @@ DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_edge
 -- -----------------------------------------------------------------------------
 -- FUNCTION: node_info (UNCHANGED)
 -- -----------------------------------------------------------------------------
-DEFINE FUNCTION fn::node_info($node_id: string) {
-    -- Build full record ID string ("nodes:uuid" format)
-    LET $full_id = IF string::starts_with($node_id, 'nodes:') THEN
-        $node_id
-    ELSE
-        string::concat('nodes:', $node_id)
-    END;
-
-    -- Cast string to record and query
+DEFINE FUNCTION fn::node_info($node_id: record) {
     LET $res = SELECT
         id,
         name,
@@ -314,7 +305,7 @@ DEFINE FUNCTION fn::node_info($node_id: string) {
             start_line: start_line,
             end_line: end_line
         } AS location
-    FROM ONLY <record> $full_id;
+    FROM ONLY $node_id;
 
     RETURN $res;
 };
