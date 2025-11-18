@@ -5,6 +5,150 @@ All notable changes to the CodeGraph MCP Intelligence Platform will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-11-18 - AutoAgents Integration & SurrealDB 2.x Compatibility
+
+### 🚀 **Added - AutoAgents Framework Integration (Experimental)**
+
+#### **AutoAgents ReAct Pattern**
+- **Replaced custom orchestrator** with AutoAgents framework (~1,200 lines removed)
+- **Feature flag**: `autoagents-experimental` for opt-in testing
+- **6 inner graph analysis tools** for ReAct agent:
+  - `GetTransitiveDependencies`, `GetReverseDependencies`, `TraceCallChain`
+  - `DetectCycles`, `CalculateCoupling`, `GetHubNodes`
+- **Tool call parsing**: Converts CodeGraph JSON format to AutoAgents ToolCall format
+- **Maintains all 7 agentic MCP tools**: Full compatibility with existing API
+- **Tier-aware prompting**: Preserved from legacy orchestrator
+
+#### **Semantic Chunking with Qwen2.5-Coder Tokenizer**
+- **Ollama provider**: Added full semantic chunking support
+- **Fallback mode**: Semantic chunking when embeddings feature disabled
+- **Environment variables**:
+  - `CODEGRAPH_MAX_CHUNK_TOKENS=512` - Max tokens per chunk (default)
+  - `CODEGRAPH_CHUNK_OVERLAP_TOKENS=50` - Chunk overlap (reserved for future)
+- **Token-accurate**: Uses Qwen2.5-Coder tokenizer for precise token counting
+- **Chunk aggregation**: Multiple chunks averaged into single node embedding
+- **Benefits**: Better embeddings for long functions/classes, preserves code structure
+
+#### **768-Dimension Embedding Support**
+- **Added support for embeddinggemma** and other 768-dim models
+- **Complete pipeline**: Indexer, storage, HNSW indexes, vector search
+- **New constant**: `SURR_EMBEDDING_COLUMN_768`
+- **Schema**: HNSW index for `embedding_768` column with EFC 200, M 16
+- **Auto-detection**: Automatic column selection based on embedding dimension
+
+#### **File Location Requirements in Agent Outputs**
+- **All EXPLORATORY prompts** now require file locations in responses
+- **Format**: `ComponentName in path/to/file.rs:line_number`
+- **Example**: "ConfigLoader in src/config/loader.rs:42" instead of just "ConfigLoader"
+- **6 prompts updated**: code_search, dependency_analysis, call_chain, architecture, context_builder, semantic_question, api_surface
+- **Enables**: Downstream agents can drill into specific files for detailed analysis
+
+### 🐛 **Fixed - Critical Database Persistence Bugs**
+
+#### **Async Writer Flush Bugs**
+- **file_metadata flush**: Added missing flush after `persist_file_metadata()` (line 1237)
+  - **Impact**: project_metadata and file_metadata tables remained empty
+  - **Root cause**: Metadata queued but never written before shutdown
+- **symbol_embeddings flush**: Added flush after symbol embedding precomputation (line 979)
+  - **Impact**: symbol_embeddings table incomplete or empty
+  - **Root cause**: Embeddings queued but not flushed before edge resolution
+- **embedding_model tracking**: Added to node metadata in `annotate_node()`
+  - **Impact**: Nodes showed hardcoded 'jina-embeddings-v4' instead of actual model
+  - **Root cause**: embedding_model not added to metadata attributes
+
+#### **AutoAgents Runtime Fixes**
+- **Tool call parsing**: Implemented `tool_calls()` method to extract ToolCall from CodeGraph JSON
+  - **Impact**: Agent was stopping at step 0, tools never executed
+  - **Root cause**: `CodeGraphChatResponse::tool_calls()` always returned None
+- **Runtime panic**: Fixed "Cannot start a runtime from within a runtime"
+  - **Impact**: Tool execution crashed with panic
+  - **Root cause**: Using `block_on` directly in async context
+  - **Fix**: Wrapped in `tokio::task::block_in_place` at tool_executor_adapter.rs:38
+- **Steps reporting**: Fixed `steps_taken` to show actual tool execution count
+  - **Impact**: Always showed "0" even when tools executed
+  - **Fix**: Extract count from `ReActAgentOutput.tool_calls.len()`
+- **Feature-gate warning**: Fixed unused `ai_matches` variable warning
+  - **Fix**: Added `#[cfg(feature = "ai-enhanced")]` to declaration and accumulation
+
+### 🐛 **Fixed - SurrealDB 2.x Compatibility**
+
+#### **Record ID System Overhaul**
+- **Removed manual id field definitions** from 3 tables (nodes, edges, symbol_embeddings)
+  - **Impact**: Defining `id` as string broke SurrealDB's built-in record ID system
+  - **Root cause**: SurrealDB 2.x `id` is always a record type, overriding with string breaks queries
+- **Updated fn::node_info()**: Changed parameter type from `string` to `record`
+- **Added explicit record casting** to all 5 graph functions:
+  - `fn::node_reference()`, `fn::get_transitive_dependencies()`, `fn::trace_call_chain()`
+  - `fn::calculate_coupling_metrics()`, `fn::get_reverse_dependencies()`
+  - **Pattern**: `LET $record = type::thing('nodes', $node_id);`
+  - **Ref**: https://surrealdb.com/docs/surrealql/datamodel/casting
+- **Changed UPSERT queries** from `CONTENT` to `SET`:
+  - **Impact**: CONTENT $doc tried to overwrite id field with string → data corruption
+  - **Fix**: Explicit SET field list excludes id field
+  - **Applies to**: UPSERT_NODES_QUERY, UPSERT_EDGES_QUERY, UPSERT_SYMBOL_EMBEDDINGS_QUERY
+
+#### **Schema Syntax Corrections**
+- **ASSERT statements**: Added `$value = NONE OR` for proper null handling
+- **FLEXIBLE metadata**: Changed metadata fields to `FLEXIBLE TYPE option<object>`
+- **HNSW syntax**: Corrected index definitions for SurrealDB 2.3.10
+- **Removed duplicate**: Eliminated duplicate ANALYZER definition
+
+### ⚡ **Performance Improvements**
+
+#### **File Metadata Optimization (120x Faster)**
+- **Optimized complexity**: O(N²) → O(N) using HashMaps
+- **Before**: 2 minutes for 1,000 files (10M+ iterations)
+- **After**: ~1 second for 1,000 files (15K iterations)
+- **Pattern**: Pre-build lookup tables instead of nested iterations
+- **Added progress bar**: Shows file-by-file processing status
+
+#### **Throughput Display Fixes**
+- **Fixed duplicate units**: "21,970/s/s" → "21,970/s"
+- **Root cause**: `{per_sec}` placeholder already includes "/s" suffix
+- **Fixed 3 progress bars**: batch, enhanced, simple progress templates
+
+### 🗑️ **Removed**
+- **Dependency cleanup**: Removed 79 unused dependencies across 17 crates
+  - **Tool**: cargo machete for detection
+  - **Impact**: Faster compilation, smaller binaries
+- **Broken schema files**: Deleted 6 individual function files in `schema/functions/`
+  - **calculate_coupling_metrics.surql**: Syntax error with orphaned code
+  - **detect_circular_dependencies.surql**: Wrong function name (fn::coupling_metrics)
+  - **get_hub_nodes.surql**: Wrong function signature
+  - **get_reverse_dependencies.surql, get_transitive_dependencies.surql, trace_call_chain.surql**: Incomplete implementations
+  - **Impact**: Conflicted with correct implementations in codegraph.surql
+
+### ⚠️ **Breaking Changes**
+
+#### **SurrealDB Schema Migration Required**
+- **Record ID system change**: Manual `id` field definitions removed
+- **Migration steps**:
+  1. Re-apply schema: `cd schema && ./apply-schema.sh`
+  2. Re-index codebase: `codegraph index -l rust -r --force .`
+- **Reason**: Compatibility with SurrealDB 2.x record ID handling
+- **Impact**: Existing data incompatible, full re-index required
+
+#### **AutoAgents Feature Flag**
+- **Default**: Uses legacy orchestrator (stable)
+- **Experimental**: Use `autoagents-experimental` feature for new framework
+- **Build**: `cargo build --features "autoagents-experimental,ai-enhanced,faiss,ollama"`
+- **Status**: Testing in progress, production-ready in v1.2.0
+
+### 📝 **Changed**
+
+#### **Environment Variables**
+- **Unified chunking**: `CODEGRAPH_MAX_CHUNK_TOKENS` now works across all providers
+- **Ollama support**: Ollama provider now respects chunking configuration
+- **Jina unchanged**: Still uses `JINA_MAX_TOKENS` (provider-specific)
+
+### 📚 **Documentation**
+- **GraphFunctions enrichment plan**: Comprehensive plan saved to `.ouroboros/plans/graphfunctions-enrichment-20251118.md`
+  - Schema alignment recommendations
+  - Missing field identification (qualified_name, column positions, timestamps)
+  - Implementation phases with SQL examples
+
+---
+
 ## [Unreleased] - 2025-01-08 - Agentic Code Intelligence & Architecture Migration
 
 ### 🚀 **Added - Agentic MCP Tools (AI-Enhanced Feature)**
