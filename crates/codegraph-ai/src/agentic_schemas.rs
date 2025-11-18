@@ -57,8 +57,8 @@ pub struct DependencyAnalysisOutput {
     pub analysis: String,
     /// Components involved in the dependency graph
     pub components: Vec<FileLocation>,
-    /// Dependency relationships
-    pub dependencies: Vec<DependencyLink>,
+    /// Dependency relationships (flexible: can be strings or DependencyLink objects)
+    pub dependencies: Vec<serde_json::Value>,
     /// Circular dependencies detected (if any)
     pub circular_dependencies: Vec<Vec<String>>,
     /// Depth of dependency tree analyzed
@@ -87,8 +87,8 @@ pub struct CallChainOutput {
     pub analysis: String,
     /// Entry point of the call chain
     pub entry_point: FileLocation,
-    /// Ordered call chain steps
-    pub call_chain: Vec<CallChainStep>,
+    /// Ordered call chain steps (flexible: can be strings or CallChainStep objects)
+    pub call_chain: Vec<serde_json::Value>,
     /// Key decision points or branches
     pub decision_points: Vec<FileLocation>,
 }
@@ -122,12 +122,12 @@ pub struct CouplingMetric {
 pub struct ArchitectureAnalysisOutput {
     /// Natural language architecture analysis
     pub analysis: String,
-    /// Architectural layers identified
-    pub layers: Vec<ArchitectureLayer>,
+    /// Architectural layers identified (flexible: can be strings or ArchitectureLayer objects)
+    pub layers: Vec<serde_json::Value>,
     /// Hub nodes (highly connected components)
     pub hub_nodes: Vec<FileLocation>,
-    /// Coupling metrics for key components
-    pub coupling_metrics: Vec<CouplingMetric>,
+    /// Coupling metrics (flexible: can be strings or CouplingMetric objects)
+    pub coupling_metrics: Vec<serde_json::Value>,
     /// Architectural patterns detected
     pub patterns: Vec<String>,
     /// Architectural issues or smells
@@ -232,10 +232,9 @@ impl AgenticOutput {
                 locs
             }
             Self::ArchitectureAnalysis(o) => {
-                let mut locs: Vec<&FileLocation> = o.hub_nodes.iter().collect();
-                locs.extend(o.layers.iter().flat_map(|l| l.components.iter()));
-                locs.extend(o.coupling_metrics.iter().map(|m| &m.component));
-                locs
+                // Only extract hub_nodes (direct FileLocation array)
+                // layers and coupling_metrics are now flexible Value types
+                o.hub_nodes.iter().collect()
             }
             Self::APISurface(o) => o.integration_points.iter().collect(),
             Self::ContextBuilder(o) => {
