@@ -306,6 +306,97 @@ impl ChatResponse for CodeGraphChatResponse {
 }
 
 // ============================================================================
+// Tier-Aware ReAct Agent Wrapper
+// ============================================================================
+
+/// Wrapper around ReActAgent that overrides max_turns configuration
+/// This allows tier-aware max_turns without forking AutoAgents
+#[derive(Debug)]
+pub struct TierAwareReActAgent<T: AgentDeriveT> {
+    inner: ReActAgent<T>,
+    inner_derive: Arc<T>,
+    max_turns: usize,
+}
+
+impl<T: AgentDeriveT + AgentHooks + Clone> TierAwareReActAgent<T> {
+    pub fn new(agent: T, max_turns: usize) -> Self {
+        let agent_arc = Arc::new(agent);
+        Self {
+            inner: ReActAgent::new((*agent_arc).clone()),
+            inner_derive: agent_arc,
+            max_turns,
+        }
+    }
+}
+
+impl<T: AgentDeriveT + AgentHooks + Clone> AgentDeriveT for TierAwareReActAgent<T> {
+    type Output = T::Output;
+
+    fn description(&self) -> &'static str {
+        self.inner_derive.description()
+    }
+
+    fn name(&self) -> &'static str {
+        self.inner_derive.name()
+    }
+
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        self.inner_derive.output_schema()
+    }
+
+    fn tools(&self) -> Vec<Box<dyn ToolT>> {
+        self.inner_derive.tools()
+    }
+}
+
+impl<T: AgentDeriveT + AgentHooks + Clone> AgentHooks for TierAwareReActAgent<T> {}
+
+impl<T: AgentDeriveT + AgentHooks + Clone> Clone for TierAwareReActAgent<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: ReActAgent::new((*self.inner_derive).clone()),
+            inner_derive: Arc::clone(&self.inner_derive),
+            max_turns: self.max_turns,
+        }
+    }
+}
+
+#[async_trait]
+impl<T: AgentDeriveT + AgentHooks + Clone> AgentExecutor for TierAwareReActAgent<T> {
+    type Output = <ReActAgent<T> as AgentExecutor>::Output;
+    type Error = <ReActAgent<T> as AgentExecutor>::Error;
+
+    fn config(&self) -> ExecutorConfig {
+        ExecutorConfig {
+            max_turns: self.max_turns,
+        }
+    }
+
+    async fn execute(
+        &self,
+        task: &autoagents::core::agent::task::Task,
+        context: Arc<Context>,
+    ) -> Result<Self::Output, Self::Error> {
+        self.inner.execute(task, context).await
+    }
+
+    async fn execute_stream(
+        &self,
+        task: &autoagents::core::agent::task::Task,
+        context: Arc<Context>,
+    ) -> Result<
+        std::pin::Pin<
+            Box<
+                dyn futures::Stream<Item = Result<Self::Output, Self::Error>> + Send,
+            >,
+        >,
+        Self::Error,
+    > {
+        self.inner.execute_stream(task, context).await
+    }
+}
+
+// ============================================================================
 // Agent Builder
 // ============================================================================
 
@@ -319,13 +410,12 @@ use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use autoagents::core::agent::memory::SlidingWindowMemory;
 use autoagents::core::agent::prebuilt::executor::ReActAgent;
 use autoagents::core::agent::AgentBuilder;
-use autoagents::core::agent::{AgentDeriveT, AgentHooks, AgentOutputT, DirectAgentHandle, ExecutorConfig};
+use autoagents::core::agent::{AgentDeriveT, AgentExecutor, AgentHooks, AgentOutputT, Context, DirectAgentHandle, ExecutorConfig};
 use autoagents::core::error::Error as AutoAgentsError;
 use autoagents::core::tool::{shared_tools_to_boxes, ToolT};
-use autoagents_derive::AgentHooks;
 
 /// Agent implementation for CodeGraph with manual tool registration
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CodeGraphReActAgent {
     tools: Vec<Arc<dyn ToolT>>,
     system_prompt: String,
@@ -370,11 +460,6 @@ impl AgentDeriveT for CodeGraphReActAgent {
 }
 
 impl AgentHooks for CodeGraphReActAgent {}
-
-// NOTE: AutoAgents ReActAgent has max_turns hardcoded to 10 in version 8248b4e
-// We calculate tier-aware max_iterations (5-20) but can't override ReActAgent's config()
-// This is a known limitation - agents will stop at 10 turns regardless of tier
-// TODO: Update AutoAgents version or fork to allow configurable max_turns
 
 /// Builder for CodeGraph AutoAgents workflows
 pub struct CodeGraphAgentBuilder {
@@ -435,13 +520,13 @@ impl CodeGraphAgentBuilder {
             max_iterations,
         };
 
-        // Build ReAct agent with our CodeGraph agent
-        let react_agent = ReActAgent::new(codegraph_agent);
+        // Wrap in TierAwareReActAgent to override max_turns configuration
+        let tier_aware_agent = TierAwareReActAgent::new(codegraph_agent, max_iterations);
 
         // Build full agent with configuration
         // System prompt injected via AgentDeriveT::description() using Box::leak pattern
         use autoagents::core::agent::DirectAgent;
-        let agent = AgentBuilder::<_, DirectAgent>::new(react_agent)
+        let agent = AgentBuilder::<_, DirectAgent>::new(tier_aware_agent)
             .llm(self.llm_adapter)
             .memory(memory)
             .build()
@@ -457,7 +542,7 @@ impl CodeGraphAgentBuilder {
 
 /// Handle for executing CodeGraph agent
 pub struct AgentHandle {
-    pub agent: DirectAgentHandle<ReActAgent<CodeGraphReActAgent>>,
+    pub agent: DirectAgentHandle<TierAwareReActAgent<CodeGraphReActAgent>>,
     pub tier: ContextTier,
     pub analysis_type: AnalysisType,
 }
@@ -543,11 +628,61 @@ mod tests {
     #[tokio::test]
     async fn test_chat_adapter_integration() {
         let mock_llm = Arc::new(MockCodeGraphLLM);
-        let adapter = CodeGraphChatAdapter::new(mock_llm);
+        let adapter = CodeGraphChatAdapter::new(mock_llm, ContextTier::Medium);
 
         let messages = vec![ChatMessage::user().content("Hello").build()];
         let response = adapter.chat(&messages, None, None).await.unwrap();
 
         assert_eq!(response.text(), Some("Echo: Hello".to_string()));
+    }
+
+    #[test]
+    fn test_tier_aware_max_turns_small() {
+        // Test that Small tier gets 5 max_turns
+        let agent = create_mock_codegraph_agent(ContextTier::Small);
+        let wrapper = TierAwareReActAgent::new(agent, 5);
+
+        let config = wrapper.config();
+        assert_eq!(config.max_turns, 5, "Small tier should have 5 max_turns");
+    }
+
+    #[test]
+    fn test_tier_aware_max_turns_medium() {
+        // Test that Medium tier gets 10 max_turns
+        let agent = create_mock_codegraph_agent(ContextTier::Medium);
+        let wrapper = TierAwareReActAgent::new(agent, 10);
+
+        let config = wrapper.config();
+        assert_eq!(config.max_turns, 10, "Medium tier should have 10 max_turns");
+    }
+
+    #[test]
+    fn test_tier_aware_max_turns_large() {
+        // Test that Large tier gets 15 max_turns
+        let agent = create_mock_codegraph_agent(ContextTier::Large);
+        let wrapper = TierAwareReActAgent::new(agent, 15);
+
+        let config = wrapper.config();
+        assert_eq!(config.max_turns, 15, "Large tier should have 15 max_turns");
+    }
+
+    #[test]
+    fn test_tier_aware_max_turns_massive() {
+        // Test that Massive tier gets 20 max_turns
+        let agent = create_mock_codegraph_agent(ContextTier::Massive);
+        let wrapper = TierAwareReActAgent::new(agent, 20);
+
+        let config = wrapper.config();
+        assert_eq!(config.max_turns, 20, "Massive tier should have 20 max_turns");
+    }
+
+    // Helper function to create mock agent for testing
+    fn create_mock_codegraph_agent(_tier: ContextTier) -> CodeGraphReActAgent {
+        CodeGraphReActAgent {
+            tools: vec![],
+            system_prompt: "Test prompt".to_string(),
+            analysis_type: AnalysisType::CodeSearch,
+            max_iterations: 10,
+        }
     }
 }
