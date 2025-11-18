@@ -812,7 +812,7 @@ cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experi
 | **Vector search (cloud)** | 2-5ms latency | SurrealDB HNSW |
 | **Jina AI embeddings** | 50-150ms per query | Cloud API call overhead |
 | **Jina reranking** | 80-200ms for top-K | Two-stage retrieval |
-| **Ollama embeddings** | ~60 embeddings/sec | About half LM Studio speed |
+| **Ollama embeddings** | ~1024 embeddings/30sec | all-minillm:latest (Ollama) |
 
 ### Optimizations (Enabled by Default)
 

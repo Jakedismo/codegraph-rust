@@ -199,19 +199,36 @@ impl OllamaEmbeddingProvider {
     }
 
     fn prepare_text(&self, node: &CodeNode) -> Vec<String> {
+        let formatted = Self::format_node_text(node);
+
+        // Use tokenizer to accurately check if chunking is needed
+        let token_count = self.tokenizer
+            .encode(formatted.as_str(), false)
+            .map(|enc| enc.len())
+            .unwrap_or_else(|_| (formatted.len() + 3) / 4);  // Fallback to char approximation
+
+        if token_count <= self.config.max_tokens_per_text {
+            // Fast path: Node is under token limit - no chunking needed (99% of nodes!)
+            return vec![formatted];
+        }
+
+        // Slow path: Node exceeds token limit - use semantic chunking
+        debug!(
+            "Node '{}' has {} tokens (limit: {}), chunking required",
+            node.name, token_count, self.config.max_tokens_per_text
+        );
+
         let plan = self.build_plan_for_nodes(std::slice::from_ref(node));
         if plan.chunks.is_empty() {
-            return vec![Self::format_node_text(node)];
+            return vec![formatted];
         }
 
         let texts: Vec<String> = plan.chunks.into_iter().map(|chunk| chunk.text).collect();
 
-        if texts.len() > 1 {
-            debug!(
-                "Chunked node '{}' into {} chunks (max {} tokens)",
-                node.name, texts.len(), self.config.max_tokens_per_text
-            );
-        }
+        debug!(
+            "Chunked large node '{}' into {} chunks (was {} tokens)",
+            node.name, texts.len(), token_count
+        );
 
         texts
     }
@@ -324,6 +341,7 @@ impl OllamaEmbeddingProvider {
         Ok(all_embeddings)
     }
 
+    #[allow(dead_code)]
     fn effective_batch_size(&self, requested: usize) -> usize {
         let provider_limit = self.config.batch_size.max(1);
         requested.max(1).min(provider_limit)
@@ -434,7 +452,7 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
     async fn generate_embeddings_with_config(
         &self,
         nodes: &[CodeNode],
-        config: &BatchConfig,
+        _config: &BatchConfig,
     ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)> {
         let start_time = Instant::now();
 
