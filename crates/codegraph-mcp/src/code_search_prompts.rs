@@ -18,11 +18,10 @@ TOOLS AVAILABLE:
 CRITICAL RULES:
 1. NO ASSUMPTIONS - Use tool outputs ONLY for all inference
 2. Extract node IDs from tool results - never invent them
-3. Respond ONLY in this JSON format:
-   {\"reasoning\": \"what you're doing\", \"tool_call\": {\"tool_name\": \"...\", \"parameters\": {...}}, \"is_final\": false}
-4. Final answer (STRUCTURED): {\"analysis\": \"final answer\", \"components\": [{\"name\": \"X\", \"file_path\": \"a.rs\", \"line_number\": 1}], \"patterns\": []}
-   MANDATORY: components array must include file paths from tool results
-5. Minimize steps - be targeted and focused
+3. FORMAT:
+   - Intermediate: {\"reasoning\": \"...\", \"tool_call\": {...}, \"is_final\": false}
+   - Final: {\"analysis\": \"...\", \"components\": [{\"name\": \"X\", \"file_path\": \"a.rs\", \"line_number\": 1}], \"patterns\": []}
+4. Minimize steps - be targeted and focused
 
 STRATEGY:
 - Start with hub_nodes or reverse_dependencies for discovery
@@ -66,28 +65,9 @@ CRITICAL RULES:
 1. ZERO HEURISTICS: Make NO assumptions - use ONLY structured tool outputs for ALL inference
 2. Extract node IDs from tool results - NEVER fabricate or guess node IDs
 3. Build on previous results - reference specific data from tool outputs
-4. Respond in this exact JSON format:
-   {
-     \"reasoning\": \"Explanation of what you're doing and why\",
-     \"tool_call\": {
-       \"tool_name\": \"name_of_tool\",
-       \"parameters\": {\"param1\": \"value1\", ...}
-     },
-     \"is_final\": false
-   }
-5. When complete (STRUCTURED OUTPUT):
-   {
-     \"analysis\": \"Your comprehensive final answer based on tool outputs\",
-     \"components\": [
-       {
-         \"name\": \"ComponentName\",
-         \"file_path\": \"relative/path/to/file.rs\",
-         \"line_number\": 42
-       }
-     ],
-     \"patterns\": [\"Pattern 1: Description\", \"Pattern 2: Description\"]
-   }
-   MANDATORY: components array must include file paths from tool results
+4. FORMAT:
+   - Intermediate: {\"reasoning\": \"...\", \"tool_call\": {...}, \"is_final\": false}
+   - Final: {\"analysis\": \"...\", \"components\": [{\"name\": \"X\", \"file_path\": \"a.rs\", \"line_number\": 1}], \"patterns\": []}
 
 SEARCH STRATEGY:
 - Discovery: Use get_hub_nodes to find central components
@@ -171,36 +151,9 @@ CRITICAL RULES (MANDATORY):
    - Cite specific data points from tool outputs
    - Chain tool calls logically based on discovered information
 
-4. RESPONSE FORMAT (EXACT JSON):
-   For intermediate steps:
-   {
-     \"reasoning\": \"Detailed explanation of what you're doing, why, and what you expect to learn. Reference specific data from previous tool outputs.\",
-     \"tool_call\": {
-       \"tool_name\": \"exact_tool_name\",
-       \"parameters\": {
-         \"parameter_name\": \"value_extracted_from_previous_results\"
-       }
-     },
-     \"is_final\": false
-   }
-
-   For final answer (STRUCTURED OUTPUT):
-   {
-     \"analysis\": \"Comprehensive answer synthesizing ALL tool outputs. Include specific findings, metrics, and relationships discovered through tool calls.\",
-     \"components\": [
-       {
-         \"name\": \"ComponentName\",
-         \"file_path\": \"relative/path/to/file.rs\",
-         \"line_number\": 42,
-         \"description\": \"Brief description of component's role\"
-       }
-     ],
-     \"patterns\": [
-       \"Pattern 1: Architectural or coding pattern observed\",
-       \"Pattern 2: Another significant pattern discovered\"
-     ]
-   }
-   MANDATORY: components array must include file paths from tool results
+4. FORMAT:
+   - Intermediate: {\"reasoning\": \"...\", \"tool_call\": {...}, \"is_final\": false}
+   - Final: {\"analysis\": \"...\", \"components\": [{\"name\": \"X\", \"file_path\": \"a.rs\", \"line_number\": 1, \"description\": \"...\"}], \"patterns\": []}
 
 SEARCH STRATEGY (MULTI-PHASE APPROACH):
 
@@ -333,55 +286,9 @@ CRITICAL RULES (ABSOLUTELY MANDATORY):
    - Synthesize patterns only when supported by multiple tool outputs
    - Document contradictions or unexpected results for investigation
 
-4. EXACT RESPONSE FORMAT (MANDATORY JSON STRUCTURE):
-
-   For intermediate reasoning steps:
-   {
-     \"reasoning\": \"
-       MULTI-PARAGRAPH EXPLANATION:
-
-       Paragraph 1: What I'm doing in this step and why (cite previous findings)
-       Paragraph 2: What specific tool I'm calling and what parameters I'm using (explain parameter choices based on data)
-       Paragraph 3: What I expect to learn and how it connects to the search goal
-       Paragraph 4: How this relates to findings from previous tool calls (cross-reference specific results)
-     \",
-     \"tool_call\": {
-       \"tool_name\": \"exact_tool_name_from_available_tools\",
-       \"parameters\": {
-         \"parameter1\": \"value_extracted_from_previous_tool_output\",
-         \"parameter2\": value_calculated_from_results
-       }
-     },
-     \"is_final\": false
-   }
-
-   For final comprehensive answer (STRUCTURED OUTPUT):
-   {
-     \"analysis\": \"COMPREHENSIVE SYNTHESIS (MULTIPLE PARAGRAPHS):
-
-       Section 1 - DISCOVERY SUMMARY: What nodes, patterns, and structures were found
-       Section 2 - RELATIONSHIP ANALYSIS: Dependency chains, coupling patterns, architectural relationships
-       Section 3 - IMPACT ASSESSMENT: Change impact, blast radius, critical dependencies
-       Section 4 - ARCHITECTURAL INSIGHTS: Hotspots, anti-patterns, quality metrics
-       Section 5 - CROSS-VALIDATED FINDINGS: Patterns confirmed by multiple tool calls
-       Section 6 - FINAL ANSWER: Direct answer to search query with complete supporting evidence
-
-       ALL claims must cite specific tool outputs with exact data points.\",
-     \"components\": [
-       {
-         \"name\": \"ComponentName\",
-         \"file_path\": \"relative/path/to/file.rs\",
-         \"line_number\": 42,
-         \"description\": \"Brief description of component's role\"
-       }
-     ],
-     \"patterns\": [
-       \"Pattern 1: Architectural or coding pattern observed\",
-       \"Pattern 2: Another significant pattern discovered\"
-     ]
-   }
-
-   MANDATORY: The components array MUST include ALL relevant components with file paths from tool results.
+4. FORMAT:
+   - Intermediate: {\"reasoning\": \"...\", \"tool_call\": {...}, \"is_final\": false}
+   - Final: {\"analysis\": \"...\", \"components\": [{\"name\": \"X\", \"file_path\": \"a.rs\", \"line_number\": 1, \"description\": \"...\"}], \"patterns\": []}
 
 EXPLORATORY SEARCH STRATEGY (MULTI-DIMENSIONAL DEEP ANALYSIS):
 

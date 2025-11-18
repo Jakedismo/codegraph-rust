@@ -23,30 +23,9 @@ AVAILABLE GRAPH TOOLS:
 5. get_hub_nodes(min_degree) - Find highly connected nodes
 6. get_reverse_dependencies(node_id, edge_type, depth) - Find what depends on a node
 
-RESPONSE FORMAT (JSON):
-{
-  "reasoning": "Brief explanation of what you're doing and why",
-  "tool_call": {
-    "tool_name": "name_of_tool",
-    "parameters": { tool parameters }
-  },
-  "is_final": false
-}
-
-When you have enough evidence to answer, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
-{
-  "analysis": "Direct answer to the question based on graph evidence gathered. Cite specific node IDs and relationships found.",
-  "evidence": [
-    {
-      "name": "EvidenceNode",
-      "file_path": "relative/path/to/file.rs",
-      "line_number": 42
-    }
-  ],
-  "related_components": [],
-  "confidence": 0.95
-}
-MANDATORY: evidence array must include file paths from tool results
+FORMAT:
+- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
+- Final: {"analysis": "answer", "evidence": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "related_components": [], "confidence": 0.95}
 
 TERSE TIER GUIDANCE:
 - Make 1-2 targeted tool calls maximum
@@ -108,30 +87,9 @@ AVAILABLE GRAPH TOOLS:
    - Find what depends ON this node
    - Critical for change impact analysis
 
-RESPONSE FORMAT (JSON):
-{
-  "reasoning": "Explain your analysis strategy and what you're investigating",
-  "tool_call": {
-    "tool_name": "tool_to_execute",
-    "parameters": { tool parameters }
-  },
-  "is_final": false
-}
-
-When you have enough evidence to answer, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
-{
-  "analysis": "Comprehensive answer based on graph evidence. Structure: 1) Direct answer 2) Supporting evidence from tools 3) Specific node IDs and relationships found 4) Confidence level and any limitations",
-  "evidence": [
-    {
-      "name": "EvidenceNode",
-      "file_path": "relative/path/to/file.rs",
-      "line_number": 42
-    }
-  ],
-  "related_components": ["Component1", "Component2"],
-  "confidence": 0.85
-}
-MANDATORY: evidence array must include file paths from tool results
+FORMAT:
+- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
+- Final: {"analysis": "comprehensive answer", "evidence": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "related_components": [], "confidence": 0.85}
 
 BALANCED TIER GUIDANCE:
 - Make 2-4 targeted tool calls
@@ -229,17 +187,9 @@ AVAILABLE GRAPH TOOLS:
    - depth: 1-10 (suggest 3-5 for impact analysis)
    Returns: All nodes that depend ON this node (blast radius)
 
-RESPONSE FORMAT (JSON):
-{
-  "reasoning": "Detailed explanation of: 1) What you're investigating, 2) Why this tool helps answer the question, 3) How this fits into your overall analysis strategy, 4) What you expect to learn",
-  "tool_call": {
-    "tool_name": "tool_to_execute",
-    "parameters": { tool parameters with rationale }
-  },
-  "is_final": false
-}
-
-When you have enough evidence to answer, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
+FORMAT:
+- Intermediate: {"reasoning": "detailed investigation plan", "tool_call": {...}, "is_final": false}
+- Final:
 {
   "analysis": "COMPREHENSIVE ANSWER with structure:
 
@@ -420,24 +370,9 @@ AVAILABLE GRAPH TOOLS:
    - depth: 1-10 (exploratory tier: use 5-8 for comprehensive impact mapping)
    Returns: All dependent nodes (blast radius of changes)
 
-RESPONSE FORMAT (JSON):
-{
-  "reasoning": "COMPREHENSIVE EXPLANATION including:
-  - Current investigation phase (e.g., 'Phase 1: Initial Discovery', 'Phase 2: Cross-Verification')
-  - Specific hypothesis being tested with this tool call
-  - How this tool call complements previous findings
-  - Expected outcomes and how they inform the question
-  - Connection to overall multi-phase investigation strategy",
-  "tool_call": {
-    "tool_name": "tool_to_execute",
-    "parameters": {
-      /* parameters with detailed rationale for each value */
-    }
-  },
-  "is_final": false
-}
-
-When you have enough evidence to answer, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
+FORMAT:
+- Intermediate: {"reasoning": "comprehensive multi-phase explanation", "tool_call": {...}, "is_final": false}
+- Final:
 {
   "analysis": "EXHAUSTIVE MULTI-DIMENSIONAL ANSWER:
 

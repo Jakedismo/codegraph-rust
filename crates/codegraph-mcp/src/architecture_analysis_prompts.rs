@@ -20,32 +20,9 @@ ANALYSIS FOCUS (report WHAT IS, not what SHOULD BE):
 - Architectural Patterns: Identify hub patterns, dependency structures
 - Code Smells: Detect circular dependencies, god objects (nodes with extreme hub degree)
 
-RESPONSE FORMAT (JSON):
-{
-  "reasoning": "Your analysis plan or findings",
-  "tool_call": {
-    "tool_name": "name_of_tool",
-    "parameters": { tool parameters from previous results }
-  },
-  "is_final": false
-}
-
-When complete, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
-{
-  "analysis": "ARCHITECTURE SUMMARY:\n- Coupling metrics: [data]\n- Circular deps: [count]\n- Hub nodes: [list with degrees]\n- Interpretation: [objective observations only]",
-  "layers": [],
-  "hub_nodes": [
-    {
-      "name": "HubNode",
-      "file_path": "relative/path/to/file.rs",
-      "line_number": 42
-    }
-  ],
-  "coupling_metrics": [],
-  "patterns": [],
-  "issues": []
-}
-MANDATORY: hub_nodes array must include file paths from tool results
+FORMAT:
+- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
+- Final: {"analysis": "...", "layers": [], "hub_nodes": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "coupling_metrics": [], "patterns": [], "issues": []}
 
 CONSTRAINTS:
 - MAX 5 STEPS - prioritize key architectural indicators
@@ -76,32 +53,9 @@ ANALYSIS DIMENSIONS (report WHAT IS, not what SHOULD BE):
 - Code Smells: Detect circular dependencies, god objects, coupling hotspots
 - Change Impact: Assess blast radius using reverse dependencies
 
-RESPONSE FORMAT (JSON):
-{
-  "reasoning": "Your analysis plan or findings with specific metrics",
-  "tool_call": {
-    "tool_name": "name_of_tool",
-    "parameters": { tool parameters from previous results }
-  },
-  "is_final": false
-}
-
-When complete, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
-{
-  "analysis": "ARCHITECTURE ANALYSIS SUMMARY:\n\n## Coupling Metrics\n- Ca, Ce, I distributions for key nodes\n- Stability zones (stable I<0.3, unstable I>0.7)\n\n## Architectural Hotspots\n- Hub nodes with degrees and coupling metrics\n- God object candidates (high degree + high Ce)\n\n## Dependency Health\n- Circular dependencies count by edge type\n- Problematic dependency patterns\n\n## Change Impact Assessment\n- High-impact nodes (high Ca)\n- Blast radius for critical components\n\n## Interpretation\n[Objective observations only - no prescriptive judgments]",
-  "layers": ["Layer 1: Infrastructure", "Layer 2: Core"],
-  "hub_nodes": [
-    {
-      "name": "HubNode",
-      "file_path": "relative/path/to/file.rs",
-      "line_number": 42
-    }
-  ],
-  "coupling_metrics": ["Node X: Ca=15, Ce=8, I=0.35"],
-  "patterns": ["Pattern: Layered architecture"],
-  "issues": ["Issue: Circular dependency between X and Y"]
-}
-MANDATORY: hub_nodes array must include file paths from tool results
+FORMAT:
+- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
+- Final: {"analysis": "...", "layers": [], "hub_nodes": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "coupling_metrics": [], "patterns": [], "issues": []}
 
 CONSTRAINTS:
 - MAX 10 STEPS - cover key architectural dimensions systematically
@@ -132,32 +86,9 @@ AVAILABLE TOOLS:
 5. get_reverse_dependencies(node_id, edge_type, depth) - Maps dependents (depth 3-5)
 6. trace_call_chain(from_node, max_depth) - Maps execution paths (depth 4-6)
 
-RESPONSE FORMAT (JSON):
-{
-  "reasoning": "Detailed analysis of current step with specific metrics and connections to previous findings",
-  "tool_call": {
-    "tool_name": "name_of_tool",
-    "parameters": { precise parameters based on prior results }
-  },
-  "is_final": false
-}
-
-When complete, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
-{
-  "analysis": "[Detailed architectural analysis with coupling distributions, hub analysis, dependency health, change impact, execution patterns, and objective synthesis]",
-  "layers": ["Layer 1: Infrastructure", "Layer 2: Core", "Layer 3: Application"],
-  "hub_nodes": [
-    {
-      "name": "HubNode",
-      "file_path": "relative/path/to/file.rs",
-      "line_number": 42
-    }
-  ],
-  "coupling_metrics": ["Node X: Ca=15, Ce=8, I=0.35"],
-  "patterns": ["Pattern: Layered architecture"],
-  "issues": ["Issue: Circular dependency between X and Y"]
-}
-MANDATORY: hub_nodes array must include file paths from tool results
+FORMAT:
+- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
+- Final: {"analysis": "...", "layers": [], "hub_nodes": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "coupling_metrics": [], "patterns": [], "issues": []}
 
 CONSTRAINTS:
 - MAX 15 STEPS - thorough multi-dimensional analysis
@@ -184,32 +115,9 @@ AVAILABLE TOOLS (use extensively):
 5. get_reverse_dependencies(node_id, edge_type, depth) - Complete impact (depth 5-8)
 6. trace_call_chain(from_node, max_depth) - Exhaustive execution (depth 7-10)
 
-RESPONSE FORMAT (JSON):
-{
-  "reasoning": "Comprehensive step analysis with phase, objective, rationale, connections, pattern investigation, and coverage assessment",
-  "tool_call": {
-    "tool_name": "name_of_tool",
-    "parameters": { precise parameters extracted from results }
-  },
-  "is_final": false
-}
-
-When complete, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
-{
-  "analysis": "[Exhaustive architectural analysis with complete coupling landscape, architectural topology, dependency health, change impact, execution analysis, cross-dimensional patterns, and statistical health metrics]",
-  "layers": ["Layer 1: Infrastructure", "Layer 2: Core", "Layer 3: Application", "Layer 4: Presentation"],
-  "hub_nodes": [
-    {
-      "name": "HubNode",
-      "file_path": "relative/path/to/file.rs",
-      "line_number": 42
-    }
-  ],
-  "coupling_metrics": ["Node X: Ca=15, Ce=8, I=0.35"],
-  "patterns": ["Pattern: Layered architecture", "Pattern: Hub-and-spoke"],
-  "issues": ["Issue: Circular dependency between X and Y", "Issue: God object Z"]
-}
-MANDATORY: hub_nodes array must include file paths from tool results
+FORMAT:
+- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
+- Final: {"analysis": "...", "layers": [], "hub_nodes": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "coupling_metrics": [], "patterns": [], "issues": []}
 
 CRITICAL RULES:
 1. ZERO HEURISTICS: Every claim must be based on tool output data
