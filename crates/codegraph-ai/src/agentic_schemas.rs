@@ -89,8 +89,8 @@ pub struct CallChainOutput {
     pub entry_point: FileLocation,
     /// Ordered call chain steps (flexible: can be strings or CallChainStep objects)
     pub call_chain: Vec<serde_json::Value>,
-    /// Key decision points or branches
-    pub decision_points: Vec<FileLocation>,
+    /// Key decision points or branches (flexible: can be strings or FileLocation objects)
+    pub decision_points: Vec<serde_json::Value>,
 }
 
 /// Architecture layer in the system
@@ -156,12 +156,12 @@ pub struct APIEndpoint {
 pub struct APISurfaceOutput {
     /// Natural language API surface analysis
     pub analysis: String,
-    /// Public API endpoints/interfaces
-    pub endpoints: Vec<APIEndpoint>,
+    /// Public API endpoints/interfaces (flexible: can be simplified objects)
+    pub endpoints: Vec<serde_json::Value>,
     /// API usage patterns
     pub usage_patterns: Vec<String>,
-    /// Integration points with external systems
-    pub integration_points: Vec<FileLocation>,
+    /// Integration points with external systems (flexible: can be strings or FileLocation objects)
+    pub integration_points: Vec<serde_json::Value>,
 }
 
 /// Structured output for agentic_context_builder
@@ -171,12 +171,12 @@ pub struct ContextBuilderOutput {
     pub analysis: String,
     /// Core components in this context
     pub core_components: Vec<FileLocation>,
-    /// Dependency tree structure
-    pub dependency_tree: DependencyAnalysisOutput,
-    /// Execution flows
-    pub execution_flows: Vec<CallChainOutput>,
-    /// Architectural context
-    pub architecture: ArchitectureAnalysisOutput,
+    /// Dependency tree structure (flexible: can be simplified)
+    pub dependency_tree: serde_json::Value,
+    /// Execution flows (flexible: can be simplified)
+    pub execution_flows: Vec<serde_json::Value>,
+    /// Architectural context (flexible: can be simplified)
+    pub architecture: serde_json::Value,
     /// Related documentation or comments
     pub documentation_references: Vec<String>,
 }
@@ -227,20 +227,23 @@ impl AgenticOutput {
             Self::CodeSearch(o) => o.components.iter().collect(),
             Self::DependencyAnalysis(o) => o.components.iter().collect(),
             Self::CallChain(o) => {
-                let mut locs = vec![&o.entry_point];
-                locs.extend(o.decision_points.iter());
-                locs
+                // Only extract entry_point (direct FileLocation)
+                // decision_points are now flexible Value types
+                vec![&o.entry_point]
             }
             Self::ArchitectureAnalysis(o) => {
                 // Only extract hub_nodes (direct FileLocation array)
                 // layers and coupling_metrics are now flexible Value types
                 o.hub_nodes.iter().collect()
             }
-            Self::APISurface(o) => o.integration_points.iter().collect(),
+            Self::APISurface(o) => {
+                // integration_points are now flexible Value types, can't extract directly
+                vec![]
+            }
             Self::ContextBuilder(o) => {
-                let mut locs = o.core_components.iter().collect::<Vec<_>>();
-                locs.extend(o.dependency_tree.components.iter());
-                locs
+                // Only extract core_components (direct FileLocation array)
+                // dependency_tree, execution_flows, architecture are now flexible Value types
+                o.core_components.iter().collect()
             }
             Self::SemanticQuestion(o) => {
                 let mut locs = o.evidence.iter().collect::<Vec<_>>();
