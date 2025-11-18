@@ -34,11 +34,33 @@ pub(crate) fn convert_messages(messages: &[Message]) -> Vec<ChatMessage> {
 /// Adapter that bridges codegraph_ai::LLMProvider to AutoAgents ChatProvider
 pub struct CodeGraphChatAdapter {
     provider: Arc<dyn CodeGraphLLM>,
+    tier: ContextTier,
 }
 
 impl CodeGraphChatAdapter {
-    pub fn new(provider: Arc<dyn CodeGraphLLM>) -> Self {
-        Self { provider }
+    pub fn new(provider: Arc<dyn CodeGraphLLM>, tier: ContextTier) -> Self {
+        Self { provider, tier }
+    }
+
+    /// Get tier-aware max_tokens, respecting environment variable override
+    fn get_max_tokens(&self) -> Option<usize> {
+        // Check for environment variable override first
+        if let Ok(val) = std::env::var("MCP_CODE_AGENT_MAX_OUTPUT_TOKENS") {
+            if let Ok(tokens) = val.parse::<usize>() {
+                tracing::info!("Using MCP_CODE_AGENT_MAX_OUTPUT_TOKENS={}", tokens);
+                return Some(tokens);
+            }
+        }
+
+        // Use tier-based defaults
+        let tokens = match self.tier {
+            ContextTier::Small => 2048,
+            ContextTier::Medium => 4096,
+            ContextTier::Large => 8192,
+            ContextTier::Massive => 16384,
+        };
+
+        Some(tokens)
     }
 }
 
@@ -80,7 +102,7 @@ impl ChatProvider for CodeGraphChatAdapter {
         // Call CodeGraph LLM provider with structured output support
         let config = codegraph_ai::llm_provider::GenerationConfig {
             temperature: 0.1,
-            max_tokens: None,
+            max_tokens: self.get_max_tokens(),
             response_format,
             ..Default::default()
         };
@@ -357,7 +379,7 @@ impl CodeGraphAgentBuilder {
         analysis_type: AnalysisType,
     ) -> Self {
         Self {
-            llm_adapter: Arc::new(CodeGraphChatAdapter::new(llm_provider)),
+            llm_adapter: Arc::new(CodeGraphChatAdapter::new(llm_provider, tier)),
             tool_factory: GraphToolFactory::new(tool_executor),
             tier,
             analysis_type,
