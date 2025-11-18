@@ -1249,43 +1249,84 @@ impl ProjectIndexer {
         self.flush_surreal_writer().await?;
 
         // COMPREHENSIVE INDEXING COMPLETION SUMMARY
+        let avg_nodes_per_file = if stats.files > 0 {
+            total_nodes_extracted as f64 / stats.files as f64
+        } else {
+            0.0
+        };
+        let avg_edges_per_file = if stats.files > 0 {
+            total_edges_extracted as f64 / stats.files as f64
+        } else {
+            0.0
+        };
+        let avg_embeddings_per_node = if total_nodes_extracted > 0 {
+            stats.embeddings as f64 / total_nodes_extracted as f64
+        } else {
+            0.0
+        };
+
         info!("🎉 INDEXING COMPLETE - REVOLUTIONARY AI DEVELOPMENT PLATFORM READY!");
-        info!("┌─────────────────────────────────────────────────────────────────┐");
-        info!("│ 📊 COMPREHENSIVE INDEXING STATISTICS                           │");
-        info!("├─────────────────────────────────────────────────────────────────┤");
+        info!("┌────────────────────────────────────────────────────────────────────────────┐");
+        info!("│ 📊 COMPREHENSIVE INDEXING STATISTICS                                      │");
+        info!("├────────────────────────────────────────────────────────────────────────────┤");
         info!(
-            "│ 📄 Files processed: {} ({} languages supported)                │",
+            "│ 📂 Files scanned: {:>5} total | {:>5} parsed | {:>5} skipped                │",
+            pstats.total_files,
             stats.files,
-            file_config.languages.len()
+            stats.skipped
         );
         info!(
-            "│ 📝 Lines analyzed: {} (TreeSitter AST parsing)                 │",
-            stats.lines
+            "│ ✅ Parser success: {:>5.1}% ({} / {} files)                               │",
+            success_rate,
+            pstats.parsed_files,
+            pstats.total_files
         );
         info!(
-            "│ 🌳 Semantic nodes: {} (functions: {}, structs: {}, traits: {}) │",
-            total_nodes_extracted, stats.functions, stats.structs, stats.traits
+            "│ 🗣️ Languages targeted: {:>3} | Batch (embed) {:>3} | Concurrency {:>3}        │",
+            file_config.languages.len(),
+            batch,
+            self.config.max_concurrent
         );
         info!(
-            "│ 🔗 Code relationships: {} extracted (calls, imports, deps)     │",
-            total_edges_extracted
+            "│ 📝 Lines analyzed: {:>10} | Avg nodes/file {:>5.1} | Avg deps/file {:>5.1} │",
+            stats.lines,
+            avg_nodes_per_file,
+            avg_edges_per_file
         );
         info!(
-            "│ 💾 Vector embeddings: {} ({}-dim {})                         │",
-            stats.embeddings, self.vector_dim, provider
+            "│ 🌳 Semantic nodes: {:>8} | funcs {:>6} | structs {:>5} | traits {:>5} │",
+            total_nodes_extracted,
+            stats.functions,
+            stats.structs,
+            stats.traits
         );
         info!(
-            "│ 🎯 Dependency resolution: {:.1}% success ({}/{} edges stored)   │",
-            resolution_rate, stored_edges, edge_count
+            "│ 🔗 Dependencies: {:>8} extracted | {:>8} stored (resolved {:.1}%)        │",
+            total_edges_extracted,
+            stored_edges,
+            resolution_rate
         );
-        info!("├─────────────────────────────────────────────────────────────────┤");
-        info!("│ 🚀 CAPABILITIES UNLOCKED                                       │");
         info!(
-            "│ ✅ Vector similarity search across {} embedded entities        │",
+            "│ 💾 Vector embeddings: {:>8} ({:>4}-dim {}, {:.1} per node)                 │",
+            stats.embeddings,
+            self.vector_dim,
+            provider,
+            avg_embeddings_per_node
+        );
+        info!(
+            "│ 📦 Metadata persisted: {:>5} files | {:>5} edges | {:>5} nodes              │",
+            stats.files,
+            stored_edges,
+            total_nodes_extracted
+        );
+        info!("├────────────────────────────────────────────────────────────────────────────┤");
+        info!("│ 🚀 CAPABILITIES UNLOCKED                                                  │");
+        info!(
+            "│ ✅ Vector similarity search across {:>8} embedded entities                 │",
             stats.embeddings
         );
         info!(
-            "│ ✅ Graph traversal with {} real dependency relationships       │",
+            "│ ✅ Graph traversal with {:>8} real dependency relationships              │",
             stored_edges
         );
         info!("│ ✅ AI-powered semantic analysis with Qwen2.5-Coder integration │");

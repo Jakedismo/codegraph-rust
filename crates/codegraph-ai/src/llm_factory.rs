@@ -125,7 +125,7 @@ impl LLMProviderFactory {
             model: config
                 .model
                 .clone()
-                .unwrap_or_else(|| "claude-3-5-sonnet-20241022".to_string()),
+                .unwrap_or_else(|| "claude".to_string()),
             context_window: config.context_window,
             timeout_secs: config.timeout_secs,
             max_retries: 3,
@@ -151,7 +151,7 @@ impl LLMProviderFactory {
         let openai_config = OpenAIConfig {
             api_key,
             base_url: "https://api.openai.com/v1".to_string(),
-            model: config.model.clone().unwrap_or_else(|| "gpt-4o".to_string()),
+            model: config.model.clone().unwrap_or_else(|| "gpt-5.1-codex".to_string()),
             context_window: config.context_window,
             timeout_secs: config.timeout_secs,
             max_retries: 3,
@@ -261,9 +261,9 @@ mod tests {
             provider: "ollama".to_string(),
             model: Some("qwen2.5-coder:14b".to_string()),
             ollama_url: "http://localhost:11434".to_string(),
-            context_window: 128_000,
+            context_window: config.context,
             temperature: 0.1,
-            max_tokens: 4096,
+            max_tokens: config.max_tokens,
             timeout_secs: 120,
             ..Default::default()
         };

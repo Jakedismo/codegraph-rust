@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 const OPENAI_API_BASE: &str = "https://api.openai.com/v1";
-const DEFAULT_MODEL: &str = "gpt-4o";
+const DEFAULT_MODEL: &str = "gpt-5.1-codex";
 
 /// Configuration for OpenAI provider
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ pub struct OpenAIConfig {
     pub api_key: String,
     /// Base URL for API (default: https://api.openai.com/v1)
     pub base_url: String,
-    /// Model to use (e.g., "gpt-4o", "o3-mini", "o1")
+    /// Model to use (e.g., "gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-mini)
     pub model: String,
     /// Maximum context window
     pub context_window: usize,
@@ -33,7 +33,7 @@ impl Default for OpenAIConfig {
             api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
             base_url: OPENAI_API_BASE.to_string(),
             model: DEFAULT_MODEL.to_string(),
-            context_window: 400000,
+            context_window: config.context_window,
             timeout_secs: 120,
             max_retries: 3,
             organization: std::env::var("OPENAI_ORG_ID").ok(),
@@ -212,7 +212,7 @@ impl LLMProvider for OpenAIProvider {
         let response = self.send_request(messages, config).await?;
 
         // Extract text from output array
-        // OpenAI GPT-5 returns: output[{type: "message", content: [{type: "output_text", text: "..."}]}]
+        // OpenAI GPT-5.1 returns: output[{type: "message", content: [{type: "output_text", text: "..."}]}]
         let content = response
             .output
             .iter()
@@ -427,7 +427,7 @@ mod tests {
 
     #[test]
     fn test_reasoning_model_detection() {
-        let models = vec!["gpt-5"];
+        let models = vec!["gpt-5.1"];
         for model in models {
             let config = OpenAIConfig {
                 api_key: "test".to_string(),

@@ -26,7 +26,7 @@ CodeGraph now writes Ollama/LM Studio embeddings directly into SurrealDB’s ded
 ```bash
 export CODEGRAPH_EMBEDDING_PROVIDER=ollama
 export CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b   # or all-mini-llm, qwen3-embedding:4b, embeddinggemma etc.
-export CODEGRAPH_EMBEDDING_DIMENSION=1024               # 384, 768, 1024, 2048, or 4096
+export CODEGRAPH_EMBEDDING_DIMENSION=1024               # 384, 768, 1024, 1536, 2048, 2560, 3072 or 4096 dimensions supported
 
 # Optional local reranking (LM Studio exposes an OpenAI-compatible reranker endpoint)
 export CODEGRAPH_RERANKING_PROVIDER=lmstudio
@@ -170,7 +170,7 @@ Pick the setup that matches your needs:
 
 **Providers:**
 - **Embeddings:** Jina (You get 10 million tokens for free when you just create an account!)
-- **LLM:** Anthropic Claude or OpenAI GPT-5-*
+- **LLM:** Anthropic Claude or OpenAI GPT-5.1-*
 - **Backend**: SurrealDB graph database (You get a free cloud instance up-to 1gb! Or run it completely locally!)
 
 **Pros:** ✅ Best quality, ✅ Fast, ✅ 1M context (sonnet[1m])
@@ -384,6 +384,7 @@ dimension = 2048
 enabled = true
 provider = "openai"
 model = "gpt-5-codex-mini"
+context_window=200000
 openai_api_key = "sk-..."
 max_completion_token = 128000
 reasoning_effort = "medium"  # reasoning models: "minimal", "medium", "high"
@@ -403,6 +404,8 @@ jina_reranking_model = "jina-reranker-v3"
 enabled = true
 provider = "anthropic"
 model = "claude-haiku"
+context_window = 200000
+max_completion_tokens= 25000
 anthropic_api_key = "sk-ant-..."
 ```
 
@@ -412,7 +415,7 @@ anthropic_api_key = "sk-ant-..."
 provider = "openai"  # or "jina"
 model = "text-embedding-3-small"
 openai_api_key = "sk-..."
-dimension = 2048
+dimension = 1536
 
 [llm]
 enabled = true
@@ -472,6 +475,7 @@ dimension = 384
 enabled = true
 provider = "anthropic"  # Best quality for analysis
 model = "sonnet[1m]"
+context_window = 1000000
 anthropic_api_key = "sk-ant-..."
 ```
 
@@ -522,7 +526,7 @@ model = "haiku"
 anthropic_api_key = "sk-ant-..."
 context_window = 200000
 temperature = 0.1
-max_completion_token = 4096
+max_completion_token = 25000
 
 [performance]
 num_threads = 0  # 0 = auto-detect
@@ -663,8 +667,8 @@ flowchart TD
 
         D -->|< 50K tokens| E1[Small Tier<br/>TERSE prompts<br/>5 max steps<br/>2,048 tokens]
         D -->|50K-150K tokens| E2[Medium Tier<br/>BALANCED prompts<br/>10 max steps<br/>4,096 tokens]
-        D -->|150K-500K tokens| E3[Large Tier<br/>DETAILED prompts<br/>15 max steps<br/>8,192 tokens]
-        D -->|> 500K tokens| E4[Massive Tier<br/>EXPLORATORY prompts<br/>20 max steps<br/>16,384 tokens]
+        D -->|150K-400K tokens| E3[Large Tier<br/>DETAILED prompts<br/>15 max steps<br/>8,192 tokens]
+        D -->|> 400K tokens| E4[Massive Tier<br/>EXPLORATORY prompts<br/>20 max steps<br/>16,384 tokens]
 
         E1 & E2 & E3 & E4 --> F[Load Tier-Specific<br/>System Prompt]
 
@@ -712,10 +716,10 @@ flowchart TD
 **Key Components:**
 
 1. **Tier Detection**: Automatically adapts prompt complexity based on LLM's context window
-   - Small (<50K): Fast, terse responses for limited context models f.ex. local
+   - Small (<50K): Fast, terse responses for limited context models f.ex. local gemma3 etc.
    - Medium (50K-150K): Balanced analysis for Claude Haiku, gpt-5.1-codex-mini
-   - Large (150K-400K): Detailed exploration for Sonnet, Opus, gpt-5.1
-   - Massive (>400K): Comprehensive deep-dives for grok-4-fast, gemini-2.5-pro, Sonnet[1m]
+   - Large (150K-400K): Detailed exploration for Sonnet, Opus, gpt-5.1, qwen3:4b
+   - Massive (>400K): Comprehensive deep-dives for grok-4-fast, gemini-3.0-pro, Sonnet[1m]
 
 2. **Multi-Step Reasoning**: ReAct pattern with tier-specific limits
    - Each step can call internal graph analysis tools
