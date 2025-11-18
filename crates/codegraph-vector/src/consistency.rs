@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, NodeId, Result};
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
@@ -642,7 +641,7 @@ impl ConsistencyManager {
     /// Check if a node is visible to a transaction
     pub fn is_visible(
         &self,
-        node_id: NodeId,
+        _node_id: NodeId,
         transaction_id: u64,
         committed_by: Option<u64>,
     ) -> bool {

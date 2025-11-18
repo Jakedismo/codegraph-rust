@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
+#[cfg(not(feature = "gpu"))]
+use tracing::warn;
 
 /// Configuration for different FAISS index types optimized for various use cases
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,7 +229,7 @@ impl FaissIndexManager {
         if self.config.gpu_enabled {
             #[cfg(feature = "gpu")]
             {
-                use faiss::gpu::{GpuResources, StandardGpuResources};
+                use faiss::gpu::StandardGpuResources;
 
                 let gpu_resources = StandardGpuResources::new().map_err(|e| {
                     CodeGraphError::Vector(format!("Failed to initialize GPU resources: {}", e))

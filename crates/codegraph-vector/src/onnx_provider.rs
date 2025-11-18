@@ -9,7 +9,7 @@ use codegraph_core::{CodeGraphError, CodeNode, Result};
 #[cfg(feature = "onnx")]
 use hf_hub::api::tokio::Api;
 #[cfg(feature = "onnx")]
-use ndarray::{s, Array, Array2, Axis};
+use ndarray::{s, Array2, Axis};
 #[cfg(feature = "onnx")]
 use ort::execution_providers::CoreMLExecutionProvider;
 #[cfg(feature = "onnx")]

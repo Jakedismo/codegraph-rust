@@ -8,11 +8,10 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
-use uuid::Uuid;
+use tracing::{debug, info};
 
 /// Metadata for persistent vector storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,7 +163,7 @@ impl PersistentStorage {
     }
 
     /// Load FAISS index from disk with automatic decompression
-    pub fn load_index(&self, config: &IndexConfig) -> Result<IndexImpl> {
+    pub fn load_index(&self, _config: &IndexConfig) -> Result<IndexImpl> {
         let index_path = self.base_path.join(Self::INDEX_FILE);
 
         if !index_path.exists() {

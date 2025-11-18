@@ -86,6 +86,7 @@ pub use consistency::*;
 #[cfg(feature = "persistent")]
 pub use incremental::*;
 #[cfg(feature = "persistent")]
+#[allow(ambiguous_glob_reexports)]
 pub use persistent::*;
 #[cfg(feature = "persistent")]
 pub use storage::*;

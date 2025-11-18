@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::fs;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Header for the memory-mapped vector storage file
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -914,13 +914,13 @@ impl PersistentVectorStore {
         }
 
         // Train PQ if enabled
-        if let Some(mut pq) = self.pq_quantizer.write().as_mut() {
+        if let Some(pq) = self.pq_quantizer.write().as_mut() {
             pq.train(sample_vectors)?;
             info!("Trained product quantizer");
         }
 
         // Train SQ if enabled
-        if let Some(mut sq) = self.sq_quantizer.write().as_mut() {
+        if let Some(sq) = self.sq_quantizer.write().as_mut() {
             sq.train(sample_vectors)?;
             info!("Trained scalar quantizer");
         }

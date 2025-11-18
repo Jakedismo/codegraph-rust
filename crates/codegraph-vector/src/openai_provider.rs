@@ -18,7 +18,7 @@ use std::{
 };
 use tokenizers::Tokenizer;
 use tokio::time::timeout;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Configuration for OpenAI embedding provider
 #[derive(Debug, Clone)]

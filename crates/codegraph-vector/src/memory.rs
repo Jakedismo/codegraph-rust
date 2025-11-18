@@ -1,6 +1,6 @@
 use codegraph_core::{CodeGraphError, Result};
 #[cfg(feature = "persistent")]
-use memmap2::{MmapMut, MmapOptions};
+use memmap2::MmapOptions;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
