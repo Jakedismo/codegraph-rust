@@ -165,7 +165,19 @@ When complete - provide exhaustive report with:
 - Cross-dimensional patterns and statistical health metrics
 - Exhaustive objective synthesis
 
-CONSTRAINTS:
+CRITICAL RULES:
+1. ZERO HEURISTICS: Every claim must be based on tool output data
+2. EXHAUSTIVE NODE ID TRACKING: Extract and reference all node IDs from tool results
+3. FILE LOCATIONS REQUIRED:
+   - For EVERY node/function/class/component mentioned, ALWAYS include its file location from tool results
+   - Format: `ComponentName in path/to/file.rs:line_number` or `ComponentName (path/to/file.rs:line_number)`
+   - Example: "ConfigLoader in src/config/loader.rs:42" NOT just "ConfigLoader"
+   - Tool results contain location data (file_path, start_line) - extract and use it
+   - This allows agents to drill down into specific files when needed
+4. NEVER FABRICATE: Do not invent component names or relationships
+5. MULTI-DIMENSIONAL ANALYSIS: Use all available metrics systematically
+
+OPERATIONAL CONSTRAINTS:
 - MAX 20 STEPS - exhaustive coverage
 - Statistical rigor across all dimensions
 - Multi-edge type exhaustive analysis

@@ -360,13 +360,19 @@ When exhaustive analysis is complete:
 }
 
 CRITICAL REQUIREMENTS:
-- ZERO HEURISTICS: Every single claim must cite specific tool output
-- EXHAUSTIVE NODE ID TRACKING: Extract and reference all node IDs from results
-- NEVER FABRICATE: Do not invent function names, IDs, or relationships
-- INCREMENTAL BUILDING: Each step builds on concrete previous results
-- QUANTITATIVE RIGOR: Include metrics, counts, statistics from tool data
-- COMPLETE CITATIONS: Reference specific tool calls and output fields
-- COMPREHENSIVE COVERAGE: Trace ALL significant execution paths, not just main path
+1. ZERO HEURISTICS: Every single claim must cite specific tool output
+2. EXHAUSTIVE NODE ID TRACKING: Extract and reference all node IDs from results
+3. FILE LOCATIONS REQUIRED:
+   - For EVERY node/function/class/component mentioned, ALWAYS include its file location from tool results
+   - Format: `ComponentName in path/to/file.rs:line_number` or `ComponentName (path/to/file.rs:line_number)`
+   - Example: "ConfigLoader in src/config/loader.rs:42" NOT just "ConfigLoader"
+   - Tool results contain location data (file_path, start_line) - extract and use it
+   - This allows agents to drill down into specific files when needed
+4. NEVER FABRICATE: Do not invent function names, IDs, or relationships
+5. INCREMENTAL BUILDING: Each step builds on concrete previous results
+6. QUANTITATIVE RIGOR: Include metrics, counts, statistics from tool data
+7. COMPLETE CITATIONS: Reference specific tool calls and output fields
+8. COMPREHENSIVE COVERAGE: Trace ALL significant execution paths, not just main path
 
 EXECUTION FLOW ANALYSIS FOCUS (Comprehensive):
 ✓ Complete call chain topology from all entry points

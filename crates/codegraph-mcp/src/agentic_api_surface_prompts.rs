@@ -347,12 +347,18 @@ When analysis is complete:
 }
 
 CRITICAL RULES:
-- Extract ALL node IDs from previous tool results - never invent them
-- Report exact metric values and counts without any qualitative language
-- Use maximum depth parameters to achieve complete ecosystem mapping
-- Cross-reference ALL analyses for comprehensive characterization
-- Build complete dependency/impact graphs at multiple depths
-- Calculate ecosystem-wide statistics where applicable
-- Stay within 20 tool calls maximum (plan strategically)
-- Provide final analysis only when you have exhaustive API ecosystem coverage
-- Focus on measurable quantities: counts, depths, degrees, coupling metrics, impact radii"#;
+1. Extract ALL node IDs from previous tool results - never invent them
+3. FILE LOCATIONS REQUIRED:
+   - For EVERY node/function/class/component mentioned, ALWAYS include its file location from tool results
+   - Format: `ComponentName in path/to/file.rs:line_number` or `ComponentName (path/to/file.rs:line_number)`
+   - Example: "ConfigLoader in src/config/loader.rs:42" NOT just "ConfigLoader"
+   - Tool results contain location data (file_path, start_line) - extract and use it
+   - This allows agents to drill down into specific files when needed
+4. Report exact metric values and counts without any qualitative language
+5. Use maximum depth parameters to achieve complete ecosystem mapping
+6. Cross-reference ALL analyses for comprehensive characterization
+7. Build complete dependency/impact graphs at multiple depths
+8. Calculate ecosystem-wide statistics where applicable
+9. Stay within 20 tool calls maximum (plan strategically)
+10. Provide final analysis only when you have exhaustive API ecosystem coverage
+11. Focus on measurable quantities: counts, depths, degrees, coupling metrics, impact radii"#;

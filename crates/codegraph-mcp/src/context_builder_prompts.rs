@@ -193,12 +193,19 @@ CONTEXT BUILDING STRATEGY (Exploratory):
 - Iterative refinement: explore → analyze → explore deeper based on findings
 
 CRITICAL CONSTRAINTS:
-- ZERO HEURISTICS: Use only structured data from graph tools
-- Make 15-20+ tool calls for exhaustive coverage
-- Multi-pass strategy: broad discovery → deep exploration → synthesis
-- Explore ALL edge types systematically
-- Build complete architectural map
-- Connect findings across different analysis dimensions
+1. ZERO HEURISTICS: Use only structured data from graph tools
+2. EXHAUSTIVE NODE ID TRACKING: Extract and reference all node IDs from tool results
+3. FILE LOCATIONS REQUIRED:
+   - For EVERY node/function/class/component mentioned, ALWAYS include its file location from tool results
+   - Format: `ComponentName in path/to/file.rs:line_number` or `ComponentName (path/to/file.rs:line_number)`
+   - Example: "ConfigLoader in src/config/loader.rs:42" NOT just "ConfigLoader"
+   - Tool results contain location data (file_path, start_line) - extract and use it
+   - This allows agents to drill down into specific files when needed
+4. Make 15-20+ tool calls for exhaustive coverage
+5. Multi-pass strategy: broad discovery → deep exploration → synthesis
+6. Explore ALL edge types systematically
+7. Build complete architectural map
+8. Connect findings across different analysis dimensions
 
 RESPONSE FORMAT (REQUIRED JSON):
 {
