@@ -1,3 +1,5 @@
+// ABOUTME: Drives the indexing pipeline for the Codegraph MCP CLI.
+// ABOUTME: Coordinates parsing, embeddings, and persistence into SurrealDB.
 #![allow(dead_code, unused_variables, unused_imports)]
 
 use crate::estimation::{
@@ -10,8 +12,8 @@ use codegraph_core::{CodeNode, EdgeRelationship, NodeId, NodeType};
 use codegraph_graph::{
     edge::CodeEdge, FileMetadataRecord, NodeEmbeddingRecord, ProjectMetadataRecord,
     SurrealDbConfig, SurrealDbStorage, SymbolEmbeddingRecord, SURR_EMBEDDING_COLUMN_1024,
-    SURR_EMBEDDING_COLUMN_2048, SURR_EMBEDDING_COLUMN_384, SURR_EMBEDDING_COLUMN_4096,
-    SURR_EMBEDDING_COLUMN_768,
+    SURR_EMBEDDING_COLUMN_2048, SURR_EMBEDDING_COLUMN_2560, SURR_EMBEDDING_COLUMN_384,
+    SURR_EMBEDDING_COLUMN_4096, SURR_EMBEDDING_COLUMN_768,
 };
 use codegraph_parser::{get_ai_pattern_learner, TreeSitterParser};
 #[cfg(feature = "ai-enhanced")]
@@ -62,6 +64,7 @@ enum SurrealEmbeddingColumn {
     Embedding768,
     Embedding1024,
     Embedding2048,
+    Embedding2560,
     Embedding4096,
 }
 
@@ -72,6 +75,7 @@ impl SurrealEmbeddingColumn {
             SurrealEmbeddingColumn::Embedding768 => SURR_EMBEDDING_COLUMN_768,
             SurrealEmbeddingColumn::Embedding1024 => SURR_EMBEDDING_COLUMN_1024,
             SurrealEmbeddingColumn::Embedding2048 => SURR_EMBEDDING_COLUMN_2048,
+            SurrealEmbeddingColumn::Embedding2560 => SURR_EMBEDDING_COLUMN_2560,
             SurrealEmbeddingColumn::Embedding4096 => SURR_EMBEDDING_COLUMN_4096,
         }
     }
@@ -82,6 +86,7 @@ impl SurrealEmbeddingColumn {
             SurrealEmbeddingColumn::Embedding768 => 768,
             SurrealEmbeddingColumn::Embedding1024 => 1024,
             SurrealEmbeddingColumn::Embedding2048 => 2048,
+            SurrealEmbeddingColumn::Embedding2560 => 2560,
             SurrealEmbeddingColumn::Embedding4096 => 4096,
         }
     }
@@ -498,7 +503,7 @@ impl ProjectIndexer {
         let vector_dim = env_vector_dim.unwrap_or(embedder_dimension);
         let embedding_column = resolve_surreal_embedding_column(vector_dim).with_context(|| {
             format!(
-                "Unsupported embedding dimension {}. Supported dimensions: 384, 768, 1024, 2048, 4096.",
+                "Unsupported embedding dimension {}. Supported dimensions: 384, 768, 1024, 2048, 2560, 4096.",
                 vector_dim
             )
         })?;
@@ -2825,9 +2830,10 @@ fn resolve_surreal_embedding_column(dim: usize) -> Result<SurrealEmbeddingColumn
         768 => Ok(SurrealEmbeddingColumn::Embedding768),
         1024 => Ok(SurrealEmbeddingColumn::Embedding1024),
         2048 => Ok(SurrealEmbeddingColumn::Embedding2048),
+        2560 => Ok(SurrealEmbeddingColumn::Embedding2560),
         4096 => Ok(SurrealEmbeddingColumn::Embedding4096),
         other => Err(anyhow!(
-            "Unsupported embedding dimension {}. Supported: 384, 768, 1024, 2048, 4096",
+            "Unsupported embedding dimension {}. Supported: 384, 768, 1024, 2048, 2560, 4096",
             other
         )),
     }
@@ -2853,6 +2859,14 @@ mod tests {
         std::env::set_var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE", "0");
         assert_eq!(symbol_embedding_db_batch_size(), 1);
         std::env::remove_var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE");
+    }
+
+    #[test]
+    fn surreal_embedding_column_supports_2560_dimension() {
+        let column = resolve_surreal_embedding_column(2560)
+            .expect("2560-d embeddings should be supported");
+        assert_eq!(column.column_name(), SURR_EMBEDDING_COLUMN_2560);
+        assert_eq!(column.dimension(), 2560);
     }
 }
 
