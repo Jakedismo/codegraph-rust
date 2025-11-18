@@ -72,6 +72,13 @@ impl ChatProvider for CodeGraphChatAdapter {
         _tools: Option<&[Tool]>,
         json_schema: Option<autoagents::llm::chat::StructuredOutputFormat>,
     ) -> Result<Box<dyn ChatResponse>, LLMError> {
+        // Log whether schema is being passed by AutoAgents
+        if json_schema.is_some() {
+            tracing::info!("✅ AutoAgents passed json_schema to chat()");
+        } else {
+            tracing::warn!("⚠️  AutoAgents did NOT pass json_schema - schema enforcement may be prompt-only!");
+        }
+
         // Convert AutoAgents messages to CodeGraph messages
         let cg_messages: Vec<Message> = messages
             .iter()
