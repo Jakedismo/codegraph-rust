@@ -36,12 +36,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Schema**: HNSW index for `embedding_768` column with EFC 200, M 16
 - **Auto-detection**: Automatic column selection based on embedding dimension
 
-#### **File Location Requirements in Agent Outputs**
-- **All EXPLORATORY prompts** now require file locations in responses
+#### **Structured Output Enforcement with JSON Schemas**
+- **JSON schema enforcement** for all 7 agentic tools with **required file paths**
+- **Schema-driven outputs**: LLM cannot return response without file locations
+- **New module**: `codegraph-ai/src/agentic_schemas.rs` with comprehensive schemas:
+  - `CodeSearchOutput`: analysis + components[] + patterns[]
+  - `DependencyAnalysisOutput`: analysis + components[] + dependencies[] + circular_dependencies[]
+  - `CallChainOutput`: analysis + entry_point + call_chain[] + decision_points[]
+  - `ArchitectureAnalysisOutput`: analysis + layers[] + hub_nodes[] + coupling_metrics[]
+  - `APISurfaceOutput`: analysis + endpoints[] + usage_patterns[]
+  - `ContextBuilderOutput`: comprehensive context with all analysis dimensions
+  - `SemanticQuestionOutput`: answer + evidence[] + related_components[]
+- **Required fields**: Every component must include `name`, `file_path`, and optional `line_number`
+- **Provider integration**:
+  - Added `response_format` field to `GenerationConfig`
+  - OpenAI compatible providers send JSON schema to LLM API
+  - AutoAgents adapter converts `StructuredOutputFormat` to CodeGraph `ResponseFormat`
+- **Hybrid output**: Combines freeform `analysis` field with structured arrays
+- **MCP handler**: Parses structured JSON and surfaces in `structured_output` field
+- **Benefits**:
+  - File paths are **mandatory** - no more abstract references
+  - Downstream tools can navigate directly to relevant code
+  - Consistent data structure for programmatic consumption
+  - Better agent-to-agent collaboration with actionable locations
+
+#### **File Location Requirements in Agent Outputs (Deprecated)**
+- **Superseded by**: Structured output enforcement with JSON schemas (above)
+- **Legacy prompt updates**: All EXPLORATORY prompts requested file locations (now enforced)
 - **Format**: `ComponentName in path/to/file.rs:line_number`
 - **Example**: "ConfigLoader in src/config/loader.rs:42" instead of just "ConfigLoader"
 - **6 prompts updated**: code_search, dependency_analysis, call_chain, architecture, context_builder, semantic_question, api_surface
-- **Enables**: Downstream agents can drill into specific files for detailed analysis
+- **Migration**: Prompts now work in conjunction with schema enforcement
 
 ### 🐛 **Fixed - Critical Database Persistence Bugs**
 
@@ -140,6 +165,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unified chunking**: `CODEGRAPH_MAX_CHUNK_TOKENS` now works across all providers
 - **Ollama support**: Ollama provider now respects chunking configuration
 - **Jina unchanged**: Still uses `JINA_MAX_TOKENS` (provider-specific)
+
+### 📦 **Dependencies**
+
+#### **Added**
+- **schemars** (workspace): JSON schema generation for structured LLM outputs
+  - Used in `codegraph-ai` for agentic schema definitions
+  - Enables compile-time schema validation
+  - Auto-generates JSON Schema from Rust types
 
 ### 📚 **Documentation**
 - **GraphFunctions enrichment plan**: Comprehensive plan saved to `.ouroboros/plans/graphfunctions-enrichment-20251118.md`

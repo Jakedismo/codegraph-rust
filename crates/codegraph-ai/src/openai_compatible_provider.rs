@@ -179,6 +179,7 @@ impl OpenAICompatibleProvider {
             reasoning_effort: config.reasoning_effort.clone(),
             top_p: config.top_p,
             stop: config.stop.clone(),
+            response_format: config.response_format.clone(),
         };
 
         let mut request_builder = self
@@ -255,6 +256,7 @@ impl OpenAICompatibleProvider {
             reasoning_effort: config.reasoning_effort.clone(),
             top_p: config.top_p,
             stop: config.stop.clone(),
+            response_format: config.response_format.clone(),
         };
 
         let mut request_builder = self
@@ -471,6 +473,8 @@ struct ResponsesAPIRequest {
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stop: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_format: Option<crate::llm_provider::ResponseFormat>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -524,6 +528,8 @@ struct ChatCompletionsRequest {
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stop: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_format: Option<crate::llm_provider::ResponseFormat>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

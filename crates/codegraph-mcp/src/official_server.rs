@@ -1502,16 +1502,77 @@ impl CodeGraphMCPServer {
                 data: None,
             })?;
 
-        // Format result as JSON
-        let response_json = serde_json::json!({
-            "analysis_type": analysis_type.as_str(),
-            "tier": format!("{:?}", tier),
-            "query": query,
-            "answer": result.answer,
-            "findings": result.findings,
-            "steps_taken": result.steps_taken,
-            "framework": "AutoAgents",
-        });
+        // Parse structured output from answer field (contains JSON schema)
+        use codegraph_ai::agentic_schemas::*;
+
+        // Try to parse the answer as structured output first
+        let structured_output = match analysis_type {
+            crate::AnalysisType::CodeSearch => {
+                serde_json::from_str::<CodeSearchOutput>(&result.answer)
+                    .ok()
+                    .map(|o| serde_json::to_value(AgenticOutput::CodeSearch(o)).ok())
+                    .flatten()
+            }
+            crate::AnalysisType::DependencyAnalysis => {
+                serde_json::from_str::<DependencyAnalysisOutput>(&result.answer)
+                    .ok()
+                    .map(|o| serde_json::to_value(AgenticOutput::DependencyAnalysis(o)).ok())
+                    .flatten()
+            }
+            crate::AnalysisType::CallChainAnalysis => {
+                serde_json::from_str::<CallChainOutput>(&result.answer)
+                    .ok()
+                    .map(|o| serde_json::to_value(AgenticOutput::CallChain(o)).ok())
+                    .flatten()
+            }
+            crate::AnalysisType::ArchitectureAnalysis => {
+                serde_json::from_str::<ArchitectureAnalysisOutput>(&result.answer)
+                    .ok()
+                    .map(|o| serde_json::to_value(AgenticOutput::ArchitectureAnalysis(o)).ok())
+                    .flatten()
+            }
+            crate::AnalysisType::ApiSurfaceAnalysis => {
+                serde_json::from_str::<APISurfaceOutput>(&result.answer)
+                    .ok()
+                    .map(|o| serde_json::to_value(AgenticOutput::APISurface(o)).ok())
+                    .flatten()
+            }
+            crate::AnalysisType::ContextBuilder => {
+                serde_json::from_str::<ContextBuilderOutput>(&result.answer)
+                    .ok()
+                    .map(|o| serde_json::to_value(AgenticOutput::ContextBuilder(o)).ok())
+                    .flatten()
+            }
+            crate::AnalysisType::SemanticQuestion => {
+                serde_json::from_str::<SemanticQuestionOutput>(&result.answer)
+                    .ok()
+                    .map(|o| serde_json::to_value(AgenticOutput::SemanticQuestion(o)).ok())
+                    .flatten()
+            }
+        };
+
+        // Format result as JSON with structured output if available
+        let response_json = if let Some(structured) = structured_output {
+            serde_json::json!({
+                "analysis_type": analysis_type.as_str(),
+                "tier": format!("{:?}", tier),
+                "query": query,
+                "structured_output": structured,
+                "steps_taken": result.steps_taken,
+                "framework": "AutoAgents",
+            })
+        } else {
+            // Fallback to original format if parsing failed
+            serde_json::json!({
+                "analysis_type": analysis_type.as_str(),
+                "tier": format!("{:?}", tier),
+                "query": query,
+                "answer": result.answer,
+                "findings": result.findings,
+                "steps_taken": result.steps_taken,
+                "framework": "AutoAgents",
+            })
+        };
 
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(&response_json)

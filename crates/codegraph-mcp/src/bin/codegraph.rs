@@ -1292,7 +1292,7 @@ async fn handle_index(
         std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or_else(|_| "default".to_string());
     if provider == "ollama" {
         println!(
-            "{}\n   • {}\n   • {}\n   • {}\n   • {}",
+            "{}\n   • {}\n   • {}\n   • {}\n   • {}\n   • {}",
             "🧠 Using Local Embeddings".green(),
             "384-dim all-minilm:latest".green(),
             "768-dim embeddingsgemma:latest".green(),

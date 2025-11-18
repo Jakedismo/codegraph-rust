@@ -1331,6 +1331,7 @@ dependencies = [
  "parking_lot",
  "prometheus",
  "reqwest",
+ "schemars 1.0.4",
  "serde",
  "serde_json",
  "thiserror 2.0.17",

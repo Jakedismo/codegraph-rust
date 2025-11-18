@@ -23,6 +23,29 @@ pub struct ProviderCharacteristics {
     pub supports_functions: bool,
 }
 
+/// JSON schema for structured output
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonSchema {
+    /// Schema name
+    pub name: String,
+    /// JSON schema object (following JSON Schema specification)
+    pub schema: serde_json::Value,
+    /// Whether to strictly enforce the schema
+    pub strict: bool,
+}
+
+/// Response format for structured outputs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResponseFormat {
+    /// Standard text response
+    Text,
+    /// JSON object response
+    JsonObject,
+    /// Structured JSON with schema enforcement
+    JsonSchema { json_schema: JsonSchema },
+}
+
 /// Configuration for generation parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerationConfig {
@@ -42,6 +65,8 @@ pub struct GenerationConfig {
     pub presence_penalty: Option<f32>,
     /// Stop sequences
     pub stop: Option<Vec<String>>,
+    /// Response format for structured outputs (OpenAI, Ollama with JSON schema support)
+    pub response_format: Option<ResponseFormat>,
 }
 
 impl Default for GenerationConfig {
@@ -55,6 +80,7 @@ impl Default for GenerationConfig {
             frequency_penalty: None,
             presence_penalty: None,
             stop: None,
+            response_format: None,
         }
     }
 }

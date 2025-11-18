@@ -413,6 +413,8 @@ def run():
         success = False
         steps = 0
         final_answer = None
+        structured_output = None
+        file_locations = []
 
         for line in out.split("\n"):
             if not line.strip():
@@ -427,9 +429,71 @@ def run():
                             if item.get("type") == "text":
                                 try:
                                     data = json.loads(item.get("text", "{}"))
-                                    steps = data.get("total_steps", 0)
-                                    final_answer = data.get("final_answer", "")
-                                    success = True
+                                    steps = int(data.get("steps_taken", 0))
+
+                                    # Check for structured output (new format)
+                                    if "structured_output" in data:
+                                        structured_output = data["structured_output"]
+                                        success = True
+
+                                        # Extract file locations from structured output
+                                        if "components" in structured_output:
+                                            for comp in structured_output["components"]:
+                                                if "file_path" in comp:
+                                                    file_locations.append({
+                                                        "name": comp.get("name", ""),
+                                                        "file_path": comp["file_path"],
+                                                        "line_number": comp.get("line_number")
+                                                    })
+                                        elif "evidence" in structured_output:
+                                            for evidence in structured_output["evidence"]:
+                                                if "file_path" in evidence:
+                                                    file_locations.append({
+                                                        "name": evidence.get("name", ""),
+                                                        "file_path": evidence["file_path"],
+                                                        "line_number": evidence.get("line_number")
+                                                    })
+                                        elif "endpoints" in structured_output:
+                                            for endpoint in structured_output["endpoints"]:
+                                                if "file_path" in endpoint:
+                                                    file_locations.append({
+                                                        "name": endpoint.get("name", ""),
+                                                        "file_path": endpoint["file_path"],
+                                                        "line_number": endpoint.get("line_number")
+                                                    })
+                                        elif "hub_nodes" in structured_output:
+                                            for hub in structured_output["hub_nodes"]:
+                                                if "file_path" in hub:
+                                                    file_locations.append({
+                                                        "name": hub.get("name", ""),
+                                                        "file_path": hub["file_path"],
+                                                        "line_number": hub.get("line_number")
+                                                    })
+                                        elif "entry_point" in structured_output:
+                                            ep = structured_output["entry_point"]
+                                            if "file_path" in ep:
+                                                file_locations.append({
+                                                    "name": ep.get("name", ""),
+                                                    "file_path": ep["file_path"],
+                                                    "line_number": ep.get("line_number")
+                                                })
+                                        elif "core_components" in structured_output:
+                                            for comp in structured_output["core_components"]:
+                                                if "file_path" in comp:
+                                                    file_locations.append({
+                                                        "name": comp.get("name", ""),
+                                                        "file_path": comp["file_path"],
+                                                        "line_number": comp.get("line_number")
+                                                    })
+
+                                    # Fallback to legacy format
+                                    elif "answer" in data:
+                                        final_answer = data.get("answer", "")
+                                        success = True
+                                    elif "final_answer" in data:
+                                        final_answer = data.get("final_answer", "")
+                                        success = True
+
                                 except json.JSONDecodeError:
                                     pass
             except json.JSONDecodeError:
@@ -440,17 +504,84 @@ def run():
             "success": success,
             "duration": duration,
             "steps": steps,
-            "timeout": timeout
+            "timeout": timeout,
+            "file_locations": file_locations,
+            "has_structured_output": structured_output is not None
         })
 
         if success:
             print(f"\n✅ SUCCESS in {duration:.1f}s ({steps} reasoning steps)")
-            if final_answer:
+
+            # Show structured output summary
+            if structured_output:
+                print(f"   📊 Structured Output: ✅ PRESENT")
+                if file_locations:
+                    print(f"   📁 File Locations Found: {len(file_locations)}")
+                    # Show first 3 file locations
+                    for i, loc in enumerate(file_locations[:3]):
+                        line_info = f":{loc['line_number']}" if loc['line_number'] else ""
+                        print(f"      - {loc['name']} in {loc['file_path']}{line_info}")
+                    if len(file_locations) > 3:
+                        print(f"      ... and {len(file_locations) - 3} more")
+                else:
+                    print(f"   ⚠️  No file locations in structured output")
+
+                # Show analysis preview if available
+                if "analysis" in structured_output:
+                    preview = structured_output["analysis"][:200] + ("..." if len(structured_output["analysis"]) > 200 else "")
+                    print(f"   📝 Analysis: {preview}")
+                elif "answer" in structured_output:
+                    preview = structured_output["answer"][:200] + ("..." if len(structured_output["answer"]) > 200 else "")
+                    print(f"   📝 Answer: {preview}")
+            elif final_answer:
+                print(f"   ⚠️  Legacy format (no structured output)")
                 # Print first 200 chars of answer
                 preview = final_answer[:200] + ("..." if len(final_answer) > 200 else "")
                 print(f"   Answer preview: {preview}")
         else:
             print(f"\n❌ FAILED or TIMEOUT after {duration:.1f}s")
+
+        # Write detailed log to file
+        try:
+            os.makedirs("test_output", exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_filename = f"test_output/{title.split('.')[0].zfill(2)}_{title.split(' ')[1]}_{timestamp}.log"
+
+            with open(log_filename, "w") as f:
+                f.write("=" * 80 + "\n")
+                f.write(f"Test: {title}\n")
+                f.write(f"Timestamp: {timestamp}\n")
+                f.write(f"Timeout: {timeout}s\n")
+                f.write("=" * 80 + "\n\n")
+
+                f.write("INPUT QUERY:\n")
+                f.write("-" * 80 + "\n")
+                f.write(f"{payload['params']['arguments']['query']}\n")
+                f.write("-" * 80 + "\n\n")
+
+                f.write("OUTPUT:\n")
+                f.write("-" * 80 + "\n")
+
+                if structured_output:
+                    f.write(json.dumps(structured_output, indent=2))
+                    f.write("\n\n")
+                    f.write("FILE LOCATIONS EXTRACTED:\n")
+                    f.write("-" * 80 + "\n")
+                    for loc in file_locations:
+                        line_info = f":{loc['line_number']}" if loc['line_number'] else ""
+                        f.write(f"  {loc['name']} in {loc['file_path']}{line_info}\n")
+                elif final_answer:
+                    f.write(f"{final_answer}\n")
+                else:
+                    f.write("(No output captured)\n")
+
+                f.write("-" * 80 + "\n\n")
+                f.write(f"Duration: {duration:.1f}s\n")
+                f.write(f"Status: {'SUCCESS' if success else 'FAILED'}\n")
+
+            print(f"   💾 Log saved: {log_filename}")
+        except Exception as e:
+            print(f"   ⚠️  Failed to write log: {e}")
 
     # Graceful shutdown
     try:
@@ -469,15 +600,23 @@ def run():
 
     total = len(results)
     passed = sum(1 for r in results if r["success"])
+    structured = sum(1 for r in results if r.get("has_structured_output", False))
+    total_files = sum(len(r.get("file_locations", [])) for r in results)
 
     for r in results:
         status = "✅ PASS" if r["success"] else "❌ FAIL"
         print(f"{status} {r['test']}: {r['duration']:.1f}s", end="")
         if r["steps"]:
             print(f" ({r['steps']} steps)", end="")
+        if r.get("has_structured_output"):
+            print(f" [📊 structured]", end="")
+            if r.get("file_locations"):
+                print(f" [{len(r['file_locations'])} files]", end="")
         print()
 
     print(f"\nTotal: {passed}/{total} passed")
+    print(f"Structured outputs: {structured}/{total}")
+    print(f"File locations found: {total_files}")
     print("=" * 72)
 
     return 0 if passed == total else 1

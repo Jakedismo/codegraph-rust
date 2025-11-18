@@ -139,6 +139,7 @@ impl OpenAIProvider {
             temperature: None,
             top_p: None,
             stop: config.stop.clone(),
+            response_format: config.response_format.clone(),
         };
 
         // Only add sampling parameters for non-reasoning models
@@ -365,6 +366,8 @@ struct OpenAIRequest {
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stop: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_format: Option<crate::llm_provider::ResponseFormat>,
 }
 
 #[derive(Debug, Deserialize)]

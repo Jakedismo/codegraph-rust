@@ -48,7 +48,7 @@ impl ChatProvider for CodeGraphChatAdapter {
         &self,
         messages: &[ChatMessage],
         _tools: Option<&[Tool]>,
-        _json_schema: Option<autoagents::llm::chat::StructuredOutputFormat>,
+        json_schema: Option<autoagents::llm::chat::StructuredOutputFormat>,
     ) -> Result<Box<dyn ChatResponse>, LLMError> {
         // Convert AutoAgents messages to CodeGraph messages
         let cg_messages: Vec<Message> = messages
@@ -64,10 +64,24 @@ impl ChatProvider for CodeGraphChatAdapter {
             })
             .collect();
 
-        // Call CodeGraph LLM provider
+        // Convert AutoAgents json_schema to CodeGraph ResponseFormat
+        let response_format = json_schema.and_then(|schema| {
+            schema.schema.map(|schema_value| {
+                codegraph_ai::llm_provider::ResponseFormat::JsonSchema {
+                    json_schema: codegraph_ai::llm_provider::JsonSchema {
+                        name: schema.name,
+                        schema: schema_value,
+                        strict: schema.strict.unwrap_or(true),
+                    },
+                }
+            })
+        });
+
+        // Call CodeGraph LLM provider with structured output support
         let config = codegraph_ai::llm_provider::GenerationConfig {
             temperature: 0.1,
             max_tokens: None,
+            response_format,
             ..Default::default()
         };
 
@@ -277,6 +291,7 @@ use autoagents_derive::AgentHooks;
 pub struct CodeGraphReActAgent {
     tools: Vec<Arc<dyn ToolT>>,
     system_prompt: String,
+    analysis_type: AnalysisType,
 }
 
 impl AgentDeriveT for CodeGraphReActAgent {
@@ -293,7 +308,21 @@ impl AgentDeriveT for CodeGraphReActAgent {
     }
 
     fn output_schema(&self) -> Option<serde_json::Value> {
-        Some(CodeGraphAgentOutput::structured_output_format())
+        use codegraph_ai::agentic_schemas::*;
+        use schemars::schema_for;
+
+        // Return the appropriate schema based on analysis type
+        let schema = match self.analysis_type {
+            AnalysisType::CodeSearch => schema_for!(CodeSearchOutput),
+            AnalysisType::DependencyAnalysis => schema_for!(DependencyAnalysisOutput),
+            AnalysisType::CallChainAnalysis => schema_for!(CallChainOutput),
+            AnalysisType::ArchitectureAnalysis => schema_for!(ArchitectureAnalysisOutput),
+            AnalysisType::ApiSurfaceAnalysis => schema_for!(APISurfaceOutput),
+            AnalysisType::ContextBuilder => schema_for!(ContextBuilderOutput),
+            AnalysisType::SemanticQuestion => schema_for!(SemanticQuestionOutput),
+        };
+
+        serde_json::to_value(schema).ok()
     }
 
     fn tools(&self) -> Vec<Box<dyn ToolT>> {
@@ -354,6 +383,7 @@ impl CodeGraphAgentBuilder {
         let codegraph_agent = CodeGraphReActAgent {
             tools,
             system_prompt,
+            analysis_type: self.analysis_type,
         };
 
         // Build ReAct agent with our CodeGraph agent
