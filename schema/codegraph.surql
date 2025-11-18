@@ -344,7 +344,8 @@ DEFINE FUNCTION fn::node_info($node_id: record) {
 -- FUNCTION: node_reference (UNCHANGED)
 -- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::node_reference($node_id: string) {
-    LET $info = fn::node_info($node_id);
+    LET $record = type::thing('nodes', $node_id);
+    LET $info = fn::node_info($record);
     IF $info = NONE {
         RETURN NONE;
     };
@@ -369,10 +370,11 @@ DEFINE FUNCTION fn::edge_types() {
 DEFINE FUNCTION fn::get_transitive_dependencies($node_id: string, $edge_type: string, $depth: int) {
     LET $safe_depth = IF $depth > 0 AND $depth <= 10 THEN $depth ELSE 3 END;
     LET $edge_name  = $edge_type ?? 'Calls';
+    LET $record = type::thing('nodes', $node_id);
 
     LET $lvl1 = IF $safe_depth >= 1 THEN
         SELECT VALUE id
-        FROM ONLY $node_id
+        FROM ONLY $record
             ->edges[WHERE edge_type = $edge_name]
             ->to
     ELSE [] END;
@@ -499,6 +501,7 @@ DEFINE FUNCTION fn::detect_circular_dependencies($edge_type: string) {
 -- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::trace_call_chain($from_node: string, $max_depth: int) {
     LET $safe_depth = IF $max_depth > 0 AND $max_depth <= 10 THEN $max_depth ELSE 5 END;
+    LET $record = type::thing('nodes', $from_node);
 
     LET $raw = (
         SELECT
@@ -510,7 +513,7 @@ DEFINE FUNCTION fn::trace_call_chain($from_node: string, $max_depth: int) {
             ).caller) AS called_by
         FROM (
             SELECT ->edges[WHERE edge_type = 'Calls']
-            FROM ONLY $from_node
+            FROM ONLY $record
         )->to
     );
 
@@ -534,17 +537,18 @@ DEFINE FUNCTION fn::trace_call_chain($from_node: string, $max_depth: int) {
 -- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::calculate_coupling_metrics($node_id: string) {
     LET $edge_list = fn::edge_types();
+    LET $record = type::thing('nodes', $node_id);
 
     LET $dependents = array::distinct(
         SELECT VALUE id
-        FROM ONLY $node_id
+        FROM ONLY $record
             <-edges[WHERE edge_type INSIDE $edge_list]
             <-from
     );
 
     LET $dependencies = array::distinct(
         SELECT VALUE id
-        FROM ONLY $node_id
+        FROM ONLY $record
             ->edges[WHERE edge_type INSIDE $edge_list]
             ->to
     );
@@ -567,7 +571,7 @@ DEFINE FUNCTION fn::calculate_coupling_metrics($node_id: string) {
     LET $instability = IF $total > 0 THEN math::round($efferent / $total, 6) ELSE 0 END;
 
     RETURN {
-        node: fn::node_info($node_id),
+        node: fn::node_info($record),
         metrics: {
             afferent_coupling: $afferent,
             efferent_coupling: $efferent,
@@ -678,10 +682,11 @@ DEFINE FUNCTION fn::get_hub_nodes($min_degree: int) {
 DEFINE FUNCTION fn::get_reverse_dependencies($node_id: string, $edge_type: string, $depth: int) {
     LET $safe_depth = IF $depth > 0 AND $depth <= 10 THEN $depth ELSE 3 END;
     LET $edge_name  = $edge_type ?? 'Calls';
+    LET $record = type::thing('nodes', $node_id);
 
     LET $lvl1 = IF $safe_depth >= 1 THEN
         SELECT VALUE id
-        FROM ONLY $node_id
+        FROM ONLY $record
             <-edges[WHERE edge_type = $edge_name]
             <-from
     ELSE [] END;
