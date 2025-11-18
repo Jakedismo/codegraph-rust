@@ -25,14 +25,14 @@ CodeGraph now writes Ollama/LM Studio embeddings directly into SurrealDB’s ded
 
 ```bash
 export CODEGRAPH_EMBEDDING_PROVIDER=ollama
-export CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b   # or all-mini-llm, qwen3-embedding:4b, etc.
-export CODEGRAPH_EMBEDDING_DIMENSION=1024               # 384, 1024, 2048, or 4096
+export CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b   # or all-mini-llm, qwen3-embedding:4b, embeddinggemma etc.
+export CODEGRAPH_EMBEDDING_DIMENSION=1024               # 384, 768, 1024, 2048, or 4096
 
 # Optional local reranking (LM Studio exposes an OpenAI-compatible reranker endpoint)
 export CODEGRAPH_RERANKING_PROVIDER=lmstudio
 ```
 
-We automatically route embeddings to `embedding_384`, `embedding_1024`, `embedding_2048`, or `embedding_4096` and keep reranking disabled unless a provider is configured. No FAISS/RocksDB plumbing is needed for MCP anymore.
+We automatically route embeddings to `embedding_384`, `embedding_768`, `embedding_1024`, `embedding_2048`, or `embedding_4096` and keep reranking disabled unless a provider is configured. No FAISS/RocksDB plumbing is needed for MCP anymore.
 
 ---
 
@@ -752,7 +752,7 @@ CodeGraph uses feature flags to enable only the components you need. Build with 
 | Feature | Provider | Models/Notes |
 |---------|----------|--------------|
 | `embeddings-local` | ONNX Runtime | Local CPU/GPU embeddings (all-MiniLM-L6-v2, etc.) |
-| `embeddings-ollama` | Ollama | Local embeddings (qwen3-embedding, all-mini-llm, etc.) |
+| `embeddings-ollama` | Ollama | Local embeddings (qwen3-embedding, all-mini-llm, embeddinggemma etc.) |
 | `embeddings-openai` | OpenAI | Cloud embeddings (text-embedding-3-large/small) |
 | `embeddings-jina` | Jina AI | Cloud embeddings (jina-embeddings-v4) + reranking |
 
