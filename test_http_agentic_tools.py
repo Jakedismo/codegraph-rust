@@ -190,8 +190,10 @@ class MCPHttpSession:
 
                 # Parse SSE stream for JSON-RPC responses
                 result_data = None
+                line_count = 0
 
                 for line in response.iter_lines(decode_unicode=True):
+                    line_count += 1
                     if not line:
                         continue
 
@@ -212,14 +214,15 @@ class MCPHttpSession:
                                 print(f"❌ MCP error: {event['error']}")
                                 return None, time.time() - start_time
                         except json.JSONDecodeError as e:
-                            print(f"⚠️  Failed to parse SSE data: {e}")
+                            print(f"⚠️  Failed to parse SSE data (line {line_count}): {e}")
+                            print(f"      Data preview: {data[:200]}")
                             continue
 
                 duration = time.time() - start_time
                 if result_data:
                     return result_data, duration
                 else:
-                    print(f"⚠️  No result found in SSE stream")
+                    print(f"⚠️  No result found in SSE stream ({line_count} lines read)")
                     return None, duration
             else:
                 print(f"❌ HTTP {response.status_code}: {response.text[:200]}")
