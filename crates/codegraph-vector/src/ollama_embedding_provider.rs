@@ -6,10 +6,14 @@ use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
-use tracing::{debug, info};
+use tokenizers::Tokenizer;
+use tracing::{debug, info, warn};
 
+use crate::prep::chunker::{build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode};
 use crate::providers::{
     BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
 };
@@ -22,6 +26,7 @@ pub struct OllamaEmbeddingConfig {
     pub timeout: Duration,
     pub batch_size: usize,
     pub max_retries: usize,
+    pub max_tokens_per_text: usize,
 }
 
 impl Default for OllamaEmbeddingConfig {
@@ -32,6 +37,11 @@ impl Default for OllamaEmbeddingConfig {
             .map(|value| value.clamp(1, 4096))
             .unwrap_or(32);
 
+        let max_tokens_per_text = std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(512);
+
         Self {
             model_name: std::env::var("CODEGRAPH_EMBEDDING_MODEL")
                 .unwrap_or_else(|_| "nomic-embed-code".to_string()),
@@ -40,6 +50,7 @@ impl Default for OllamaEmbeddingConfig {
             timeout: Duration::from_secs(60),
             batch_size,
             max_retries: 3,
+            max_tokens_per_text,
         }
     }
 }
@@ -56,12 +67,18 @@ impl From<&codegraph_core::EmbeddingConfig> for OllamaEmbeddingConfig {
         // Use batch_size from config (already has env var fallback in config loading)
         let batch_size = config.batch_size.clamp(1, 4096);
 
+        let max_tokens_per_text = std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(512);
+
         Self {
             model_name,
             base_url: config.ollama_url.clone(),
             timeout: Duration::from_secs(60),
             batch_size,
             max_retries: 3,
+            max_tokens_per_text,
         }
     }
 }
@@ -86,6 +103,7 @@ pub struct OllamaEmbeddingProvider {
     client: Client,
     config: OllamaEmbeddingConfig,
     characteristics: ProviderCharacteristics,
+    tokenizer: Arc<Tokenizer>,
 }
 
 impl OllamaEmbeddingProvider {
@@ -99,10 +117,25 @@ impl OllamaEmbeddingProvider {
             memory_usage: MemoryUsage::Medium, // ~500MB-1GB for embedding model
         };
 
+        // Load Qwen2.5-Coder tokenizer for accurate token counting
+        let tokenizer_path = PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tokenizers/qwen2.5-coder.json"
+        ));
+        let tokenizer = Tokenizer::from_file(&tokenizer_path).unwrap_or_else(|e| {
+            warn!(
+                "Failed to load Qwen2.5-Coder tokenizer from {:?}: {}. Using fallback character approximation.",
+                tokenizer_path, e
+            );
+            // Create a minimal fallback tokenizer (shouldn't happen in practice)
+            panic!("Tokenizer required for Ollama chunking");
+        });
+
         Self {
             client: Client::new(),
             config,
             characteristics,
+            tokenizer: Arc::new(tokenizer),
         }
     }
 
@@ -152,6 +185,35 @@ impl OllamaEmbeddingProvider {
 
         info!("{} availability: {}", self.config.model_name, has_model);
         Ok(has_model)
+    }
+
+    fn chunker_config(&self) -> ChunkerConfig {
+        ChunkerConfig::new(self.config.max_tokens_per_text)
+            .max_texts_per_request(self.config.batch_size)
+            .cache_capacity(2048)
+            .sanitize_mode(SanitizeMode::AsciiFastPath)
+    }
+
+    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+        build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
+    }
+
+    fn prepare_text(&self, node: &CodeNode) -> Vec<String> {
+        let plan = self.build_plan_for_nodes(std::slice::from_ref(node));
+        if plan.chunks.is_empty() {
+            return vec![Self::format_node_text(node)];
+        }
+
+        let texts: Vec<String> = plan.chunks.into_iter().map(|chunk| chunk.text).collect();
+
+        if texts.len() > 1 {
+            debug!(
+                "Chunked node '{}' into {} chunks (max {} tokens)",
+                node.name, texts.len(), self.config.max_tokens_per_text
+            );
+        }
+
+        texts
     }
 
     fn format_node_text(node: &CodeNode) -> String {
@@ -287,7 +349,7 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
         self.generate_single_embedding(&formatted).await
     }
 
-    /// Generate embeddings for multiple code nodes with batch optimization
+    /// Generate embeddings for multiple code nodes with batch optimization and chunking
     async fn generate_embeddings(&self, nodes: &[CodeNode]) -> Result<Vec<Vec<f32>>> {
         if nodes.is_empty() {
             return Ok(Vec::new());
@@ -300,23 +362,72 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
         );
         let start_time = Instant::now();
 
-        // Prepare texts from nodes
-        let texts: Vec<String> = nodes.iter().map(Self::format_node_text).collect();
-        let embeddings = self
-            .generate_embeddings_for_texts(&texts, self.config.batch_size)
+        // Prepare texts from nodes with semantic chunking
+        let node_chunks: Vec<(usize, Vec<String>)> = nodes
+            .iter()
+            .enumerate()
+            .map(|(idx, node)| (idx, self.prepare_text(node)))
+            .collect();
+
+        // Flatten all chunks and track which node they belong to
+        let mut all_texts = Vec::new();
+        let mut chunk_to_node: Vec<usize> = Vec::new();
+
+        for (node_idx, chunks) in &node_chunks {
+            for chunk in chunks {
+                all_texts.push(chunk.clone());
+                chunk_to_node.push(*node_idx);
+            }
+        }
+
+        debug!(
+            "Processing {} nodes with {} total chunks (avg {:.2} chunks/node)",
+            nodes.len(),
+            all_texts.len(),
+            all_texts.len() as f64 / nodes.len() as f64
+        );
+
+        // Generate embeddings for all chunks
+        let chunk_embeddings = self
+            .generate_embeddings_for_texts(&all_texts, self.config.batch_size)
             .await?;
+
+        // Aggregate chunk embeddings back into node embeddings
+        let dimension = self.embedding_dimension();
+        let mut node_embeddings: Vec<Vec<f32>> = vec![vec![0.0f32; dimension]; nodes.len()];
+        let mut node_chunk_counts = vec![0usize; nodes.len()];
+
+        // Accumulate chunk embeddings for each node
+        for (chunk_idx, chunk_embedding) in chunk_embeddings.into_iter().enumerate() {
+            let node_idx = chunk_to_node[chunk_idx];
+            for (i, &val) in chunk_embedding.iter().enumerate() {
+                node_embeddings[node_idx][i] += val;
+            }
+            node_chunk_counts[node_idx] += 1;
+        }
+
+        // Average the accumulated embeddings
+        for (node_idx, count) in node_chunk_counts.iter().enumerate() {
+            if *count > 0 {
+                let divisor = *count as f32;
+                for val in &mut node_embeddings[node_idx] {
+                    *val /= divisor;
+                }
+            }
+        }
 
         let total_time = start_time.elapsed();
         let embeddings_per_second = nodes.len() as f64 / total_time.as_secs_f64().max(0.001);
 
         info!(
-            "Ollama embeddings complete: {} embeddings in {:.2}s ({:.1} emb/s)",
+            "Ollama embeddings complete: {} nodes ({} chunks) in {:.2}s ({:.1} emb/s)",
             nodes.len(),
+            all_texts.len(),
             total_time.as_secs_f64(),
             embeddings_per_second
         );
 
-        Ok(embeddings)
+        Ok(node_embeddings)
     }
 
     /// Generate embeddings with batch configuration and metrics
@@ -326,13 +437,11 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
         config: &BatchConfig,
     ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)> {
         let start_time = Instant::now();
-        let texts: Vec<String> = nodes.iter().map(Self::format_node_text).collect();
-        let batch_size = self.effective_batch_size(config.batch_size);
-        let embeddings = self
-            .generate_embeddings_for_texts(&texts, batch_size)
-            .await?;
-        let duration = start_time.elapsed();
 
+        // Use chunking-aware generate_embeddings instead of direct text formatting
+        let embeddings = self.generate_embeddings(nodes).await?;
+
+        let duration = start_time.elapsed();
         let metrics = EmbeddingMetrics::new(
             format!("ollama-{}", self.config.model_name),
             nodes.len(),
