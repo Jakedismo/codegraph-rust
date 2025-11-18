@@ -30,7 +30,7 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-When complete (STRUCTURED OUTPUT):
+When complete, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
 {
   "analysis": "ARCHITECTURE SUMMARY:\n- Coupling metrics: [data]\n- Circular deps: [count]\n- Hub nodes: [list with degrees]\n- Interpretation: [objective observations only]",
   "layers": [],
@@ -86,7 +86,7 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-When complete (STRUCTURED OUTPUT):
+When complete, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
 {
   "analysis": "ARCHITECTURE ANALYSIS SUMMARY:\n\n## Coupling Metrics\n- Ca, Ce, I distributions for key nodes\n- Stability zones (stable I<0.3, unstable I>0.7)\n\n## Architectural Hotspots\n- Hub nodes with degrees and coupling metrics\n- God object candidates (high degree + high Ce)\n\n## Dependency Health\n- Circular dependencies count by edge type\n- Problematic dependency patterns\n\n## Change Impact Assessment\n- High-impact nodes (high Ca)\n- Blast radius for critical components\n\n## Interpretation\n[Objective observations only - no prescriptive judgments]",
   "layers": ["Layer 1: Infrastructure", "Layer 2: Core"],
@@ -142,7 +142,7 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-When complete (STRUCTURED OUTPUT) - provide comprehensive report:
+When complete, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
 {
   "analysis": "[Detailed architectural analysis with coupling distributions, hub analysis, dependency health, change impact, execution patterns, and objective synthesis]",
   "layers": ["Layer 1: Infrastructure", "Layer 2: Core", "Layer 3: Application"],
@@ -194,7 +194,7 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-When complete (STRUCTURED OUTPUT) - provide exhaustive report:
+When complete, respond with ONLY this JSON (no 'reasoning', 'tool_call', or 'is_final' fields):
 {
   "analysis": "[Exhaustive architectural analysis with complete coupling landscape, architectural topology, dependency health, change impact, execution analysis, cross-dimensional patterns, and statistical health metrics]",
   "layers": ["Layer 1: Infrastructure", "Layer 2: Core", "Layer 3: Application", "Layer 4: Presentation"],
