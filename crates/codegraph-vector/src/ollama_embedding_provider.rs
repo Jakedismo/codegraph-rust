@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::time::timeout;
 use tokenizers::Tokenizer;
+use tokio::time::timeout;
 use tracing::{debug, info, warn};
 
 use crate::prep::chunker::{build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode};
@@ -202,10 +202,11 @@ impl OllamaEmbeddingProvider {
         let formatted = Self::format_node_text(node);
 
         // Use tokenizer to accurately check if chunking is needed
-        let token_count = self.tokenizer
+        let token_count = self
+            .tokenizer
             .encode(formatted.as_str(), false)
             .map(|enc| enc.len())
-            .unwrap_or_else(|_| (formatted.len() + 3) / 4);  // Fallback to char approximation
+            .unwrap_or_else(|_| (formatted.len() + 3) / 4); // Fallback to char approximation
 
         if token_count <= self.config.max_tokens_per_text {
             // Fast path: Node is under token limit - no chunking needed (99% of nodes!)
@@ -227,7 +228,9 @@ impl OllamaEmbeddingProvider {
 
         debug!(
             "Chunked large node '{}' into {} chunks (was {} tokens)",
-            node.name, texts.len(), token_count
+            node.name,
+            texts.len(),
+            token_count
         );
 
         texts

@@ -299,8 +299,11 @@ impl EmbeddingGenerator {
                 tracing::info!("✅ 'ollama' feature is ENABLED");
                 let ollama_config =
                     crate::ollama_embedding_provider::OllamaEmbeddingConfig::from(embedding_config);
-                tracing::info!("🔧 Created OllamaEmbeddingConfig: model='{}', url='{}'",
-                    ollama_config.model_name, ollama_config.base_url);
+                tracing::info!(
+                    "🔧 Created OllamaEmbeddingConfig: model='{}', url='{}'",
+                    ollama_config.model_name,
+                    ollama_config.base_url
+                );
                 let ollama_provider =
                     crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(ollama_config);
 

@@ -2,9 +2,9 @@
 use codegraph_core::CodeNode;
 #[cfg(feature = "faiss")]
 use codegraph_core::GraphStore;
-use serde_json::Value;
 #[cfg(any(feature = "faiss", feature = "cloud", feature = "legacy-mcp-server"))]
 use serde_json::json;
+use serde_json::Value;
 #[cfg(any(feature = "faiss", feature = "legacy-mcp-server"))]
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -14,11 +14,7 @@ use std::time::Instant;
 // Performance optimization: Cache FAISS indexes and embedding generator
 #[cfg(feature = "faiss")]
 use dashmap::DashMap;
-#[cfg(any(
-    feature = "faiss",
-    feature = "embeddings",
-    feature = "embeddings-jina"
-))]
+#[cfg(any(feature = "faiss", feature = "embeddings", feature = "embeddings-jina"))]
 use once_cell::sync::Lazy;
 
 #[cfg(any(feature = "faiss", feature = "cloud"))]
@@ -884,7 +880,10 @@ async fn run_jina_reranker(query: &str, nodes: &[CodeNode], limit: usize) -> (Ve
     }
 }
 
-#[cfg(all(any(feature = "faiss", feature = "cloud"), not(feature = "embeddings-jina")))]
+#[cfg(all(
+    any(feature = "faiss", feature = "cloud"),
+    not(feature = "embeddings-jina")
+))]
 async fn run_jina_reranker(_query: &str, nodes: &[CodeNode], _limit: usize) -> (Vec<usize>, bool) {
     tracing::debug!(
         "Jina reranking requested but embeddings-jina feature is disabled; using FAISS order"

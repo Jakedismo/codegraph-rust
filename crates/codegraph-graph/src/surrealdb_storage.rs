@@ -908,9 +908,7 @@ impl SurrealDbStorage {
             .query(query)
             .bind(("project_id", project_id.to_string()))
             .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to delete nodes: {}", e))
-            })?;
+            .map_err(|e| CodeGraphError::Database(format!("Failed to delete nodes: {}", e)))?;
 
         let deleted: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
         let count = deleted.len();
@@ -939,9 +937,7 @@ impl SurrealDbStorage {
             .query(query)
             .bind(("project_id", project_id.to_string()))
             .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to query node IDs: {}", e))
-            })?;
+            .map_err(|e| CodeGraphError::Database(format!("Failed to query node IDs: {}", e)))?;
 
         let node_ids: Vec<String> = result.take(0).unwrap_or_default();
 
@@ -963,9 +959,7 @@ impl SurrealDbStorage {
             .query(delete_query)
             .bind(("ids", node_ids))
             .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to delete edges: {}", e))
-            })?;
+            .map_err(|e| CodeGraphError::Database(format!("Failed to delete edges: {}", e)))?;
 
         let deleted: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
         let count = deleted.len();
@@ -1021,12 +1015,17 @@ impl SurrealDbStorage {
     /// Clean slate: Delete ALL data for a project (nodes, edges, embeddings, file metadata)
     /// Used when --force flag is set
     pub async fn clean_project_data(&self, project_id: &str) -> Result<()> {
-        info!("🧹 Starting clean slate deletion for project: {}", project_id);
+        info!(
+            "🧹 Starting clean slate deletion for project: {}",
+            project_id
+        );
 
         // Delete in order: edges first (referential integrity), then nodes, then metadata
         let edges_deleted = self.delete_edges_for_project(project_id).await?;
         let nodes_deleted = self.delete_nodes_for_project(project_id).await?;
-        let symbols_deleted = self.delete_symbol_embeddings_for_project(project_id).await?;
+        let symbols_deleted = self
+            .delete_symbol_embeddings_for_project(project_id)
+            .await?;
         let files_deleted = self.delete_file_metadata_for_project(project_id).await?;
 
         info!(
@@ -1212,14 +1211,14 @@ impl SymbolEmbeddingRecord {
         metadata: Option<JsonValue>,
     ) -> Self {
         let embedding_vec: Vec<f64> = embedding.iter().map(|&f| f as f64).collect();
-        let (embedding_384, embedding_768, embedding_1024, embedding_2048, embedding_4096) = match embedding_column
-        {
-            SURR_EMBEDDING_COLUMN_384 => (Some(embedding_vec), None, None, None, None),
-            SURR_EMBEDDING_COLUMN_768 => (None, Some(embedding_vec), None, None, None),
-            SURR_EMBEDDING_COLUMN_1024 => (None, None, Some(embedding_vec), None, None),
-            SURR_EMBEDDING_COLUMN_4096 => (None, None, None, None, Some(embedding_vec)),
-            _ => (None, None, None, Some(embedding_vec), None),
-        };
+        let (embedding_384, embedding_768, embedding_1024, embedding_2048, embedding_4096) =
+            match embedding_column {
+                SURR_EMBEDDING_COLUMN_384 => (Some(embedding_vec), None, None, None, None),
+                SURR_EMBEDDING_COLUMN_768 => (None, Some(embedding_vec), None, None, None),
+                SURR_EMBEDDING_COLUMN_1024 => (None, None, Some(embedding_vec), None, None),
+                SURR_EMBEDDING_COLUMN_4096 => (None, None, None, None, Some(embedding_vec)),
+                _ => (None, None, None, Some(embedding_vec), None),
+            };
 
         SymbolEmbeddingRecord {
             id: symbol_embedding_record_id(project_id, normalized_symbol),

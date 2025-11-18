@@ -544,13 +544,15 @@ impl ProjectIndexer {
             info!("📊 Project already indexed, checking for file changes...");
 
             // Collect current files (returns Vec<(PathBuf, u64)>)
-            let files_with_sizes = codegraph_parser::file_collect::collect_source_files_with_config(
-                path,
-                &file_config,
-            )?;
+            let files_with_sizes =
+                codegraph_parser::file_collect::collect_source_files_with_config(
+                    path,
+                    &file_config,
+                )?;
 
             // Extract just the paths for change detection
-            let file_paths: Vec<PathBuf> = files_with_sizes.iter().map(|(p, _)| p.clone()).collect();
+            let file_paths: Vec<PathBuf> =
+                files_with_sizes.iter().map(|(p, _)| p.clone()).collect();
 
             // Detect changes
             let changes = self.detect_file_changes(&file_paths).await?;
@@ -595,7 +597,8 @@ impl ProjectIndexer {
             // Handle deletions
             if !deleted.is_empty() {
                 info!("🗑️  Removing data for {} deleted files", deleted.len());
-                let deleted_paths: Vec<String> = deleted.iter().map(|c| c.file_path.clone()).collect();
+                let deleted_paths: Vec<String> =
+                    deleted.iter().map(|c| c.file_path.clone()).collect();
                 self.delete_data_for_files(&deleted_paths).await?;
             }
 
@@ -606,10 +609,7 @@ impl ProjectIndexer {
                 .filter_map(|c| {
                     let path = PathBuf::from(&c.file_path);
                     // Find the file size from original collection
-                    files_with_sizes
-                        .iter()
-                        .find(|(p, _)| p == &path)
-                        .cloned()
+                    files_with_sizes.iter().find(|(p, _)| p == &path).cloned()
                 })
                 .collect();
 
@@ -1244,7 +1244,8 @@ impl ProjectIndexer {
         // Task 3.3: Update file metadata for incremental indexing
         info!("💾 Updating file metadata for change tracking");
         let file_paths_only: Vec<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
-        self.persist_file_metadata(&file_paths_only, &nodes, &edges).await?;
+        self.persist_file_metadata(&file_paths_only, &nodes, &edges)
+            .await?;
         self.flush_surreal_writer().await?;
 
         // COMPREHENSIVE INDEXING COMPLETION SUMMARY
@@ -1374,7 +1375,10 @@ impl ProjectIndexer {
 
         // ARCHITECTURAL IMPROVEMENT: Use existing working embedder instead of creating fresh one
         // This avoids re-initialization issues that could cause random hash fallback
-        info!("🤖 Using configured embedder ({}) for AI semantic matching", self.global_config.embedding.provider);
+        info!(
+            "🤖 Using configured embedder ({}) for AI semantic matching",
+            self.global_config.embedding.provider
+        );
         let embedder = &self.embedder;
         info!("✅ Using working embedder session (guaranteed real embeddings)");
         let (batch_size, max_concurrent) = self.symbol_embedding_batch_settings();
@@ -2107,7 +2111,8 @@ impl ProjectIndexer {
         let mut buffer = [0u8; 8192];
 
         loop {
-            let bytes_read = file.read(&mut buffer)
+            let bytes_read = file
+                .read(&mut buffer)
                 .with_context(|| format!("Failed to read file: {:?}", canonical_path))?;
             if bytes_read == 0 {
                 break;
@@ -2121,7 +2126,9 @@ impl ProjectIndexer {
     /// Detect changes between current filesystem and stored file metadata
     async fn detect_file_changes(&self, current_files: &[PathBuf]) -> Result<Vec<FileChange>> {
         let storage = self.surreal.lock().await;
-        let stored_metadata = storage.get_file_metadata_for_project(&self.project_id).await?;
+        let stored_metadata = storage
+            .get_file_metadata_for_project(&self.project_id)
+            .await?;
         drop(storage);
 
         // Create lookup map of stored files
@@ -2194,14 +2201,16 @@ impl ProjectIndexer {
 
         // Delete nodes for these files
         let query = "DELETE nodes WHERE project_id = $project_id AND file_path IN $file_paths RETURN BEFORE";
-        let mut result = storage.db()
+        let mut result = storage
+            .db()
             .query(query)
             .bind(("project_id", self.project_id.clone()))
             .bind(("file_paths", file_paths.to_vec()))
             .await
             .map_err(|e| anyhow!("Failed to delete nodes: {}", e))?;
 
-        let deleted_nodes: Vec<HashMap<String, serde_json::Value>> = result.take(0).unwrap_or_default();
+        let deleted_nodes: Vec<HashMap<String, serde_json::Value>> =
+            result.take(0).unwrap_or_default();
         let node_ids: Vec<String> = deleted_nodes
             .iter()
             .filter_map(|n| n.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
@@ -2215,7 +2224,8 @@ impl ProjectIndexer {
                     string::split(string::trim(from), ':')[1] IN $node_ids OR
                     string::split(string::trim(to), ':')[1] IN $node_ids
             "#;
-            storage.db()
+            storage
+                .db()
                 .query(edge_query)
                 .bind(("ids", node_ids))
                 .await
@@ -2223,7 +2233,9 @@ impl ProjectIndexer {
         }
 
         // Delete file metadata
-        storage.delete_file_metadata_for_files(&self.project_id, file_paths).await?;
+        storage
+            .delete_file_metadata_for_files(&self.project_id, file_paths)
+            .await?;
 
         info!("Deleted data for {} files", file_paths.len());
         Ok(())
@@ -2253,7 +2265,9 @@ impl ProjectIndexer {
 
         // Count nodes per file - O(nodes)
         for node in nodes {
-            let entry = file_stats.entry(node.location.file_path.clone()).or_insert((0, 0));
+            let entry = file_stats
+                .entry(node.location.file_path.clone())
+                .or_insert((0, 0));
             entry.0 += 1;
         }
 
@@ -2294,7 +2308,8 @@ impl ProjectIndexer {
                 .unwrap_or_else(chrono::Utc::now);
 
             // Get counts from HashMap - O(1) lookup
-            let (node_count, edge_count) = file_stats.get(&file_path_str).copied().unwrap_or((0, 0));
+            let (node_count, edge_count) =
+                file_stats.get(&file_path_str).copied().unwrap_or((0, 0));
 
             file_metadata_records.push(FileMetadataRecord {
                 file_path: file_path_str,
@@ -2312,7 +2327,9 @@ impl ProjectIndexer {
         }
 
         // Batch upsert file metadata
-        storage.upsert_file_metadata_batch(&file_metadata_records).await?;
+        storage
+            .upsert_file_metadata_batch(&file_metadata_records)
+            .await?;
 
         metadata_pb.finish_with_message(format!(
             "💾 File metadata complete: {} files tracked",
@@ -2819,7 +2836,7 @@ pub fn prepare_node_text(node: &CodeNode) -> String {
     let max_chunk_tokens = std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
-        .unwrap_or(512);  // Default 512 tokens
+        .unwrap_or(512); // Default 512 tokens
 
     // Approximate character limit for quick check (1 token ≈ 4 chars)
     let approx_max_chars = max_chunk_tokens * 4;

@@ -13,9 +13,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// Type alias for async embedding function
-type EmbeddingFn = Arc<
-    dyn Fn(CodeNode) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send>> + Send + Sync,
->;
+type EmbeddingFn =
+    Arc<dyn Fn(CodeNode) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send>> + Send + Sync>;
 
 /// Embedding service abstraction used by the integrator.
 ///

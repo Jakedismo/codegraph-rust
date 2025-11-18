@@ -2,8 +2,7 @@
 #![cfg(feature = "server-http")]
 
 use codegraph_mcp::{
-    http_config::HttpServerConfig,
-    http_server::start_http_server,
+    http_config::HttpServerConfig, http_server::start_http_server,
     official_server::CodeGraphMCPServer,
 };
 use serde_json::json;
@@ -87,7 +86,10 @@ async fn test_http_mcp_initialize_request() {
 
     // Should get SSE stream with session ID
     assert!(response.headers().contains_key("mcp-session-id"));
-    assert_eq!(response.headers().get("content-type").unwrap(), "text/event-stream");
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "text/event-stream"
+    );
 
     // Cleanup
     server_handle.abort();

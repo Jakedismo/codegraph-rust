@@ -33,8 +33,7 @@ impl HttpServerConfig {
     /// Parse from environment variables with CODEGRAPH_HTTP_ prefix
     pub fn from_env() -> Self {
         Self {
-            host: std::env::var("CODEGRAPH_HTTP_HOST")
-                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            host: std::env::var("CODEGRAPH_HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
             port: std::env::var("CODEGRAPH_HTTP_PORT")
                 .ok()
                 .and_then(|p| p.parse().ok())

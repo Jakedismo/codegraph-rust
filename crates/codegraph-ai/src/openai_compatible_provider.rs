@@ -231,8 +231,7 @@ impl OpenAICompatibleProvider {
         // Parse the response
         serde_json::from_str::<ResponseAPIResponse>(&response_text).context(format!(
             "Failed to parse {} Responses API response. Raw response: {}",
-            self.config.provider_name,
-            response_text
+            self.config.provider_name, response_text
         ))
     }
 

@@ -6,7 +6,7 @@ use crate::http_config::HttpServerConfig;
 use crate::official_server::CodeGraphMCPServer;
 use axum::Router;
 use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager, StreamableHttpService, StreamableHttpServerConfig,
+    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -50,8 +50,14 @@ pub async fn start_http_server(
 
     info!("CodeGraph MCP HTTP server listening on http://{}", addr);
     info!("Endpoints:");
-    info!("  POST http://{}/mcp - Initialize session and send MCP requests", addr);
-    info!("  GET  http://{}/mcp - Open SSE stream (requires Mcp-Session-Id header)", addr);
+    info!(
+        "  POST http://{}/mcp - Initialize session and send MCP requests",
+        addr
+    );
+    info!(
+        "  GET  http://{}/mcp - Open SSE stream (requires Mcp-Session-Id header)",
+        addr
+    );
     info!("  GET  http://{}/health - Health check", addr);
 
     // Start server

@@ -12,8 +12,8 @@ use autoagents::llm::models::{ModelListRequest, ModelListResponse, ModelsProvide
 use autoagents::llm::{FunctionCall, ToolCall};
 use codegraph_ai::llm_provider::{LLMProvider as CodeGraphLLM, Message, MessageRole};
 use serde::Deserialize;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// Convert CodeGraph Message to AutoAgents ChatMessage
 pub(crate) fn convert_to_chat_message(msg: &Message) -> ChatMessage {
@@ -204,14 +204,23 @@ impl ChatResponse for CodeGraphChatResponse {
     }
 
     fn tool_calls(&self) -> Option<Vec<ToolCall>> {
-        tracing::info!("tool_calls() called with content length: {}", self.content.len());
-        tracing::debug!("Content preview: {}", &self.content.chars().take(200).collect::<String>());
+        tracing::info!(
+            "tool_calls() called with content length: {}",
+            self.content.len()
+        );
+        tracing::debug!(
+            "Content preview: {}",
+            &self.content.chars().take(200).collect::<String>()
+        );
 
         // Try to parse the response as CodeGraph's JSON format
         match serde_json::from_str::<CodeGraphLLMResponse>(&self.content) {
             Ok(parsed) => {
-                tracing::info!("Successfully parsed CodeGraphLLMResponse. has_tool_call={}, is_final={}",
-                    parsed.tool_call.is_some(), parsed.is_final);
+                tracing::info!(
+                    "Successfully parsed CodeGraphLLMResponse. has_tool_call={}, is_final={}",
+                    parsed.tool_call.is_some(),
+                    parsed.is_final
+                );
 
                 // If there's a tool_call and is_final is false, convert to AutoAgents format
                 if let Some(tool_call) = parsed.tool_call {
@@ -220,10 +229,7 @@ impl ChatResponse for CodeGraphChatResponse {
                         let arguments = match serde_json::to_string(&tool_call.parameters) {
                             Ok(json) => json,
                             Err(e) => {
-                                tracing::error!(
-                                    "Failed to serialize tool call parameters: {}",
-                                    e
-                                );
+                                tracing::error!("Failed to serialize tool call parameters: {}", e);
                                 return None;
                             }
                         };
@@ -257,8 +263,11 @@ impl ChatResponse for CodeGraphChatResponse {
             }
             Err(e) => {
                 // Not a JSON response or doesn't match our format - that's fine
-                tracing::warn!("Response is not CodeGraph JSON format: {}. Content: {}",
-                    e, &self.content.chars().take(500).collect::<String>());
+                tracing::warn!(
+                    "Response is not CodeGraph JSON format: {}. Content: {}",
+                    e,
+                    &self.content.chars().take(500).collect::<String>()
+                );
             }
         }
 

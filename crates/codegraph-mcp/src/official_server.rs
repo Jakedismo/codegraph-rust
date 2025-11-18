@@ -235,25 +235,29 @@ impl CodeGraphMCPServer {
             // When using SurrealDB, skip RocksDB entirely and use a minimal temp graph
             // The legacy `self.graph` field is only used by disabled non-agentic tools
             tracing::info!("Using SurrealDB for agentic tools. Skipping RocksDB initialization.");
-            let temp_dir = std::env::temp_dir().join(format!("codegraph-temp-{}", uuid::Uuid::new_v4()));
+            let temp_dir =
+                std::env::temp_dir().join(format!("codegraph-temp-{}", uuid::Uuid::new_v4()));
             codegraph_graph::CodeGraph::new_with_path(temp_dir.to_str().unwrap())
                 .expect("Failed to create temporary graph")
         } else {
             // Legacy mode: Try to open RocksDB for non-agentic tools
-            let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let current_dir =
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
             let db_root = current_dir.join(".codegraph");
             let db_path = db_root.join("db");
 
             if let Err(err) = std::fs::create_dir_all(&db_root) {
                 tracing::warn!(
                     "Unable to create .codegraph directory at {:?}: {}",
-                    db_root, err
+                    db_root,
+                    err
                 );
             }
             if let Err(err) = std::fs::create_dir_all(&db_path) {
                 tracing::warn!(
                     "Unable to create RocksDB directory at {:?}: {}",
-                    db_path, err
+                    db_path,
+                    err
                 );
             }
 
@@ -728,7 +732,8 @@ impl CodeGraphMCPServer {
 
         tracing::info!(
             "Generating documentation for '{}' (style: {})",
-            request.target_name, request.style
+            request.target_name,
+            request.style
         );
 
         // Use the existing graph database from the server
@@ -1506,48 +1511,95 @@ impl CodeGraphMCPServer {
         use codegraph_ai::agentic_schemas::*;
 
         // Try to parse the answer as structured output first
+        tracing::debug!("Attempting to parse structured output for {:?}", analysis_type);
+        tracing::debug!("Answer length: {}, first 200 chars: {}",
+            result.answer.len(),
+            result.answer.chars().take(200).collect::<String>());
+
         let structured_output = match analysis_type {
             crate::AnalysisType::CodeSearch => {
-                serde_json::from_str::<CodeSearchOutput>(&result.answer)
-                    .ok()
-                    .map(|o| serde_json::to_value(AgenticOutput::CodeSearch(o)).ok())
-                    .flatten()
+                match serde_json::from_str::<CodeSearchOutput>(&result.answer) {
+                    Ok(o) => {
+                        tracing::info!("✅ Successfully parsed CodeSearchOutput");
+                        serde_json::to_value(AgenticOutput::CodeSearch(o)).ok()
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse CodeSearchOutput: {}", e);
+                        None
+                    }
+                }
             }
             crate::AnalysisType::DependencyAnalysis => {
-                serde_json::from_str::<DependencyAnalysisOutput>(&result.answer)
-                    .ok()
-                    .map(|o| serde_json::to_value(AgenticOutput::DependencyAnalysis(o)).ok())
-                    .flatten()
+                match serde_json::from_str::<DependencyAnalysisOutput>(&result.answer) {
+                    Ok(o) => {
+                        tracing::info!("✅ Successfully parsed DependencyAnalysisOutput");
+                        serde_json::to_value(AgenticOutput::DependencyAnalysis(o)).ok()
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse DependencyAnalysisOutput: {}", e);
+                        None
+                    }
+                }
             }
             crate::AnalysisType::CallChainAnalysis => {
-                serde_json::from_str::<CallChainOutput>(&result.answer)
-                    .ok()
-                    .map(|o| serde_json::to_value(AgenticOutput::CallChain(o)).ok())
-                    .flatten()
+                match serde_json::from_str::<CallChainOutput>(&result.answer) {
+                    Ok(o) => {
+                        tracing::info!("✅ Successfully parsed CallChainOutput");
+                        serde_json::to_value(AgenticOutput::CallChain(o)).ok()
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse CallChainOutput: {}", e);
+                        None
+                    }
+                }
             }
             crate::AnalysisType::ArchitectureAnalysis => {
-                serde_json::from_str::<ArchitectureAnalysisOutput>(&result.answer)
-                    .ok()
-                    .map(|o| serde_json::to_value(AgenticOutput::ArchitectureAnalysis(o)).ok())
-                    .flatten()
+                match serde_json::from_str::<ArchitectureAnalysisOutput>(&result.answer) {
+                    Ok(o) => {
+                        tracing::info!("✅ Successfully parsed ArchitectureAnalysisOutput");
+                        serde_json::to_value(AgenticOutput::ArchitectureAnalysis(o)).ok()
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse ArchitectureAnalysisOutput: {}", e);
+                        None
+                    }
+                }
             }
             crate::AnalysisType::ApiSurfaceAnalysis => {
-                serde_json::from_str::<APISurfaceOutput>(&result.answer)
-                    .ok()
-                    .map(|o| serde_json::to_value(AgenticOutput::APISurface(o)).ok())
-                    .flatten()
+                match serde_json::from_str::<APISurfaceOutput>(&result.answer) {
+                    Ok(o) => {
+                        tracing::info!("✅ Successfully parsed APISurfaceOutput");
+                        serde_json::to_value(AgenticOutput::APISurface(o)).ok()
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse APISurfaceOutput: {}", e);
+                        None
+                    }
+                }
             }
             crate::AnalysisType::ContextBuilder => {
-                serde_json::from_str::<ContextBuilderOutput>(&result.answer)
-                    .ok()
-                    .map(|o| serde_json::to_value(AgenticOutput::ContextBuilder(o)).ok())
-                    .flatten()
+                match serde_json::from_str::<ContextBuilderOutput>(&result.answer) {
+                    Ok(o) => {
+                        tracing::info!("✅ Successfully parsed ContextBuilderOutput");
+                        serde_json::to_value(AgenticOutput::ContextBuilder(o)).ok()
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse ContextBuilderOutput: {}", e);
+                        None
+                    }
+                }
             }
             crate::AnalysisType::SemanticQuestion => {
-                serde_json::from_str::<SemanticQuestionOutput>(&result.answer)
-                    .ok()
-                    .map(|o| serde_json::to_value(AgenticOutput::SemanticQuestion(o)).ok())
-                    .flatten()
+                match serde_json::from_str::<SemanticQuestionOutput>(&result.answer) {
+                    Ok(o) => {
+                        tracing::info!("✅ Successfully parsed SemanticQuestionOutput");
+                        serde_json::to_value(AgenticOutput::SemanticQuestion(o)).ok()
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse SemanticQuestionOutput: {}", e);
+                        None
+                    }
+                }
             }
         };
 

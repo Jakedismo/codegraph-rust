@@ -224,8 +224,7 @@ impl ConfigManager {
 
     /// Load configuration from TOML file
     fn load_from_file(path: &PathBuf) -> Result<CodeGraphConfig> {
-        let content =
-            std::fs::read_to_string(path).map_err(codegraph_core::CodeGraphError::Io)?;
+        let content = std::fs::read_to_string(path).map_err(codegraph_core::CodeGraphError::Io)?;
 
         let config: CodeGraphConfig = toml::from_str(&content).map_err(|e| {
             codegraph_core::CodeGraphError::Parse(format!("Invalid TOML config: {}", e))
@@ -648,7 +647,8 @@ impl ConfigManager {
             export CODEGRAPH_MODEL=qwen2.5-coder-14b-128k\n\
             export CODEGRAPH_CONTEXT_WINDOW=64000\n\
             export CODEGRAPH_CACHE_SIZE=500\n\
-            export CODEGRAPH_ENABLE_CACHE=true\n".to_string()
+            export CODEGRAPH_ENABLE_CACHE=true\n"
+            .to_string()
     }
 }
 
