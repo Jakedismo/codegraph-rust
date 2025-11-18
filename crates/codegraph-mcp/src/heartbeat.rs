@@ -231,7 +231,7 @@ impl HeartbeatManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::{advance, pause};
+    use tokio::time::sleep;
 
     #[tokio::test]
     async fn test_heartbeat_config_default() {
@@ -266,8 +266,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_pong_handling() {
-        pause();
-
         let config = HeartbeatConfig {
             interval: Duration::from_millis(100),
             timeout: Duration::from_millis(50),
@@ -278,7 +276,7 @@ mod tests {
         monitor.on_pong_received(1).await;
         assert_eq!(monitor.state().await, HeartbeatState::Healthy);
 
-        advance(Duration::from_millis(200)).await;
+        sleep(Duration::from_millis(200)).await;
 
         monitor.on_pong_received(100).await;
         assert_eq!(monitor.state().await, HeartbeatState::Healthy);

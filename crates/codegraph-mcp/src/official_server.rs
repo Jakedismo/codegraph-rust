@@ -1419,7 +1419,7 @@ impl CodeGraphMCPServer {
     }
 
     /// Execute agentic workflow using AutoAgents framework
-    #[cfg(all(feature = "ai-enhanced", feature = "autoagents-experimental"))]
+    #[cfg(feature = "ai-enhanced")]
     async fn execute_agentic_workflow(
         &self,
         analysis_type: crate::AnalysisType,
@@ -1629,140 +1629,6 @@ impl CodeGraphMCPServer {
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(&response_json)
                 .unwrap_or_else(|_| "Error formatting AutoAgents result".to_string()),
-        )]))
-    }
-
-    /// Execute agentic workflow using legacy orchestrator
-    #[cfg(all(feature = "ai-enhanced", not(feature = "autoagents-experimental")))]
-    async fn execute_agentic_workflow(
-        &self,
-        analysis_type: crate::AnalysisType,
-        query: &str,
-        peer: Peer<RoleServer>,
-        meta: Meta,
-    ) -> Result<CallToolResult, McpError> {
-        use crate::{AgenticOrchestrator, PromptSelector};
-        use codegraph_ai::llm_factory::LLMProviderFactory;
-        use codegraph_graph::GraphFunctions;
-        use std::sync::Arc;
-
-        // Auto-detect context tier
-        let tier = Self::detect_context_tier();
-
-        tracing::info!("Agentic {} (tier={:?})", analysis_type.as_str(), tier);
-
-        // Extract progress token from meta or generate one
-        let progress_token = meta.get_progress_token().unwrap_or_else(|| {
-            ProgressToken(NumberOrString::String(
-                format!("agentic-{}", Uuid::new_v4()).into(),
-            ))
-        });
-
-        // Create progress callback
-        let progress_callback = Some(Self::create_progress_callback(peer, progress_token));
-
-        // Load config for LLM provider
-        let config_manager =
-            codegraph_core::config_manager::ConfigManager::load().map_err(|e| McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: format!("Failed to load config: {}", e).into(),
-                data: None,
-            })?;
-        let config = config_manager.config();
-
-        // Create LLM provider
-        let llm_provider =
-            LLMProviderFactory::create_from_config(&config.llm).map_err(|e| McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: format!("Failed to create LLM provider: {}", e).into(),
-                data: None,
-            })?;
-
-        // Create GraphFunctions with SurrealDB connection
-        // We'll use the SurrealDbStorage to create the connection
-        let graph_functions = {
-            use codegraph_graph::SurrealDbStorage;
-
-            let surrealdb_config = codegraph_graph::SurrealDbConfig {
-                connection: std::env::var("SURREALDB_URL")
-                    .unwrap_or_else(|_| "ws://localhost:3004".to_string()),
-                namespace: std::env::var("SURREALDB_NAMESPACE")
-                    .unwrap_or_else(|_| "codegraph".to_string()),
-                database: std::env::var("SURREALDB_DATABASE")
-                    .unwrap_or_else(|_| "main".to_string()),
-                username: std::env::var("SURREALDB_USERNAME").ok(),
-                password: std::env::var("SURREALDB_PASSWORD").ok(),
-                strict_mode: false,
-                auto_migrate: false, // Don't auto-migrate for agentic tools
-                cache_enabled: false,
-            };
-
-            // Create SurrealDbStorage which handles connection setup
-            let storage = SurrealDbStorage::new(surrealdb_config)
-                .await
-                .map_err(|e| McpError {
-                    code: rmcp::model::ErrorCode(-32603),
-                    message: format!("Failed to create SurrealDB storage: {}. Ensure SurrealDB is running on ws://localhost:3004", e).into(),
-                    data: None,
-                })?;
-
-            // Get the database connection from storage and create GraphFunctions
-            Arc::new(GraphFunctions::new(storage.db()))
-        };
-
-        // Create GraphToolExecutor
-        let tool_executor = Arc::new(crate::GraphToolExecutor::new(graph_functions));
-
-        // Get max_tokens override from config if set
-        let max_tokens_override = config.llm.mcp_code_agent_max_output_tokens;
-
-        // Create AgenticOrchestrator with config override and progress callback
-        let orchestrator = AgenticOrchestrator::new_with_override(
-            llm_provider,
-            tool_executor,
-            tier,
-            max_tokens_override,
-            progress_callback,
-        );
-
-        // Get tier-appropriate prompt from PromptSelector
-        let prompt_selector = PromptSelector::new();
-        let system_prompt = prompt_selector
-            .select_prompt(analysis_type, tier)
-            .map_err(|e| McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: format!("Failed to select prompt: {}", e).into(),
-                data: None,
-            })?;
-
-        // Execute agentic workflow
-        let result = orchestrator
-            .execute(query, system_prompt)
-            .await
-            .map_err(|e| McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: format!("Agentic workflow failed: {}", e).into(),
-                data: None,
-            })?;
-
-        // Format result as JSON
-        let response_json = serde_json::json!({
-            "analysis_type": analysis_type.as_str(),
-            "tier": format!("{:?}", tier),
-            "query": query,
-            "final_answer": result.final_answer,
-            "total_steps": result.total_steps,
-            "duration_ms": result.duration_ms,
-            "total_tokens": result.total_tokens,
-            "completed_successfully": result.completed_successfully,
-            "termination_reason": result.termination_reason,
-            "steps": result.steps,
-            "tool_call_stats": result.tool_call_stats(),
-        });
-
-        Ok(CallToolResult::success(vec![Content::text(
-            serde_json::to_string_pretty(&response_json)
-                .unwrap_or_else(|_| "Error formatting agentic result".to_string()),
         )]))
     }
 

@@ -10,7 +10,9 @@ use autoagents::llm::embedding::EmbeddingProvider;
 use autoagents::llm::error::LLMError;
 use autoagents::llm::models::{ModelListRequest, ModelListResponse, ModelsProvider};
 use autoagents::llm::{FunctionCall, ToolCall};
-use codegraph_ai::llm_provider::{LLMProvider as CodeGraphLLM, Message, MessageRole};
+use codegraph_ai::llm_provider::{
+    LLMProvider as CodeGraphLLM, LLMResponse, Message, MessageRole, ProviderCharacteristics,
+};
 use serde::Deserialize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -220,7 +222,9 @@ struct CodeGraphLLMResponse {
 
 #[derive(Debug, Deserialize)]
 struct CodeGraphToolCall {
+    #[serde(alias = "name")]
     tool_name: String,
+    #[serde(alias = "arguments")]
     parameters: serde_json::Value,
 }
 
@@ -410,7 +414,9 @@ use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use autoagents::core::agent::memory::SlidingWindowMemory;
 use autoagents::core::agent::prebuilt::executor::ReActAgent;
 use autoagents::core::agent::AgentBuilder;
-use autoagents::core::agent::{AgentDeriveT, AgentExecutor, AgentHooks, AgentOutputT, Context, DirectAgentHandle, ExecutorConfig};
+use autoagents::core::agent::{
+    AgentDeriveT, AgentExecutor, AgentHooks, Context, DirectAgentHandle, ExecutorConfig,
+};
 use autoagents::core::error::Error as AutoAgentsError;
 use autoagents::core::tool::{shared_tools_to_boxes, ToolT};
 
@@ -608,6 +614,29 @@ mod tests {
         assert_eq!(aa_messages[1].role, ChatRole::User);
     }
 
+    #[test]
+    fn test_tool_calls_accepts_name_arguments_fields() {
+        let response = CodeGraphChatResponse {
+            content: r#"{
+                "reasoning": "Plan",
+                "tool_call": {
+                    "name": "get_hub_nodes",
+                    "arguments": {
+                        "min_degree": 4
+                    }
+                },
+                "is_final": false
+            }"#
+            .to_string(),
+            _total_tokens: 0,
+        };
+
+        let tool_calls = response.tool_calls().expect("tool call not parsed");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].function.name, "get_hub_nodes");
+        assert_eq!(tool_calls[0].function.arguments, "{\"min_degree\":4}");
+    }
+
     // Integration test for ChatProvider
     struct MockCodeGraphLLM;
 
@@ -617,11 +646,38 @@ mod tests {
             &self,
             messages: &[Message],
             _config: &codegraph_ai::llm_provider::GenerationConfig,
-        ) -> codegraph_ai::llm_provider::LLMResult<codegraph_ai::llm_provider::Response> {
-            Ok(codegraph_ai::llm_provider::Response {
+        ) -> codegraph_ai::llm_provider::LLMResult<LLMResponse> {
+            Ok(LLMResponse {
                 content: format!("Echo: {}", messages.last().unwrap().content),
-                total_tokens: 10,
+                total_tokens: Some(10),
+                prompt_tokens: None,
+                completion_tokens: None,
+                finish_reason: Some("stop".to_string()),
+                model: "mock".to_string(),
             })
+        }
+
+        async fn is_available(&self) -> bool {
+            true
+        }
+
+        fn provider_name(&self) -> &str {
+            "mock"
+        }
+
+        fn model_name(&self) -> &str {
+            "mock-model"
+        }
+
+        fn characteristics(&self) -> ProviderCharacteristics {
+            ProviderCharacteristics {
+                max_tokens: 4096,
+                avg_latency_ms: 1,
+                rpm_limit: None,
+                tpm_limit: None,
+                supports_streaming: false,
+                supports_functions: true,
+            }
         }
     }
 

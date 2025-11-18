@@ -512,6 +512,13 @@ impl AgenticOrchestrator {
 
     /// Parse LLM response to extract reasoning step
     fn parse_llm_response(&self, step_number: usize, response: &str) -> Result<ReasoningStep> {
+        Self::parse_llm_response_internal(step_number, response)
+    }
+
+    fn parse_llm_response_internal(
+        step_number: usize,
+        response: &str,
+    ) -> Result<ReasoningStep> {
         // Try to parse as JSON first
         if let Ok(parsed) = serde_json::from_str::<JsonValue>(response) {
             let reasoning = parsed["reasoning"]
@@ -523,8 +530,14 @@ impl AgenticOrchestrator {
 
             let (tool_name, tool_params) = if let Some(tool_call) = parsed["tool_call"].as_object()
             {
-                let name = tool_call.get("tool_name").and_then(|v| v.as_str());
-                let params = tool_call.get("parameters").cloned();
+                let name = tool_call
+                    .get("tool_name")
+                    .or_else(|| tool_call.get("name"))
+                    .and_then(|v| v.as_str());
+                let params = tool_call
+                    .get("parameters")
+                    .or_else(|| tool_call.get("arguments"))
+                    .cloned();
                 (name.map(|s| s.to_string()), params)
             } else {
                 (None, None)
@@ -580,8 +593,6 @@ mod tests {
 
     #[test]
     fn test_parse_valid_json_response() {
-        let orchestrator = create_test_orchestrator();
-
         let json_response = r#"{
             "reasoning": "I need to analyze dependencies",
             "tool_call": {
@@ -595,8 +606,7 @@ mod tests {
             "is_final": false
         }"#;
 
-        let step = orchestrator
-            .parse_llm_response(1, json_response)
+        let step = AgenticOrchestrator::parse_llm_response_internal(1, json_response)
             .expect("Should parse valid JSON");
 
         assert_eq!(step.step_number, 1);
@@ -610,16 +620,13 @@ mod tests {
 
     #[test]
     fn test_parse_final_response() {
-        let orchestrator = create_test_orchestrator();
-
         let json_response = r#"{
             "reasoning": "Based on the analysis, the answer is...",
             "tool_call": null,
             "is_final": true
         }"#;
 
-        let step = orchestrator
-            .parse_llm_response(1, json_response)
+        let step = AgenticOrchestrator::parse_llm_response_internal(1, json_response)
             .expect("Should parse final response");
 
         assert_eq!(step.step_number, 1);
@@ -627,20 +634,30 @@ mod tests {
         assert!(step.tool_name.is_none());
     }
 
-    // Helper to create test orchestrator
-    fn create_test_orchestrator() -> AgenticOrchestrator {
-        use codegraph_graph::GraphFunctions;
-        use std::sync::Arc;
+    #[test]
+    fn test_parse_tool_call_with_name_arguments_fields() {
+        let json_response = r#"{
+            "reasoning": "Need hub nodes",
+            "tool_call": {
+                "name": "get_hub_nodes",
+                "arguments": {
+                    "min_degree": 7
+                }
+            },
+            "is_final": false
+        }"#;
 
-        // This is a minimal test setup - in real tests, we'd use mock objects
-        let graph_functions =
-            Arc::new(GraphFunctions::new_memory().expect("Failed to create test graph"));
-        let tool_executor = Arc::new(GraphToolExecutor::new(graph_functions));
+        let step = AgenticOrchestrator::parse_llm_response_internal(2, json_response)
+            .expect("Should parse alias fields");
 
-        // For testing parse logic, we don't need a real LLM provider
-        // In real tests, we'd use a mock LLM provider
-        let llm_provider: Arc<dyn LLMProvider> = unimplemented!("Use mock in real tests");
-
-        AgenticOrchestrator::new(llm_provider, tool_executor, ContextTier::Medium)
+        assert_eq!(step.step_number, 2);
+        assert_eq!(step.tool_name, Some("get_hub_nodes".to_string()));
+        assert_eq!(
+            step.tool_params
+                .and_then(|p| p["min_degree"].as_i64())
+                .unwrap_or_default(),
+            7
+        );
+        assert!(!step.is_final);
     }
 }
