@@ -315,7 +315,7 @@ DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_node
 DEFINE INDEX IF NOT EXISTS idx_symbol_embeddings_edge
     ON TABLE symbol_embeddings COLUMNS source_edge_id;
 
--- =============================================================================
+#=============================================================================
 -- FUNCTIONS
 -- =============================================================================
 
