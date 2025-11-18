@@ -2662,7 +2662,7 @@ impl ProjectIndexer {
         pb.set_style(
             ProgressStyle::default_bar()
                 .template(
-                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) {msg} | {per_sec}/s | ETA: {eta}",
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) {msg} | {per_sec} | ETA: {eta}",
                 )
                 .unwrap()
                 .progress_chars("█▉▊▋▌▍▎▏ "), // Better visual progress
@@ -2683,7 +2683,7 @@ impl ProjectIndexer {
             ProgressStyle::default_bar()
                 .template(
                     "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len}
-                {msg.bold} | Success Rate: {percent}% | Speed: {per_sec}/s | ETA: {eta}",
+                {msg.bold} | Success Rate: {percent}% | Speed: {per_sec} | ETA: {eta}",
                 )
                 .unwrap()
                 .progress_chars("█▉▊▋▌▍▎▏ "),
@@ -2709,7 +2709,7 @@ impl ProjectIndexer {
             ProgressStyle::default_bar()
                 .template(
                     "{spinner:.green} [{elapsed_precise}] [{bar:45.cyan/blue}] {pos}/{len} embeddings
-                💾 {msg} | {percent}% | {per_sec}/s | Memory: Optimized | ETA: {eta}",
+                💾 {msg} | {percent}% | {per_sec} | Memory: Optimized | ETA: {eta}",
                 )
                 .unwrap()
                 .progress_chars("█▉▊▋▌▍▎▏ "),
