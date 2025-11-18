@@ -11,6 +11,7 @@ use codegraph_graph::{
     edge::CodeEdge, FileMetadataRecord, NodeEmbeddingRecord, ProjectMetadataRecord,
     SurrealDbConfig, SurrealDbStorage, SymbolEmbeddingRecord, SURR_EMBEDDING_COLUMN_1024,
     SURR_EMBEDDING_COLUMN_2048, SURR_EMBEDDING_COLUMN_384, SURR_EMBEDDING_COLUMN_4096,
+    SURR_EMBEDDING_COLUMN_768,
 };
 use codegraph_parser::{get_ai_pattern_learner, TreeSitterParser};
 #[cfg(feature = "ai-enhanced")]
@@ -58,6 +59,7 @@ pub struct FileChange {
 #[derive(Clone, Copy, Debug)]
 enum SurrealEmbeddingColumn {
     Embedding384,
+    Embedding768,
     Embedding1024,
     Embedding2048,
     Embedding4096,
@@ -67,6 +69,7 @@ impl SurrealEmbeddingColumn {
     fn column_name(&self) -> &'static str {
         match self {
             SurrealEmbeddingColumn::Embedding384 => SURR_EMBEDDING_COLUMN_384,
+            SurrealEmbeddingColumn::Embedding768 => SURR_EMBEDDING_COLUMN_768,
             SurrealEmbeddingColumn::Embedding1024 => SURR_EMBEDDING_COLUMN_1024,
             SurrealEmbeddingColumn::Embedding2048 => SURR_EMBEDDING_COLUMN_2048,
             SurrealEmbeddingColumn::Embedding4096 => SURR_EMBEDDING_COLUMN_4096,
@@ -76,6 +79,7 @@ impl SurrealEmbeddingColumn {
     fn dimension(&self) -> usize {
         match self {
             SurrealEmbeddingColumn::Embedding384 => 384,
+            SurrealEmbeddingColumn::Embedding768 => 768,
             SurrealEmbeddingColumn::Embedding1024 => 1024,
             SurrealEmbeddingColumn::Embedding2048 => 2048,
             SurrealEmbeddingColumn::Embedding4096 => 4096,
@@ -494,7 +498,7 @@ impl ProjectIndexer {
         let vector_dim = env_vector_dim.unwrap_or(embedder_dimension);
         let embedding_column = resolve_surreal_embedding_column(vector_dim).with_context(|| {
             format!(
-                "Unsupported embedding dimension {}. Supported dimensions: 384, 1024, 2048, 4096.",
+                "Unsupported embedding dimension {}. Supported dimensions: 384, 768, 1024, 2048, 4096.",
                 vector_dim
             )
         })?;
@@ -2731,11 +2735,12 @@ fn symbol_embedding_db_batch_size() -> usize {
 fn resolve_surreal_embedding_column(dim: usize) -> Result<SurrealEmbeddingColumn> {
     match dim {
         384 => Ok(SurrealEmbeddingColumn::Embedding384),
+        768 => Ok(SurrealEmbeddingColumn::Embedding768),
         1024 => Ok(SurrealEmbeddingColumn::Embedding1024),
         2048 => Ok(SurrealEmbeddingColumn::Embedding2048),
         4096 => Ok(SurrealEmbeddingColumn::Embedding4096),
         other => Err(anyhow!(
-            "Unsupported embedding dimension {}. Supported: 384, 1024, 2048, 4096",
+            "Unsupported embedding dimension {}. Supported: 384, 768, 1024, 2048, 4096",
             other
         )),
     }

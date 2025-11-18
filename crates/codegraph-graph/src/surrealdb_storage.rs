@@ -242,6 +242,7 @@ impl SurrealDbStorage {
     ) -> Result<Vec<(String, f32)>> {
         let column = match embedding_column {
             SURR_EMBEDDING_COLUMN_384 => SURR_EMBEDDING_COLUMN_384,
+            SURR_EMBEDDING_COLUMN_768 => SURR_EMBEDDING_COLUMN_768,
             SURR_EMBEDDING_COLUMN_1024 => SURR_EMBEDDING_COLUMN_1024,
             SURR_EMBEDDING_COLUMN_2048 => SURR_EMBEDDING_COLUMN_2048,
             SURR_EMBEDDING_COLUMN_4096 => SURR_EMBEDDING_COLUMN_4096,
@@ -311,6 +312,7 @@ impl SurrealDbStorage {
     ) -> Result<Vec<(String, f32)>> {
         let column = match embedding_column {
             SURR_EMBEDDING_COLUMN_384 => SURR_EMBEDDING_COLUMN_384,
+            SURR_EMBEDDING_COLUMN_768 => SURR_EMBEDDING_COLUMN_768,
             SURR_EMBEDDING_COLUMN_1024 => SURR_EMBEDDING_COLUMN_1024,
             SURR_EMBEDDING_COLUMN_2048 => SURR_EMBEDDING_COLUMN_2048,
             SURR_EMBEDDING_COLUMN_4096 => SURR_EMBEDDING_COLUMN_4096,
@@ -454,17 +456,18 @@ impl SurrealDbStorage {
             Some(node.metadata.attributes.clone())
         };
 
-        let (embedding_384, embedding_1024, embedding_2048, embedding_4096) =
+        let (embedding_384, embedding_768, embedding_1024, embedding_2048, embedding_4096) =
             if let Some(values) = &node.embedding {
                 let embedding_vec: Vec<f64> = values.iter().map(|&f| f as f64).collect();
                 match values.len() {
-                    384 => (Some(embedding_vec), None, None, None),
-                    1024 => (None, Some(embedding_vec), None, None),
-                    4096 => (None, None, None, Some(embedding_vec)),
-                    _ => (None, None, Some(embedding_vec), None),
+                    384 => (Some(embedding_vec), None, None, None, None),
+                    768 => (None, Some(embedding_vec), None, None, None),
+                    1024 => (None, None, Some(embedding_vec), None, None),
+                    4096 => (None, None, None, None, Some(embedding_vec)),
+                    _ => (None, None, None, Some(embedding_vec), None),
                 }
             } else {
-                (None, None, None, None)
+                (None, None, None, None, None)
             };
 
         let embedding_model = node.metadata.attributes.get("embedding_model").cloned();
@@ -479,6 +482,7 @@ impl SurrealDbStorage {
             start_line: node.location.line,
             end_line: node.location.end_line,
             embedding_384,
+            embedding_768,
             embedding_1024,
             embedding_2048,
             embedding_4096,
@@ -593,6 +597,7 @@ impl SurrealDbStorage {
         for record in records {
             let column = match record.column {
                 SURR_EMBEDDING_COLUMN_384 => SURR_EMBEDDING_COLUMN_384,
+                SURR_EMBEDDING_COLUMN_768 => SURR_EMBEDDING_COLUMN_768,
                 SURR_EMBEDDING_COLUMN_1024 => SURR_EMBEDDING_COLUMN_1024,
                 SURR_EMBEDDING_COLUMN_2048 => SURR_EMBEDDING_COLUMN_2048,
                 SURR_EMBEDDING_COLUMN_4096 => SURR_EMBEDDING_COLUMN_4096,
@@ -1175,6 +1180,8 @@ pub struct SymbolEmbeddingRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_384: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_768: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_1024: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_2048: Option<Vec<f64>>,
@@ -1205,12 +1212,13 @@ impl SymbolEmbeddingRecord {
         metadata: Option<JsonValue>,
     ) -> Self {
         let embedding_vec: Vec<f64> = embedding.iter().map(|&f| f as f64).collect();
-        let (embedding_384, embedding_1024, embedding_2048, embedding_4096) = match embedding_column
+        let (embedding_384, embedding_768, embedding_1024, embedding_2048, embedding_4096) = match embedding_column
         {
-            SURR_EMBEDDING_COLUMN_384 => (Some(embedding_vec), None, None, None),
-            SURR_EMBEDDING_COLUMN_1024 => (None, Some(embedding_vec), None, None),
-            SURR_EMBEDDING_COLUMN_4096 => (None, None, None, Some(embedding_vec)),
-            _ => (None, None, Some(embedding_vec), None),
+            SURR_EMBEDDING_COLUMN_384 => (Some(embedding_vec), None, None, None, None),
+            SURR_EMBEDDING_COLUMN_768 => (None, Some(embedding_vec), None, None, None),
+            SURR_EMBEDDING_COLUMN_1024 => (None, None, Some(embedding_vec), None, None),
+            SURR_EMBEDDING_COLUMN_4096 => (None, None, None, None, Some(embedding_vec)),
+            _ => (None, None, None, Some(embedding_vec), None),
         };
 
         SymbolEmbeddingRecord {
@@ -1220,6 +1228,7 @@ impl SymbolEmbeddingRecord {
             project_id: project_id.to_string(),
             organization_id: organization_id.map(|s| s.to_string()),
             embedding_384,
+            embedding_768,
             embedding_1024,
             embedding_2048,
             embedding_4096,
@@ -1308,6 +1317,8 @@ struct SurrealNodeRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     embedding_384: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    embedding_768: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     embedding_1024: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     embedding_2048: Option<Vec<f64>>,
@@ -1330,6 +1341,7 @@ struct SurrealNodeRecord {
 }
 
 pub const SURR_EMBEDDING_COLUMN_384: &str = "embedding_384";
+pub const SURR_EMBEDDING_COLUMN_768: &str = "embedding_768";
 pub const SURR_EMBEDDING_COLUMN_1024: &str = "embedding_1024";
 pub const SURR_EMBEDDING_COLUMN_2048: &str = "embedding_2048";
 pub const SURR_EMBEDDING_COLUMN_4096: &str = "embedding_4096";
@@ -1337,6 +1349,7 @@ pub const SURR_EMBEDDING_COLUMN_4096: &str = "embedding_4096";
 pub fn surreal_embedding_column_for_dimension(dim: usize) -> &'static str {
     match dim {
         384 => SURR_EMBEDDING_COLUMN_384,
+        768 => SURR_EMBEDDING_COLUMN_768,
         1024 => SURR_EMBEDDING_COLUMN_1024,
         4096 => SURR_EMBEDDING_COLUMN_4096,
         _ => SURR_EMBEDDING_COLUMN_2048,
