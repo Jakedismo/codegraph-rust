@@ -42,7 +42,7 @@ except ImportError:
 
 # Configuration
 HTTP_HOST = os.environ.get("CODEGRAPH_HTTP_HOST", "127.0.0.1")
-HTTP_PORT = os.environ.get("CODEGRAPH_HTTP_PORT", "3000")
+HTTP_PORT = os.environ.get("CODEGRAPH_HTTP_PORT", "3003")
 BASE_URL = f"http://{HTTP_HOST}:{HTTP_PORT}"
 PROTO_DEFAULT = os.environ.get("MCP_PROTOCOL_VERSION", "2025-06-18")
 
