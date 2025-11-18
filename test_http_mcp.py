@@ -84,11 +84,22 @@ async def run_tests():
                             result_text = result.content[0].text
                             data = json.loads(result_text)
 
+                            # Check for structured_output field
                             if "structured_output" in data:
                                 structured_output = data["structured_output"]
                                 success = True
+                            # Fallback: Check if "answer" field contains JSON
+                            elif "answer" in data and isinstance(data["answer"], str):
+                                try:
+                                    # Try to parse answer as JSON (old wrapper format)
+                                    structured_output = json.loads(data["answer"])
+                                    success = True
+                                except json.JSONDecodeError:
+                                    # Answer is plain text, not JSON
+                                    pass
 
-                                # Extract file locations
+                            # Extract file locations from structured output
+                            if structured_output:
                                 for field in ['components', 'hub_nodes', 'evidence', 'core_components']:
                                     if field in structured_output:
                                         for item in structured_output[field]:
