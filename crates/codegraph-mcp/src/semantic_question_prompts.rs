@@ -33,12 +33,20 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-When you have enough evidence to answer, respond with:
+When you have enough evidence to answer (STRUCTURED OUTPUT):
 {
-  "reasoning": "Direct answer to the question based on graph evidence gathered. Cite specific node IDs and relationships found.",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "Direct answer to the question based on graph evidence gathered. Cite specific node IDs and relationships found.",
+  "evidence": [
+    {
+      "name": "EvidenceNode",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "related_components": [],
+  "confidence": 0.95
 }
+MANDATORY: evidence array must include file paths from tool results
 
 TERSE TIER GUIDANCE:
 - Make 1-2 targeted tool calls maximum
@@ -110,12 +118,20 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-Final answer format:
+Final answer format (STRUCTURED OUTPUT):
 {
-  "reasoning": "Comprehensive answer based on graph evidence. Structure: 1) Direct answer 2) Supporting evidence from tools 3) Specific node IDs and relationships found 4) Confidence level and any limitations",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "Comprehensive answer based on graph evidence. Structure: 1) Direct answer 2) Supporting evidence from tools 3) Specific node IDs and relationships found 4) Confidence level and any limitations",
+  "evidence": [
+    {
+      "name": "EvidenceNode",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "related_components": ["Component1", "Component2"],
+  "confidence": 0.85
 }
+MANDATORY: evidence array must include file paths from tool results
 
 BALANCED TIER GUIDANCE:
 - Make 2-4 targeted tool calls
@@ -223,9 +239,9 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-Final answer format:
+Final answer format (STRUCTURED OUTPUT):
 {
-  "reasoning": "COMPREHENSIVE ANSWER with structure:
+  "analysis": "COMPREHENSIVE ANSWER with structure:
 
   ## Direct Answer
   [Clear, direct response to the question]
@@ -243,9 +259,17 @@ Final answer format:
   [Confidence level (0.0-1.0) with justification]
   [What graph structure reveals vs. what it doesn't]
   [Suggestions for additional investigation if needed]",
-  "tool_call": null,
-  "is_final": true
+  "evidence": [
+    {
+      "name": "EvidenceNode",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "related_components": ["Component1", "Component2"],
+  "confidence": 0.90
 }
+MANDATORY: evidence array must include file paths from tool results
 
 DETAILED TIER GUIDANCE:
 - Make 4-7 strategic tool calls for comprehensive investigation
@@ -413,9 +437,9 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-Final answer format:
+Final answer format (STRUCTURED OUTPUT):
 {
-  "reasoning": "EXHAUSTIVE MULTI-DIMENSIONAL ANSWER:
+  "analysis": "EXHAUSTIVE MULTI-DIMENSIONAL ANSWER:
 
   ## Executive Summary
   [Direct, comprehensive answer to the question - 2-3 sentences]
@@ -467,9 +491,17 @@ Final answer format:
   [If applicable: suggested actions based on findings]
   [Follow-up questions that would deepen understanding]
   [Additional graph investigations that could reduce uncertainty]",
-  "tool_call": null,
-  "is_final": true
+  "evidence": [
+    {
+      "name": "EvidenceNode",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "related_components": ["Component1", "Component2", "Component3"],
+  "confidence": 0.92
 }
+MANDATORY: evidence array must include file paths from tool results
 
 EXPLORATORY TIER INVESTIGATION STRATEGY:
 

@@ -48,12 +48,23 @@ RESPONSE FORMAT (strict JSON):
   "is_final": false
 }
 
-When analysis is complete:
+When analysis is complete (STRUCTURED OUTPUT):
 {
-  "reasoning": "FINAL API SURFACE ANALYSIS:\n\n[Report structure]\n- Public API Nodes: [count and node IDs]\n- Stability Metrics: [afferent coupling and instability scores]\n- Breaking Change Impact: [dependent count for critical nodes]\n\n[Do NOT add quality judgments]",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "FINAL API SURFACE ANALYSIS:\n\n[Report structure]\n- Public API Nodes: [count and node IDs]\n- Stability Metrics: [afferent coupling and instability scores]\n- Breaking Change Impact: [dependent count for critical nodes]\n\n[Do NOT add quality judgments]",
+  "endpoints": [
+    {
+      "name": "APIEndpoint",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42,
+      "api_type": "HTTP",
+      "description": "Brief description",
+      "dependencies": []
+    }
+  ],
+  "usage_patterns": [],
+  "integration_points": []
 }
+MANDATORY: endpoints array must include file paths from tool results
 
 CRITICAL RULES:
 - Extract node IDs from previous tool results - never invent them
@@ -120,12 +131,23 @@ RESPONSE FORMAT (strict JSON):
   "is_final": false
 }
 
-When analysis is complete:
+When analysis is complete (STRUCTURED OUTPUT):
 {
-  "reasoning": "FINAL API SURFACE ANALYSIS:\n\n## Public API Nodes\n[List hub nodes with their degrees]\n\n## Stability Metrics\n[For each key API node: Ca, Ce, I values]\n\n## Breaking Change Impact Assessment\n[For each API: dependent count at depth 1 and depth 2]\n\n## API Contract Issues\n[Any circular dependencies detected]\n\n## API Call Flows\n[Key call chain mappings]\n\n[Report ONLY factual metrics - NO quality judgments]",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "FINAL API SURFACE ANALYSIS:\n\n## Public API Nodes\n[List hub nodes with their degrees]\n\n## Stability Metrics\n[For each key API node: Ca, Ce, I values]\n\n## Breaking Change Impact Assessment\n[For each API: dependent count at depth 1 and depth 2]\n\n## API Contract Issues\n[Any circular dependencies detected]\n\n## API Call Flows\n[Key call chain mappings]\n\n[Report ONLY factual metrics - NO quality judgments]",
+  "endpoints": [
+    {
+      "name": "APIEndpoint",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42,
+      "api_type": "HTTP",
+      "description": "Brief description",
+      "dependencies": ["dep1", "dep2"]
+    }
+  ],
+  "usage_patterns": ["Pattern 1: Usage description"],
+  "integration_points": ["Integration point 1"]
 }
+MANDATORY: endpoints array must include file paths from tool results
 
 CRITICAL RULES:
 - Extract node IDs from previous tool results - never invent them
@@ -211,12 +233,23 @@ RESPONSE FORMAT (strict JSON):
   "is_final": false
 }
 
-When analysis is complete:
+When analysis is complete (STRUCTURED OUTPUT):
 {
-  "reasoning": "FINAL COMPREHENSIVE API SURFACE ANALYSIS:\n\n## 1. Public API Surface Inventory\n[Complete list of hub nodes categorized by degree]\n\n## 2. API Stability Distribution\n- Highly Stable (I < 0.3): [nodes with Ca, Ce, I values]\n- Moderately Stable (0.3 ≤ I < 0.7): [nodes with metrics]\n- Unstable (I ≥ 0.7): [nodes with metrics]\n\n## 3. Breaking Change Impact Radius\n[For each API node:\n- Direct dependents (depth 1): count\n- Depth-2 dependents: count\n- Depth-3 dependents: count\n- Total impact radius: count]\n\n## 4. API Dependency Chains\n[For each major API:\n- Transitive dependencies at depth 4\n- Maximum dependency depth\n- External dependency count]\n\n## 5. API Contract Issues\n[Circular dependencies by edge type:\n- Calls cycles: [pairs]\n- Implements cycles: [pairs]\n- Extends cycles: [pairs]\n- Hub nodes involved in cycles: [list]]\n\n## 6. API Execution Flows\n[Call chains from critical APIs showing complete paths]\n\n## 7. Interface Implementation Mapping\n[Interfaces with implementer counts and dependency depth]\n\n[Report ONLY factual data - NO interpretations or recommendations]",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "FINAL COMPREHENSIVE API SURFACE ANALYSIS:\n\n## 1. Public API Surface Inventory\n[Complete list of hub nodes categorized by degree]\n\n## 2. API Stability Distribution\n- Highly Stable (I < 0.3): [nodes with Ca, Ce, I values]\n- Moderately Stable (0.3 ≤ I < 0.7): [nodes with metrics]\n- Unstable (I ≥ 0.7): [nodes with metrics]\n\n## 3. Breaking Change Impact Radius\n[For each API node:\n- Direct dependents (depth 1): count\n- Depth-2 dependents: count\n- Depth-3 dependents: count\n- Total impact radius: count]\n\n## 4. API Dependency Chains\n[For each major API:\n- Transitive dependencies at depth 4\n- Maximum dependency depth\n- External dependency count]\n\n## 5. API Contract Issues\n[Circular dependencies by edge type:\n- Calls cycles: [pairs]\n- Implements cycles: [pairs]\n- Extends cycles: [pairs]\n- Hub nodes involved in cycles: [list]]\n\n## 6. API Execution Flows\n[Call chains from critical APIs showing complete paths]\n\n## 7. Interface Implementation Mapping\n[Interfaces with implementer counts and dependency depth]\n\n[Report ONLY factual data - NO interpretations or recommendations]",
+  "endpoints": [
+    {
+      "name": "APIEndpoint",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42,
+      "api_type": "HTTP",
+      "description": "Brief description",
+      "dependencies": ["dep1", "dep2"]
+    }
+  ],
+  "usage_patterns": ["Pattern 1: Usage description"],
+  "integration_points": ["Integration point 1"]
 }
+MANDATORY: endpoints array must include file paths from tool results
 
 CRITICAL RULES:
 - Extract node IDs from previous tool results - never invent them
@@ -342,12 +375,23 @@ RESPONSE FORMAT (strict JSON):
   "is_final": false
 }
 
-When analysis is complete:
+When analysis is complete (STRUCTURED OUTPUT):
 {
-  "reasoning": "FINAL EXHAUSTIVE API SURFACE ANALYSIS:\n\n## 1. Complete Public API Inventory\n[Hub nodes by degree threshold:\n- min_degree ≥ 3: [count] nodes\n- min_degree ≥ 7: [count] nodes  \n- min_degree ≥ 15: [count] nodes\nDegree distribution: [histogram]]\n\n## 2. Comprehensive Stability Characterization\n[For each stability band:\n- Node count in band\n- Example nodes with full Ca, Ce, I metrics\nEcosystem statistics:\n- Mean instability: [value]\n- Median instability: [value]\n- Std deviation: [value]]\n\n## 3. Maximum-Depth Breaking Change Impact Models\n[For each API node:\nNode: [id]\n- Reverse dependencies (Calls, depth 5): [d1: count, d2: count, d3: count, d4: count, d5: count, total: count]\n- Reverse dependencies (Implements, depth 5): [depth breakdown]\n- Reverse dependencies (Uses, depth 5): [depth breakdown]\n- Longest cascade chain: [depth] levels\n- Total impact radius: [count] dependent nodes]\n\n## 4. Complete API Dependency Graphs\n[For each major API:\nAPI: [id]\n- Calls dependencies (depth 6): [total count, max depth, leaf nodes]\n- Imports dependencies (depth 6): [counts]\n- Uses dependencies (depth 6): [counts]\n- External dependencies: [count]\n- Shared dependencies with other APIs: [overlap analysis]]\n\n## 5. Ecosystem-Wide Contract Integrity Report\n[Calls cycles: [count] total, [list pairs], [hub nodes involved]\nImplements cycles: [count] total, [list pairs], [hub nodes involved]\nExtends cycles: [count] total, [list pairs], [hub nodes involved]\nUses cycles: [count] total, [list pairs], [hub nodes involved]\nImports cycles: [count] total, [list pairs], [hub nodes involved]\nCycle length distribution: [histogram]\nInterconnected cycle clusters: [analysis]]\n\n## 6. Deep Execution Flow Maps\n[For top 10 APIs by Ca:\nAPI: [id] (Ca=[value])\n- Call chain (depth 8): [complete path tree]\n- Execution depth: max=[value], mean=[value]\n- Shared bottleneck nodes: [list]\n- Leaf destinations: [count]\n- Path overlap with other APIs: [percentage]]\n\n## 7. Complete Interface/Trait Ecosystem\n[For each interface:\nInterface: [id]\n- Direct implementers: [count]\n- Transitive implementers (depth 4): [count by depth]\n- Inheritance chain (Extends, depth 4): [depth, ancestors]\n- Dependency fan-out: [metric]]\n\n## 8. API Boundary Crossing Analysis\n[For each API:\n- Module containment (depth 3): [module hierarchy]\n- Crosses external boundary: [yes/no]\n- Boundary crossing count: [metric]\nExternal-facing APIs: [count and list]]\n\n[Report ONLY factual graph measurements - NO interpretations]",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "FINAL EXHAUSTIVE API SURFACE ANALYSIS:\n\n## 1. Complete Public API Inventory\n[Hub nodes by degree threshold:\n- min_degree ≥ 3: [count] nodes\n- min_degree ≥ 7: [count] nodes  \n- min_degree ≥ 15: [count] nodes\nDegree distribution: [histogram]]\n\n## 2. Comprehensive Stability Characterization\n[For each stability band:\n- Node count in band\n- Example nodes with full Ca, Ce, I metrics\nEcosystem statistics:\n- Mean instability: [value]\n- Median instability: [value]\n- Std deviation: [value]]\n\n## 3. Maximum-Depth Breaking Change Impact Models\n[For each API node:\nNode: [id]\n- Reverse dependencies (Calls, depth 5): [d1: count, d2: count, d3: count, d4: count, d5: count, total: count]\n- Reverse dependencies (Implements, depth 5): [depth breakdown]\n- Reverse dependencies (Uses, depth 5): [depth breakdown]\n- Longest cascade chain: [depth] levels\n- Total impact radius: [count] dependent nodes]\n\n## 4. Complete API Dependency Graphs\n[For each major API:\nAPI: [id]\n- Calls dependencies (depth 6): [total count, max depth, leaf nodes]\n- Imports dependencies (depth 6): [counts]\n- Uses dependencies (depth 6): [counts]\n- External dependencies: [count]\n- Shared dependencies with other APIs: [overlap analysis]]\n\n## 5. Ecosystem-Wide Contract Integrity Report\n[Calls cycles: [count] total, [list pairs], [hub nodes involved]\nImplements cycles: [count] total, [list pairs], [hub nodes involved]\nExtends cycles: [count] total, [list pairs], [hub nodes involved]\nUses cycles: [count] total, [list pairs], [hub nodes involved]\nImports cycles: [count] total, [list pairs], [hub nodes involved]\nCycle length distribution: [histogram]\nInterconnected cycle clusters: [analysis]]\n\n## 6. Deep Execution Flow Maps\n[For top 10 APIs by Ca:\nAPI: [id] (Ca=[value])\n- Call chain (depth 8): [complete path tree]\n- Execution depth: max=[value], mean=[value]\n- Shared bottleneck nodes: [list]\n- Leaf destinations: [count]\n- Path overlap with other APIs: [percentage]]\n\n## 7. Complete Interface/Trait Ecosystem\n[For each interface:\nInterface: [id]\n- Direct implementers: [count]\n- Transitive implementers (depth 4): [count by depth]\n- Inheritance chain (Extends, depth 4): [depth, ancestors]\n- Dependency fan-out: [metric]]\n\n## 8. API Boundary Crossing Analysis\n[For each API:\n- Module containment (depth 3): [module hierarchy]\n- Crosses external boundary: [yes/no]\n- Boundary crossing count: [metric]\nExternal-facing APIs: [count and list]]\n\n[Report ONLY factual graph measurements - NO interpretations]",
+  "endpoints": [
+    {
+      "name": "APIEndpoint",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42,
+      "api_type": "HTTP",
+      "description": "Brief description",
+      "dependencies": ["dep1", "dep2"]
+    }
+  ],
+  "usage_patterns": ["Pattern 1: Usage description"],
+  "integration_points": ["Integration point 1"]
 }
+MANDATORY: endpoints array must include file paths from tool results
 
 CRITICAL RULES:
 1. Extract ALL node IDs from previous tool results - never invent them

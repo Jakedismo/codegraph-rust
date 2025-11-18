@@ -38,12 +38,22 @@ RESPONSE FORMAT (REQUIRED JSON):
   "is_final": false
 }
 
-When you have gathered sufficient minimal context:
+When you have gathered sufficient minimal context (STRUCTURED OUTPUT):
 {
-  "reasoning": "CONTEXT ASSEMBLED:\n\n## Direct Dependencies\n{list}\n\n## Reverse Dependencies\n{list}\n\n## Summary\n{1-2 sentences}",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "CONTEXT ASSEMBLED:\n\n## Direct Dependencies\n{list}\n\n## Reverse Dependencies\n{list}\n\n## Summary\n{1-2 sentences}",
+  "core_components": [
+    {
+      "name": "ComponentName",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "dependency_tree": {},
+  "execution_flows": [],
+  "architecture": {},
+  "documentation_references": []
 }
+MANDATORY: core_components array must include file paths from tool results
 
 DELIVERABLE:
 Structured context with:
@@ -91,12 +101,22 @@ RESPONSE FORMAT (REQUIRED JSON):
   "is_final": false
 }
 
-When you have gathered sufficient balanced context:
+When you have gathered sufficient balanced context (STRUCTURED OUTPUT):
 {
-  "reasoning": "CONTEXT ASSEMBLED:\n\n## Dependency Tree\n{multi-level dependencies}\n\n## Usage Patterns\n{what depends on this}\n\n## Execution Flow\n{call chains if applicable}\n\n## Architectural Context\n{coupling metrics, hub nodes}\n\n## Integration Points\n{key relationships}\n\n## Quality Signals\n{circular dependencies, coupling scores}\n\n## Summary\n{3-4 sentences capturing essential context}",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "CONTEXT ASSEMBLED:\n\n## Dependency Tree\n{multi-level dependencies}\n\n## Usage Patterns\n{what depends on this}\n\n## Execution Flow\n{call chains if applicable}\n\n## Architectural Context\n{coupling metrics, hub nodes}\n\n## Integration Points\n{key relationships}\n\n## Quality Signals\n{circular dependencies, coupling scores}\n\n## Summary\n{3-4 sentences capturing essential context}",
+  "core_components": [
+    {
+      "name": "ComponentName",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "dependency_tree": {"root": "X", "children": ["Y", "Z"]},
+  "execution_flows": ["Flow 1: X -> Y -> Z"],
+  "architecture": {"coupling_metrics": "Ca=10, Ce=5"},
+  "documentation_references": []
 }
+MANDATORY: core_components array must include file paths from tool results
 
 DELIVERABLE:
 Structured context with:
@@ -149,12 +169,22 @@ RESPONSE FORMAT (REQUIRED JSON):
   "is_final": false
 }
 
-When you have gathered rich, comprehensive context:
+When you have gathered rich, comprehensive context (STRUCTURED OUTPUT):
 {
-  "reasoning": "COMPREHENSIVE CONTEXT ASSEMBLED:\n\n## Dependency Analysis\n### Imports (depth 3-5)\n{transitive import dependencies}\n### Uses/References (depth 3-5)\n{usage dependencies}\n### Synthesis\n{how dependencies compose}\n\n## Usage & Impact Analysis\n### Direct Dependents\n{immediate reverse dependencies}\n### Transitive Impact\n{multi-level reverse dependencies}\n### Change Impact Assessment\n{what would be affected by changes}\n\n## Execution Flow\n### Call Chains\n{traced execution paths}\n### Control Flow Patterns\n{how code executes}\n\n## Architectural Context\n### Position in Architecture\n{coupling metrics, hub analysis}\n### Integration Points\n{key relationships and boundaries}\n### Component Relationships\n{how this fits in larger system}\n\n## Quality Indicators\n### Coupling Assessment\n{afferent/efferent coupling, instability scores}\n### Dependency Health\n{circular dependencies, problematic patterns}\n### Architectural Signals\n{stability, modularity indicators}\n\n## Relationship Patterns\n### Cross-Cutting Concerns\n{patterns across edge types}\n### Architectural Hotspots\n{hub nodes, bottlenecks}\n\n## Context Summary\n{5-7 sentences synthesizing the complete picture for downstream AI agents}",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "COMPREHENSIVE CONTEXT ASSEMBLED:\n\n## Dependency Analysis\n### Imports (depth 3-5)\n{transitive import dependencies}\n### Uses/References (depth 3-5)\n{usage dependencies}\n### Synthesis\n{how dependencies compose}\n\n## Usage & Impact Analysis\n### Direct Dependents\n{immediate reverse dependencies}\n### Transitive Impact\n{multi-level reverse dependencies}\n### Change Impact Assessment\n{what would be affected by changes}\n\n## Execution Flow\n### Call Chains\n{traced execution paths}\n### Control Flow Patterns\n{how code executes}\n\n## Architectural Context\n### Position in Architecture\n{coupling metrics, hub analysis}\n### Integration Points\n{key relationships and boundaries}\n### Component Relationships\n{how this fits in larger system}\n\n## Quality Indicators\n### Coupling Assessment\n{afferent/efferent coupling, instability scores}\n### Dependency Health\n{circular dependencies, problematic patterns}\n### Architectural Signals\n{stability, modularity indicators}\n\n## Relationship Patterns\n### Cross-Cutting Concerns\n{patterns across edge types}\n### Architectural Hotspots\n{hub nodes, bottlenecks}\n\n## Context Summary\n{5-7 sentences synthesizing the complete picture for downstream AI agents}",
+  "core_components": [
+    {
+      "name": "ComponentName",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "dependency_tree": {"root": "X", "children": ["Y", "Z"]},
+  "execution_flows": ["Flow 1: X -> Y -> Z"],
+  "architecture": {"coupling_metrics": "Ca=10, Ce=5", "hub_nodes": ["Hub1"]},
+  "documentation_references": ["Doc 1", "Doc 2"]
 }
+MANDATORY: core_components array must include file paths from tool results
 
 DELIVERABLE:
 Rich, multi-dimensional context with:
@@ -220,12 +250,22 @@ RESPONSE FORMAT (REQUIRED JSON):
   "is_final": false
 }
 
-When you have gathered exhaustive, architecturally complete context:
+When you have gathered exhaustive, architecturally complete context (STRUCTURED OUTPUT):
 {
-  "reasoning": "EXHAUSTIVE ARCHITECTURAL CONTEXT ASSEMBLED:\n\n## Complete Dependency Landscape\n### Import Dependencies (depth 5-10)\n{complete transitive import graph}\n### Usage Dependencies (depth 5-10)\n{complete usage relationship graph}\n### Reference Dependencies (depth 5-10)\n{complete reference graph}\n### Extension/Implementation Hierarchies\n{inheritance and interface relationships}\n### Containment Structures\n{module and package containment}\n### Cross-Edge Synthesis\n{how different dependency types interact}\n\n## Comprehensive Usage & Impact Analysis\n### Immediate Dependents (all edge types)\n{all direct reverse dependencies}\n### Transitive Impact Analysis (depth 5-10)\n{complete reverse dependency graph}\n### Change Blast Radius\n{exhaustive analysis of what would be affected}\n### Usage Patterns by Type\n{how this code is used across different contexts}\n\n## Complete Execution Flow Analysis\n### All Call Chains (max depth)\n{exhaustive call chain exploration}\n### Entry Points & Exit Points\n{complete control flow topology}\n### Execution Patterns\n{common and edge-case execution paths}\n\n## Complete Architectural Understanding\n### Architectural Topology\n{position in overall system architecture}\n### Hub Analysis\n{all architectural hubs and their roles}\n### Coupling Analysis (target + related nodes)\n{comprehensive coupling metrics}\n### Integration Boundaries\n{all integration points and contracts}\n### Component Ecosystem\n{how this fits within complete component graph}\n### Architectural Layers\n{layering and abstraction levels}\n\n## Comprehensive Quality Landscape\n### All Circular Dependencies\n{complete cycle detection across all edge types}\n### Coupling Patterns & Antipatterns\n{detailed coupling analysis with scores}\n### Stability Analysis\n{instability metrics and stability zones}\n### Architectural Health Signals\n{modularity, cohesion, coupling quality}\n### Technical Debt Indicators\n{problematic patterns, god objects, bottlenecks}\n\n## Cross-Cutting Architectural Patterns\n### Layering Patterns\n{architectural layer adherence}\n### Module Boundaries\n{boundary enforcement and violations}\n### Dependency Direction Patterns\n{dependency flow direction analysis}\n### Architectural Hotspots\n{critical nodes, bottlenecks, single points of failure}\n\n## Relationship Type Analysis\n### Calls vs Imports vs Uses\n{how different relationship types paint different pictures}\n### Structural vs Runtime Dependencies\n{compile-time vs runtime relationship patterns}\n### Strong vs Weak Coupling Zones\n{coupling strength distribution}\n\n## Complete Context Synthesis\n### Architectural Narrative\n{10+ sentences telling the complete story of this code's role, relationships, and architectural position}\n### Critical Insights\n{key findings that downstream agents MUST understand}\n### Constraints & Invariants\n{architectural constraints this code operates under}\n### Opportunities & Risks\n{what this context reveals about extensibility and fragility}\n\n## Metadata\n- Total Nodes Analyzed: {count}\n- Dependency Depth Explored: {max_depth}\n- Edge Types Covered: {list}\n- Architectural Hubs Identified: {count}\n- Circular Dependencies Found: {count}\n- Context Completeness: {assessment}",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "EXHAUSTIVE ARCHITECTURAL CONTEXT ASSEMBLED:\n\n## Complete Dependency Landscape\n### Import Dependencies (depth 5-10)\n{complete transitive import graph}\n### Usage Dependencies (depth 5-10)\n{complete usage relationship graph}\n### Reference Dependencies (depth 5-10)\n{complete reference graph}\n### Extension/Implementation Hierarchies\n{inheritance and interface relationships}\n### Containment Structures\n{module and package containment}\n### Cross-Edge Synthesis\n{how different dependency types interact}\n\n## Comprehensive Usage & Impact Analysis\n### Immediate Dependents (all edge types)\n{all direct reverse dependencies}\n### Transitive Impact Analysis (depth 5-10)\n{complete reverse dependency graph}\n### Change Blast Radius\n{exhaustive analysis of what would be affected}\n### Usage Patterns by Type\n{how this code is used across different contexts}\n\n## Complete Execution Flow Analysis\n### All Call Chains (max depth)\n{exhaustive call chain exploration}\n### Entry Points & Exit Points\n{complete control flow topology}\n### Execution Patterns\n{common and edge-case execution paths}\n\n## Complete Architectural Understanding\n### Architectural Topology\n{position in overall system architecture}\n### Hub Analysis\n{all architectural hubs and their roles}\n### Coupling Analysis (target + related nodes)\n{comprehensive coupling metrics}\n### Integration Boundaries\n{all integration points and contracts}\n### Component Ecosystem\n{how this fits within complete component graph}\n### Architectural Layers\n{layering and abstraction levels}\n\n## Comprehensive Quality Landscape\n### All Circular Dependencies\n{complete cycle detection across all edge types}\n### Coupling Patterns & Antipatterns\n{detailed coupling analysis with scores}\n### Stability Analysis\n{instability metrics and stability zones}\n### Architectural Health Signals\n{modularity, cohesion, coupling quality}\n### Technical Debt Indicators\n{problematic patterns, god objects, bottlenecks}\n\n## Cross-Cutting Architectural Patterns\n### Layering Patterns\n{architectural layer adherence}\n### Module Boundaries\n{boundary enforcement and violations}\n### Dependency Direction Patterns\n{dependency flow direction analysis}\n### Architectural Hotspots\n{critical nodes, bottlenecks, single points of failure}\n\n## Relationship Type Analysis\n### Calls vs Imports vs Uses\n{how different relationship types paint different pictures}\n### Structural vs Runtime Dependencies\n{compile-time vs runtime relationship patterns}\n### Strong vs Weak Coupling Zones\n{coupling strength distribution}\n\n## Complete Context Synthesis\n### Architectural Narrative\n{10+ sentences telling the complete story of this code's role, relationships, and architectural position}\n### Critical Insights\n{key findings that downstream agents MUST understand}\n### Constraints & Invariants\n{architectural constraints this code operates under}\n### Opportunities & Risks\n{what this context reveals about extensibility and fragility}\n\n## Metadata\n- Total Nodes Analyzed: {count}\n- Dependency Depth Explored: {max_depth}\n- Edge Types Covered: {list}\n- Architectural Hubs Identified: {count}\n- Circular Dependencies Found: {count}\n- Context Completeness: {assessment}",
+  "core_components": [
+    {
+      "name": "ComponentName",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "dependency_tree": {"root": "X", "children": ["Y", "Z"]},
+  "execution_flows": ["Flow 1: X -> Y -> Z"],
+  "architecture": {"coupling_metrics": "Ca=10, Ce=5", "hub_nodes": ["Hub1"], "layers": ["Layer1", "Layer2"]},
+  "documentation_references": ["Doc 1", "Doc 2"]
 }
+MANDATORY: core_components array must include file paths from tool results
 
 DELIVERABLE:
 Exhaustive, architecturally complete context with:

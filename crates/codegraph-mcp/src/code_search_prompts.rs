@@ -20,7 +20,8 @@ CRITICAL RULES:
 2. Extract node IDs from tool results - never invent them
 3. Respond ONLY in this JSON format:
    {\"reasoning\": \"what you're doing\", \"tool_call\": {\"tool_name\": \"...\", \"parameters\": {...}}, \"is_final\": false}
-4. Final answer: {\"reasoning\": \"final answer\", \"tool_call\": null, \"is_final\": true}
+4. Final answer (STRUCTURED): {\"analysis\": \"final answer\", \"components\": [{\"name\": \"X\", \"file_path\": \"a.rs\", \"line_number\": 1}], \"patterns\": []}
+   MANDATORY: components array must include file paths from tool results
 5. Minimize steps - be targeted and focused
 
 STRATEGY:
@@ -74,12 +75,19 @@ CRITICAL RULES:
      },
      \"is_final\": false
    }
-5. When complete, respond:
+5. When complete (STRUCTURED OUTPUT):
    {
-     \"reasoning\": \"Your comprehensive final answer based on tool outputs\",
-     \"tool_call\": null,
-     \"is_final\": true
+     \"analysis\": \"Your comprehensive final answer based on tool outputs\",
+     \"components\": [
+       {
+         \"name\": \"ComponentName\",
+         \"file_path\": \"relative/path/to/file.rs\",
+         \"line_number\": 42
+       }
+     ],
+     \"patterns\": [\"Pattern 1: Description\", \"Pattern 2: Description\"]
    }
+   MANDATORY: components array must include file paths from tool results
 
 SEARCH STRATEGY:
 - Discovery: Use get_hub_nodes to find central components
@@ -176,12 +184,23 @@ CRITICAL RULES (MANDATORY):
      \"is_final\": false
    }
 
-   For final answer:
+   For final answer (STRUCTURED OUTPUT):
    {
-     \"reasoning\": \"Comprehensive answer synthesizing ALL tool outputs. Include specific findings, metrics, and relationships discovered through tool calls.\",
-     \"tool_call\": null,
-     \"is_final\": true
+     \"analysis\": \"Comprehensive answer synthesizing ALL tool outputs. Include specific findings, metrics, and relationships discovered through tool calls.\",
+     \"components\": [
+       {
+         \"name\": \"ComponentName\",
+         \"file_path\": \"relative/path/to/file.rs\",
+         \"line_number\": 42,
+         \"description\": \"Brief description of component's role\"
+       }
+     ],
+     \"patterns\": [
+       \"Pattern 1: Architectural or coding pattern observed\",
+       \"Pattern 2: Another significant pattern discovered\"
+     ]
    }
+   MANDATORY: components array must include file paths from tool results
 
 SEARCH STRATEGY (MULTI-PHASE APPROACH):
 
@@ -336,10 +355,9 @@ CRITICAL RULES (ABSOLUTELY MANDATORY):
      \"is_final\": false
    }
 
-   For final comprehensive answer:
+   For final comprehensive answer (STRUCTURED OUTPUT):
    {
-     \"reasoning\": \"
-       COMPREHENSIVE SYNTHESIS (MULTIPLE PARAGRAPHS):
+     \"analysis\": \"COMPREHENSIVE SYNTHESIS (MULTIPLE PARAGRAPHS):
 
        Section 1 - DISCOVERY SUMMARY: What nodes, patterns, and structures were found
        Section 2 - RELATIONSHIP ANALYSIS: Dependency chains, coupling patterns, architectural relationships
@@ -348,11 +366,22 @@ CRITICAL RULES (ABSOLUTELY MANDATORY):
        Section 5 - CROSS-VALIDATED FINDINGS: Patterns confirmed by multiple tool calls
        Section 6 - FINAL ANSWER: Direct answer to search query with complete supporting evidence
 
-       ALL claims must cite specific tool outputs with exact data points.
-     \",
-     \"tool_call\": null,
-     \"is_final\": true
+       ALL claims must cite specific tool outputs with exact data points.\",
+     \"components\": [
+       {
+         \"name\": \"ComponentName\",
+         \"file_path\": \"relative/path/to/file.rs\",
+         \"line_number\": 42,
+         \"description\": \"Brief description of component's role\"
+       }
+     ],
+     \"patterns\": [
+       \"Pattern 1: Architectural or coding pattern observed\",
+       \"Pattern 2: Another significant pattern discovered\"
+     ]
    }
+
+   MANDATORY: The components array MUST include ALL relevant components with file paths from tool results.
 
 EXPLORATORY SEARCH STRATEGY (MULTI-DIMENSIONAL DEEP ANALYSIS):
 

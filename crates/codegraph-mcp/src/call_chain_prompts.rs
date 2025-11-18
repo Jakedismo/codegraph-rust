@@ -34,12 +34,18 @@ RESPONSE FORMAT (JSON ONLY):
   "is_final": false
 }
 
-When complete:
+When complete (STRUCTURED OUTPUT):
 {
-  "reasoning": "FINAL ANSWER: [Concise call chain summary with key execution paths]",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "FINAL ANSWER: [Concise call chain summary with key execution paths]",
+  "entry_point": {
+    "name": "EntryPointFunction",
+    "file_path": "relative/path/to/file.rs",
+    "line_number": 42
+  },
+  "call_chain": ["func1", "func2", "func3"],
+  "decision_points": []
 }
+MANDATORY: entry_point must include file path from tool results
 
 CRITICAL REQUIREMENTS:
 - ZERO HEURISTICS: Only use structured tool output data
@@ -100,12 +106,18 @@ RESPONSE FORMAT (JSON ONLY):
   "is_final": false
 }
 
-When analysis is complete:
+When analysis is complete (STRUCTURED OUTPUT):
 {
-  "reasoning": "FINAL ANSWER:\n\n## Execution Flow Summary\n[Overview of call chain]\n\n## Critical Paths\n[Key execution sequences]\n\n## Notable Patterns\n[Recursive calls, branching, etc.]\n\n## Call Depth Analysis\n[Depth metrics and complexity]",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "FINAL ANSWER:\n\n## Execution Flow Summary\n[Overview of call chain]\n\n## Critical Paths\n[Key execution sequences]\n\n## Notable Patterns\n[Recursive calls, branching, etc.]\n\n## Call Depth Analysis\n[Depth metrics and complexity]",
+  "entry_point": {
+    "name": "EntryPointFunction",
+    "file_path": "relative/path/to/file.rs",
+    "line_number": 42
+  },
+  "call_chain": ["func1", "func2", "func3"],
+  "decision_points": ["Branch at func2: condition X", "Branch at func4: condition Y"]
 }
+MANDATORY: entry_point must include file path from tool results
 
 CRITICAL REQUIREMENTS:
 - ZERO HEURISTICS: Only reference data from tool outputs
@@ -210,12 +222,18 @@ RESPONSE FORMAT (JSON ONLY):
   "is_final": false
 }
 
-When comprehensive analysis is complete:
+When comprehensive analysis is complete (STRUCTURED OUTPUT):
 {
-  "reasoning": "COMPREHENSIVE CALL CHAIN ANALYSIS\n\n## 1. Execution Flow Overview\n[High-level summary of call chains traced]\n[Entry points and execution context]\n\n## 2. Primary Call Chain\n[Detailed main execution path with call tree]\n[Functions invoked at each level]\n[Call depth and branching factor]\n\n## 3. Execution Branches\n[Analysis of 3-5 key branches]\n[Decision points and conditional paths]\n[Recursive or cyclic patterns]\n\n## 4. Critical Execution Sequences\n[Performance-critical call paths]\n[Deeply nested call chains]\n[Potential bottlenecks identified]\n\n## 5. Architectural Patterns\n[Coupling metrics for key functions]\n[Hub nodes and central components]\n[Circular dependencies detected (if any)]\n\n## 6. Call Chain Metrics\n[Maximum call depth observed]\n[Number of unique functions in chain]\n[Branching complexity analysis]\n[Fan-out patterns]\n\n## 7. Notable Observations\n[Recursive call patterns]\n[Async/sync boundaries]\n[External API calls or I/O operations]\n[Error handling paths]\n\nCITATIONS: [List specific node IDs and tool outputs referenced]",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "COMPREHENSIVE CALL CHAIN ANALYSIS\n\n## 1. Execution Flow Overview\n[High-level summary of call chains traced]\n[Entry points and execution context]\n\n## 2. Primary Call Chain\n[Detailed main execution path with call tree]\n[Functions invoked at each level]\n[Call depth and branching factor]\n\n## 3. Execution Branches\n[Analysis of 3-5 key branches]\n[Decision points and conditional paths]\n[Recursive or cyclic patterns]\n\n## 4. Critical Execution Sequences\n[Performance-critical call paths]\n[Deeply nested call chains]\n[Potential bottlenecks identified]\n\n## 5. Architectural Patterns\n[Coupling metrics for key functions]\n[Hub nodes and central components]\n[Circular dependencies detected (if any)]\n\n## 6. Call Chain Metrics\n[Maximum call depth observed]\n[Number of unique functions in chain]\n[Branching complexity analysis]\n[Fan-out patterns]\n\n## 7. Notable Observations\n[Recursive call patterns]\n[Async/sync boundaries]\n[External API calls or I/O operations]\n[Error handling paths]\n\nCITATIONS: [List specific node IDs and tool outputs referenced]",
+  "entry_point": {
+    "name": "EntryPointFunction",
+    "file_path": "relative/path/to/file.rs",
+    "line_number": 42
+  },
+  "call_chain": ["func1 (file.rs:10)", "func2 (file.rs:25)", "func3 (file.rs:50)"],
+  "decision_points": ["Branch at func2: condition X", "Branch at func4: condition Y"]
 }
+MANDATORY: entry_point must include file path from tool results
 
 CRITICAL REQUIREMENTS:
 - ZERO HEURISTICS: Every claim must be backed by tool output data
@@ -355,12 +373,18 @@ RESPONSE FORMAT (JSON ONLY):
   "is_final": false
 }
 
-When exhaustive analysis is complete:
+When exhaustive analysis is complete (STRUCTURED OUTPUT):
 {
-  "reasoning": "EXHAUSTIVE CALL CHAIN ANALYSIS REPORT\n\n## EXECUTIVE SUMMARY\n[Complete overview of all execution paths traced]\n[Total functions analyzed, call chains mapped, depth achieved]\n[Key findings and critical execution patterns identified]\n[Architectural concerns and recommendations]\n\n## 1. EXECUTION FLOW TOPOLOGY\n### 1.1 Entry Points and Invocation Context\n[All entry points identified with node IDs]\n[How each entry point is invoked (from reverse dependency analysis)]\n[Execution context for each major call chain]\n\n### 1.2 Complete Call Chain Mapping\n[Hierarchical call trees for ALL entry points]\n[Functions invoked at each depth level (0-10+)]\n[Complete execution path topology]\n\n### 1.3 Call Depth Distribution\n[Statistical analysis of call depths]\n[Maximum depth achieved: X levels]\n[Average depth: Y levels]\n[Depth distribution histogram (if significant variance)]\n\n## 2. EXECUTION BRANCHES AND PATHS\n### 2.1 Primary Execution Paths (Main Branches)\n[Detailed analysis of 5-7 main execution sequences]\n[Complete function call sequences with node IDs]\n[Decision points and branching logic]\n\n### 2.2 Secondary and Tertiary Branches\n[Analysis of ALL significant execution branches]\n[Conditional execution paths]\n[Error handling branches]\n[Edge case execution paths]\n\n### 2.3 Execution Path Statistics\n[Total unique execution paths identified: N]\n[Branching factor analysis (average fan-out)]\n[Path convergence points (multiple paths merging)]\n\n## 3. RECURSIVE AND CYCLIC PATTERNS\n### 3.1 Circular Dependencies Detected\n[All circular call dependencies from detect_circular_dependencies]\n[Mutual recursion patterns]\n[Callback loops and event cycles]\n\n### 3.2 Recursive Call Analysis\n[Direct recursion instances with node IDs]\n[Indirect recursion chains (A→B→A patterns)]\n[Recursion depth limits and termination conditions]\n\n### 3.3 Cycle Risk Assessment\n[Potential infinite loop risks]\n[Termination condition analysis]\n[Stack overflow risks from deep recursion]\n\n## 4. BI-DIRECTIONAL FLOW ANALYSIS\n### 4.1 Forward Call Chains (Calls Made)\n[Complete forward execution flows]\n[What each function calls (fan-out)]\n\n### 4.2 Reverse Call Chains (Callers)\n[Complete reverse dependency analysis]\n[What calls each function (fan-in)]\n[Entry points to each execution subgraph]\n\n### 4.3 Convergent Execution Points\n[Functions called from multiple execution paths]\n[Central functions in execution flow]\n[Potential bottleneck locations]\n\n## 5. ARCHITECTURAL EXECUTION PATTERNS\n### 5.1 Coupling Metrics Analysis\n[Coupling metrics for ALL key functions]\n[High coupling hotspots (I > 0.7)]\n[Stable foundations (I < 0.3)]\n[Coupling distribution across call chain]\n\n### 5.2 Hub Node Analysis\n[All hub nodes identified at different degree thresholds]\n[God functions (degree > 20)]\n[Central architectural components (degree 10-20)]\n[Significant connectors (degree 5-10)]\n\n### 5.3 Execution Layering\n[Architectural layers identified in call flow]\n[Layer violations (lower layer calling higher)]\n[Dependency direction consistency]\n\n### 5.4 Execution Patterns Detected\n[Architectural patterns: layered, hexagonal, MVC, etc.]\n[Design patterns in execution flow: observer, strategy, etc.]\n[Anti-patterns: god functions, circular calls, deep nesting]\n\n## 6. PERFORMANCE AND COMPLEXITY ANALYSIS\n### 6.1 Call Chain Complexity Metrics\n[Maximum call depth: X levels]\n[Average call depth: Y levels]\n[Total unique functions in execution graph: N]\n[Cyclomatic complexity of call flow]\n\n### 6.2 Performance-Critical Execution Paths\n[Longest call chains (potential latency)]\n[Highest fan-out functions (complexity hotspots)]\n[Deeply nested execution sequences]\n[Recursive patterns (stack usage)]\n\n### 6.3 Execution Bottlenecks Identified\n[Hub functions that ALL paths flow through]\n[High coupling functions creating dependencies]\n[Potential single points of failure]\n\n## 7. EXECUTION CONTEXT INSIGHTS\n### 7.1 Async/Sync Boundaries (if detectable)\n[Async function calls identified]\n[Sync/async transition points]\n[Concurrency patterns in call flow]\n\n### 7.2 External Dependencies\n[Calls to external libraries/APIs]\n[I/O operations in call chain]\n[Network calls or file system operations]\n\n### 7.3 Error Handling Paths\n[Exception handling in execution flow]\n[Error propagation paths]\n[Fallback and recovery execution branches]\n\n## 8. COMPREHENSIVE METRICS SUMMARY\n### 8.1 Call Graph Statistics\n- Total functions analyzed: N\n- Total call relationships traced: M\n- Maximum call depth: X levels\n- Average call depth: Y levels\n- Total execution branches: B\n- Unique execution paths: P\n- Circular dependencies: C\n- Hub functions (degree > 10): H\n\n### 8.2 Coupling Analysis Summary\n- Average instability: I_avg\n- High coupling functions (I > 0.7): N_high\n- Stable functions (I < 0.3): N_stable\n- Coupling distribution: [histogram or summary]\n\n### 8.3 Complexity Indicators\n- Average fan-out (branching factor): F\n- Maximum fan-out: F_max\n- Recursive functions: R\n- Mutual recursion pairs: M_r\n- Deep nesting (depth > 7): D_deep\n\n## 9. ARCHITECTURAL RECOMMENDATIONS\n### 9.1 Refactoring Opportunities\n[Functions with excessive coupling to decouple]\n[Deep call chains to flatten]\n[Circular dependencies to break]\n[God functions to decompose]\n\n### 9.2 Performance Optimization Targets\n[Call chains causing potential latency]\n[Recursive patterns to optimize]\n[Hub functions to distribute load from]\n\n### 9.3 Architectural Improvements\n[Layer violations to fix]\n[Dependency direction to correct]\n[Abstraction layers to introduce]\n[Interface boundaries to clarify]\n\n## 10. DETAILED CITATIONS\n[Complete list of all tool calls made with node IDs]\n[Mapping of each claim to specific tool output]\n[Tool call sequence and analysis progression]\n\n---\n\n**Analysis Completeness:** [X% of reachable execution paths traced]\n**Confidence Level:** [High/Medium - based on tool coverage]\n**Total Tool Calls:** [N calls across M unique tools]\n**Total Node IDs Analyzed:** [P unique nodes]",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "EXHAUSTIVE CALL CHAIN ANALYSIS REPORT\n\n## EXECUTIVE SUMMARY\n[Complete overview of all execution paths traced]\n[Total functions analyzed, call chains mapped, depth achieved]\n[Key findings and critical execution patterns identified]\n[Architectural concerns and recommendations]\n\n## 1. EXECUTION FLOW TOPOLOGY\n### 1.1 Entry Points and Invocation Context\n[All entry points identified with node IDs]\n[How each entry point is invoked (from reverse dependency analysis)]\n[Execution context for each major call chain]\n\n### 1.2 Complete Call Chain Mapping\n[Hierarchical call trees for ALL entry points]\n[Functions invoked at each depth level (0-10+)]\n[Complete execution path topology]\n\n### 1.3 Call Depth Distribution\n[Statistical analysis of call depths]\n[Maximum depth achieved: X levels]\n[Average depth: Y levels]\n[Depth distribution histogram (if significant variance)]\n\n## 2. EXECUTION BRANCHES AND PATHS\n### 2.1 Primary Execution Paths (Main Branches)\n[Detailed analysis of 5-7 main execution sequences]\n[Complete function call sequences with node IDs]\n[Decision points and branching logic]\n\n### 2.2 Secondary and Tertiary Branches\n[Analysis of ALL significant execution branches]\n[Conditional execution paths]\n[Error handling branches]\n[Edge case execution paths]\n\n### 2.3 Execution Path Statistics\n[Total unique execution paths identified: N]\n[Branching factor analysis (average fan-out)]\n[Path convergence points (multiple paths merging)]\n\n## 3. RECURSIVE AND CYCLIC PATTERNS\n### 3.1 Circular Dependencies Detected\n[All circular call dependencies from detect_circular_dependencies]\n[Mutual recursion patterns]\n[Callback loops and event cycles]\n\n### 3.2 Recursive Call Analysis\n[Direct recursion instances with node IDs]\n[Indirect recursion chains (A→B→A patterns)]\n[Recursion depth limits and termination conditions]\n\n### 3.3 Cycle Risk Assessment\n[Potential infinite loop risks]\n[Termination condition analysis]\n[Stack overflow risks from deep recursion]\n\n## 4. BI-DIRECTIONAL FLOW ANALYSIS\n### 4.1 Forward Call Chains (Calls Made)\n[Complete forward execution flows]\n[What each function calls (fan-out)]\n\n### 4.2 Reverse Call Chains (Callers)\n[Complete reverse dependency analysis]\n[What calls each function (fan-in)]\n[Entry points to each execution subgraph]\n\n### 4.3 Convergent Execution Points\n[Functions called from multiple execution paths]\n[Central functions in execution flow]\n[Potential bottleneck locations]\n\n## 5. ARCHITECTURAL EXECUTION PATTERNS\n### 5.1 Coupling Metrics Analysis\n[Coupling metrics for ALL key functions]\n[High coupling hotspots (I > 0.7)]\n[Stable foundations (I < 0.3)]\n[Coupling distribution across call chain]\n\n### 5.2 Hub Node Analysis\n[All hub nodes identified at different degree thresholds]\n[God functions (degree > 20)]\n[Central architectural components (degree 10-20)]\n[Significant connectors (degree 5-10)]\n\n### 5.3 Execution Layering\n[Architectural layers identified in call flow]\n[Layer violations (lower layer calling higher)]\n[Dependency direction consistency]\n\n### 5.4 Execution Patterns Detected\n[Architectural patterns: layered, hexagonal, MVC, etc.]\n[Design patterns in execution flow: observer, strategy, etc.]\n[Anti-patterns: god functions, circular calls, deep nesting]\n\n## 6. PERFORMANCE AND COMPLEXITY ANALYSIS\n### 6.1 Call Chain Complexity Metrics\n[Maximum call depth: X levels]\n[Average call depth: Y levels]\n[Total unique functions in execution graph: N]\n[Cyclomatic complexity of call flow]\n\n### 6.2 Performance-Critical Execution Paths\n[Longest call chains (potential latency)]\n[Highest fan-out functions (complexity hotspots)]\n[Deeply nested execution sequences]\n[Recursive patterns (stack usage)]\n\n### 6.3 Execution Bottlenecks Identified\n[Hub functions that ALL paths flow through]\n[High coupling functions creating dependencies]\n[Potential single points of failure]\n\n## 7. EXECUTION CONTEXT INSIGHTS\n### 7.1 Async/Sync Boundaries (if detectable)\n[Async function calls identified]\n[Sync/async transition points]\n[Concurrency patterns in call flow]\n\n### 7.2 External Dependencies\n[Calls to external libraries/APIs]\n[I/O operations in call chain]\n[Network calls or file system operations]\n\n### 7.3 Error Handling Paths\n[Exception handling in execution flow]\n[Error propagation paths]\n[Fallback and recovery execution branches]\n\n## 8. COMPREHENSIVE METRICS SUMMARY\n### 8.1 Call Graph Statistics\n- Total functions analyzed: N\n- Total call relationships traced: M\n- Maximum call depth: X levels\n- Average call depth: Y levels\n- Total execution branches: B\n- Unique execution paths: P\n- Circular dependencies: C\n- Hub functions (degree > 10): H\n\n### 8.2 Coupling Analysis Summary\n- Average instability: I_avg\n- High coupling functions (I > 0.7): N_high\n- Stable functions (I < 0.3): N_stable\n- Coupling distribution: [histogram or summary]\n\n### 8.3 Complexity Indicators\n- Average fan-out (branching factor): F\n- Maximum fan-out: F_max\n- Recursive functions: R\n- Mutual recursion pairs: M_r\n- Deep nesting (depth > 7): D_deep\n\n## 9. ARCHITECTURAL RECOMMENDATIONS\n### 9.1 Refactoring Opportunities\n[Functions with excessive coupling to decouple]\n[Deep call chains to flatten]\n[Circular dependencies to break]\n[God functions to decompose]\n\n### 9.2 Performance Optimization Targets\n[Call chains causing potential latency]\n[Recursive patterns to optimize]\n[Hub functions to distribute load from]\n\n### 9.3 Architectural Improvements\n[Layer violations to fix]\n[Dependency direction to correct]\n[Abstraction layers to introduce]\n[Interface boundaries to clarify]\n\n## 10. DETAILED CITATIONS\n[Complete list of all tool calls made with node IDs]\n[Mapping of each claim to specific tool output]\n[Tool call sequence and analysis progression]\n\n---\n\n**Analysis Completeness:** [X% of reachable execution paths traced]\n**Confidence Level:** [High/Medium - based on tool coverage]\n**Total Tool Calls:** [N calls across M unique tools]\n**Total Node IDs Analyzed:** [P unique nodes]",
+  "entry_point": {
+    "name": "EntryPointFunction",
+    "file_path": "relative/path/to/file.rs",
+    "line_number": 42
+  },
+  "call_chain": ["func1 (file.rs:10)", "func2 (file.rs:25)", "func3 (file.rs:50)"],
+  "decision_points": ["Branch at func2: condition X", "Branch at func4: condition Y"]
 }
+MANDATORY: entry_point must include file path from tool results
 
 CRITICAL REQUIREMENTS:
 1. ZERO HEURISTICS: Every single claim must cite specific tool output

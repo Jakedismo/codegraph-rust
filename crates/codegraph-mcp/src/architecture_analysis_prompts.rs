@@ -30,12 +30,22 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-When complete:
+When complete (STRUCTURED OUTPUT):
 {
-  "reasoning": "ARCHITECTURE SUMMARY:\n- Coupling metrics: [data]\n- Circular deps: [count]\n- Hub nodes: [list with degrees]\n- Interpretation: [objective observations only]",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "ARCHITECTURE SUMMARY:\n- Coupling metrics: [data]\n- Circular deps: [count]\n- Hub nodes: [list with degrees]\n- Interpretation: [objective observations only]",
+  "layers": [],
+  "hub_nodes": [
+    {
+      "name": "HubNode",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "coupling_metrics": [],
+  "patterns": [],
+  "issues": []
 }
+MANDATORY: hub_nodes array must include file paths from tool results
 
 CONSTRAINTS:
 - MAX 5 STEPS - prioritize key architectural indicators
@@ -76,12 +86,22 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-When complete:
+When complete (STRUCTURED OUTPUT):
 {
-  "reasoning": "ARCHITECTURE ANALYSIS SUMMARY:\n\n## Coupling Metrics\n- Ca, Ce, I distributions for key nodes\n- Stability zones (stable I<0.3, unstable I>0.7)\n\n## Architectural Hotspots\n- Hub nodes with degrees and coupling metrics\n- God object candidates (high degree + high Ce)\n\n## Dependency Health\n- Circular dependencies count by edge type\n- Problematic dependency patterns\n\n## Change Impact Assessment\n- High-impact nodes (high Ca)\n- Blast radius for critical components\n\n## Interpretation\n[Objective observations only - no prescriptive judgments]",
-  "tool_call": null,
-  "is_final": true
+  "analysis": "ARCHITECTURE ANALYSIS SUMMARY:\n\n## Coupling Metrics\n- Ca, Ce, I distributions for key nodes\n- Stability zones (stable I<0.3, unstable I>0.7)\n\n## Architectural Hotspots\n- Hub nodes with degrees and coupling metrics\n- God object candidates (high degree + high Ce)\n\n## Dependency Health\n- Circular dependencies count by edge type\n- Problematic dependency patterns\n\n## Change Impact Assessment\n- High-impact nodes (high Ca)\n- Blast radius for critical components\n\n## Interpretation\n[Objective observations only - no prescriptive judgments]",
+  "layers": ["Layer 1: Infrastructure", "Layer 2: Core"],
+  "hub_nodes": [
+    {
+      "name": "HubNode",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "coupling_metrics": ["Node X: Ca=15, Ce=8, I=0.35"],
+  "patterns": ["Pattern: Layered architecture"],
+  "issues": ["Issue: Circular dependency between X and Y"]
 }
+MANDATORY: hub_nodes array must include file paths from tool results
 
 CONSTRAINTS:
 - MAX 10 STEPS - cover key architectural dimensions systematically
@@ -122,7 +142,22 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-When complete - provide comprehensive report with coupling distributions, hub analysis, dependency health, change impact, execution patterns, and objective synthesis. See TERSE/BALANCED for structure.
+When complete (STRUCTURED OUTPUT) - provide comprehensive report:
+{
+  "analysis": "[Detailed architectural analysis with coupling distributions, hub analysis, dependency health, change impact, execution patterns, and objective synthesis]",
+  "layers": ["Layer 1: Infrastructure", "Layer 2: Core", "Layer 3: Application"],
+  "hub_nodes": [
+    {
+      "name": "HubNode",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "coupling_metrics": ["Node X: Ca=15, Ce=8, I=0.35"],
+  "patterns": ["Pattern: Layered architecture"],
+  "issues": ["Issue: Circular dependency between X and Y"]
+}
+MANDATORY: hub_nodes array must include file paths from tool results
 
 CONSTRAINTS:
 - MAX 15 STEPS - thorough multi-dimensional analysis
@@ -159,14 +194,22 @@ RESPONSE FORMAT (JSON):
   "is_final": false
 }
 
-When complete - provide exhaustive report with:
-- Complete coupling landscape (distributions, statistics, outliers, correlations)
-- Complete architectural topology (multi-scale hubs, layering, dependency direction)
-- Complete dependency health (all cycles, all edge types, depth analysis)
-- Complete change impact (blast radius models for all critical nodes)
-- Complete execution analysis (call depth, complexity, topology)
-- Cross-dimensional patterns and statistical health metrics
-- Exhaustive objective synthesis
+When complete (STRUCTURED OUTPUT) - provide exhaustive report:
+{
+  "analysis": "[Exhaustive architectural analysis with complete coupling landscape, architectural topology, dependency health, change impact, execution analysis, cross-dimensional patterns, and statistical health metrics]",
+  "layers": ["Layer 1: Infrastructure", "Layer 2: Core", "Layer 3: Application", "Layer 4: Presentation"],
+  "hub_nodes": [
+    {
+      "name": "HubNode",
+      "file_path": "relative/path/to/file.rs",
+      "line_number": 42
+    }
+  ],
+  "coupling_metrics": ["Node X: Ca=15, Ce=8, I=0.35"],
+  "patterns": ["Pattern: Layered architecture", "Pattern: Hub-and-spoke"],
+  "issues": ["Issue: Circular dependency between X and Y", "Issue: God object Z"]
+}
+MANDATORY: hub_nodes array must include file paths from tool results
 
 CRITICAL RULES:
 1. ZERO HEURISTICS: Every claim must be based on tool output data
