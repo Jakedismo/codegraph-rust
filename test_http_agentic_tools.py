@@ -139,35 +139,69 @@ AGENTIC_TESTS = [
 def check_server():
     """Check if HTTP server is running."""
     try:
-        response = requests.get(f"{BASE_URL}/health", timeout=2)
+        # Health endpoint requires Accept: text/event-stream header
+        response = requests.get(
+            f"{BASE_URL}/health",
+            headers={"Accept": "text/event-stream"},
+            timeout=2
+        )
         if response.status_code == 200:
             print(f"✓ Server is running at {BASE_URL}")
             return True
+        else:
+            print(f"\n⚠️  Server responded with status {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
     except requests.exceptions.RequestException as e:
         print(f"\n❌ Server not running at {BASE_URL}")
         print(f"Error: {e}")
         print("\nStart server with:")
-        print(f"  ./start_http_server.sh")
+        print(f"  codegraph start http --port {HTTP_PORT}")
         print(f"  OR")
-        print(f"  ./target/release/codegraph start http --port {HTTP_PORT}")
+        print(f"  ./start_http_server.sh")
         return False
 
 def send_mcp_request(payload, timeout=60):
-    """Send MCP request via HTTP POST and wait for response."""
+    """Send MCP request via HTTP POST and wait for SSE response."""
     try:
         start_time = time.time()
 
+        # HTTP server returns SSE stream - need to accept text/event-stream
         response = requests.post(
             f"{BASE_URL}/mcp",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream"
+            },
             json=payload,
-            timeout=timeout
+            timeout=timeout,
+            stream=True
         )
 
         duration = time.time() - start_time
 
         if response.status_code == 200:
-            return response.json(), duration
+            # Parse SSE stream for JSON-RPC responses
+            result_data = None
+            for line in response.iter_lines(decode_unicode=True):
+                if not line or line.startswith(':'):
+                    continue
+                if line.startswith('data: '):
+                    data = line[6:]  # Remove 'data: ' prefix
+                    try:
+                        event = json.loads(data)
+                        # Look for the final result
+                        if "result" in event:
+                            result_data = event
+                            break
+                    except json.JSONDecodeError:
+                        continue
+
+            if result_data:
+                return result_data, time.time() - start_time
+            else:
+                print(f"⚠️  No result found in SSE stream")
+                return None, time.time() - start_time
         else:
             print(f"❌ HTTP {response.status_code}: {response.text[:200]}")
             return None, duration
