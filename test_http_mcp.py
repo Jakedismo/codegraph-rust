@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""
+Test agentic tools via HTTP using official MCP Python SDK.
+Properly follows MCP protocol with streamable HTTP transport.
+"""
+
+import asyncio
+import json
+import os
+import sys
+from pathlib import Path
+from datetime import datetime
+
+# Load .env
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).resolve().parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    pass
+
+# Configuration
+HTTP_HOST = os.environ.get("CODEGRAPH_HTTP_HOST", "127.0.0.1")
+HTTP_PORT = os.environ.get("CODEGRAPH_HTTP_PORT", "3003")
+SERVER_URL = f"http://{HTTP_HOST}:{HTTP_PORT}/mcp"
+
+# Test cases (same as STDIO version)
+AGENTIC_TESTS = [
+    ("agentic_code_search", "How is configuration loaded in this codebase? Find all config loading mechanisms.", 60),
+    ("agentic_dependency_analysis", "Analyze the dependency chain for the AgenticOrchestrator. What does it depend on?", 60),
+    ("agentic_call_chain_analysis", "Trace the call chain from execute_agentic_workflow to the graph analysis tools", 60),
+    ("agentic_architecture_analysis", "Analyze the architecture of the MCP server. Find coupling metrics and hub nodes.", 90),
+    ("agentic_api_surface_analysis", "What is the public API surface of the GraphToolExecutor?", 60),
+    ("agentic_context_builder", "Gather comprehensive context about the tier-aware prompt selection system", 90),
+    ("agentic_semantic_question", "How does the LRU cache work in GraphToolExecutor? What gets cached and when?", 60),
+]
+
+async def run_tests():
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+
+    print("\n" + "=" * 72)
+    print("CodeGraph HTTP Agentic Tools Test (Official MCP SDK)")
+    print("=" * 72)
+    print(f"Server: {SERVER_URL}")
+    print("=" * 72 + "\n")
+
+    try:
+        async with streamablehttp_client(SERVER_URL) as (read_stream, write_stream, _):
+            async with ClientSession(read_stream, write_stream) as session:
+                # Initialize
+                print("Initializing MCP connection...")
+                await session.initialize()
+                print("✓ MCP connection initialized\n")
+
+                results = []
+
+                for tool_name, query, timeout in AGENTIC_TESTS:
+                    print(f"{'=' * 72}")
+                    print(f"Testing: {tool_name}")
+                    print(f"Query: {query}")
+                    print(f"Timeout: {timeout}s")
+                    print('=' * 72)
+
+                    try:
+                        # Call tool with timeout
+                        result = await asyncio.wait_for(
+                            session.call_tool(tool_name, {"query": query}),
+                            timeout=timeout
+                        )
+
+                        # Parse result
+                        success = False
+                        structured_output = None
+                        file_locations = []
+
+                        if result and len(result.content) > 0:
+                            text = result.content[0].text
+                            data = json.loads(text)
+
+                            if "structured_output" in data:
+                                structured_output = data["structured_output"]
+                                success = True
+
+                                # Extract file locations
+                                for field in ['components', 'hub_nodes', 'evidence', 'core_components']:
+                                    if field in structured_output:
+                                        for item in structured_output[field]:
+                                            if isinstance(item, dict) and 'file_path' in item:
+                                                file_locations.append(item)
+
+                        if success:
+                            steps = data.get("steps_taken", "?")
+                            print(f"\n✅ SUCCESS ({steps} steps)")
+                            if structured_output:
+                                print(f"   📊 Structured Output: ✅ PRESENT")
+                                if file_locations:
+                                    print(f"   📁 File Locations: {len(file_locations)}")
+                                    for loc in file_locations[:3]:
+                                        line = f":{loc['line_number']}" if loc.get('line_number') else ""
+                                        print(f"      - {loc['name']} in {loc['file_path']}{line}")
+                                    if len(file_locations) > 3:
+                                        print(f"      ... and {len(file_locations) - 3} more")
+
+                        results.append({
+                            "test": tool_name,
+                            "success": success,
+                            "files": len(file_locations)
+                        })
+
+                    except asyncio.TimeoutError:
+                        print(f"\n❌ TIMEOUT after {timeout}s")
+                        results.append({"test": tool_name, "success": False, "files": 0})
+                    except Exception as e:
+                        print(f"\n❌ ERROR: {e}")
+                        results.append({"test": tool_name, "success": False, "files": 0})
+
+                # Summary
+                print("\n" + "=" * 72)
+                print("Test Summary")
+                print("=" * 72)
+                passed = sum(1 for r in results if r["success"])
+                total_files = sum(r["files"] for r in results)
+                print(f"Total: {passed}/{len(results)} passed")
+                print(f"File locations found: {total_files}")
+                print("=" * 72)
+
+                return 0 if passed == len(results) else 1
+
+    except Exception as e:
+        print(f"\n❌ Failed to connect to server: {e}")
+        print(f"\nMake sure server is running:")
+        print(f"  codegraph start http --port {HTTP_PORT}")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(run_tests()))
