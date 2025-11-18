@@ -161,57 +161,87 @@ def check_server():
         print(f"  ./start_http_server.sh")
         return False
 
-def send_mcp_request(payload, timeout=60):
-    """Send MCP request via HTTP POST and wait for SSE response."""
-    try:
-        start_time = time.time()
+class MCPHttpSession:
+    """Manages stateful MCP session over HTTP with SSE."""
 
-        # HTTP server returns SSE stream - need to accept text/event-stream
-        response = requests.post(
-            f"{BASE_URL}/mcp",
-            headers={
+    def __init__(self, base_url):
+        self.base_url = base_url
+        self.session = requests.Session()
+        self.session_id = None
+
+    def send_request(self, payload, timeout=60):
+        """Send MCP request via HTTP POST and wait for SSE response."""
+        try:
+            start_time = time.time()
+
+            # HTTP server returns SSE stream - need to accept text/event-stream
+            headers = {
                 "Content-Type": "application/json",
                 "Accept": "text/event-stream"
-            },
-            json=payload,
-            timeout=timeout,
-            stream=True
-        )
+            }
 
-        duration = time.time() - start_time
+            # Add session ID if we have one
+            if self.session_id:
+                headers["X-Session-ID"] = self.session_id
 
-        if response.status_code == 200:
-            # Parse SSE stream for JSON-RPC responses
-            result_data = None
-            for line in response.iter_lines(decode_unicode=True):
-                if not line or line.startswith(':'):
-                    continue
-                if line.startswith('data: '):
-                    data = line[6:]  # Remove 'data: ' prefix
-                    try:
-                        event = json.loads(data)
-                        # Look for the final result
-                        if "result" in event:
-                            result_data = event
-                            break
-                    except json.JSONDecodeError:
+            response = self.session.post(
+                f"{self.base_url}/mcp",
+                headers=headers,
+                json=payload,
+                timeout=timeout,
+                stream=True
+            )
+
+            if response.status_code == 200:
+                # Parse SSE stream for JSON-RPC responses and session ID
+                result_data = None
+
+                for line in response.iter_lines(decode_unicode=True):
+                    if not line:
                         continue
 
-            if result_data:
-                return result_data, time.time() - start_time
-            else:
-                print(f"⚠️  No result found in SSE stream")
-                return None, time.time() - start_time
-        else:
-            print(f"❌ HTTP {response.status_code}: {response.text[:200]}")
-            return None, duration
+                    # SSE comments (session info)
+                    if line.startswith(':'):
+                        # Check for session ID in comments
+                        if 'session:' in line:
+                            session_id = line.split('session:')[1].strip()
+                            if self.session_id is None:
+                                self.session_id = session_id
+                                print(f"   📝 Session ID: {session_id[:16]}...")
+                        continue
 
-    except requests.exceptions.Timeout:
-        print(f"⚠️  Request timed out after {timeout}s")
-        return None, timeout
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Request failed: {e}")
-        return None, 0
+                    # SSE data events
+                    if line.startswith('data: '):
+                        data = line[6:]  # Remove 'data: ' prefix
+                        try:
+                            event = json.loads(data)
+                            # Look for the final result
+                            if "result" in event:
+                                result_data = event
+                                # Don't break - keep reading to consume full stream
+                            elif "error" in event:
+                                print(f"❌ MCP error: {event['error']}")
+                                return None, time.time() - start_time
+                        except json.JSONDecodeError as e:
+                            print(f"⚠️  Failed to parse SSE data: {e}")
+                            continue
+
+                duration = time.time() - start_time
+                if result_data:
+                    return result_data, duration
+                else:
+                    print(f"⚠️  No result found in SSE stream")
+                    return None, duration
+            else:
+                print(f"❌ HTTP {response.status_code}: {response.text[:200]}")
+                return None, time.time() - start_time
+
+        except requests.exceptions.Timeout:
+            print(f"⚠️  Request timed out after {timeout}s")
+            return None, timeout
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Request failed: {e}")
+            return None, 0
 
 def extract_file_locations(structured_output):
     """Extract file locations from structured output."""
@@ -251,6 +281,9 @@ def run():
     if not check_server():
         return 1
 
+    # Create stateful MCP session
+    session = MCPHttpSession(BASE_URL)
+
     # MCP initialization
     print("\n" + "=" * 72)
     print("Initializing MCP connection...")
@@ -267,10 +300,11 @@ def run():
         }
     }
 
-    init_response, _ = send_mcp_request(init_req, timeout=5)
+    init_response, _ = session.send_request(init_req, timeout=5)
     if not init_response or "error" in init_response:
         print("❌ Initialization failed")
-        print(json.dumps(init_response, indent=2))
+        if init_response:
+            print(json.dumps(init_response, indent=2))
         return 1
 
     print("✓ MCP connection initialized")
@@ -294,7 +328,7 @@ def run():
         start_time = time.time()
         print(f"⏳ Sending request...", end="", flush=True)
 
-        response, duration = send_mcp_request(payload, timeout=timeout)
+        response, duration = session.send_request(payload, timeout=timeout)
 
         # Parse result
         success = False
