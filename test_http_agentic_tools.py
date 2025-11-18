@@ -139,9 +139,14 @@ AGENTIC_TESTS = [
 def check_server():
     """Check if HTTP server is running."""
     try:
-        # Health endpoint returns plain text "OK"
-        response = requests.get(f"{BASE_URL}/health", timeout=2)
-        if response.status_code == 200 and response.text.strip() == "OK":
+        # Health endpoint requires Accept: text/event-stream header
+        response = requests.get(
+            f"{BASE_URL}/health",
+            headers={"Accept": "text/event-stream"},
+            timeout=2
+        )
+        # Health returns "OK" as plain text even with SSE header
+        if response.status_code == 200 and "OK" in response.text:
             print(f"✓ Server is running at {BASE_URL}")
             return True
         else:
