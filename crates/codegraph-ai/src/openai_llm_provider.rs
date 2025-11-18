@@ -33,7 +33,7 @@ impl Default for OpenAIConfig {
             api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
             base_url: OPENAI_API_BASE.to_string(),
             model: DEFAULT_MODEL.to_string(),
-            context_window: config.context_window,
+            context_window: 128_000,
             timeout_secs: 120,
             max_retries: 3,
             organization: std::env::var("OPENAI_ORG_ID").ok(),

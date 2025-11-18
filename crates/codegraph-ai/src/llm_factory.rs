@@ -26,7 +26,8 @@ impl LLMProviderFactory {
         let provider_name = config.provider.to_lowercase();
 
         match provider_name.as_str() {
-            "ollama" | "qwen" => Self::create_qwen_provider(config),
+            "ollama" => Self::create_ollama_openai_provider(config),
+            "qwen" => Self::create_qwen_provider(config),
             "lmstudio" => Self::create_lmstudio_provider(config),
             #[cfg(feature = "anthropic")]
             "anthropic" => Self::create_anthropic_provider(config),
@@ -55,6 +56,38 @@ impl LLMProviderFactory {
                     ""
                 }
             )),
+        }
+    }
+
+    /// Create an Ollama provider using the OpenAI-compatible endpoint
+    fn create_ollama_openai_provider(config: &LLMConfig) -> Result<Arc<dyn LLMProvider>> {
+        #[cfg(feature = "openai-compatible")]
+        {
+            let base_url = format!("{}/v1", config.ollama_url.trim_end_matches('/'));
+            let compat_config = OpenAICompatibleConfig {
+                base_url,
+                model: config
+                    .model
+                    .clone()
+                    .unwrap_or_else(|| "qwen2.5-coder:14b".to_string()),
+                context_window: config.context_window,
+                timeout_secs: config.timeout_secs,
+                max_retries: 3,
+                api_key: None,
+                provider_name: "ollama".to_string(),
+                use_responses_api: false,
+            };
+
+            Ok(Arc::new(OpenAICompatibleProvider::new(compat_config)?))
+        }
+
+        #[cfg(not(feature = "openai-compatible"))]
+        {
+            let _ = config;
+            Err(anyhow!(
+                "Ollama provider now relies on the 'openai-compatible' feature. \
+                 Rebuild with --features codegraph-ai/openai-compatible or use 'qwen' provider instead."
+            ))
         }
     }
 
@@ -99,6 +132,7 @@ impl LLMProviderFactory {
 
         #[cfg(not(feature = "openai-compatible"))]
         {
+            let _ = config;
             Err(anyhow!(
                 "LM Studio provider requires 'openai-compatible' feature to be enabled. \
                  Please rebuild with --features openai-compatible or use 'ollama' provider instead."
@@ -222,6 +256,7 @@ impl LLMProviderFactory {
 
     /// Get a list of supported providers (based on enabled features)
     pub fn supported_providers() -> Vec<&'static str> {
+        #[allow(unused_mut)]
         let mut providers = vec!["ollama", "qwen"];
 
         #[cfg(feature = "openai-compatible")]

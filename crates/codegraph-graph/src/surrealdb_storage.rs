@@ -456,18 +456,26 @@ impl SurrealDbStorage {
             Some(node.metadata.attributes.clone())
         };
 
-        let (embedding_384, embedding_768, embedding_1024, embedding_2048, embedding_4096) =
+        let (
+            embedding_384,
+            embedding_768,
+            embedding_1024,
+            embedding_2048,
+            embedding_2560,
+            embedding_4096,
+        ) =
             if let Some(values) = &node.embedding {
                 let embedding_vec: Vec<f64> = values.iter().map(|&f| f as f64).collect();
                 match values.len() {
-                    384 => (Some(embedding_vec), None, None, None, None),
-                    768 => (None, Some(embedding_vec), None, None, None),
-                    1024 => (None, None, Some(embedding_vec), None, None),
-                    4096 => (None, None, None, None, Some(embedding_vec)),
-                    _ => (None, None, None, Some(embedding_vec), None),
+                    384 => (Some(embedding_vec), None, None, None, None, None),
+                    768 => (None, Some(embedding_vec), None, None, None, None),
+                    1024 => (None, None, Some(embedding_vec), None, None, None),
+                    2560 => (None, None, None, None, Some(embedding_vec), None),
+                    4096 => (None, None, None, None, None, Some(embedding_vec)),
+                    _ => (None, None, None, Some(embedding_vec), None, None),
                 }
             } else {
-                (None, None, None, None, None)
+                (None, None, None, None, None, None)
             };
 
         let embedding_model = node.metadata.attributes.get("embedding_model").cloned();
@@ -485,6 +493,7 @@ impl SurrealDbStorage {
             embedding_768,
             embedding_1024,
             embedding_2048,
+            embedding_2560,
             embedding_4096,
             embedding_model,
             complexity: node.complexity,
@@ -1185,6 +1194,8 @@ pub struct SymbolEmbeddingRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_2048: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_2560: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_4096: Option<Vec<f64>>,
     pub embedding_model: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1211,13 +1222,21 @@ impl SymbolEmbeddingRecord {
         metadata: Option<JsonValue>,
     ) -> Self {
         let embedding_vec: Vec<f64> = embedding.iter().map(|&f| f as f64).collect();
-        let (embedding_384, embedding_768, embedding_1024, embedding_2048, embedding_4096) =
+        let (
+            embedding_384,
+            embedding_768,
+            embedding_1024,
+            embedding_2048,
+            embedding_2560,
+            embedding_4096,
+        ) =
             match embedding_column {
-                SURR_EMBEDDING_COLUMN_384 => (Some(embedding_vec), None, None, None, None),
-                SURR_EMBEDDING_COLUMN_768 => (None, Some(embedding_vec), None, None, None),
-                SURR_EMBEDDING_COLUMN_1024 => (None, None, Some(embedding_vec), None, None),
-                SURR_EMBEDDING_COLUMN_4096 => (None, None, None, None, Some(embedding_vec)),
-                _ => (None, None, None, Some(embedding_vec), None),
+                SURR_EMBEDDING_COLUMN_384 => (Some(embedding_vec), None, None, None, None, None),
+                SURR_EMBEDDING_COLUMN_768 => (None, Some(embedding_vec), None, None, None, None),
+                SURR_EMBEDDING_COLUMN_1024 => (None, None, Some(embedding_vec), None, None, None),
+                SURR_EMBEDDING_COLUMN_2560 => (None, None, None, None, Some(embedding_vec), None),
+                SURR_EMBEDDING_COLUMN_4096 => (None, None, None, None, None, Some(embedding_vec)),
+                _ => (None, None, None, Some(embedding_vec), None, None),
             };
 
         SymbolEmbeddingRecord {
@@ -1230,6 +1249,7 @@ impl SymbolEmbeddingRecord {
             embedding_768,
             embedding_1024,
             embedding_2048,
+            embedding_2560,
             embedding_4096,
             embedding_model: embedding_model.to_string(),
             node_id: node_id.map(|s| s.to_string()),
@@ -1322,6 +1342,8 @@ struct SurrealNodeRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     embedding_2048: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    embedding_2560: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     embedding_4096: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     embedding_model: Option<String>,
@@ -1343,6 +1365,7 @@ pub const SURR_EMBEDDING_COLUMN_384: &str = "embedding_384";
 pub const SURR_EMBEDDING_COLUMN_768: &str = "embedding_768";
 pub const SURR_EMBEDDING_COLUMN_1024: &str = "embedding_1024";
 pub const SURR_EMBEDDING_COLUMN_2048: &str = "embedding_2048";
+pub const SURR_EMBEDDING_COLUMN_2560: &str = "embedding_2560";
 pub const SURR_EMBEDDING_COLUMN_4096: &str = "embedding_4096";
 
 pub fn surreal_embedding_column_for_dimension(dim: usize) -> &'static str {
@@ -1350,6 +1373,7 @@ pub fn surreal_embedding_column_for_dimension(dim: usize) -> &'static str {
         384 => SURR_EMBEDDING_COLUMN_384,
         768 => SURR_EMBEDDING_COLUMN_768,
         1024 => SURR_EMBEDDING_COLUMN_1024,
+        2560 => SURR_EMBEDDING_COLUMN_2560,
         4096 => SURR_EMBEDDING_COLUMN_4096,
         _ => SURR_EMBEDDING_COLUMN_2048,
     }
@@ -1378,6 +1402,7 @@ FOR $doc IN $batch {
         embedding_768 = $doc.embedding_768,
         embedding_1024 = $doc.embedding_1024,
         embedding_2048 = $doc.embedding_2048,
+        embedding_2560 = $doc.embedding_2560,
         embedding_4096 = $doc.embedding_4096,
         embedding_model = $doc.embedding_model,
         complexity = $doc.complexity,
@@ -1415,6 +1440,7 @@ FOR $doc IN $batch {
         embedding_768 = $doc.embedding_768,
         embedding_1024 = $doc.embedding_1024,
         embedding_2048 = $doc.embedding_2048,
+        embedding_2560 = $doc.embedding_2560,
         embedding_4096 = $doc.embedding_4096,
         embedding_model = $doc.embedding_model,
         node_id = $doc.node_id,

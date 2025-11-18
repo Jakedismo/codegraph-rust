@@ -257,7 +257,7 @@ impl LLMProvider for QwenClient {
 
         let prompt = format!("{}\n\nAssistant:", prompt);
 
-        let start_time = Instant::now();
+
         let request = SimpleRequest {
             model: self.config.model_name.clone(),
             prompt,

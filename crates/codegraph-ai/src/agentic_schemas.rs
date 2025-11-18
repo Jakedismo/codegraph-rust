@@ -236,7 +236,7 @@ impl AgenticOutput {
                 // layers and coupling_metrics are now flexible Value types
                 o.hub_nodes.iter().collect()
             }
-            Self::APISurface(o) => {
+            Self::APISurface(_) => {
                 // integration_points are now flexible Value types, can't extract directly
                 vec![]
             }

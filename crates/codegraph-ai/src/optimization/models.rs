@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use futures::FutureExt;
+
 use parking_lot::RwLock;
 use prometheus::{
     register_gauge, register_histogram, register_int_counter, Gauge, Histogram, IntCounter,
@@ -351,21 +351,7 @@ impl ModelOptimizer {
 
     // Quantization APIs – backend-specific implementations behind feature flags.
     pub fn quantize_fp16(&self) -> Result<()> {
-        #[cfg(feature = "tch")]
-        {
-            // With tch, a full-graph conversion requires model-specific access.
-            // For now, expose as not implemented until integrated with a model holder.
-            return Err(AiOptimizeError::NotImplemented("tch fp16 quantization").into());
-        }
-        #[cfg(feature = "onnx")]
-        {
-            // ONNX Runtime quantization should be handled offline or through tooling.
-            return Err(AiOptimizeError::NotImplemented("onnx fp16 quantization").into());
-        }
-        #[cfg(feature = "candle")]
-        {
-            return Err(AiOptimizeError::NotImplemented("candle fp16 quantization").into());
-        }
+
         #[allow(unreachable_code)]
         {
             warn!("fp16 quantization requested but no backend enabled");
@@ -374,18 +360,7 @@ impl ModelOptimizer {
     }
 
     pub fn quantize_int8(&self) -> Result<()> {
-        #[cfg(feature = "onnx")]
-        {
-            return Err(AiOptimizeError::NotImplemented("onnx int8 quantization").into());
-        }
-        #[cfg(feature = "tch")]
-        {
-            return Err(AiOptimizeError::NotImplemented("tch int8 quantization").into());
-        }
-        #[cfg(feature = "candle")]
-        {
-            return Err(AiOptimizeError::NotImplemented("candle int8 quantization").into());
-        }
+
         #[allow(unreachable_code)]
         {
             warn!("int8 quantization requested but no backend enabled");
@@ -434,26 +409,7 @@ impl ModelOptimizer {
 
     pub fn start_monitoring(&self) {
         // GPU utilization polling via NVML if available
-        #[cfg(feature = "nvml")]
-        {
-            use nvml_wrapper::Nvml;
-            let nvml = Nvml::init().ok();
-            let metrics = self.metrics.clone();
-            tokio::spawn(async move {
-                if let Some(nvml) = nvml {
-                    loop {
-                        if let Ok(device) = nvml.device_by_index(0) {
-                            if let Ok(util) = device.utilization_rates() {
-                                metrics.gpu_utilization.set(util.gpu as f64);
-                            }
-                        }
-                        sleep(Duration::from_millis(1000)).await;
-                    }
-                } else {
-                    warn!("NVML init failed; GPU utilization metrics disabled");
-                }
-            });
-        }
+
 
         // Alerting loop to check thresholds; emits logs (integrate with Alertmanager externally)
         let thresholds = self.thresholds.clone();

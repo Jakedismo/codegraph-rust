@@ -31,7 +31,7 @@ impl Default for OpenAICompatibleConfig {
         Self {
             base_url: "http://localhost:1234/v1".to_string(),
             model: "local-model".to_string(),
-            context_window: config.context_window,
+            context_window: 128_000,
             timeout_secs: 120,
             max_retries: 3,
             api_key: None,
@@ -47,7 +47,7 @@ impl OpenAICompatibleConfig {
         Self {
             base_url: "http://localhost:1234/v1".to_string(),
             model,
-            context_window: config.context_window,
+            context_window: 128_000,
             provider_name: "lmstudio".to_string(),
             use_responses_api: false, // LM Studio doesn't support Responses API
             ..Default::default()
@@ -59,7 +59,7 @@ impl OpenAICompatibleConfig {
         Self {
             base_url: "http://localhost:11434/v1".to_string(),
             model,
-            context_window: config.context_window,
+            context_window: 128_000,
             provider_name: "ollama".to_string(),
             use_responses_api: false, // Ollama doesn't support Responses API
             ..Default::default()
