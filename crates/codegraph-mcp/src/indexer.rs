@@ -985,6 +985,7 @@ impl ProjectIndexer {
             let mut unresolved_edges = 0;
             let mut exact_matches = 0;
             let mut pattern_matches = 0;
+            #[cfg(feature = "ai-enhanced")]
             let mut ai_matches = 0;
             let resolution_start = std::time::Instant::now();
 
@@ -1106,7 +1107,10 @@ impl ProjectIndexer {
             for (chunk_edges, (exact, pattern, ai, unresolved)) in chunk_results {
                 exact_matches += exact;
                 pattern_matches += pattern;
-                ai_matches += ai;
+                #[cfg(feature = "ai-enhanced")]
+                {
+                    ai_matches += ai;
+                }
                 unresolved_edges += unresolved;
                 all_resolved_edges.extend(chunk_edges);
             }
