@@ -189,34 +189,45 @@ class MCPHttpSession:
                         print(f"   ⚠️  No session ID in headers: {list(response.headers.keys())}")
 
                 # Parse SSE stream for JSON-RPC responses
+                # Use iter_lines with chunk_size to properly read streaming data
                 result_data = None
                 line_count = 0
 
-                for line in response.iter_lines(decode_unicode=True):
-                    line_count += 1
-                    if not line:
-                        continue
+                # iter_lines can buffer - use raw iteration instead
+                buffer = ""
+                for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
+                    if chunk:
+                        buffer += chunk
+                        # Process complete lines
+                        while '\n' in buffer:
+                            line, buffer = buffer.split('\n', 1)
+                            line = line.strip()
+                            line_count += 1
 
-                    # Skip SSE comments
-                    if line.startswith(':'):
-                        continue
+                            if not line:
+                                continue
 
-                    # SSE data events
-                    if line.startswith('data: '):
-                        data = line[6:]  # Remove 'data: ' prefix
-                        try:
-                            event = json.loads(data)
-                            # Look for the final result
-                            if "result" in event:
-                                result_data = event
-                                # Don't break - keep reading to consume full stream
-                            elif "error" in event:
-                                print(f"❌ MCP error: {event['error']}")
-                                return None, time.time() - start_time
-                        except json.JSONDecodeError as e:
-                            print(f"⚠️  Failed to parse SSE data (line {line_count}): {e}")
-                            print(f"      Data preview: {data[:200]}")
-                            continue
+                            # Skip SSE comments
+                            if line.startswith(':'):
+                                continue
+
+                            # SSE data events
+                            if line.startswith('data: '):
+                                data = line[6:]  # Remove 'data: ' prefix
+                                try:
+                                    event = json.loads(data)
+                                    # Look for the final result
+                                    if "result" in event:
+                                        result_data = event
+                                        # For agentic tools, there's only one result - can break
+                                        break
+                                    elif "error" in event:
+                                        print(f"❌ MCP error: {event['error']}")
+                                        return None, time.time() - start_time
+                                except json.JSONDecodeError as e:
+                                    print(f"⚠️  Failed to parse SSE data (line {line_count}): {e}")
+                                    print(f"      Data preview: {data[:200]}")
+                                    continue
 
                 duration = time.time() - start_time
                 if result_data:
