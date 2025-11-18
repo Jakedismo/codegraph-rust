@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### **Structured Output Enforcement with JSON Schemas**
 - **JSON schema enforcement** for all 7 agentic tools with **required file paths**
 - **Schema-driven outputs**: LLM cannot return response without file locations
+- **AutoAgents integration**: Uses `StructuredOutputFormat` passed via `AgentDeriveT::output_schema()`
 - **New module**: `codegraph-ai/src/agentic_schemas.rs` with comprehensive schemas:
   - `CodeSearchOutput`: analysis + components[] + patterns[]
   - `DependencyAnalysisOutput`: analysis + components[] + dependencies[] + circular_dependencies[]
@@ -47,18 +48,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `APISurfaceOutput`: analysis + endpoints[] + usage_patterns[]
   - `ContextBuilderOutput`: comprehensive context with all analysis dimensions
   - `SemanticQuestionOutput`: answer + evidence[] + related_components[]
-- **Required fields**: Every component must include `name`, `file_path`, and optional `line_number`
+- **Required fields**: Core component arrays must include `name`, `file_path`, and `line_number`
+- **Flexible fields**: Complex nested types (coupling_metrics, dependencies, etc.) accept either structured objects or simplified strings
 - **Provider integration**:
   - Added `response_format` field to `GenerationConfig`
   - OpenAI compatible providers send JSON schema to LLM API
+  - Ollama-native `format` field for compatibility (dual-field approach)
   - AutoAgents adapter converts `StructuredOutputFormat` to CodeGraph `ResponseFormat`
+  - xAI/Grok supports Responses API with full `response_format.json_schema` support
+- **Prompt updates**: All 28 tier prompts (4 tiers × 7 tools) updated to use structured format
 - **Hybrid output**: Combines freeform `analysis` field with structured arrays
 - **MCP handler**: Parses structured JSON and surfaces in `structured_output` field
 - **Benefits**:
-  - File paths are **mandatory** - no more abstract references
+  - File paths are **mandatory** in core component arrays
   - Downstream tools can navigate directly to relevant code
   - Consistent data structure for programmatic consumption
   - Better agent-to-agent collaboration with actionable locations
+  - Flexible parsing handles LLM variations while preserving essential data
 
 #### **File Location Requirements in Agent Outputs (Deprecated)**
 - **Superseded by**: Structured output enforcement with JSON schemas (above)
