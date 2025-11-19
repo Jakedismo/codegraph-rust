@@ -15,7 +15,7 @@
 # REQUIREMENTS:
 #   - SurrealDB must be running (local or cloud)
 #   - Binary built with server-http feature:
-#     cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,embeddings-ollama,server-http"
+#     cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,embeddings-ollama,codegraph-graph/surrealdb,server-http"
 #   - Python dependencies:
 #     pip install requests python-dotenv sseclient-py
 #
@@ -77,7 +77,7 @@ HTTP_HOST = os.environ.get("CODEGRAPH_HTTP_HOST", "127.0.0.1")
 HTTP_PORT = int(os.environ.get("CODEGRAPH_HTTP_PORT", "3000"))
 
 # Feature flags
-DEFAULT_FEATURES = "ai-enhanced,autoagents-experimental,faiss,embeddings-ollama,server-http"
+DEFAULT_FEATURES = "ai-enhanced,autoagents-experimental,embeddings-ollama,codegraph-graph/surrealdb,server-http"
 
 # Agentic tool tests
 AGENTIC_TESTS = [

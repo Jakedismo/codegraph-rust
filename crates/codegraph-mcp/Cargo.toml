@@ -53,7 +53,6 @@ codegraph-parser = { workspace = true }
 codegraph-graph = { workspace = true, features = ["surrealdb"] }
 codegraph-vector = { workspace = true, optional = true, default-features = false }
 codegraph-ai = { workspace = true, optional = true }  # Re-enabled for AI-powered symbol resolution
-faiss = { workspace = true, optional = true }
 semchunk-rs = "0.1"  # Semantic chunking for long code nodes
 tokenizers = "0.20"  # Qwen2.5-Coder tokenizer for accurate token counting
 # codegraph-api not used directly here; avoid pulling heavy deps
@@ -84,7 +83,6 @@ path = "src/bin/codegraph-official.rs"
 
 [features]
 default = []
-faiss = ["dep:faiss"]
 embeddings = ["dep:codegraph-vector", "codegraph-vector/lmstudio-reranker"]
 embeddings-local = ["embeddings", "codegraph-vector/local-embeddings"]
 embeddings-openai = ["embeddings", "codegraph-vector/openai"]
@@ -94,6 +92,5 @@ cloud = ["embeddings-jina", "codegraph-graph/surrealdb"]
 server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
 qwen-integration = []
 ai-enhanced = ["dep:codegraph-ai", "embeddings", "autoagents-experimental", "codegraph-ai/openai-compatible"]
-ai-enhanced-faiss = ["ai-enhanced", "faiss"]
 autoagents-experimental = ["dep:autoagents", "dep:autoagents-derive"]
 legacy-mcp-server = []

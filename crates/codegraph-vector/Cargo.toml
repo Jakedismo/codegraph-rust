@@ -8,8 +8,8 @@ description = "Vector storage and similarity search using FAISS for CodeGraph"
 
 [dependencies]
 codegraph-core = { workspace = true }
+codegraph-graph = { path = "../codegraph-graph", features = ["surrealdb"] }
 codegraph-cache = { path = "../codegraph-cache", optional = true }
-faiss = { workspace = true, optional = true }
 ndarray = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -59,12 +59,10 @@ tracing-subscriber = { workspace = true }
 
 
 [features]
-# Minimal defaults; opt-in to FAISS or providers from dependents
+# Minimal defaults; opt-in providers from dependents
 default = []
 cache = ["dep:codegraph-cache"]
-faiss = ["dep:faiss"]
 persistent = ["dep:memmap2", "dep:flate2"]
-gpu = ["faiss/gpu"]
 openai = ["dep:reqwest"]
 local-embeddings = [
     "dep:candle-core",

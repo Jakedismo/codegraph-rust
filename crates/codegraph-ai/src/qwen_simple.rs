@@ -257,7 +257,6 @@ impl LLMProvider for QwenClient {
 
         let prompt = format!("{}\n\nAssistant:", prompt);
 
-
         let request = SimpleRequest {
             model: self.config.model_name.clone(),
             prompt,

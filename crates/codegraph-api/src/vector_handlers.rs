@@ -1,11 +1,10 @@
 use crate::semantic_search_ext::SemanticSearchExt;
-use crate::vector_store_ext::FaissVectorStoreExt;
 use crate::{ApiError, ApiResult, AppState};
 use axum::{
     extract::{Query, State},
     Json,
 };
-use codegraph_core::{GraphStore, NodeId};
+use codegraph_core::{GraphStore, NodeId, VectorStore};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use uuid::Uuid;

@@ -10,10 +10,10 @@
 #
 # REQUIREMENTS:
 #   - SurrealDB must be running (local or cloud)
-#   - Binary built with autoagents-experimental feature:
+#   - Binary built with autoagents-experimental + SurrealDB features:
 #     make build-mcp-autoagents
 #     OR
-#     cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,ollama"
+#     cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,embeddings-ollama,codegraph-graph/surrealdb"
 #   - Python dependencies:
 #     uv sync  # Recommended (installs from pyproject.toml)
 #     OR

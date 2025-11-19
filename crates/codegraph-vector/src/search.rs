@@ -1,12 +1,7 @@
-#[cfg(feature = "faiss")]
-use crate::{CacheConfig, EmbeddingGenerator, FaissVectorStore, QueryHash, SearchCacheManager};
-#[cfg(feature = "faiss")]
-use codegraph_core::{CodeGraphError, Result, VectorStore};
-use codegraph_core::{CodeNode, Language, NodeId, NodeType};
-#[cfg(feature = "faiss")]
+use crate::{CacheConfig, EmbeddingGenerator, QueryHash, SearchCacheManager, SurrealVectorStore};
+use codegraph_core::{CodeGraphError, CodeNode, Language, NodeId, NodeType, Result, VectorStore};
 use futures::future::try_join_all;
 use std::collections::{HashMap, HashSet};
-#[cfg(feature = "faiss")]
 use std::{sync::Arc, time::Duration};
 
 #[derive(Clone)]
@@ -16,9 +11,8 @@ pub struct SearchResult {
     pub node: Option<CodeNode>,
 }
 
-#[cfg(feature = "faiss")]
 pub struct SemanticSearch {
-    vector_store: Arc<FaissVectorStore>,
+    vector_store: Arc<SurrealVectorStore>,
     embedding_generator: Arc<EmbeddingGenerator>,
     cache: Arc<SearchCacheManager>,
     node_metadata: Arc<dashmap::DashMap<NodeId, CodeNode>>, // optional, for filters/ranking
@@ -40,10 +34,9 @@ pub enum CombineMode {
     AndAverage,
 }
 
-#[cfg(feature = "faiss")]
 impl SemanticSearch {
     pub fn new(
-        vector_store: Arc<FaissVectorStore>,
+        vector_store: Arc<SurrealVectorStore>,
         embedding_generator: Arc<EmbeddingGenerator>,
     ) -> Self {
         let cache = Arc::new(SearchCacheManager::new(
@@ -273,7 +266,6 @@ impl SemanticSearch {
     }
 }
 
-#[cfg(feature = "faiss")]
 impl SemanticSearch {
     /// Primary semantic search with optional metadata filters and score normalization.
     pub async fn semantic_search(
@@ -524,7 +516,6 @@ impl SemanticSearch {
     }
 }
 
-#[cfg(feature = "faiss")]
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         return 0.0;
@@ -541,7 +532,6 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     }
 }
 
-#[cfg(feature = "faiss")]
 fn simple_hash(text: &str) -> u32 {
     let mut hash = 5381u32;
     for byte in text.bytes() {
@@ -550,7 +540,6 @@ fn simple_hash(text: &str) -> u32 {
     hash
 }
 
-#[cfg(feature = "faiss")]
 fn build_filter_signature(filters: Option<&SearchFilters>) -> String {
     if let Some(f) = filters {
         let mut langs: Vec<String> = f
@@ -582,7 +571,6 @@ fn build_filter_signature(filters: Option<&SearchFilters>) -> String {
     }
 }
 
-#[cfg(feature = "faiss")]
 fn normalize_scores(results: &mut [SearchResult]) {
     if results.is_empty() {
         return;

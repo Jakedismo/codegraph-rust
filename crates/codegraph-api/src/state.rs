@@ -4,11 +4,14 @@ use crate::performance::{PerformanceOptimizer, PerformanceOptimizerConfig};
 use crate::service_registry::ServiceRegistry;
 use async_trait::async_trait;
 use codegraph_core::{CodeNode, ConfigManager, GraphStore, NodeId};
+use codegraph_graph::{SurrealDbConfig as GraphSurrealConfig, SurrealDbStorage};
 use codegraph_parser::TreeSitterParser;
-use codegraph_vector::{EmbeddingGenerator, FaissVectorStore, SemanticSearch};
+use codegraph_vector::{EmbeddingGenerator, SemanticSearch, SurrealVectorStore};
+use secrecy::ExposeSecret;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use tokio::sync::Mutex as TokioMutex;
 use tokio::sync::RwLock;
 
 // Simple in-memory graph implementation for now
@@ -99,7 +102,7 @@ pub struct AppState {
     pub graph: Arc<RwLock<InMemoryGraph>>,
     pub transactional_graph: Arc<TransactionalGraph>,
     pub parser: Arc<TreeSitterParser>,
-    pub vector_store: Arc<FaissVectorStore>,
+    pub vector_store: Arc<SurrealVectorStore>,
     pub embedding_generator: Arc<EmbeddingGenerator>,
     pub semantic_search: Arc<SemanticSearch>,
     pub ws_metrics: Arc<WebSocketMetrics>,
@@ -135,7 +138,14 @@ impl AppState {
         };
 
         let parser = Arc::new(TreeSitterParser::new());
-        let vector_store = Arc::new(FaissVectorStore::new(384)?);
+        let surreal_config = adapt_surreal_config(&config.config().database.surrealdb);
+        let surreal_storage = Arc::new(TokioMutex::new(
+            SurrealDbStorage::new(surreal_config).await?,
+        ));
+        let vector_store = Arc::new(SurrealVectorStore::with_surreal_storage(
+            surreal_storage.clone(),
+            200,
+        ));
         // Use advanced embeddings when CODEGRAPH_EMBEDDING_PROVIDER=local, otherwise fallback
         let embedding_generator = Arc::new(EmbeddingGenerator::with_auto_from_env().await);
         let semantic_search = Arc::new(SemanticSearch::new(
@@ -183,6 +193,22 @@ impl AppState {
             service_registry: Arc::new(ServiceRegistry::new()),
             performance: perf,
         })
+    }
+}
+
+fn adapt_surreal_config(source: &codegraph_core::SurrealDbConfig) -> GraphSurrealConfig {
+    GraphSurrealConfig {
+        connection: source.connection.clone(),
+        namespace: source.namespace.clone(),
+        database: source.database.clone(),
+        username: source.username.clone(),
+        password: source
+            .password
+            .as_ref()
+            .map(|secret| secret.expose_secret().to_string()),
+        strict_mode: source.strict_mode,
+        auto_migrate: source.auto_migrate,
+        cache_enabled: true,
     }
 }
 

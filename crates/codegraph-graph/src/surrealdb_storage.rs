@@ -449,20 +449,19 @@ impl SurrealDbStorage {
             embedding_2048,
             embedding_2560,
             embedding_4096,
-        ) =
-            if let Some(values) = &node.embedding {
-                let embedding_vec: Vec<f64> = values.iter().map(|&f| f as f64).collect();
-                match values.len() {
-                    384 => (Some(embedding_vec), None, None, None, None, None),
-                    768 => (None, Some(embedding_vec), None, None, None, None),
-                    1024 => (None, None, Some(embedding_vec), None, None, None),
-                    2560 => (None, None, None, None, Some(embedding_vec), None),
-                    4096 => (None, None, None, None, None, Some(embedding_vec)),
-                    _ => (None, None, None, Some(embedding_vec), None, None),
-                }
-            } else {
-                (None, None, None, None, None, None)
-            };
+        ) = if let Some(values) = &node.embedding {
+            let embedding_vec: Vec<f64> = values.iter().map(|&f| f as f64).collect();
+            match values.len() {
+                384 => (Some(embedding_vec), None, None, None, None, None),
+                768 => (None, Some(embedding_vec), None, None, None, None),
+                1024 => (None, None, Some(embedding_vec), None, None, None),
+                2560 => (None, None, None, None, Some(embedding_vec), None),
+                4096 => (None, None, None, None, None, Some(embedding_vec)),
+                _ => (None, None, None, Some(embedding_vec), None, None),
+            }
+        } else {
+            (None, None, None, None, None, None)
+        };
 
         let embedding_model = node.metadata.attributes.get("embedding_model").cloned();
 
@@ -1208,15 +1207,14 @@ impl SymbolEmbeddingRecord {
             embedding_2048,
             embedding_2560,
             embedding_4096,
-        ) =
-            match embedding_column {
-                SURR_EMBEDDING_COLUMN_384 => (Some(embedding_vec), None, None, None, None, None),
-                SURR_EMBEDDING_COLUMN_768 => (None, Some(embedding_vec), None, None, None, None),
-                SURR_EMBEDDING_COLUMN_1024 => (None, None, Some(embedding_vec), None, None, None),
-                SURR_EMBEDDING_COLUMN_2560 => (None, None, None, None, Some(embedding_vec), None),
-                SURR_EMBEDDING_COLUMN_4096 => (None, None, None, None, None, Some(embedding_vec)),
-                _ => (None, None, None, Some(embedding_vec), None, None),
-            };
+        ) = match embedding_column {
+            SURR_EMBEDDING_COLUMN_384 => (Some(embedding_vec), None, None, None, None, None),
+            SURR_EMBEDDING_COLUMN_768 => (None, Some(embedding_vec), None, None, None, None),
+            SURR_EMBEDDING_COLUMN_1024 => (None, None, Some(embedding_vec), None, None, None),
+            SURR_EMBEDDING_COLUMN_2560 => (None, None, None, None, Some(embedding_vec), None),
+            SURR_EMBEDDING_COLUMN_4096 => (None, None, None, None, None, Some(embedding_vec)),
+            _ => (None, None, None, Some(embedding_vec), None, None),
+        };
 
         SymbolEmbeddingRecord {
             id: symbol_embedding_record_id(project_id, normalized_symbol),

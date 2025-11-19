@@ -72,7 +72,7 @@ impl OpenAIProvider {
     /// Check if this is a reasoning model
     fn is_reasoning_model(&self) -> bool {
         let model = self.config.model.to_lowercase();
-        model.starts_with("gpt-5")
+        model.starts_with("gpt-5") || model.starts_with("grok-4")
     }
 
     /// Send a request to OpenAI Responses API with retry logic
@@ -134,7 +134,7 @@ impl OpenAIProvider {
             model: self.config.model.clone(),
             input,
             instructions,
-            max_completion_token: config.max_completion_token.or(config.max_tokens),
+            max_completion_tokens: config.max_completion_token.or(config.max_tokens),
             reasoning: None,
             temperature: None,
             top_p: None,
@@ -356,8 +356,11 @@ struct OpenAIRequest {
     input: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     instructions: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_completion_token: Option<usize>,
+    #[serde(
+        rename = "max_completion_tokens",
+        skip_serializing_if = "Option::is_none"
+    )]
+    max_completion_tokens: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning: Option<Reasoning>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -441,5 +444,24 @@ mod tests {
                 model
             );
         }
+    }
+
+    #[test]
+    fn request_serializes_plural_completion_field() {
+        let request = OpenAIRequest {
+            model: "gpt-test".to_string(),
+            input: "hello".to_string(),
+            instructions: None,
+            max_completion_tokens: Some(42),
+            reasoning: None,
+            temperature: None,
+            top_p: None,
+            stop: None,
+            response_format: None,
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"max_completion_tokens\""));
+        assert!(!json.contains("\"max_completion_token\""));
     }
 }

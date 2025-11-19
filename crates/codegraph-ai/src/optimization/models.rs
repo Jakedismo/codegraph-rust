@@ -351,7 +351,6 @@ impl ModelOptimizer {
 
     // Quantization APIs – backend-specific implementations behind feature flags.
     pub fn quantize_fp16(&self) -> Result<()> {
-
         #[allow(unreachable_code)]
         {
             warn!("fp16 quantization requested but no backend enabled");
@@ -360,7 +359,6 @@ impl ModelOptimizer {
     }
 
     pub fn quantize_int8(&self) -> Result<()> {
-
         #[allow(unreachable_code)]
         {
             warn!("int8 quantization requested but no backend enabled");
@@ -409,7 +407,6 @@ impl ModelOptimizer {
 
     pub fn start_monitoring(&self) {
         // GPU utilization polling via NVML if available
-
 
         // Alerting loop to check thresholds; emits logs (integrate with Alertmanager externally)
         let thresholds = self.thresholds.clone();

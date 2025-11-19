@@ -9,7 +9,7 @@ CodeGraph indexes your source code to a graph database, creates semantic embeddi
 - 🔍 Semantic code search across your entire codebase
 - 🧠 LLM-powered code intelligence and analysis
 - 📊 Automatic dependency graphs and code relationships
-- ⚡ Fast vector search with FAISS or cloud SurrealDB HNSW (2-5ms query latency)
+- ⚡ Fast vector search backed by SurrealDB HNSW (2-5ms query latency)
 - 🔌 MCP server for AI tool integration (stdio and streamable HTTP)
 - ⚙️ Easy-to-use CLI interface
 - ☁️ **NEW:** Jina AI cloud embeddings with modifiable models and dimensions and reranking
@@ -32,7 +32,7 @@ export CODEGRAPH_EMBEDDING_DIMENSION=1024               # 384, 768, 1024, 1536, 
 export CODEGRAPH_RERANKING_PROVIDER=lmstudio
 ```
 
-We automatically route embeddings to `embedding_384`, `embedding_768`, `embedding_1024`, `embedding_2048`, or `embedding_4096` and keep reranking disabled unless a provider is configured. No FAISS/RocksDB plumbing is needed for MCP anymore.
+We automatically route embeddings to `embedding_384`, `embedding_768`, `embedding_1024`, `embedding_2048`, `embedding_2056`, or `embedding_4096` and keep reranking disabled unless a provider is configured.
 
 ---
 
@@ -42,7 +42,7 @@ We automatically route embeddings to `embedding_384`, `embedding_768`, `embeddin
 
 ### What Changed:
 - ❌ **MCP server** no longer uses FAISS vector search or RocksDB graph storage
-- ✅ **CLI and SDK** continue to support FAISS/RocksDB for local operations
+- ❌ **CLI and SDK** no longer support FAISS/RocksDB for local operations
 - ✅ **NAPI bindings** still provide TypeScript access to all features
 - 🆕 **MCP code-agent tools** now require SurrealDB for graph analysis
 
@@ -96,15 +96,15 @@ CodeGraph now supports the **AutoAgents framework** for agentic orchestration as
 make build-mcp-autoagents
 
 # Or directly with cargo
-cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,ollama"
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,ollama"
 
 # HTTP server with AutoAgents
-cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,embeddings-ollama,server-http"
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,embeddings-ollama,server-http"
 ```
 
 **Without AutoAgents (default):**
 ```bash
-cargo build --release -p codegraph-mcp --features "ai-enhanced,faiss,ollama"
+cargo build --release -p codegraph-mcp --features "ai-enhanced,ollama"
 ```
 
 ### Status
@@ -200,16 +200,6 @@ Pick the setup that matches your needs:
 ```bash
 # 1. Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# 2. Install FAISS (vector search library)
-# macOS:
-brew install faiss
-
-# Ubuntu/Debian:
-sudo apt-get install libfaiss-dev
-
-# Arch Linux:
-sudo pacman -S faiss
 ```
 
 ---
@@ -240,7 +230,7 @@ ollama pull qwen2.5-coder:14b
 cd codegraph-rust
 
 # Build with ONNX embeddings and Ollama support
-cargo build --release --features "onnx,ollama,faiss"
+cargo build --release --features "onnx,ollama"
 ```
 
 **Step 4: Configure**
@@ -291,7 +281,7 @@ ollama_url = "http://localhost:11434"
 cd codegraph-rust
 
 # Build with OpenAI-compatible support (for LM Studio)
-cargo build --release --features "openai-compatible,faiss"
+cargo build --release --features "openai-compatible"
 ```
 
 **Step 5: Configure**
@@ -338,13 +328,13 @@ lmstudio_url = "http://localhost:1234"
 cd codegraph-rust
 
 # Build with all cloud providers
-cargo build --release --features "anthropic,openai-llm,openai,faiss"
+cargo build --release --features "anthropic,openai-llm,openai"
 
 # Or with Jina AI cloud embeddings (Matryoska dimensions + reranking)
-cargo build --release --features "cloud-jina,anthropic,faiss"
+cargo build --release --features "cloud-jina,anthropic"
 
 # Or with SurrealDB HNSW cloud/local vector backend
-cargo build --release --features "cloud-surrealdb,openai,faiss"
+cargo build --release --features "cloud-surrealdb,openai"
 ```
 
 **Step 3: Run setup wizard (easiest)**
@@ -436,7 +426,7 @@ openai_api_key = "sk-..."
 dimension = 2048
 
 [vector_store]
-backend = "surrealdb"  # Instead of "faiss"
+backend = "surrealdb"
 surrealdb_url = "ws://localhost:8000"  # or cloud instance
 surrealdb_namespace = "codegraph"
 surrealdb_database = "production"
@@ -481,7 +471,7 @@ anthropic_api_key = "sk-ant-..."
 
 Build with required features:
 ```bash
-cargo build --release --features "onnx,anthropic,faiss"
+cargo build --release --features "onnx,anthropic"
 ```
 
 ---
@@ -746,7 +736,6 @@ CodeGraph uses feature flags to enable only the components you need. Build with 
 
 | Feature | Description | Use Case |
 |---------|-------------|----------|
-| `faiss` | FAISS vector search + RocksDB | Local vector search with persistent graph storage |
 | `ai-enhanced` | Agentic MCP tools | Enables 7 agentic workflows with multi-step reasoning |
 | `server-http` | HTTP/SSE transport | Experimental HTTP server (use STDIO for production) |
 | `autoagents-experimental` | AutoAgents framework | ReAct orchestration (experimental, replaces custom orchestrator) |
@@ -779,28 +768,28 @@ CodeGraph uses feature flags to enable only the components you need. Build with 
 
 ```bash
 # Local only (ONNX + Ollama)
-cargo build --release --features "onnx,ollama,faiss"
+cargo build --release --features "onnx,ollama"
 
 # LM Studio
-cargo build --release --features "openai-compatible,faiss"
+cargo build --release --features "openai-compatible"
 
 # Cloud only (Anthropic + OpenAI)
-cargo build --release --features "anthropic,openai-llm,openai,faiss"
+cargo build --release --features "anthropic,openai-llm,openai"
 
-# Jina AI cloud embeddings + local FAISS
-cargo build --release --features "cloud-jina,faiss"
+# Jina AI cloud embeddings + local surrealDB
+cargo build --release --features "cloud-jina"
 
 # SurrealDB cloud vector backend
-cargo build --release --features "cloud-surrealdb,openai,faiss"
+cargo build --release --features "cloud-surrealdb,openai"
 
 # Full cloud (Jina + SurrealDB + Anthropic)
-cargo build --release --features "cloud,anthropic,faiss"
+cargo build --release --features "cloud,anthropic"
 
 # Everything (local + cloud)
-cargo build --release --features "all-cloud-providers,onnx,ollama,cloud,faiss"
+cargo build --release --features "all-cloud-providers,onnx,ollama,cloud"
 
 # HTTP server with AutoAgents (experimental)
-cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,embeddings-ollama,server-http"
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,embeddings-ollama,server-http"
 ```
 
 ---
@@ -812,7 +801,7 @@ cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experi
 | Operation | Performance | Notes |
 |-----------|------------|-------|
 | **Embedding generation** | 120 embeddings/sec | LM Studio with MLX |
-| **Vector search (local)** | 2-5ms latency | FAISS with index caching |
+| **Vector search (local)** | 2-5ms latency | SurrealDB HNSW |
 | **Vector search (cloud)** | 2-5ms latency | SurrealDB HNSW |
 | **Jina AI embeddings** | 50-150ms per query | Cloud API call overhead |
 | **Jina reranking** | 80-200ms for top-K | Two-stage retrieval |
@@ -822,7 +811,6 @@ cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experi
 
 | Optimization | Speedup | Memory Cost |
 |-------------|---------|-------------|
-| FAISS index cache | 10-50× | 300-600 MB |
 | Embedding cache | 10-100× | ~90 MB |
 | Query cache | 100× | ~10 MB |
 | Parallel search | 2-3× | Minimal |
@@ -830,19 +818,6 @@ cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experi
 ---
 
 ## 🔧 Troubleshooting
-
-### Build Issues
-
-**"Could not find library faiss"**
-```bash
-# Install FAISS first
-brew install faiss  # macOS
-sudo apt-get install libfaiss-dev  # Ubuntu
-```
-
-**"Feature X is not enabled"**
-- Make sure you included the feature flag when building
-- Example: `cargo build --release --features "anthropic,faiss"`
 
 ### Runtime Issues
 
@@ -879,7 +854,6 @@ CodeGraph provides native Node.js bindings through NAPI-RS for seamless TypeScri
 - 📘 **Auto-Generated Types**: TypeScript definitions generated directly from Rust code
 - ⚡ **Async Runtime**: Full tokio async support integrated with Node.js event loop
 - 🔄 **Hot-Reload Config**: Update configuration without restarting your Node.js process
-- 🌐 **Dual-Mode Search**: Automatic routing between local FAISS and cloud SurrealDB
 
 ### Installation
 
@@ -966,10 +940,10 @@ console.log(`Nodes: ${stats.node_count}, Edges: ${stats.edge_count}`);
 
 **Feature flags for selective compilation:**
 ```bash
-# Local-only (FAISS, no cloud)
+# Local-only (local surrealDB, no cloud)
 npm run build  # Uses default = ["local"]
 
-# Cloud-only (no FAISS)
+# Cloud-only (no local surrealDB
 npm run build -- --features cloud
 
 # Full build (local + cloud)

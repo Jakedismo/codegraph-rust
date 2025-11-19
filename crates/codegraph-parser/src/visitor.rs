@@ -184,7 +184,10 @@ impl AstToGraphConverter {
             if content.contains(&format!("{}", other_name))
                 && matches!(
                     other_entity.node.node_type,
-                    Some(NodeType::Variable) | Some(NodeType::Struct) | Some(NodeType::Class) | Some(NodeType::Import)
+                    Some(NodeType::Variable)
+                        | Some(NodeType::Struct)
+                        | Some(NodeType::Class)
+                        | Some(NodeType::Import)
                 )
             {
                 self.relationships.push(SemanticRelationship {
@@ -466,7 +469,9 @@ impl AstToGraphConverter {
     fn extract_name(&self, node: &Node) -> Option<String> {
         match node.kind() {
             "use_declaration" => self.extract_use_name(node),
-            "import_specifier" | "default_import" | "namespace_import" => self.extract_identifier_name(node),
+            "import_specifier" | "default_import" | "namespace_import" => {
+                self.extract_identifier_name(node)
+            }
             "dotted_name" => self.extract_dotted_name(node),
             "aliased_import" => self.extract_aliased_import(node),
             _ => self.extract_identifier_name(node),
@@ -508,11 +513,14 @@ impl AstToGraphConverter {
         // because that's what is used in the code.
         for child in node.children(&mut node.walk()) {
             if child.kind() == "alias" {
-                 for grandchild in child.children(&mut child.walk()) {
-                     if grandchild.kind() == "identifier" {
-                         return grandchild.utf8_text(&self.source_bytes).ok().map(String::from);
-                     }
-                 }
+                for grandchild in child.children(&mut child.walk()) {
+                    if grandchild.kind() == "identifier" {
+                        return grandchild
+                            .utf8_text(&self.source_bytes)
+                            .ok()
+                            .map(String::from);
+                    }
+                }
             }
         }
         None

@@ -1404,7 +1404,6 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "dashmap 6.1.0",
- "faiss",
  "fastrand",
  "flate2",
  "futures",
@@ -1583,7 +1582,6 @@ dependencies = [
  "dashmap 6.1.0",
  "dirs 5.0.1",
  "dotenv",
- "faiss",
  "fastrand",
  "futures",
  "http-body-util",
@@ -1690,10 +1688,10 @@ dependencies = [
  "chrono",
  "codegraph-cache",
  "codegraph-core",
+ "codegraph-graph",
  "criterion",
  "crossbeam-channel",
  "dashmap 6.1.0",
- "faiss",
  "fastrand",
  "flate2",
  "futures",
@@ -2613,21 +2611,6 @@ dependencies = [
  "quote",
  "syn 2.0.106",
 ]
-
-[[package]]
-name = "faiss"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3ffe048432786028b0a30aa1d13e10e08ced380439ba4a83fe5c227d2dd9733"
-dependencies = [
- "faiss-sys",
-]
-
-[[package]]
-name = "faiss-sys"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b9c008fc56422bf34357f17226d9c5a5c2ef6245b4774759c5f67112e46915e"
 
 [[package]]
 name = "fancy-regex"

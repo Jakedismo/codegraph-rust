@@ -219,52 +219,6 @@ enum Commands {
         format: StatsFormat,
     },
 
-    #[command(
-        about = "Search indexed code",
-        long_about = "Search with dual-mode support:\n\
-                      • Local Mode: FAISS vector search with local/ollama embeddings\n\
-                      • Cloud Mode: SurrealDB HNSW search with Jina embeddings + reranking\n\
-                      \n\
-                      Mode is determined by CODEGRAPH_EMBEDDING_PROVIDER (must match indexing mode)."
-    )]
-    Search {
-        #[arg(help = "Search query")]
-        query: String,
-
-        #[arg(short, long, help = "Search type", default_value = "semantic")]
-        search_type: SearchType,
-
-        #[arg(short, long, help = "Maximum results", default_value = "10")]
-        limit: usize,
-
-        #[arg(long, help = "Similarity threshold (0.0-1.0)", default_value = "0.7")]
-        threshold: f32,
-
-        #[arg(short, long, help = "Output format", default_value = "human")]
-        format: OutputFormat,
-
-        #[arg(
-            long,
-            help = "Restrict to path prefixes (comma-separated)",
-            value_delimiter = ','
-        )]
-        paths: Option<Vec<String>>,
-
-        #[arg(
-            long,
-            help = "Restrict to languages (comma-separated)",
-            value_delimiter = ','
-        )]
-        langs: Option<Vec<String>>,
-
-        #[arg(
-            long,
-            help = "Expand graph neighbors to this depth (0 to disable)",
-            default_value = "0"
-        )]
-        expand_graph: usize,
-    },
-
     #[command(about = "Manage MCP server configuration")]
     Config {
         #[command(subcommand)]
@@ -320,12 +274,6 @@ enum Commands {
     Graph {
         #[command(subcommand)]
         action: GraphAction,
-    },
-
-    #[command(about = "Vector operations (FAISS)")]
-    Vector {
-        #[command(subcommand)]
-        action: VectorAction,
     },
 
     #[command(about = "Code IO operations")]
@@ -384,21 +332,6 @@ enum GraphAction {
         #[arg(long, help = "Depth", default_value = "2")]
         depth: usize,
         #[arg(long, help = "Limit nodes", default_value = "100")]
-        limit: usize,
-    },
-}
-
-#[derive(Subcommand)]
-enum VectorAction {
-    #[command(about = "Semantic vector search (FAISS)")]
-    Search {
-        #[arg(help = "Query string")]
-        query: String,
-        #[arg(long, value_delimiter = ',')]
-        paths: Option<Vec<String>>,
-        #[arg(long, value_delimiter = ',')]
-        langs: Option<Vec<String>>,
-        #[arg(long, default_value = "10")]
         limit: usize,
     },
 }
@@ -539,23 +472,6 @@ enum ConfigAction {
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
-enum SearchType {
-    Semantic,
-    Exact,
-    Fuzzy,
-    Regex,
-    Ast,
-}
-
-#[derive(clap::ValueEnum, Clone, Debug)]
-enum OutputFormat {
-    Human,
-    Json,
-    Yaml,
-    Table,
-}
-
-#[derive(clap::ValueEnum, Clone, Debug)]
 enum StatsFormat {
     Table,
     Json,
@@ -660,29 +576,6 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-        Commands::Search {
-            query,
-            search_type,
-            limit,
-            threshold,
-            format,
-            paths,
-            langs,
-            expand_graph,
-        } => {
-            handle_search(
-                config,
-                query,
-                search_type,
-                limit,
-                threshold,
-                format,
-                paths,
-                langs,
-                expand_graph,
-            )
-            .await?;
-        }
         Commands::Graph { action } => match action {
             GraphAction::Neighbors { node, limit } => {
                 let id = uuid::Uuid::parse_str(&node)?;
@@ -732,27 +625,6 @@ async fn main() -> Result<()> {
                         println!("{} {}", d, nid);
                     }
                 }
-            }
-        },
-        Commands::Vector { action } => match action {
-            VectorAction::Search {
-                query,
-                paths,
-                langs,
-                limit,
-            } => {
-                handle_search(
-                    config,
-                    query,
-                    SearchType::Semantic,
-                    limit,
-                    0.7,
-                    OutputFormat::Human,
-                    paths,
-                    langs,
-                    0,
-                )
-                .await?;
             }
         },
         Commands::Code { action } => match action {
@@ -944,6 +816,8 @@ async fn handle_start(
             key,
             cors: _,
         } => {
+            #[cfg(not(feature = "server-http"))]
+            let _ = (host, port, tls, cert, key);
             #[cfg(not(feature = "server-http"))]
             {
                 eprintln!("🚧 HTTP transport requires the 'server-http' feature");
@@ -1297,7 +1171,7 @@ async fn handle_index(
             "384-dim all-minilm:latest".green(),
             "768-dim embeddingsgemma:latest".green(),
             "1024-dim qwen3-embedding:0.6b".green(),
-            "2048-dim qwen3-embedding:4b".green(),
+            "2056-dim qwen3-embedding:4b".green(),
             "4096-dim qwen3-embedding:8b".green()
         );
     } else if provider == "jina" {
@@ -1650,296 +1524,6 @@ fn format_duration_minutes(minutes: f64) -> String {
         parts.push(format!("{seconds}s"));
     }
     parts.join(" ")
-}
-
-async fn handle_search(
-    _config: &codegraph_core::config_manager::CodeGraphConfig,
-    query: String,
-    search_type: SearchType,
-    limit: usize,
-    _threshold: f32,
-    format: OutputFormat,
-    paths: Option<Vec<String>>,
-    langs: Option<Vec<String>>,
-    expand_graph: usize,
-) -> Result<()> {
-    #[cfg(not(feature = "faiss"))]
-    let _ = (&limit, &format, &paths, &langs, &expand_graph);
-    println!("{}", format!("Searching for: '{}'", query).magenta().bold());
-    println!("Search type: {:?}", search_type);
-    println!();
-
-    // Build a query embedding compatible with the indexer
-    #[cfg(feature = "embeddings")]
-    let emb = {
-        let gen = codegraph_vector::EmbeddingGenerator::with_auto_from_env().await;
-        let e = gen.generate_text_embedding(&query).await?;
-        codegraph_mcp::indexer::normalize(&e)
-    };
-    #[cfg(not(feature = "embeddings"))]
-    let emb = {
-        let dimension = 384; // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
-        let e = codegraph_mcp::indexer::simple_text_embedding(&query, dimension);
-        codegraph_mcp::indexer::normalize(&e)
-    };
-
-    #[cfg(not(feature = "faiss"))]
-    let _ = &emb;
-
-    #[cfg(feature = "faiss")]
-    {
-        use faiss::index::io::read_index;
-        use faiss::index::Index as _;
-        use std::path::Path;
-
-        // Try to use shards when filters provided, else global index
-        let mut scored: Vec<(codegraph_core::NodeId, f32)> = Vec::new();
-        let mut used_any_shard = false;
-
-        // Helper to search a specific index file + mapping file
-        let mut search_index = |index_path: &Path, ids_path: &Path, topk: usize| -> Result<()> {
-            if !index_path.exists() || !ids_path.exists() {
-                return Ok(());
-            }
-            let mut index = read_index(index_path.to_string_lossy())
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-            let mapping_raw = std::fs::read_to_string(ids_path)?;
-            let mapping: Vec<codegraph_core::NodeId> = serde_json::from_str(&mapping_raw)?;
-            let res = index
-                .search(&emb, topk)
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-            for (i, label) in res.labels.into_iter().enumerate() {
-                if let Some(idx_val) = label.get() {
-                    let idx = idx_val as usize;
-                    if idx < mapping.len() {
-                        let score = res.distances[i];
-                        scored.push((mapping[idx], score));
-                    }
-                }
-            }
-            Ok(())
-        };
-
-        let mut shard_count = 0usize;
-        if let Some(prefs) = &paths {
-            for p in prefs {
-                let seg = p.trim_start_matches("./").split('/').next().unwrap_or("");
-                if seg.is_empty() {
-                    continue;
-                }
-                let idx = Path::new(".codegraph/shards/path").join(format!("{}.index", seg));
-                let ids = Path::new(".codegraph/shards/path").join(format!("{}_ids.json", seg));
-                search_index(&idx, &ids, limit * 5)?;
-                shard_count += 1;
-            }
-        }
-        if let Some(langs) = &langs {
-            for l in langs {
-                let norm = l.to_lowercase();
-                let idx = Path::new(".codegraph/shards/lang").join(format!("{}.index", norm));
-                let ids = Path::new(".codegraph/shards/lang").join(format!("{}_ids.json", norm));
-                search_index(&idx, &ids, limit * 5)?;
-                shard_count += 1;
-            }
-        }
-        used_any_shard = shard_count > 0;
-
-        if !used_any_shard {
-            // Fall back to global index
-            let idx = Path::new(".codegraph/faiss.index");
-            let ids = Path::new(".codegraph/faiss_ids.json");
-            if !idx.exists() || !ids.exists() {
-                println!(
-                    "FAISS index not found. Run 'codegraph index .' first (with --features faiss)."
-                );
-                return Ok(());
-            }
-            search_index(idx, ids, limit * 5)?;
-        }
-
-        // Rank and trim, keep scores for output
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.dedup_by_key(|(id, _)| *id);
-        let top: Vec<(codegraph_core::NodeId, f32)> = scored.into_iter().take(limit).collect();
-
-        // Optionally enrich results from graph; keep scores with nodes
-        let graph = codegraph_graph::CodeGraph::new()?;
-        let mut base_scored: Vec<(codegraph_core::NodeId, codegraph_core::CodeNode, f32)> =
-            Vec::new();
-        let path_filters = paths.unwrap_or_default();
-        for (id, score) in top {
-            if let Some(node) = graph.get_node(id).await? {
-                if path_filters.is_empty()
-                    || path_filters
-                        .iter()
-                        .any(|p| node.location.file_path.starts_with(p))
-                {
-                    base_scored.push((id, node, score));
-                }
-            }
-        }
-
-        // Expand graph neighbors if requested (depth-weighted)
-        if expand_graph > 0 {
-            use std::collections::{HashSet, VecDeque};
-            let mut seen: HashSet<codegraph_core::NodeId> =
-                base_scored.iter().map(|(id, _, _)| *id).collect();
-            let mut q: VecDeque<(codegraph_core::NodeId, usize)> =
-                base_scored.iter().map(|(id, _, _)| (*id, 0usize)).collect();
-            let mut extra: Vec<(codegraph_core::NodeId, codegraph_core::CodeNode, usize)> =
-                Vec::new();
-            while let Some((nid, depth)) = q.pop_front() {
-                if depth >= expand_graph {
-                    continue;
-                }
-                let neighbors = graph.get_neighbors(nid).await.unwrap_or_default();
-                for nb in neighbors {
-                    if seen.insert(nb) {
-                        if let Some(nnode) = graph.get_node(nb).await? {
-                            if path_filters.is_empty()
-                                || path_filters
-                                    .iter()
-                                    .any(|p| nnode.location.file_path.starts_with(p))
-                            {
-                                extra.push((nb, nnode, depth + 1));
-                                q.push_back((nb, depth + 1));
-                            }
-                        }
-                    }
-                }
-            }
-            // Shallow neighbors first; cap to avoid explosion
-            extra.sort_by_key(|(_, _, d)| *d);
-            // Build final results with depth field
-            let mut results_with_depth: Vec<(
-                codegraph_core::NodeId,
-                codegraph_core::CodeNode,
-                usize,
-            )> = base_scored
-                .iter()
-                .map(|(id, node, _)| (*id, node.clone(), 0usize))
-                .collect();
-            results_with_depth.extend(extra.into_iter().take(limit.saturating_mul(5)));
-
-            match format {
-                OutputFormat::Human => {
-                    println!("Results ({}):", results_with_depth.len());
-                    for (i, (_id, node, depth)) in results_with_depth.iter().enumerate() {
-                        let summary = node
-                            .content
-                            .as_deref()
-                            .map(|s| {
-                                let mut t = s.trim().replace('\n', " ");
-                                if t.len() > 160 {
-                                    t.truncate(160);
-                                    t.push_str("...");
-                                }
-                                t
-                            })
-                            .unwrap_or_else(|| "".to_string());
-                        println!(
-                            "{}. [d={}] {}
-                           {}",
-                            i + 1,
-                            depth,
-                            node.location.file_path,
-                            summary
-                        );
-                    }
-                }
-                OutputFormat::Json => {
-                    use std::collections::HashMap;
-                    let score_map: HashMap<codegraph_core::NodeId, f32> = base_scored
-                        .iter()
-                        .map(|(id, _node, score)| (*id, *score))
-                        .collect();
-                    let j = serde_json::json!({
-                        "results": results_with_depth.iter().map(|(id, node, depth)| {
-                            let score = score_map.get(id).copied();
-                            serde_json::json!({
-                                "id": id,
-                                "name": node.name,
-                                "path": node.location.file_path,
-                                "node_type": node.node_type.as_ref().map(|t| format!("{:?}", t)).unwrap_or_else(|| "unknown".into()),
-                                "language": node.language.as_ref().map(|l| format!("{:?}", l)).unwrap_or_else(|| "unknown".into()),
-                                "depth": depth,
-                                "summary": node.content.as_deref().map(|s| {
-                                    let mut t = s.trim().replace('\n', " ");
-                                    if t.len() > 160 { t.truncate(160); t.push_str("..."); }
-                                    t
-                                }).unwrap_or_default(),
-                                "score": score,
-                            })
-                        }).collect::<Vec<_>>()
-                    });
-                    println!("{}", serde_json::to_string_pretty(&j)?);
-                }
-                _ => {
-                    println!("Format {:?} not yet implemented", format);
-                }
-            }
-            return Ok(());
-        }
-
-        // No graph expansion: print base results with depth=0
-        match format {
-            OutputFormat::Human => {
-                println!("Results ({}):", base_scored.len());
-                for (i, (_id, node, _score)) in base_scored.iter().enumerate() {
-                    let summary = node
-                        .content
-                        .as_deref()
-                        .map(|s| {
-                            let mut t = s.trim().replace('\n', " ");
-                            if t.len() > 160 {
-                                t.truncate(160);
-                                t.push_str("...");
-                            }
-                            t
-                        })
-                        .unwrap_or_else(|| "".to_string());
-                    println!(
-                        "{}. [d=0] {}
-                   {}",
-                        i + 1,
-                        node.location.file_path,
-                        summary
-                    );
-                }
-            }
-            OutputFormat::Json => {
-                let j = serde_json::json!({
-                    "results": base_scored.iter().map(|(_id, node, score)| serde_json::json!({
-                        "name": node.name,
-                        "path": node.location.file_path,
-                        "node_type": node.node_type.as_ref().map(|t| format!("{:?}", t)).unwrap_or_else(|| "unknown".into()),
-                        "language": node.language.as_ref().map(|l| format!("{:?}", l)).unwrap_or_else(|| "unknown".into()),
-                        "depth": 0,
-                        "summary": node.content.as_deref().map(|s| {
-                            let mut t = s.trim().replace('\n', " ");
-                            if t.len() > 160 { t.truncate(160); t.push_str("..."); }
-                            t
-                        }).unwrap_or_default(),
-                        "score": score,
-                    })).collect::<Vec<_>>()
-                });
-                println!("{}", serde_json::to_string_pretty(&j)?);
-            }
-            _ => {
-                println!("Format {:?} not yet implemented", format);
-            }
-        }
-        return Ok(());
-    }
-
-    #[cfg(not(feature = "faiss"))]
-    {
-        println!(
-            "Vector search requires FAISS support. Reinstall with:
-                  cargo install --path crates/codegraph-mcp --features faiss"
-        );
-        Ok(())
-    }
 }
 
 async fn handle_config(action: ConfigAction) -> Result<()> {
@@ -2550,7 +2134,6 @@ async fn handle_perf(
     graph_readonly: bool,
 ) -> Result<()> {
     use serde_json::json;
-    use std::time::Instant;
 
     let project_root = path.clone().canonicalize().unwrap_or(path.clone());
     if clean {
@@ -2581,7 +2164,7 @@ async fn handle_perf(
     let multi_progress = MultiProgress::new();
     let mut indexer =
         codegraph_mcp::ProjectIndexer::new(indexer_config, config, multi_progress).await?;
-    let t0 = Instant::now();
+    let t0 = std::time::Instant::now();
     let stats = indexer.index_project(&path).await?;
     let indexing_secs = t0.elapsed().as_secs_f64();
     // Release RocksDB handle before running queries (which open their own graph handles)
@@ -2610,7 +2193,7 @@ async fn handle_perf(
     let mut latencies_ms: Vec<f64> = Vec::new();
     for _ in 0..trials {
         for q in &qset {
-            let t = Instant::now();
+            let t = std::time::Instant::now();
             let _ = codegraph_mcp::server::bin_search_with_scores(q.clone(), None, None, 10).await;
             latencies_ms.push(t.elapsed().as_secs_f64() * 1000.0);
         }
@@ -2662,7 +2245,7 @@ async fn handle_perf(
     }
     let (graph_bfs_ms, bfs_nodes) = if let Some(start) = any_node {
         use std::collections::{HashSet, VecDeque};
-        let t = Instant::now();
+        let t = std::time::Instant::now();
         let mut seen: HashSet<codegraph_core::NodeId> = HashSet::new();
         let mut q: VecDeque<(codegraph_core::NodeId, usize)> = VecDeque::new();
         q.push_back((start, 0));
@@ -2692,7 +2275,7 @@ async fn handle_perf(
         "env": {
             "embedding_provider": std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").ok(),
             "device": device,
-            "features": {"faiss": cfg!(feature = "faiss"), "embeddings": cfg!(feature = "embeddings")}
+            "features": {"embeddings": cfg!(feature = "embeddings")}
         },
         "dataset": {"path": path, "languages": langs, "files": stats.files, "lines": stats.lines},
         "indexing": {"total_seconds": indexing_secs, "embeddings": stats.embeddings,

@@ -551,8 +551,8 @@ impl PersistentVectorStore {
 
         // Write header
         let header = self.header.read();
-        let header_bytes =
-            bincode::serde::encode_to_vec(&*header, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
+        let header_bytes = bincode::serde::encode_to_vec(&*header, bincode::config::standard())
+            .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
 
         file.write_all(&(header_bytes.len() as u64).to_le_bytes())?;
         file.write_all(&header_bytes)?;
@@ -578,8 +578,9 @@ impl PersistentVectorStore {
         let mut header_bytes = vec![0u8; header_size as usize];
         file.read_exact(&mut header_bytes)?;
 
-        let (loaded_header, _): (StorageHeader, usize) = bincode::serde::decode_from_slice(&header_bytes, bincode::config::standard())
-            .map_err(|e: bincode::error::DecodeError| CodeGraphError::Vector(e.to_string()))?;
+        let (loaded_header, _): (StorageHeader, usize) =
+            bincode::serde::decode_from_slice(&header_bytes, bincode::config::standard())
+                .map_err(|e: bincode::error::DecodeError| CodeGraphError::Vector(e.to_string()))?;
 
         // Verify header integrity
         if loaded_header.version != 1 {
@@ -605,7 +606,9 @@ impl PersistentVectorStore {
 
                 let (loaded_metadata, _): (HashMap<NodeId, VectorMetadata>, usize) =
                     bincode::serde::decode_from_slice(&metadata_bytes, bincode::config::standard())
-                        .map_err(|e: bincode::error::DecodeError| CodeGraphError::Vector(e.to_string()))?;
+                        .map_err(|e: bincode::error::DecodeError| {
+                            CodeGraphError::Vector(e.to_string())
+                        })?;
 
                 // Build reverse mapping
                 let mut vector_id_mapping = HashMap::new();
@@ -621,7 +624,12 @@ impl PersistentVectorStore {
         // Load update log if exists
         if self.log_path.exists() {
             if let Ok(log_data) = std::fs::read(&self.log_path) {
-                if let Ok((log_entries, _)) = bincode::serde::decode_from_slice::<Vec<UpdateLogEntry>, _>(&log_data, bincode::config::standard()) {
+                if let Ok((log_entries, _)) =
+                    bincode::serde::decode_from_slice::<Vec<UpdateLogEntry>, _>(
+                        &log_data,
+                        bincode::config::standard(),
+                    )
+                {
                     *self.update_log.lock() = log_entries;
                 }
             }
@@ -652,8 +660,8 @@ impl PersistentVectorStore {
                 .as_secs();
 
             // Calculate offsets
-            let header_bytes =
-                bincode::serde::encode_to_vec(&*header, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
+            let header_bytes = bincode::serde::encode_to_vec(&*header, bincode::config::standard())
+                .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
             let header_section_size = 8 + header_bytes.len() as u64;
 
             header.metadata_offset = header_section_size;
@@ -661,13 +669,17 @@ impl PersistentVectorStore {
             // Write header
             file.write_all(&(header_bytes.len() as u64).to_le_bytes())?;
             file.write_all(
-                &bincode::serde::encode_to_vec(&*header, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?,
+                &bincode::serde::encode_to_vec(&*header, bincode::config::standard()).map_err(
+                    |e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()),
+                )?,
             )?;
 
             // Write metadata
             let metadata = self.metadata.read();
-            let metadata_bytes = bincode::serde::encode_to_vec(&*metadata, bincode::config::standard())
-                .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
+            let metadata_bytes =
+                bincode::serde::encode_to_vec(&*metadata, bincode::config::standard()).map_err(
+                    |e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()),
+                )?;
 
             file.write_all(&(metadata_bytes.len() as u64).to_le_bytes())?;
             file.write_all(&metadata_bytes)?;
@@ -684,8 +696,10 @@ impl PersistentVectorStore {
             log.clone()
         };
         if !log_entries.is_empty() {
-            let log_bytes = bincode::serde::encode_to_vec(&log_entries, bincode::config::standard())
-                .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
+            let log_bytes =
+                bincode::serde::encode_to_vec(&log_entries, bincode::config::standard()).map_err(
+                    |e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()),
+                )?;
             fs::write(&self.log_path, log_bytes).await?;
         }
 
@@ -819,8 +833,10 @@ impl PersistentVectorStore {
                     nbits: pq.nbits,
                 };
             } else {
-                compressed_data = bincode::serde::encode_to_vec(vector, bincode::config::standard())
-                    .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
+                compressed_data =
+                    bincode::serde::encode_to_vec(vector, bincode::config::standard()).map_err(
+                        |e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()),
+                    )?;
                 compressed_size = compressed_data.len();
                 compression_type = CompressionType::None;
             }
@@ -833,14 +849,16 @@ impl PersistentVectorStore {
                     uniform: sq.uniform,
                 };
             } else {
-                compressed_data = bincode::serde::encode_to_vec(vector, bincode::config::standard())
-                    .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
+                compressed_data =
+                    bincode::serde::encode_to_vec(vector, bincode::config::standard()).map_err(
+                        |e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()),
+                    )?;
                 compressed_size = compressed_data.len();
                 compression_type = CompressionType::None;
             }
         } else {
-            compressed_data =
-                bincode::serde::encode_to_vec(vector, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
+            compressed_data = bincode::serde::encode_to_vec(vector, bincode::config::standard())
+                .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
             compressed_size = compressed_data.len();
             compression_type = CompressionType::None;
         }

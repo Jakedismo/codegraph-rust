@@ -843,20 +843,10 @@ impl ProjectIndexer {
             tracing::info!("🔧 Preserving working ONNX embedder session for AI semantic matching");
         }
 
-        #[cfg(feature = "faiss")]
-        {
-            tracing::info!(
-                target: "codegraph_mcp::indexer",
-                "FAISS index generation disabled; embeddings are stored in SurrealDB"
-            );
-        }
-        #[cfg(feature = "faiss")]
-        {
-            tracing::info!(
-                target: "codegraph_mcp::indexer",
-                "Local embedding dumps disabled; SurrealDB is the source of truth"
-            );
-        }
+        tracing::info!(
+            target: "codegraph_mcp::indexer",
+            "Vector indexing handled by SurrealDB; local FAISS generation removed"
+        );
 
         // REVOLUTIONARY: Store edges extracted during unified parsing (MAXIMUM SPEED)
         let stored_edges;
@@ -1276,15 +1266,11 @@ impl ProjectIndexer {
         info!("├────────────────────────────────────────────────────────────────────────────┤");
         info!(
             "│ 📂 Files scanned: {:>5} total | {:>5} parsed | {:>5} skipped                │",
-            pstats.total_files,
-            stats.files,
-            stats.skipped
+            pstats.total_files, stats.files, stats.skipped
         );
         info!(
             "│ ✅ Parser success: {:>5.1}% ({} / {} files)                               │",
-            success_rate,
-            pstats.parsed_files,
-            pstats.total_files
+            success_rate, pstats.parsed_files, pstats.total_files
         );
         info!(
             "│ 🗣️ Languages targeted: {:>3} | Batch (embed) {:>3} | Concurrency {:>3}        │",
@@ -1294,35 +1280,23 @@ impl ProjectIndexer {
         );
         info!(
             "│ 📝 Lines analyzed: {:>10} | Avg nodes/file {:>5.1} | Avg deps/file {:>5.1} │",
-            stats.lines,
-            avg_nodes_per_file,
-            avg_edges_per_file
+            stats.lines, avg_nodes_per_file, avg_edges_per_file
         );
         info!(
             "│ 🌳 Semantic nodes: {:>8} | funcs {:>6} | structs {:>5} | traits {:>5} │",
-            total_nodes_extracted,
-            stats.functions,
-            stats.structs,
-            stats.traits
+            total_nodes_extracted, stats.functions, stats.structs, stats.traits
         );
         info!(
             "│ 🔗 Dependencies: {:>8} extracted | {:>8} stored (resolved {:.1}%)        │",
-            total_edges_extracted,
-            stored_edges,
-            resolution_rate
+            total_edges_extracted, stored_edges, resolution_rate
         );
         info!(
             "│ 💾 Vector embeddings: {:>8} ({:>4}-dim {}, {:.1} per node)                 │",
-            stats.embeddings,
-            self.vector_dim,
-            provider,
-            avg_embeddings_per_node
+            stats.embeddings, self.vector_dim, provider, avg_embeddings_per_node
         );
         info!(
             "│ 📦 Metadata persisted: {:>5} files | {:>5} edges | {:>5} nodes              │",
-            stats.files,
-            stored_edges,
-            total_nodes_extracted
+            stats.files, stored_edges, total_nodes_extracted
         );
         info!("├────────────────────────────────────────────────────────────────────────────┤");
         info!("│ 🚀 CAPABILITIES UNLOCKED                                                  │");
@@ -2863,8 +2837,8 @@ mod tests {
 
     #[test]
     fn surreal_embedding_column_supports_2560_dimension() {
-        let column = resolve_surreal_embedding_column(2560)
-            .expect("2560-d embeddings should be supported");
+        let column =
+            resolve_surreal_embedding_column(2560).expect("2560-d embeddings should be supported");
         assert_eq!(column.column_name(), SURR_EMBEDDING_COLUMN_2560);
         assert_eq!(column.dimension(), 2560);
     }

@@ -90,14 +90,14 @@ SURREALDB_DATABASE=production
 Build CodeGraph with the features you want to test:
 
 ```bash
-# Local-only (ONNX + Ollama + FAISS)
-cargo build --release --features "onnx,ollama,faiss"
+# Local-only (ONNX + Ollama + SurrealDB)
+cargo build --release --features "onnx,ollama,codegraph-graph/surrealdb"
 
 # Cloud features (Jina AI + SurrealDB)
-cargo build --release --features "cloud-jina,cloud-surrealdb,faiss"
+cargo build --release --features "cloud-jina,cloud-surrealdb,codegraph-graph/surrealdb"
 
 # Full build (all features)
-cargo build --release --features "all-cloud-providers,onnx,ollama,cloud,faiss"
+cargo build --release --features "all-cloud-providers,onnx,ollama,cloud,codegraph-graph/surrealdb"
 ```
 
 ### 4. Index Your Project
@@ -136,7 +136,7 @@ python3 test_mcp_tools.py
 
 **Recent improvements:**
 - Updated default model to `qwen2.5-coder:14b` (better for local testing)
-- Updated feature flags to use current features (`onnx,ollama,faiss` instead of deprecated `ai-enhanced,qwen-integration`)
+- Updated feature flags to use current features (`onnx,ollama,codegraph-graph/surrealdb` instead of deprecated `faiss`)
 - Added cloud configuration display (shows Jina AI and SurrealDB settings if configured)
 - Prefers release binary over debug binary for better performance
 

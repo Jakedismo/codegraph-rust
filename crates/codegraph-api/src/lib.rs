@@ -34,7 +34,6 @@ pub mod streaming_handlers;
 #[cfg(feature = "graphql")]
 pub mod subscriptions;
 pub mod vector_handlers;
-pub mod vector_store_ext;
 pub mod versioning_handlers;
 
 #[cfg(test)]

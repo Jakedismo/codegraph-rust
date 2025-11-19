@@ -515,10 +515,7 @@ impl AgenticOrchestrator {
         Self::parse_llm_response_internal(step_number, response)
     }
 
-    fn parse_llm_response_internal(
-        step_number: usize,
-        response: &str,
-    ) -> Result<ReasoningStep> {
+    fn parse_llm_response_internal(step_number: usize, response: &str) -> Result<ReasoningStep> {
         // Try to parse as JSON first
         if let Ok(parsed) = serde_json::from_str::<JsonValue>(response) {
             let reasoning = parsed["reasoning"]
@@ -735,6 +732,9 @@ mod tests {
         let step = AgenticOrchestrator::parse_llm_response_internal(5, json_response)
             .expect("Should parse tool field");
 
-        assert_eq!(step.tool_name, Some("get_transitive_dependencies".to_string()));
+        assert_eq!(
+            step.tool_name,
+            Some("get_transitive_dependencies".to_string())
+        );
     }
 }

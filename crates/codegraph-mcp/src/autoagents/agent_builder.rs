@@ -78,7 +78,9 @@ impl ChatProvider for CodeGraphChatAdapter {
         if json_schema.is_some() {
             tracing::info!("✅ AutoAgents passed json_schema to chat()");
         } else {
-            tracing::warn!("⚠️  AutoAgents did NOT pass json_schema - schema enforcement may be prompt-only!");
+            tracing::warn!(
+                "⚠️  AutoAgents did NOT pass json_schema - schema enforcement may be prompt-only!"
+            );
         }
 
         // Convert AutoAgents messages to CodeGraph messages
@@ -389,11 +391,7 @@ impl<T: AgentDeriveT + AgentHooks + Clone> AgentExecutor for TierAwareReActAgent
         task: &autoagents::core::agent::task::Task,
         context: Arc<Context>,
     ) -> Result<
-        std::pin::Pin<
-            Box<
-                dyn futures::Stream<Item = Result<Self::Output, Self::Error>> + Send,
-            >,
-        >,
+        std::pin::Pin<Box<dyn futures::Stream<Item = Result<Self::Output, Self::Error>> + Send>>,
         Self::Error,
     > {
         self.inner.execute_stream(task, context).await
@@ -516,7 +514,11 @@ impl CodeGraphAgentBuilder {
 
         // Get tier-aware max iterations
         let max_iterations = tier_plugin.get_max_iterations();
-        tracing::info!("Setting ReActAgent max_turns={} for tier={:?}", max_iterations, self.tier);
+        tracing::info!(
+            "Setting ReActAgent max_turns={} for tier={:?}",
+            max_iterations,
+            self.tier
+        );
 
         // Create CodeGraph agent with tools and tier-aware system prompt
         let codegraph_agent = CodeGraphReActAgent {
@@ -657,7 +659,10 @@ mod tests {
 
         let tool_calls = response.tool_calls().expect("tool call not parsed");
         assert_eq!(tool_calls[0].function.name, "trace_call_chain");
-        assert_eq!(tool_calls[0].function.arguments, "{\"from_node\":\"GraphToolExecutor\",\"max_depth\":4}");
+        assert_eq!(
+            tool_calls[0].function.arguments,
+            "{\"from_node\":\"GraphToolExecutor\",\"max_depth\":4}"
+        );
     }
 
     #[test]
@@ -797,7 +802,10 @@ mod tests {
         let wrapper = TierAwareReActAgent::new(agent, 20);
 
         let config = wrapper.config();
-        assert_eq!(config.max_turns, 20, "Massive tier should have 20 max_turns");
+        assert_eq!(
+            config.max_turns, 20,
+            "Massive tier should have 20 max_turns"
+        );
     }
 
     // Helper function to create mock agent for testing

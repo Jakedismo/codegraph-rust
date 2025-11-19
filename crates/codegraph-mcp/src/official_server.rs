@@ -1511,10 +1511,15 @@ impl CodeGraphMCPServer {
         use codegraph_ai::agentic_schemas::*;
 
         // Try to parse the answer as structured output first
-        tracing::debug!("Attempting to parse structured output for {:?}", analysis_type);
-        tracing::debug!("Answer length: {}, first 200 chars: {}",
+        tracing::debug!(
+            "Attempting to parse structured output for {:?}",
+            analysis_type
+        );
+        tracing::debug!(
+            "Answer length: {}, first 200 chars: {}",
             result.answer.len(),
-            result.answer.chars().take(200).collect::<String>());
+            result.answer.chars().take(200).collect::<String>()
+        );
 
         let structured_output = match analysis_type {
             crate::AnalysisType::CodeSearch => {

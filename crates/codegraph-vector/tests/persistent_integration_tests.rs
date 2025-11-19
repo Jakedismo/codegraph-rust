@@ -2,14 +2,13 @@
 mod persistent_tests {
     use codegraph_core::{CodeNode, NodeId, VectorStore};
     use codegraph_vector::{
-        ConsistencyConfig, ConsistencyManager, IncrementalConfig,
-        IncrementalOperation, IncrementalUpdateManager, IsolationLevel, PersistentVectorStore,
-        VectorOperation,
+        ConsistencyConfig, ConsistencyManager, IncrementalConfig, IncrementalOperation,
+        IncrementalUpdateManager, IsolationLevel, PersistentVectorStore, VectorOperation,
     };
-    use uuid::Uuid;
     use std::collections::HashMap;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tempfile::TempDir;
+    use uuid::Uuid;
 
     const TEST_DIMENSION: usize = 128;
 

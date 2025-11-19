@@ -2,10 +2,7 @@ use crate::rag::{
     ContextRetriever, GeneratedResponse, GenerationConfig, ProcessedQuery, QueryProcessor,
     RankedResult, RankingConfig, ResponseGenerator, ResultRanker, RetrievalConfig,
 };
-#[cfg(feature = "faiss")]
-use crate::EmbeddingGenerator;
-#[cfg(feature = "faiss")]
-use crate::{FaissVectorStore, SemanticSearch};
+use crate::{EmbeddingGenerator, SemanticSearch};
 #[cfg(feature = "cache")]
 use codegraph_cache::{QueryCache, QueryCacheConfig};
 use codegraph_core::{CodeNode, NodeId, Result};
@@ -70,9 +67,7 @@ pub struct RAGSystem {
     context_retriever: Arc<RwLock<ContextRetriever>>,
     result_ranker: Arc<RwLock<ResultRanker>>,
     response_generator: ResponseGenerator,
-    #[cfg(feature = "faiss")]
     semantic_search: Option<Arc<SemanticSearch>>,
-    #[cfg(feature = "faiss")]
     embedding_generator: Arc<EmbeddingGenerator>,
     query_cache: Arc<RwLock<HashMap<String, QueryResult>>>,
     #[cfg(feature = "cache")]
@@ -101,7 +96,6 @@ impl RAGSystem {
             config.ranking.clone(),
         )));
         let response_generator = ResponseGenerator::with_config(config.generation.clone());
-        #[cfg(feature = "faiss")]
         let embedding_generator = Arc::new(EmbeddingGenerator::default());
 
         #[cfg(feature = "cache")]
@@ -127,9 +121,7 @@ impl RAGSystem {
             context_retriever,
             result_ranker,
             response_generator,
-            #[cfg(feature = "faiss")]
             semantic_search: None,
-            #[cfg(feature = "faiss")]
             embedding_generator,
             query_cache: Arc::new(RwLock::new(HashMap::new())),
             #[cfg(feature = "cache")]
@@ -138,29 +130,17 @@ impl RAGSystem {
         })
     }
 
-    pub async fn initialize_vector_store(&mut self) -> Result<()> {
-        #[cfg(feature = "faiss")]
+    pub async fn initialize_vector_store(
+        &mut self,
+        semantic_search: Arc<SemanticSearch>,
+    ) -> Result<()> {
         {
-            let vector_store = Arc::new(FaissVectorStore::new(384)?);
-            let semantic_search = Arc::new(SemanticSearch::new(
-                vector_store,
-                self.embedding_generator.clone(),
-            ));
-
-            {
-                let mut retriever = self.context_retriever.write().await;
-                retriever.set_semantic_search(semantic_search.clone());
-            }
-
-            self.semantic_search = Some(semantic_search);
-            info!("Vector store initialized with FAISS backend");
+            let mut retriever = self.context_retriever.write().await;
+            retriever.set_semantic_search(semantic_search.clone());
         }
 
-        #[cfg(not(feature = "faiss"))]
-        {
-            warn!("FAISS feature not enabled, semantic search will be limited");
-        }
-
+        self.semantic_search = Some(semantic_search);
+        info!("Semantic search backend registered for RAG system");
         Ok(())
     }
 
@@ -282,7 +262,6 @@ impl RAGSystem {
         }
 
         // Add to semantic search if available
-        #[cfg(feature = "faiss")]
         if let Some(ref _semantic_search) = self.semantic_search {
             if node.embedding.is_none() {
                 // Generate embedding if not present

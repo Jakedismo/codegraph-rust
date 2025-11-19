@@ -158,6 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fixed 3 progress bars**: batch, enhanced, simple progress templates
 
 ### 🗑️ **Removed**
+- **Surreal-only runtime**: Deleted all FAISS/RocksDB features, installers, and vector backends. MCP server, CLI, and SDK now require SurrealDB for graph + vector persistence with no fallback.
 - **Dependency cleanup**: Removed 79 unused dependencies across 17 crates
   - **Tool**: cargo machete for detection
   - **Impact**: Faster compilation, smaller binaries

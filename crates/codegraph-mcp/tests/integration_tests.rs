@@ -106,33 +106,3 @@ async fn test_official_server_creation() {
 
     println!("🎉 Official server creation test passed!");
 }
-
-#[test]
-fn test_indexed_codebase_validation() {
-    println!("📊 Testing indexed codebase validation...");
-
-    // Verify we have indexed data
-    let codegraph_dir = std::path::Path::new(".codegraph");
-    if !codegraph_dir.exists() {
-        println!("ℹ️ No .codegraph directory found - run 'codegraph init .' and 'codegraph index .' to create");
-        return;
-    }
-
-    let faiss_index = codegraph_dir.join("faiss.index");
-    if faiss_index.exists() {
-        let faiss_size = std::fs::metadata(&faiss_index)
-            .expect("Should be able to read FAISS index")
-            .len();
-        println!(
-            "✅ Found FAISS index: {:.1}MB",
-            faiss_size as f64 / 1024.0 / 1024.0
-        );
-    }
-
-    let db_dir = codegraph_dir.join("db");
-    if db_dir.exists() {
-        println!("✅ Found graph database directory");
-    }
-
-    println!("🎉 Indexed codebase validation passed!");
-}

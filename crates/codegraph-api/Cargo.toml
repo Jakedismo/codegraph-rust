@@ -10,7 +10,7 @@ description = "REST API server for CodeGraph using Axum"
 codegraph-core = { workspace = true }
 codegraph-graph = { workspace = true }
 codegraph-parser = { workspace = true }
-codegraph-vector = { workspace = true, features = ["faiss"] }
+codegraph-vector = { workspace = true }
 memscope-rs = { workspace = true, optional = true }
 
 axum = { workspace = true }

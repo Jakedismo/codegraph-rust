@@ -11,8 +11,6 @@ pub mod readahead_integration;
 #[cfg(feature = "readahead")]
 pub mod readahead_optimizer;
 
-
-
 pub use cache::*;
 pub use embedding_cache::*;
 pub use invalidation::*;
@@ -25,8 +23,6 @@ pub use storage::*;
 pub use readahead_integration::*;
 #[cfg(feature = "readahead")]
 pub use readahead_optimizer::*;
-
-
 
 // Re-export common types for convenience
 pub use codegraph_core::{CodeGraphError, CodeNode, NodeId, Result};

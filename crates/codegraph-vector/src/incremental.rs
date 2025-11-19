@@ -326,8 +326,8 @@ impl WriteAheadLog {
 
         let mut file = log_file.lock();
         for entry in entries_to_flush {
-            let serialized =
-                bincode::serde::encode_to_vec(&entry, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
+            let serialized = bincode::serde::encode_to_vec(&entry, bincode::config::standard())
+                .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
 
             use std::io::Write;
             file.write_all(&(serialized.len() as u32).to_le_bytes())?;
@@ -924,7 +924,6 @@ impl Drop for IncrementalUpdateManager {
 mod tests {
     use super::*;
     use std::time::Duration;
-
 
     #[tokio::test]
     async fn test_incremental_operations() {

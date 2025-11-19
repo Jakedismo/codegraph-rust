@@ -135,7 +135,6 @@ mod tests {
     use super::*;
     use std::thread;
 
-
     #[test]
     fn spsc_basic() {
         let (p, c) = WaitFreeSpscQueue::with_capacity(8);

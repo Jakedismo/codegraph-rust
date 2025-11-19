@@ -8,9 +8,9 @@ use tree_sitter::Parser;
 #[cfg(test)]
 mod integration_tests {
     use super::*;
+    use tree_sitter_python;
     use tree_sitter_rust;
     use tree_sitter_typescript;
-    use tree_sitter_python;
 
     #[test]
     fn test_full_rust_conversion() {
@@ -234,9 +234,8 @@ def save_to_file(processor: DataProcessor, filename: str) -> None:
                     && matches!(n.node_type, Some(NodeType::Function))));
 
             // Verify usage of imported entities
-            assert!(edges
-                .iter()
-                .any(|e| matches!(e.edge_type, EdgeType::Uses) || matches!(e.edge_type, EdgeType::References)));
+            assert!(edges.iter().any(|e| matches!(e.edge_type, EdgeType::Uses)
+                || matches!(e.edge_type, EdgeType::References)));
 
             println!(
                 "Python: Extracted {} nodes and {} edges",
@@ -246,9 +245,3 @@ def save_to_file(processor: DataProcessor, filename: str) -> None:
         }
     }
 }
-
-
-
-
-
-

@@ -10,7 +10,7 @@ description = "Advanced AI-powered code analysis: semantic search, clone detecti
 codegraph-core = { workspace = true }
 # NOTE: Re-enabling codegraph-graph for AI-powered symbol resolution
 codegraph-graph = { workspace = true }
-codegraph-vector = { workspace = true, features = ["faiss"] }
+codegraph-vector = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }

@@ -26,14 +26,7 @@ pub mod ollama_embedding_provider;
 #[cfg(feature = "jina")]
 pub mod jina_provider;
 
-#[cfg(feature = "faiss")]
-pub mod faiss_manager;
-#[cfg(feature = "faiss")]
-pub mod index;
-#[cfg(feature = "faiss")]
-pub mod serde_utils;
-#[cfg(feature = "faiss")]
-pub mod store;
+pub mod surreal_store;
 
 #[cfg(feature = "persistent")]
 pub mod consistency;
@@ -41,8 +34,6 @@ pub mod consistency;
 pub mod incremental;
 #[cfg(feature = "persistent")]
 pub mod persistent;
-#[cfg(feature = "persistent")]
-pub mod storage;
 
 pub mod insights_generator;
 #[cfg(feature = "lmstudio-reranker")]
@@ -76,12 +67,7 @@ pub use ollama_embedding_provider::*;
 #[cfg(feature = "jina")]
 pub use jina_provider::*;
 
-#[cfg(feature = "faiss")]
-pub use faiss_manager::*;
-#[cfg(feature = "faiss")]
-pub use index::*;
-#[cfg(feature = "faiss")]
-pub use store::*;
+pub use surreal_store::*;
 
 #[cfg(feature = "persistent")]
 pub use consistency::*;
@@ -90,8 +76,6 @@ pub use incremental::*;
 #[cfg(feature = "persistent")]
 #[allow(ambiguous_glob_reexports)]
 pub use persistent::*;
-#[cfg(feature = "persistent")]
-pub use storage::*;
 
 pub use insights_generator::*;
 #[cfg(feature = "lmstudio-reranker")]
@@ -102,6 +86,3 @@ pub use reranker::*; // Re-export reranker types // Re-export insights types
 // Re-export common types for convenience
 pub use codegraph_core::{CodeGraphError, NodeId, Result};
 pub use error::VectorError;
-
-#[cfg(feature = "faiss")]
-pub use faiss::MetricType;

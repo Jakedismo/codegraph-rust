@@ -353,7 +353,6 @@ impl ConsistencyManager {
         // Check for conflicts with other transactions
         let transaction_clone = transaction.clone();
 
-
         let conflicts = active_txns
             .values()
             .filter(|other| other.id != transaction_id && other.conflicts_with(&transaction_clone))
@@ -857,7 +856,6 @@ pub struct TransactionStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[tokio::test]
     async fn test_transaction_lifecycle() {

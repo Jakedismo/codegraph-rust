@@ -86,7 +86,7 @@ impl LLMProviderFactory {
             let _ = config;
             Err(anyhow!(
                 "Ollama provider now relies on the 'openai-compatible' feature. \
-                 Rebuild with --features codegraph-ai/openai-compatible or use 'qwen' provider instead."
+                 Rebuild with --features codegraph-ai/openai-compatible"
             ))
         }
     }
@@ -156,10 +156,7 @@ impl LLMProviderFactory {
 
         let anthropic_config = AnthropicConfig {
             api_key,
-            model: config
-                .model
-                .clone()
-                .unwrap_or_else(|| "claude".to_string()),
+            model: config.model.clone().unwrap_or_else(|| "claude".to_string()),
             context_window: config.context_window,
             timeout_secs: config.timeout_secs,
             max_retries: 3,
@@ -185,7 +182,10 @@ impl LLMProviderFactory {
         let openai_config = OpenAIConfig {
             api_key,
             base_url: "https://api.openai.com/v1".to_string(),
-            model: config.model.clone().unwrap_or_else(|| "gpt-5.1-codex".to_string()),
+            model: config
+                .model
+                .clone()
+                .unwrap_or_else(|| "gpt-5.1-codex".to_string()),
             context_window: config.context_window,
             timeout_secs: config.timeout_secs,
             max_retries: 3,

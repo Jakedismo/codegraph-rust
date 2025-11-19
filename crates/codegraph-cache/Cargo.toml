@@ -8,7 +8,6 @@ description = "AI-powered caching system for CodeGraph vector operations"
 
 [dependencies]
 codegraph-core = { workspace = true }
-faiss = { workspace = true, optional = true }
 ndarray = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -51,10 +50,8 @@ futures = { workspace = true }
 
 
 [features]
-default = ["faiss", "persistent"]
-faiss = ["dep:faiss"]
+default = ["persistent"]
 persistent = ["dep:memmap2", "dep:flate2"]
-gpu = ["faiss/gpu"]
 readahead = []
 
 [[example]]

@@ -75,8 +75,7 @@ sysinfo = "0.37.2"
 # Database
 rocksdb = "0.24"
 
-# Vector Search (FAISS bindings and scientific computing)
-faiss = "0.12"
+# Scientific computing
 ndarray = "0.16.1"
 
 # OpenAI API client
