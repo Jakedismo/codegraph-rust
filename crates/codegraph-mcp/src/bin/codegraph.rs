@@ -937,11 +937,11 @@ async fn handle_start(
                 .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
         }
         TransportType::Http {
-            host: _host,
-            port: _port,
-            tls: _tls,
-            cert: _cert,
-            key: _key,
+            host,
+            port,
+            tls,
+            cert,
+            key,
             cors: _,
         } => {
             #[cfg(not(feature = "server-http"))]
