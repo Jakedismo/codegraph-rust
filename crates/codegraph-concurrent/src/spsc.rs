@@ -68,10 +68,14 @@ pub struct Producer<T> {
     pub(crate) inner: *mut WaitFreeSpscQueue<T>,
 }
 
+unsafe impl<T: Send> Send for Producer<T> {}
+
 /// Consumer side of the SPSC queue.
 pub struct Consumer<T> {
     pub(crate) inner: *mut WaitFreeSpscQueue<T>,
 }
+
+unsafe impl<T: Send> Send for Consumer<T> {}
 
 impl<T> Producer<T> {
     #[inline]
@@ -130,7 +134,7 @@ impl<T> Drop for Consumer<T> {
 mod tests {
     use super::*;
     use std::thread;
-    use std::time::Duration;
+
 
     #[test]
     fn spsc_basic() {

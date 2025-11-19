@@ -450,7 +450,7 @@ fn simple_hash(text: &str) -> u32 {
 mod tests {
     use super::*;
     use crate::rag::RetrievalMethod;
-    use codegraph_core::{Language, Location, Metadata, NodeType};
+    use codegraph_core::{CodeNode, Language, Location, Metadata, NodeType};
     use uuid::Uuid;
 
     fn create_test_retrieval_result(name: &str, content: &str, score: f32) -> RetrievalResult {

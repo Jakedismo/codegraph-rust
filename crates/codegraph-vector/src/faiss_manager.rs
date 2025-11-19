@@ -161,14 +161,14 @@ impl SimpleFaissManager {
     }
 
     /// Get index statistics
-    pub fn get_stats(&self) -> IndexStats {
+    pub fn get_stats(&self) -> SimpleIndexStats {
         let index_guard = self.index.read();
         let num_vectors = index_guard
             .as_ref()
             .map(|idx| idx.ntotal() as usize)
             .unwrap_or(0);
 
-        IndexStats {
+        SimpleIndexStats {
             num_vectors,
             dimension: self.config.dimension,
             index_type: self.config.index_type.clone(),
@@ -178,7 +178,7 @@ impl SimpleFaissManager {
 }
 
 #[derive(Debug)]
-pub struct IndexStats {
+pub struct SimpleIndexStats {
     pub num_vectors: usize,
     pub dimension: usize,
     pub index_type: String,

@@ -1,15 +1,15 @@
 #[cfg(feature = "persistent")]
 mod persistent_tests {
-    use codegraph_core::{CodeNode, NodeId};
+    use codegraph_core::{CodeNode, NodeId, VectorStore};
     use codegraph_vector::{
-        CompressionType, ConsistencyConfig, ConsistencyManager, IncrementalConfig,
+        ConsistencyConfig, ConsistencyManager, IncrementalConfig,
         IncrementalOperation, IncrementalUpdateManager, IsolationLevel, PersistentVectorStore,
-        StorageStats, VectorOperation,
+        VectorOperation,
     };
+    use uuid::Uuid;
     use std::collections::HashMap;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tempfile::TempDir;
-    use tokio_test;
 
     const TEST_DIMENSION: usize = 128;
 
@@ -19,7 +19,7 @@ mod persistent_tests {
                 let vector: Vec<f32> = (0..dimension)
                     .map(|j| (i * dimension + j) as f32 * 0.01)
                     .collect();
-                (i as NodeId, vector)
+                (Uuid::from_u128(i as u128), vector)
             })
             .collect()
     }
@@ -27,17 +27,34 @@ mod persistent_tests {
     fn create_test_nodes(vectors: &[(NodeId, Vec<f32>)]) -> Vec<CodeNode> {
         vectors
             .iter()
-            .map(|(id, vector)| CodeNode {
-                id: *id,
-                name: format!("test_node_{}", id),
-                node_type: codegraph_core::NodeType::Function,
-                content: format!("Content for node {}", id),
-                file_path: format!("test_{}.rs", id),
-                start_line: *id as usize,
-                end_line: *id as usize + 10,
-                children: Vec::new(),
-                embedding: Some(vector.clone()),
-                metadata: HashMap::new(),
+            .map(|(id, vector)| {
+                // Extract integer ID from UUID for deterministic file paths
+                let id_int = id.as_u128() as usize;
+                let location = codegraph_core::Location {
+                    file_path: format!("test_{}.rs", id_int),
+                    line: id_int as u32,
+                    column: 0,
+                    end_line: Some(id_int as u32 + 10),
+                    end_column: Some(0),
+                };
+
+                let metadata = codegraph_core::Metadata {
+                    attributes: HashMap::new(),
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                };
+
+                CodeNode {
+                    id: *id,
+                    name: format!("test_node_{}", id_int).into(),
+                    node_type: Some(codegraph_core::NodeType::Function),
+                    language: None,
+                    location,
+                    content: Some(format!("Content for node {}", id_int).into()),
+                    metadata,
+                    embedding: Some(vector.clone()),
+                    complexity: None,
+                }
             })
             .collect()
     }
@@ -66,12 +83,12 @@ mod persistent_tests {
 
         // Test similarity search
         let query_vector = &test_vectors[0].1;
-        let similar_nodes = store.search_similar(query_vector, 10).await.unwrap();
+        let similar_nodes: Vec<NodeId> = store.search_similar(query_vector, 10).await.unwrap();
         assert!(!similar_nodes.is_empty());
         assert!(similar_nodes.contains(&test_vectors[0].0));
 
         // Test individual vector retrieval
-        for (node_id, expected_vector) in &test_vectors[0..5] {
+        for (node_id, _expected_vector) in &test_vectors[0..5] {
             let retrieved = store.get_embedding(*node_id).await.unwrap();
             assert!(retrieved.is_some());
             // Note: In real implementation, we'd compare the vectors
@@ -142,9 +159,9 @@ mod persistent_tests {
         assert!(backup_file.exists());
 
         // Simulate corruption by creating new storage
-        let mut new_store = PersistentVectorStore::new(
+        let new_store = PersistentVectorStore::new(
             temp_dir.path().join("test_backup2.db"),
-            &backup_path,
+            backup_path,
             TEST_DIMENSION,
         )
         .unwrap();
@@ -172,7 +189,7 @@ mod persistent_tests {
         // Submit insert operations
         let insert_ops: Vec<_> = (0..25)
             .map(|i| IncrementalOperation::Insert {
-                node_id: i,
+                node_id: Uuid::from_u128(i as u128),
                 vector: vec![i as f32; TEST_DIMENSION],
                 timestamp: SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -193,7 +210,7 @@ mod persistent_tests {
         // Test update operations
         let update_ops: Vec<_> = (0..5)
             .map(|i| IncrementalOperation::Update {
-                node_id: i,
+                node_id: Uuid::from_u128(i as u128),
                 old_vector: Some(vec![i as f32; TEST_DIMENSION]),
                 new_vector: vec![(i + 100) as f32; TEST_DIMENSION],
                 timestamp: SystemTime::now()
@@ -209,7 +226,7 @@ mod persistent_tests {
         // Test delete operations
         let delete_ops: Vec<_> = (20..25)
             .map(|i| IncrementalOperation::Delete {
-                node_id: i,
+                node_id: Uuid::from_u128(i as u128),
                 timestamp: SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
@@ -239,7 +256,7 @@ mod persistent_tests {
         for batch in 0..10 {
             let ops: Vec<_> = (0..10)
                 .map(|i| {
-                    let node_id = batch * 10 + i;
+                    let node_id = Uuid::from_u128((batch * 10 + i) as u128);
                     IncrementalOperation::Insert {
                         node_id,
                         vector: vec![1.0; 100], // Large vectors
@@ -286,11 +303,11 @@ mod persistent_tests {
         // Add operations to transaction
         let operations = vec![
             VectorOperation::Insert {
-                node_id: 1,
+                node_id: Uuid::from_u128(1),
                 vector: vec![1.0, 2.0, 3.0],
             },
             VectorOperation::Update {
-                node_id: 2,
+                node_id: Uuid::from_u128(2),
                 old_vector: Some(vec![2.0, 3.0, 4.0]),
                 new_vector: vec![3.0, 4.0, 5.0],
             },
@@ -323,12 +340,12 @@ mod persistent_tests {
 
         // Both try to modify the same node
         let op1 = VectorOperation::Insert {
-            node_id: 1,
+            node_id: Uuid::from_u128(1),
             vector: vec![1.0, 2.0, 3.0],
         };
 
         let op2 = VectorOperation::Update {
-            node_id: 1,
+            node_id: Uuid::from_u128(1),
             old_vector: None,
             new_vector: vec![4.0, 5.0, 6.0],
         };
@@ -359,20 +376,20 @@ mod persistent_tests {
 
         // Transaction 1 acquires shared lock
         manager
-            .acquire_lock(txn1, 1, LockMode::Shared)
+            .acquire_lock(txn1, Uuid::from_u128(1), LockMode::Shared)
             .await
             .unwrap();
 
         // Transaction 2 can also acquire shared lock
         manager
-            .acquire_lock(txn2, 1, LockMode::Shared)
+            .acquire_lock(txn2, Uuid::from_u128(1), LockMode::Shared)
             .await
             .unwrap();
 
         // But transaction 2 cannot acquire exclusive lock (should timeout)
         let result = tokio::time::timeout(
             Duration::from_millis(100),
-            manager.acquire_lock(txn2, 1, LockMode::Exclusive),
+            manager.acquire_lock(txn2, Uuid::from_u128(1), LockMode::Exclusive),
         )
         .await;
 
@@ -395,16 +412,16 @@ mod persistent_tests {
         // Add some operations
         let operations = vec![
             VectorOperation::Insert {
-                node_id: 10,
+                node_id: Uuid::from_u128(10),
                 vector: vec![10.0, 20.0, 30.0],
             },
             VectorOperation::Update {
-                node_id: 11,
+                node_id: Uuid::from_u128(11),
                 old_vector: Some(vec![1.0, 2.0, 3.0]),
                 new_vector: vec![11.0, 22.0, 33.0],
             },
             VectorOperation::Delete {
-                node_id: 12,
+                node_id: Uuid::from_u128(12),
                 vector: Some(vec![12.0, 24.0, 36.0]),
             },
         ];
@@ -421,7 +438,7 @@ mod persistent_tests {
         // Verify rollback operations are in reverse order and correct type
         match &rollback_ops[0] {
             VectorOperation::Insert { node_id, .. } => {
-                assert_eq!(*node_id, 12); // Should restore deleted item
+                assert_eq!(*node_id, Uuid::from_u128(12)); // Should restore deleted item
             }
             _ => panic!("Expected insert operation for delete rollback"),
         }
@@ -432,7 +449,7 @@ mod persistent_tests {
                 new_vector,
                 ..
             } => {
-                assert_eq!(*node_id, 11);
+                assert_eq!(*node_id, Uuid::from_u128(11));
                 assert_eq!(*new_vector, vec![1.0, 2.0, 3.0]); // Should restore old vector
             }
             _ => panic!("Expected update operation for update rollback"),
@@ -440,7 +457,7 @@ mod persistent_tests {
 
         match &rollback_ops[2] {
             VectorOperation::Delete { node_id, .. } => {
-                assert_eq!(*node_id, 10); // Should delete inserted item
+                assert_eq!(*node_id, Uuid::from_u128(10)); // Should delete inserted item
             }
             _ => panic!("Expected delete operation for insert rollback"),
         }
@@ -458,7 +475,7 @@ mod persistent_tests {
                 .unwrap();
 
             let op = VectorOperation::Insert {
-                node_id: i,
+                node_id: Uuid::from_u128(i as u128),
                 vector: vec![i as f32; 3],
             };
 
@@ -528,7 +545,7 @@ mod persistent_tests {
         // Submit operations that should be logged to WAL
         let operations: Vec<_> = (0..20)
             .map(|i| IncrementalOperation::Insert {
-                node_id: i,
+                node_id: Uuid::from_u128(i as u128),
                 vector: vec![i as f32; 10],
                 timestamp: SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -566,7 +583,7 @@ mod persistent_tests {
         let batch_size = 100;
         let num_batches = 10;
 
-        for batch in 0..num_batches {
+        for _batch in 0..num_batches {
             let vectors = create_test_vectors(batch_size, TEST_DIMENSION);
             let nodes = create_test_nodes(&vectors);
 
@@ -585,7 +602,7 @@ mod persistent_tests {
         let query_vector = vec![0.5; TEST_DIMENSION];
 
         for _ in 0..50 {
-            let _results = store.search_similar(&query_vector, 10).await.unwrap();
+            let _results: Vec<NodeId> = store.search_similar(&query_vector, 10).await.unwrap();
         }
 
         let search_time = search_start.elapsed().unwrap();

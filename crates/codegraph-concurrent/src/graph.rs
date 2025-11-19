@@ -94,7 +94,7 @@ impl GraphStore for LockFreeAdjacencyGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegraph_core::{Language, Location, Metadata, NodeType};
+    use codegraph_core::{Language, Location, NodeType};
     use uuid::Uuid;
 
     fn sample_node(name: &str) -> CodeNode {
@@ -118,7 +118,7 @@ mod tests {
         let n = sample_node("a");
         let id = n.id;
         g.add_node(n.clone()).await.unwrap();
-        assert_eq!(g.get_node(id).await.unwrap().unwrap().name, "a");
+        assert_eq!(g.get_node(id).await.unwrap().unwrap().name, "a".into());
         let found = g.find_nodes_by_name("a").await.unwrap();
         assert_eq!(found.len(), 1);
     }

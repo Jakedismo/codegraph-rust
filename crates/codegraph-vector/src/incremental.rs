@@ -212,8 +212,8 @@ pub struct IncrementalStats {
 /// Write-Ahead Log for durability
 #[derive(Debug)]
 struct WriteAheadLog {
-    log_path: std::path::PathBuf,
-    log_file: Arc<Mutex<std::fs::File>>,
+    _log_path: std::path::PathBuf,
+    _log_file: Arc<Mutex<std::fs::File>>,
     pending_entries: Arc<Mutex<VecDeque<WALEntry>>>,
     flush_sender: tokio_mpsc::UnboundedSender<()>,
     _flush_task: tokio::task::JoinHandle<()>,
@@ -275,8 +275,8 @@ impl WriteAheadLog {
         };
 
         Ok(Self {
-            log_path,
-            log_file,
+            _log_path: log_path,
+            _log_file: log_file,
             pending_entries,
             flush_sender,
             _flush_task: flush_task,
@@ -327,7 +327,7 @@ impl WriteAheadLog {
         let mut file = log_file.lock();
         for entry in entries_to_flush {
             let serialized =
-                bincode::serialize(&entry).map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+                bincode::serde::encode_to_vec(&entry, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
 
             use std::io::Write;
             file.write_all(&(serialized.len() as u32).to_le_bytes())?;
@@ -403,9 +403,9 @@ pub struct IncrementalUpdateManager {
     config: IncrementalConfig,
     segments: Arc<DashMap<u64, Arc<RwLock<IndexSegment>>>>,
     next_segment_id: Arc<RwLock<u64>>,
-    current_segment: Arc<RwLock<Option<u64>>>,
+    _current_segment: Arc<RwLock<Option<u64>>>,
     operation_sender: Sender<IncrementalOperation>,
-    operation_receiver: Arc<Mutex<Receiver<IncrementalOperation>>>,
+    _operation_receiver: Arc<Mutex<Receiver<IncrementalOperation>>>,
     stats: Arc<RwLock<IncrementalStats>>,
     wal: Option<WriteAheadLog>,
     _worker_handles: Vec<tokio::task::JoinHandle<()>>,
@@ -449,9 +449,9 @@ impl IncrementalUpdateManager {
             config,
             segments,
             next_segment_id,
-            current_segment,
+            _current_segment: current_segment,
             operation_sender,
-            operation_receiver,
+            _operation_receiver: operation_receiver,
             stats,
             wal,
             _worker_handles: worker_handles,
@@ -924,7 +924,7 @@ impl Drop for IncrementalUpdateManager {
 mod tests {
     use super::*;
     use std::time::Duration;
-    use tokio_test;
+
 
     #[tokio::test]
     async fn test_incremental_operations() {
@@ -971,7 +971,7 @@ mod tests {
         let manager = IncrementalUpdateManager::new(config).unwrap();
 
         // Add enough vectors to create multiple segments
-        for i in 0..50 {
+        for _i in 0..50 {
             let nid = NodeId::new_v4();
             let op = IncrementalOperation::Insert {
                 node_id: nid,

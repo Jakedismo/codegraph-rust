@@ -79,6 +79,8 @@ pub use jina_provider::*;
 #[cfg(feature = "faiss")]
 pub use faiss_manager::*;
 #[cfg(feature = "faiss")]
+pub use index::*;
+#[cfg(feature = "faiss")]
 pub use store::*;
 
 #[cfg(feature = "persistent")]

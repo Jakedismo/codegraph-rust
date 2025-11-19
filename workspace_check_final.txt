@@ -1,0 +1,993 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-napi/Cargo.toml
+workspace: /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/Cargo.toml
+warning: invalid feature `demo` in required-features of target `memory_profiler_demo`: `demo` is not present in [features] section
+warning: invalid feature `demo` in required-features of target `readahead_demo`: `demo` is not present in [features] section
+    Checking ptr_meta v0.3.0
+   Compiling munge_macro v0.4.7
+   Compiling rkyv_derive v0.8.12
+    Checking rancor v0.1.0
+    Checking bytecheck v0.8.1
+    Checking rend v0.5.3
+    Checking munge v0.4.7
+    Checking hashbrown v0.12.3
+    Checking indexmap v1.9.3
+    Checking ndarray-stats v0.5.1
+    Checking surrealdb-core v2.3.10
+    Checking rkyv v0.8.12
+    Checking codegraph-core v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core)
+    Checking codegraph-zerocopy v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-zerocopy)
+warning: unused import: `Mutex`
+  --> crates/codegraph-zerocopy/src/buffer.rs:10:19
+   |
+10 | use parking_lot::{Mutex, RwLock};
+   |                   ^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `SeekFrom` and `Seek`
+  --> crates/codegraph-zerocopy/src/mmap.rs:13:10
+   |
+13 |     io::{Seek, SeekFrom},
+   |          ^^^^  ^^^^^^^^
+
+warning: unused import: `error`
+  --> crates/codegraph-zerocopy/src/mmap.rs:17:22
+   |
+17 | use tracing::{debug, error, instrument, warn};
+   |                      ^^^^^
+
+warning: unused imports: `deserialize` and `from_bytes_unchecked`
+  --> crates/codegraph-zerocopy/src/serialization.rs:11:31
+   |
+11 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, rancor::Failure,
+   |                               ^^^^^^^^^^^              ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `debug` and `trace`
+  --> crates/codegraph-zerocopy/src/serialization.rs:15:15
+   |
+15 | use tracing::{debug, instrument, trace};
+   |               ^^^^^              ^^^^^
+
+warning: unused import: `Mutex`
+ --> crates/codegraph-zerocopy/src/shared_memory.rs:8:19
+  |
+8 | use parking_lot::{Mutex, RwLock};
+  |                   ^^^^^
+
+warning: unused imports: `ffi::CString` and `ptr::NonNull`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:12:5
+   |
+12 |     ffi::CString,
+   |     ^^^^^^^^^^^^
+...
+16 |     ptr::NonNull,
+   |     ^^^^^^^^^^^^
+
+warning: unused import: `error`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:22:22
+   |
+22 | use tracing::{debug, error, instrument, trace, warn};
+   |                      ^^^^^
+
+warning: constant `CACHE_LINE_SIZE` is never used
+  --> crates/codegraph-zerocopy/src/buffer.rs:22:7
+   |
+22 | const CACHE_LINE_SIZE: usize = 64;
+   |       ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `path` is never read
+   --> crates/codegraph-zerocopy/src/mmap.rs:336:5
+    |
+331 | pub struct MmapCircularBuffer {
+    |            ------------------ field in this struct
+...
+336 |     path: PathBuf,
+    |     ^^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> crates/codegraph-zerocopy/src/mmap.rs:255:17
+    |
+255 |     pub fn read(&self) -> ThreadSafeMmapReadGuard {
+    |                 ^^^^^     ^^^^^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                 |
+    |                 the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+255 |     pub fn read(&self) -> ThreadSafeMmapReadGuard<'_> {
+    |                                                  ++++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> crates/codegraph-zerocopy/src/mmap.rs:262:18
+    |
+262 |     pub fn write(&self) -> ThreadSafeMmapWriteGuard {
+    |                  ^^^^^     ^^^^^^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                  |
+    |                  the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+262 |     pub fn write(&self) -> ThreadSafeMmapWriteGuard<'_> {
+    |                                                    ++++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:142:19
+    |
+142 |     pub fn reader(&self) -> SharedMemoryReader {
+    |                   ^^^^^     ^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                   |
+    |                   the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+142 |     pub fn reader(&self) -> SharedMemoryReader<'_> {
+    |                                               ++++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:154:19
+    |
+154 |     pub fn writer(&self) -> ZeroCopyResult<SharedMemoryWriter> {
+    |                   ^^^^^                    ^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                   |
+    |                   the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+154 |     pub fn writer(&self) -> ZeroCopyResult<SharedMemoryWriter<'_>> {
+    |                                                              ++++
+
+warning: `codegraph-zerocopy` (lib) generated 14 warnings (run `cargo fix --lib -p codegraph-zerocopy` to apply 12 suggestions)
+warning: `codegraph-zerocopy` (lib test) generated 14 warnings (14 duplicates)
+warning: unused variable: `node`
+   --> crates/codegraph-core/src/optimized_types.rs:394:13
+    |
+394 |         let node = OptimizedCodeNode {
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_node`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+    Checking codegraph-parser v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-parser)
+    Checking codegraph-vector v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-vector)
+    Checking codegraph-cache v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-cache)
+    Checking codegraph-concurrent v0.1.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-concurrent)
+warning: field `dim` is never read
+   --> crates/codegraph-core/src/integration/graph_vector.rs:464:9
+    |
+463 |     struct InMemoryVectorStore {
+    |            ------------------- field in this struct
+464 |         dim: usize,
+    |         ^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `state_snapshot` is never used
+   --> crates/codegraph-core/src/watch/mod.rs:690:8
+    |
+ 50 | impl IntelligentFileWatcher {
+    | --------------------------- method in this implementation
+...
+690 |     fn state_snapshot(&self, path: &Path) -> Option<FileState> {
+    |        ^^^^^^^^^^^^^^
+
+warning: `codegraph-core` (lib test) generated 3 warnings (run `cargo fix --lib -p codegraph-core --tests` to apply 1 suggestion)
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+ --> crates/codegraph-core/benches/core_micro.rs:2:17
+  |
+2 | use criterion::{black_box, criterion_group, criterion_main, Bencher, BenchmarkId, Criterion, Throughput};
+  |                 ^^^^^^^^^
+  |
+  = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-core/benches/core_micro.rs:28:17
+   |
+28 |                 black_box(nodes)
+   |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-core/benches/core_micro.rs:44:48
+   |
+44 |                 let bytes = serde_json::to_vec(black_box(&dataset)).unwrap();
+   |                                                ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-core/benches/core_micro.rs:45:17
+   |
+45 |                 black_box(bytes)
+   |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-core/benches/core_micro.rs:51:63
+   |
+51 |                 let v: Vec<CodeNode> = serde_json::from_slice(black_box(&encoded)).unwrap();
+   |                                                               ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-core/benches/core_micro.rs:52:17
+   |
+52 |                 black_box(v)
+   |                 ^^^^^^^^^
+
+warning: `codegraph-core` (bench "core_micro") generated 6 warnings
+warning: unused import: `approx::assert_relative_eq`
+   --> crates/codegraph-cache/src/embedding_cache.rs:329:9
+    |
+329 |     use approx::assert_relative_eq;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0599]: no method named `is_some` found for unit type `()` in the current scope
+   --> crates/codegraph-cache/src/embedding_cache.rs:347:25
+    |
+347 |         assert!(removed.is_some());
+    |                         ^^^^^^^ method not found in `()`
+
+error[E0609]: no field `evictions` on type `std::result::Result<cache::CacheStats, CodeGraphError>`
+   --> crates/codegraph-cache/src/embedding_cache.rs:411:23
+    |
+411 |         assert!(stats.evictions > 0);
+    |                       ^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of the same name
+    |
+411 |         assert!(stats.unwrap().evictions > 0);
+    |                       +++++++++
+
+error[E0599]: no method named `is_some` found for unit type `()` in the current scope
+   --> crates/codegraph-cache/src/query_cache.rs:477:25
+    |
+477 |         assert!(removed.is_some());
+    |                         ^^^^^^^ method not found in `()`
+
+error[E0609]: no field `evictions` on type `std::result::Result<cache::CacheStats, CodeGraphError>`
+   --> crates/codegraph-cache/src/query_cache.rs:511:23
+    |
+511 |         assert!(stats.evictions > 0);
+    |                       ^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of the same name
+    |
+511 |         assert!(stats.unwrap().evictions > 0);
+    |                       +++++++++
+
+error[E0560]: struct `cache::CacheStats` has no field named `total_entries`
+   --> crates/codegraph-cache/src/storage.rs:544:13
+    |
+544 |             total_entries: 1000,
+    |             ^^^^^^^^^^^^^ `cache::CacheStats` does not have this field
+    |
+    = note: available fields are: `entries`, `memory_usage`
+
+error[E0560]: struct `cache::CacheStats` has no field named `memory_usage_bytes`
+   --> crates/codegraph-cache/src/storage.rs:545:13
+    |
+545 |             memory_usage_bytes: 1024 * 1024,
+    |             ^^^^^^^^^^^^^^^^^^ unknown field
+    |
+help: a field with a similar name exists
+    |
+545 -             memory_usage_bytes: 1024 * 1024,
+545 +             memory_usage: 1024 * 1024,
+    |
+
+error[E0560]: struct `cache::CacheStats` has no field named `average_access_time_ns`
+   --> crates/codegraph-cache/src/storage.rs:546:13
+    |
+546 |             average_access_time_ns: 1000,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ `cache::CacheStats` does not have this field
+    |
+    = note: available fields are: `entries`, `memory_usage`
+
+error[E0382]: borrow of moved value: `value`
+   --> crates/codegraph-cache/src/storage.rs:503:44
+    |
+502 |         let value = vec![1.0f32, 2.0, 3.0];
+    |             ----- move occurs because `value` has type `Vec<f32>`, which does not implement the `Copy` trait
+503 |         let entry = CacheEntry::new(value, value.estimate_size(), None);
+    |                                     -----  ^^^^^ value borrowed here after move
+    |                                     |
+    |                                     value moved here
+    |
+note: consider changing this parameter type in method `new` to borrow instead if owning the value isn't necessary
+   --> crates/codegraph-cache/src/cache.rs:30:23
+    |
+ 30 |     pub fn new(value: T, size_bytes: usize, ttl: Option<Duration>) -> Self {
+    |            ---        ^ this parameter takes ownership of the value
+    |            |
+    |            in this method
+help: consider cloning the value if the performance cost is acceptable
+    |
+503 |         let entry = CacheEntry::new(value.clone(), value.estimate_size(), None);
+    |                                          ++++++++
+
+Some errors have detailed explanations: E0382, E0560, E0599, E0609.
+For more information about an error, try `rustc --explain E0382`.
+warning: `codegraph-cache` (lib test) generated 1 warning
+error: could not compile `codegraph-cache` (lib test) due to 8 previous errors; 1 warning emitted
+warning: build failed, waiting for other jobs to finish...
+warning: unused import: `codegraph_cache::*`
+ --> crates/codegraph-cache/tests/cache_tests.rs:1:5
+  |
+1 | use codegraph_cache::*;
+  |     ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `codegraph_core::*`
+ --> crates/codegraph-cache/tests/cache_tests.rs:2:5
+  |
+2 | use codegraph_core::*;
+  |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::time::Duration`
+ --> crates/codegraph-cache/tests/cache_tests.rs:3:5
+  |
+3 | use std::time::Duration;
+  |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tokio_test`
+ --> crates/codegraph-cache/tests/cache_tests.rs:4:5
+  |
+4 | use tokio_test;
+  |     ^^^^^^^^^^
+
+warning: unused import: `super::*`
+  --> crates/codegraph-cache/tests/cache_tests.rs:47:9
+   |
+47 |     use super::*;
+   |         ^^^^^^^^
+
+warning: `codegraph-cache` (test "cache_tests") generated 5 warnings (run `cargo fix --test "cache_tests" -p codegraph-cache` to apply 5 suggestions)
+error[E0432]: unresolved imports `codegraph_cache::FaissCache`, `codegraph_cache::FaissCacheBuilder`
+ --> crates/codegraph-cache/benches/cache_benchmark.rs:2:43
+  |
+2 |     AiCache, CacheConfig, EmbeddingCache, FaissCache, FaissCacheBuilder, InvalidationManager,
+  |                                           ^^^^^^^^^^  ^^^^^^^^^^^^^^^^^ no `FaissCacheBuilder` in the root
+  |                                           |
+  |                                           no `FaissCache` in the root
+
+error[E0432]: unresolved imports `codegraph_cache::CacheEntriesSoA`, `codegraph_cache::CacheOptimizedHashMap`, `codegraph_cache::PaddedAtomicUsize`
+ --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:1:23
+  |
+1 | use codegraph_cache::{CacheEntriesSoA, CacheOptimizedHashMap, PaddedAtomicUsize};
+  |                       ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^ no `PaddedAtomicUsize` in the root
+  |                       |                |
+  |                       |                no `CacheOptimizedHashMap` in the root
+  |                       no `CacheEntriesSoA` in the root
+
+error[E0432]: unresolved imports `codegraph_cache::ReadAheadConfig`, `codegraph_cache::ReadAheadIntegration`, `codegraph_cache::ReadAheadOptimizer`
+ --> crates/codegraph-cache/benches/readahead_benchmark.rs:1:23
+  |
+1 | use codegraph_cache::{ReadAheadConfig, ReadAheadIntegration, ReadAheadOptimizer};
+  |                       ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^ no `ReadAheadOptimizer` in the root
+  |                       |                |
+  |                       |                no `ReadAheadIntegration` in the root
+  |                       no `ReadAheadConfig` in the root
+
+error[E0425]: cannot find function `prefetch_read_data` in module `std::ptr`
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:329:35
+    |
+329 |                         std::ptr::prefetch_read_data(
+    |                                   ^^^^^^^^^^^^^^^^^^ not found in `std::ptr`
+    |
+help: consider importing this function
+    |
+  1 + use std::intrinsics::prefetch_read_data;
+    |
+help: if you import `prefetch_read_data`, refer to it directly
+    |
+329 -                         std::ptr::prefetch_read_data(
+329 +                         prefetch_read_data(
+    |
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+ --> crates/codegraph-cache/benches/cache_benchmark.rs:5:17
+  |
+5 | use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+  |                 ^^^^^^^^^
+  |
+  = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+ --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:2:17
+  |
+2 | use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+  |                 ^^^^^^^^^
+  |
+  = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-cache/benches/cache_benchmark.rs:70:25
+   |
+70 |                         black_box(cache.get(&key).await.unwrap());
+   |                         ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:30:17
+   |
+30 |                 black_box(map);
+   |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:42:21
+   |
+42 |                     black_box(map.get(key));
+   |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:113:25
+    |
+113 |                         black_box(cache.find_similar_query(&query_vector).await.unwrap());
+    |                         ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:63:17
+   |
+63 |                 black_box(map);
+   |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:181:25
+    |
+181 |                         black_box(cache.search_similar(query_vector, 10).await.unwrap());
+    |                         ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:75:21
+   |
+75 |                     black_box(map.get(key));
+   |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:211:17
+    |
+211 |                 black_box(manager.handle_file_change(file_path).await.unwrap());
+    |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:96:17
+   |
+96 |                 black_box(soa);
+   |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:272:13
+    |
+272 |             black_box(collector.get_metrics().await);
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:108:21
+    |
+108 |                     black_box(soa.get(key));
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:273:13
+    |
+273 |             black_box(collector.get_operation_metrics().await);
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:127:17
+    |
+127 |                 black_box(sum);
+    |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:274:13
+    |
+274 |             black_box(collector.get_throughput_metrics());
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:166:21
+    |
+166 |                     black_box(sum);
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:359:21
+    |
+359 |                     black_box(key);
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:198:21
+    |
+198 |                     black_box(sum);
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:428:21
+    |
+428 |                     black_box(embedding_cache.get(&lookup_key).await.unwrap());
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:224:17
+    |
+224 |                 black_box(map.lock().unwrap().get(key));
+    |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:431:21
+    |
+431 |                     black_box(faiss_cache.search_similar(query_vector, 5).await.unwrap());
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:241:17
+    |
+241 |                 black_box(map.get(key));
+    |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:266:13
+    |
+266 |             black_box(sum);
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:278:13
+    |
+278 |             black_box(sum);
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:288:13
+    |
+288 |             black_box(sum);
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:299:13
+    |
+299 |             black_box(sum);
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:318:13
+    |
+318 |             black_box(sum);
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:337:13
+    |
+337 |             black_box(sum);
+    |             ^^^^^^^^^
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+  --> crates/codegraph-cache/benches/readahead_benchmark.rs:19:19
+   |
+19 |                 b.to_async(&rt).iter(|| async {
+   |                   ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:183:31
+    |
+183 |                         .map(|counter| {
+    |                               ^^^^^^^
+184 |                             let counter = counter.clone();
+    |                                           ------- type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+183 |                         .map(|counter: /* Type */| {
+    |                                      ++++++++++++
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:194:25
+    |
+194 |                         handle.join().unwrap();
+    |                         ^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_layout_benchmark.rs:197:59
+    |
+197 |                     let sum: usize = counters.iter().map(|c| c.load(Ordering::Relaxed)).sum();
+    |                                                           ^  - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+197 |                     let sum: usize = counters.iter().map(|c: /* Type */| c.load(Ordering::Relaxed)).sum();
+    |                                                            ++++++++++++
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+  --> crates/codegraph-cache/benches/cache_benchmark.rs:33:19
+   |
+33 |                 b.to_async(&rt).iter(|| async {
+   |                   ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0599]: no function or associated item named `with_config` found for struct `EmbeddingCache` in the current scope
+  --> crates/codegraph-cache/benches/cache_benchmark.rs:38:53
+   |
+38 |                     let mut cache = EmbeddingCache::with_config(config);
+   |                                                     ^^^^^^^^^^^ function or associated item not found in `EmbeddingCache`
+   |
+note: if you're trying to build a new `EmbeddingCache`, consider using `EmbeddingCache::new` which returns `EmbeddingCache`
+  --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-cache/src/embedding_cache.rs:27:5
+   |
+27 |     pub fn new(config: CacheConfig) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-cache/benches/cache_benchmark.rs:43:25
+   |
+43 |                         cache.insert(key, vector, None).await.unwrap();
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+  --> crates/codegraph-cache/benches/readahead_benchmark.rs:36:19
+   |
+36 |                 b.to_async(&rt).iter(|| async {
+   |                   ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+  --> crates/codegraph-cache/benches/cache_benchmark.rs:53:19
+   |
+53 |                 b.to_async(&rt).iter(|| async {
+   |                   ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+  --> crates/codegraph-cache/benches/readahead_benchmark.rs:60:11
+   |
+60 |         b.to_async(&rt).iter(|| async {
+   |           ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0599]: no function or associated item named `with_config` found for struct `EmbeddingCache` in the current scope
+  --> crates/codegraph-cache/benches/cache_benchmark.rs:58:53
+   |
+58 |                     let mut cache = EmbeddingCache::with_config(config);
+   |                                                     ^^^^^^^^^^^ function or associated item not found in `EmbeddingCache`
+   |
+note: if you're trying to build a new `EmbeddingCache`, consider using `EmbeddingCache::new` which returns `EmbeddingCache`
+  --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-cache/src/embedding_cache.rs:27:5
+   |
+27 |     pub fn new(config: CacheConfig) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-cache/benches/cache_benchmark.rs:64:25
+   |
+64 |                         cache.insert(key, vector, None).await.unwrap();
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-cache/benches/cache_benchmark.rs:70:35
+   |
+70 |                         black_box(cache.get(&key).await.unwrap());
+   |                                   ^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+Some errors have detailed explanations: E0282, E0425, E0432.
+For more information about an error, try `rustc --explain E0282`.
+warning: `codegraph-cache` (bench "cache_layout_benchmark") generated 18 warnings
+error: could not compile `codegraph-cache` (bench "cache_layout_benchmark") due to 5 previous errors; 18 warnings emitted
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+  --> crates/codegraph-cache/benches/readahead_benchmark.rs:88:11
+   |
+88 |         b.to_async(&rt).iter(|| async {
+   |           ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+  --> crates/codegraph-cache/benches/cache_benchmark.rs:92:19
+   |
+92 |                 b.to_async(&rt).iter(|| async {
+   |                   ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0560]: struct `CacheConfig` has no field named `similarity_threshold`
+  --> crates/codegraph-cache/benches/cache_benchmark.rs:94:25
+   |
+94 |                         similarity_threshold: threshold,
+   |                         ^^^^^^^^^^^^^^^^^^^^ `CacheConfig` does not have this field
+   |
+   = note: available fields are: `max_size`, `max_memory_bytes`, `default_ttl`, `cleanup_interval`, `enable_metrics` ... and 2 others
+
+error[E0599]: no function or associated item named `with_config` found for struct `QueryCache` in the current scope
+  --> crates/codegraph-cache/benches/cache_benchmark.rs:97:49
+   |
+97 |                     let mut cache = QueryCache::with_config(config);
+   |                                                 ^^^^^^^^^^^ function or associated item not found in `QueryCache`
+   |
+note: if you're trying to build a new `QueryCache`, consider using `QueryCache::new` which returns `QueryCache`
+  --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-cache/src/query_cache.rs:82:5
+   |
+82 |     pub fn new(config: QueryCacheConfig) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:104:25
+    |
+104 | /                         cache
+105 | |                             .insert_query_result(key, query_vector, result)
+106 | |                             .await
+    | |__________________________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:113:35
+    |
+113 |                         black_box(cache.find_similar_query(&query_vector).await.unwrap());
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/readahead_benchmark.rs:143:11
+    |
+143 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:135:19
+    |
+135 |                 b.to_async(&rt).iter(|| async {
+    |                   ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:143:21
+    |
+143 |                     cache.initialize().await.unwrap();
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:149:25
+    |
+149 |                         cache.add_vector(key, vector, metadata).await.unwrap();
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/readahead_benchmark.rs:189:19
+    |
+189 |                 b.to_async(&rt).iter(|| async {
+    |                   ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:159:19
+    |
+159 |                 b.to_async(&rt).iter(|| async {
+    |                   ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:168:21
+    |
+168 |                     cache.initialize().await.unwrap();
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:175:25
+    |
+175 |                         cache.add_vector(key, vector, metadata).await.unwrap();
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:181:35
+    |
+181 |                         black_box(cache.search_similar(query_vector, 10).await.unwrap());
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/readahead_benchmark.rs:226:11
+    |
+226 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:198:11
+    |
+198 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `codegraph-cache` (bench "readahead_benchmark") due to 8 previous errors
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:217:11
+    |
+217 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:239:11
+    |
+239 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:259:11
+    |
+259 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:288:11
+    |
+288 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0560]: struct `CacheConfig` has no field named `memory_pressure_threshold`
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:291:17
+    |
+291 |                 memory_pressure_threshold: 0.8,
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^ `CacheConfig` does not have this field
+    |
+    = note: available fields are: `max_memory_bytes`, `default_ttl`, `cleanup_interval`, `enable_metrics`, `enable_compression`, `compression_threshold_bytes`
+
+error[E0560]: struct `CacheConfig` has no field named `enable_lru`
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:292:17
+    |
+292 |                 enable_lru: true,
+    |                 ^^^^^^^^^^ `CacheConfig` does not have this field
+    |
+    = note: available fields are: `max_memory_bytes`, `default_ttl`, `cleanup_interval`, `enable_metrics`, `enable_compression`, `compression_threshold_bytes`
+
+error[E0599]: no function or associated item named `with_config` found for struct `EmbeddingCache` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:295:45
+    |
+295 |             let mut cache = EmbeddingCache::with_config(config);
+    |                                             ^^^^^^^^^^^ function or associated item not found in `EmbeddingCache`
+    |
+note: if you're trying to build a new `EmbeddingCache`, consider using `EmbeddingCache::new` which returns `EmbeddingCache`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-cache/src/embedding_cache.rs:27:5
+    |
+ 27 |     pub fn new(config: CacheConfig) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:301:17
+    |
+301 |                 cache.insert(key, vector, None).await.unwrap();
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:307:11
+    |
+307 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0560]: struct `CacheConfig` has no field named `memory_pressure_threshold`
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:311:17
+    |
+311 |                 memory_pressure_threshold: 0.7,
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^ `CacheConfig` does not have this field
+    |
+    = note: available fields are: `max_memory_bytes`, `default_ttl`, `cleanup_interval`, `enable_metrics`, `compression_threshold_bytes`
+
+error[E0599]: no function or associated item named `with_config` found for struct `EmbeddingCache` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:314:45
+    |
+314 |             let mut cache = EmbeddingCache::with_config(config);
+    |                                             ^^^^^^^^^^^ function or associated item not found in `EmbeddingCache`
+    |
+note: if you're trying to build a new `EmbeddingCache`, consider using `EmbeddingCache::new` which returns `EmbeddingCache`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-cache/src/embedding_cache.rs:27:5
+    |
+ 27 |     pub fn new(config: CacheConfig) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:320:17
+    |
+320 |                 cache.insert(key, vector, None).await.unwrap();
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:324:13
+    |
+324 |             cache.optimize_memory().await.unwrap();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:338:11
+    |
+338 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0599]: no function or associated item named `with_config` found for struct `EmbeddingCache` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:343:45
+    |
+343 |             let mut cache = EmbeddingCache::with_config(config);
+    |                                             ^^^^^^^^^^^ function or associated item not found in `EmbeddingCache`
+    |
+note: if you're trying to build a new `EmbeddingCache`, consider using `EmbeddingCache::new` which returns `EmbeddingCache`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-cache/src/embedding_cache.rs:27:5
+    |
+ 27 |     pub fn new(config: CacheConfig) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:349:17
+    |
+349 |                 cache.insert(key, vector, None).await.unwrap();
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:377:11
+    |
+377 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0599]: no function or associated item named `with_config` found for struct `EmbeddingCache` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:384:55
+    |
+384 |             let mut embedding_cache = EmbeddingCache::with_config(embedding_config);
+    |                                                       ^^^^^^^^^^^ function or associated item not found in `EmbeddingCache`
+    |
+note: if you're trying to build a new `EmbeddingCache`, consider using `EmbeddingCache::new` which returns `EmbeddingCache`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-cache/src/embedding_cache.rs:27:5
+    |
+ 27 |     pub fn new(config: CacheConfig) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0560]: struct `CacheConfig` has no field named `similarity_threshold`
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:387:17
+    |
+387 |                 similarity_threshold: 0.85,
+    |                 ^^^^^^^^^^^^^^^^^^^^ `CacheConfig` does not have this field
+    |
+    = note: available fields are: `max_size`, `max_memory_bytes`, `default_ttl`, `cleanup_interval`, `enable_metrics` ... and 2 others
+
+error[E0599]: no function or associated item named `with_config` found for struct `QueryCache` in the current scope
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:390:47
+    |
+390 |             let mut query_cache = QueryCache::with_config(query_config);
+    |                                               ^^^^^^^^^^^ function or associated item not found in `QueryCache`
+    |
+note: if you're trying to build a new `QueryCache`, consider using `QueryCache::new` which returns `QueryCache`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-cache/src/query_cache.rs:82:5
+    |
+ 82 |     pub fn new(config: QueryCacheConfig) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:398:13
+    |
+398 |             faiss_cache.initialize().await.unwrap();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:407:17
+    |
+407 | /                 embedding_cache
+408 | |                     .insert(key.clone(), vector.clone(), None)
+409 | |                     .await
+    | |__________________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:413:17
+    |
+413 | /                 faiss_cache
+414 | |                     .add_vector(key.clone(), vector.clone(), metadata)
+415 | |                     .await
+    | |__________________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:420:17
+    |
+420 | /                 query_cache
+421 | |                     .insert_query_result(key, vector, result)
+422 | |                     .await
+    | |__________________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:428:31
+    |
+428 |                     black_box(embedding_cache.get(&lookup_key).await.unwrap());
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-cache/benches/cache_benchmark.rs:431:31
+    |
+431 |                     black_box(faiss_cache.search_similar(query_vector, 5).await.unwrap());
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+Some errors have detailed explanations: E0282, E0432, E0560, E0599.
+warning: `codegraph-cache` (bench "cache_benchmark") generated 11 warnings
+error: could not compile `codegraph-cache` (bench "cache_benchmark") due to 47 previous errors; 11 warnings emitted

@@ -20,9 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let embedding_gen = Arc::new(EmbeddingGenerator::default());
 
     // Example 1: Context-Only Mode (for agent workflows)
-    println!("=".repeat(80));
+    println!("{}", "=".repeat(80));
     println!("Example 1: CONTEXT-ONLY MODE (Recommended for Claude/GPT-4)");
-    println!("=".repeat(80));
+    println!("{}", "=".repeat(80));
 
     let insights_gen = InsightsGenerator::for_agent_workflow(embedding_gen.clone());
     let query = "How do I create a new user in the system?";
@@ -51,9 +51,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example 2: Balanced Mode (for local LLM)
     println!("\n");
-    println!("=".repeat(80));
+    println!("{}", "=".repeat(80));
     println!("Example 2: BALANCED MODE (For local Qwen2.5-Coder)");
-    println!("=".repeat(80));
+    println!("{}", "=".repeat(80));
 
     let config = InsightsConfig {
         mode: InsightsMode::Balanced,
@@ -108,9 +108,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example 3: Performance Comparison
     println!("\n");
-    println!("=".repeat(80));
+    println!("{}", "=".repeat(80));
     println!("Example 3: PERFORMANCE COMPARISON");
-    println!("=".repeat(80));
+    println!("{}", "=".repeat(80));
 
     println!("\n📊 Pipeline Stages Breakdown:");
     println!("\nStage 1: Embedding-based Filter");

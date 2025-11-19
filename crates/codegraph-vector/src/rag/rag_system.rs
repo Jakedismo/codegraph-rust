@@ -82,11 +82,11 @@ pub struct RAGSystem {
 
 #[derive(Debug, Default)]
 pub struct SystemMetrics {
-    total_queries: u64,
-    average_response_time_ms: f64,
-    cache_hit_rate: f64,
-    successful_queries: u64,
-    failed_queries: u64,
+    pub total_queries: u64,
+    pub average_response_time_ms: f64,
+    pub cache_hit_rate: f64,
+    pub successful_queries: u64,
+    pub failed_queries: u64,
 }
 
 impl RAGSystem {
@@ -524,8 +524,9 @@ mod tests {
         let result = rag_system.process_query("performance test").await.unwrap();
 
         assert!(result.performance_metrics.query_processing_ms > 0);
-        assert!(result.performance_metrics.context_retrieval_ms >= 0);
-        assert!(result.performance_metrics.result_ranking_ms >= 0);
+        // result.performance_metrics.context_retrieval_ms and result_ranking_ms are u64, so >= 0 is always true
+        // assert!(result.performance_metrics.context_retrieval_ms >= 0);
+        // assert!(result.performance_metrics.result_ranking_ms >= 0);
         assert!(result.performance_metrics.response_generation_ms > 0);
         assert_eq!(
             result.performance_metrics.total_processing_ms,

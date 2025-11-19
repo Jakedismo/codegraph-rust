@@ -1,21 +1,20 @@
 use approx::relative_eq;
-use codegraph_core::{CodeGraphError, Result};
+use codegraph_core::Result;
 use codegraph_vector::{
     GpuAcceleration, MemoryOptimizer, MemoryPoolConfig, ModelOptimizer, OptimizationPipelineConfig,
-    OptimizationResult, ParallelConfig, QuantizationConfig, QuantizationMethod, QuantizedBatch,
+    ParallelConfig, QuantizationConfig, QuantizationMethod,
 };
 use std::time::Instant;
 use tempfile::TempDir;
-use tokio_test;
 
 /// Test configuration for model optimization
 #[derive(Debug, Clone)]
 struct OptimizationTestConfig {
     pub dimension: usize,
     pub num_vectors: usize,
-    pub quantization_bits: u8,
-    pub compression_ratio: f32,
-    pub accuracy_threshold: f32,
+    pub _quantization_bits: u8,
+    pub _compression_ratio: f32,
+    pub _accuracy_threshold: f32,
 }
 
 impl Default for OptimizationTestConfig {
@@ -23,9 +22,9 @@ impl Default for OptimizationTestConfig {
         Self {
             dimension: 128,
             num_vectors: 1000,
-            quantization_bits: 8,
-            compression_ratio: 0.25,
-            accuracy_threshold: 0.95,
+            _quantization_bits: 8,
+            _compression_ratio: 0.25,
+            _accuracy_threshold: 0.95,
         }
     }
 }

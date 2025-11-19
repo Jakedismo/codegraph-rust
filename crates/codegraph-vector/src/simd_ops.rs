@@ -430,7 +430,7 @@ mod tests {
         let a = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
         let b = vec![8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
 
-        let scalar_result = SIMDVectorOps::cosine_similarity_scalar(&a, &b).unwrap();
+        let _scalar_result = SIMDVectorOps::cosine_similarity_scalar(&a, &b).unwrap();
 
         #[cfg(target_arch = "x86_64")]
         {

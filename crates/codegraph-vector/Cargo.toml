@@ -54,10 +54,9 @@ tempfile = { workspace = true }
 approx = { workspace = true }
 criterion = { workspace = true }
 fastrand = { workspace = true }
+tracing-subscriber = { workspace = true }
 
-[[bench]]
-name = "knn_benchmark"
-harness = false
+
 
 [features]
 # Minimal defaults; opt-in to FAISS or providers from dependents

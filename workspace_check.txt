@@ -1,0 +1,1878 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-napi/Cargo.toml
+workspace: /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/Cargo.toml
+warning: invalid feature `demo` in required-features of target `memory_profiler_demo`: `demo` is not present in [features] section
+warning: invalid feature `demo` in required-features of target `readahead_demo`: `demo` is not present in [features] section
+    Checking librocksdb-sys v0.17.3+10.4.2
+    Checking surrealdb-core v2.3.10
+    Checking rocksdb v0.24.0
+warning: unused import: `std::sync::Arc`
+  --> crates/codegraph-vector/src/index.rs:11:5
+   |
+11 | use std::sync::Arc;
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `codegraph-vector` (lib) generated 1 warning (run `cargo fix --lib -p codegraph-vector` to apply 1 suggestion)
+    Checking axum-streams v0.23.1
+    Checking axum-test v18.1.0
+    Checking codegraph-vector v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-vector)
+warning: `codegraph-vector` (lib test) generated 1 warning (1 duplicate)
+    Checking codegraph-concurrent v0.1.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-concurrent)
+    Checking codegraph-zerocopy v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-zerocopy)
+    Checking codegraph-core v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core)
+warning: unused import: `Metadata`
+  --> crates/codegraph-concurrent/src/graph.rs:97:46
+   |
+97 |     use codegraph_core::{Language, Location, Metadata, NodeType};
+   |                                              ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::time::Duration`
+   --> crates/codegraph-concurrent/src/spsc.rs:133:9
+    |
+133 |     use std::time::Duration;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+error[E0616]: field `total_queries` of struct `SystemMetrics` is private
+  --> crates/codegraph-vector/examples/rag_demo.rs:80:48
+   |
+80 |     println!("   - Total queries: {}", metrics.total_queries);
+   |                                                ^^^^^^^^^^^^^ private field
+
+error[E0616]: field `average_response_time_ms` of struct `SystemMetrics` is private
+  --> crates/codegraph-vector/examples/rag_demo.rs:83:17
+   |
+83 |         metrics.average_response_time_ms
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^ private field
+
+error[E0616]: field `cache_hit_rate` of struct `SystemMetrics` is private
+  --> crates/codegraph-vector/examples/rag_demo.rs:87:17
+   |
+87 |         metrics.cache_hit_rate * 100.0
+   |                 ^^^^^^^^^^^^^^ private field
+
+error[E0616]: field `successful_queries` of struct `SystemMetrics` is private
+  --> crates/codegraph-vector/examples/rag_demo.rs:89:53
+   |
+89 |     println!("   - Successful queries: {}", metrics.successful_queries);
+   |                                                     ^^^^^^^^^^^^^^^^^^ private field
+
+error[E0616]: field `failed_queries` of struct `SystemMetrics` is private
+  --> crates/codegraph-vector/examples/rag_demo.rs:90:49
+   |
+90 |     println!("   - Failed queries: {}", metrics.failed_queries);
+   |                                                 ^^^^^^^^^^^^^^ private field
+
+error[E0432]: unresolved imports `codegraph_vector::OptimizedKnnEngine`, `codegraph_vector::SearchConfig`
+ --> crates/codegraph-vector/examples/knn_demo.rs:2:24
+  |
+2 | use codegraph_vector::{OptimizedKnnEngine, SearchConfig};
+  |                        ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^
+  |                        |                   |
+  |                        |                   no `SearchConfig` in the root
+  |                        |                   help: a similar name exists in the module: `BatchConfig`
+  |                        no `OptimizedKnnEngine` in the root
+
+error[E0432]: unresolved imports `codegraph_vector::BatchProcessor`, `codegraph_vector::OptimizedSearchEngine`, `codegraph_vector::SearchConfig`
+ --> crates/codegraph-vector/benches/search_performance.rs:2:18
+  |
+2 |     BatchConfig, BatchProcessor, FaissIndexManager, IndexConfig, IndexType, OptimizedSearchEngine,
+  |                  ^^^^^^^^^^^^^^ no `BatchProcessor` in the root             ^^^^^^^^^^^^^^^^^^^^^ no `OptimizedSearchEngine` in the root
+3 |     SearchConfig,
+  |     ^^^^^^^^^^^^
+  |     |
+  |     no `SearchConfig` in the root
+  |     help: a similar name exists in the module: `BatchConfig`
+
+error[E0433]: failed to resolve: could not find `api` in `rkyv`
+ --> crates/codegraph-zerocopy/src/mmap.rs:9:11
+  |
+9 | use rkyv::api::high::HighValidator;
+  |           ^^^ could not find `api` in `rkyv`
+
+error[E0432]: unresolved imports `codegraph_vector::OptimizedKnnEngine`, `codegraph_vector::SearchConfig`
+ --> crates/codegraph-vector/benches/knn_benchmark.rs:2:24
+  |
+2 | use codegraph_vector::{OptimizedKnnEngine, SearchConfig};
+  |                        ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^
+  |                        |                   |
+  |                        |                   no `SearchConfig` in the root
+  |                        |                   help: a similar name exists in the module: `BatchConfig`
+  |                        no `OptimizedKnnEngine` in the root
+
+error[E0432]: unresolved import `codegraph_vector::BatchOperation`
+   --> crates/codegraph-vector/benches/search_performance.rs:219:29
+    |
+219 |                         use codegraph_vector::BatchOperation;
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `BatchOperation` in the root
+
+warning: unused import: `Throughput`
+ --> crates/codegraph-vector/benches/knn_benchmark.rs:3:85
+  |
+3 | use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+  |                                                                                     ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::time::Duration`
+ --> crates/codegraph-vector/benches/knn_benchmark.rs:4:5
+  |
+4 | use std::time::Duration;
+  |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+ --> crates/codegraph-vector/tests/integration_tests.rs:8:5
+  |
+8 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+ --> crates/codegraph-vector/benches/knn_benchmark.rs:3:17
+  |
+3 | use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+  |                 ^^^^^^^^^
+  |
+  = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:103:25
+    |
+103 |                         black_box(query_embedding.clone()),
+    |                         ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:104:25
+    |
+104 |                         black_box(SearchConfig::default()),
+    |                         ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:108:17
+    |
+108 |                 black_box(result);
+    |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:145:53
+    |
+145 |                         .parallel_similarity_search(black_box(queries.clone()), None)
+    |                                                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:148:21
+    |
+148 |                     black_box(result);
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:184:29
+    |
+184 | ...                   black_box(query_embedding.clone()),
+    |                       ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:185:29
+    |
+185 | ...                   black_box(SearchConfig {
+    |                       ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:192:21
+    |
+192 |                     black_box(result);
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:228:25
+    |
+228 |                         black_box(query_embedding.clone()),
+    |                         ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:229:25
+    |
+229 |                         black_box(SearchConfig {
+    |                         ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:236:17
+    |
+236 |                 black_box(result);
+    |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+ --> crates/codegraph-vector/benches/search_performance.rs:5:17
+  |
+5 | use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+  |                 ^^^^^^^^^
+  |
+  = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:285:43
+    |
+285 |                 .single_similarity_search(black_box(embedding), black_box(SearchConfig::default()))
+    |                                           ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:285:65
+    |
+285 |                 .single_similarity_search(black_box(embedding), black_box(SearchConfig::default()))
+    |                                                                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:288:13
+    |
+288 |             black_box(result);
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-vector/benches/search_performance.rs:79:40
+   |
+79 |                         let _results = black_box(index_manager.search(query, k).unwrap());
+   |                                        ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:325:57
+    |
+325 |                         .batch_search_similar_functions(black_box(&function_nodes), None)
+    |                                                         ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:328:21
+    |
+328 |                     black_box(result);
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:347:38
+    |
+347 |                 engine.build_indices(black_box(&dataset)).await.unwrap();
+    |                                      ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:348:17
+    |
+348 |                 black_box(engine);
+    |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:367:38
+    |
+367 |                 engine.build_indices(black_box(&dataset)).await.unwrap();
+    |                                      ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/search_performance.rs:112:28
+    |
+112 |             let _results = black_box(index_manager.search(&query, k).unwrap());
+    |                            ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:379:17
+    |
+379 |                 black_box(stats);
+    |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/search_performance.rs:154:28
+    |
+154 |             let _results = black_box(
+    |                            ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/search_performance.rs:175:28
+    |
+175 |             let _results = black_box(
+    |                            ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/search_performance.rs:244:25
+    |
+244 |                         black_box(processor.enqueue_operation(operation).await.unwrap());
+    |                         ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/search_performance.rs:286:25
+    |
+286 |                         black_box(index_manager.add_vectors(&flat_vectors).unwrap());
+    |                         ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/search_performance.rs:288:38
+    |
+288 |                         let _stats = black_box(index_manager.get_stats().unwrap());
+    |                                      ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/search_performance.rs:347:28
+    |
+347 |             let _results = black_box(
+    |                            ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-vector/benches/search_performance.rs:360:28
+    |
+360 |             let _results = black_box(
+    |                            ^^^^^^^^^
+
+warning: unused import: `tempfile::TempDir`
+ --> crates/codegraph-vector/tests/integration_tests.rs:9:5
+  |
+9 | use tempfile::TempDir;
+  |     ^^^^^^^^^^^^^^^^^
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `tracing_subscriber`
+ --> crates/codegraph-vector/examples/knn_demo.rs:7:5
+  |
+7 |     tracing_subscriber::init();
+  |     ^^^^^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `tracing_subscriber`
+  |
+  = help: if you wanted to use a crate named `tracing_subscriber`, use `cargo add tracing_subscriber` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: could not find `api` in `rkyv`
+ --> crates/codegraph-zerocopy/src/serialization.rs:7:11
+  |
+7 | use rkyv::api::high::{HighDeserializer, HighSerializer, HighValidator};
+  |           ^^^ could not find `api` in `rkyv`
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`
+  --> crates/codegraph-zerocopy/src/mmap.rs:10:12
+   |
+10 | use rkyv::{access, access_unchecked, Archive};
+   |            ^^^^^^  ^^^^^^^^^^^^^^^^ no `access_unchecked` in the root
+   |            |
+   |            no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+
+error[E0432]: unresolved import `rkyv::ser::allocator`
+ --> crates/codegraph-zerocopy/src/serialization.rs:8:16
+  |
+8 | use rkyv::ser::allocator::ArenaHandle;
+  |                ^^^^^^^^^ could not find `allocator` in `ser`
+
+error[E0433]: failed to resolve: could not find `api` in `rkyv`
+ --> crates/codegraph-zerocopy/src/shared_memory.rs:9:11
+  |
+9 | use rkyv::api::high::HighValidator;
+  |           ^^^ could not find `api` in `rkyv`
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`, `rkyv::deserialize`, `rkyv::rancor`
+  --> crates/codegraph-zerocopy/src/serialization.rs:11:5
+   |
+11 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, rancor::Failure,
+   |     ^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^                                    ^^^^^^ could not find `rancor` in `rkyv`
+   |     |       |                 |
+   |     |       |                 no `deserialize` in the root
+   |     |       |                 help: a similar name exists in the module: `Deserialize`
+   |     |       no `access_unchecked` in the root
+   |     no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:10:12
+   |
+10 | use rkyv::{access, access_unchecked, Archive};
+   |            ^^^^^^  ^^^^^^^^^^^^^^^^ no `access_unchecked` in the root
+   |            |
+   |            no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`, `rkyv::deserialize`, `rkyv::rancor`
+  --> crates/codegraph-zerocopy/src/serialization.rs:11:5
+   |
+11 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, rancor::Failure,
+   |     ^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^                                    ^^^^^^ could not find `rancor` in `rkyv`
+   |     |       |                 |
+   |     |       |                 no `deserialize` in the root
+   |     |       |                 help: a similar name exists in the module: `Deserialize`
+   |     |       no `access_unchecked` in the root
+   |     no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+   = note: unresolved item `crate::mmap::tests::access` exists but is inaccessible
+   = note: unresolved item `crate::mmap::tests::access_unchecked` exists but is inaccessible
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:10:12
+   |
+10 | use rkyv::{access, access_unchecked, Archive};
+   |            ^^^^^^  ^^^^^^^^^^^^^^^^ no `access_unchecked` in the root
+   |            |
+   |            no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+   = note: unresolved item `crate::serialization::tests::access` exists but is inaccessible
+   = note: unresolved item `crate::serialization::tests::access_unchecked` exists but is inaccessible
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`, `rkyv::deserialize`
+  --> crates/codegraph-zerocopy/src/lib.rs:24:5
+   |
+24 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, to_bytes, Archive,
+   |     ^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^
+   |     |       |                 |
+   |     |       |                 no `deserialize` in the root
+   |     |       |                 help: a similar name exists in the module: `Deserialize`
+   |     |       no `access_unchecked` in the root
+   |     no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`, `rkyv::deserialize`
+  --> crates/codegraph-zerocopy/src/lib.rs:24:5
+   |
+24 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, to_bytes, Archive,
+   |     ^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^
+   |     |       |                 |
+   |     |       |                 no `deserialize` in the root
+   |     |       |                 help: a similar name exists in the module: `Deserialize`
+   |     |       no `access_unchecked` in the root
+   |     no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+   = note: unresolved item `crate::shared_memory::tests::access` exists but is inaccessible
+   = note: unresolved item `crate::shared_memory::tests::access_unchecked` exists but is inaccessible
+   = note: unresolved item `crate::serialization::tests::deserialize` exists but is inaccessible
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-vector/examples/knn_demo.rs:87:9
+   |
+87 |     let cluster_info = engine.get_cluster_info().await;
+   |         ^^^^^^^^^^^^
+88 |     println!("\n🎯 Clustering Information:");
+89 |     println!("   Total clusters: {}", cluster_info.len());
+   |                                       ------------ type must be known at this point
+   |
+help: consider giving `cluster_info` an explicit type
+   |
+87 |     let cluster_info: /* Type */ = engine.get_cluster_info().await;
+   |                     ++++++++++++
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/examples/knn_demo.rs:102:9
+    |
+102 |     let results = engine
+    |         ^^^^^^^
+...
+108 |     println!("   Found {} results:", results.len());
+    |                                      ------- type must be known at this point
+    |
+help: consider giving `results` an explicit type
+    |
+102 |     let results: /* Type */ = engine
+    |                ++++++++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:139:19
+    |
+139 |             name: "read_file".to_string(),
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+139 |             name: "read_file".to_string().into(),
+    |                                          +++++++
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/examples/knn_demo.rs:138:9
+    |
+138 |     let parallel_results = engine
+    |         ^^^^^^^^^^^^^^^^
+...
+145 |         parallel_results.len(),
+    |         ---------------- type must be known at this point
+    |
+help: consider giving `parallel_results` an explicit type
+    |
+138 |     let parallel_results: /* Type */ = engine
+    |                         ++++++++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:142:27
+    |
+142 | ...t: Some("async fn read_file(path: &str) -> Result<String, std::io::Error> { tokio::fs::read_to_string(path).await }".to_string()),
+    |       ---- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |       |
+    |       arguments to this enum variant are incorrect
+    |
+help: the type constructed contains `String` due to the type of the argument passed
+   --> crates/codegraph-vector/examples/rag_demo.rs:142:22
+    |
+142 | ...t: Some("async fn read_file(path: &str) -> Result<String, std::io::Error> { tokio::fs::read_to_string(path).await }".to_string()),
+    |       ^^^^^------------------------------------------------------------------------------------------------------------------------^
+    |            |
+    |            this argument influences the type of `Some`
+note: tuple variant defined here
+   --> /rustc/518b428304e0008859cb1fd81d1ac20efb2a064a/library/core/src/option.rs:608:4
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+142 |             content: Some("async fn read_file(path: &str) -> Result<String, std::io::Error> { tokio::fs::read_to_string(path).await }".to_string().into()),
+    |                                                                                                                                                   +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:150:19
+    |
+150 |             name: "write_file".to_string(),
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+150 |             name: "write_file".to_string().into(),
+    |                                           +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:153:27
+    |
+153 | ...t: Some("async fn write_file(path: &str, content: &str) -> Result<(), std::io::Error> { tokio::fs::write(path, content).await }".to_string()),
+    |       ---- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |       |
+    |       arguments to this enum variant are incorrect
+    |
+help: the type constructed contains `String` due to the type of the argument passed
+   --> crates/codegraph-vector/examples/rag_demo.rs:153:22
+    |
+153 | ...t: Some("async fn write_file(path: &str, content: &str) -> Result<(), std::io::Error> { tokio::fs::write(path, content).await }".to_string()),
+    |       ^^^^^------------------------------------------------------------------------------------------------------------------------------------^
+    |            |
+    |            this argument influences the type of `Some`
+note: tuple variant defined here
+   --> /rustc/518b428304e0008859cb1fd81d1ac20efb2a064a/library/core/src/option.rs:608:4
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+153 |             content: Some("async fn write_file(path: &str, content: &str) -> Result<(), std::io::Error> { tokio::fs::write(path, content).await }".to_string().into()),
+    |                                                                                                                                                               +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:161:19
+    |
+161 |             name: "handle_error".to_string(),
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+161 |             name: "handle_error".to_string().into(),
+    |                                             +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-concurrent/src/graph.rs:121:65
+    |
+121 |         assert_eq!(g.get_node(id).await.unwrap().unwrap().name, "a");
+    |                                                                 ^^^ expected `SharedStr`, found `&str`
+    |
+help: call `Into::into` on this expression to convert `&str` into `SharedStr`
+    |
+121 |         assert_eq!(g.get_node(id).await.unwrap().unwrap().name, "a".into());
+    |                                                                    +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:164:27
+    |
+164 | ...t: Some("fn handle_error<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> { match result { Ok(value) => Some(value), Err(e) => { eprintln!(\"Error: {}\", e); None } } }".to_string()),
+    |       ---- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |       |
+    |       arguments to this enum variant are incorrect
+    |
+help: the type constructed contains `String` due to the type of the argument passed
+   --> crates/codegraph-vector/examples/rag_demo.rs:164:22
+    |
+164 | ...t: Some("fn handle_error<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> { match result { Ok(value) => Some(value), Err(e) => { eprintln!(\"Error: {}\", e); None } } }".to_string()),
+    |       ^^^^^----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------^
+    |            |
+    |            this argument influences the type of `Some`
+note: tuple variant defined here
+   --> /rustc/518b428304e0008859cb1fd81d1ac20efb2a064a/library/core/src/option.rs:608:4
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+164 |             content: Some("fn handle_error<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> { match result { Ok(value) => Some(value), Err(e) => { eprintln!(\"Error: {}\", e); None } } }".to_string().into()),
+    |                                                                                                                                                                                                                   +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:172:19
+    |
+172 |             name: "fetch_data".to_string(),
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+172 |             name: "fetch_data".to_string().into(),
+    |                                           +++++++
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-vector/benches/knn_benchmark.rs:93:13
+   |
+93 |             engine.build_indices(&dataset).await.unwrap();
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:175:27
+    |
+175 | ...t: Some("async fn fetch_data(url: &str) -> Result<String, reqwest::Error> { reqwest::get(url).await?.text().await }".to_string()),
+    |       ---- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |       |
+    |       arguments to this enum variant are incorrect
+    |
+help: the type constructed contains `String` due to the type of the argument passed
+   --> crates/codegraph-vector/examples/rag_demo.rs:175:22
+    |
+175 | ...t: Some("async fn fetch_data(url: &str) -> Result<String, reqwest::Error> { reqwest::get(url).await?.text().await }".to_string()),
+    |       ^^^^^------------------------------------------------------------------------------------------------------------------------^
+    |            |
+    |            this argument influences the type of `Some`
+note: tuple variant defined here
+   --> /rustc/518b428304e0008859cb1fd81d1ac20efb2a064a/library/core/src/option.rs:608:4
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+175 |             content: Some("async fn fetch_data(url: &str) -> Result<String, reqwest::Error> { reqwest::get(url).await?.text().await }".to_string().into()),
+    |                                                                                                                                                   +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:183:19
+    |
+183 |             name: "process_input".to_string(),
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+183 |             name: "process_input".to_string().into(),
+    |                                              +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:186:27
+    |
+186 |             content: Some("fn process_input(input: &str) -> String { input.trim().to_lowercase() }".to_string()),
+    |                      ---- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |                      |
+    |                      arguments to this enum variant are incorrect
+    |
+help: the type constructed contains `String` due to the type of the argument passed
+   --> crates/codegraph-vector/examples/rag_demo.rs:186:22
+    |
+186 |             content: Some("fn process_input(input: &str) -> String { input.trim().to_lowercase() }".to_string()),
+    |                      ^^^^^-------------------------------------------------------------------------------------^
+    |                           |
+    |                           this argument influences the type of `Some`
+note: tuple variant defined here
+   --> /rustc/518b428304e0008859cb1fd81d1ac20efb2a064a/library/core/src/option.rs:608:4
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+186 |             content: Some("fn process_input(input: &str) -> String { input.trim().to_lowercase() }".to_string().into()),
+    |                                                                                                                +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:194:19
+    |
+194 |             name: "connect_database".to_string(),
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+194 |             name: "connect_database".to_string().into(),
+    |                                                 +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:197:27
+    |
+197 | ...t: Some("async fn connect_database(url: &str) -> Result<Database, sqlx::Error> { sqlx::PgPool::connect(url).await }".to_string()),
+    |       ---- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |       |
+    |       arguments to this enum variant are incorrect
+    |
+help: the type constructed contains `String` due to the type of the argument passed
+   --> crates/codegraph-vector/examples/rag_demo.rs:197:22
+    |
+197 | ...t: Some("async fn connect_database(url: &str) -> Result<Database, sqlx::Error> { sqlx::PgPool::connect(url).await }".to_string()),
+    |       ^^^^^------------------------------------------------------------------------------------------------------------------------^
+    |            |
+    |            this argument influences the type of `Some`
+note: tuple variant defined here
+   --> /rustc/518b428304e0008859cb1fd81d1ac20efb2a064a/library/core/src/option.rs:608:4
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+197 |             content: Some("async fn connect_database(url: &str) -> Result<Database, sqlx::Error> { sqlx::PgPool::connect(url).await }".to_string().into()),
+    |                                                                                                                                                   +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:205:19
+    |
+205 |             name: "UserService".to_string(),
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+205 |             name: "UserService".to_string().into(),
+    |                                            +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:208:27
+    |
+208 |             content: Some("struct UserService { db: Database, cache: Cache }".to_string()),
+    |                      ---- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |                      |
+    |                      arguments to this enum variant are incorrect
+    |
+help: the type constructed contains `String` due to the type of the argument passed
+   --> crates/codegraph-vector/examples/rag_demo.rs:208:22
+    |
+208 |             content: Some("struct UserService { db: Database, cache: Cache }".to_string()),
+    |                      ^^^^^---------------------------------------------------------------^
+    |                           |
+    |                           this argument influences the type of `Some`
+note: tuple variant defined here
+   --> /rustc/518b428304e0008859cb1fd81d1ac20efb2a064a/library/core/src/option.rs:608:4
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+208 |             content: Some("struct UserService { db: Database, cache: Cache }".to_string().into()),
+    |                                                                                          +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:216:19
+    |
+216 |             name: "validate_user".to_string(),
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+216 |             name: "validate_user".to_string().into(),
+    |                                              +++++++
+
+error[E0308]: mismatched types
+   --> crates/codegraph-vector/examples/rag_demo.rs:219:27
+    |
+219 | ...t: Some("async fn validate_user(user_id: u64) -> Result<bool, ValidationError> { /* validation logic */ Ok(true) }".to_string()),
+    |       ---- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `SharedStr`, found `String`
+    |       |
+    |       arguments to this enum variant are incorrect
+    |
+help: the type constructed contains `String` due to the type of the argument passed
+   --> crates/codegraph-vector/examples/rag_demo.rs:219:22
+    |
+219 | ...t: Some("async fn validate_user(user_id: u64) -> Result<bool, ValidationError> { /* validation logic */ Ok(true) }".to_string()),
+    |       ^^^^^-----------------------------------------------------------------------------------------------------------------------^
+    |            |
+    |            this argument influences the type of `Some`
+note: tuple variant defined here
+   --> /rustc/518b428304e0008859cb1fd81d1ac20efb2a064a/library/core/src/option.rs:608:4
+help: call `Into::into` on this expression to convert `String` into `SharedStr`
+    |
+219 |             content: Some("async fn validate_user(user_id: u64) -> Result<bool, ValidationError> { /* validation logic */ Ok(true) }".to_string().into()),
+    |                                                                                                                                                  +++++++
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+  --> crates/codegraph-vector/benches/search_performance.rs:59:19
+   |
+59 |                 b.to_async(&rt).iter(|| async {
+   |                   ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0277]: `*mut spsc::WaitFreeSpscQueue<u32>` cannot be sent between threads safely
+   --> crates/codegraph-concurrent/src/spsc.rs:148:31
+    |
+148 |           let t = thread::spawn(move || {
+    |                   ------------- ^------
+    |                   |             |
+    |  _________________|_____________within this `{closure@crates/codegraph-concurrent/src/spsc.rs:148:31: 148:38}`
+    | |                 |
+    | |                 required by a bound introduced by this call
+149 | |             for i in 0..10_000u32 {
+150 | |                 loop {
+151 | |                     if p.try_push(i).is_ok() {
+...   |
+156 | |         });
+    | |_________^ `*mut spsc::WaitFreeSpscQueue<u32>` cannot be sent between threads safely
+    |
+    = help: within `{closure@crates/codegraph-concurrent/src/spsc.rs:148:31: 148:38}`, the trait `Send` is not implemented for `*mut spsc::WaitFreeSpscQueue<u32>`
+help: the trait `Send` is implemented for `spsc::WaitFreeSpscQueue<T>`
+   --> crates/codegraph-concurrent/src/spsc.rs:28:1
+    |
+ 28 | unsafe impl<T: Send> Send for WaitFreeSpscQueue<T> {}
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required because it appears within the type `Producer<u32>`
+   --> crates/codegraph-concurrent/src/spsc.rs:67:12
+    |
+ 67 | pub struct Producer<T> {
+    |            ^^^^^^^^
+note: required because it's used within this closure
+   --> crates/codegraph-concurrent/src/spsc.rs:148:31
+    |
+148 |         let t = thread::spawn(move || {
+    |                               ^^^^^^^
+note: required by a bound in `std::thread::spawn`
+   --> /rustc/518b428304e0008859cb1fd81d1ac20efb2a064a/library/std/src/thread/mod.rs:725:0
+
+Some errors have detailed explanations: E0308, E0616.
+For more information about an error, try `rustc --explain E0308`.
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+  --> crates/codegraph-zerocopy/src/mmap.rs:62:76
+   |
+62 |         T::Archived: for<'a> bytecheck::CheckBytes<HighValidator<'a, rkyv::rancor::Failure>>,
+   |                                                                            ^^^^^^ could not find `rancor` in `rkyv`
+   |
+help: consider importing this crate
+   |
+ 6 + use bytecheck::rancor;
+   |
+help: if you import `rancor`, refer to it directly
+   |
+62 -         T::Archived: for<'a> bytecheck::CheckBytes<HighValidator<'a, rkyv::rancor::Failure>>,
+62 +         T::Archived: for<'a> bytecheck::CheckBytes<HighValidator<'a, rancor::Failure>>,
+   |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+  --> crates/codegraph-zerocopy/src/mmap.rs:64:37
+   |
+64 |         access::<T::Archived, rkyv::rancor::Failure>(&self.mmap).map_err(|_e| {
+   |                                     ^^^^^^ could not find `rancor` in `rkyv`
+   |
+help: consider importing this crate
+   |
+ 6 + use bytecheck::rancor;
+   |
+help: if you import `rancor`, refer to it directly
+   |
+64 -         access::<T::Archived, rkyv::rancor::Failure>(&self.mmap).map_err(|_e| {
+64 +         access::<T::Archived, rancor::Failure>(&self.mmap).map_err(|_e| {
+   |
+
+error[E0405]: cannot find trait `Portable` in crate `rkyv`
+  --> crates/codegraph-zerocopy/src/mmap.rs:74:28
+   |
+74 |         T::Archived: rkyv::Portable,
+   |                            ^^^^^^^^ not found in `rkyv`
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/mmap.rs:289:76
+    |
+289 |         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rkyv::rancor::Failure>>,
+    |                                                                            ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+  6 + use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+289 -         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rkyv::rancor::Failure>>,
+289 +         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rancor::Failure>>,
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/mmap.rs:291:37
+    |
+291 |         access::<T::Archived, rkyv::rancor::Failure>(&self.guard).map_err(|_e| {
+    |                                     ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+  6 + use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+291 -         access::<T::Archived, rkyv::rancor::Failure>(&self.guard).map_err(|_e| {
+291 +         access::<T::Archived, rancor::Failure>(&self.guard).map_err(|_e| {
+    |
+
+error: could not compile `codegraph-vector` (example "rag_demo") due to 21 previous errors
+warning: build failed, waiting for other jobs to finish...
+error[E0405]: cannot find trait `Portable` in crate `rkyv`
+   --> crates/codegraph-zerocopy/src/serialization.rs:109:28
+    |
+109 |         T::Archived: rkyv::Portable,
+    |                            ^^^^^^^^ not found in `rkyv`
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:242:76
+    |
+242 |         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rkyv::rancor::Failure>>,
+    |                                                                            ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+  6 + use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+242 -         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rkyv::rancor::Failure>>,
+242 +         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rancor::Failure>>,
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:245:37
+    |
+245 |         access::<T::Archived, rkyv::rancor::Failure>(data).map_err(|e| {
+    |                                     ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+  6 + use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+245 -         access::<T::Archived, rkyv::rancor::Failure>(data).map_err(|e| {
+245 +         access::<T::Archived, rancor::Failure>(data).map_err(|e| {
+    |
+
+error[E0405]: cannot find trait `Portable` in crate `rkyv`
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:255:28
+    |
+255 |         T::Archived: rkyv::Portable,
+    |                            ^^^^^^^^ not found in `rkyv`
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+  --> crates/codegraph-zerocopy/src/lib.rs:34:33
+   |
+34 |     Serialization(#[from] rkyv::rancor::Failure),
+   |                                 ^^^^^^ could not find `rancor` in `rkyv`
+   |
+help: consider importing this crate
+   |
+16 + use bytecheck::rancor;
+   |
+help: if you import `rancor`, refer to it directly
+   |
+34 -     Serialization(#[from] rkyv::rancor::Failure),
+34 +     Serialization(#[from] rancor::Failure),
+   |
+
+error[E0382]: borrow of moved value: `language`
+   --> crates/codegraph-vector/examples/knn_demo.rs:215:66
+    |
+207 |     language: Language,
+    |     -------- move occurs because `language` has type `Language`, which does not implement the `Copy` trait
+...
+213 |         Some(language),
+    |              -------- value moved here
+214 |         Location {
+215 |             file_path: format!("{}.{}", name, get_file_extension(&language)),
+    |                                                                  ^^^^^^^^^ value borrowed here after move
+    |
+help: consider cloning the value if the performance cost is acceptable
+    |
+213 |         Some(language.clone()),
+    |                      ++++++++
+
+error[E0004]: non-exhaustive patterns: `&Language::Swift`, `&Language::Kotlin`, `&Language::CSharp` and 3 more not covered
+   --> crates/codegraph-vector/examples/knn_demo.rs:227:11
+    |
+227 |     match language {
+    |           ^^^^^^^^ patterns `&Language::Swift`, `&Language::Kotlin`, `&Language::CSharp` and 3 more not covered
+    |
+note: `Language` defined here
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/types.rs:13:1
+    |
+ 13 | pub enum Language {
+    | ^^^^^^^^^^^^^^^^^
+...
+ 22 |     Swift,
+    |     ----- not covered
+ 23 |     Kotlin,
+    |     ------ not covered
+ 24 |     CSharp,
+    |     ------ not covered
+ 25 |     Ruby,
+    |     ---- not covered
+ 26 |     Php,
+    |     --- not covered
+    = note: the matched value is of type `&Language`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern as shown, or multiple match arms
+    |
+235 ~         Language::Other(_) => "txt",
+236 ~         _ => todo!(),
+    |
+
+warning: unused import: `Mutex`
+  --> crates/codegraph-zerocopy/src/buffer.rs:10:19
+   |
+10 | use parking_lot::{Mutex, RwLock};
+   |                   ^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `SeekFrom` and `Seek`
+  --> crates/codegraph-zerocopy/src/mmap.rs:13:10
+   |
+13 |     io::{Seek, SeekFrom},
+   |          ^^^^  ^^^^^^^^
+
+warning: unused import: `error`
+  --> crates/codegraph-zerocopy/src/mmap.rs:17:22
+   |
+17 | use tracing::{debug, error, instrument, warn};
+   |                      ^^^^^
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/search_performance.rs:111:11
+    |
+111 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+warning: unused import: `from_bytes_unchecked`
+  --> crates/codegraph-zerocopy/src/serialization.rs:11:56
+   |
+11 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, rancor::Failure,
+   |                                                        ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `debug` and `trace`
+  --> crates/codegraph-zerocopy/src/serialization.rs:15:15
+   |
+15 | use tracing::{debug, instrument, trace};
+   |               ^^^^^              ^^^^^
+
+warning: unused import: `Mutex`
+ --> crates/codegraph-zerocopy/src/shared_memory.rs:8:19
+  |
+8 | use parking_lot::{Mutex, RwLock};
+  |                   ^^^^^
+
+warning: unused imports: `ffi::CString` and `ptr::NonNull`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:12:5
+   |
+12 |     ffi::CString,
+   |     ^^^^^^^^^^^^
+...
+16 |     ptr::NonNull,
+   |     ^^^^^^^^^^^^
+
+warning: unused import: `error`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:22:22
+   |
+22 | use tracing::{debug, error, instrument, trace, warn};
+   |                      ^^^^^
+
+Some errors have detailed explanations: E0004, E0282, E0382, E0432, E0433.
+For more information about an error, try `rustc --explain E0004`.
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:100:15
+    |
+100 |             b.to_async(&rt).iter(|| async {
+    |               ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:101:30
+    |
+101 |                   let result = engine
+    |  ______________________________^
+102 | |                     .single_similarity_search(
+103 | |                         black_box(query_embedding.clone()),
+104 | |                         black_box(SearchConfig::default()),
+105 | |                     )
+106 | |                     .await
+    | |__________________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:130:13
+    |
+130 |             engine.build_indices(&dataset).await.unwrap();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:332:38
+    |
+332 |         let bytes = to_bytes::<rkyv::rancor::Failure>(&node).unwrap();
+    |                                      ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+332 -         let bytes = to_bytes::<rkyv::rancor::Failure>(&node).unwrap();
+332 +         let bytes = to_bytes::<rancor::Failure>(&node).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:333:65
+    |
+333 |         let deserialized = from_bytes::<ArchivedCodeNode, rkyv::rancor::Failure>(&bytes).unwrap();
+    |                                                                 ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+333 -         let deserialized = from_bytes::<ArchivedCodeNode, rkyv::rancor::Failure>(&bytes).unwrap();
+333 +         let deserialized = from_bytes::<ArchivedCodeNode, rancor::Failure>(&bytes).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:390:38
+    |
+390 |         let bytes = to_bytes::<rkyv::rancor::Failure>(&graph).unwrap();
+    |                                      ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+390 -         let bytes = to_bytes::<rkyv::rancor::Failure>(&graph).unwrap();
+390 +         let bytes = to_bytes::<rancor::Failure>(&graph).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:391:66
+    |
+391 |         let deserialized = from_bytes::<ArchivedCodeGraph, rkyv::rancor::Failure>(&bytes).unwrap();
+    |                                                                  ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+391 -         let deserialized = from_bytes::<ArchivedCodeGraph, rkyv::rancor::Failure>(&bytes).unwrap();
+391 +         let deserialized = from_bytes::<ArchivedCodeGraph, rancor::Failure>(&bytes).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:414:38
+    |
+414 |         let bytes = to_bytes::<rkyv::rancor::Failure>(&entry).unwrap();
+    |                                      ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+414 -         let bytes = to_bytes::<rkyv::rancor::Failure>(&entry).unwrap();
+414 +         let bytes = to_bytes::<rancor::Failure>(&entry).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:416:60
+    |
+416 |             from_bytes::<ArchivedCacheEntry<String>, rkyv::rancor::Failure>(&bytes).unwrap();
+    |                                                            ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+416 -             from_bytes::<ArchivedCacheEntry<String>, rkyv::rancor::Failure>(&bytes).unwrap();
+416 +             from_bytes::<ArchivedCacheEntry<String>, rancor::Failure>(&bytes).unwrap();
+    |
+
+error: could not compile `codegraph-vector` (example "knn_demo") due to 7 previous errors
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:453:38
+    |
+453 |         let bytes = to_bytes::<rkyv::rancor::Failure>(&metrics).unwrap();
+    |                                      ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+453 -         let bytes = to_bytes::<rkyv::rancor::Failure>(&metrics).unwrap();
+453 +         let bytes = to_bytes::<rancor::Failure>(&metrics).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:454:64
+    |
+454 |         let deserialized = from_bytes::<ArchivedMetrics, rkyv::rancor::Failure>(&bytes).unwrap();
+    |                                                                ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+454 -         let deserialized = from_bytes::<ArchivedMetrics, rkyv::rancor::Failure>(&bytes).unwrap();
+454 +         let deserialized = from_bytes::<ArchivedMetrics, rancor::Failure>(&bytes).unwrap();
+    |
+
+Some errors have detailed explanations: E0277, E0308.
+For more information about an error, try `rustc --explain E0277`.
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/mmap.rs:487:44
+    |
+487 |         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&data).unwrap();
+    |                                            ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+464 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+487 -         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&data).unwrap();
+487 +         let bytes = rkyv::to_bytes::<rancor::Error>(&data).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:590:44
+    |
+590 |         let bytes = rkyv::to_bytes::<rkyv::rancor::Failure>(&data).unwrap();
+    |                                            ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+518 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+590 -         let bytes = rkyv::to_bytes::<rkyv::rancor::Failure>(&data).unwrap();
+590 +         let bytes = rkyv::to_bytes::<rancor::Failure>(&data).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+  --> crates/codegraph-zerocopy/src/lib.rs:90:38
+   |
+90 |         let bytes = to_bytes::<rkyv::rancor::Failure>(&data).unwrap();
+   |                                      ^^^^^^ could not find `rancor` in `rkyv`
+   |
+help: consider importing this crate
+   |
+71 +     use bytecheck::rancor;
+   |
+help: if you import `rancor`, refer to it directly
+   |
+90 -         let bytes = to_bytes::<rkyv::rancor::Failure>(&data).unwrap();
+90 +         let bytes = to_bytes::<rancor::Failure>(&data).unwrap();
+   |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+  --> crates/codegraph-zerocopy/src/lib.rs:91:57
+   |
+91 |         let deserialized = from_bytes::<TestData, rkyv::rancor::Failure>(&bytes).unwrap();
+   |                                                         ^^^^^^ could not find `rancor` in `rkyv`
+   |
+help: consider importing this crate
+   |
+71 +     use bytecheck::rancor;
+   |
+help: if you import `rancor`, refer to it directly
+   |
+91 -         let deserialized = from_bytes::<TestData, rkyv::rancor::Failure>(&bytes).unwrap();
+91 +         let deserialized = from_bytes::<TestData, rancor::Failure>(&bytes).unwrap();
+   |
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/search_performance.rs:152:11
+    |
+152 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+warning: function `node_id_from_index` is never used
+  --> crates/codegraph-vector/tests/integration_tests.rs:36:4
+   |
+36 | fn node_id_from_index(index: usize) -> NodeId {
+   |    ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/search_performance.rs:155:17
+    |
+155 | /                 search_engine
+156 | |                     .batch_search_knn(&query_refs[0..10], k)
+157 | |                     .await
+    | |__________________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/search_performance.rs:166:17
+    |
+166 |           let _ = search_engine
+    |  _________________^
+167 | |             .batch_search_knn(&query_refs[0..100], k)
+168 | |             .await
+    | |__________________^ cannot infer type
+
+warning: `codegraph-concurrent` (lib test) generated 2 warnings
+error: could not compile `codegraph-concurrent` (lib test) due to 2 previous errors; 2 warnings emitted
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:143:19
+    |
+143 |                 b.to_async(&rt).iter(|| async {
+    |                   ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:144:34
+    |
+144 |                       let result = engine
+    |  __________________________________^
+145 | |                         .parallel_similarity_search(black_box(queries.clone()), None)
+146 | |                         .await
+    | |______________________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:171:13
+    |
+171 |             engine.build_indices(&dataset).await.unwrap();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/search_performance.rs:173:11
+    |
+173 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/search_performance.rs:176:17
+    |
+176 | /                 search_engine
+177 | |                     .batch_search_knn(&query_refs, k)
+178 | |                     .await
+    | |__________________________^ cannot infer type
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:181:19
+    |
+181 |                 b.to_async(&rt).iter(|| async {
+    |                   ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:182:34
+    |
+182 |                       let result = engine
+    |  __________________________________^
+183 | |                         .single_similarity_search(
+184 | |                             black_box(query_embedding.clone()),
+185 | |                             black_box(SearchConfig {
+...   |
+190 | |                         .await
+    | |______________________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:213:13
+    |
+213 |             engine.build_indices(&dataset).await.unwrap();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+warning: `codegraph-vector` (test "integration_tests") generated 3 warnings (run `cargo fix --test "integration_tests" -p codegraph-vector` to apply 2 suggestions)
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/search_performance.rs:200:19
+    |
+200 |                 b.to_async(&rt).iter(|| async {
+    |                   ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0560]: struct `BatchConfig` has no field named `max_pending_batches`
+   --> crates/codegraph-vector/benches/search_performance.rs:203:25
+    |
+203 |                         max_pending_batches: 5,
+    |                         ^^^^^^^^^^^^^^^^^^^ `BatchConfig` does not have this field
+    |
+    = note: available fields are: `max_concurrent`, `timeout`, `retry_attempts`
+
+error[E0560]: struct `BatchConfig` has no field named `flush_interval`
+   --> crates/codegraph-vector/benches/search_performance.rs:204:25
+    |
+204 |                         flush_interval: Duration::from_secs(1),
+    |                         ^^^^^^^^^^^^^^ `BatchConfig` does not have this field
+    |
+    = note: available fields are: `max_concurrent`, `timeout`, `retry_attempts`
+
+error[E0560]: struct `BatchConfig` has no field named `parallel_processing`
+   --> crates/codegraph-vector/benches/search_performance.rs:205:25
+    |
+205 |                         parallel_processing: true,
+    |                         ^^^^^^^^^^^^^^^^^^^ `BatchConfig` does not have this field
+    |
+    = note: available fields are: `max_concurrent`, `timeout`, `retry_attempts`
+
+error[E0560]: struct `BatchConfig` has no field named `memory_limit_mb`
+   --> crates/codegraph-vector/benches/search_performance.rs:206:25
+    |
+206 |                         memory_limit_mb: 512,
+    |                         ^^^^^^^^^^^^^^^ `BatchConfig` does not have this field
+    |
+    = note: available fields are: `max_concurrent`, `timeout`, `retry_attempts`
+
+error[E0560]: struct `BatchConfig` has no field named `auto_train_threshold`
+   --> crates/codegraph-vector/benches/search_performance.rs:207:25
+    |
+207 |                         auto_train_threshold: batch_size * 2,
+    |                         ^^^^^^^^^^^^^^^^^^^^ `BatchConfig` does not have this field
+    |
+    = note: available fields are: `max_concurrent`, `timeout`, `retry_attempts`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/search_performance.rs:213:21
+    |
+213 |                     processor.start_processing().await.unwrap();
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/search_performance.rs:244:35
+    |
+244 |                         black_box(processor.enqueue_operation(operation).await.unwrap());
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/search_performance.rs:247:21
+    |
+247 |                     processor.stop_processing().await.unwrap();
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:225:15
+    |
+225 |             b.to_async(&rt).iter(|| async {
+    |               ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:226:30
+    |
+226 |                   let result = engine
+    |  ______________________________^
+227 | |                     .single_similarity_search(
+228 | |                         black_box(query_embedding.clone()),
+229 | |                         black_box(SearchConfig {
+...   |
+234 | |                     .await
+    | |__________________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:250:9
+    |
+250 |         engine.build_indices(&dataset).await.unwrap();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:262:25
+    |
+262 |                   let _ = engine
+    |  _________________________^
+263 | |                     .single_similarity_search(embedding.clone(), SearchConfig::default())
+264 | |                     .await
+    | |__________________________^ cannot infer type
+
+error[E0432]: unresolved import `criterion`
+ --> crates/codegraph-core/benches/core_micro.rs:2:5
+  |
+2 | use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+  |     ^^^^^^^^^ use of unresolved module or unlinked crate `criterion`
+  |
+  = help: if you wanted to use a crate named `criterion`, use `cargo add criterion` to add it to your `Cargo.toml`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:272:11
+    |
+272 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/search_performance.rs:271:19
+    |
+271 |                 b.to_async(&rt).iter(|| async {
+    |                   ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:284:26
+    |
+284 |               let result = engine
+    |  __________________________^
+285 | |                 .single_similarity_search(black_box(embedding), black_box(SearchConfig::default()))
+286 | |                 .await
+    | |______________________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:301:9
+    |
+301 |         engine.build_indices(&dataset).await.unwrap();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+Some errors have detailed explanations: E0405, E0432, E0433.
+For more information about an error, try `rustc --explain E0405`.
+error[E0282]: type annotations needed
+  --> crates/codegraph-core/benches/core_micro.rs:25:74
+   |
+25 |         group.bench_with_input(BenchmarkId::new("create_nodes", n), &n, |b, &n| {
+   |                                                                          ^
+26 |             b.iter(|| {
+   |             - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+25 |         group.bench_with_input(BenchmarkId::new("create_nodes", n), &n, |b: /* Type */, &n| {
+   |                                                                           ++++++++++++
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-core/benches/core_micro.rs:42:75
+   |
+42 |         group.bench_with_input(BenchmarkId::new("serialize_vec", n), &n, |b, _| {
+   |                                                                           ^
+43 |             b.iter(|| {
+   |             - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+42 |         group.bench_with_input(BenchmarkId::new("serialize_vec", n), &n, |b: /* Type */, _| {
+   |                                                                            ++++++++++++
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-core/benches/core_micro.rs:49:77
+   |
+49 |         group.bench_with_input(BenchmarkId::new("deserialize_vec", n), &n, |b, _| {
+   |                                                                             ^
+50 |             b.iter(|| {
+   |             - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+49 |         group.bench_with_input(BenchmarkId::new("deserialize_vec", n), &n, |b: /* Type */, _| {
+   |                                                                              ++++++++++++
+
+warning: `codegraph-zerocopy` (lib) generated 8 warnings
+error: could not compile `codegraph-zerocopy` (lib) due to 18 previous errors; 8 warnings emitted
+Some errors have detailed explanations: E0282, E0432.
+For more information about an error, try `rustc --explain E0282`.
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/search_performance.rs:345:11
+    |
+345 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/search_performance.rs:348:17
+    |
+348 | /                 engine_parallel
+349 | |                     .batch_search_knn(&query_refs, k)
+350 | |                     .await
+    | |__________________________^ cannot infer type
+
+error: could not compile `codegraph-core` (bench "core_micro") due to 4 previous errors
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:323:19
+    |
+323 |                 b.to_async(&rt).iter(|| async {
+    |                   ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error: expected `,`, found `.`
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:23:17
+   |
+23 |     println!("=".repeat(80));
+   |                 ^ expected `,`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:324:34
+    |
+324 |                       let result = engine
+    |  __________________________________^
+325 | |                         .batch_search_similar_functions(black_box(&function_nodes), None)
+326 | |                         .await
+    | |______________________________^ cannot infer type
+
+error: argument never used
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:23:18
+   |
+23 |     println!("=".repeat(80));
+   |              --- ^^^^^^^^^^ argument never used
+   |              |
+   |              formatting specifier missing
+   |
+help: format specifiers use curly braces, consider adding a format specifier
+   |
+23 |     println!("={}".repeat(80));
+   |                ++
+
+error: expected `,`, found `.`
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:25:17
+   |
+25 |     println!("=".repeat(80));
+   |                 ^ expected `,`
+
+error: argument never used
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:25:18
+   |
+25 |     println!("=".repeat(80));
+   |              --- ^^^^^^^^^^ argument never used
+   |              |
+   |              formatting specifier missing
+   |
+help: format specifiers use curly braces, consider adding a format specifier
+   |
+25 |     println!("={}".repeat(80));
+   |                ++
+
+error: expected `,`, found `.`
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:54:17
+   |
+54 |     println!("=".repeat(80));
+   |                 ^ expected `,`
+
+error: argument never used
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:54:18
+   |
+54 |     println!("=".repeat(80));
+   |              --- ^^^^^^^^^^ argument never used
+   |              |
+   |              formatting specifier missing
+   |
+help: format specifiers use curly braces, consider adding a format specifier
+   |
+54 |     println!("={}".repeat(80));
+   |                ++
+
+error: expected `,`, found `.`
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:56:17
+   |
+56 |     println!("=".repeat(80));
+   |                 ^ expected `,`
+
+error: argument never used
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:56:18
+   |
+56 |     println!("=".repeat(80));
+   |              --- ^^^^^^^^^^ argument never used
+   |              |
+   |              formatting specifier missing
+   |
+help: format specifiers use curly braces, consider adding a format specifier
+   |
+56 |     println!("={}".repeat(80));
+   |                ++
+
+error: expected `,`, found `.`
+   --> crates/codegraph-vector/examples/fast_insights_demo.rs:111:17
+    |
+111 |     println!("=".repeat(80));
+    |                 ^ expected `,`
+
+error: argument never used
+   --> crates/codegraph-vector/examples/fast_insights_demo.rs:111:18
+    |
+111 |     println!("=".repeat(80));
+    |              --- ^^^^^^^^^^ argument never used
+    |              |
+    |              formatting specifier missing
+    |
+help: format specifiers use curly braces, consider adding a format specifier
+    |
+111 |     println!("={}".repeat(80));
+    |                ++
+
+error: expected `,`, found `.`
+   --> crates/codegraph-vector/examples/fast_insights_demo.rs:113:17
+    |
+113 |     println!("=".repeat(80));
+    |                 ^ expected `,`
+
+error: argument never used
+   --> crates/codegraph-vector/examples/fast_insights_demo.rs:113:18
+    |
+113 |     println!("=".repeat(80));
+    |              --- ^^^^^^^^^^ argument never used
+    |              |
+    |              formatting specifier missing
+    |
+help: format specifiers use curly braces, consider adding a format specifier
+    |
+113 |     println!("={}".repeat(80));
+    |                ++
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut criterion::Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/search_performance.rs:358:11
+    |
+358 |         b.to_async(&rt).iter(|| async {
+    |           ^^^^^^^^ method not found in `&mut criterion::Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/search_performance.rs:361:17
+    |
+361 | /                 engine_sequential
+362 | |                     .batch_search_knn(&query_refs, k)
+363 | |                     .await
+    | |__________________________^ cannot infer type
+
+warning: unused import: `approx::relative_eq`
+ --> crates/codegraph-vector/tests/model_optimization_tests.rs:1:5
+  |
+1 | use approx::relative_eq;
+  |     ^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `tempfile::TempDir`
+ --> crates/codegraph-vector/tests/model_optimization_tests.rs:8:5
+  |
+8 | use tempfile::TempDir;
+  |     ^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:345:15
+    |
+345 |             b.to_async(&rt).iter(|| async {
+    |               ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:347:17
+    |
+347 |                 engine.build_indices(black_box(&dataset)).await.unwrap();
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+warning: `codegraph-zerocopy` (lib test) generated 8 warnings (8 duplicates)
+error: could not compile `codegraph-zerocopy` (lib test) due to 30 previous errors; 8 warnings emitted
+Some errors have detailed explanations: E0282, E0432, E0560, E0599.
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `tracing_subscriber`
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:10:5
+   |
+10 |     tracing_subscriber::fmt::init();
+   |     ^^^^^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `tracing_subscriber`
+   |
+   = help: if you wanted to use a crate named `tracing_subscriber`, use `cargo add tracing_subscriber` to add it to your `Cargo.toml`
+
+error[E0599]: no method named `to_async` found for mutable reference `&mut Bencher<'_>` in the current scope
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:365:15
+    |
+365 |             b.to_async(&rt).iter(|| async {
+    |               ^^^^^^^^ method not found in `&mut Bencher<'_>`
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:367:17
+    |
+367 |                 engine.build_indices(black_box(&dataset)).await.unwrap();
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-vector/benches/knn_benchmark.rs:372:29
+    |
+372 |                       let _ = engine
+    |  _____________________________^
+373 | |                         .single_similarity_search(query, SearchConfig::default())
+374 | |                         .await
+    | |______________________________^ cannot infer type
+
+warning: `codegraph-vector` (bench "search_performance") generated 10 warnings
+error: could not compile `codegraph-vector` (bench "search_performance") due to 23 previous errors; 10 warnings emitted
+error[E0425]: cannot find function `repeat` in this scope
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:23:18
+   |
+23 |     println!("=".repeat(80));
+   |                  ^^^^^^ not found in this scope
+   |
+help: consider importing one of these functions
+   |
+ 1 + use std::array::repeat;
+   |
+ 1 + use std::io::repeat;
+   |
+ 1 + use std::iter::repeat;
+   |
+ 1 + use core::array::repeat;
+   |
+   = and 5 other candidates
+
+error[E0425]: cannot find function `repeat` in this scope
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:25:18
+   |
+25 |     println!("=".repeat(80));
+   |                  ^^^^^^ not found in this scope
+   |
+help: consider importing one of these functions
+   |
+ 1 + use std::array::repeat;
+   |
+ 1 + use std::io::repeat;
+   |
+ 1 + use std::iter::repeat;
+   |
+ 1 + use core::array::repeat;
+   |
+   = and 5 other candidates
+
+error[E0425]: cannot find function `repeat` in this scope
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:54:18
+   |
+54 |     println!("=".repeat(80));
+   |                  ^^^^^^ not found in this scope
+   |
+help: consider importing one of these functions
+   |
+ 1 + use std::array::repeat;
+   |
+ 1 + use std::io::repeat;
+   |
+ 1 + use std::iter::repeat;
+   |
+ 1 + use core::array::repeat;
+   |
+   = and 5 other candidates
+
+error[E0425]: cannot find function `repeat` in this scope
+  --> crates/codegraph-vector/examples/fast_insights_demo.rs:56:18
+   |
+56 |     println!("=".repeat(80));
+   |                  ^^^^^^ not found in this scope
+   |
+help: consider importing one of these functions
+   |
+ 1 + use std::array::repeat;
+   |
+ 1 + use std::io::repeat;
+   |
+ 1 + use std::iter::repeat;
+   |
+ 1 + use core::array::repeat;
+   |
+   = and 5 other candidates
+
+error[E0425]: cannot find function `repeat` in this scope
+   --> crates/codegraph-vector/examples/fast_insights_demo.rs:111:18
+    |
+111 |     println!("=".repeat(80));
+    |                  ^^^^^^ not found in this scope
+    |
+help: consider importing one of these functions
+    |
+  1 + use std::array::repeat;
+    |
+  1 + use std::io::repeat;
+    |
+  1 + use std::iter::repeat;
+    |
+  1 + use core::array::repeat;
+    |
+    = and 5 other candidates
+
+error[E0425]: cannot find function `repeat` in this scope
+   --> crates/codegraph-vector/examples/fast_insights_demo.rs:113:18
+    |
+113 |     println!("=".repeat(80));
+    |                  ^^^^^^ not found in this scope
+    |
+help: consider importing one of these functions
+    |
+  1 + use std::array::repeat;
+    |
+  1 + use std::io::repeat;
+    |
+  1 + use std::iter::repeat;
+    |
+  1 + use core::array::repeat;
+    |
+    = and 5 other candidates
+
+Some errors have detailed explanations: E0282, E0432, E0599.
+warning: `codegraph-vector` (bench "knn_benchmark") generated 23 warnings
+error: could not compile `codegraph-vector` (bench "knn_benchmark") due to 25 previous errors; 23 warnings emitted
+Some errors have detailed explanations: E0425, E0433.
+For more information about an error, try `rustc --explain E0425`.
+error: could not compile `codegraph-vector` (example "fast_insights_demo") due to 19 previous errors
+warning: `codegraph-vector` (test "model_optimization_tests") generated 2 warnings (run `cargo fix --test "model_optimization_tests" -p codegraph-vector` to apply 2 suggestions)

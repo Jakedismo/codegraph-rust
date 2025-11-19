@@ -352,7 +352,7 @@ impl ConsistencyManager {
 
         // Check for conflicts with other transactions
         let transaction_clone = transaction.clone();
-        drop(transaction); // Release mutable borrow
+
 
         let conflicts = active_txns
             .values()
@@ -857,7 +857,7 @@ pub struct TransactionStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio_test;
+
 
     #[tokio::test]
     async fn test_transaction_lifecycle() {

@@ -1,0 +1,2484 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-napi/Cargo.toml
+workspace: /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/Cargo.toml
+warning: invalid feature `demo` in required-features of target `memory_profiler_demo`: `demo` is not present in [features] section
+warning: invalid feature `demo` in required-features of target `readahead_demo`: `demo` is not present in [features] section
+warning: unexpected `cfg` condition value: `lb`
+  --> crates/codegraph-api/src/lib.rs:15:7
+   |
+15 | #[cfg(feature = "lb")]
+   |       ^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+   = help: consider adding `lb` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unexpected `cfg` condition value: `lb`
+  --> crates/codegraph-api/src/lib.rs:53:7
+   |
+53 | #[cfg(feature = "lb")]
+   |       ^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+   = help: consider adding `lb` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unused imports: `RateLimitingMiddleware`, `StateInformationMiddleware`, and `clock::DefaultClock`
+  --> crates/codegraph-api/src/auth.rs:10:5
+   |
+10 |     clock::DefaultClock,
+   |     ^^^^^^^^^^^^^^^^^^^
+11 |     middleware::{RateLimitingMiddleware, StateInformationMiddleware},
+   |                  ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variant `READ_CODE` should have an upper camel case name
+  --> crates/codegraph-api/src/auth.rs:25:5
+   |
+25 |     READ_CODE,
+   |     ^^^^^^^^^ help: convert the identifier to upper camel case: `ReadCode`
+   |
+   = note: `#[warn(non_camel_case_types)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: variant `READ_GRAPH` should have an upper camel case name
+  --> crates/codegraph-api/src/auth.rs:26:5
+   |
+26 |     READ_GRAPH,
+   |     ^^^^^^^^^^ help: convert the identifier to upper camel case: `ReadGraph`
+
+warning: variant `READ_METRICS` should have an upper camel case name
+  --> crates/codegraph-api/src/auth.rs:27:5
+   |
+27 |     READ_METRICS,
+   |     ^^^^^^^^^^^^ help: convert the identifier to upper camel case: `ReadMetrics`
+
+warning: variant `READ_ANALYSIS` should have an upper camel case name
+  --> crates/codegraph-api/src/auth.rs:28:5
+   |
+28 |     READ_ANALYSIS,
+   |     ^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `ReadAnalysis`
+
+warning: variant `WRITE_ANNOTATIONS` should have an upper camel case name
+  --> crates/codegraph-api/src/auth.rs:29:5
+   |
+29 |     WRITE_ANNOTATIONS,
+   |     ^^^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `WriteAnnotations`
+
+warning: variant `MANAGE_CACHE` should have an upper camel case name
+  --> crates/codegraph-api/src/auth.rs:30:5
+   |
+30 |     MANAGE_CACHE,
+   |     ^^^^^^^^^^^^ help: convert the identifier to upper camel case: `ManageCache`
+
+warning: variant `ADMIN_SYSTEM` should have an upper camel case name
+  --> crates/codegraph-api/src/auth.rs:31:5
+   |
+31 |     ADMIN_SYSTEM,
+   |     ^^^^^^^^^^^^ help: convert the identifier to upper camel case: `AdminSystem`
+
+warning: variant `SUBSCRIBE_UPDATES` should have an upper camel case name
+  --> crates/codegraph-api/src/auth.rs:32:5
+   |
+32 |     SUBSCRIBE_UPDATES,
+   |     ^^^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `SubscribeUpdates`
+
+warning: unused imports: `debug` and `info`
+ --> crates/codegraph-api/src/connection_pool.rs:9:15
+  |
+9 | use tracing::{debug, info, warn};
+  |               ^^^^^  ^^^^
+
+warning: unused import: `ApiError`
+ --> crates/codegraph-api/src/enhanced_health.rs:3:13
+  |
+3 | use crate::{ApiError, ApiResult, AppState};
+  |             ^^^^^^^^
+
+warning: unused import: `Deserialize`
+ --> crates/codegraph-api/src/enhanced_health.rs:5:13
+  |
+5 | use serde::{Deserialize, Serialize};
+  |             ^^^^^^^^^^^
+
+warning: unexpected `cfg` condition value: `persistent`
+ --> crates/codegraph-api/src/handlers.rs:8:7
+  |
+8 | #[cfg(feature = "persistent")]
+  |       ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+  = help: consider adding `persistent` as a feature in `Cargo.toml`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:235:7
+    |
+235 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:248:7
+    |
+248 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:264:7
+    |
+264 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:280:7
+    |
+280 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:299:7
+    |
+299 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:308:7
+    |
+308 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:326:7
+    |
+326 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:335:7
+    |
+335 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:344:7
+    |
+344 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:350:7
+    |
+350 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:358:7
+    |
+358 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:364:7
+    |
+364 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:371:7
+    |
+371 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:378:7
+    |
+378 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:387:7
+    |
+387 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:397:7
+    |
+397 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:422:7
+    |
+422 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:448:7
+    |
+448 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:468:7
+    |
+468 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:516:7
+    |
+516 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:544:7
+    |
+544 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:558:7
+    |
+558 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:603:7
+    |
+603 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `persistent`
+   --> crates/codegraph-api/src/handlers.rs:625:7
+    |
+625 | #[cfg(feature = "persistent")]
+    |       ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `graphql`, `http2`, `leak-detect`, `minimal`, and `openapi-ui`
+    = help: consider adding `persistent` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unused import: `NodeId`
+ --> crates/codegraph-api/src/handlers.rs:7:46
+  |
+7 | use codegraph_core::{CodeParser, GraphStore, NodeId};
+  |                                              ^^^^^^
+
+warning: unused import: `Deserialize`
+ --> crates/codegraph-api/src/health.rs:5:13
+  |
+5 | use serde::{Deserialize, Serialize};
+  |             ^^^^^^^^^^^
+
+warning: unused import: `debug`
+  --> crates/codegraph-api/src/performance/optimizer.rs:13:15
+   |
+13 | use tracing::{debug, warn};
+   |               ^^^^^
+
+warning: unused import: `StatusCode`
+ --> crates/codegraph-api/src/rest/handlers.rs:6:33
+  |
+6 |         HeaderMap, HeaderValue, StatusCode,
+  |                                 ^^^^^^^^^^
+
+warning: unused imports: `RateLimitManager` and `auth_middleware`
+ --> crates/codegraph-api/src/routes.rs:2:5
+  |
+2 |     auth_middleware, enhanced_health, handlers, health, rest, service_registry, streaming_handlers,
+  |     ^^^^^^^^^^^^^^^
+3 |     vector_handlers, versioning_handlers, AppState, RateLimitManager,
+  |                                                     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `axum::response::Html`
+ --> crates/codegraph-api/src/routes.rs:5:5
+  |
+5 | use axum::response::Html;
+  |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `CONNECTION` and `HeaderName`
+  --> crates/codegraph-api/src/routes.rs:11:20
+   |
+11 | use http::header::{HeaderName, HeaderValue, CACHE_CONTROL, CONNECTION};
+   |                    ^^^^^^^^^^                              ^^^^^^^^^^
+
+warning: unused import: `std::str::FromStr`
+  --> crates/codegraph-api/src/routes.rs:12:5
+   |
+12 | use std::str::FromStr;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::time::Duration`
+  --> crates/codegraph-api/src/routes.rs:13:5
+   |
+13 | use std::time::Duration;
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `utoipa::OpenApi`
+  --> crates/codegraph-api/src/routes.rs:18:5
+   |
+18 | use utoipa::OpenApi;
+   |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `std::time::Duration`
+ --> crates/codegraph-api/src/server.rs:6:5
+  |
+6 | use std::time::Duration;
+  |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tower::ServiceBuilder`
+ --> crates/codegraph-api/src/server.rs:8:5
+  |
+8 | use tower::ServiceBuilder;
+  |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `warn`
+ --> crates/codegraph-api/src/server.rs:9:21
+  |
+9 | use tracing::{info, warn};
+  |                     ^^^^
+
+warning: unused import: `StreamBodyAs`
+ --> crates/codegraph-api/src/streaming_handlers.rs:7:20
+  |
+7 | use axum_streams::{StreamBodyAs, StreamBodyAsOptions};
+  |                    ^^^^^^^^^^^^
+
+warning: unused imports: `GraphStore` and `NodeId`
+ --> crates/codegraph-api/src/streaming_handlers.rs:8:22
+  |
+8 | use codegraph_core::{GraphStore, NodeId};
+  |                      ^^^^^^^^^^  ^^^^^^
+
+warning: unused import: `warn`
+  --> crates/codegraph-api/src/streaming_handlers.rs:13:22
+   |
+13 | use tracing::{debug, warn};
+   |                      ^^^^
+
+warning: unused import: `Query`
+ --> crates/codegraph-api/src/vector_handlers.rs:5:15
+  |
+5 |     extract::{Query, State},
+  |               ^^^^^
+
+warning: unused import: `NodeId`
+ --> crates/codegraph-api/src/vector_handlers.rs:8:34
+  |
+8 | use codegraph_core::{GraphStore, NodeId};
+  |                                  ^^^^^^
+
+warning: unused import: `uuid::Uuid`
+  --> crates/codegraph-api/src/vector_handlers.rs:11:5
+   |
+11 | use uuid::Uuid;
+   |     ^^^^^^^^^^
+
+warning: unused imports: `Branch`, `ConcurrentTransactionManager`, `GitLikeVersionManager`, `IntegrityReport`, `MergeConflict`, `RebaseResult`, `RecoveryManager`, `RecoveryStatistics`, `Tag`, `TransactionStatistics`, and `TransactionalGraph`
+ --> crates/codegraph-api/src/versioning_handlers.rs:2:5
+  |
+2 |     Branch, ConcurrentTransactionManager, ConflictType, GitLikeVersionManager, IntegrityReport,
+  |     ^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^                ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^
+3 |     MergeConflict, MergeResult, RebaseResult, RecoveryManager, RecoveryStatistics, Tag,
+  |     ^^^^^^^^^^^^^               ^^^^^^^^^^^^  ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^  ^^^
+4 |     TransactionStatistics, TransactionalGraph,
+  |     ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Snapshot` and `Version`
+  --> crates/codegraph-api/src/versioning_handlers.rs:14:33
+   |
+14 |     ChangeType, IsolationLevel, Snapshot, SnapshotId, TransactionId, Version, VersionDiff,
+   |                                 ^^^^^^^^                             ^^^^^^^
+
+warning: ambiguous glob re-exports
+  --> crates/codegraph-api/src/lib.rs:47:9
+   |
+47 | pub use handlers::*;
+   |         ^^^^^^^^^^^ the name `HealthResponse` in the type namespace is first re-exported here
+48 | pub use health::*;
+   |         --------- but the name `HealthResponse` in the type namespace is also re-exported here
+   |
+   = note: `#[warn(ambiguous_glob_reexports)]` on by default
+
+warning: variable does not need to be mutable
+  --> crates/codegraph-api/src/performance/optimizer.rs:83:21
+   |
+83 |         if let Some(mut entry) = self.store.get_mut(key) {
+   |                     ----^^^^^
+   |                     |
+   |                     help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `TryStreamExt`
+ --> crates/codegraph-api/src/streaming_handlers.rs:9:42
+  |
+9 | use futures::{stream, Stream, StreamExt, TryStreamExt};
+  |                                          ^^^^^^^^^^^^
+
+warning: unused variable: `state`
+  --> crates/codegraph-api/src/auth.rs:82:11
+   |
+82 |     State(state): State<Arc<AppState>>,
+   |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/enhanced_health.rs:434:40
+    |
+434 | async fn check_storage_health_enhanced(state: &AppState) -> ComponentStatus {
+    |                                        ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/enhanced_health.rs:482:39
+    |
+482 | async fn check_connection_pool_health(state: &AppState) -> ComponentStatus {
+    |                                       ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/enhanced_health.rs:537:29
+    |
+537 | async fn check_cache_health(state: &AppState) -> ComponentStatus {
+    |                             ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/enhanced_health.rs:553:42
+    |
+553 | async fn collect_enhanced_system_metrics(state: &AppState) -> SystemMetrics {
+    |                                          ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/enhanced_health.rs:591:38
+    |
+591 | async fn collect_performance_metrics(state: &AppState) -> PerformanceMetrics {
+    |                                      ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/health.rs:304:31
+    |
+304 | async fn check_storage_health(state: &AppState) -> ComponentStatus {
+    |                               ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `metadata`
+   --> crates/codegraph-api/src/health.rs:317:23
+    |
+317 |             if let Ok(metadata) = fs::metadata("/tmp") {
+    |                       ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_metadata`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/health.rs:327:33
+    |
+327 | async fn collect_system_metrics(state: &AppState) -> SystemMetrics {
+    |                                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `disk_usage`
+   --> crates/codegraph-api/src/metrics.rs:267:15
+    |
+267 |     if let Ok(disk_usage) = std::fs::metadata("/") {
+    |               ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_disk_usage`
+
+warning: unused variable: `graph`
+  --> crates/codegraph-api/src/streaming_handlers.rs:79:5
+   |
+79 |     graph: tokio::sync::RwLockReadGuard<'_, InMemoryGraph>,
+   |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_graph`
+
+warning: unused variable: `total_results`
+  --> crates/codegraph-api/src/streaming_handlers.rs:84:9
+   |
+84 |     let total_results = results.len();
+   |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_results`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/streaming_handlers.rs:132:11
+    |
+132 |     State(state): State<AppState>,
+    |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/streaming_handlers.rs:254:11
+    |
+254 |     State(state): State<AppState>,
+    |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/streaming_handlers.rs:277:11
+    |
+277 |     State(state): State<AppState>,
+    |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `max_concurrent`
+   --> crates/codegraph-api/src/streaming_handlers.rs:298:5
+    |
+298 |     max_concurrent: usize,
+    |     ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_max_concurrent`
+
+warning: unused variable: `query_refs`
+   --> crates/codegraph-api/src/vector_handlers.rs:274:9
+    |
+274 |     let query_refs: Vec<&[f32]> = request
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_query_refs`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/vector_handlers.rs:352:36
+    |
+352 | pub async fn get_index_stats(State(state): State<AppState>) -> ApiResult<Json<IndexStatsResponse>> {
+    |                                    ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/vector_handlers.rs:381:11
+    |
+381 |     State(state): State<AppState>,
+    |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/vector_handlers.rs:440:11
+    |
+440 |     State(state): State<AppState>,
+    |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `state`
+   --> crates/codegraph-api/src/vector_handlers.rs:458:11
+    |
+458 |     State(state): State<AppState>,
+    |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `merge_id`
+   --> crates/codegraph-api/src/versioning_handlers.rs:500:10
+    |
+500 |     Path(merge_id): Path<String>,
+    |          ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_merge_id`
+
+warning: unused variable: `resolutions`
+   --> crates/codegraph-api/src/versioning_handlers.rs:501:10
+    |
+501 |     Json(resolutions): Json<HashMap<String, String>>, // node_id -> resolution_strategy
+    |          ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_resolutions`
+
+warning: field `storage` is never read
+   --> crates/codegraph-api/src/graph_stub.rs:266:5
+    |
+265 | pub struct ConcurrentTransactionManager {
+    |            ---------------------------- field in this struct
+266 |     storage: Option<Arc<tokio::sync::RwLock<codegraph_graph::VersionedRocksDbStorage>>>,
+    |     ^^^^^^^
+    |
+    = note: `ConcurrentTransactionManager` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `storage` is never read
+   --> crates/codegraph-api/src/graph_stub.rs:310:5
+    |
+309 | pub struct GitLikeVersionManager {
+    |            --------------------- field in this struct
+310 |     storage: Option<Arc<RwLock<codegraph_graph::VersionedRocksDbStorage>>>,
+    |     ^^^^^^^
+    |
+    = note: `GitLikeVersionManager` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `content_type` is never read
+  --> crates/codegraph-api/src/performance/optimizer.rs:45:5
+   |
+43 | struct CacheEntry {
+   |        ---------- field in this struct
+44 |     bytes: Vec<u8>,
+45 |     content_type: &'static str,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `CacheEntry` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `clear` is never used
+   --> crates/codegraph-api/src/performance/optimizer.rs:126:8
+    |
+ 69 | impl LruBytesCache {
+    | ------------------ method in this implementation
+...
+126 |     fn clear(&self) {
+    |        ^^^^^
+
+warning: use of `async fn` in public traits is discouraged as auto trait bounds cannot be specified
+ --> crates/codegraph-api/src/parser_ext.rs:7:5
+  |
+7 |     async fn parse_snippet(&self, code: &str, language: &str) -> Result<Vec<CodeNode>>;
+  |     ^^^^^
+  |
+  = note: you can suppress this lint if you plan to use the trait only in your own code, or do not care about auto traits like `Send` on the `Future`
+  = note: `#[warn(async_fn_in_trait)]` on by default
+help: you can alternatively desugar to a normal `fn` that returns `impl Future` and add any desired bounds such as `Send`, but these cannot be relaxed without a breaking API change
+  |
+7 -     async fn parse_snippet(&self, code: &str, language: &str) -> Result<Vec<CodeNode>>;
+7 +     fn parse_snippet(&self, code: &str, language: &str) -> impl std::future::Future<Output = Result<Vec<CodeNode>>> + Send;
+  |
+
+warning: use of `async fn` in public traits is discouraged as auto trait bounds cannot be specified
+  --> crates/codegraph-api/src/semantic_search_ext.rs:19:5
+   |
+19 |     async fn get_index_stats(&self) -> Result<IndexStats>;
+   |     ^^^^^
+   |
+   = note: you can suppress this lint if you plan to use the trait only in your own code, or do not care about auto traits like `Send` on the `Future`
+help: you can alternatively desugar to a normal `fn` that returns `impl Future` and add any desired bounds such as `Send`, but these cannot be relaxed without a breaking API change
+   |
+19 -     async fn get_index_stats(&self) -> Result<IndexStats>;
+19 +     fn get_index_stats(&self) -> impl std::future::Future<Output = Result<IndexStats>> + Send;
+   |
+
+warning: use of `async fn` in public traits is discouraged as auto trait bounds cannot be specified
+  --> crates/codegraph-api/src/semantic_search_ext.rs:20:5
+   |
+20 |     async fn test_search(&self) -> Result<bool>;
+   |     ^^^^^
+   |
+   = note: you can suppress this lint if you plan to use the trait only in your own code, or do not care about auto traits like `Send` on the `Future`
+help: you can alternatively desugar to a normal `fn` that returns `impl Future` and add any desired bounds such as `Send`, but these cannot be relaxed without a breaking API change
+   |
+20 -     async fn test_search(&self) -> Result<bool>;
+20 +     fn test_search(&self) -> impl std::future::Future<Output = Result<bool>> + Send;
+   |
+
+warning: use of `async fn` in public traits is discouraged as auto trait bounds cannot be specified
+ --> crates/codegraph-api/src/vector_store_ext.rs:8:5
+  |
+8 |     async fn search_similar(&self, embedding: &[f32], k: usize) -> Result<Vec<NodeId>>;
+  |     ^^^^^
+  |
+  = note: you can suppress this lint if you plan to use the trait only in your own code, or do not care about auto traits like `Send` on the `Future`
+help: you can alternatively desugar to a normal `fn` that returns `impl Future` and add any desired bounds such as `Send`, but these cannot be relaxed without a breaking API change
+  |
+8 -     async fn search_similar(&self, embedding: &[f32], k: usize) -> Result<Vec<NodeId>>;
+8 +     fn search_similar(&self, embedding: &[f32], k: usize) -> impl std::future::Future<Output = Result<Vec<NodeId>>> + Send;
+  |
+
+warning: use of `async fn` in public traits is discouraged as auto trait bounds cannot be specified
+ --> crates/codegraph-api/src/vector_store_ext.rs:9:5
+  |
+9 |     async fn get_embedding(&self, node_id: NodeId) -> Result<Option<Vec<f32>>>;
+  |     ^^^^^
+  |
+  = note: you can suppress this lint if you plan to use the trait only in your own code, or do not care about auto traits like `Send` on the `Future`
+help: you can alternatively desugar to a normal `fn` that returns `impl Future` and add any desired bounds such as `Send`, but these cannot be relaxed without a breaking API change
+  |
+9 -     async fn get_embedding(&self, node_id: NodeId) -> Result<Option<Vec<f32>>>;
+9 +     fn get_embedding(&self, node_id: NodeId) -> impl std::future::Future<Output = Result<Option<Vec<f32>>>> + Send;
+  |
+
+warning: `codegraph-api` (lib) generated 95 warnings (run `cargo fix --lib -p codegraph-api` to apply 49 suggestions)
+warning: unused import: `Mutex`
+  --> crates/codegraph-zerocopy/src/buffer.rs:10:19
+   |
+10 | use parking_lot::{Mutex, RwLock};
+   |                   ^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `SeekFrom` and `Seek`
+  --> crates/codegraph-zerocopy/src/mmap.rs:13:10
+   |
+13 |     io::{Seek, SeekFrom},
+   |          ^^^^  ^^^^^^^^
+
+warning: unused import: `error`
+  --> crates/codegraph-zerocopy/src/mmap.rs:17:22
+   |
+17 | use tracing::{debug, error, instrument, warn};
+   |                      ^^^^^
+
+warning: unused imports: `deserialize` and `from_bytes_unchecked`
+  --> crates/codegraph-zerocopy/src/serialization.rs:11:31
+   |
+11 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, rancor::Failure,
+   |                               ^^^^^^^^^^^              ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `debug` and `trace`
+  --> crates/codegraph-zerocopy/src/serialization.rs:15:15
+   |
+15 | use tracing::{debug, instrument, trace};
+   |               ^^^^^              ^^^^^
+
+warning: unused import: `Mutex`
+ --> crates/codegraph-zerocopy/src/shared_memory.rs:8:19
+  |
+8 | use parking_lot::{Mutex, RwLock};
+  |                   ^^^^^
+
+warning: unused imports: `ffi::CString` and `ptr::NonNull`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:12:5
+   |
+12 |     ffi::CString,
+   |     ^^^^^^^^^^^^
+...
+16 |     ptr::NonNull,
+   |     ^^^^^^^^^^^^
+
+warning: unused import: `error`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:22:22
+   |
+22 | use tracing::{debug, error, instrument, trace, warn};
+   |                      ^^^^^
+
+warning: constant `CACHE_LINE_SIZE` is never used
+  --> crates/codegraph-zerocopy/src/buffer.rs:22:7
+   |
+22 | const CACHE_LINE_SIZE: usize = 64;
+   |       ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `path` is never read
+   --> crates/codegraph-zerocopy/src/mmap.rs:336:5
+    |
+331 | pub struct MmapCircularBuffer {
+    |            ------------------ field in this struct
+...
+336 |     path: PathBuf,
+    |     ^^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> crates/codegraph-zerocopy/src/mmap.rs:255:17
+    |
+255 |     pub fn read(&self) -> ThreadSafeMmapReadGuard {
+    |                 ^^^^^     ^^^^^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                 |
+    |                 the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+255 |     pub fn read(&self) -> ThreadSafeMmapReadGuard<'_> {
+    |                                                  ++++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> crates/codegraph-zerocopy/src/mmap.rs:262:18
+    |
+262 |     pub fn write(&self) -> ThreadSafeMmapWriteGuard {
+    |                  ^^^^^     ^^^^^^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                  |
+    |                  the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+262 |     pub fn write(&self) -> ThreadSafeMmapWriteGuard<'_> {
+    |                                                    ++++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:142:19
+    |
+142 |     pub fn reader(&self) -> SharedMemoryReader {
+    |                   ^^^^^     ^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                   |
+    |                   the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+142 |     pub fn reader(&self) -> SharedMemoryReader<'_> {
+    |                                               ++++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:154:19
+    |
+154 |     pub fn writer(&self) -> ZeroCopyResult<SharedMemoryWriter> {
+    |                   ^^^^^                    ^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                   |
+    |                   the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+154 |     pub fn writer(&self) -> ZeroCopyResult<SharedMemoryWriter<'_>> {
+    |                                                              ++++
+
+    Checking codegraph-api v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-api)
+warning: `codegraph-zerocopy` (lib) generated 14 warnings (run `cargo fix --lib -p codegraph-zerocopy` to apply 12 suggestions)
+    Checking codegraph-integration-tests v0.1.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/tests/integration)
+    Checking codegraph-cli v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-cli)
+warning: unused import: `super::*`
+   --> crates/codegraph-napi/src/config.rs:125:9
+    |
+125 |     use super::*;
+    |         ^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `get_cloud_config` is never used
+  --> crates/codegraph-napi/src/config.rs:11:14
+   |
+11 | pub async fn get_cloud_config() -> Result<CloudC...
+   |              ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `reload_config` is never used
+  --> crates/codegraph-napi/src/config.rs:34:14
+   |
+34 | pub async fn reload_config() -> Result<bool> {
+   |              ^^^^^^^^^^^^^
+
+warning: function `get_embedding_stats` is never used
+  --> crates/codegraph-napi/src/config.rs:61:14
+   |
+61 | pub async fn get_embedding_stats() -> Result<Emb...
+   |              ^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_cloud_available` is never used
+   --> crates/codegraph-napi/src/config.rs:106:14
+    |
+106 | pub async fn is_cloud_available() -> Result<boo...
+    |              ^^^^^^^^^^^^^^^^^^
+
+warning: function `get_config_path` is never used
+   --> crates/codegraph-napi/src/config.rs:112:14
+    |
+112 | pub async fn get_config_path() -> Result<String> {
+    |              ^^^^^^^^^^^^^^^
+
+warning: fields `app_state`, `config_manager`, and `cloud_enabled` are never read
+  --> crates/codegraph-napi/src/state.rs:17:9
+   |
+16 | pub struct NapiAppState {
+   |            ------------ fields in this struct
+17 |     pub app_state: AppState,
+   |         ^^^^^^^^^
+18 |     pub config_manager: Arc<ConfigManager>,
+   |         ^^^^^^^^^^^^^^
+19 |     pub cloud_enabled: bool,
+   |         ^^^^^^^^^^^^^
+
+warning: method `reload_config` is never used
+  --> crates/codegraph-napi/src/state.rs:76:18
+   |
+24 | impl NapiAppState {
+   | ----------------- method in this implementation
+...
+76 |     pub async fn reload_config(&mut self) -> Res...
+   |                  ^^^^^^^^^^^^^
+
+warning: function `with_state` is never used
+   --> crates/codegraph-napi/src/state.rs:134:14
+    |
+134 | pub async fn with_state<F, R>(f: F) -> Result<R>
+    |              ^^^^^^^^^^
+
+    Checking codegraph-mcp v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-mcp)
+warning: unused import: `approx::assert_relative_eq`
+   --> crates/codegraph-cache/src/embedding_cache.rs:329:9
+    |
+329 |     use approx::assert_relative_eq;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `codegraph-napi` (lib test) generated 9 warnings (run `cargo fix --lib -p codegraph-napi --tests` to apply 1 suggestion)
+warning: `codegraph-cache` (lib test) generated 1 warning (run `cargo fix --lib -p codegraph-cache --tests` to apply 1 suggestion)
+warning: unused import: `codegraph_cache::*`
+ --> crates/codegraph-cache/tests/cache_tests.rs:1:5
+  |
+1 | use codegraph_cache::*;
+  |     ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `codegraph_core::*`
+ --> crates/codegraph-cache/tests/cache_tests.rs:2:5
+  |
+2 | use codegraph_core::*;
+  |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::time::Duration`
+ --> crates/codegraph-cache/tests/cache_tests.rs:3:5
+  |
+3 | use std::time::Duration;
+  |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tokio_test`
+ --> crates/codegraph-cache/tests/cache_tests.rs:4:5
+  |
+4 | use tokio_test;
+  |     ^^^^^^^^^^
+
+warning: unused import: `super::*`
+  --> crates/codegraph-cache/tests/cache_tests.rs:47:9
+   |
+47 |     use super::*;
+   |         ^^^^^^^^
+
+warning: `codegraph-cache` (test "cache_tests") generated 5 warnings (run `cargo fix --test "cache_tests" -p codegraph-cache` to apply 5 suggestions)
+warning: unused import: `std::path::PathBuf`
+ --> crates/codegraph-api/src/bin/codegraph-setup.rs:5:5
+  |
+5 | use std::path::PathBuf;
+  |     ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `codegraph-api` (bin "codegraph-setup") generated 1 warning (run `cargo fix --bin "codegraph-setup" -p codegraph-api` to apply 1 suggestion)
+warning: unused import: `serial_test::serial`
+ --> tests/integration/src/lib.rs:6:5
+  |
+6 | use serial_test::serial;
+  |     ^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `codegraph-api` (bin "codegraph-setup" test) generated 1 warning (1 duplicate)
+error[E0432]: unresolved import `crate::schema`
+ --> crates/codegraph-api/src/graphql/benchmarks.rs:9:12
+  |
+9 | use crate::schema::create_schema;
+  |            ^^^^^^
+  |            |
+  |            unresolved import
+  |            help: a similar path exists: `utoipa::openapi::schema`
+
+error[E0432]: unresolved import `crate::state`
+  --> crates/codegraph-api/src/graphql/benchmarks.rs:10:12
+   |
+10 | use crate::state::AppState;
+   |            ^^^^^
+   |            |
+   |            unresolved import
+   |            help: a similar path exists: `codegraph_api::state`
+
+error[E0599]: no function or associated item named `default` found for struct `codegraph_mcp::McpProtocol` in the current scope
+  --> crates/codegraph-mcp/tests/benchmark_tests.rs:71:33
+   |
+71 |     let protocol = McpProtocol::default();
+   |                                 ^^^^^^^ function or associated item not found in `codegraph_mcp::McpProtocol`
+   |
+note: if you're trying to build a new `codegraph_mcp::McpProtocol` consider using one of the following associated functions:
+      codegraph_mcp::McpProtocol::new
+      codegraph_mcp::McpProtocol::with_latest_version
+  --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-mcp/src/protocol.rs:13:5
+   |
+13 |     pub fn new(version: ProtocolVersion) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+17 |     pub fn with_latest_version() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0433]: failed to resolve: unresolved import
+  --> crates/codegraph-api/src/graphql/benchmarks.rs:34:42
+   |
+34 | async fn create_bench_setup() -> (crate::schema::CodeGraphSchema, AppState) {
+   |                                          ^^^^^^
+   |                                          |
+   |                                          unresolved import
+   |                                          help: a similar path exists: `utoipa::openapi::schema`
+
+error[E0432]: unresolved import `rmcp::transport::TokioChildProcess`
+  --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:6:62
+   |
+ 6 | use rmcp::{model::CallToolRequestParam, service::ServiceExt, transport::TokioChildProcess};
+   |                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `TokioChildProcess` in `transport`
+   |
+note: found an item that was configured out
+  --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/vendor/rmcp/src/transport.rs:89:46
+   |
+87 | #[cfg(feature = "transport-child-process")]
+   |       ----------------------------------- the item is gated behind the `transport-child-process` feature
+88 | #[cfg_attr(docsrs, doc(cfg(feature = "transport-child-process")))]
+89 | pub use child_process::{ConfigureCommandExt, TokioChildProcess};
+   |                                              ^^^^^^^^^^^^^^^^^
+
+error[E0412]: cannot find type `Value` in this scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:210:22
+    |
+210 |         let _parsed: Value = serde_json::from_str(response_text)
+    |                      ^^^^^ not found in this scope
+    |
+help: consider importing one of these items
+    |
+  1 + use serde_json::Value;
+    |
+  1 + use serde_yaml::Value;
+    |
+  1 + use toml::Value;
+    |
+  1 + use tracing::Value;
+    |
+
+warning: unused import: `super::*`
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:709:9
+    |
+709 |     use super::*;
+    |         ^^^^^^^^
+    |
+help: if this is a test module, consider adding a `#[cfg(test)]` to the containing module
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:708:1
+    |
+708 | mod benchmark_tests {
+    | ^^^^^^^^^^^^^^^^^^^
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0599]: no function or associated item named `default` found for struct `codegraph_mcp::McpProtocol` in the current scope
+   --> crates/codegraph-mcp/tests/benchmark_tests.rs:217:33
+    |
+217 |     let protocol = McpProtocol::default();
+    |                                 ^^^^^^^ function or associated item not found in `codegraph_mcp::McpProtocol`
+    |
+note: if you're trying to build a new `codegraph_mcp::McpProtocol` consider using one of the following associated functions:
+      codegraph_mcp::McpProtocol::new
+      codegraph_mcp::McpProtocol::with_latest_version
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-mcp/src/protocol.rs:13:5
+    |
+ 13 |     pub fn new(version: ProtocolVersion) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 17 |     pub fn with_latest_version() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `codegraph-integration-tests` (lib) generated 1 warning (run `cargo fix --lib -p codegraph-integration-tests` to apply 1 suggestion)
+error[E0107]: missing generics for trait `ServiceExt`
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:28:44
+    |
+ 28 | async fn start_mcp_server() -> Result<impl ServiceExt> {
+    |                                            ^^^^^^^^^^ expected 1 generic argument
+    |
+note: trait defined here, with 1 generic parameter: `R`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/vendor/rmcp/src/service.rs:108:11
+    |
+108 | pub trait ServiceExt<R: ServiceRole>: Service<R> + Sized {
+    |           ^^^^^^^^^^ -
+help: add missing generic argument
+    |
+ 28 | async fn start_mcp_server() -> Result<impl ServiceExt<R>> {
+    |                                                      +++
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `codegraph-mcp` (test "benchmark_tests") due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+ --> crates/codegraph-api/src/graphql/benchmarks.rs:2:17
+  |
+2 | use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+  |                 ^^^^^^^^^
+  |
+  = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-api/src/graphql/benchmarks.rs:59:38
+   |
+59 |             let res = schema.execute(black_box(req)).await;
+   |                                      ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-api/src/graphql/benchmarks.rs:60:13
+   |
+60 |             black_box(res)
+   |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-api/src/graphql/benchmarks.rs:82:38
+   |
+82 |             let res = schema.execute(black_box(req)).await;
+   |                                      ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-api/src/graphql/benchmarks.rs:83:13
+   |
+83 |             black_box(res)
+   |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:145:46
+    |
+145 |                     let res = schema.execute(black_box(req)).await;
+    |                                              ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:146:21
+    |
+146 |                     black_box(res)
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:177:46
+    |
+177 |                     let res = schema.execute(black_box(req)).await;
+    |                                              ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:178:21
+    |
+178 |                     black_box(res)
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:235:46
+    |
+235 |                     let res = schema.execute(black_box(req)).await;
+    |                                              ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:236:21
+    |
+236 |                     black_box(res)
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:258:46
+    |
+258 |                     let res = schema.execute(black_box(req)).await;
+    |                                              ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:259:21
+    |
+259 |                     black_box(res)
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:318:46
+    |
+318 |                     let res = schema.execute(black_box(req)).await;
+    |                                              ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:319:21
+    |
+319 |                     black_box(res)
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:343:46
+    |
+343 |                     let res = schema.execute(black_box(req)).await;
+    |                                              ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:344:21
+    |
+344 |                     black_box(res)
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:400:46
+    |
+400 |                     let res = schema.execute(black_box(req)).await;
+    |                                              ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:401:21
+    |
+401 |                     black_box(res)
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:424:46
+    |
+424 |                     let res = schema.execute(black_box(req)).await;
+    |                                              ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:425:21
+    |
+425 |                     black_box(res)
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:473:46
+    |
+473 |                     let res = schema.execute(black_box(req)).await;
+    |                                              ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:474:21
+    |
+474 |                     black_box(res)
+    |                     ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:494:13
+    |
+494 |             black_box(results)
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:581:38
+    |
+581 |             let res = schema.execute(black_box(req)).await;
+    |                                      ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:582:13
+    |
+582 |             black_box(res)
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:631:38
+    |
+631 |             let res = schema.execute(black_box(req)).await;
+    |                                      ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:632:13
+    |
+632 |             black_box(res)
+    |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:684:21
+    |
+684 |                     black_box(results)
+    |                     ^^^^^^^^^
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-api/src/graphql/benchmarks.rs:35:17
+   |
+35 |     let state = AppState::new().await.expect("Failed to create test state");
+   |                 ^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0432]: unresolved import `codegraph_core::Node`
+  --> crates/codegraph-api/examples/parse_file.rs:12:37
+   |
+12 | use codegraph_core::{ConfigManager, Node};
+   |                                     ^^^^
+   |                                     |
+   |                                     no `Node` in the root
+   |                                     help: a similar name exists in the module: `node`
+   |
+   = help: consider importing one of these items instead:
+           codegraph_core::CacheType::Node
+           codegraph_graph::Node
+
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/api_integration.rs:9:42
+    |
+  9 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+   --> crates/codegraph-api/src/graphql/benchmarks.rs:166:18
+    |
+166 |             |b, &search_query| {
+    |                  ^^^^^^^^^^^^ doesn't have a size known at compile-time
+    |
+    = help: the trait `Sized` is not implemented for `str`
+note: there are multiple different versions of crate `core` in the dependency graph
+   --> /rustc/518b428304e0008859cb1fd81d1ac20efb2a064a/library/core/src/marker.rs:161:0
+    |
+    = note: this is the expected trait
+    |
+   ::: /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zerocopy-0.8.27/src/util/macro_util.rs:343:5
+    |
+343 |     pub trait Sized: core::marker::Sized {}
+    |     ------------------------------------ this is the found trait
+    = help: you can use `cargo tree` to explore your dependency tree
+    = note: all local variables must have a statically known size
+
+warning: `codegraph-integration-tests` (lib test) generated 1 warning (1 duplicate)
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/api_integration.rs:22:42
+    |
+ 22 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+error[E0599]: the method `serve` exists for unit type `()`, but its trait bounds were not satisfied
+  --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:37:22
+   |
+37 |     let service = ().serve(TokioChildProcess::new(cmd)?).await?;
+   |                      ^^^^^ method cannot be called on `()` due to unsatisfied trait bounds
+   |
+   = note: the following trait bounds were not satisfied:
+           `(): rmcp::Service<RoleServer>`
+           which is required by `(): ServiceExt<RoleServer>`
+           `&(): rmcp::Service<RoleServer>`
+           which is required by `&(): ServiceExt<RoleServer>`
+           `&mut (): rmcp::Service<RoleServer>`
+           which is required by `&mut (): ServiceExt<RoleServer>`
+
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/api_integration.rs:39:42
+    |
+ 39 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/api_integration.rs:57:42
+    |
+ 57 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+Some errors have detailed explanations: E0277, E0282, E0432, E0433.
+For more information about an error, try `rustc --explain E0277`.
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/examples/parse_file.rs:44:42
+    |
+ 44 |     let config = Arc::new(ConfigManager::new()?);
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+ 11 + use yansi::Paint;
+    |
+
+warning: `codegraph-api` (bench "api_benchmarks") generated 30 warnings
+error: could not compile `codegraph-api` (bench "api_benchmarks") due to 5 previous errors; 30 warnings emitted
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/api_integration.rs:82:42
+    |
+ 82 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+error[E0599]: no method named `list_tools` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+  --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:48:25
+   |
+48 |     let tools = service.list_tools(Default::default()).await?;
+   |                         ^^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error: could not compile `codegraph-api` (test "api_integration") due to 5 previous errors
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+  --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:80:13
+   |
+80 |     service.cancel().await?;
+   |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `parse` found for struct `TreeSitterParser` in the current scope
+  --> crates/codegraph-api/examples/parse_file.rs:72:18
+   |
+72 |     match parser.parse(&content, language, file_path) {
+   |                  ^^^^^
+   |
+help: there is a method `parse_file` with a similar name, but with different arguments
+  --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/traits.rs:7:5
+   |
+ 7 |     async fn parse_file(&self, file_path: &str) -> Result<Vec<CodeNode>>;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-api/examples/parse_file.rs:75:37
+   |
+75 |             info!("Found {} nodes", nodes.len());
+   |                                     ^^^^^ cannot infer type
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:108:21
+    |
+108 |             service.call_tool(CallToolRequestParam {
+    |             --------^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0407]: method `delete_node` is not a member of trait `codegraph_core::GraphStore`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:229:9
+    |
+229 | /         async fn delete_node(
+230 | |             &mut self,
+231 | |             _id: codegraph_core::NodeId,
+232 | |         ) -> Result<bool, codegraph_core::CodeGraphError> {
+233 | |             Ok(false)
+234 | |         }
+    | |_________^ not a member of trait `codegraph_core::GraphStore`
+
+error[E0407]: method `get_nodes_by_file` is not a member of trait `codegraph_core::GraphStore`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:236:9
+    |
+236 | /         async fn get_nodes_by_file(
+237 | |             &self,
+238 | |             _file_path: &str,
+239 | |         ) -> Result<Vec<codegraph_core::Node>, codegraph_core::CodeGraphError> {
+240 | |             Ok(vec![])
+241 | |         }
+    | |_________^ not a member of trait `codegraph_core::GraphStore`
+
+error[E0407]: method `get_all_nodes` is not a member of trait `codegraph_core::GraphStore`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:243:9
+    |
+243 | /         async fn get_all_nodes(
+244 | |             &self,
+245 | |         ) -> Result<Vec<codegraph_core::Node>, codegraph_core::CodeGraphError> {
+246 | |             Ok(vec![])
+247 | |         }
+    | |_________^ not a member of trait `codegraph_core::GraphStore`
+
+error[E0407]: method `clear` is not a member of trait `codegraph_core::GraphStore`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:249:9
+    |
+249 | /         async fn clear(&mut self) -> Result<(), codegraph_core::CodeGraphError> {
+250 | |             Ok(())
+251 | |         }
+    | |_________^ not a member of trait `codegraph_core::GraphStore`
+
+error[E0412]: cannot find type `Node` in crate `codegraph_core`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:210:36
+    |
+210 |             _node: codegraph_core::Node,
+    |                                    ^^^^ not found in `codegraph_core`
+    |
+help: consider importing this struct
+    |
+ 16 +     use codegraph_graph::Node;
+    |
+help: if you import `Node`, refer to it directly
+    |
+210 -             _node: codegraph_core::Node,
+210 +             _node: Node,
+    |
+
+error[E0412]: cannot find type `Node` in crate `codegraph_core`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:218:44
+    |
+218 |         ) -> Result<Option<codegraph_core::Node>, codegraph_core::CodeGraphError> {
+    |                                            ^^^^ not found in `codegraph_core`
+    |
+help: consider importing this struct
+    |
+ 16 +     use codegraph_graph::Node;
+    |
+help: if you import `Node`, refer to it directly
+    |
+218 -         ) -> Result<Option<codegraph_core::Node>, codegraph_core::CodeGraphError> {
+218 +         ) -> Result<Option<Node>, codegraph_core::CodeGraphError> {
+    |
+
+error[E0412]: cannot find type `Node` in crate `codegraph_core`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:224:36
+    |
+224 |             _node: codegraph_core::Node,
+    |                                    ^^^^ not found in `codegraph_core`
+    |
+help: consider importing this struct
+    |
+ 16 +     use codegraph_graph::Node;
+    |
+help: if you import `Node`, refer to it directly
+    |
+224 -             _node: codegraph_core::Node,
+224 +             _node: Node,
+    |
+
+error[E0412]: cannot find type `Node` in crate `codegraph_core`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:239:41
+    |
+239 |         ) -> Result<Vec<codegraph_core::Node>, codegraph_core::CodeGraphError> {
+    |                                         ^^^^ not found in `codegraph_core`
+    |
+help: consider importing this struct
+    |
+ 16 +     use codegraph_graph::Node;
+    |
+help: if you import `Node`, refer to it directly
+    |
+239 -         ) -> Result<Vec<codegraph_core::Node>, codegraph_core::CodeGraphError> {
+239 +         ) -> Result<Vec<Node>, codegraph_core::CodeGraphError> {
+    |
+
+error[E0412]: cannot find type `Node` in crate `codegraph_core`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:245:41
+    |
+245 |         ) -> Result<Vec<codegraph_core::Node>, codegraph_core::CodeGraphError> {
+    |                                         ^^^^ not found in `codegraph_core`
+    |
+help: consider importing this struct
+    |
+ 16 +     use codegraph_graph::Node;
+    |
+help: if you import `Node`, refer to it directly
+    |
+245 -         ) -> Result<Vec<codegraph_core::Node>, codegraph_core::CodeGraphError> {
+245 +         ) -> Result<Vec<Node>, codegraph_core::CodeGraphError> {
+    |
+
+warning: unused import: `ApiError`
+ --> crates/codegraph-api/src/streaming_handlers/tests.rs:2:13
+  |
+2 | use crate::{ApiError, AppState};
+  |             ^^^^^^^^
+
+warning: unused imports: `Request` and `body::Body`
+ --> crates/codegraph-api/src/streaming_handlers/tests.rs:4:5
+  |
+4 |     body::Body,
+  |     ^^^^^^^^^^
+5 |     extract::{Query, State},
+6 |     http::{Request, StatusCode},
+  |            ^^^^^^^
+
+warning: unused import: `axum_test::TestServer`
+ --> crates/codegraph-api/src/streaming_handlers/tests.rs:9:5
+  |
+9 | use axum_test::TestServer;
+  |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `serde_json`
+  --> crates/codegraph-api/src/streaming_handlers/tests.rs:10:5
+   |
+10 | use serde_json;
+   |     ^^^^^^^^^^
+
+warning: unused import: `crate::test_helpers::test_utils`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:340:13
+    |
+340 |         use crate::test_helpers::test_utils;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:153:13
+    |
+153 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/health_monitoring_test.rs:8:42
+    |
+  8 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:190:21
+    |
+190 |             service.call_tool(CallToolRequestParam {
+    |             --------^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+Some errors have detailed explanations: E0282, E0432, E0599.
+For more information about an error, try `rustc --explain E0282`.
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/examples/basic_server.rs:26:42
+    |
+ 26 |     let config = Arc::new(ConfigManager::new()?);
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `codegraph-api` (example "parse_file") due to 4 previous errors
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/health_monitoring_test.rs:28:42
+    |
+ 28 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/health_monitoring_test.rs:46:42
+    |
+ 46 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/health_monitoring_test.rs:63:42
+    |
+ 63 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:216:13
+    |
+216 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+warning: unused import: `axum_test::TestServer`
+ --> tests/integration/tests/search_and_retrieve.rs:1:5
+  |
+1 | use axum_test::TestServer;
+  |     ^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/health_monitoring_test.rs:81:42
+    |
+ 81 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+error: could not compile `codegraph-api` (example "basic_server") due to 1 previous error
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:259:21
+    |
+259 |             service.call_tool(CallToolRequestParam {
+    |             --------^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/health_monitoring_test.rs:152:42
+    |
+152 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+ --> crates/codegraph-api/benches/streaming_benchmarks.rs:2:17
+  |
+2 | use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
+  |                 ^^^^^^^^^
+  |
+  = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-api/benches/streaming_benchmarks.rs:52:17
+   |
+52 |                 black_box(items)
+   |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-api/benches/streaming_benchmarks.rs:68:13
+   |
+68 |             black_box(items)
+   |             ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/codegraph-api/benches/streaming_benchmarks.rs:89:17
+   |
+89 |                 black_box(items)
+   |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/benches/streaming_benchmarks.rs:124:17
+    |
+124 |                 black_box(results)
+    |                 ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/benches/streaming_benchmarks.rs:153:25
+    |
+153 |                         black_box(items)
+    |                         ^^^^^^^^^
+
+warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+   --> crates/codegraph-api/benches/streaming_benchmarks.rs:178:21
+    |
+178 |                     black_box(items)
+    |                     ^^^^^^^^^
+
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/health_monitoring_test.rs:179:42
+    |
+179 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+error[E0063]: missing field `node` in initializer of `SearchResult`
+  --> crates/codegraph-api/benches/streaming_benchmarks.rs:15:30
+   |
+15 |                     .map(|i| codegraph_vector::SearchResult {
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `node`
+
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/tests/health_monitoring_test.rs:237:42
+    |
+237 |     let config = Arc::new(ConfigManager::new().expect("Failed to create config"));
+    |                                          ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use yansi::paint::Paint;
+    |
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:292:13
+    |
+292 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error: could not compile `codegraph-api` (test "health_monitoring_test") due to 8 previous errors
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+  --> tests/integration/tests/search_and_retrieve.rs:20:17
+   |
+20 |     assert!(res.status().is_success());
+   |                 ^^^^^^
+   |
+help: there is a method `status_code` with a similar name
+   |
+20 |     assert!(res.status_code().is_success());
+   |                       +++++
+
+error[E0425]: cannot find function `create_large_dataset_stream` in this scope
+  --> crates/codegraph-api/benches/streaming_benchmarks.rs:64:26
+   |
+64 |             let stream = create_large_dataset_stream(100, 1);
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0063]: missing field `node` in initializer of `SearchResult`
+  --> crates/codegraph-api/benches/streaming_benchmarks.rs:80:30
+   |
+80 |                     .map(|i| codegraph_vector::SearchResult {
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `node`
+
+error[E0425]: cannot find function `create_csv_stream` in this scope
+  --> crates/codegraph-api/benches/streaming_benchmarks.rs:87:30
+   |
+87 |                 let stream = create_csv_stream(results, 25);
+   |                              ^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:329:21
+    |
+329 |             service.call_tool(CallToolRequestParam {
+    |             --------^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0063]: missing field `node` in initializer of `SearchResult`
+   --> crates/codegraph-api/benches/streaming_benchmarks.rs:144:38
+    |
+144 | ...                   .map(|i| codegraph_vector::SearchResult {
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `node`
+
+error[E0425]: cannot find function `create_csv_stream` in this scope
+   --> crates/codegraph-api/benches/streaming_benchmarks.rs:151:38
+    |
+151 |                         let stream = create_csv_stream(results, batch_size);
+    |                                      ^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `create_large_dataset_stream` in this scope
+   --> crates/codegraph-api/benches/streaming_benchmarks.rs:174:34
+    |
+ 59 | fn benchmark_large_dataset_stream(c: &mut Criterion) {
+    | ---------------------------------------------------- similarly named function `benchmark_large_dataset_stream` defined here
+...
+174 |                     let stream = create_large_dataset_stream(50, throttle_ms);
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `benchmark_large_dataset_stream`
+
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+  --> tests/integration/tests/search_and_retrieve.rs:30:20
+   |
+30 |     assert_eq!(res.status().as_u16(), 400);
+   |                    ^^^^^^
+   |
+help: there is a method `status_code` with a similar name
+   |
+30 |     assert_eq!(res.status_code().as_u16(), 400);
+   |                          +++++
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:358:13
+    |
+358 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+Some errors have detailed explanations: E0063, E0425.
+For more information about an error, try `rustc --explain E0063`.
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+  --> tests/integration/tests/search_and_retrieve.rs:39:20
+   |
+39 |     assert_eq!(res.status().as_u16(), 404);
+   |                    ^^^^^^
+   |
+help: there is a method `status_code` with a similar name
+   |
+39 |     assert_eq!(res.status_code().as_u16(), 404);
+   |                          +++++
+
+warning: `codegraph-api` (bench "streaming_benchmarks") generated 7 warnings
+error: could not compile `codegraph-api` (bench "streaming_benchmarks") due to 7 previous errors; 7 warnings emitted
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:373:17
+    |
+373 |         service.call_tool(CallToolRequestParam {
+    |         --------^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+  --> tests/integration/tests/search_and_retrieve.rs:51:20
+   |
+51 |     assert_eq!(res.status().as_u16(), 404);
+   |                    ^^^^^^
+   |
+help: there is a method `status_code` with a similar name
+   |
+51 |     assert_eq!(res.status_code().as_u16(), 404);
+   |                          +++++
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:396:13
+    |
+396 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+  --> tests/integration/tests/search_and_retrieve.rs:60:17
+   |
+60 |     assert!(res.status().is_success());
+   |                 ^^^^^^
+   |
+help: there is a method `status_code` with a similar name
+   |
+60 |     assert!(res.status_code().is_success());
+   |                       +++++
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:411:17
+    |
+411 |         service.call_tool(CallToolRequestParam {
+    |         --------^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+  --> tests/integration/tests/search_and_retrieve.rs:75:17
+   |
+75 |     assert!(res.status().is_success());
+   |                 ^^^^^^
+   |
+help: there is a method `status_code` with a similar name
+   |
+75 |     assert!(res.status_code().is_success());
+   |                       +++++
+
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+  --> tests/integration/tests/search_and_retrieve.rs:86:17
+   |
+86 |     assert!(res.status().is_success());
+   |                 ^^^^^^
+   |
+help: there is a method `status_code` with a similar name
+   |
+86 |     assert!(res.status_code().is_success());
+   |                       +++++
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:434:13
+    |
+434 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+  --> tests/integration/tests/search_and_retrieve.rs:88:18
+   |
+88 |     assert!(res2.status().is_success());
+   |                  ^^^^^^
+   |
+help: there is a method `status_code` with a similar name
+   |
+88 |     assert!(res2.status_code().is_success());
+   |                        +++++
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:450:17
+    |
+450 |         service.call_tool(CallToolRequestParam {
+    |         --------^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+   --> tests/integration/tests/search_and_retrieve.rs:100:20
+    |
+100 |     assert_eq!(res.status().as_u16(), 400);
+    |                    ^^^^^^
+    |
+help: there is a method `status_code` with a similar name
+    |
+100 |     assert_eq!(res.status_code().as_u16(), 400);
+    |                          +++++
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:480:17
+    |
+480 |         service.call_tool(CallToolRequestParam {
+    |         --------^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+   --> tests/integration/tests/search_and_retrieve.rs:108:18
+    |
+108 |     assert!(res1.status().is_success());
+    |                  ^^^^^^
+    |
+help: there is a method `status_code` with a similar name
+    |
+108 |     assert!(res1.status_code().is_success());
+    |                        +++++
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:509:17
+    |
+509 |         service.call_tool(CallToolRequestParam {
+    |         --------^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+   --> tests/integration/tests/search_and_retrieve.rs:110:18
+    |
+110 |     assert!(res2.status().is_success());
+    |                  ^^^^^^
+    |
+help: there is a method `status_code` with a similar name
+    |
+110 |     assert!(res2.status_code().is_success());
+    |                        +++++
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:534:13
+    |
+534 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `status` found for struct `TestResponse` in the current scope
+   --> tests/integration/tests/search_and_retrieve.rs:112:18
+    |
+112 |     assert!(res3.status().is_success());
+    |                  ^^^^^^
+    |
+help: there is a method `status_code` with a similar name
+    |
+112 |     assert!(res3.status_code().is_success());
+    |                        +++++
+
+error[E0277]: `TestRequest` is not a future
+   --> tests/integration/tests/search_and_retrieve.rs:120:45
+    |
+120 |     let results = futures::future::join_all(futs).await;
+    |                   ------------------------- ^^^^ `TestRequest` is not a future
+    |                   |
+    |                   required by a bound introduced by this call
+    |
+    = help: the trait `futures::Future` is not implemented for `TestRequest`
+note: required by a bound in `join_all`
+   --> /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-util-0.3.31/src/future/join_all.rs:105:14
+    |
+102 | pub fn join_all<I>(iter: I) -> JoinAll<I::Item>
+    |        -------- required by a bound in this function
+...
+105 |     I::Item: Future,
+    |              ^^^^^^ required by this bound in `join_all`
+
+error[E0277]: `TestRequest` is not a future
+   --> tests/integration/tests/search_and_retrieve.rs:120:19
+    |
+120 |     let results = futures::future::join_all(futs).await;
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `TestRequest` is not a future
+    |
+    = help: the trait `futures::Future` is not implemented for `TestRequest`
+note: required by a bound in `JoinAll`
+   --> /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-util-0.3.31/src/future/join_all.rs:29:8
+    |
+ 27 | pub struct JoinAll<F>
+    |            ------- required by a bound in this struct
+ 28 | where
+ 29 |     F: Future,
+    |        ^^^^^^ required by this bound in `JoinAll`
+
+error[E0277]: `TestRequest` is not a future
+   --> tests/integration/tests/search_and_retrieve.rs:120:51
+    |
+120 |     let results = futures::future::join_all(futs).await;
+    |                                                   ^^^^^ `TestRequest` is not a future
+    |
+    = help: the trait `futures::Future` is not implemented for `TestRequest`
+note: required by a bound in `JoinAll`
+   --> /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-util-0.3.31/src/future/join_all.rs:29:8
+    |
+ 27 | pub struct JoinAll<F>
+    |            ------- required by a bound in this struct
+ 28 | where
+ 29 |     F: Future,
+    |        ^^^^^^ required by this bound in `JoinAll`
+
+error[E0282]: type annotations needed for `Vec<_>`
+   --> tests/integration/tests/search_and_retrieve.rs:120:9
+    |
+120 |     let results = futures::future::join_all(futs).await;
+    |         ^^^^^^^
+121 |     for r in results {
+122 |         assert!(r.status().is_success());
+    |                 - type must be known at this point
+    |
+help: consider giving `results` an explicit type, where the placeholders `_` are specified
+    |
+120 |     let results: Vec<_> = futures::future::join_all(futs).await;
+    |                ++++++++
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:549:10
+    |
+548 |       let result = service
+    |  __________________-
+549 | |         .call_tool(CallToolRequestParam {
+    | |         -^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+    | |_________|
+    |
+
+Some errors have detailed explanations: E0277, E0282, E0599.
+warning: `codegraph-integration-tests` (test "search_and_retrieve") generated 1 warning
+error: could not compile `codegraph-integration-tests` (test "search_and_retrieve") due to 16 previous errors; 1 warning emitted
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:579:10
+    |
+578 |       let result = service
+    |  __________________-
+579 | |         .call_tool(CallToolRequestParam {
+    | |         -^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+    | |_________|
+    |
+
+error[E0282]: type annotations needed
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:578:9
+    |
+578 |     let result = service
+    |         ^^^^^^
+...
+585 |     assert!(result.is_err(), "Should error for non-existent tool");
+    |             ------ type must be known at this point
+    |
+help: consider giving `result` an explicit type
+    |
+578 |     let result: /* Type */ = service
+    |               ++++++++++++
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:591:10
+    |
+590 |       let result = service
+    |  __________________-
+591 | |         .call_tool(CallToolRequestParam {
+    | |         -^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+    | |_________|
+    |
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:628:13
+    |
+628 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:655:21
+    |
+655 |             service.call_tool(CallToolRequestParam {
+    |             --------^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:678:13
+    |
+678 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:725:21
+    |
+725 |             service.call_tool(CallToolRequestParam {
+    |             --------^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:760:13
+    |
+760 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `list_tools` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:783:25
+    |
+783 |     let tools = service.list_tools(Default::default()).await?;
+    |                         ^^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `peer_info` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:787:24
+    |
+787 |     let info = service.peer_info();
+    |                        ^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:790:13
+    |
+790 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+error[E0599]: no method named `call_tool` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:806:10
+    |
+805 |       let _result = service
+    |  ___________________-
+806 | |         .call_tool(CallToolRequestParam {
+    | |         -^^^^^^^^^ method not found in `impl ServiceExt<{type error}>`
+    | |_________|
+    |
+
+error[E0599]: no method named `cancel` found for opaque type `impl ServiceExt<{type error}>` in the current scope
+   --> crates/codegraph-mcp/tests/e2e_mcp_tools.rs:829:13
+    |
+829 |     service.cancel().await?;
+    |             ^^^^^^ method not found in `impl ServiceExt<{type error}>`
+
+Some errors have detailed explanations: E0107, E0282, E0412, E0432, E0599.
+For more information about an error, try `rustc --explain E0107`.
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/src/test_helpers.rs:12:41
+    |
+ 12 |                 Arc::new(ConfigManager::new().expect("Failed to create test config manager"));
+    |                                         ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  3 +     use yansi::paint::Paint;
+    |
+
+error: could not compile `codegraph-mcp` (test "e2e_mcp_tools") due to 36 previous errors
+error[E0046]: not all trait items implemented, missing: `remove_node`, `find_nodes_by_name`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:207:5
+    |
+207 |     impl codegraph_core::GraphStore for MockGraphStore {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `remove_node`, `find_nodes_by_name` in implementation
+    |
+    = help: implement the missing item: `fn remove_node<'life0: 'async_trait, 'async_trait>(&'life0 mut self, _: uuid::Uuid) -> Pin<Box<(dyn futures::Future<Output = Result<(), CodeGraphError>> + std::marker::Send + 'async_trait)>> { todo!() }`
+    = help: implement the missing item: `fn find_nodes_by_name<'life0: 'async_trait, 'life1: 'async_trait, 'async_trait>(&'life0 self, _: &'life1 str) -> Pin<Box<(dyn futures::Future<Output = Result<Vec<CodeNode>, CodeGraphError>> + std::marker::Send + 'async_trait)>> { todo!() }`
+
+error[E0063]: missing field `node` in initializer of `SearchResult`
+  --> crates/codegraph-api/src/streaming_handlers/tests.rs:88:13
+   |
+88 |             codegraph_vector::SearchResult {
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `node`
+
+error[E0063]: missing field `node` in initializer of `SearchResult`
+  --> crates/codegraph-api/src/streaming_handlers/tests.rs:92:13
+   |
+92 |             codegraph_vector::SearchResult {
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `node`
+
+error[E0308]: mismatched types
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:103:13
+    |
+101 |         let stream = create_backpressure_stream(
+    |                      -------------------------- arguments to this function are incorrect
+102 |             mock_results,
+103 |             graph,
+    |             ^^^^^ expected `RwLockReadGuard<'_, InMemoryGraph>`, found `RwLockReadGuard<'_, Box<...>>`
+    |
+    = note: expected struct `tokio::sync::RwLockReadGuard<'_, InMemoryGraph>`
+               found struct `tokio::sync::RwLockReadGuard<'_, Box<dyn GraphStore + std::marker::Send + Sync>>`
+note: function defined here
+   --> crates/codegraph-api/src/streaming_handlers.rs:77:4
+    |
+ 77 | fn create_backpressure_stream(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 78 |     results: Vec<codegraph_vector::SearchResult>,
+ 79 |     graph: tokio::sync::RwLockReadGuard<'_, InMemoryGraph>,
+    |     ------------------------------------------------------
+
+error[E0063]: missing field `node` in initializer of `SearchResult`
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:160:33
+    |
+160 |         let mock_results = vec![codegraph_vector::SearchResult {
+    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `node`
+
+error[E0277]: the trait bound `streaming_handlers::StreamingMetadata: serde::de::DeserializeOwned` is not satisfied
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:322:52
+    |
+322 |         let metadata: StreamingMetadata = response.json();
+    |                                                    ^^^^ unsatisfied trait bound
+    |
+help: the trait `for<'de> auth::_::_serde::Deserialize<'de>` is not implemented for `streaming_handlers::StreamingMetadata`
+   --> crates/codegraph-api/src/streaming_handlers.rs:37:1
+    |
+ 37 | pub struct StreamingMetadata {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: the following other types implement trait `auth::_::_serde::Deserialize<'de>`:
+              `&'a [u8]` implements `auth::_::_serde::Deserialize<'de>`
+              `&'a std::path::Path` implements `auth::_::_serde::Deserialize<'de>`
+              `&'a str` implements `auth::_::_serde::Deserialize<'de>`
+              `()` implements `auth::_::_serde::Deserialize<'de>`
+              `(T,)` implements `auth::_::_serde::Deserialize<'de>`
+              `(T0, T1)` implements `auth::_::_serde::Deserialize<'de>`
+              `(T0, T1, T2)` implements `auth::_::_serde::Deserialize<'de>`
+              `(T0, T1, T2, T3)` implements `auth::_::_serde::Deserialize<'de>`
+            and 1101 others
+    = note: required for `streaming_handlers::StreamingMetadata` to implement `DeserializeOwned`
+note: required by a bound in `TestResponse::json`
+   --> /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-test-18.1.0/src/test_response.rs:256:12
+    |
+254 |     pub fn json<T>(&self) -> T
+    |            ---- required by a bound in this associated function
+255 |     where
+256 |         T: DeserializeOwned,
+    |            ^^^^^^^^^^^^^^^^ required by this bound in `TestResponse::json`
+    = note: the full name for the type has been written to '/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/target/debug/deps/codegraph_api-798271c786b83079.long-type-3143326730946739031.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0277]: the trait bound `streaming_handlers::FlowControlStats: serde::de::DeserializeOwned` is not satisfied
+   --> crates/codegraph-api/src/streaming_handlers/tests.rs:335:48
+    |
+335 |         let stats: FlowControlStats = response.json();
+    |                                                ^^^^ unsatisfied trait bound
+    |
+help: the trait `for<'de> auth::_::_serde::Deserialize<'de>` is not implemented for `streaming_handlers::FlowControlStats`
+   --> crates/codegraph-api/src/streaming_handlers.rs:269:1
+    |
+269 | pub struct FlowControlStats {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: the following other types implement trait `auth::_::_serde::Deserialize<'de>`:
+              `&'a [u8]` implements `auth::_::_serde::Deserialize<'de>`
+              `&'a std::path::Path` implements `auth::_::_serde::Deserialize<'de>`
+              `&'a str` implements `auth::_::_serde::Deserialize<'de>`
+              `()` implements `auth::_::_serde::Deserialize<'de>`
+              `(T,)` implements `auth::_::_serde::Deserialize<'de>`
+              `(T0, T1)` implements `auth::_::_serde::Deserialize<'de>`
+              `(T0, T1, T2)` implements `auth::_::_serde::Deserialize<'de>`
+              `(T0, T1, T2, T3)` implements `auth::_::_serde::Deserialize<'de>`
+            and 1101 others
+    = note: required for `streaming_handlers::FlowControlStats` to implement `DeserializeOwned`
+note: required by a bound in `TestResponse::json`
+   --> /Users/jokkeruokolainen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-test-18.1.0/src/test_response.rs:256:12
+    |
+254 |     pub fn json<T>(&self) -> T
+    |            ---- required by a bound in this associated function
+255 |     where
+256 |         T: DeserializeOwned,
+    |            ^^^^^^^^^^^^^^^^ required by this bound in `TestResponse::json`
+    = note: the full name for the type has been written to '/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/target/debug/deps/codegraph_api-798271c786b83079.long-type-3143326730946739031.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0599]: no function or associated item named `new` found for struct `codegraph_core::ConfigManager` in the current scope
+   --> crates/codegraph-api/src/test_helpers.rs:28:33
+    |
+ 28 |         Arc::new(ConfigManager::new().expect("Failed to create test config"))
+    |                                 ^^^ function or associated item not found in `codegraph_core::ConfigManager`
+    |
+note: if you're trying to build a new `codegraph_core::ConfigManager`, consider using `codegraph_core::ConfigManager::load` which returns `Result<codegraph_core::ConfigManager, ConfigError>`
+   --> /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core/src/config_manager.rs:367:5
+    |
+367 |     pub fn load() -> Result<Self, ConfigError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Paint` which provides `new` is implemented but not in scope; perhaps you want to import it
+    |
+  3 +     use yansi::paint::Paint;
+    |
+
+warning: variable does not need to be mutable
+   --> crates/codegraph-api/src/health.rs:429:13
+    |
+429 |         let mut components = ComponentsHealth {
+    |             ----^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+Some errors have detailed explanations: E0046, E0063, E0277, E0308, E0407, E0412, E0599.
+For more information about an error, try `rustc --explain E0046`.
+warning: `codegraph-api` (lib test) generated 92 warnings (86 duplicates)
+error: could not compile `codegraph-api` (lib test) due to 18 previous errors; 92 warnings emitted

@@ -500,7 +500,7 @@ mod tests {
 
         let key = "test_key";
         let value = vec![1.0f32, 2.0, 3.0];
-        let entry = CacheEntry::new(value, value.estimate_size(), None);
+        let entry = CacheEntry::new(value.clone(), value.estimate_size(), None);
 
         storage.store(CF_EMBEDDINGS, key, entry).await.unwrap();
 
@@ -541,9 +541,8 @@ mod tests {
             hits: 100,
             misses: 50,
             evictions: 10,
-            total_entries: 1000,
-            memory_usage_bytes: 1024 * 1024,
-            average_access_time_ns: 1000,
+            entries: 1000,
+            memory_usage: 1024 * 1024,
             hit_rate: 0.67,
         };
 

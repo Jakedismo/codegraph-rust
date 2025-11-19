@@ -713,7 +713,7 @@ impl Default for ResponseGenerator {
 mod tests {
     use super::*;
     use crate::rag::{RankedResult, RetrievalMethod, RetrievalResult, ScoreBreakdown};
-    use codegraph_core::{Language, Location, Metadata, NodeType};
+    use codegraph_core::{CodeNode, Language, Location, Metadata, NodeType};
     use uuid::Uuid;
 
     fn create_test_ranked_result(name: &str, content: &str, score: f32) -> RankedResult {

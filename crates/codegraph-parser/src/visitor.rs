@@ -184,7 +184,7 @@ impl AstToGraphConverter {
             if content.contains(&format!("{}", other_name))
                 && matches!(
                     other_entity.node.node_type,
-                    Some(NodeType::Variable) | Some(NodeType::Struct) | Some(NodeType::Class)
+                    Some(NodeType::Variable) | Some(NodeType::Struct) | Some(NodeType::Class) | Some(NodeType::Import)
                 )
             {
                 self.relationships.push(SemanticRelationship {
@@ -410,6 +410,15 @@ impl AstToGraphConverter {
                 Some(NodeType::Interface)
             }
             (Language::TypeScript | Language::JavaScript, "import_statement") => {
+                None // Don't map the whole statement, map children
+            }
+            (Language::TypeScript | Language::JavaScript, "import_specifier") => {
+                Some(NodeType::Import)
+            }
+            (Language::TypeScript | Language::JavaScript, "namespace_import") => {
+                Some(NodeType::Import)
+            }
+            (Language::TypeScript | Language::JavaScript, "default_import") => {
                 Some(NodeType::Import)
             }
             (Language::TypeScript | Language::JavaScript, "variable_declaration") => {
@@ -419,9 +428,10 @@ impl AstToGraphConverter {
 
             (Language::Python, "function_definition") => Some(NodeType::Function),
             (Language::Python, "class_definition") => Some(NodeType::Class),
-            (Language::Python, "import_statement" | "import_from_statement") => {
-                Some(NodeType::Import)
-            }
+            (Language::Python, "import_statement") => None, // Map children
+            (Language::Python, "import_from_statement") => None, // Map children
+            (Language::Python, "dotted_name") => Some(NodeType::Import),
+            (Language::Python, "aliased_import") => Some(NodeType::Import),
             (Language::Python, "assignment") => Some(NodeType::Variable),
 
             (Language::Go, "function_declaration") => Some(NodeType::Function),
@@ -456,7 +466,9 @@ impl AstToGraphConverter {
     fn extract_name(&self, node: &Node) -> Option<String> {
         match node.kind() {
             "use_declaration" => self.extract_use_name(node),
-            "import_statement" | "import_from_statement" => self.extract_import_name(node),
+            "import_specifier" | "default_import" | "namespace_import" => self.extract_identifier_name(node),
+            "dotted_name" => self.extract_dotted_name(node),
+            "aliased_import" => self.extract_aliased_import(node),
             _ => self.extract_identifier_name(node),
         }
     }
@@ -487,9 +499,23 @@ impl AstToGraphConverter {
         }
     }
 
-    fn extract_import_name(&self, node: &Node) -> Option<String> {
-        let content = node.utf8_text(&self.source_bytes).ok()?;
-        content.lines().next().map(|line| line.trim().to_string())
+    fn extract_dotted_name(&self, node: &Node) -> Option<String> {
+        node.utf8_text(&self.source_bytes).ok().map(String::from)
+    }
+
+    fn extract_aliased_import(&self, node: &Node) -> Option<String> {
+        // In "import foo as bar", we want "bar" (the alias) as the symbol name
+        // because that's what is used in the code.
+        for child in node.children(&mut node.walk()) {
+            if child.kind() == "alias" {
+                 for grandchild in child.children(&mut child.walk()) {
+                     if grandchild.kind() == "identifier" {
+                         return grandchild.utf8_text(&self.source_bytes).ok().map(String::from);
+                     }
+                 }
+            }
+        }
+        None
     }
 
     fn node_to_location(&self, node: &Node) -> Location {

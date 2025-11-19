@@ -1,0 +1,761 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-napi/Cargo.toml
+workspace: /Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/Cargo.toml
+warning: invalid feature `demo` in required-features of target `memory_profiler_demo`: `demo` is not present in [features] section
+warning: invalid feature `demo` in required-features of target `readahead_demo`: `demo` is not present in [features] section
+    Checking surrealdb v2.3.10
+    Checking codegraph-vector v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-vector)
+warning: unused variable: `node`
+   --> crates/codegraph-core/src/optimized_types.rs:394:13
+    |
+394 |         let node = OptimizedCodeNode {
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_node`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `dim` is never read
+   --> crates/codegraph-core/src/integration/graph_vector.rs:464:9
+    |
+463 |     struct InMemoryVectorStore {
+    |            ------------------- field in this struct
+464 |         dim: usize,
+    |         ^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `state_snapshot` is never used
+   --> crates/codegraph-core/src/watch/mod.rs:690:8
+    |
+ 50 | impl IntelligentFileWatcher {
+    | --------------------------- method in this implementation
+...
+690 |     fn state_snapshot(&self, path: &Path) -> Op...
+    |        ^^^^^^^^^^^^^^
+
+    Checking codegraph-core v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-core)
+warning: `codegraph-core` (lib test) generated 3 warnings (run `cargo fix --lib -p codegraph-core --tests` to apply 1 suggestion)
+    Checking codegraph-cache v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-cache)
+    Checking codegraph-zerocopy v1.0.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-zerocopy)
+    Checking codegraph-concurrent v0.1.0 (/Users/jokkeruokolainen/Documents/Solita/Ouroboros/ouroboros-codegraph-rust/codegraph-rust/crates/codegraph-concurrent)
+error[E0432]: unresolved import `criterion`
+ --> crates/codegraph-core/benches/core_micro.rs:2:5
+  |
+2 | use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+  |     ^^^^^^^^^ use of unresolved module or unlinked crate `criterion`
+  |
+  = help: if you wanted to use a crate named `criterion`, use `cargo add criterion` to add it to your `Cargo.toml`
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-core/benches/core_micro.rs:25:74
+   |
+25 |         group.bench_with_input(BenchmarkId::new("create_nodes", n), &n, |b, &n| {
+   |                                                                          ^
+26 |             b.iter(|| {
+   |             - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+25 |         group.bench_with_input(BenchmarkId::new("create_nodes", n), &n, |b: /* Type */, &n| {
+   |                                                                           ++++++++++++
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-core/benches/core_micro.rs:42:75
+   |
+42 |         group.bench_with_input(BenchmarkId::new("serialize_vec", n), &n, |b, _| {
+   |                                                                           ^
+43 |             b.iter(|| {
+   |             - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+42 |         group.bench_with_input(BenchmarkId::new("serialize_vec", n), &n, |b: /* Type */, _| {
+   |                                                                            ++++++++++++
+
+error[E0282]: type annotations needed
+  --> crates/codegraph-core/benches/core_micro.rs:49:77
+   |
+49 |         group.bench_with_input(BenchmarkId::new("deserialize_vec", n), &n, |b, _| {
+   |                                                                             ^
+50 |             b.iter(|| {
+   |             - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+49 |         group.bench_with_input(BenchmarkId::new("deserialize_vec", n), &n, |b: /* Type */, _| {
+   |                                                                              ++++++++++++
+
+warning: unused import: `Metadata`
+  --> crates/codegraph-concurrent/src/graph.rs:97:46
+   |
+97 |     use codegraph_core::{Language, Location, Metadata, NodeType};
+   |                                              ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::time::Duration`
+   --> crates/codegraph-concurrent/src/spsc.rs:133:9
+    |
+133 |     use std::time::Duration;
+    |         ^^^^^^^^^^^^^^^^^^^
+
+Some errors have detailed explanations: E0282, E0432.
+For more information about an error, try `rustc --explain E0282`.
+error: could not compile `codegraph-core` (bench "core_micro") due to 4 previous errors
+warning: build failed, waiting for other jobs to finish...
+error[E0433]: failed to resolve: could not find `api` in `rkyv`
+ --> crates/codegraph-zerocopy/src/mmap.rs:9:11
+  |
+9 | use rkyv::api::high::HighValidator;
+  |           ^^^ could not find `api` in `rkyv`
+
+error[E0433]: failed to resolve: could not find `api` in `rkyv`
+ --> crates/codegraph-zerocopy/src/serialization.rs:7:11
+  |
+7 | use rkyv::api::high::{HighDeserializer, HighSerializer, HighValidator};
+  |           ^^^ could not find `api` in `rkyv`
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`
+  --> crates/codegraph-zerocopy/src/mmap.rs:10:12
+   |
+10 | use rkyv::{access, access_unchecked, Archive};
+   |            ^^^^^^  ^^^^^^^^^^^^^^^^ no `access_unchecked` in the root
+   |            |
+   |            no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+
+error[E0432]: unresolved import `rkyv::ser::allocator`
+ --> crates/codegraph-zerocopy/src/serialization.rs:8:16
+  |
+8 | use rkyv::ser::allocator::ArenaHandle;
+  |                ^^^^^^^^^ could not find `allocator` in `ser`
+
+error[E0433]: failed to resolve: could not find `api` in `rkyv`
+ --> crates/codegraph-zerocopy/src/shared_memory.rs:9:11
+  |
+9 | use rkyv::api::high::HighValidator;
+  |           ^^^ could not find `api` in `rkyv`
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`, `rkyv::deserialize`, `rkyv::rancor`
+  --> crates/codegraph-zerocopy/src/serialization.rs:11:5
+   |
+11 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, rancor::Failure,
+   |     ^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^                                    ^^^^^^ could not find `rancor` in `rkyv`
+   |     |       |                 |
+   |     |       |                 no `deserialize` in the root
+   |     |       |                 help: a similar name exists in the module: `Deserialize`
+   |     |       no `access_unchecked` in the root
+   |     no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:10:12
+   |
+10 | use rkyv::{access, access_unchecked, Archive};
+   |            ^^^^^^  ^^^^^^^^^^^^^^^^ no `access_unchecked` in the root
+   |            |
+   |            no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`, `rkyv::deserialize`
+  --> crates/codegraph-zerocopy/src/lib.rs:24:5
+   |
+24 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, to_bytes, Archive,
+   |     ^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^
+   |     |       |                 |
+   |     |       |                 no `deserialize` in the root
+   |     |       |                 help: a similar name exists in the module: `Deserialize`
+   |     |       no `access_unchecked` in the root
+   |     no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`, `rkyv::deserialize`, `rkyv::rancor`
+  --> crates/codegraph-zerocopy/src/serialization.rs:11:5
+   |
+11 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, rancor::Failure,
+   |     ^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^                                    ^^^^^^ could not find `rancor` in `rkyv`
+   |     |       |                 |
+   |     |       |                 no `deserialize` in the root
+   |     |       |                 help: a similar name exists in the module: `Deserialize`
+   |     |       no `access_unchecked` in the root
+   |     no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+   = note: unresolved item `crate::mmap::tests::access` exists but is inaccessible
+   = note: unresolved item `crate::mmap::tests::access_unchecked` exists but is inaccessible
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:10:12
+   |
+10 | use rkyv::{access, access_unchecked, Archive};
+   |            ^^^^^^  ^^^^^^^^^^^^^^^^ no `access_unchecked` in the root
+   |            |
+   |            no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+   = note: unresolved item `crate::serialization::tests::access` exists but is inaccessible
+   = note: unresolved item `crate::serialization::tests::access_unchecked` exists but is inaccessible
+
+error[E0432]: unresolved imports `rkyv::access`, `rkyv::access_unchecked`, `rkyv::deserialize`
+  --> crates/codegraph-zerocopy/src/lib.rs:24:5
+   |
+24 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, to_bytes, Archive,
+   |     ^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^
+   |     |       |                 |
+   |     |       |                 no `deserialize` in the root
+   |     |       |                 help: a similar name exists in the module: `Deserialize`
+   |     |       no `access_unchecked` in the root
+   |     no `access` in the root
+   |
+   = help: consider importing this module instead:
+           arc_swap::access
+   = note: unresolved item `crate::shared_memory::tests::access` exists but is inaccessible
+   = note: unresolved item `crate::shared_memory::tests::access_unchecked` exists but is inaccessible
+   = note: unresolved item `crate::serialization::tests::deserialize` exists but is inaccessible
+
+error[E0308]: mismatched types
+   --> crates/codegraph-concurrent/src/graph.rs:121:65
+    |
+121 |         assert_eq!(g.get_node(id).await.unwrap().unwrap().name, "a");
+    |                                                                 ^^^ expected `SharedStr`, found `&str`
+    |
+help: call `Into::into` on this expression to convert `&str` into `SharedStr`
+    |
+121 |         assert_eq!(g.get_node(id).await.unwrap().unwrap().name, "a".into());
+    |                                                                    +++++++
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+  --> crates/codegraph-zerocopy/src/mmap.rs:62:76
+   |
+62 |         T::Archived: for<'a> bytecheck::CheckBytes<HighValidator<'a, rkyv::rancor::Failure>>,
+   |                                                                            ^^^^^^ could not find `rancor` in `rkyv`
+   |
+help: consider importing this crate
+   |
+ 6 + use bytecheck::rancor;
+   |
+help: if you import `rancor`, refer to it directly
+   |
+62 -         T::Archived: for<'a> bytecheck::CheckBytes<HighValidator<'a, rkyv::rancor::Failure>>,
+62 +         T::Archived: for<'a> bytecheck::CheckBytes<HighValidator<'a, rancor::Failure>>,
+   |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+  --> crates/codegraph-zerocopy/src/mmap.rs:64:37
+   |
+64 |         access::<T::Archived, rkyv::rancor::Failure>(&self.mmap).map_err(|_e| {
+   |                                     ^^^^^^ could not find `rancor` in `rkyv`
+   |
+help: consider importing this crate
+   |
+ 6 + use bytecheck::rancor;
+   |
+help: if you import `rancor`, refer to it directly
+   |
+64 -         access::<T::Archived, rkyv::rancor::Failure>(&self.mmap).map_err(|_e| {
+64 +         access::<T::Archived, rancor::Failure>(&self.mmap).map_err(|_e| {
+   |
+
+error[E0405]: cannot find trait `Portable` in crate `rkyv`
+  --> crates/codegraph-zerocopy/src/mmap.rs:74:28
+   |
+74 |         T::Archived: rkyv::Portable,
+   |                            ^^^^^^^^ not found in `rkyv`
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/mmap.rs:289:76
+    |
+289 |         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rkyv::rancor::Failure>>,
+    |                                                                            ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+  6 + use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+289 -         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rkyv::rancor::Failure>>,
+289 +         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rancor::Failure>>,
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/mmap.rs:291:37
+    |
+291 |         access::<T::Archived, rkyv::rancor::Failure>(&self.guard).map_err(|_e| {
+    |                                     ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+  6 + use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+291 -         access::<T::Archived, rkyv::rancor::Failure>(&self.guard).map_err(|_e| {
+291 +         access::<T::Archived, rancor::Failure>(&self.guard).map_err(|_e| {
+    |
+
+error[E0405]: cannot find trait `Portable` in crate `rkyv`
+   --> crates/codegraph-zerocopy/src/serialization.rs:109:28
+    |
+109 |         T::Archived: rkyv::Portable,
+    |                            ^^^^^^^^ not found in `rkyv`
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:242:76
+    |
+242 |         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rkyv::rancor::Failure>>,
+    |                                                                            ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+  6 + use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+242 -         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rkyv::rancor::Failure>>,
+242 +         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rancor::Failure>>,
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:245:37
+    |
+245 |         access::<T::Archived, rkyv::rancor::Failure>(data).map_err(|e| {
+    |                                     ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+  6 + use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+245 -         access::<T::Archived, rkyv::rancor::Failure>(data).map_err(|e| {
+245 +         access::<T::Archived, rancor::Failure>(data).map_err(|e| {
+    |
+
+error[E0405]: cannot find trait `Portable` in crate `rkyv`
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:255:28
+    |
+255 |         T::Archived: rkyv::Portable,
+    |                            ^^^^^^^^ not found in `rkyv`
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+  --> crates/codegraph-zerocopy/src/lib.rs:34:33
+   |
+34 |     Serialization(#[from] rkyv::rancor::Failure),
+   |                                 ^^^^^^ could not find `rancor` in `rkyv`
+   |
+help: consider importing this crate
+   |
+16 + use bytecheck::rancor;
+   |
+help: if you import `rancor`, refer to it directly
+   |
+34 -     Serialization(#[from] rkyv::rancor::Failure),
+34 +     Serialization(#[from] rancor::Failure),
+   |
+
+error[E0277]: `*mut spsc::WaitFreeSpscQueue<u32>` cannot be sent between threads safely
+   --> crates/codegraph-concurrent/src/spsc.rs:148:31
+    |
+148 |           let t = thread::spawn(move || {
+    |                   ------------- ^------
+    |                   |             |
+    |  _________________|_____________within this `{closure@crates/codegraph-concurrent/src/spsc.rs:148:31: 148:38}`
+    | |                 |
+    | |                 required by a bound introduced by this call
+149 | |             for i in 0..10_000u32 {
+150 | |                 loop {
+151 | |                     if p.try_push(i).is_ok() {
+...   |
+156 | |         });
+    | |_________^ `*mut spsc::WaitFreeSpscQueue<u32>` cannot be sent between threads safely
+    |
+    = help: within `{closure@crates/codegraph-concurrent/src/spsc.rs:148:31: 148:38}`, the trait `Send` is not implemented for `*mut spsc::WaitFreeSpscQueue<u32>`
+help: the trait `Send` is implemented for `spsc::WaitFreeSpscQueue<T>`
+   --> crates/codegraph-concurrent/src/spsc.rs:28:1
+    |
+ 28 | unsafe impl<T: Send> Send for WaitFreeSpscQueue<T> {}
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required because it appears within the type `Producer<u32>`
+   --> crates/codegraph-concurrent/src/spsc.rs:67:12
+    |
+ 67 | pub struct Producer<T> {
+    |            ^^^^^^^^
+note: required because it's used within this closure
+   --> crates/codegraph-concurrent/src/spsc.rs:148:31
+    |
+148 |         let t = thread::spawn(move || {
+    |                               ^^^^^^^
+note: required by a bound in `std::thread::spawn`
+   --> /rustc/518b428304e0008859cb1fd81d1ac20efb2a064a/library/std/src/thread/mod.rs:725:0
+
+warning: unused import: `Mutex`
+  --> crates/codegraph-zerocopy/src/buffer.rs:10:19
+   |
+10 | use parking_lot::{Mutex, RwLock};
+   |                   ^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `SeekFrom` and `Seek`
+  --> crates/codegraph-zerocopy/src/mmap.rs:13:10
+   |
+13 |     io::{Seek, SeekFrom},
+   |          ^^^^  ^^^^^^^^
+
+warning: unused import: `error`
+  --> crates/codegraph-zerocopy/src/mmap.rs:17:22
+   |
+17 | use tracing::{debug, error, instrument, warn};
+   |                      ^^^^^
+
+warning: unused import: `from_bytes_unchecked`
+  --> crates/codegraph-zerocopy/src/serialization.rs:11:56
+   |
+11 |     access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, rancor::Failure,
+   |                                                        ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `debug` and `trace`
+  --> crates/codegraph-zerocopy/src/serialization.rs:15:15
+   |
+15 | use tracing::{debug, instrument, trace};
+   |               ^^^^^              ^^^^^
+
+warning: unused import: `Mutex`
+ --> crates/codegraph-zerocopy/src/shared_memory.rs:8:19
+  |
+8 | use parking_lot::{Mutex, RwLock};
+  |                   ^^^^^
+
+warning: unused imports: `ffi::CString` and `ptr::NonNull`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:12:5
+   |
+12 |     ffi::CString,
+   |     ^^^^^^^^^^^^
+...
+16 |     ptr::NonNull,
+   |     ^^^^^^^^^^^^
+
+warning: unused import: `error`
+  --> crates/codegraph-zerocopy/src/shared_memory.rs:22:22
+   |
+22 | use tracing::{debug, error, instrument, trace, warn};
+   |                      ^^^^^
+
+warning: unused import: `approx::assert_relative_eq`
+   --> crates/codegraph-cache/src/embedding_cache.rs:329:9
+    |
+329 |     use approx::assert_relative_eq;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:332:38
+    |
+332 |         let bytes = to_bytes::<rkyv::rancor::Failure>(&node).unwrap();
+    |                                      ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+332 -         let bytes = to_bytes::<rkyv::rancor::Failure>(&node).unwrap();
+332 +         let bytes = to_bytes::<rancor::Failure>(&node).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:333:65
+    |
+333 |         let deserialized = from_bytes::<ArchivedCodeNode, rkyv::rancor::Failure>(&bytes).unwrap();
+    |                                                                 ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+333 -         let deserialized = from_bytes::<ArchivedCodeNode, rkyv::rancor::Failure>(&bytes).unwrap();
+333 +         let deserialized = from_bytes::<ArchivedCodeNode, rancor::Failure>(&bytes).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:390:38
+    |
+390 |         let bytes = to_bytes::<rkyv::rancor::Failure>(&graph).unwrap();
+    |                                      ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+390 -         let bytes = to_bytes::<rkyv::rancor::Failure>(&graph).unwrap();
+390 +         let bytes = to_bytes::<rancor::Failure>(&graph).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:391:66
+    |
+391 |         let deserialized = from_bytes::<ArchivedCodeGraph, rkyv::rancor::Failure>(&bytes).unwrap();
+    |                                                                  ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+391 -         let deserialized = from_bytes::<ArchivedCodeGraph, rkyv::rancor::Failure>(&bytes).unwrap();
+391 +         let deserialized = from_bytes::<ArchivedCodeGraph, rancor::Failure>(&bytes).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:414:38
+    |
+414 |         let bytes = to_bytes::<rkyv::rancor::Failure>(&entry).unwrap();
+    |                                      ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+414 -         let bytes = to_bytes::<rkyv::rancor::Failure>(&entry).unwrap();
+414 +         let bytes = to_bytes::<rancor::Failure>(&entry).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:416:60
+    |
+416 |             from_bytes::<ArchivedCacheEntry<String>, rkyv::rancor::Failure>(&bytes).unwrap();
+    |                                                            ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+416 -             from_bytes::<ArchivedCacheEntry<String>, rkyv::rancor::Failure>(&bytes).unwrap();
+416 +             from_bytes::<ArchivedCacheEntry<String>, rancor::Failure>(&bytes).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:453:38
+    |
+453 |         let bytes = to_bytes::<rkyv::rancor::Failure>(&metrics).unwrap();
+    |                                      ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+453 -         let bytes = to_bytes::<rkyv::rancor::Failure>(&metrics).unwrap();
+453 +         let bytes = to_bytes::<rancor::Failure>(&metrics).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/archived.rs:454:64
+    |
+454 |         let deserialized = from_bytes::<ArchivedMetrics, rkyv::rancor::Failure>(&bytes).unwrap();
+    |                                                                ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+304 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+454 -         let deserialized = from_bytes::<ArchivedMetrics, rkyv::rancor::Failure>(&bytes).unwrap();
+454 +         let deserialized = from_bytes::<ArchivedMetrics, rancor::Failure>(&bytes).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/mmap.rs:487:44
+    |
+487 |         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&data).unwrap();
+    |                                            ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+464 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+487 -         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&data).unwrap();
+487 +         let bytes = rkyv::to_bytes::<rancor::Error>(&data).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+   --> crates/codegraph-zerocopy/src/shared_memory.rs:590:44
+    |
+590 |         let bytes = rkyv::to_bytes::<rkyv::rancor::Failure>(&data).unwrap();
+    |                                            ^^^^^^ could not find `rancor` in `rkyv`
+    |
+help: consider importing this crate
+    |
+518 +     use bytecheck::rancor;
+    |
+help: if you import `rancor`, refer to it directly
+    |
+590 -         let bytes = rkyv::to_bytes::<rkyv::rancor::Failure>(&data).unwrap();
+590 +         let bytes = rkyv::to_bytes::<rancor::Failure>(&data).unwrap();
+    |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+  --> crates/codegraph-zerocopy/src/lib.rs:90:38
+   |
+90 |         let bytes = to_bytes::<rkyv::rancor::Failure>(&data).unwrap();
+   |                                      ^^^^^^ could not find `rancor` in `rkyv`
+   |
+help: consider importing this crate
+   |
+71 +     use bytecheck::rancor;
+   |
+help: if you import `rancor`, refer to it directly
+   |
+90 -         let bytes = to_bytes::<rkyv::rancor::Failure>(&data).unwrap();
+90 +         let bytes = to_bytes::<rancor::Failure>(&data).unwrap();
+   |
+
+error[E0433]: failed to resolve: could not find `rancor` in `rkyv`
+  --> crates/codegraph-zerocopy/src/lib.rs:91:57
+   |
+91 |         let deserialized = from_bytes::<TestData, rkyv::rancor::Failure>(&bytes).unwrap();
+   |                                                         ^^^^^^ could not find `rancor` in `rkyv`
+   |
+help: consider importing this crate
+   |
+71 +     use bytecheck::rancor;
+   |
+help: if you import `rancor`, refer to it directly
+   |
+91 -         let deserialized = from_bytes::<TestData, rkyv::rancor::Failure>(&bytes).unwrap();
+91 +         let deserialized = from_bytes::<TestData, rancor::Failure>(&bytes).unwrap();
+   |
+
+Some errors have detailed explanations: E0277, E0308.
+For more information about an error, try `rustc --explain E0277`.
+warning: `codegraph-concurrent` (lib test) generated 2 warnings
+error: could not compile `codegraph-concurrent` (lib test) due to 2 previous errors; 2 warnings emitted
+Some errors have detailed explanations: E0405, E0432, E0433.
+For more information about an error, try `rustc --explain E0405`.
+warning: `codegraph-zerocopy` (lib) generated 8 warnings
+error: could not compile `codegraph-zerocopy` (lib) due to 18 previous errors; 8 warnings emitted
+warning: `codegraph-zerocopy` (lib test) generated 8 warnings (8 duplicates)
+error: could not compile `codegraph-zerocopy` (lib test) due to 30 previous errors; 8 warnings emitted
+warning: unused import: `std::sync::Arc`
+  --> crates/codegraph-vector/src/index.rs:11:5
+   |
+11 | use std::sync::Arc;
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0599]: no method named `is_some` found for unit type `()` in the current scope
+   --> crates/codegraph-cache/src/embedding_cache.rs:347:25
+    |
+347 |         assert!(removed.is_some());
+    |                         ^^^^^^^ method not found in `()`
+
+error[E0609]: no field `evictions` on type `std::result::Result<cache::CacheStats, CodeGraphError>`
+   --> crates/codegraph-cache/src/embedding_cache.rs:411:23
+    |
+411 |         assert!(stats.evictions > 0);
+    |                       ^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of the same name
+    |
+411 |         assert!(stats.unwrap().evictions > 0);
+    |                       +++++++++
+
+error[E0599]: no method named `is_some` found for unit type `()` in the current scope
+   --> crates/codegraph-cache/src/query_cache.rs:477:25
+    |
+477 |         assert!(removed.is_some());
+    |                         ^^^^^^^ method not found in `()`
+
+error[E0609]: no field `evictions` on type `std::result::Result<cache::CacheStats, CodeGraphError>`
+   --> crates/codegraph-cache/src/query_cache.rs:511:23
+    |
+511 |         assert!(stats.evictions > 0);
+    |                       ^^^^^^^^^ unknown field
+    |
+help: one of the expressions' fields has a field of the same name
+    |
+511 |         assert!(stats.unwrap().evictions > 0);
+    |                       +++++++++
+
+error[E0560]: struct `cache::CacheStats` has no field named `total_entries`
+   --> crates/codegraph-cache/src/storage.rs:544:13
+    |
+544 |             total_entries: 1000,
+    |             ^^^^^^^^^^^^^ `cache::CacheStats` does not have this field
+    |
+    = note: available fields are: `entries`, `memory_usage`
+
+error[E0560]: struct `cache::CacheStats` has no field named `memory_usage_bytes`
+   --> crates/codegraph-cache/src/storage.rs:545:13
+    |
+545 |             memory_usage_bytes: 1024 * 1024,
+    |             ^^^^^^^^^^^^^^^^^^ unknown field
+    |
+help: a field with a similar name exists
+    |
+545 -             memory_usage_bytes: 1024 * 1024,
+545 +             memory_usage: 1024 * 1024,
+    |
+
+error[E0560]: struct `cache::CacheStats` has no field named `average_access_time_ns`
+   --> crates/codegraph-cache/src/storage.rs:546:13
+    |
+546 |             average_access_time_ns: 1000,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ `cache::CacheStats` does not have this field
+    |
+    = note: available fields are: `entries`, `memory_usage`
+
+error[E0382]: borrow of moved value: `value`
+   --> crates/codegraph-cache/src/storage.rs:503:44
+    |
+502 |         let value = vec![1.0f32, 2.0, 3.0];
+    |             ----- move occurs because `value` has type `Vec<f32>`, which does not implement the `Copy` trait
+503 |         let entry = CacheEntry::new(value, value.estimate_size(), None);
+    |                                     -----  ^^^^^ value borrowed here after move
+    |                                     |
+    |                                     value moved here
+    |
+note: consider changing this parameter type in method `new` to borrow instead if owning the value isn't necessary
+   --> crates/codegraph-cache/src/cache.rs:30:23
+    |
+ 30 |     pub fn new(value: T, size_bytes: usize, ttl: Option<Duration>) -> Self {
+    |            ---        ^ this parameter takes ownership of the value
+    |            |
+    |            in this method
+help: consider cloning the value if the performance cost is acceptable
+    |
+503 |         let entry = CacheEntry::new(value.clone(), value.estimate_size(), None);
+    |                                          ++++++++
+
+warning: `codegraph-vector` (lib test) generated 1 warning (1 duplicate)
+Some errors have detailed explanations: E0382, E0560, E0599, E0609.
+For more information about an error, try `rustc --explain E0382`.
+warning: `codegraph-cache` (lib test) generated 1 warning
+error: could not compile `codegraph-cache` (lib test) due to 8 previous errors; 1 warning emitted
+warning: `codegraph-vector` (lib) generated 1 warning (run `cargo fix --lib -p codegraph-vector` to apply 1 suggestion)

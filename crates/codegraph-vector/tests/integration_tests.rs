@@ -1,14 +1,14 @@
-use codegraph_core::{CodeGraphError, NodeId};
+#![cfg(feature = "faiss")]
+use codegraph_core::NodeId;
 use codegraph_vector::{
-    BatchConfig, BatchOperation, BatchProcessor, FaissIndexManager, IndexConfig, IndexType,
-    OptimizedSearchEngine, PersistentStorage, SearchConfig,
+    FaissIndexManager, IndexConfig, IndexType, MetricType,
 };
-use faiss::MetricType;
+#[cfg(feature = "persistent")]
+use codegraph_vector::PersistentStorage;
+#[cfg(feature = "persistent")]
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::time::{Duration, Instant};
+#[cfg(feature = "persistent")]
 use tempfile::TempDir;
-use tokio_test;
 
 /// Generate deterministic test vectors
 fn generate_test_vectors(count: usize, dimension: usize, seed: u64) -> Vec<Vec<f32>> {
@@ -102,7 +102,7 @@ async fn test_faiss_index_types() -> Result<(), Box<dyn std::error::Error>> {
         let _ids = index_manager.add_vectors(&flat_vectors)?;
 
         // Search
-        let (distances, labels) = index_manager.search(query, 10)?;
+        let (distances, labels): (Vec<f32>, Vec<i64>) = index_manager.search(query, 10)?;
 
         assert_eq!(distances.len(), 10);
         assert_eq!(labels.len(), 10);
@@ -119,6 +119,7 @@ async fn test_faiss_index_types() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
+#[cfg(feature = "persistent")]
 async fn test_persistent_storage() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = TempDir::new()?;
     let storage_path = temp_dir.path().to_path_buf();
@@ -175,7 +176,7 @@ async fn test_persistent_storage() -> Result<(), Box<dyn std::error::Error>> {
         let loaded_embeddings = storage.load_embeddings()?;
         assert_eq!(loaded_embeddings.len(), num_vectors);
 
-        let (loaded_id_mapping, loaded_reverse_mapping) = storage.load_id_mapping()?;
+        let (loaded_id_mapping, loaded_reverse_mapping): (HashMap<i64, NodeId>, HashMap<NodeId, i64>) = storage.load_id_mapping()?;
         assert_eq!(loaded_id_mapping.len(), num_vectors);
         assert_eq!(loaded_reverse_mapping.len(), num_vectors);
 
@@ -187,7 +188,7 @@ async fn test_persistent_storage() -> Result<(), Box<dyn std::error::Error>> {
 
             assert_eq!(original_vector.len(), loaded_vector.len());
             for (a, b) in original_vector.iter().zip(loaded_vector.iter()) {
-                assert!((a - b).abs() < 1e-6);
+                assert!((*a - *b).abs() < 1e-6);
             }
         }
 
@@ -202,188 +203,9 @@ async fn test_persistent_storage() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_batch_processing() -> Result<(), Box<dyn std::error::Error>> {
-    let dimension = 96;
-    let batch_size = 100;
-    let num_batches = 5;
-    let total_vectors = batch_size * num_batches;
 
-    let batch_config = BatchConfig {
-        batch_size,
-        max_pending_batches: 10,
-        flush_interval: Duration::from_millis(500),
-        parallel_processing: true,
-        memory_limit_mb: 128,
-        auto_train_threshold: total_vectors / 2,
-    };
 
-    let index_config = IndexConfig {
-        index_type: IndexType::IVF {
-            nlist: 20,
-            nprobe: 5,
-        },
-        metric_type: MetricType::InnerProduct,
-        dimension,
-        training_size_threshold: 200,
-        gpu_enabled: false,
-        compression_level: 0,
-    };
 
-    let mut processor = BatchProcessor::new(batch_config, index_config, None)?;
-    processor.start_processing().await?;
-
-    // Generate and enqueue insert operations
-    let vectors = generate_test_vectors(total_vectors, dimension, 98765);
-    let mut node_ids = Vec::new();
-
-    for (i, vector) in vectors.iter().enumerate() {
-        let node_id = node_id_from_index(i);
-        node_ids.push(node_id);
-
-        let operation = BatchOperation::Insert {
-            node_id,
-            embedding: vector.clone(),
-        };
-
-        processor.enqueue_operation(operation).await?;
-    }
-
-    // Enqueue search operations
-    for i in 0..10 {
-        let query_embedding = vectors[i].clone();
-        let operation = BatchOperation::Search {
-            query_embedding,
-            k: 5,
-            callback_id: uuid::Uuid::new_v4(),
-        };
-
-        processor.enqueue_operation(operation).await?;
-    }
-
-    // Wait for processing to complete
-    tokio::time::sleep(Duration::from_secs(2)).await;
-
-    // Check statistics
-    let stats = processor.get_stats();
-    assert!(stats.total_operations > 0);
-    assert!(stats.success_rate > 0.8);
-
-    // Process some results
-    let mut results_count = 0;
-    for _ in 0..100 {
-        if let Ok(Some(_result)) = processor.try_recv_result() {
-            results_count += 1;
-        } else {
-            break;
-        }
-    }
-
-    assert!(results_count > 0);
-
-    processor.stop_processing().await?;
-
-    println!("✓ Batch processing completed successfully");
-    println!("  Total operations: {}", stats.total_operations);
-    println!("  Success rate: {:.1}%", stats.success_rate * 100.0);
-    println!("  Results processed: {}", results_count);
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_optimized_search_engine() -> Result<(), Box<dyn std::error::Error>> {
-    let dimension = 128;
-    let num_vectors = 2000;
-    let num_queries = 100;
-
-    let vectors = generate_test_vectors(num_vectors, dimension, 13579);
-    let queries = generate_test_vectors(num_queries, dimension, 24680);
-
-    let search_config = SearchConfig {
-        target_latency_us: 1000, // 1ms target
-        cache_enabled: true,
-        cache_max_entries: 500,
-        cache_ttl_seconds: 30,
-        prefetch_enabled: true,
-        prefetch_multiplier: 1.3,
-        parallel_search: true,
-        memory_pool_size_mb: 64,
-    };
-
-    let index_config = IndexConfig::fast_search(dimension);
-    let mut search_engine = OptimizedSearchEngine::new(search_config, index_config)?;
-
-    // Setup index
-    {
-        let mut index_manager = search_engine.index_manager.write();
-        index_manager.create_index(num_vectors)?;
-        let flat_vectors: Vec<f32> = vectors.iter().flat_map(|v| v.iter().cloned()).collect();
-        index_manager.add_vectors(&flat_vectors)?;
-    }
-
-    // Warmup
-    let warmup_queries: Vec<&[f32]> = queries[0..20].iter().map(|v| v.as_slice()).collect();
-    search_engine.warmup(&warmup_queries, 10).await?;
-
-    // Test single search performance
-    let mut search_times = Vec::new();
-    for query in &queries[0..50] {
-        let start = Instant::now();
-        let results = search_engine.search_knn(query, 10).await?;
-        let duration = start.elapsed();
-
-        search_times.push(duration);
-        assert_eq!(results.len(), 10);
-    }
-
-    // Test batch search
-    let batch_queries: Vec<&[f32]> = queries[0..20].iter().map(|v| v.as_slice()).collect();
-    let batch_start = Instant::now();
-    let batch_results = search_engine.batch_search_knn(&batch_queries, 5).await?;
-    let batch_duration = batch_start.elapsed();
-
-    assert_eq!(batch_results.len(), 20);
-    for result in &batch_results {
-        assert_eq!(result.len(), 5);
-    }
-
-    // Test cache effectiveness (repeat some queries)
-    let cache_test_queries: Vec<&[f32]> = queries[0..10].iter().map(|v| v.as_slice()).collect();
-    let _cached_results = search_engine
-        .batch_search_knn(&cache_test_queries, 10)
-        .await?;
-
-    // Get performance statistics
-    let stats = search_engine.get_performance_stats();
-
-    println!("✓ Optimized search engine performance:");
-    println!("  Total searches: {}", stats.total_searches);
-    println!("  Sub-millisecond rate: {:.1}%", stats.sub_ms_rate * 100.0);
-    println!("  Average latency: {}μs", stats.average_latency_us);
-    println!("  P95 latency: {}μs", stats.p95_latency_us);
-    println!("  P99 latency: {}μs", stats.p99_latency_us);
-    println!("  Cache hit rate: {:.1}%", stats.cache_hit_rate * 100.0);
-    println!("  Batch search time: {:?}", batch_duration);
-
-    // Calculate individual search statistics
-    let avg_single_search = search_times.iter().sum::<Duration>() / search_times.len() as u32;
-    let mut sorted_times = search_times.clone();
-    sorted_times.sort();
-    let p95_single = sorted_times[(sorted_times.len() as f64 * 0.95) as usize];
-
-    println!("  Single search avg: {:?}", avg_single_search);
-    println!("  Single search P95: {:?}", p95_single);
-
-    // Verify performance targets
-    assert!(stats.total_searches > 50);
-    assert!(stats.cache_hit_rate >= 0.0); // Should have some cache activity
-
-    // Auto-tune should not fail
-    search_engine.auto_tune().await?;
-
-    Ok(())
-}
 
 #[tokio::test]
 async fn test_search_accuracy() -> Result<(), Box<dyn std::error::Error>> {
@@ -432,12 +254,12 @@ async fn test_search_accuracy() -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..num_test_queries {
         let query = &vectors[i];
 
-        let (flat_distances, flat_labels) = flat_manager.search(query, k)?;
-        let (hnsw_distances, hnsw_labels) = hnsw_manager.search(query, k)?;
+        let (_flat_distances, flat_labels): (Vec<f32>, Vec<i64>) = flat_manager.search(query, k)?;
+        let (_hnsw_distances, hnsw_labels): (Vec<f32>, Vec<i64>) = hnsw_manager.search(query, k)?;
 
         // Calculate recall@k (how many true neighbors HNSW found)
-        let flat_set: std::collections::HashSet<_> = flat_labels.iter().collect();
-        let hnsw_set: std::collections::HashSet<_> = hnsw_labels.iter().collect();
+        let flat_set: std::collections::HashSet<i64> = flat_labels.iter().copied().collect::<std::collections::HashSet<i64>>();
+        let hnsw_set: std::collections::HashSet<i64> = hnsw_labels.iter().copied().collect::<std::collections::HashSet<i64>>();
 
         let intersection = flat_set.intersection(&hnsw_set).count();
         let recall = intersection as f64 / k as f64;

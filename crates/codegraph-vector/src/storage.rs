@@ -216,7 +216,7 @@ impl PersistentStorage {
     pub fn save_embeddings(&self, embeddings: &HashMap<NodeId, Vec<f32>>) -> Result<()> {
         let embeddings_path = self.base_path.join(Self::EMBEDDINGS_FILE);
 
-        let serialized = bincode::serialize(embeddings).map_err(|e| {
+        let serialized = bincode::serde::encode_to_vec(embeddings, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| {
             CodeGraphError::Vector(format!("Failed to serialize embeddings: {}", e))
         })?;
 
@@ -259,8 +259,8 @@ impl PersistentStorage {
         let mmap_guard = self.embeddings_mmap.read();
         let mmap = mmap_guard.as_ref().unwrap();
 
-        let embeddings: HashMap<NodeId, Vec<f32>> =
-            bincode::deserialize(&mmap[..]).map_err(|e| {
+        let (embeddings, _): (HashMap<NodeId, Vec<f32>>, usize) =
+            bincode::serde::decode_from_slice(&mmap[..], bincode::config::standard()).map_err(|e: bincode::error::DecodeError| {
                 CodeGraphError::Vector(format!("Failed to deserialize embeddings: {}", e))
             })?;
 
@@ -280,7 +280,7 @@ impl PersistentStorage {
         let mapping_data = (id_mapping, reverse_mapping);
         let id_mapping_path = self.base_path.join(Self::ID_MAPPING_FILE);
 
-        let serialized = bincode::serialize(&mapping_data).map_err(|e| {
+        let serialized = bincode::serde::encode_to_vec(&mapping_data, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| {
             CodeGraphError::Vector(format!("Failed to serialize ID mapping: {}", e))
         })?;
 
@@ -323,8 +323,8 @@ impl PersistentStorage {
         let mmap_guard = self.id_mapping_mmap.read();
         let mmap = mmap_guard.as_ref().unwrap();
 
-        let (id_mapping, reverse_mapping): (HashMap<i64, NodeId>, HashMap<NodeId, i64>) =
-            bincode::deserialize(&mmap[..]).map_err(|e| {
+        let ((id_mapping, reverse_mapping), _): ((HashMap<i64, NodeId>, HashMap<NodeId, i64>), usize) =
+            bincode::serde::decode_from_slice(&mmap[..], bincode::config::standard()).map_err(|e: bincode::error::DecodeError| {
                 CodeGraphError::Vector(format!("Failed to deserialize ID mapping: {}", e))
             })?;
 

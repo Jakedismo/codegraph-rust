@@ -450,7 +450,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegraph_core::{EdgeType, Location, Metadata, NodeType};
+    use codegraph_core::{EdgeType, NodeId};
 
     #[tokio::test]
     async fn test_ai_pattern_learning() {
@@ -465,7 +465,7 @@ mod tests {
         );
 
         // Test enhancement
-        let mut test_result = ExtractionResult {
+        let test_result = ExtractionResult {
             nodes: vec![],
             edges: vec![EdgeRelationship {
                 from: NodeId::new_v4(),

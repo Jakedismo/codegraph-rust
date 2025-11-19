@@ -8,7 +8,7 @@ use serde_json::Value;
 #[cfg(any(feature = "faiss", feature = "legacy-mcp-server"))]
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
+
 
 // Performance optimization: Cache FAISS indexes and embedding generator
 #[cfg(feature = "faiss")]

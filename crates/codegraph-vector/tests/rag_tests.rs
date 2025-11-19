@@ -1,10 +1,8 @@
 #[cfg(test)]
 mod rag_integration_tests {
-    use super::*;
-    use codegraph_core::{CodeNode, Language, NodeId, NodeType};
-    use codegraph_vector::rag::{QueryResult, RAGConfig, RAGSystem};
+    use codegraph_core::{CodeNode, Language, NodeType};
+    use codegraph_vector::rag::{RAGConfig, RAGSystem};
     use std::sync::Arc;
-    use tokio_test;
     use uuid::Uuid;
 
     fn create_test_node(name: &str, content: &str, node_type: NodeType) -> CodeNode {
@@ -13,13 +11,13 @@ mod rag_integration_tests {
         let now = chrono::Utc::now();
         CodeNode {
             id: Uuid::new_v4(),
-            name: name.to_string(),
+            name: name.to_string().into(),
             node_type: Some(node_type),
             language: Some(Language::Rust),
-            content: Some(content.to_string()),
+            content: Some(content.to_string().into()),
             embedding: None,
             location: Location {
-                file_path: "test.rs".to_string(),
+                file_path: "test.rs".to_string().into(),
                 line: 1,
                 column: 1,
                 end_line: None,
@@ -136,11 +134,11 @@ mod rag_integration_tests {
         // Results should be ranked by relevance (file + async should rank higher)
         assert!(!results.is_empty());
         let top_result = &results[0];
-        assert!(top_result.score > 0.0);
+        assert!(top_result.relevance_score > 0.0);
 
         // Verify ranking order (higher scores first)
         for i in 1..results.len() {
-            assert!(results[i - 1].score >= results[i].score);
+            assert!(results[i].relevance_score >= results[i + 1].relevance_score);
         }
     }
 
@@ -177,9 +175,9 @@ mod rag_integration_tests {
             .await
             .expect("Failed to generate response");
 
-        assert!(!result.response.is_empty());
-        assert!(!result.context_used.is_empty());
-        assert!(result.confidence_score > 0.0);
+        assert!(!result.answer.is_empty());
+        assert!(!result.sources.is_empty());
+        assert!(result.confidence > 0.0);
         assert!(result.processing_time_ms < 200); // Sub-200ms requirement
     }
 
@@ -235,8 +233,8 @@ mod rag_integration_tests {
             .expect("Failed to generate response");
 
         // Should handle queries with no relevant context gracefully
-        assert!(result.confidence_score < 0.5); // Low confidence for irrelevant queries
-        assert!(result.response.contains("No relevant") || result.response.contains("not found"));
+        assert!(result.confidence < 0.5); // Low confidence for irrelevant queries
+        assert!(result.answer.contains("No relevant") || result.answer.contains("not found"));
     }
 
     #[tokio::test]
@@ -252,7 +250,7 @@ mod rag_integration_tests {
 
         for i in 0..10 {
             let rag_clone: Arc<RAGSystem> = Arc::clone(&rag_system);
-            let handle = tokio::spawn(async move {
+            let handle: tokio::task::JoinHandle<_> = tokio::spawn(async move {
                 let query = format!("query number {}", i);
                 rag_clone.process_query(&query).await
             });
@@ -270,7 +268,7 @@ mod rag_integration_tests {
 
 #[cfg(test)]
 mod rag_unit_tests {
-    use super::*;
+
     use codegraph_vector::rag::{
         ContextRetriever, QueryProcessor, ResponseGenerator, ResultRanker,
     };
@@ -301,9 +299,9 @@ mod rag_unit_tests {
         let retriever = ContextRetriever::new();
 
         let test_contexts = vec![
-            "async function for file reading",
-            "synchronous database operation",
-            "async network request handler",
+            "async function for file reading".to_string(),
+            "synchronous database operation".to_string(),
+            "async network request handler".to_string(),
         ];
 
         let query = "async operations";
@@ -320,7 +318,7 @@ mod rag_unit_tests {
 
     #[tokio::test]
     async fn test_result_ranker_semantic_similarity() {
-        let ranker = ResultRanker::new();
+        let mut ranker = ResultRanker::new();
 
         let mut results = vec![
             ("function for data processing", 0.3),
@@ -349,8 +347,8 @@ mod rag_unit_tests {
         let generator = ResponseGenerator::new();
 
         let relevant_context = vec![
-            "fn read_file(path: &str) -> Result<String, Error>",
-            "async fn write_file(path: &str, content: &str) -> Result<(), Error>",
+            "fn read_file(path: &str) -> Result<String, Error>".to_string(),
+            "async fn write_file(path: &str, content: &str) -> Result<(), Error>".to_string(),
         ];
 
         let query = "How do I read and write files?";
@@ -365,8 +363,8 @@ mod rag_unit_tests {
 
         // Test with irrelevant context
         let irrelevant_context = vec![
-            "fn calculate_fibonacci(n: u32) -> u32",
-            "struct DatabaseConnection { host: String }",
+            "fn calculate_fibonacci(n: u32) -> u32".to_string(),
+            "struct DatabaseConnection { host: String }".to_string(),
         ];
 
         let response_irrelevant = generator

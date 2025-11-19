@@ -498,8 +498,6 @@ pub struct PersistentVectorStore {
     sq_quantizer: Arc<RwLock<Option<ScalarQuantizer>>>,
     /// Next vector ID
     next_vector_id: Arc<RwLock<u64>>,
-    /// Memory-mapped file handle
-    storage_file: Arc<Mutex<Option<File>>>,
 }
 
 impl PersistentVectorStore {
@@ -528,7 +526,6 @@ impl PersistentVectorStore {
             pq_quantizer: Arc::new(RwLock::new(None)),
             sq_quantizer: Arc::new(RwLock::new(None)),
             next_vector_id: Arc::new(RwLock::new(0)),
-            storage_file: Arc::new(Mutex::new(None)),
         };
 
         // Try to load existing storage
@@ -555,7 +552,7 @@ impl PersistentVectorStore {
         // Write header
         let header = self.header.read();
         let header_bytes =
-            bincode::serialize(&*header).map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+            bincode::serde::encode_to_vec(&*header, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
 
         file.write_all(&(header_bytes.len() as u64).to_le_bytes())?;
         file.write_all(&header_bytes)?;
@@ -581,8 +578,8 @@ impl PersistentVectorStore {
         let mut header_bytes = vec![0u8; header_size as usize];
         file.read_exact(&mut header_bytes)?;
 
-        let loaded_header: StorageHeader = bincode::deserialize(&header_bytes)
-            .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+        let (loaded_header, _): (StorageHeader, usize) = bincode::serde::decode_from_slice(&header_bytes, bincode::config::standard())
+            .map_err(|e: bincode::error::DecodeError| CodeGraphError::Vector(e.to_string()))?;
 
         // Verify header integrity
         if loaded_header.version != 1 {
@@ -606,9 +603,9 @@ impl PersistentVectorStore {
                 let mut metadata_bytes = vec![0u8; metadata_size as usize];
                 file.read_exact(&mut metadata_bytes)?;
 
-                let loaded_metadata: HashMap<NodeId, VectorMetadata> =
-                    bincode::deserialize(&metadata_bytes)
-                        .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+                let (loaded_metadata, _): (HashMap<NodeId, VectorMetadata>, usize) =
+                    bincode::serde::decode_from_slice(&metadata_bytes, bincode::config::standard())
+                        .map_err(|e: bincode::error::DecodeError| CodeGraphError::Vector(e.to_string()))?;
 
                 // Build reverse mapping
                 let mut vector_id_mapping = HashMap::new();
@@ -624,7 +621,7 @@ impl PersistentVectorStore {
         // Load update log if exists
         if self.log_path.exists() {
             if let Ok(log_data) = std::fs::read(&self.log_path) {
-                if let Ok(log_entries) = bincode::deserialize::<Vec<UpdateLogEntry>>(&log_data) {
+                if let Ok((log_entries, _)) = bincode::serde::decode_from_slice::<Vec<UpdateLogEntry>, _>(&log_data, bincode::config::standard()) {
                     *self.update_log.lock() = log_entries;
                 }
             }
@@ -656,7 +653,7 @@ impl PersistentVectorStore {
 
             // Calculate offsets
             let header_bytes =
-                bincode::serialize(&*header).map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+                bincode::serde::encode_to_vec(&*header, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
             let header_section_size = 8 + header_bytes.len() as u64;
 
             header.metadata_offset = header_section_size;
@@ -664,13 +661,13 @@ impl PersistentVectorStore {
             // Write header
             file.write_all(&(header_bytes.len() as u64).to_le_bytes())?;
             file.write_all(
-                &bincode::serialize(&*header).map_err(|e| CodeGraphError::Vector(e.to_string()))?,
+                &bincode::serde::encode_to_vec(&*header, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?,
             )?;
 
             // Write metadata
             let metadata = self.metadata.read();
-            let metadata_bytes = bincode::serialize(&*metadata)
-                .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+            let metadata_bytes = bincode::serde::encode_to_vec(&*metadata, bincode::config::standard())
+                .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
 
             file.write_all(&(metadata_bytes.len() as u64).to_le_bytes())?;
             file.write_all(&metadata_bytes)?;
@@ -687,8 +684,8 @@ impl PersistentVectorStore {
             log.clone()
         };
         if !log_entries.is_empty() {
-            let log_bytes = bincode::serialize(&log_entries)
-                .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+            let log_bytes = bincode::serde::encode_to_vec(&log_entries, bincode::config::standard())
+                .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
             fs::write(&self.log_path, log_bytes).await?;
         }
 
@@ -822,8 +819,8 @@ impl PersistentVectorStore {
                     nbits: pq.nbits,
                 };
             } else {
-                compressed_data = bincode::serialize(vector)
-                    .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+                compressed_data = bincode::serde::encode_to_vec(vector, bincode::config::standard())
+                    .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
                 compressed_size = compressed_data.len();
                 compression_type = CompressionType::None;
             }
@@ -836,14 +833,14 @@ impl PersistentVectorStore {
                     uniform: sq.uniform,
                 };
             } else {
-                compressed_data = bincode::serialize(vector)
-                    .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+                compressed_data = bincode::serde::encode_to_vec(vector, bincode::config::standard())
+                    .map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
                 compressed_size = compressed_data.len();
                 compression_type = CompressionType::None;
             }
         } else {
             compressed_data =
-                bincode::serialize(vector).map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+                bincode::serde::encode_to_vec(vector, bincode::config::standard()).map_err(|e: bincode::error::EncodeError| CodeGraphError::Vector(e.to_string()))?;
             compressed_size = compressed_data.len();
             compression_type = CompressionType::None;
         }

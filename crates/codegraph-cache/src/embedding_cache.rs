@@ -343,8 +343,8 @@ mod tests {
         assert_eq!(result, Some(embedding));
 
         // Test remove
-        let removed = cache.remove(&key).await.unwrap();
-        assert!(removed.is_some());
+        cache.remove(&key).await.unwrap();
+        assert!(cache.get(&key).await.unwrap().is_none());
         let result = cache.get(&key).await.unwrap();
         assert_eq!(result, None);
     }
@@ -408,7 +408,7 @@ mod tests {
 
         // Check that eviction occurred
         let stats = cache.stats().await;
-        assert!(stats.evictions > 0);
+        assert!(stats.unwrap().evictions > 0);
     }
 
     #[tokio::test]

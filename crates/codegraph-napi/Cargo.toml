@@ -10,6 +10,8 @@ crate-type = ["cdylib"]
 
 [features]
 default = []
+cloud-surrealdb = ["codegraph-graph/surrealdb"]
+cloud = []
 
 [dependencies]
 # NAPI-RS

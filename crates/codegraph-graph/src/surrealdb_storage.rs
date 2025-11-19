@@ -240,19 +240,12 @@ impl SurrealDbStorage {
         limit: usize,
         ef_search: usize,
     ) -> Result<Vec<(String, f32)>> {
-        let column = match embedding_column {
-            SURR_EMBEDDING_COLUMN_384 => SURR_EMBEDDING_COLUMN_384,
-            SURR_EMBEDDING_COLUMN_768 => SURR_EMBEDDING_COLUMN_768,
-            SURR_EMBEDDING_COLUMN_1024 => SURR_EMBEDDING_COLUMN_1024,
-            SURR_EMBEDDING_COLUMN_2048 => SURR_EMBEDDING_COLUMN_2048,
-            SURR_EMBEDDING_COLUMN_4096 => SURR_EMBEDDING_COLUMN_4096,
-            other => {
-                return Err(CodeGraphError::Configuration(format!(
-                    "Unsupported embedding column '{}'",
-                    other
-                )))
-            }
-        };
+        let column = normalized_embedding_column(embedding_column).ok_or_else(|| {
+            CodeGraphError::Configuration(format!(
+                "Unsupported embedding column '{}'",
+                embedding_column
+            ))
+        })?;
 
         info!(
             "Executing HNSW vector search on {} with limit={}, ef_search={}",
@@ -310,19 +303,12 @@ impl SurrealDbStorage {
         language: Option<String>,
         file_path_pattern: Option<String>,
     ) -> Result<Vec<(String, f32)>> {
-        let column = match embedding_column {
-            SURR_EMBEDDING_COLUMN_384 => SURR_EMBEDDING_COLUMN_384,
-            SURR_EMBEDDING_COLUMN_768 => SURR_EMBEDDING_COLUMN_768,
-            SURR_EMBEDDING_COLUMN_1024 => SURR_EMBEDDING_COLUMN_1024,
-            SURR_EMBEDDING_COLUMN_2048 => SURR_EMBEDDING_COLUMN_2048,
-            SURR_EMBEDDING_COLUMN_4096 => SURR_EMBEDDING_COLUMN_4096,
-            other => {
-                return Err(CodeGraphError::Configuration(format!(
-                    "Unsupported embedding column '{}'",
-                    other
-                )))
-            }
-        };
+        let column = normalized_embedding_column(embedding_column).ok_or_else(|| {
+            CodeGraphError::Configuration(format!(
+                "Unsupported embedding column '{}'",
+                embedding_column
+            ))
+        })?;
 
         info!(
             "Executing filtered HNSW search on {}: type={:?}, lang={:?}, path={:?}",
@@ -604,19 +590,12 @@ impl SurrealDbStorage {
         }
 
         for record in records {
-            let column = match record.column {
-                SURR_EMBEDDING_COLUMN_384 => SURR_EMBEDDING_COLUMN_384,
-                SURR_EMBEDDING_COLUMN_768 => SURR_EMBEDDING_COLUMN_768,
-                SURR_EMBEDDING_COLUMN_1024 => SURR_EMBEDDING_COLUMN_1024,
-                SURR_EMBEDDING_COLUMN_2048 => SURR_EMBEDDING_COLUMN_2048,
-                SURR_EMBEDDING_COLUMN_4096 => SURR_EMBEDDING_COLUMN_4096,
-                other => {
-                    return Err(CodeGraphError::Database(format!(
-                        "Unsupported embedding column '{}'",
-                        other
-                    )))
-                }
-            };
+            let column = normalized_embedding_column(record.column).ok_or_else(|| {
+                CodeGraphError::Database(format!(
+                    "Unsupported embedding column '{}'",
+                    record.column
+                ))
+            })?;
 
             let query = format!(
                 "UPDATE type::thing('nodes', $id) SET {} = $embedding, updated_at = time::now();",
@@ -1368,6 +1347,18 @@ pub const SURR_EMBEDDING_COLUMN_2048: &str = "embedding_2048";
 pub const SURR_EMBEDDING_COLUMN_2560: &str = "embedding_2560";
 pub const SURR_EMBEDDING_COLUMN_4096: &str = "embedding_4096";
 
+fn normalized_embedding_column(column: &str) -> Option<&'static str> {
+    match column {
+        SURR_EMBEDDING_COLUMN_384 => Some(SURR_EMBEDDING_COLUMN_384),
+        SURR_EMBEDDING_COLUMN_768 => Some(SURR_EMBEDDING_COLUMN_768),
+        SURR_EMBEDDING_COLUMN_1024 => Some(SURR_EMBEDDING_COLUMN_1024),
+        SURR_EMBEDDING_COLUMN_2048 => Some(SURR_EMBEDDING_COLUMN_2048),
+        SURR_EMBEDDING_COLUMN_2560 => Some(SURR_EMBEDDING_COLUMN_2560),
+        SURR_EMBEDDING_COLUMN_4096 => Some(SURR_EMBEDDING_COLUMN_4096),
+        _ => None,
+    }
+}
+
 pub fn surreal_embedding_column_for_dimension(dim: usize) -> &'static str {
     match dim {
         384 => SURR_EMBEDDING_COLUMN_384,
@@ -1473,5 +1464,18 @@ mod tests {
 
         let storage = SurrealDbStorage::new(config).await;
         assert!(storage.is_ok());
+    }
+
+    #[test]
+    fn normalized_embedding_column_supports_2560() {
+        assert_eq!(
+            normalized_embedding_column(SURR_EMBEDDING_COLUMN_2560),
+            Some(SURR_EMBEDDING_COLUMN_2560)
+        );
+    }
+
+    #[test]
+    fn normalized_embedding_column_rejects_unknown_column() {
+        assert!(normalized_embedding_column("embedding_9999").is_none());
     }
 }

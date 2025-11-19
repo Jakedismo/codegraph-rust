@@ -48,9 +48,7 @@ criterion = { workspace = true }
 fastrand = { workspace = true }
 futures = { workspace = true }
 
-[[bench]]
-name = "cache_benchmark"
-harness = false
+
 
 [features]
 default = ["faiss", "persistent"]

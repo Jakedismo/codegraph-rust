@@ -5,17 +5,16 @@ members = [
     "crates/codegraph-cache",
     "crates/codegraph-parser",
     "crates/codegraph-mcp",
-    "crates/codegraph-queue",
-    "crates/codegraph-git",
+
+
     "crates/codegraph-concurrent",
     "crates/codegraph-graph",
     "crates/codegraph-zerocopy",
-    "crates/codegraph-lb",
+
     "crates/codegraph-ai",
     "crates/codegraph-api",
     "crates/codegraph-cli",
     "crates/codegraph-napi",
-    "crates/core-rag-mcp-server",
     "tests/integration"
 ]
 exclude = ["scripts", "vendor/rmcp", "vendor/semchunk-rs"]
@@ -46,7 +45,7 @@ serde_json = "1.0"
 toml = "0.9.5"
 
 # Zero-copy serialization
-rkyv = { version = "0.7.45", features = ["alloc", "std"] }
+rkyv = { version = "0.8.8", features = ["alloc", "std"] }
 bytecheck = "0.8"
 rend = "0.5"
 
@@ -187,7 +186,7 @@ argon2 = "0.5"
 tempfile = "3.23"
 tokio-test = "0.4"
 approx = "0.5"
-criterion = { version = "0.7.0", features = ["html_reports"] }
+criterion = { version = "0.7.0", features = ["html_reports", "async_tokio"] }
 
 # LRU cache utility
 lru = "0.16.1"
@@ -203,9 +202,9 @@ codegraph-vector = { path = "crates/codegraph-vector", default-features = false 
 codegraph-cache = { path = "crates/codegraph-cache", default-features = false }
 codegraph-api = { path = "crates/codegraph-api" }
 codegraph-mcp = { path = "crates/codegraph-mcp" }
-codegraph-git = { path = "crates/codegraph-git" }
+
 codegraph-zerocopy = { path = "crates/codegraph-zerocopy" }
-core-rag-mcp-server = { path = "crates/core-rag-mcp-server" }
+
 codegraph-ai = { path = "crates/codegraph-ai" }
 
 

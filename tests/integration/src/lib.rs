@@ -12,11 +12,7 @@ pub struct TestContext {
     pub tmpdir: TempDir,
 }
 
-impl TestContext {
-    pub fn base_url(&self) -> &str {
-        self.server.base_url()
-    }
-}
+
 
 /// Create an axum TestServer with isolated working directory and clean RocksDB path.
 #[allow(dead_code)]
@@ -34,9 +30,9 @@ pub async fn setup_test_server() -> Result<TestContext> {
     }
 
     // Minimal config
-    let config = ConfigManager::new_watching(Some("test".to_string()))
+    let config = ConfigManager::load()
         .expect("Failed to init ConfigManager");
-    let state = AppState::new(config)
+    let state = AppState::new(Arc::new(config))
         .await
         .expect("Failed to create AppState");
     let app: Router = create_router(state);

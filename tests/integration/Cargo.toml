@@ -13,10 +13,11 @@ codegraph-core = { workspace = true }
 codegraph-api = { workspace = true }
 axum = { workspace = true }
 
-[dev-dependencies]
 axum-test = "18.1"
 serial_test = "3.0"
 futures = { workspace = true }
+
+[dev-dependencies]
 
 [lib]
 name = "cg_integration_test_support"
