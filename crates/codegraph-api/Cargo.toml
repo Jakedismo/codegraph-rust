@@ -45,7 +45,7 @@ secrecy = { workspace = true }
 
 # Setup wizard dependencies
 dialoguer = "0.11"
-dirs = "5.0"
+dirs = "6.0"
 toml = { workspace = true }
 
 # GraphQL
