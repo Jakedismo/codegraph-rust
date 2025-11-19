@@ -20,10 +20,11 @@ sha2 = { workspace = true }
 # SurrealDB support (optional, default on via feature flag)
 surrealdb = { version = "2.2", optional = true }
 dotenvy = { version = "0.15", optional = true }
+tokio = { workspace = true, optional = true, features = ["macros", "rt-multi-thread"] }
 
 [features]
 default = []
-surrealdb = ["dep:surrealdb", "dep:dotenvy"]
+surrealdb = ["dep:surrealdb", "dep:dotenvy", "dep:tokio"]
 
 [[bin]]
 name = "surreal_smoke_test"

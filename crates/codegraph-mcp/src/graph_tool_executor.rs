@@ -101,10 +101,10 @@ impl GraphToolExecutor {
         stats.current_size = 0;
     }
 
-    /// Generate a cache key from tool name and parameters
-    fn cache_key(tool_name: &str, parameters: &JsonValue) -> String {
-        // Create deterministic key from function name + serialized params
-        format!("{}:{}", tool_name, parameters.to_string())
+    /// Generate a cache key from project, tool name, and parameters
+    fn cache_key(project_id: &str, tool_name: &str, parameters: &JsonValue) -> String {
+        // Create deterministic key from project + function name + serialized params
+        format!("{}:{}:{}", project_id, tool_name, parameters.to_string())
     }
 
     /// Execute a tool call from LLM
@@ -122,9 +122,11 @@ impl GraphToolExecutor {
         let _schema = GraphToolSchemas::get_by_name(tool_name)
             .ok_or_else(|| McpError::Protocol(format!("Unknown tool: {}", tool_name)))?;
 
+        let project_id = self.graph_functions.project_id();
+
         // Check cache if enabled
         if self.cache_enabled {
-            let cache_key = Self::cache_key(tool_name, &parameters);
+            let cache_key = Self::cache_key(project_id, tool_name, &parameters);
 
             // Try cache lookup
             {
@@ -177,7 +179,7 @@ impl GraphToolExecutor {
 
         // Cache the result if enabled
         if self.cache_enabled {
-            let cache_key = Self::cache_key(tool_name, &parameters);
+            let cache_key = Self::cache_key(project_id, tool_name, &parameters);
             let mut cache = self.cache.lock();
             let was_evicted = cache.len() >= cache.cap().get();
             cache.put(cache_key, result.clone());
@@ -430,14 +432,32 @@ mod tests {
             "depth": 3
         });
 
-        let key1 = GraphToolExecutor::cache_key("get_transitive_dependencies", &params1);
-        let key2 = GraphToolExecutor::cache_key("get_transitive_dependencies", &params2);
-        let key3 = GraphToolExecutor::cache_key("get_transitive_dependencies", &params3);
+        let project = "proj-a";
+
+        let key1 = GraphToolExecutor::cache_key(project, "get_transitive_dependencies", &params1);
+        let key2 = GraphToolExecutor::cache_key(project, "get_transitive_dependencies", &params2);
+        let key3 = GraphToolExecutor::cache_key(project, "get_transitive_dependencies", &params3);
 
         // Same params should generate same key
         assert_eq!(key1, key2);
         // Different params should generate different key
         assert_ne!(key1, key3);
+    }
+
+    #[test]
+    fn test_cache_key_includes_project_scope() {
+        let params = json!({
+            "node_id": "nodes:123"
+        });
+
+        let key_a = GraphToolExecutor::cache_key("proj-a", "get_hub_nodes", &params);
+        let key_b = GraphToolExecutor::cache_key("proj-b", "get_hub_nodes", &params);
+
+        assert_ne!(key_a, key_b);
+        assert!(
+            key_a.starts_with("proj-a:"),
+            "Project scope should prefix cache key"
+        );
     }
 
     #[test]

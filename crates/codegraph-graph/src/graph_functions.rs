@@ -12,11 +12,38 @@ use tracing::{debug, error};
 #[derive(Clone)]
 pub struct GraphFunctions {
     db: Arc<Surreal<Any>>,
+    project_id: String,
 }
 
 impl GraphFunctions {
     pub fn new(db: Arc<Surreal<Any>>) -> Self {
-        Self { db }
+        Self {
+            db,
+            project_id: Self::default_project_id(),
+        }
+    }
+
+    pub fn new_with_project_id(db: Arc<Surreal<Any>>, project_id: impl Into<String>) -> Self {
+        Self {
+            db,
+            project_id: project_id.into(),
+        }
+    }
+
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+
+    fn default_project_id() -> String {
+        std::env::var("CODEGRAPH_PROJECT_ID")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .map(|p| p.display().to_string())
+            })
+            .unwrap_or_else(|| "default-project".to_string())
     }
 
     /// Get transitive dependencies of a node up to specified depth
@@ -35,13 +62,16 @@ impl GraphFunctions {
         depth: i32,
     ) -> Result<Vec<DependencyNode>> {
         debug!(
-            "Calling fn::get_transitive_dependencies({}, {}, {})",
-            node_id, edge_type, depth
+            "Calling fn::get_transitive_dependencies({}, {}, {}, project={})",
+            node_id, edge_type, depth, self.project_id
         );
 
         let result: Vec<DependencyNode> = self
             .db
-            .query("RETURN fn::get_transitive_dependencies($node_id, $edge_type, $depth)")
+            .query(
+                "RETURN fn::get_transitive_dependencies($project_id, $node_id, $edge_type, $depth)",
+            )
+            .bind(("project_id", self.project_id.clone()))
             .bind(("node_id", node_id.to_string()))
             .bind(("edge_type", edge_type.to_string()))
             .bind(("depth", depth))
@@ -70,11 +100,15 @@ impl GraphFunctions {
         &self,
         edge_type: &str,
     ) -> Result<Vec<CircularDependency>> {
-        debug!("Calling fn::detect_circular_dependencies({})", edge_type);
+        debug!(
+            "Calling fn::detect_circular_dependencies({}, project={})",
+            edge_type, self.project_id
+        );
 
         let result: Vec<CircularDependency> = self
             .db
-            .query("RETURN fn::detect_circular_dependencies($edge_type)")
+            .query("RETURN fn::detect_circular_dependencies($project_id, $edge_type)")
+            .bind(("project_id", self.project_id.clone()))
             .bind(("edge_type", edge_type.to_string()))
             .await
             .map_err(|e| {
@@ -103,11 +137,15 @@ impl GraphFunctions {
         from_node: &str,
         max_depth: i32,
     ) -> Result<Vec<CallChainNode>> {
-        debug!("Calling fn::trace_call_chain({}, {})", from_node, max_depth);
+        debug!(
+            "Calling fn::trace_call_chain({}, {}, project={})",
+            from_node, max_depth, self.project_id
+        );
 
         let result: Vec<CallChainNode> = self
             .db
-            .query("RETURN fn::trace_call_chain($from_node, $max_depth)")
+            .query("RETURN fn::trace_call_chain($project_id, $from_node, $max_depth)")
+            .bind(("project_id", self.project_id.clone()))
             .bind(("from_node", from_node.to_string()))
             .bind(("max_depth", max_depth))
             .await
@@ -132,11 +170,15 @@ impl GraphFunctions {
     /// # Returns
     /// Coupling metrics including afferent, efferent, and instability
     pub async fn calculate_coupling_metrics(&self, node_id: &str) -> Result<CouplingMetricsResult> {
-        debug!("Calling fn::calculate_coupling_metrics({})", node_id);
+        debug!(
+            "Calling fn::calculate_coupling_metrics({}, project={})",
+            node_id, self.project_id
+        );
 
         let results: Vec<CouplingMetricsResult> = self
             .db
-            .query("RETURN fn::calculate_coupling_metrics($node_id)")
+            .query("RETURN fn::calculate_coupling_metrics($project_id, $node_id)")
+            .bind(("project_id", self.project_id.clone()))
             .bind(("node_id", node_id.to_string()))
             .await
             .map_err(|e| {
@@ -163,11 +205,15 @@ impl GraphFunctions {
     /// # Returns
     /// Vector of highly connected hub nodes sorted by degree (descending)
     pub async fn get_hub_nodes(&self, min_degree: i32) -> Result<Vec<HubNode>> {
-        debug!("Calling fn::get_hub_nodes({})", min_degree);
+        debug!(
+            "Calling fn::get_hub_nodes({}, project={})",
+            min_degree, self.project_id
+        );
 
         let result: Vec<HubNode> = self
             .db
-            .query("RETURN fn::get_hub_nodes($min_degree)")
+            .query("RETURN fn::get_hub_nodes($project_id, $min_degree)")
+            .bind(("project_id", self.project_id.clone()))
             .bind(("min_degree", min_degree))
             .await
             .map_err(|e| {
@@ -199,13 +245,14 @@ impl GraphFunctions {
         depth: i32,
     ) -> Result<Vec<DependencyNode>> {
         debug!(
-            "Calling fn::get_reverse_dependencies({}, {}, {})",
-            node_id, edge_type, depth
+            "Calling fn::get_reverse_dependencies({}, {}, {}, project={})",
+            node_id, edge_type, depth, self.project_id
         );
 
         let result: Vec<DependencyNode> = self
             .db
-            .query("RETURN fn::get_reverse_dependencies($node_id, $edge_type, $depth)")
+            .query("RETURN fn::get_reverse_dependencies($project_id, $node_id, $edge_type, $depth)")
+            .bind(("project_id", self.project_id.clone()))
             .bind(("node_id", node_id.to_string()))
             .bind(("edge_type", edge_type.to_string()))
             .bind(("depth", depth))
