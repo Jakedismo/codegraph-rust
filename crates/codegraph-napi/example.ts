@@ -1,136 +1,68 @@
 /**
- * Example: Using CodeGraph Native Addon
+ * Example: Using the CodeGraph Native Addon for semantic + graph analysis.
  *
- * Direct function calls - no process spawning, no HTTP!
+ * This script runs purely inside the current Node.js process:
+ * no CLI spawning, no HTTP server, just direct native calls.
  */
 
 import {
+  getAddonVersion,
+  getCloudConfig,
   initialize,
-  getVersion,
-  // Transactions
-  beginTransaction,
-  commitTransaction,
-  rollbackTransaction,
-  getTransactionStats,
-  // Versions
-  createVersion,
-  listVersions,
-  getVersion as getVersionDetails,
-  tagVersion,
-  compareVersions,
-  // Branches
-  createBranch,
-  listBranches,
-  getBranch,
-  deleteBranch,
-  mergeBranches,
+  searchSimilarFunctions,
+  semanticSearch,
 } from './index';
 
 async function main() {
   console.log('🚀 CodeGraph Native Addon Example\n');
 
-  // Optional: Initialize (happens automatically on first call)
   await initialize();
-  console.log(`✅ CodeGraph version: ${getVersion()}\n`);
+  console.log(`✅ Native addon loaded (version ${getAddonVersion()})`);
 
-  try {
-    // ========================================
-    // 1. Transaction Management
-    // ========================================
-    console.log('💾 Transaction Management');
-    const tx = await beginTransaction('serializable');
-    console.log(`   Started: ${tx.transactionId}`);
-    console.log(`   Isolation: ${tx.isolationLevel}\n`);
+  const cloudConfig = await getCloudConfig();
+  console.log(
+    `☁️  Cloud ready: ${cloudConfig.surrealdbEnabled ? 'SurrealDB detected' : 'local-only mode'}\n`,
+  );
 
-    // Simulate some work
-    await new Promise(resolve => setTimeout(resolve, 100));
+  // ------------------------------------------------------------
+  // 1. Run a semantic search across the indexed codebase
+  // ------------------------------------------------------------
+  const semanticResults = await semanticSearch('LRU cache eviction', {
+    limit: 5,
+    minSimilarity: 0.4,
+  });
 
-    const committed = await commitTransaction(tx.transactionId);
-    console.log(`   Committed: ${committed.status}\n`);
+  console.log(`🔍 Semantic search returned ${semanticResults.totalCount} candidates:`);
+  semanticResults.localResults.slice(0, 5).forEach((result, idx) => {
+    console.log(
+      `   ${idx + 1}. ${result.name} (${result.similarity.toFixed(3)}) - ${result.id}`,
+    );
+  });
+  console.log();
 
-    // ========================================
-    // 2. Version Management
-    // ========================================
-    console.log('📦 Version Management');
-    const version = await createVersion({
-      name: 'v1.0.0',
-      description: 'Initial release with core features',
-      author: 'native-addon@example.com',
-      parents: undefined,  // Or: ['parent-id-1', 'parent-id-2']
-    });
-    console.log(`   Created: ${version.versionId}`);
-    console.log(`   Name: ${version.name}`);
-    console.log(`   Author: ${version.author}\n`);
+  // ------------------------------------------------------------
+  // 2. Expand context around the top semantic hit
+  // ------------------------------------------------------------
+  if (semanticResults.localResults.length > 0) {
+    const anchor = semanticResults.localResults[0];
+    console.log(`🧠 Exploring code similar to ${anchor.name} (${anchor.id})`);
 
-    // List versions
-    const versions = await listVersions(10);
-    console.log(`   Found ${versions.length} version(s):`);
-    versions.forEach(v => {
-      console.log(`     - ${v.name} (${v.versionId.substring(0, 8)}...)`);
-    });
-    console.log();
-
-    // Tag version
-    await tagVersion(version.versionId, 'stable');
-    console.log(`   Tagged ${version.versionId} as 'stable'\n`);
-
-    // ========================================
-    // 3. Branch Management
-    // ========================================
-    console.log('🌿 Branch Management');
-    const branch = await createBranch({
-      name: 'feature/authentication',
-      from: version.versionId,
-      author: 'native-addon@example.com',
-      description: 'Add user authentication',
-    });
-    console.log(`   Created: ${branch.name}`);
-    console.log(`   Head: ${branch.head}\n`);
-
-    // List branches
-    const branches = await listBranches();
-    console.log(`   Found ${branches.length} branch(es):`);
-    branches.forEach(b => {
-      console.log(`     - ${b.name} -> ${b.head.substring(0, 8)}...`);
+    const similar = await searchSimilarFunctions(anchor.id, 5);
+    similar.forEach((result, idx) => {
+      console.log(
+        `   ${idx + 1}. ${result.name} (${result.similarity.toFixed(3)}) - ${result.id}`,
+      );
     });
     console.log();
-
-    // ========================================
-    // 4. Statistics
-    // ========================================
-    console.log('📊 Transaction Statistics');
-    const stats = await getTransactionStats();
-    console.log(`   Active: ${stats.activeTransactions}`);
-    console.log(`   Committed: ${stats.committedTransactions}`);
-    console.log(`   Aborted: ${stats.abortedTransactions}`);
-    console.log(`   Avg commit time: ${stats.averageCommitTimeMs.toFixed(2)}ms\n`);
-
-    // ========================================
-    // 5. Performance Demo
-    // ========================================
-    console.log('⚡ Performance Test (1000 operations)');
-    const startTime = Date.now();
-
-    for (let i = 0; i < 1000; i++) {
-      await getTransactionStats();
-    }
-
-    const endTime = Date.now();
-    const totalTime = endTime - startTime;
-    const avgTime = totalTime / 1000;
-
-    console.log(`   Total time: ${totalTime}ms`);
-    console.log(`   Average per call: ${avgTime.toFixed(2)}ms`);
-    console.log(`   Calls per second: ${(1000 / (totalTime / 1000)).toFixed(0)}\n`);
-
-    console.log('✨ All operations completed successfully!');
-    console.log('\n💡 Notice: No process spawning, no HTTP - just direct function calls!');
-
-  } catch (error) {
-    console.error('❌ Error:', error instanceof Error ? error.message : String(error));
-    process.exit(1);
+  } else {
+    console.log('⚠️  No semantic matches found, skipping similarity expansion.\n');
   }
+
+  console.log('✨ Done! Calls executed entirely through the native addon.');
+  console.log('   Try adjusting the query string or limit to explore more results.');
 }
 
-// Run the example
-main().catch(console.error);
+main().catch((error) => {
+  console.error('❌ Example failed:', error);
+  process.exit(1);
+});

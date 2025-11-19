@@ -163,38 +163,6 @@ for (const result of results.localResults) {
 }
 ```
 
-### Version Management
-
-```typescript
-import {
-  createVersion,
-  listVersions,
-  createBranch,
-  mergeBranches,
-} from 'codegraph-napi';
-
-// Create a version - direct function call!
-const version = await createVersion({
-  name: 'v1.0.0',
-  description: 'Initial release',
-  author: 'user@example.com',
-  parents: undefined,
-});
-
-console.log(`Created: ${version.versionId}`);
-
-// List versions
-const versions = await listVersions(50);
-versions.forEach(v => console.log(v.name));
-
-// Create branch
-await createBranch({
-  name: 'feature/api',
-  from: version.versionId,
-  author: 'user@example.com',
-});
-```
-
 ## API Reference
 
 ### Initialization
@@ -529,235 +497,6 @@ interface HubNode {
 }
 ```
 
-### Transaction Management
-
-```typescript
-// Begin transaction
-const tx = await beginTransaction('serializable');
-// Options: 'read-uncommitted', 'read-committed', 'repeatable-read', 'serializable'
-
-// Commit transaction
-await commitTransaction(tx.transactionId);
-
-// Rollback transaction
-await rollbackTransaction(tx.transactionId);
-
-// Get statistics
-const stats = await getTransactionStats();
-console.log(stats.activeTransactions);
-```
-
-### Version Management
-
-```typescript
-// Create version
-const version = await createVersion({
-  name: 'v1.0.0',
-  description: 'Release notes',
-  author: 'user@example.com',
-  parents: ['parent-id-1', 'parent-id-2'],  // Optional
-});
-
-// List versions
-const versions = await listVersions(50);  // limit optional
-
-// Get version by ID
-const version = await getVersion('version-id');
-
-// Tag version
-await tagVersion('version-id', 'stable');
-
-// Compare versions
-const diff = await compareVersions('from-id', 'to-id');
-console.log(`${diff.addedNodes} added, ${diff.modifiedNodes} modified`);
-```
-
-### Branch Management
-
-```typescript
-// Create branch
-const branch = await createBranch({
-  name: 'feature/auth',
-  from: 'version-id',
-  author: 'user@example.com',
-  description: 'Authentication feature',  // Optional
-});
-
-// List branches
-const branches = await listBranches();
-
-// Get branch
-const branch = await getBranch('branch-name');
-
-// Delete branch
-await deleteBranch('branch-name');
-
-// Merge branches
-const result = await mergeBranches({
-  source: 'feature/auth',
-  target: 'main',
-  author: 'user@example.com',
-  message: 'Merge auth feature',  // Optional
-});
-
-if (result.success) {
-  console.log('Merged!');
-} else {
-  console.log(`${result.conflicts} conflicts`);
-}
-```
-
-## Types
-
-### TransactionResult
-
-```typescript
-interface TransactionResult {
-  transactionId: string;
-  isolationLevel: string;
-  status: string;
-}
-```
-
-### VersionResult
-
-```typescript
-interface VersionResult {
-  versionId: string;
-  name: string;
-  description: string;
-  author: string;
-  createdAt: string;  // ISO 8601 format
-}
-```
-
-### BranchResult
-
-```typescript
-interface BranchResult {
-  name: string;
-  head: string;  // Version ID
-  createdAt: string;
-  createdBy: string;
-}
-```
-
-### TransactionStats
-
-```typescript
-interface TransactionStats {
-  activeTransactions: number;
-  committedTransactions: string;  // u64 as string
-  abortedTransactions: string;    // u64 as string
-  averageCommitTimeMs: number;
-}
-```
-
-## Performance
-
-### Benchmark: Native Addon vs CLI Spawning
-
-```typescript
-// Native addon (direct function call)
-console.time('native');
-for (let i = 0; i < 1000; i++) {
-  await getTransactionStats();
-}
-console.timeEnd('native');
-// ~150ms (0.15ms per call)
-
-// CLI spawning
-console.time('cli');
-for (let i = 0; i < 1000; i++) {
-  await exec('codegraph transaction stats');
-}
-console.timeEnd('cli');
-// ~45,000ms (45ms per call)
-```
-
-**Native addon is ~300x faster** for high-frequency operations!
-
-## Integration Examples
-
-### Express API Server
-
-```typescript
-import express from 'express';
-import { createVersion, listVersions } from 'codegraph-napi';
-
-const app = express();
-app.use(express.json());
-
-app.post('/api/versions', async (req, res) => {
-  try {
-    const version = await createVersion(req.body);
-    res.json(version);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/versions', async (req, res) => {
-  const versions = await listVersions(50);
-  res.json(versions);
-});
-
-app.listen(3000);
-```
-
-### CLI Tool
-
-```typescript
-#!/usr/bin/env node
-import { Command } from 'commander';
-import { createVersion, listVersions } from 'codegraph-napi';
-
-const program = new Command();
-
-program
-  .command('version:create')
-  .option('-n, --name <name>')
-  .option('-d, --description <desc>')
-  .action(async (options) => {
-    const version = await createVersion({
-      name: options.name,
-      description: options.description,
-      author: 'cli',
-      parents: undefined,
-    });
-    console.log(`Created: ${version.versionId}`);
-  });
-
-program
-  .command('version:list')
-  .action(async () => {
-    const versions = await listVersions(50);
-    versions.forEach(v => console.log(`${v.name}: ${v.description}`));
-  });
-
-program.parse();
-```
-
-### Background Worker
-
-```typescript
-import { Queue, Worker } from 'bullmq';
-import { createVersion, mergeBranches } from 'codegraph-napi';
-
-const worker = new Worker('codegraph-tasks', async job => {
-  switch (job.name) {
-    case 'create-version':
-      return await createVersion(job.data);
-
-    case 'merge-branches':
-      return await mergeBranches(job.data);
-
-    default:
-      throw new Error('Unknown job type');
-  }
-});
-```
-
 ## Cloud Features Usage Examples
 
 ### Example 1: Semantic Code Search with Fallback
@@ -1005,49 +744,19 @@ COPY . .
 CMD ["node", "server.js"]
 ```
 
-### Serverless (AWS Lambda)
-
-```typescript
-// lambda/handler.ts
-import { createVersion, listVersions } from 'codegraph-napi';
-
-export const handler = async (event) => {
-  if (event.action === 'create') {
-    const version = await createVersion(JSON.parse(event.body));
-    return {
-      statusCode: 200,
-      body: JSON.stringify(version),
-    };
-  }
-
-  if (event.action === 'list') {
-    const versions = await listVersions(50);
-    return {
-      statusCode: 200,
-      body: JSON.stringify(versions),
-    };
-  }
-};
-```
-
 ## Error Handling
 
 ```typescript
 try {
-  const version = await createVersion({
-    name: 'v1.0',
-    description: 'Release',
-    author: 'user',
-  });
+  const results = await semanticSearch('non-existent symbol', { minSimilarity: 0.9 });
+  console.log(results.totalCount);
 } catch (error) {
-  if (error.message.includes('Invalid version ID')) {
-    console.error('Bad version ID format');
-  } else if (error.message.includes('Version not found')) {
-    console.error('Version does not exist');
-  } else if (error.message.includes('Failed to create version')) {
-    console.error('Creation failed:', error.message);
+  if (error.message.includes('Failed to get node')) {
+    console.error('Check that the repository has been indexed.');
+  } else if (error.message.includes('invalid node ID')) {
+    console.error('One of the IDs passed to searchSimilarFunctions is malformed.');
   } else {
-    console.error('Unexpected error:', error);
+    console.error('Unexpected search error:', error);
   }
 }
 ```
@@ -1137,22 +846,21 @@ await initialize();
 ### Concurrent Operations
 
 ```typescript
-// Safe to call in parallel - uses internal locking
+// Safe to call in parallel - internal locking protects shared state
 await Promise.all([
-  createVersion({ name: 'v1', ... }),
-  createVersion({ name: 'v2', ... }),
-  createVersion({ name: 'v3', ... }),
+  semanticSearch('caching layers', { limit: 5 }),
+  searchSimilarFunctions('node-id-1234', 5),
 ]);
 ```
 
 ### Memory Management
 
 ```typescript
-// The addon uses Arc<Mutex<>> internally
-// No manual cleanup needed - garbage collector handles it
+// The addon uses Arc<Mutex<>> internally - no manual cleanup required.
+// Large result sets are released once they drop out of scope.
 
-const versions = await listVersions(1000000);
-// Large arrays are properly freed when out of scope
+const largeQuery = await semanticSearch('serialization helpers', { limit: 500 });
+console.log(`Fetched ${largeQuery.localResults.length} entries`);
 ```
 
 ## Development

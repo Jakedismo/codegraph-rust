@@ -5,6 +5,12 @@ All notable changes to the CodeGraph MCP Intelligence Platform will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+- Dropped the transactional/versioning/branch N-API bindings plus their documentation; the native TypeScript surface now focuses on semantic search, graph analysis, and cloud configuration so it matches the Surreal-only architecture.
+- Replaced the native addon example with a semantic-search walkthrough and removed CLI-centric integration snippets that referenced the deleted CodeGraph CLI.
+
 ## [1.1.0] - 2025-11-18 - AutoAgents Integration & SurrealDB 2.x Compatibility
 
 ### 🚀 **Added - AutoAgents Framework Integration (Experimental)**
