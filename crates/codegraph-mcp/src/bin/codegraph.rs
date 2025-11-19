@@ -270,12 +270,6 @@ enum Commands {
         yes: bool,
     },
 
-    #[command(about = "Graph utilities")]
-    Graph {
-        #[command(subcommand)]
-        action: GraphAction,
-    },
-
     #[command(about = "Code IO operations")]
     Code {
         #[command(subcommand)]
@@ -313,26 +307,6 @@ enum Commands {
         format: String,
         #[arg(long, help = "Open graph in read-only mode for perf queries")]
         graph_readonly: bool,
-    },
-}
-
-#[derive(Subcommand)]
-enum GraphAction {
-    #[command(about = "Get neighbors of a node")]
-    Neighbors {
-        #[arg(long, help = "Node UUID")]
-        node: String,
-        #[arg(long, help = "Limit", default_value = "20")]
-        limit: usize,
-    },
-    #[command(about = "Traverse graph breadth-first")]
-    Traverse {
-        #[arg(long, help = "Start node UUID")]
-        start: String,
-        #[arg(long, help = "Depth", default_value = "2")]
-        depth: usize,
-        #[arg(long, help = "Limit nodes", default_value = "100")]
-        limit: usize,
     },
 }
 
@@ -576,57 +550,6 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-        Commands::Graph { action } => match action {
-            GraphAction::Neighbors { node, limit } => {
-                let id = uuid::Uuid::parse_str(&node)?;
-                let graph = codegraph_graph::CodeGraph::new()?;
-                let neighbors = graph.get_neighbors(id).await?;
-                println!("Neighbors ({}):", neighbors.len().min(limit));
-                for n in neighbors.into_iter().take(limit) {
-                    if let Some(nn) = graph.get_node(n).await? {
-                        println!("- {}  {}", n, nn.name);
-                    } else {
-                        println!("- {}", n);
-                    }
-                }
-            }
-            GraphAction::Traverse {
-                start,
-                depth,
-                limit,
-            } => {
-                use std::collections::{HashSet, VecDeque};
-                let start_id = uuid::Uuid::parse_str(&start)?;
-                let graph = codegraph_graph::CodeGraph::new()?;
-                let mut seen: HashSet<codegraph_core::NodeId> = HashSet::new();
-                let mut q: VecDeque<(codegraph_core::NodeId, usize)> = VecDeque::new();
-                q.push_back((start_id, 0));
-                seen.insert(start_id);
-                let mut out = Vec::new();
-                while let Some((nid, d)) = q.pop_front() {
-                    out.push((nid, d));
-                    if out.len() >= limit {
-                        break;
-                    }
-                    if d >= depth {
-                        continue;
-                    }
-                    for nb in graph.get_neighbors(nid).await.unwrap_or_default() {
-                        if seen.insert(nb) {
-                            q.push_back((nb, d + 1));
-                        }
-                    }
-                }
-                println!("Traversal (visited {}):", out.len());
-                for (nid, d) in out {
-                    if let Some(nn) = graph.get_node(nid).await? {
-                        println!("{} {}  {}", d, nid, nn.name);
-                    } else {
-                        println!("{} {}", d, nid);
-                    }
-                }
-            }
-        },
         Commands::Code { action } => match action {
             CodeAction::Read { path, start, end } => {
                 let text = std::fs::read_to_string(&path)?;
@@ -2213,64 +2136,6 @@ async fn handle_perf(
         latencies_ms.iter().sum::<f64>() / latencies_ms.len() as f64
     };
 
-    // Open graph with small retry to avoid transient lock contention
-    let graph = {
-        use std::time::Duration;
-        let mut attempts = 0;
-        loop {
-            let open_res = if graph_readonly {
-                codegraph_graph::CodeGraph::new_read_only()
-            } else {
-                codegraph_graph::CodeGraph::new()
-            };
-            match open_res {
-                Ok(g) => break g,
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("LOCK") && attempts < 10 {
-                        tokio::time::sleep(Duration::from_millis(50)).await;
-                        attempts += 1;
-                        continue;
-                    }
-                    return Err(e.into());
-                }
-            }
-        }
-    };
-    let mut any_node: Option<codegraph_core::NodeId> = None;
-    if let Ok(ids_raw) = std::fs::read_to_string(".codegraph/faiss_ids.json") {
-        if let Ok(ids) = serde_json::from_str::<Vec<codegraph_core::NodeId>>(&ids_raw) {
-            any_node = ids.into_iter().next();
-        }
-    }
-    let (graph_bfs_ms, bfs_nodes) = if let Some(start) = any_node {
-        use std::collections::{HashSet, VecDeque};
-        let t = std::time::Instant::now();
-        let mut seen: HashSet<codegraph_core::NodeId> = HashSet::new();
-        let mut q: VecDeque<(codegraph_core::NodeId, usize)> = VecDeque::new();
-        q.push_back((start, 0));
-        seen.insert(start);
-        let mut visited = 0usize;
-        while let Some((nid, d)) = q.pop_front() {
-            let _ = graph.get_node(nid).await; // load
-            visited += 1;
-            if d >= 2 {
-                continue;
-            }
-            for nb in graph.get_neighbors(nid).await.unwrap_or_default() {
-                if seen.insert(nb) {
-                    q.push_back((nb, d + 1));
-                }
-            }
-            if visited >= 1000 {
-                break;
-            }
-        }
-        (t.elapsed().as_secs_f64() * 1000.0, visited)
-    } else {
-        (0.0, 0)
-    };
-
     let out = json!({
         "env": {
             "embedding_provider": std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").ok(),
@@ -2280,8 +2145,7 @@ async fn handle_perf(
         "dataset": {"path": path, "languages": langs, "files": stats.files, "lines": stats.lines},
         "indexing": {"total_seconds": indexing_secs, "embeddings": stats.embeddings,
             "throughput_embeddings_per_sec": if indexing_secs > 0.0 { stats.embeddings as f64 / indexing_secs } else { 0.0 }},
-        "vector_search": {"queries": qset.len() * trials, "latency_ms": {"avg": avg, "p50": p50, "p95": p95}},
-        "graph": {"bfs_depth": 2, "visited_nodes": bfs_nodes, "elapsed_ms": graph_bfs_ms}
+        "vector_search": {"queries": qset.len() * trials, "latency_ms": {"avg": avg, "p50": p50, "p95": p95}}
     });
 
     if format == "human" {

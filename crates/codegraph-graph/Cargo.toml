@@ -8,45 +8,22 @@ description = "Graph data structures and operations for CodeGraph"
 
 [dependencies]
 codegraph-core = { workspace = true }
-# Reduce linked compression backends to minimize binary size.
-# Keep zstd only; disable default features (snappy, lz4, zlib, bzip2).
-rocksdb = { workspace = true, features = ["zstd"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-bincode = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 async-trait = { workspace = true }
 dashmap = { workspace = true }
-parking_lot = { workspace = true }
-rayon = { workspace = true }
-tokio = { workspace = true }
-futures = { workspace = true }
-uuid = { workspace = true }
 chrono = { workspace = true }
 sha2 = { workspace = true }
-memmap2 = { workspace = true }
-num_cpus = "1.16"
-crossbeam-channel = "0.5"
-notify = { workspace = true }
 
-# SurrealDB support (optional)
+# SurrealDB support (optional, default on via feature flag)
 surrealdb = { version = "2.2", optional = true }
 dotenvy = { version = "0.15", optional = true }
 
 [features]
 default = []
 surrealdb = ["dep:surrealdb", "dep:dotenvy"]
-
-[dev-dependencies]
-tokio-test = { workspace = true }
-tempfile = { workspace = true }
-criterion = { workspace = true }
-fastrand = "2.0"
-
-[[bench]]
-name = "simple_traversal_benchmarks"
-harness = false
 
 [[bin]]
 name = "surreal_smoke_test"

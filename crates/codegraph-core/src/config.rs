@@ -35,22 +35,6 @@ impl Default for ServerConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct RocksDbConfig {
-    pub path: String,
-    #[serde(default)]
-    pub read_only: bool,
-}
-
-impl Default for RocksDbConfig {
-    fn default() -> Self {
-        Self {
-            path: "data/graph.db".into(),
-            read_only: false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SurrealDbConfig {
     /// Connection string for SurrealDB (e.g., "file://data/graph.db" or "http://localhost:8000")
     pub connection: String,
@@ -110,13 +94,12 @@ impl Default for SurrealDbConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DatabaseBackend {
-    RocksDb,
     SurrealDb,
 }
 
 impl Default for DatabaseBackend {
     fn default() -> Self {
-        Self::RocksDb
+        Self::SurrealDb
     }
 }
 
@@ -124,8 +107,6 @@ impl Default for DatabaseBackend {
 pub struct DatabaseConfig {
     #[serde(default)]
     pub backend: DatabaseBackend,
-    #[serde(default)]
-    pub rocksdb: RocksDbConfig,
     #[serde(default)]
     pub surrealdb: SurrealDbConfig,
 }
@@ -199,9 +180,6 @@ pub struct Settings {
     pub server: ServerConfig,
     #[serde(default)]
     pub database: DatabaseConfig,
-    /// Deprecated: Use database.rocksdb instead
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rocksdb: Option<RocksDbConfig>,
     #[serde(default)]
     pub vector: VectorConfig,
     #[serde(default)]
@@ -218,7 +196,6 @@ impl Default for Settings {
             env: Self::default_env(),
             server: ServerConfig::default(),
             database: DatabaseConfig::default(),
-            rocksdb: None,
             vector: VectorConfig::default(),
             logging: LoggingConfig::default(),
             security: SecurityConfig::default(),
@@ -247,28 +224,18 @@ impl Settings {
         );
 
         // Validate database configuration
-        match self.database.backend {
-            DatabaseBackend::RocksDb => {
-                anyhow::ensure!(
-                    !self.database.rocksdb.path.is_empty(),
-                    "database.rocksdb.path cannot be empty"
-                );
-            }
-            DatabaseBackend::SurrealDb => {
-                anyhow::ensure!(
-                    !self.database.surrealdb.connection.is_empty(),
-                    "database.surrealdb.connection cannot be empty"
-                );
-                anyhow::ensure!(
-                    !self.database.surrealdb.namespace.is_empty(),
-                    "database.surrealdb.namespace cannot be empty"
-                );
-                anyhow::ensure!(
-                    !self.database.surrealdb.database.is_empty(),
-                    "database.surrealdb.database cannot be empty"
-                );
-            }
-        }
+        anyhow::ensure!(
+            !self.database.surrealdb.connection.is_empty(),
+            "database.surrealdb.connection cannot be empty"
+        );
+        anyhow::ensure!(
+            !self.database.surrealdb.namespace.is_empty(),
+            "database.surrealdb.namespace cannot be empty"
+        );
+        anyhow::ensure!(
+            !self.database.surrealdb.database.is_empty(),
+            "database.surrealdb.database cannot be empty"
+        );
 
         Ok(())
     }

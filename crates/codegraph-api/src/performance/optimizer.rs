@@ -2,9 +2,8 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::graph_stub::CodeGraph;
 use async_graphql::ID;
-use codegraph_core::{CodeGraphError, NodeId, Result};
+use codegraph_core::{CodeGraphError, Result};
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use serde::{de::DeserializeOwned, Serialize};
@@ -220,15 +219,6 @@ impl PerformanceOptimizer {
         format!("traverse:{:x}", hasher.finalize())
     }
 
-    /// Generate a stable cache key for a shortest path request
-    pub fn key_for_path(&self, from: &ID, to: &ID, max_depth: Option<i32>) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(from.to_string().as_bytes());
-        hasher.update(to.to_string().as_bytes());
-        hasher.update(max_depth.unwrap_or(0).to_le_bytes());
-        format!("path:{:x}", hasher.finalize())
-    }
-
     /// Check a traversal request against complexity guardrails
     pub fn guard_traversal_complexity(
         &self,
@@ -307,30 +297,6 @@ impl PerformanceOptimizer {
                     .await;
             }
             Err(e) => warn!("cache serialization failed: {}", e),
-        }
-    }
-
-    /// Optimized pathfinding choosing A* when appropriate, falling back to BFS cache-assisted path
-    pub async fn find_path_nodes(
-        &self,
-        graph: &CodeGraph,
-        from: NodeId,
-        to: NodeId,
-        _max_depth: Option<i32>,
-    ) -> Result<Option<Vec<NodeId>>> {
-        // Prefer A* with a lightweight admissible heuristic (0 heuristic becomes Dijkstra)
-        // If weights are non-uniform, A* will help prune. If not, fallback to BFS via graph.shortest_path
-        // Try A* first and fall back on failure for safety.
-        let heuristic = |_node: &NodeId| -> f64 { 0.0 };
-        match graph.astar_shortest_path(from, to, heuristic).await {
-            Ok(path) => Ok(Some(path)),
-            Err(_) => {
-                // Fallback to shortest_path
-                match graph.shortest_path(from, to).await {
-                    Ok(path) => Ok(Some(path)),
-                    Err(_) => Ok(None),
-                }
-            }
         }
     }
 }

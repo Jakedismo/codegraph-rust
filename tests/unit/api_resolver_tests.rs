@@ -90,17 +90,6 @@ async fn query_nodes_batch_and_neighbors() {
     assert!(data["getNeighbors"].is_array());
 }
 
-#[tokio::test]
-async fn query_find_path_structure() {
-    let schema = build_schema().await;
-    let a = uuid::Uuid::new_v4().to_string();
-    let b = uuid::Uuid::new_v4().to_string();
-    let q = r#"query($a:ID!,$b:ID!){ findPath(from:$a,to:$b,maxDepth:3){ id sourceId targetId edgeType } }"#;
-    let res = schema
-        .execute(Request::new(q).variables(Variables::from_json(json!({"a":a,"b":b}))))
-        .await;
-    assert!(res.errors.is_empty());
-}
 
 #[tokio::test]
 async fn node_query_invalid_uuid_is_graceful() {
@@ -154,18 +143,6 @@ async fn nodes_three_ids_and_neighbors_limit() {
         "a": uuid::Uuid::new_v4().to_string(),
         "b": uuid::Uuid::new_v4().to_string(),
         "c": uuid::Uuid::new_v4().to_string(),
-    }));
-    let res = schema.execute(Request::new(q).variables(vars)).await;
-    assert!(res.errors.is_empty());
-}
-
-#[tokio::test]
-async fn find_path_zero_depth() {
-    let schema = build_schema().await;
-    let q = r#"query($a:ID!,$b:ID!){ findPath(from:$a,to:$b,maxDepth:0){ id } }"#;
-    let vars = Variables::from_json(json!({
-        "a": uuid::Uuid::new_v4().to_string(),
-        "b": uuid::Uuid::new_v4().to_string(),
     }));
     let res = schema.execute(Request::new(q).variables(vars)).await;
     assert!(res.errors.is_empty());

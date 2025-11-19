@@ -1,6 +1,6 @@
 use crate::{
     auth_middleware, enhanced_health, handlers, health, rest, service_registry, streaming_handlers,
-    vector_handlers, versioning_handlers, AppState, RateLimitManager,
+    vector_handlers, AppState, RateLimitManager,
 };
 use axum::response::Html;
 use axum::{
@@ -85,67 +85,6 @@ pub fn create_router(state: AppState) -> Router {
             post(vector_handlers::submit_batch_operations),
         )
         .route("/batch/status", get(vector_handlers::get_batch_status))
-        // Transaction Management
-        .route(
-            "/transactions",
-            post(versioning_handlers::begin_transaction),
-        )
-        .route(
-            "/transactions/:id/commit",
-            post(versioning_handlers::commit_transaction),
-        )
-        .route(
-            "/transactions/:id/rollback",
-            post(versioning_handlers::rollback_transaction),
-        )
-        // Version Management
-        .route("/versions", post(versioning_handlers::create_version))
-        .route("/versions", get(versioning_handlers::list_versions))
-        .route("/versions/:id", get(versioning_handlers::get_version))
-        .route("/versions/:id/tag", post(versioning_handlers::tag_version))
-        .route(
-            "/versions/:from/compare/:to",
-            get(versioning_handlers::compare_versions),
-        )
-        // Branch Management
-        .route("/branches", post(versioning_handlers::create_branch))
-        .route("/branches", get(versioning_handlers::list_branches))
-        .route("/branches/:name", get(versioning_handlers::get_branch))
-        .route(
-            "/branches/:name",
-            axum::routing::delete(versioning_handlers::delete_branch),
-        )
-        // Merge Operations
-        .route("/merge", post(versioning_handlers::merge_branches))
-        .route(
-            "/merge/:id/resolve",
-            post(versioning_handlers::resolve_conflicts),
-        )
-        // Snapshot Management
-        .route(
-            "/snapshots/:transaction_id",
-            post(versioning_handlers::create_snapshot),
-        )
-        .route("/snapshots/:id", get(versioning_handlers::get_snapshot))
-        // Statistics and Monitoring
-        .route(
-            "/stats/transactions",
-            get(versioning_handlers::get_transaction_stats),
-        )
-        .route(
-            "/stats/recovery",
-            get(versioning_handlers::get_recovery_stats),
-        )
-        .route(
-            "/integrity/check",
-            post(versioning_handlers::run_integrity_check),
-        )
-        // Backup and Recovery
-        .route("/backup", post(versioning_handlers::create_backup))
-        .route(
-            "/backup/:id/restore",
-            post(versioning_handlers::restore_from_backup),
-        )
         // HTTP/2 routes disabled in this build
         // Service Discovery and Registration
         .route(

@@ -13,7 +13,6 @@ members = [
 
     "crates/codegraph-ai",
     "crates/codegraph-api",
-    "crates/codegraph-cli",
     "crates/codegraph-napi",
     "tests/integration"
 ]
@@ -71,9 +70,6 @@ arc-swap = "1.7"
 # System Information
 num_cpus = "1.16"
 sysinfo = "0.37.2"
-
-# Database
-rocksdb = "0.24"
 
 # Scientific computing
 ndarray = "0.16.1"

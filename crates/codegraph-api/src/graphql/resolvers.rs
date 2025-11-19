@@ -13,7 +13,6 @@ use crate::graphql::loaders::{
     EdgesBySourceLoader, GraphTraversalLoader, LoaderFactory, NodeLoader, SemanticSearchLoader,
     TraversalKey,
 };
-use crate::graphql::types::GraphQLEdge;
 use crate::graphql::types::UpdateNodeInput;
 use crate::graphql::types::{
     CodeSearchInput, CodeSearchResult, GraphQLCodeNode, GraphTraversalInput, GraphTraversalResult,
@@ -580,99 +579,6 @@ impl QueryRoot {
         })?;
 
         Ok(neighbors_map.into_values().collect())
-    }
-
-    /// Find a shortest path between two nodes, returning the connecting edges
-    #[instrument(skip(self, ctx), fields(from = ?from, to = ?to))]
-    pub async fn find_path(
-        &self,
-        ctx: &Context<'_>,
-        from: ID,
-        to: ID,
-        #[graphql(default = 10)] max_depth: i32,
-    ) -> Result<Vec<GraphQLEdge>> {
-        // Basic rate limiting per-operation
-        if let Some(auth) = ctx.data_opt::<AuthContext>() {
-            let tier = if auth.roles.contains(&"premium".to_string()) {
-                "premium"
-            } else {
-                "user"
-            };
-            let rl = RateLimitManager::new();
-            let _ = rl.check_rate_limit(tier, "findPath");
-        }
-
-        let state = ctx.data::<AppState>()?;
-        let edges_loader = ctx.data::<DataLoader<EdgesBySourceLoader>>()?;
-
-        let from_id = NodeId::from_str(&from.to_string())
-            .map_err(|_| async_graphql::Error::new("Invalid 'from' node ID format"))?;
-        let to_id = NodeId::from_str(&to.to_string())
-            .map_err(|_| async_graphql::Error::new("Invalid 'to' node ID format"))?;
-
-        // Use optimizer to choose A* if beneficial; fallback to BFS internally
-        let path_opt = {
-            let graph = state.graph.read().await;
-            state
-                .performance
-                .find_path_nodes(&graph, from_id, to_id, Some(max_depth))
-                .await
-        }
-        .map_err(|e| async_graphql::Error::new(format!("Path search failed: {}", e)))?;
-
-        let Some(path) = path_opt else {
-            return Ok(vec![]);
-        };
-
-        // Store node path in cache for identical queries
-        let path_cache_key = state.performance.key_for_path(&from, &to, Some(max_depth));
-        let path_ids: Vec<ID> = path.iter().map(|n| ID(n.to_string())).collect();
-        state
-            .performance
-            .put_cached_json(path_cache_key, &path_ids)
-            .await;
-
-        // Build list of consecutive pairs to resolve actual edges via DataLoader
-        let mut from_ids: Vec<NodeId> = Vec::new();
-        for win in path.windows(2) {
-            if let [a, _b] = win {
-                from_ids.push(*a);
-            }
-        }
-
-        let edges_map = edges_loader
-            .load_many(from_ids)
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Edge loading failed: {}", e)))?;
-
-        // For each consecutive pair, pick the matching edge if exists; otherwise synthesize
-        let mut result: Vec<GraphQLEdge> = Vec::new();
-        for win in path.windows(2) {
-            if let [a, b] = win {
-                if let Some(edges) = edges_map.get(a) {
-                    if let Some(edge) = edges
-                        .iter()
-                        .find(|e| e.target_id.to_string() == b.to_string())
-                    {
-                        result.push(edge.clone());
-                        continue;
-                    }
-                }
-                // Synthesize a generic edge if not present in loader result
-                let now = chrono::Utc::now();
-                result.push(GraphQLEdge {
-                    id: ID(Uuid::new_v4().to_string()),
-                    source_id: ID(a.to_string()),
-                    target_id: ID(b.to_string()),
-                    edge_type: crate::graphql::types::GraphQLEdgeType::Other,
-                    weight: None,
-                    attributes: std::collections::HashMap::new(),
-                    created_at: now,
-                });
-            }
-        }
-
-        Ok(result)
     }
 
     /// Get a specific node by ID

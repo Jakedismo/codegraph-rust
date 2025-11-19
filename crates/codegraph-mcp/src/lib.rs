@@ -27,7 +27,6 @@ pub mod prompt_selector;
 pub mod protocol;
 #[cfg(feature = "ai-enhanced")]
 pub mod semantic_question_prompts;
-pub mod server;
 pub mod transport;
 pub mod version;
 

@@ -4,11 +4,6 @@
 # Select SurrealDB as the database backend
 backend = "surrealdb"
 
-# RocksDB configuration (not used when backend is surrealdb, but kept for backward compatibility)
-[database.rocksdb]
-path = "data/graph.db"
-read_only = false
-
 # SurrealDB configuration
 [database.surrealdb]
 # Connection string options:

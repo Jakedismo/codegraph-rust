@@ -6,9 +6,9 @@ use crate::graphql::loaders::{
     EdgesBySourceLoader, GraphTraversalLoader, NodeLoader, SemanticSearchLoader,
 };
 use crate::graphql::{
-    CodeSearchInput, CodeSearchResult, GraphQLCodeNode, GraphQLEdge, GraphQLEdgeType,
-    GraphTraversalInput, GraphTraversalResult, QueryRoot, SemanticSearchInput,
-    SemanticSearchResult, SubgraphExtractionInput, SubgraphResult,
+    CodeSearchInput, CodeSearchResult, GraphQLCodeNode, GraphQLEdgeType, GraphTraversalInput,
+    GraphTraversalResult, QueryRoot, SemanticSearchInput, SemanticSearchResult,
+    SubgraphExtractionInput, SubgraphResult,
 };
 
 pub struct Query;
@@ -77,18 +77,6 @@ impl Query {
     ) -> Result<Vec<GraphQLCodeNode>> {
         let query_root = QueryRoot;
         query_root.get_neighbors(ctx, id, limit, edge_types).await
-    }
-
-    /// Find shortest path between two nodes, returning edges
-    async fn find_path(
-        &self,
-        ctx: &Context<'_>,
-        from: ID,
-        to: ID,
-        #[graphql(default = 10)] max_depth: i32,
-    ) -> Result<Vec<GraphQLEdge>> {
-        let query_root = QueryRoot;
-        query_root.find_path(ctx, from, to, max_depth).await
     }
 
     /// Health check endpoint

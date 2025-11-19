@@ -26,8 +26,8 @@ pub use buffer_pool::*;
 pub use config::ConfigManager as ServerConfigManager;
 pub use config::LoggingConfig as ServerLoggingConfig;
 pub use config::{
-    crypto, DatabaseBackend, DatabaseConfig, RocksDbConfig, SecretsConfig, SecurityConfig,
-    ServerConfig, Settings, SurrealDbConfig, VectorConfig,
+    crypto, DatabaseBackend, DatabaseConfig, SecretsConfig, SecurityConfig, ServerConfig, Settings,
+    SurrealDbConfig, VectorConfig,
 };
 pub use config_manager::*;
 pub use embedding_config::*;

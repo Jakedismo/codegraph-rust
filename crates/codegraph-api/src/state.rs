@@ -1,5 +1,4 @@
 use crate::connection_pool::{load_base_urls_from_env, ConnectionPoolConfig, HttpClientPool};
-use crate::graph_stub::TransactionalGraph;
 use crate::performance::{PerformanceOptimizer, PerformanceOptimizerConfig};
 use crate::service_registry::ServiceRegistry;
 use async_trait::async_trait;
@@ -100,7 +99,6 @@ pub struct AppState {
     pub settings: codegraph_core::CodeGraphConfig,
     pub config: Arc<ConfigManager>,
     pub graph: Arc<RwLock<InMemoryGraph>>,
-    pub transactional_graph: Arc<TransactionalGraph>,
     pub parser: Arc<TreeSitterParser>,
     pub vector_store: Arc<SurrealVectorStore>,
     pub embedding_generator: Arc<EmbeddingGenerator>,
@@ -120,25 +118,9 @@ impl AppState {
         let storage_path = std::env::var("CODEGRAPH_STORAGE_PATH")
             .unwrap_or_else(|_| "./codegraph_data".to_string());
 
-        let transactional_graph = match TransactionalGraph::with_storage(&storage_path).await {
-            Ok(tg) => {
-                tracing::info!(
-                    "Initialized TransactionalGraph with real storage at {}",
-                    storage_path
-                );
-                Arc::new(tg)
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to initialize real storage ({}), using stub fallback",
-                    e
-                );
-                Arc::new(TransactionalGraph::new())
-            }
-        };
-
         let parser = Arc::new(TreeSitterParser::new());
-        let surreal_config = adapt_surreal_config(&config.config().database.surrealdb);
+        let core_surreal = codegraph_core::SurrealDbConfig::default();
+        let surreal_config = adapt_surreal_config(&core_surreal);
         let surreal_storage = Arc::new(TokioMutex::new(
             SurrealDbStorage::new(surreal_config).await?,
         ));
@@ -182,7 +164,6 @@ impl AppState {
             settings: config.config().clone(),
             config,
             graph,
-            transactional_graph,
             parser,
             vector_store,
             embedding_generator,

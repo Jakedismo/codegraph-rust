@@ -17,14 +17,11 @@ async-trait = { workspace = true }
 tokio = { workspace = true }
 parking_lot = { workspace = true }
 backtrace = { workspace = true }
-memmap2 = { workspace = true, optional = true }
-flate2 = { workspace = true, optional = true }
 dashmap = { workspace = true }
 rayon = { workspace = true }
 crossbeam-channel = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
-rocksdb = { workspace = true }
 sha2 = { workspace = true }
 sysinfo = { workspace = true }
 num_cpus = { workspace = true }
@@ -34,8 +31,6 @@ tower-http = { workspace = true, features = ["cors", "fs"] }
 http = { workspace = true }
 tower = { workspace = true }
 tokio-tungstenite = { workspace = true }
-zstd = { workspace = true }
-lz4_flex = { workspace = true }
 fastrand = { workspace = true }
 futures-util = "0.3"
 
@@ -50,8 +45,7 @@ futures = { workspace = true }
 
 
 [features]
-default = ["persistent"]
-persistent = ["dep:memmap2", "dep:flate2"]
+default = []
 readahead = []
 
 [[example]]
