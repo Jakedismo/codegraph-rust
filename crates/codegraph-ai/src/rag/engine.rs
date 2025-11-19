@@ -7,11 +7,9 @@ use tracing::{instrument, warn};
 use uuid::Uuid;
 
 use codegraph_core::{CodeNode, GraphStore, NodeId, Result};
-use codegraph_graph::CodeGraph;
 use codegraph_vector::rag as vec_rag;
 use codegraph_vector::rag::{
     ContextRetriever, GeneratedResponse, QueryProcessor, ResponseGenerator, ResultRanker,
-    RetrievalMethod,
 };
 
 /// Configuration for the high-level RAG engine.
@@ -28,7 +26,7 @@ impl Default for RAGEngineConfig {
     fn default() -> Self {
         Self {
             max_results: 10,
-            graph_neighbor_expansion: true,
+            graph_neighbor_expansion: false,
             neighbor_hops: 1,
             streaming_chunk_chars: 64,
             streaming_min_delay_ms: 10,
@@ -75,17 +73,23 @@ pub struct StreamResponseMeta {
 }
 
 /// RAGEngine orchestrates hybrid retrieval (graph + vector), ranking, prompting, and streaming.
-pub struct RAGEngine {
+pub struct RAGEngine<G>
+where
+    G: GraphStore + Send + Sync + 'static,
+{
     config: RAGEngineConfig,
-    graph: Arc<Mutex<CodeGraph>>,
+    graph: Arc<Mutex<G>>,
     query_processor: Arc<QueryProcessor>,
     context_retriever: Arc<RwLock<ContextRetriever>>, // uses in-memory cache of candidate nodes
     ranker: Arc<RwLock<ResultRanker>>,
     generator: Arc<ResponseGenerator>,
 }
 
-impl RAGEngine {
-    pub fn new(graph: Arc<Mutex<CodeGraph>>, config: RAGEngineConfig) -> Self {
+impl<G> RAGEngine<G>
+where
+    G: GraphStore + Send + Sync + 'static,
+{
+    pub fn new(graph: Arc<Mutex<G>>, config: RAGEngineConfig) -> Self {
         Self {
             config,
             graph,
@@ -146,51 +150,7 @@ impl RAGEngine {
 
         // 3) Optional graph neighbor expansion
         if self.config.graph_neighbor_expansion && !results.is_empty() {
-            // Take a copy of top-N seeds for expansion
-            let seeds: Vec<NodeId> = results
-                .iter()
-                .take(3)
-                .filter_map(|r| r.node.as_ref().map(|n| n.id))
-                .collect();
-
-            // BFS one-hop (configurable) neighbors and add as lower-scored context
-            for seed in seeds {
-                if self.config.neighbor_hops == 0 {
-                    continue;
-                }
-                let graph_guard = self.graph.lock().await;
-                match graph_guard.get_neighbors(seed).await {
-                    Ok(neighbors) => {
-                        for nb in neighbors.into_iter().take(8) {
-                            if let Ok(Some(node)) = graph_guard.get_node(nb).await {
-                                // Lightweight context snippet
-                                let snippet = node
-                                    .content
-                                    .as_ref()
-                                    .map(|c| {
-                                        let s = c.as_str();
-                                        if s.len() > 240 {
-                                            format!("{}...", &s[..240])
-                                        } else {
-                                            s.to_string()
-                                        }
-                                    })
-                                    .unwrap_or_else(|| node.name.as_str().to_string());
-
-                                results.push(vec_rag::RetrievalResult {
-                                    node_id: node.id,
-                                    node: Some(node),
-                                    // small base score; ranking will combine with semantic/keyword later
-                                    relevance_score: 0.25,
-                                    retrieval_method: RetrievalMethod::GraphTraversal,
-                                    context_snippet: snippet,
-                                });
-                            }
-                        }
-                    }
-                    Err(e) => warn!("graph neighbor expansion failed: {}", e),
-                }
-            }
+            warn!("graph_neighbor_expansion requested but neighbor APIs are unavailable in the Surreal-only backend");
         }
 
         // Dedup by node_id (keep highest relevance)

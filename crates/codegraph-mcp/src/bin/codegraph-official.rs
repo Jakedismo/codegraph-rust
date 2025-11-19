@@ -69,9 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         } => {
             info!("Starting CodeGraph MCP server with official SDK");
 
-            let server = codegraph_mcp::official_server::CodeGraphMCPServer::new_with_graph()
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to initialize server with graph: {}", e))?;
+            let server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
             server.initialize_qwen().await;
 
             match transport.as_str() {

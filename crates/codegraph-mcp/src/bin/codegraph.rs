@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use atty::Stream;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
-use codegraph_core::GraphStore;
 use codegraph_mcp::{
     EmbeddingThroughputConfig, IndexerConfig, ProcessManager, ProjectIndexer, RepositoryEstimate,
     RepositoryEstimator,
@@ -2042,142 +2041,22 @@ async fn handle_clean(index: bool, vectors: bool, cache: bool, all: bool, yes: b
 }
 
 async fn handle_perf(
-    config: &codegraph_core::config_manager::CodeGraphConfig,
-    path: PathBuf,
-    langs: Option<Vec<String>>,
-    warmup: usize,
-    trials: usize,
-    queries: Option<Vec<String>>,
-    workers: usize,
-    batch_size: usize,
-    device: Option<String>,
-    max_seq_len: usize,
-    clean: bool,
-    format: String,
-    graph_readonly: bool,
+    _config: &codegraph_core::config_manager::CodeGraphConfig,
+    _path: PathBuf,
+    _langs: Option<Vec<String>>,
+    _warmup: usize,
+    _trials: usize,
+    _queries: Option<Vec<String>>,
+    _workers: usize,
+    _batch_size: usize,
+    _device: Option<String>,
+    _max_seq_len: usize,
+    _clean: bool,
+    _format: String,
+    _graph_readonly: bool,
 ) -> Result<()> {
-    use serde_json::json;
-
-    let project_root = path.clone().canonicalize().unwrap_or(path.clone());
-    if clean {
-        let codegraph_dir = project_root.join(".codegraph");
-        if codegraph_dir.exists() {
-            let _ = std::fs::remove_dir_all(&codegraph_dir);
-        }
-    }
-
-    let indexer_config = codegraph_mcp::IndexerConfig {
-        languages: langs.clone().unwrap_or_default(),
-        exclude_patterns: vec![],
-        include_patterns: vec![],
-        recursive: true,
-        force_reindex: true,
-        watch: false,
-        workers,
-        batch_size,
-        max_concurrent: 10,
-        vector_dimension: 384, // Match EmbeddingGenerator default (all-MiniLM-L6-v2)
-        device: device.clone(),
-        max_seq_len,
-        symbol_batch_size: None,
-        symbol_max_concurrent: None,
-        project_root,
-    };
-
-    let multi_progress = MultiProgress::new();
-    let mut indexer =
-        codegraph_mcp::ProjectIndexer::new(indexer_config, config, multi_progress).await?;
-    let t0 = std::time::Instant::now();
-    let stats = indexer.index_project(&path).await?;
-    let indexing_secs = t0.elapsed().as_secs_f64();
-    // Release RocksDB handle before running queries (which open their own graph handles)
-    drop(indexer);
-    // Give RocksDB a brief moment to release OS locks
-    tokio::time::sleep(std::time::Duration::from_millis(75)).await;
-
-    let qset = if let Some(q) = queries {
-        q
-    } else {
-        vec![
-            "main function".to_string(),
-            "http server router".to_string(),
-            "database connection".to_string(),
-            "graph traversal".to_string(),
-            "embedding generator".to_string(),
-        ]
-    };
-
-    for _ in 0..warmup.max(1) {
-        for q in &qset {
-            let _ = codegraph_mcp::server::bin_search_with_scores(q.clone(), None, None, 10).await;
-        }
-    }
-
-    let mut latencies_ms: Vec<f64> = Vec::new();
-    for _ in 0..trials {
-        for q in &qset {
-            let t = std::time::Instant::now();
-            let _ = codegraph_mcp::server::bin_search_with_scores(q.clone(), None, None, 10).await;
-            latencies_ms.push(t.elapsed().as_secs_f64() * 1000.0);
-        }
-    }
-    latencies_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let p50 = latencies_ms
-        .get(latencies_ms.len() / 2)
-        .copied()
-        .unwrap_or(0.0);
-    let p95 = latencies_ms
-        .get(((latencies_ms.len() as f64) * 0.95).floor() as usize)
-        .copied()
-        .unwrap_or(0.0);
-    let avg = if latencies_ms.is_empty() {
-        0.0
-    } else {
-        latencies_ms.iter().sum::<f64>() / latencies_ms.len() as f64
-    };
-
-    let out = json!({
-        "env": {
-            "embedding_provider": std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").ok(),
-            "device": device,
-            "features": {"embeddings": cfg!(feature = "embeddings")}
-        },
-        "dataset": {"path": path, "languages": langs, "files": stats.files, "lines": stats.lines},
-        "indexing": {"total_seconds": indexing_secs, "embeddings": stats.embeddings,
-            "throughput_embeddings_per_sec": if indexing_secs > 0.0 { stats.embeddings as f64 / indexing_secs } else { 0.0 }},
-        "vector_search": {"queries": qset.len() * trials, "latency_ms": {"avg": avg, "p50": p50, "p95": p95}}
-    });
-
-    if format == "human" {
-        println!(
-            "Performance Results
-                ===================="
-        );
-        println!(
-            "Dataset: {:?} ({} files, {} lines)",
-            out["dataset"]["path"], out["dataset"]["files"], out["dataset"]["lines"]
-        );
-        println!(
-            "Indexing: {:.2}s ({} embeddings, {:.1} emb/s)",
-            out["indexing"]["total_seconds"],
-            out["indexing"]["embeddings"],
-            out["indexing"]["throughput_embeddings_per_sec"]
-        );
-        println!(
-            "Vector Search: avg={:.1}ms p50={:.1}ms p95={:.1}ms ({} queries)",
-            out["vector_search"]["latency_ms"]["avg"],
-            out["vector_search"]["latency_ms"]["p50"],
-            out["vector_search"]["latency_ms"]["p95"],
-            out["vector_search"]["queries"]
-        );
-        println!(
-            "Graph BFS depth=2: visited {} nodes in {:.1}ms",
-            out["graph"]["visited_nodes"], out["graph"]["elapsed_ms"]
-        );
-    } else {
-        println!("{}", serde_json::to_string_pretty(&out)?);
-    }
-
+    println!("The legacy `codegraph perf` command depended on FAISS/RocksDB and has been retired.");
+    println!("Use the MCP harnesses (`test_agentic_tools.py` / `test_http_mcp.py`) to benchmark the new agentic tools instead.");
     Ok(())
 }
 
