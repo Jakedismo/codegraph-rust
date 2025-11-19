@@ -485,7 +485,7 @@ impl PerformanceModeConfig {
             m if m < 1024 => 16,
             m if m < 4096 => 32,
             m if m < 8192 => 64,
-            _ => 128,
+            _ => 256,
         };
     }
 }
