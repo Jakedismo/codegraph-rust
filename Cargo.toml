@@ -139,7 +139,7 @@ utoipa = { version = "5.4.0", features = ["axum_extras", "uuid", "chrono"] }
 utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
 
 # Memory leak detection and tracking (optional, feature-gated in binaries)
-memscope-rs = "0.1.4"
+memscope-rs = "0.1.10"
 
 # WebSocket support
 tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
