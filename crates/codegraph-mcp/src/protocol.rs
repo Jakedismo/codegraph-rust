@@ -47,6 +47,12 @@ impl McpProtocol {
     }
 }
 
+impl Default for McpProtocol {
+    fn default() -> Self {
+        Self::with_latest_version()
+    }
+}
+
 /// Convenience functions for core MCP handshake
 pub mod handshake {
     use super::*;

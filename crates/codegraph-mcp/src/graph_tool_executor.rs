@@ -10,6 +10,8 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tracing::{debug, info};
 
+const TOOL_PROGRESS_LOG_TARGET: &str = "codegraph::mcp::tools";
+
 use crate::error::McpError;
 use crate::graph_tool_schemas::GraphToolSchemas;
 use crate::Result;
@@ -114,8 +116,7 @@ impl GraphToolExecutor {
     /// # Returns
     /// JSON result from the tool execution
     pub async fn execute(&self, tool_name: &str, parameters: JsonValue) -> Result<JsonValue> {
-        info!("Executing graph tool: {}", tool_name);
-        debug!("Tool parameters: {}", parameters);
+        log_tool_call_start(tool_name, &parameters);
 
         // Validate tool exists
         let _schema = GraphToolSchemas::get_by_name(tool_name)
@@ -133,7 +134,9 @@ impl GraphToolExecutor {
                     let mut stats = self.cache_stats.lock();
                     stats.hits += 1;
                     debug!("Cache hit for {}: {}", tool_name, cache_key);
-                    return Ok(cached_result.clone());
+                    let cached = cached_result.clone();
+                    log_tool_call_finish(tool_name, &cached);
+                    return Ok(cached);
                 }
             }
 
@@ -187,7 +190,7 @@ impl GraphToolExecutor {
             stats.current_size = cache.len();
         }
 
-        info!("Tool execution complete: {}", tool_name);
+        log_tool_call_finish(tool_name, &result);
         Ok(result)
     }
 
@@ -349,6 +352,34 @@ impl GraphToolExecutor {
     }
 }
 
+fn log_tool_call_start(tool_name: &str, parameters: &JsonValue) {
+    info!(
+        target: TOOL_PROGRESS_LOG_TARGET,
+        tool = tool_name,
+        "Tool call started"
+    );
+    debug!(
+        target: TOOL_PROGRESS_LOG_TARGET,
+        tool = tool_name,
+        "Tool input payload: {}",
+        parameters
+    );
+}
+
+fn log_tool_call_finish(tool_name: &str, result: &JsonValue) {
+    info!(
+        target: TOOL_PROGRESS_LOG_TARGET,
+        tool = tool_name,
+        "Tool call completed"
+    );
+    debug!(
+        target: TOOL_PROGRESS_LOG_TARGET,
+        tool = tool_name,
+        "Tool output payload: {}",
+        result
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -446,5 +477,99 @@ mod tests {
         };
 
         assert_eq!(stats.hit_rate(), 0.0);
+    }
+
+    #[test]
+    fn test_log_tool_call_start_captures_info_and_debug() {
+        let logs = capture_logs(|| {
+            let params = serde_json::json!({
+                "node_id": "nodes:123",
+                "edge_type": "Calls"
+            });
+            log_tool_call_start("get_transitive_dependencies", &params);
+        });
+
+        assert!(logs.contains("Tool call started"));
+        assert!(logs.contains("Tool input payload"));
+    }
+
+    #[test]
+    fn test_log_tool_call_finish_captures_info_and_debug() {
+        let logs = capture_logs(|| {
+            let result = serde_json::json!({
+                "tool": "detect_cycles",
+                "result": "ok"
+            });
+            log_tool_call_finish("detect_cycles", &result);
+        });
+
+        assert!(logs.contains("Tool call completed"));
+        assert!(logs.contains("Tool output payload"));
+    }
+
+    fn capture_logs<F>(f: F) -> String
+    where
+        F: FnOnce(),
+    {
+        use std::io::Write;
+        use std::sync::{Arc, Mutex};
+        use tracing::subscriber::with_default;
+        use tracing_subscriber::EnvFilter;
+
+        #[derive(Clone)]
+        struct BufferWriter {
+            inner: Arc<Mutex<Vec<u8>>>,
+        }
+
+        impl BufferWriter {
+            fn new() -> Self {
+                Self {
+                    inner: Arc::new(Mutex::new(Vec::new())),
+                }
+            }
+
+            fn into_string(&self) -> String {
+                let bytes = self.inner.lock().unwrap().clone();
+                String::from_utf8(bytes).unwrap()
+            }
+        }
+
+        impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for BufferWriter {
+            type Writer = BufferGuard;
+
+            fn make_writer(&'a self) -> Self::Writer {
+                BufferGuard {
+                    inner: self.inner.clone(),
+                }
+            }
+        }
+
+        struct BufferGuard {
+            inner: Arc<Mutex<Vec<u8>>>,
+        }
+
+        impl Write for BufferGuard {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.inner.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let writer = BufferWriter::new();
+
+        let subscriber = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::new("debug"))
+            .with_ansi(false)
+            .without_time()
+            .with_writer(writer.clone())
+            .finish();
+
+        with_default(subscriber, f);
+
+        writer.into_string()
     }
 }
