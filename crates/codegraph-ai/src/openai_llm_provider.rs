@@ -72,7 +72,7 @@ impl OpenAIProvider {
     /// Check if this is a reasoning model
     fn is_reasoning_model(&self) -> bool {
         let model = self.config.model.to_lowercase();
-        model.starts_with("gpt-5") || model.starts_with("grok-4")
+        model.starts_with("gpt-5")
     }
 
     /// Send a request to OpenAI Responses API with retry logic
