@@ -1589,7 +1589,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "indicatif 0.18.0",
- "lru 0.16.1",
+ "lru 0.16.2",
  "nix",
  "notify",
  "num_cpus",
@@ -1699,7 +1699,7 @@ dependencies = [
  "futures",
  "fxhash",
  "hf-hub 0.4.3",
- "lru 0.16.1",
+ "lru 0.16.2",
  "memmap2",
  "ndarray 0.16.1",
  "num_cpus",
@@ -4227,11 +4227,11 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.16.1"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfe949189f46fabb938b3a9a0be30fdd93fd8a09260da863399a8cf3db756ec8"
+checksum = "96051b46fc183dc9cd4a223960ef37b9af631b55191852a8274bfef064cda20f"
 dependencies = [
- "hashbrown 0.15.5",
+ "hashbrown 0.16.0",
 ]
 
 [[package]]
