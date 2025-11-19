@@ -1,5 +1,5 @@
 // ABOUTME: Search API dispatcher with dual-mode support
-// ABOUTME: Routes queries to local FAISS or cloud SurrealDB based on config
+// ABOUTME: Routes queries to local Surreal vector store or cloud SurrealDB based on config
 
 use napi::bindgen_prelude::*;
 use std::time::Instant;
@@ -12,7 +12,7 @@ mod local;
 #[cfg(feature = "cloud")]
 mod cloud;
 
-/// Semantic search with dual-mode support (local FAISS or cloud SurrealDB)
+/// Semantic search with dual-mode support (local Surreal vector search or cloud SurrealDB)
 pub async fn semantic_search(
     query: String,
     options: Option<SearchOptions>,

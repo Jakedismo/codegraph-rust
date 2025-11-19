@@ -4,8 +4,6 @@ pub mod llm_provider;
 pub mod ml;
 pub mod optimization;
 pub mod qwen_simple;
-pub mod rag;
-pub mod semantic;
 
 // Cloud LLM providers
 #[cfg(feature = "anthropic")]
@@ -19,4 +17,3 @@ pub use agentic_schemas::*;
 pub use llm_factory::LLMProviderFactory;
 pub use llm_provider::*;
 pub use qwen_simple::{QwenClient, QwenConfig, QwenResult};
-pub use semantic::search::*;

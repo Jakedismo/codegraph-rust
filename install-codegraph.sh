@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-FEATURES="embeddings,embeddings-local,embeddings-openai,embeddings-ollama,embeddings-jina,cloud,server-http,qwen-integration,ai-enhanced,codegraph-graph/surrealdb"
+FEATURES="ai-enhanced,embeddings,embeddings-local,embeddings-openai,embeddings-ollama,embeddings-jina,cloud,server-http,qwen-integration,codegraph-graph/surrealdb"
 SURR_URL="ws://localhost:3004"
 SURR_NAMESPACE="ouroboros"
 SURR_DATABASE="codegraph"

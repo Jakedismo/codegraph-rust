@@ -1,5 +1,5 @@
-// ABOUTME: Local FAISS vector search implementation
-// ABOUTME: Delegates to codegraph-ai SemanticSearchEngine
+// ABOUTME: Local Surreal-backed vector search implementation
+// ABOUTME: Delegates to the codegraph-api SemanticSearch runtime
 
 use codegraph_api::state::AppState;
 use codegraph_core::{GraphStore, NodeType};

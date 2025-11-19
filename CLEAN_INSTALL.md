@@ -37,7 +37,7 @@ Follow these steps to remove every trace of a previous CodeGraph MCP installatio
 7. **Rebuild your development binary**  
    Inside the repo, rebuild with the required features so the local `target/` tree matches your latest changes:
    ```bash
-   cargo build -p codegraph-mcp --features "ai-enhanced,server-http"
+   cargo build -p codegraph-mcp --features "server-http"
    ```
 
 8. **Start the MCP server with the new binary**  

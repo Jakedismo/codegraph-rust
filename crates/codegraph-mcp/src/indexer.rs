@@ -6,8 +6,6 @@ use crate::estimation::{
     extend_symbol_index, parse_files_with_unified_extraction as shared_unified_parse,
 };
 use anyhow::{anyhow, Context, Result};
-#[cfg(feature = "ai-enhanced")]
-use codegraph_ai::SemanticSearchEngine;
 use codegraph_core::{CodeNode, EdgeRelationship, NodeId, NodeType};
 use codegraph_graph::{
     edge::CodeEdge, FileMetadataRecord, NodeEmbeddingRecord, ProjectMetadataRecord,
