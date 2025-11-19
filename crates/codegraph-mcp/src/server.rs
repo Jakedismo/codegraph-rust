@@ -7,6 +7,13 @@ use serde_json::json;
 use serde_json::Value;
 #[cfg(any(feature = "faiss", feature = "legacy-mcp-server"))]
 use std::path::PathBuf;
+#[cfg(any(
+    feature = "faiss",
+    feature = "cloud",
+    feature = "embeddings",
+    feature = "legacy-mcp-server"
+))]
+use std::time::Instant;
 use std::sync::Arc;
 
 
