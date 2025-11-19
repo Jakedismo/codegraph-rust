@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - Dropped the transactional/versioning/branch N-API bindings plus their documentation; the native TypeScript surface now focuses on semantic search, graph analysis, and cloud configuration so it matches the Surreal-only architecture.
 - Replaced the native addon example with a semantic-search walkthrough and removed CLI-centric integration snippets that referenced the deleted CodeGraph CLI.
+- Removed the unpublished `sdk/codegraph-cli-wrapper.ts` helper that shell-executed the old CLI, keeping the SDK focused on the MCP WebSocket client (run `npm install` before `npm run typecheck` if you want to lint the SDK locally).
 
 ## [1.1.0] - 2025-11-18 - AutoAgents Integration & SurrealDB 2.x Compatibility
 
