@@ -756,35 +756,10 @@ impl CodeGraphMCPServer {
 impl ServerHandler for CodeGraphMCPServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some(
-                "CodeGraph provides revolutionary AI codebase intelligence through local SOTA models.
-    \n\
-                🚀 Revolutionary Features:
-    \
-                • Enhanced semantic search with Qwen2.5-Coder-14B-128K analysis
-    \
-                • Revolutionary impact prediction before code changes
-    \
-                • Team intelligence and pattern detection
-    \
-                • 128K context window comprehensive analysis
-    \
-                • Complete local-first processing with zero external dependencies
-    \
-                • Performance optimized for high-memory systems
-    \n\
-                This is the world's most advanced local-first AI development platform.
-    \n\
-                💡 Getting Started:
-    \
-                1. Navigate to your project directory
-    \
-                2. Run: codegraph init .
-    \
-                3. Run: codegraph index . --recursive
-    \
-                4. Experience revolutionary AI codebase intelligence!".into()
-            ),
+            // Use the aggressive MANDATORY instructions for automatic delivery
+            // This is sent automatically in the initialize response
+            // Also available via MCP prompt 'codegraph_initial_instructions'
+            instructions: Some(INITIAL_INSTRUCTIONS.into()),
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
                 .enable_prompts()
