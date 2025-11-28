@@ -1130,16 +1130,20 @@ async fn handle_start(
                     pid_file.clone(),
                 )
                 .await?;
-            println!("✓ MCP server started with dual transport");
-            println!("  STDIO: buffer size {} (PID: {})", buffer_size, stdio_pid);
-            println!("  HTTP: http://{}:{} (PID: {})", host, port, http_pid);
+            if atty::is(Stream::Stdout) {
+                println!("✓ MCP server started with dual transport");
+                println!("  STDIO: buffer size {} (PID: {})", buffer_size, stdio_pid);
+                println!("  HTTP: http://{}:{} (PID: {})", host, port, http_pid);
+            }
         }
     }
 
     if daemon {
-        println!("Running in daemon mode");
-        if let Some(ref pid_file) = pid_file {
-            println!("PID file: {:?}", pid_file);
+        if atty::is(Stream::Stdout) {
+            println!("Running in daemon mode");
+            if let Some(ref pid_file) = pid_file {
+                println!("PID file: {:?}", pid_file);
+            }
         }
     }
 
