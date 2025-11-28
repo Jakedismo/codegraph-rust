@@ -17,6 +17,7 @@ CodeGraph indexes your source code to a graph database, creates semantic embeddi
 - 📦 **NEW:** Node.js NAPI bindings for zero-overhead TypeScript integration
 - 🤖 **NEW:** Agentic code-agent tools with tier-aware multi-step reasoning
 - 🔄 **NEW:** Incremental indexing with SHA-256 file change detection—only re-index modified files
+- 👁️ **NEW:** Daemon mode for automatic file watching and re-indexing on changes
 - 🔬 **EXPERIMENTAL:** AutoAgents framework integration for improved agent orchestration
 
 ### Local Embeddings & Reranking (SurrealDB)
@@ -545,6 +546,42 @@ codegraph start stdio
 
 # List available MCP tools
 codegraph tools list
+```
+
+### Daemon Mode (Automatic Re-Indexing)
+
+Keep your index up-to-date automatically by running the daemon:
+
+```bash
+# Start watching a project (runs in background)
+codegraph daemon start /path/to/project
+
+# Start in foreground for debugging
+codegraph daemon start /path/to/project --foreground
+
+# Filter by languages
+codegraph daemon start /path/to/project --languages rust,typescript
+
+# Exclude patterns
+codegraph daemon start /path/to/project --exclude "**/node_modules/**" --exclude "**/target/**"
+
+# Check daemon status
+codegraph daemon status /path/to/project
+codegraph daemon status /path/to/project --json  # JSON output
+
+# Stop the daemon
+codegraph daemon stop /path/to/project
+```
+
+**Features:**
+- 🔄 Automatic re-indexing when files change (create, modify, delete, rename)
+- ⚡ Event coalescing to batch rapid changes
+- 🛡️ Circuit breaker pattern for SurrealDB resilience
+- 📊 Session metrics tracking (batches processed, errors, etc.)
+
+**Note:** Requires the `daemon` feature flag:
+```bash
+cargo build --release -p codegraph-mcp --features "daemon,ai-enhanced,ollama"
 ```
 
 **Note:** HTTP transport is not yet implemented with the official rmcp SDK. Use STDIO transport for all MCP integrations.

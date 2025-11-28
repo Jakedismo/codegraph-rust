@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### **Daemon Mode for Automatic Re-Indexing**
+- **Background file watching**: `codegraph daemon start <path>` launches a background process that monitors file changes
+- **Automatic re-indexing**: Changed files are automatically re-indexed using upsert semantics (no duplicates)
+- **Circuit breaker pattern**: SurrealDB health monitoring with exponential backoff for resilience
+- **PID file management**: Proper daemon lifecycle with process tracking and graceful shutdown
+- **CLI commands**:
+  - `codegraph daemon start <path>` - Start watching a project (with `--foreground` option for debugging)
+  - `codegraph daemon stop <path>` - Stop the daemon for a project
+  - `codegraph daemon status <path>` - Check daemon status (with `--json` option)
+- **Language and pattern filtering**: Supports `--languages`, `--exclude`, and `--include` flags
+- **Event coalescing**: Batches rapid file changes to avoid redundant re-indexing
+- **Feature flag**: `daemon` feature enables this functionality
+
 ### Removed
 - Dropped the transactional/versioning/branch N-API bindings plus their documentation; the native TypeScript surface now focuses on semantic search, graph analysis, and cloud configuration so it matches the Surreal-only architecture.
 - Replaced the native addon example with a semantic-search walkthrough and removed CLI-centric integration snippets that referenced the deleted CodeGraph CLI.
