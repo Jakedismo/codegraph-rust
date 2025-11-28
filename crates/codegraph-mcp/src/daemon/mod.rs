@@ -3,12 +3,14 @@
 
 pub mod config;
 pub mod health;
+pub mod manager;
 pub mod pid;
 pub mod session;
 pub mod status;
 
 pub use config::{BackoffConfig, CircuitBreakerConfig, WatchConfig};
 pub use health::{CircuitState, HealthMonitor};
+pub use manager::{DaemonManager, DaemonManagerState};
 pub use pid::PidFile;
 pub use session::WatchSession;
 pub use status::{DaemonState, DaemonStatus, SessionMetrics};

@@ -581,7 +581,34 @@ codegraph daemon stop /path/to/project
 
 **Note:** Requires the `daemon` feature flag:
 ```bash
-cargo build --release -p codegraph-mcp --features "daemon,ai-enhanced,ollama"
+cargo build --release -p codegraph-mcp --features "daemon,ai-enhanced"
+```
+
+### MCP Server with Auto-Watching (`--watch`)
+
+Start the MCP server with automatic file watching - the daemon runs in the background:
+
+```bash
+# Start MCP server with file watching
+codegraph start stdio --watch
+
+# Watch a specific directory
+codegraph start stdio --watch --watch-path /path/to/project
+
+# Disable watching even if enabled in config
+codegraph start stdio --no-watch
+
+# Via environment variable
+CODEGRAPH_DAEMON_AUTO_START=true codegraph start stdio
+```
+
+**Configuration in `~/.codegraph/config.toml`:**
+```toml
+[daemon]
+auto_start_with_mcp = true  # Auto-start daemon when MCP server starts
+debounce_ms = 30
+batch_timeout_ms = 200
+exclude_patterns = ["**/node_modules/**", "**/target/**"]
 ```
 
 **Note:** HTTP transport is not yet implemented with the official rmcp SDK. Use STDIO transport for all MCP integrations.

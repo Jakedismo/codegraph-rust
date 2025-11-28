@@ -39,6 +39,10 @@ pub struct CodeGraphConfig {
     /// Logging configuration
     #[serde(default)]
     pub logging: LoggingConfig,
+
+    /// Daemon configuration for automatic file watching
+    #[serde(default)]
+    pub daemon: DaemonConfig,
 }
 
 /// Embedding provider configuration
@@ -287,6 +291,57 @@ impl Default for LoggingConfig {
     }
 }
 
+/// Daemon configuration for automatic file watching and re-indexing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DaemonConfig {
+    /// Enable automatic daemon startup with MCP server
+    #[serde(default)]
+    pub auto_start_with_mcp: bool,
+
+    /// Project path to watch (defaults to current directory)
+    #[serde(default)]
+    pub project_path: Option<PathBuf>,
+
+    /// Debounce duration for file changes (ms)
+    #[serde(default = "default_daemon_debounce_ms")]
+    pub debounce_ms: u64,
+
+    /// Batch timeout for collecting changes (ms)
+    #[serde(default = "default_daemon_batch_timeout_ms")]
+    pub batch_timeout_ms: u64,
+
+    /// Health check interval (seconds)
+    #[serde(default = "default_daemon_health_check_interval")]
+    pub health_check_interval_secs: u64,
+
+    /// Languages to watch (empty = all detected)
+    #[serde(default)]
+    pub languages: Vec<String>,
+
+    /// Exclude patterns (gitignore format)
+    #[serde(default = "default_daemon_exclude_patterns")]
+    pub exclude_patterns: Vec<String>,
+
+    /// Include patterns (gitignore format)
+    #[serde(default)]
+    pub include_patterns: Vec<String>,
+}
+
+impl Default for DaemonConfig {
+    fn default() -> Self {
+        Self {
+            auto_start_with_mcp: false, // Opt-in by default
+            project_path: None,
+            debounce_ms: default_daemon_debounce_ms(),
+            batch_timeout_ms: default_daemon_batch_timeout_ms(),
+            health_check_interval_secs: default_daemon_health_check_interval(),
+            languages: vec![],
+            exclude_patterns: default_daemon_exclude_patterns(),
+            include_patterns: vec![],
+        }
+    }
+}
+
 // Default value functions
 fn default_embedding_provider() -> String {
     "auto".to_string()
@@ -351,6 +406,28 @@ fn default_log_level() -> String {
 } // Clean TUI output during indexing
 fn default_log_format() -> String {
     "pretty".to_string()
+}
+
+// Daemon default functions
+fn default_daemon_debounce_ms() -> u64 {
+    30
+}
+fn default_daemon_batch_timeout_ms() -> u64 {
+    200
+}
+fn default_daemon_health_check_interval() -> u64 {
+    30
+}
+fn default_daemon_exclude_patterns() -> Vec<String> {
+    vec![
+        "**/node_modules/**".to_string(),
+        "**/target/**".to_string(),
+        "**/.git/**".to_string(),
+        "**/build/**".to_string(),
+        "**/.codegraph/**".to_string(),
+        "**/dist/**".to_string(),
+        "**/__pycache__/**".to_string(),
+    ]
 }
 
 /// Configuration manager with smart defaults and auto-detection
@@ -551,6 +628,25 @@ impl ConfigManager {
         // Logging
         if let Ok(level) = std::env::var("RUST_LOG") {
             config.logging.level = level;
+        }
+
+        // Daemon configuration
+        if let Ok(auto_start) = std::env::var("CODEGRAPH_DAEMON_AUTO_START") {
+            config.daemon.auto_start_with_mcp =
+                auto_start.to_lowercase() == "true" || auto_start == "1";
+        }
+        if let Ok(path) = std::env::var("CODEGRAPH_DAEMON_WATCH_PATH") {
+            config.daemon.project_path = Some(PathBuf::from(path));
+        }
+        if let Ok(debounce) = std::env::var("CODEGRAPH_DAEMON_DEBOUNCE_MS") {
+            if let Ok(ms) = debounce.parse() {
+                config.daemon.debounce_ms = ms;
+            }
+        }
+        if let Ok(batch) = std::env::var("CODEGRAPH_DAEMON_BATCH_TIMEOUT_MS") {
+            if let Ok(ms) = batch.parse() {
+                config.daemon.batch_timeout_ms = ms;
+            }
         }
 
         config

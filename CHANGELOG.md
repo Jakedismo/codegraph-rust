@@ -22,6 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Event coalescing**: Batches rapid file changes to avoid redundant re-indexing
 - **Feature flag**: `daemon` feature enables this functionality
 
+#### **MCP Server Integration with Daemon (`--watch`)**
+- **Integrated daemon with MCP server**: `codegraph start stdio --watch` starts the daemon automatically
+- **Non-blocking startup**: Daemon runs in background task, MCP server starts immediately
+- **Error isolation**: Daemon failures don't crash MCP server
+- **CLI flags for MCP server**:
+  - `--watch` - Enable automatic file watching (also via `CODEGRAPH_DAEMON_AUTO_START` env var)
+  - `--watch-path <PATH>` - Specify directory to watch (also via `CODEGRAPH_DAEMON_WATCH_PATH` env var)
+  - `--no-watch` - Explicitly disable daemon even if config enables it
+- **Configuration support**: `[daemon].auto_start_with_mcp` in config.toml to enable by default
+- **DaemonConfig**: New configuration struct in `codegraph-core` for daemon settings
+- **DaemonManager**: Coordinates daemon lifecycle with MCP server lifecycle
+- **Graceful cleanup**: Daemon stops automatically when MCP server exits
+
 ### Removed
 - Dropped the transactional/versioning/branch N-API bindings plus their documentation; the native TypeScript surface now focuses on semantic search, graph analysis, and cloud configuration so it matches the Surreal-only architecture.
 - Replaced the native addon example with a semantic-search walkthrough and removed CLI-centric integration snippets that referenced the deleted CodeGraph CLI.

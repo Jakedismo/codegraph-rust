@@ -394,6 +394,26 @@ enum TransportType {
     Stdio {
         #[arg(long, help = "Buffer size for STDIO", default_value = "8192")]
         buffer_size: usize,
+
+        /// Enable automatic file watching and re-indexing (daemon mode)
+        #[arg(
+            long = "watch",
+            help = "Enable automatic file watching and re-indexing",
+            env = "CODEGRAPH_DAEMON_AUTO_START"
+        )]
+        enable_daemon: bool,
+
+        /// Path to watch for file changes (defaults to current directory)
+        #[arg(
+            long = "watch-path",
+            help = "Path to watch for file changes (defaults to current directory)",
+            env = "CODEGRAPH_DAEMON_WATCH_PATH"
+        )]
+        watch_path: Option<PathBuf>,
+
+        /// Explicitly disable daemon even if config enables it
+        #[arg(long = "no-watch", help = "Explicitly disable daemon even if config enables it")]
+        disable_daemon: bool,
     },
 
     #[command(about = "Start with HTTP streaming transport")]
@@ -415,6 +435,26 @@ enum TransportType {
 
         #[arg(long, help = "Enable CORS")]
         cors: bool,
+
+        /// Enable automatic file watching and re-indexing (daemon mode)
+        #[arg(
+            long = "watch",
+            help = "Enable automatic file watching and re-indexing",
+            env = "CODEGRAPH_DAEMON_AUTO_START"
+        )]
+        enable_daemon: bool,
+
+        /// Path to watch for file changes (defaults to current directory)
+        #[arg(
+            long = "watch-path",
+            help = "Path to watch for file changes (defaults to current directory)",
+            env = "CODEGRAPH_DAEMON_WATCH_PATH"
+        )]
+        watch_path: Option<PathBuf>,
+
+        /// Explicitly disable daemon even if config enables it
+        #[arg(long = "no-watch", help = "Explicitly disable daemon even if config enables it")]
+        disable_daemon: bool,
     },
 
     #[command(about = "Start with both STDIO and HTTP transports")]
@@ -427,6 +467,26 @@ enum TransportType {
 
         #[arg(long, help = "STDIO buffer size", default_value = "8192")]
         buffer_size: usize,
+
+        /// Enable automatic file watching and re-indexing (daemon mode)
+        #[arg(
+            long = "watch",
+            help = "Enable automatic file watching and re-indexing",
+            env = "CODEGRAPH_DAEMON_AUTO_START"
+        )]
+        enable_daemon: bool,
+
+        /// Path to watch for file changes (defaults to current directory)
+        #[arg(
+            long = "watch-path",
+            help = "Path to watch for file changes (defaults to current directory)",
+            env = "CODEGRAPH_DAEMON_WATCH_PATH"
+        )]
+        watch_path: Option<PathBuf>,
+
+        /// Explicitly disable daemon even if config enables it
+        #[arg(long = "no-watch", help = "Explicitly disable daemon even if config enables it")]
+        disable_daemon: bool,
     },
 }
 
@@ -716,7 +776,12 @@ async fn handle_start(
     let manager = ProcessManager::new();
 
     match transport {
-        TransportType::Stdio { buffer_size: _ } => {
+        TransportType::Stdio {
+            buffer_size: _,
+            enable_daemon,
+            watch_path,
+            disable_daemon,
+        } => {
             // Configure logging to file for stdio transport (stdout/stderr are used for MCP protocol)
             // Logs will be written to .codegraph/logs/mcp-server.log
             let log_dir = std::env::current_dir()
@@ -742,6 +807,80 @@ async fn handle_start(
 
             // Keep the guard alive for the duration of the server
             std::mem::forget(_guard);
+
+            // Start background daemon if enabled
+            #[cfg(feature = "daemon")]
+            let mut daemon_manager: Option<codegraph_mcp::daemon::DaemonManager> = None;
+
+            #[cfg(feature = "daemon")]
+            {
+                use codegraph_core::config_manager::ConfigManager;
+
+                // Load configuration
+                if let Ok(config_mgr) = ConfigManager::load() {
+                    let global_config = config_mgr.config().clone();
+
+                    // Determine if daemon should start:
+                    // Priority: --no-watch > --watch > config.daemon.auto_start_with_mcp
+                    let should_start_daemon = if disable_daemon {
+                        false
+                    } else if enable_daemon {
+                        true
+                    } else {
+                        global_config.daemon.auto_start_with_mcp
+                    };
+
+                    if should_start_daemon {
+                        let project_root = watch_path
+                            .or_else(|| global_config.daemon.project_path.clone())
+                            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+                        let project_root =
+                            std::fs::canonicalize(&project_root).unwrap_or(project_root);
+
+                        // Create daemon config with auto_start forced on
+                        let daemon_config = codegraph_core::config_manager::DaemonConfig {
+                            auto_start_with_mcp: true,
+                            project_path: Some(project_root.clone()),
+                            ..global_config.daemon.clone()
+                        };
+
+                        let mut dm = codegraph_mcp::daemon::DaemonManager::new(
+                            daemon_config,
+                            global_config,
+                            project_root.clone(),
+                        );
+
+                        match dm.start_background().await {
+                            Ok(()) => {
+                                if atty::is(Stream::Stderr) {
+                                    eprintln!(
+                                        "{}",
+                                        format!("🔄 Daemon watching: {}", project_root.display())
+                                            .cyan()
+                                    );
+                                }
+                                daemon_manager = Some(dm);
+                            }
+                            Err(e) => {
+                                // Log error but continue - MCP server should still work
+                                if atty::is(Stream::Stderr) {
+                                    eprintln!(
+                                        "{}",
+                                        format!(
+                                            "⚠️  Daemon failed to start: {} (MCP server continuing)",
+                                            e
+                                        )
+                                        .yellow()
+                                    );
+                                }
+                                tracing::warn!("Daemon startup failed: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+
             if atty::is(Stream::Stderr) {
                 eprintln!(
                     "{}",
@@ -778,6 +917,14 @@ async fn handle_start(
                 .waiting()
                 .await
                 .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
+
+            // Clean up daemon on exit
+            #[cfg(feature = "daemon")]
+            if let Some(mut dm) = daemon_manager {
+                if let Err(e) = dm.stop().await {
+                    tracing::warn!("Daemon cleanup error: {}", e);
+                }
+            }
         }
         TransportType::Http {
             host,
@@ -786,9 +933,12 @@ async fn handle_start(
             cert,
             key,
             cors: _,
+            enable_daemon,
+            watch_path,
+            disable_daemon,
         } => {
             #[cfg(not(feature = "server-http"))]
-            let _ = (host, port, tls, cert, key);
+            let _ = (host, port, tls, cert, key, enable_daemon, watch_path, disable_daemon);
             #[cfg(not(feature = "server-http"))]
             {
                 eprintln!("🚧 HTTP transport requires the 'server-http' feature");
@@ -813,6 +963,70 @@ async fn handle_start(
                 };
                 use std::sync::Arc;
                 use std::time::Duration;
+
+                // Start background daemon if enabled
+                #[cfg(feature = "daemon")]
+                let mut daemon_manager: Option<codegraph_mcp::daemon::DaemonManager> = None;
+
+                #[cfg(feature = "daemon")]
+                {
+                    use codegraph_core::config_manager::ConfigManager;
+
+                    if let Ok(config_mgr) = ConfigManager::load() {
+                        let global_config = config_mgr.config().clone();
+
+                        let should_start_daemon = if disable_daemon {
+                            false
+                        } else if enable_daemon {
+                            true
+                        } else {
+                            global_config.daemon.auto_start_with_mcp
+                        };
+
+                        if should_start_daemon {
+                            let project_root = watch_path
+                                .or_else(|| global_config.daemon.project_path.clone())
+                                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+                            let project_root =
+                                std::fs::canonicalize(&project_root).unwrap_or(project_root);
+
+                            let daemon_config = codegraph_core::config_manager::DaemonConfig {
+                                auto_start_with_mcp: true,
+                                project_path: Some(project_root.clone()),
+                                ..global_config.daemon.clone()
+                            };
+
+                            let mut dm = codegraph_mcp::daemon::DaemonManager::new(
+                                daemon_config,
+                                global_config,
+                                project_root.clone(),
+                            );
+
+                            match dm.start_background().await {
+                                Ok(()) => {
+                                    eprintln!(
+                                        "{}",
+                                        format!("🔄 Daemon watching: {}", project_root.display())
+                                            .cyan()
+                                    );
+                                    daemon_manager = Some(dm);
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "{}",
+                                        format!(
+                                            "⚠️  Daemon failed to start: {} (HTTP server continuing)",
+                                            e
+                                        )
+                                        .yellow()
+                                    );
+                                    tracing::warn!("Daemon startup failed: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
 
                 if atty::is(Stream::Stderr) {
                     eprintln!(
@@ -885,13 +1099,26 @@ async fn handle_start(
                 axum::serve(listener, app)
                     .await
                     .map_err(|e| anyhow::anyhow!("HTTP server error: {}", e))?;
+
+                // Clean up daemon on exit
+                #[cfg(feature = "daemon")]
+                if let Some(mut dm) = daemon_manager {
+                    if let Err(e) = dm.stop().await {
+                        tracing::warn!("Daemon cleanup error: {}", e);
+                    }
+                }
             }
         }
         TransportType::Dual {
             host,
             port,
             buffer_size,
+            enable_daemon: _,
+            watch_path: _,
+            disable_daemon: _,
         } => {
+            // Note: Dual transport doesn't support daemon integration yet
+            // The daemon fields are accepted but not used
             info!("Starting with dual transport (STDIO + HTTP)");
             let (stdio_pid, http_pid) = manager
                 .start_dual_transport(
