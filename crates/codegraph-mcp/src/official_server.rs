@@ -563,6 +563,23 @@ impl CodeGraphMCPServer {
             Arc::new(GraphFunctions::new(storage.db()))
         };
 
+        // Health check: ensure the active project has indexed nodes
+        match graph_functions.count_nodes_for_project().await {
+            Ok(0) => tracing::warn!(
+                "Project '{}' has zero nodes indexed. Ensure CODEGRAPH_PROJECT_ID matches the indexed project and rerun `codegraph index`.",
+                graph_functions.project_id()
+            ),
+            Ok(count) => tracing::info!(
+                "Project '{}' has {} indexed nodes available for analysis",
+                graph_functions.project_id(),
+                count
+            ),
+            Err(e) => tracing::warn!(
+                "Could not verify project data presence: {}. Continuing without blocking.",
+                e
+            ),
+        }
+
         // Create GraphToolExecutor
         let tool_executor = Arc::new(crate::GraphToolExecutor::new(graph_functions));
 

@@ -18,7 +18,7 @@ chrono = { workspace = true }
 sha2 = { workspace = true }
 
 # SurrealDB support (optional, default on via feature flag)
-surrealdb = { version = "2.2", optional = true }
+surrealdb = { version = "2.2", optional = true, features = ["kv-mem"] }
 dotenvy = { version = "0.15", optional = true }
 tokio = { workspace = true, optional = true, features = ["macros", "rt-multi-thread"] }
 

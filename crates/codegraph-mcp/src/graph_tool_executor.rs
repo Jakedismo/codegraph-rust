@@ -170,6 +170,7 @@ impl GraphToolExecutor {
                 self.execute_get_reverse_dependencies(parameters.clone())
                     .await?
             }
+            "find_nodes_by_name" => self.execute_find_nodes_by_name(parameters.clone()).await?,
             _ => {
                 return Err(
                     McpError::Protocol(format!("Tool not implemented: {}", tool_name)).into(),
@@ -338,6 +339,30 @@ impl GraphToolExecutor {
                 "node_id": node_id,
                 "edge_type": edge_type,
                 "depth": depth
+            },
+            "result": result
+        }))
+    }
+
+    /// Execute find_nodes_by_name
+    async fn execute_find_nodes_by_name(&self, params: JsonValue) -> Result<JsonValue> {
+        let needle = params["needle"]
+            .as_str()
+            .ok_or_else(|| McpError::Protocol("Missing needle".to_string()))?;
+
+        let limit = params["limit"].as_i64().unwrap_or(10) as usize;
+
+        let result = self
+            .graph_functions
+            .find_nodes_by_name(needle, limit)
+            .await
+            .map_err(|e| McpError::Protocol(format!("find_nodes_by_name failed: {}", e)))?;
+
+        Ok(json!({
+            "tool": "find_nodes_by_name",
+            "parameters": {
+                "needle": needle,
+                "limit": limit
             },
             "result": result
         }))

@@ -25,6 +25,7 @@ impl GraphToolSchemas {
             Self::calculate_coupling_metrics(),
             Self::get_hub_nodes(),
             Self::get_reverse_dependencies(),
+            Self::find_nodes_by_name(),
         ]
     }
 
@@ -186,6 +187,32 @@ impl GraphToolSchemas {
         }
     }
 
+    /// Schema for find_nodes_by_name function
+    pub fn find_nodes_by_name() -> ToolSchema {
+        ToolSchema {
+            name: "find_nodes_by_name".to_string(),
+            description: "Search for nodes by (partial) name or file path within the current project context. \
+                Use this to resolve human-readable function or file names to concrete node IDs before other graph queries.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "needle": {
+                        "type": "string",
+                        "description": "Partial name or file path fragment to search for (case-insensitive name match, file_path contains match)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results (1-50, defaults to 10)",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 10
+                    }
+                },
+                "required": ["needle"]
+            }),
+        }
+    }
+
     /// Get schema by name
     pub fn get_by_name(name: &str) -> Option<ToolSchema> {
         Self::all().into_iter().find(|s| s.name == name)
@@ -204,7 +231,7 @@ mod tests {
     #[test]
     fn test_all_schemas_valid() {
         let schemas = GraphToolSchemas::all();
-        assert_eq!(schemas.len(), 6, "Should have exactly 6 tool schemas");
+        assert_eq!(schemas.len(), 7, "Should have exactly 7 tool schemas");
 
         for schema in schemas {
             assert!(!schema.name.is_empty(), "Schema name should not be empty");
@@ -232,13 +259,14 @@ mod tests {
     #[test]
     fn test_tool_names() {
         let names = GraphToolSchemas::tool_names();
-        assert_eq!(names.len(), 6);
+        assert_eq!(names.len(), 7);
         assert!(names.contains(&"get_transitive_dependencies".to_string()));
         assert!(names.contains(&"detect_circular_dependencies".to_string()));
         assert!(names.contains(&"trace_call_chain".to_string()));
         assert!(names.contains(&"calculate_coupling_metrics".to_string()));
         assert!(names.contains(&"get_hub_nodes".to_string()));
         assert!(names.contains(&"get_reverse_dependencies".to_string()));
+        assert!(names.contains(&"find_nodes_by_name".to_string()));
     }
 
     #[test]

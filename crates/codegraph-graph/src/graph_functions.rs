@@ -3,6 +3,7 @@
 
 use codegraph_core::{CodeGraphError, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::sync::Arc;
 use surrealdb::{engine::any::Any, Surreal};
 use tracing::{debug, error};
@@ -269,6 +270,60 @@ impl GraphFunctions {
 
         Ok(result)
     }
+
+    /// Count nodes for the current project (used for health checks)
+    pub async fn count_nodes_for_project(&self) -> Result<usize> {
+        let mut response = self
+            .db
+            .query("SELECT VALUE count() FROM nodes WHERE project_id = $project_id")
+            .bind(("project_id", self.project_id.clone()))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "count_nodes_for_project query failed: {}",
+                    e
+                ))
+            })?;
+
+        let count: Option<usize> = response.take(0).map_err(|e| {
+            CodeGraphError::Database(format!("Failed to deserialize count: {}", e))
+        })?;
+
+        Ok(count.unwrap_or(0))
+    }
+
+    /// Find nodes by (partial) name within the current project
+    pub async fn find_nodes_by_name(
+        &self,
+        needle: &str,
+        limit: usize,
+    ) -> Result<Vec<NodeReference>> {
+        let max = limit.clamp(1, 50) as i64;
+
+        debug!(
+            "Calling fn::find_nodes_by_name({}, project={}, limit={})",
+            needle, self.project_id, max
+        );
+
+        let result: Vec<NodeReference> = self
+            .db
+            .query("RETURN fn::find_nodes_by_name($project_id, $needle, $limit)")
+            .bind(("project_id", self.project_id.clone()))
+            .bind(("needle", needle.to_string()))
+            .bind(("limit", max))
+            .await
+            .map_err(|e| {
+                error!("Failed to call find_nodes_by_name: {}", e);
+                CodeGraphError::Database(format!("find_nodes_by_name failed: {}", e))
+            })?
+            .take(0)
+            .map_err(|e| {
+                error!("Failed to deserialize find_nodes_by_name results: {}", e);
+                CodeGraphError::Database(format!("Deserialization failed: {}", e))
+            })?;
+
+        Ok(result)
+    }
 }
 
 // ============================================================================
@@ -415,5 +470,51 @@ mod tests {
 
         let json = serde_json::to_string(&node).unwrap();
         assert!(json.contains("test_function"));
+    }
+
+    #[cfg(feature = "surrealdb")]
+    #[tokio::test]
+    async fn count_nodes_for_project_filters_by_project() {
+        use surrealdb::opt::auth::Root;
+
+        let db: Surreal<Any> = Surreal::init();
+        db.connect("mem://").await.unwrap();
+        db.use_ns("test").use_db("test").await.unwrap();
+        db.signin(Root {
+            username: "root",
+            password: "root",
+        })
+        .await
+        .ok(); // mem engine ignores auth
+
+        // Two projects, only one should be counted
+        db.query("CREATE nodes CONTENT $doc")
+            .bind((
+                "doc",
+                json!({
+                    "id": "nodes:a1",
+                    "name": "A1",
+                    "project_id": "proj-a"
+                }),
+            ))
+            .await
+            .unwrap();
+
+        db.query("CREATE nodes CONTENT $doc")
+            .bind((
+                "doc",
+                json!({
+                    "id": "nodes:b1",
+                    "name": "B1",
+                    "project_id": "proj-b"
+                }),
+            ))
+            .await
+            .unwrap();
+
+        let gf = GraphFunctions::new_with_project_id(Arc::new(db), "proj-a");
+        let count = gf.count_nodes_for_project().await.unwrap();
+
+        assert_eq!(count, 1, "Should only count nodes in proj-a");
     }
 }

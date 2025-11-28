@@ -504,6 +504,7 @@ impl CodeGraphAgentBuilder {
 
         // Manually construct all 6 tools with the executor (Arc-wrapped for sharing)
         let tools: Vec<Arc<dyn ToolT>> = vec![
+            Arc::new(FindNodesByName::new(executor_adapter.clone())),
             Arc::new(GetTransitiveDependencies::new(executor_adapter.clone())),
             Arc::new(GetReverseDependencies::new(executor_adapter.clone())),
             Arc::new(TraceCallChain::new(executor_adapter.clone())),

@@ -627,6 +627,8 @@ After indexing your codebase, AI agents can use these agentic workflows (require
 
 These multi-step workflows typically take 30–90 seconds to complete because they traverse the code graph and build detailed reasoning summaries.
 
+**Project scoping:** MCP tool calls and SurrealDB functions are project-isolated. The server picks `CODEGRAPH_PROJECT_ID` (falls back to your current working directory); use a distinct value per workspace when sharing one Surreal instance, or you’ll blend graph results across projects. If you update the schema, re-apply `schema/codegraph.surql` so the project-aware functions are available.
+
 ### Quick Start
 
 ```bash

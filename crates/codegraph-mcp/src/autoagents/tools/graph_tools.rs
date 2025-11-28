@@ -329,6 +329,61 @@ impl ToolRuntime for GetHubNodes {
     }
 }
 
+/// Parameters for find_nodes_by_name
+#[derive(Serialize, Deserialize, ToolInput, Debug)]
+pub struct FindNodesByNameArgs {
+    #[input(description = "Partial function/file name to search for (case-insensitive)")]
+    needle: String,
+    #[input(description = "Maximum number of results (1-50, default: 10)")]
+    #[serde(default = "default_find_limit")]
+    limit: i32,
+}
+
+fn default_find_limit() -> i32 {
+    10
+}
+
+/// Find nodes by (partial) name within project scope
+#[tool(
+    name = "find_nodes_by_name",
+    description = "Search for nodes by partial name or file path within the current project. Returns IDs to use with other graph tools.",
+    input = FindNodesByNameArgs,
+)]
+pub struct FindNodesByName {
+    executor: Arc<GraphToolExecutorAdapter>,
+}
+
+impl FindNodesByName {
+    pub fn new(executor: Arc<GraphToolExecutorAdapter>) -> Self {
+        Self { executor }
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolRuntime for FindNodesByName {
+    async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
+        let typed_args: FindNodesByNameArgs = serde_json::from_value(args)?;
+
+        let result = self
+            .executor
+            .execute_sync(
+                "find_nodes_by_name",
+                serde_json::json!({
+                    "needle": typed_args.needle,
+                    "limit": typed_args.limit
+                }),
+            )
+            .map_err(|e| {
+                ToolCallError::RuntimeError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e,
+                )))
+            })?;
+
+        Ok(result)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
