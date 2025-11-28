@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-FEATURES="ai-enhanced,codegraph-vector/jina,embeddings-ollama,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers,server-http,autoagents-experimental"
+FEATURES="daemon,ai-enhanced,codegraph-vector/jina,embeddings-ollama,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers,server-http,autoagents-experimental"
 SURR_URL="${CODEGRAPH_SURREALDB_URL:-ws://localhost:3004}"
 SURR_NAMESPACE="${CODEGRAPH_SURREALDB_NAMESPACE:-ouroboros}"
 SURR_DATABASE="${CODEGRAPH_SURREALDB_DATABASE:-codegraph}"
