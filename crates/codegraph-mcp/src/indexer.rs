@@ -90,7 +90,7 @@ impl SurrealEmbeddingColumn {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IndexerConfig {
     pub languages: Vec<String>,
     pub exclude_patterns: Vec<String>,
@@ -2751,6 +2751,157 @@ impl ProjectIndexer {
         );
         pb.set_message(batch_info);
         pb
+    }
+
+    /// Index a single file (for daemon mode incremental updates)
+    /// Uses upsert semantics - no duplicate records created
+    pub async fn index_single_file(&self, path: &Path) -> Result<()> {
+        // Check if file should be indexed
+        if !self.should_index(path) {
+            debug!("Skipping file (excluded by config): {:?}", path);
+            return Ok(());
+        }
+
+        // Detect language
+        let language = self.detect_language(path);
+        if language.is_none() && self.config.languages.is_empty() {
+            debug!("Skipping file (unknown language): {:?}", path);
+            return Ok(());
+        }
+
+        let file_path_str = path.to_string_lossy().to_string();
+        info!("Indexing single file: {}", file_path_str);
+
+        // Step 1: Parse file with tree-sitter to extract nodes and edges
+        let extraction_result = self.parser
+            .parse_file_with_edges(&file_path_str)
+            .await
+            .with_context(|| format!("Failed to parse file: {}", file_path_str))?;
+
+        let mut nodes = extraction_result.nodes;
+        let edges = extraction_result.edges;
+
+        if nodes.is_empty() {
+            debug!("No nodes extracted from file: {}", file_path_str);
+            return Ok(());
+        }
+
+        info!(
+            "Extracted {} nodes and {} edges from {}",
+            nodes.len(),
+            edges.len(),
+            file_path_str
+        );
+
+        // Step 2: Annotate nodes with project metadata
+        for node in &mut nodes {
+            self.annotate_node(node);
+        }
+
+        // Step 3: Generate embeddings for nodes (if embeddings feature enabled)
+        #[cfg(feature = "embeddings")]
+        {
+            match self.embedder.generate_embeddings(&nodes).await {
+                Ok(embeddings) => {
+                    // Assign embeddings to nodes
+                    for (node, embedding) in nodes.iter_mut().zip(embeddings.into_iter()) {
+                        node.embedding = Some(embedding);
+                    }
+                    debug!("Generated embeddings for {} nodes", nodes.len());
+                }
+                Err(e) => {
+                    warn!("Failed to generate embeddings for file {}: {}", file_path_str, e);
+                    // Continue without embeddings - not a fatal error
+                }
+            }
+        }
+
+        // Step 4: Persist nodes via upsert (handles duplicates automatically)
+        self.persist_nodes_batch(&nodes).await
+            .with_context(|| format!("Failed to persist nodes for file: {}", file_path_str))?;
+
+        // Step 5: Persist node embeddings
+        #[cfg(feature = "embeddings")]
+        {
+            if let Err(e) = self.persist_node_embeddings(&nodes).await {
+                warn!("Failed to persist embeddings for file {}: {}", file_path_str, e);
+                // Continue - not a fatal error
+            }
+        }
+
+        // Step 6: Handle intra-file edges
+        // Build a set of node IDs in this file for quick lookup
+        let node_ids: std::collections::HashSet<_> = nodes
+            .iter()
+            .map(|n| n.id.to_string())
+            .collect();
+
+        // Build symbol name to node ID map for edge resolution
+        let symbol_map: std::collections::HashMap<String, codegraph_core::NodeId> = nodes
+            .iter()
+            .map(|n| (n.name.to_string(), n.id.clone()))
+            .collect();
+
+        // Convert EdgeRelationship to CodeEdge for intra-file edges only
+        let resolved_edges: Vec<codegraph_graph::CodeEdge> = edges
+            .into_iter()
+            .filter_map(|edge_rel| {
+                // Try to resolve the target symbol to a node ID in this file
+                if let Some(target_id) = symbol_map.get(&edge_rel.to) {
+                    // Both from and to are in this file - create CodeEdge
+                    Some(codegraph_graph::CodeEdge::new(
+                        edge_rel.from,
+                        target_id.clone(),
+                        edge_rel.edge_type,
+                    ))
+                } else {
+                    // Cross-file edge - skip for now (will be resolved on next full index)
+                    None
+                }
+            })
+            .collect();
+
+        if !resolved_edges.is_empty() {
+            info!("Persisting {} intra-file edges for {}", resolved_edges.len(), file_path_str);
+            self.enqueue_edges(resolved_edges).await
+                .with_context(|| format!("Failed to persist edges for file: {}", file_path_str))?;
+        }
+
+        info!("Successfully indexed file: {} ({} nodes)", file_path_str, nodes.len());
+        Ok(())
+    }
+
+    /// Delete all indexed data for a file (cascade delete)
+    /// Removes nodes, edges, embeddings, and metadata for the file
+    pub async fn delete_file_data(&self, path: &Path) -> Result<()> {
+        let file_path = path.to_string_lossy().to_string();
+        info!("Deleting indexed data for file: {}", file_path);
+        self.delete_data_for_files(&[file_path]).await
+    }
+
+    /// Detect language from file extension
+    fn detect_language(&self, path: &Path) -> Option<codegraph_core::Language> {
+        use codegraph_core::Language;
+
+        let ext = path.extension()?.to_str()?.to_lowercase();
+        match ext.as_str() {
+            "rs" => Some(Language::Rust),
+            "py" => Some(Language::Python),
+            "ts" => Some(Language::TypeScript),
+            "tsx" => Some(Language::TypeScript),
+            "js" => Some(Language::JavaScript),
+            "jsx" => Some(Language::JavaScript),
+            "go" => Some(Language::Go),
+            "java" => Some(Language::Java),
+            "cpp" | "cc" | "cxx" | "hpp" | "hxx" | "c" | "h" => Some(Language::Cpp),
+            "swift" => Some(Language::Swift),
+            "kt" | "kts" => Some(Language::Kotlin),
+            "cs" => Some(Language::CSharp),
+            "rb" => Some(Language::Ruby),
+            "php" => Some(Language::Php),
+            "dart" => Some(Language::Dart),
+            _ => None,
+        }
     }
 
     pub async fn watch_for_changes(&self, path: impl AsRef<Path>) -> Result<()> {

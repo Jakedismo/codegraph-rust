@@ -48,7 +48,8 @@ tokio-uring = { workspace = true, optional = true }
 
 [features]
 default = []
-experimental = []
+experimental = ["watcher-experimental"]
+watcher-experimental = []
 # Enable Linux-specific io_uring accelerated file reads.
 # This requires a Linux kernel with io_uring support. Falls back automatically otherwise.
 io-uring = ["tokio-uring"]

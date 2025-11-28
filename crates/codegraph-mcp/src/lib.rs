@@ -10,6 +10,8 @@ pub mod call_chain_prompts;
 pub mod code_search_prompts;
 pub mod connection;
 pub mod context_aware_limits;
+#[cfg(feature = "daemon")]
+pub mod daemon;
 #[cfg(feature = "ai-enhanced")]
 pub mod context_builder_prompts;
 #[cfg(feature = "ai-enhanced")]
@@ -75,6 +77,13 @@ pub use prompt_selector::{AnalysisType, PromptSelector, PromptSelectorStats, Pro
 pub use protocol::*;
 pub use transport::*;
 pub use version::*;
+
+// Daemon mode exports
+#[cfg(feature = "daemon")]
+pub use daemon::{
+    BackoffConfig, CircuitBreakerConfig, CircuitState, DaemonState, DaemonStatus, HealthMonitor,
+    PidFile, SessionMetrics, WatchConfig, WatchDaemon, WatchSession,
+};
 
 #[cfg(feature = "qwen-integration")]
 pub use qwen::{QwenClient, QwenConfig, QwenResult};

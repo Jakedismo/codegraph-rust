@@ -11,7 +11,7 @@ pub mod real_ai_integration;
 #[cfg(feature = "experimental")]
 pub mod semantic;
 pub mod visitor;
-#[cfg(feature = "experimental")]
+#[cfg(feature = "watcher-experimental")]
 pub mod watcher;
 
 #[cfg(all(test, feature = "experimental"))]
@@ -31,5 +31,5 @@ pub use real_ai_integration::*;
 #[cfg(feature = "experimental")]
 pub use semantic::*;
 pub use visitor::*;
-#[cfg(feature = "experimental")]
+#[cfg(feature = "watcher-experimental")]
 pub use watcher::*;

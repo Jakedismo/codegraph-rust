@@ -47,6 +47,9 @@ regex = { workspace = true }
 rayon = { workspace = true }
 num_cpus = { workspace = true }
 
+# Pattern matching for daemon mode
+glob-match = "0.2"
+
 # Internal dependencies
 codegraph-core = { workspace = true }
 codegraph-parser = { workspace = true }
@@ -83,6 +86,7 @@ path = "src/bin/codegraph-official.rs"
 
 [features]
 default = []
+daemon = ["codegraph-parser/watcher-experimental"]
 embeddings = ["dep:codegraph-vector", "codegraph-vector/lmstudio-reranker"]
 embeddings-local = ["embeddings", "codegraph-vector/local-embeddings"]
 embeddings-openai = ["embeddings", "codegraph-vector/openai"]

@@ -396,7 +396,7 @@ impl DiffBasedParser {
             let mut visitor = AstVisitor::new(language, file_path, content);
             visitor.visit(tree.root_node());
 
-            Ok((visitor.nodes, tree))
+            Ok::<_, CodeGraphError>((visitor.nodes, tree))
         })
         .await
         .map_err(|e| CodeGraphError::Parse(e.to_string()))??;
@@ -422,11 +422,15 @@ impl DiffBasedParser {
         language: Language,
     ) -> Result<IncrementalParseResult> {
         let registry = self.registry.clone();
-        let file_path = file_path.to_string();
+        let file_path_owned = file_path.to_string();
+        let file_path_for_log = file_path.to_string();
         let old_content = old_content.to_string();
         let new_content = new_content.to_string();
         let affected_ranges: Vec<TextRange> =
             affected_nodes.iter().map(|n| n.range.clone()).collect();
+        let affected_nodes_len = affected_nodes.len();
+        let affected_nodes_owned: Vec<AffectedNode> = affected_nodes.to_vec();
+        let old_tree_clone = old_tree.clone();
 
         // Convert changed regions to input edits
         let edits = self.convert_to_input_edits(changed_regions, &old_content, &new_content)?;
@@ -437,7 +441,7 @@ impl DiffBasedParser {
             })?;
 
             // Clone the old tree for editing
-            let mut updated_tree = old_tree.clone();
+            let mut updated_tree = old_tree_clone;
 
             // Apply all edits
             for edit in &edits {
@@ -449,21 +453,21 @@ impl DiffBasedParser {
                 .parse(&new_content, Some(&updated_tree))
                 .ok_or_else(|| CodeGraphError::Parse("Failed to incremental parse".to_string()))?;
 
-            let mut visitor = AstVisitor::new(language, file_path, new_content);
+            let mut visitor = AstVisitor::new(language, file_path_owned, new_content);
             visitor.visit(new_tree.root_node());
 
             // Count how many nodes we had to reparse
-            let reparse_count = affected_nodes.iter().filter(|n| n.needs_reparse).count();
+            let reparse_count = affected_nodes_owned.iter().filter(|n| n.needs_reparse).count();
 
-            Ok((visitor.nodes, new_tree, reparse_count))
+            Ok::<_, CodeGraphError>((visitor.nodes, new_tree, reparse_count))
         })
         .await
         .map_err(|e| CodeGraphError::Parse(e.to_string()))??;
 
         info!(
             "Incremental parse completed for {}: {} nodes affected, {} reparsed",
-            file_path,
-            affected_nodes.len(),
+            file_path_for_log,
+            affected_nodes_len,
             reparse_count
         );
 
@@ -567,7 +571,7 @@ impl SemanticAnalyzer {
                         node_id: format!(
                             "semantic:{}:{}",
                             node.node_type,
-                            node.name.as_deref().unwrap_or("unnamed")
+                            node.name.as_str()
                         ),
                         node_type: node.node_type.clone(),
                         range: TextRange::new(

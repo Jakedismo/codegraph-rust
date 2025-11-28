@@ -1,18 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use dashmap::DashMap;
-use futures::stream::StreamExt;
 use notify::{
     event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
     Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
 };
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::fs;
@@ -21,8 +20,8 @@ use tracing::{debug, error, info, warn};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 
-use crate::{LanguageRegistry, TreeSitterParser};
-use codegraph_core::{CodeGraphError, Language};
+use crate::LanguageRegistry;
+use codegraph_core::Language;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FileId(pub String);
@@ -133,12 +132,12 @@ impl FileSystemWatcher {
                 Ok(event) => {
                     Self::handle_fs_event(
                         event,
-                        &event_sender,
-                        &file_registry,
-                        &language_registry,
-                        &file_filters,
-                        &include_globs,
-                        &ignore_matchers,
+                        event_sender.clone(),
+                        file_registry.clone(),
+                        language_registry.clone(),
+                        file_filters.clone(),
+                        include_globs.clone(),
+                        ignore_matchers.clone(),
                     );
                 }
                 Err(e) => error!("File watcher error: {:?}", e),
@@ -273,22 +272,22 @@ impl FileSystemWatcher {
 
     fn handle_fs_event(
         event: Event,
-        event_sender: &Sender<FileChangeEvent>,
-        file_registry: &DashMap<FileId, FileMetadata>,
-        language_registry: &LanguageRegistry,
-        file_filters: &RwLock<HashSet<String>>,
-        include_globs: &RwLock<Option<GlobSet>>,
-        ignore_matchers: &DashMap<PathBuf, Gitignore>,
+        event_sender: Sender<FileChangeEvent>,
+        file_registry: Arc<DashMap<FileId, FileMetadata>>,
+        language_registry: Arc<LanguageRegistry>,
+        file_filters: Arc<RwLock<HashSet<String>>>,
+        include_globs: Arc<RwLock<Option<GlobSet>>>,
+        ignore_matchers: Arc<DashMap<PathBuf, Gitignore>>,
     ) {
         tokio::spawn(async move {
             if let Err(e) = Self::process_fs_event(
                 event,
-                event_sender,
-                file_registry,
-                language_registry,
-                file_filters,
-                include_globs,
-                ignore_matchers,
+                &event_sender,
+                &file_registry,
+                &language_registry,
+                &file_filters,
+                &include_globs,
+                &ignore_matchers,
             )
             .await
             {
@@ -467,7 +466,7 @@ impl FileSystemWatcher {
                 Ok(Some(change)) => {
                     changes.push(change);
                     // Continue collecting if we have more changes coming quickly
-                    while let Ok(Ok(Some(additional_change))) =
+                    while let Ok(Some(additional_change)) =
                         tokio::time::timeout(Duration::from_millis(10), self.receive_change()).await
                     {
                         changes.push(additional_change);
@@ -582,7 +581,7 @@ impl FileSystemWatcher {
                             // Delete followed by Create ⇒ Modified
                             map.insert(key, Agg::Modified(fid, meta, old));
                         }
-                        Some(Agg::Modified(_, _, old)) => {
+                        Some(Agg::Modified(_, _, _old)) => {
                             map.insert(key, Agg::Created(fid, meta)); // treat as new
                         }
                         Some(Agg::Created(_, _)) | Some(Agg::Renamed(_, _, _)) => {
@@ -597,7 +596,7 @@ impl FileSystemWatcher {
                         None => {
                             map.insert(key, Agg::Modified(fid, newm, oldm));
                         }
-                        Some(Agg::Created(_, cm)) => {
+                        Some(Agg::Created(_, _cm)) => {
                             // Created then Modified ⇒ still Created with latest meta
                             map.insert(key, Agg::Created(fid, newm));
                         }

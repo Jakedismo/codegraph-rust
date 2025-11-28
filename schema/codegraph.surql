@@ -389,104 +389,104 @@ DEFINE FUNCTION fn::edge_types() {
 };
 
 -- -----------------------------------------------------------------------------
--- FUNCTION: get_transitive_dependencies (UNCHANGED)
+-- FUNCTION: get_transitive_dependencies (FIXED - uses JOIN instead of arrows)
+-- Arrow syntax only works with RELATE-created edges, not regular tables
 -- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::get_transitive_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
-    LET $safe_depth = IF $depth > 0 AND $depth <= 10 THEN $depth ELSE 3 END;
-    LET $edge_name  = string::lowercase($edge_type ?? 'Calls');
+    LET $safe_depth = IF $depth > 0 AND $depth <= 5 THEN $depth ELSE 3 END;
+    LET $edge_name = string::lowercase($edge_type ?? 'calls');
+
+    -- Normalize node_id to record type
     LET $record = IF type::is::record($node_id) THEN $node_id ELSE (
-        IF string::starts_with($node_id, "nodes:") THEN type::thing($node_id) ELSE type::thing('nodes', $node_id) END
+        IF string::starts_with(<string>$node_id, "nodes:")
+        THEN type::thing(<string>$node_id)
+        ELSE type::thing('nodes', <string>$node_id)
+        END
     ) END;
 
-    LET $rec_proj = SELECT VALUE project_id FROM ONLY $record;
-
-    -- Abort only if project_id is set and does not match; allow NULL for backwards data
+    -- Verify node belongs to project (allow NULL for backwards compatibility)
+    LET $rec_proj = (SELECT VALUE project_id FROM ONLY $record);
     IF $rec_proj != NONE AND $rec_proj != $project_id {
         RETURN [];
     };
 
-    LET $lvl1 = IF $safe_depth >= 1 THEN
-        SELECT VALUE id
-        FROM ONLY $record
-            ->edges[WHERE edge_type = $edge_name AND (to.project_id ?? $project_id) = $project_id]
-            ->to
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl2 = IF $safe_depth >= 2 THEN
-        SELECT VALUE id FROM $lvl1 ->edges[WHERE edge_type = $edge_name AND (to.project_id ?? $project_id) = $project_id] ->to
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl3 = IF $safe_depth >= 3 THEN
-        SELECT VALUE id FROM $lvl2 ->edges[WHERE edge_type = $edge_name AND (to.project_id ?? $project_id) = $project_id] ->to
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl4 = IF $safe_depth >= 4 THEN
-        SELECT VALUE id FROM $lvl3 ->edges[WHERE edge_type = $edge_name AND (to.project_id ?? $project_id) = $project_id] ->to
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl5 = IF $safe_depth >= 5 THEN
-        SELECT VALUE id FROM $lvl4 ->edges[WHERE edge_type = $edge_name AND (to.project_id ?? $project_id) = $project_id] ->to
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl6 = IF $safe_depth >= 6 THEN
-        SELECT VALUE id FROM $lvl5 ->edges[WHERE edge_type = $edge_name AND (to.project_id ?? $project_id) = $project_id] ->to
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl7 = IF $safe_depth >= 7 THEN
-        SELECT VALUE id FROM $lvl6 ->edges[WHERE edge_type = $edge_name AND (to.project_id ?? $project_id) = $project_id] ->to
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl8 = IF $safe_depth >= 8 THEN
-        SELECT VALUE id FROM $lvl7 ->edges[WHERE edge_type = $edge_name AND (to.project_id ?? $project_id) = $project_id] ->to
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl9 = IF $safe_depth >= 9 THEN
-        SELECT VALUE id FROM $lvl8 ->edges[WHERE edge_type = $edge_name AND (to.project_id ?? $project_id) = $project_id] ->to
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl10 = IF $safe_depth >= 10 THEN
-        SELECT VALUE id FROM $lvl9 ->edges[WHERE edge_type = $edge_name AND (to.project_id ?? $project_id) = $project_id] ->to
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $pairs = array::concat(
-        (SELECT VALUE { id: id, depth: 1 }  FROM $lvl1),
-        (SELECT VALUE { id: id, depth: 2 }  FROM $lvl2),
-        (SELECT VALUE { id: id, depth: 3 }  FROM $lvl3),
-        (SELECT VALUE { id: id, depth: 4 }  FROM $lvl4),
-        (SELECT VALUE { id: id, depth: 5 }  FROM $lvl5),
-        (SELECT VALUE { id: id, depth: 6 }  FROM $lvl6),
-        (SELECT VALUE { id: id, depth: 7 }  FROM $lvl7),
-        (SELECT VALUE { id: id, depth: 8 }  FROM $lvl8),
-        (SELECT VALUE { id: id, depth: 9 }  FROM $lvl9),
-        (SELECT VALUE { id: id, depth: 10 } FROM $lvl10)
+    -- Level 1: Direct dependencies via JOIN (not arrow syntax)
+    LET $lvl1 = (
+        SELECT VALUE to FROM edges
+        WHERE from = $record
+          AND edge_type = $edge_name
+          AND (to.project_id = $project_id OR to.project_id = NONE)
     );
 
-    LET $min_depths = SELECT id, math::min(depth) AS dependency_depth FROM $pairs GROUP BY id;
+    -- Level 2: Dependencies of level 1
+    LET $lvl2 = IF $safe_depth >= 2 AND array::len($lvl1) > 0 THEN (
+        SELECT VALUE to FROM edges
+        WHERE from INSIDE $lvl1
+          AND edge_type = $edge_name
+          AND (to.project_id = $project_id OR to.project_id = NONE)
+          AND to NOTINSIDE $lvl1
+          AND to != $record
+    ) ELSE [] END;
 
-    LET $raw = SELECT fn::node_info(id) AS node, dependency_depth FROM $min_depths;
+    -- Level 3: Dependencies of level 2
+    LET $lvl3 = IF $safe_depth >= 3 AND array::len($lvl2) > 0 THEN (
+        SELECT VALUE to FROM edges
+        WHERE from INSIDE $lvl2
+          AND edge_type = $edge_name
+          AND (to.project_id = $project_id OR to.project_id = NONE)
+          AND to NOTINSIDE array::concat($lvl1, $lvl2)
+          AND to != $record
+    ) ELSE [] END;
 
-    RETURN SELECT
-        node.id       AS id,
-        node.name     AS name,
-        node.kind     AS kind,
-        node.location AS location,
-        node.language AS language,
-        node.content  AS content,
-        node.metadata AS metadata,
-        dependency_depth,
-        $safe_depth   AS requested_depth
-    FROM $raw
-    WHERE node != NONE;
+    -- Level 4: Dependencies of level 3
+    LET $lvl4 = IF $safe_depth >= 4 AND array::len($lvl3) > 0 THEN (
+        SELECT VALUE to FROM edges
+        WHERE from INSIDE $lvl3
+          AND edge_type = $edge_name
+          AND (to.project_id = $project_id OR to.project_id = NONE)
+          AND to NOTINSIDE array::concat($lvl1, $lvl2, $lvl3)
+          AND to != $record
+    ) ELSE [] END;
+
+    -- Level 5: Dependencies of level 4
+    LET $lvl5 = IF $safe_depth >= 5 AND array::len($lvl4) > 0 THEN (
+        SELECT VALUE to FROM edges
+        WHERE from INSIDE $lvl4
+          AND edge_type = $edge_name
+          AND (to.project_id = $project_id OR to.project_id = NONE)
+          AND to NOTINSIDE array::concat($lvl1, $lvl2, $lvl3, $lvl4)
+          AND to != $record
+    ) ELSE [] END;
+
+    -- Build results with depth tracking
+    LET $pairs = array::concat(
+        array::map($lvl1, |$n| { id: $n, depth: 1 }),
+        array::map($lvl2, |$n| { id: $n, depth: 2 }),
+        array::map($lvl3, |$n| { id: $n, depth: 3 }),
+        array::map($lvl4, |$n| { id: $n, depth: 4 }),
+        array::map($lvl5, |$n| { id: $n, depth: 5 })
+    );
+
+    -- Deduplicate keeping minimum depth
+    LET $min_depths = (SELECT id, math::min(depth) AS dependency_depth FROM $pairs GROUP BY id);
+
+    -- Enrich with node info
+    LET $raw = (SELECT fn::node_info(id) AS node, dependency_depth FROM $min_depths);
+
+    RETURN (
+        SELECT
+            node.id AS id,
+            node.name AS name,
+            node.kind AS kind,
+            node.location AS location,
+            node.language AS language,
+            node.content AS content,
+            node.metadata AS metadata,
+            dependency_depth,
+            $safe_depth AS requested_depth
+        FROM $raw
+        WHERE node != NONE
+    );
 };
 
 -- -----------------------------------------------------------------------------
@@ -593,7 +593,7 @@ DEFINE FUNCTION fn::trace_call_chain($project_id: string, $from_node: any, $max_
 -- FUNCTION: calculate_coupling_metrics (UNCHANGED)
 -- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: string) {
-    LET $edge_list = array::map(fn::edge_types(), |v| string::lowercase(v));
+    LET $edge_list = array::map(fn::edge_types(), |$v| string::lowercase(v));
     LET $record = IF type::is::record($node_id) THEN $node_id ELSE (
         IF string::starts_with($node_id, "nodes:") THEN type::thing($node_id) ELSE type::thing('nodes', $node_id) END
     ) END;
@@ -745,100 +745,103 @@ DEFINE FUNCTION fn::get_hub_nodes($project_id: string, $min_degree: int) {
 };
 
 -- -----------------------------------------------------------------------------
--- FUNCTION: get_reverse_dependencies (UNCHANGED)
+-- FUNCTION: get_reverse_dependencies (FIXED - uses JOIN instead of arrows)
+-- Finds nodes that depend ON the given node (who calls this?)
 -- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::get_reverse_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
-    LET $safe_depth = IF $depth > 0 AND $depth <= 10 THEN $depth ELSE 3 END;
-    LET $edge_name  = string::lowercase($edge_type ?? 'Calls');
+    LET $safe_depth = IF $depth > 0 AND $depth <= 5 THEN $depth ELSE 3 END;
+    LET $edge_name = string::lowercase($edge_type ?? 'calls');
+
+    -- Normalize node_id to record type
     LET $record = IF type::is::record($node_id) THEN $node_id ELSE (
-        IF string::starts_with($node_id, "nodes:") THEN type::thing($node_id) ELSE type::thing('nodes', $node_id) END
+        IF string::starts_with(<string>$node_id, "nodes:")
+        THEN type::thing(<string>$node_id)
+        ELSE type::thing('nodes', <string>$node_id)
+        END
     ) END;
 
-    IF (SELECT VALUE project_id FROM ONLY $record) != $project_id {
+    -- Verify node belongs to project (allow NULL for backwards compatibility)
+    LET $rec_proj = (SELECT VALUE project_id FROM ONLY $record);
+    IF $rec_proj != NONE AND $rec_proj != $project_id {
         RETURN [];
     };
 
-    LET $lvl1 = IF $safe_depth >= 1 THEN
-        SELECT VALUE id
-        FROM ONLY $record
-            <-edges[WHERE edge_type = $edge_name AND (from.project_id ?? $project_id) = $project_id]
-            <-from
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl2 = IF $safe_depth >= 2 THEN
-        SELECT VALUE id FROM $lvl1 <-edges[WHERE edge_type = $edge_name AND (from.project_id ?? $project_id) = $project_id] <-from
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl3 = IF $safe_depth >= 3 THEN
-        SELECT VALUE id FROM $lvl2 <-edges[WHERE edge_type = $edge_name AND (from.project_id ?? $project_id) = $project_id] <-from
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl4 = IF $safe_depth >= 4 THEN
-        SELECT VALUE id FROM $lvl3 <-edges[WHERE edge_type = $edge_name AND (from.project_id ?? $project_id) = $project_id] <-from
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl5 = IF $safe_depth >= 5 THEN
-        SELECT VALUE id FROM $lvl4 <-edges[WHERE edge_type = $edge_name AND (from.project_id ?? $project_id) = $project_id] <-from
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl6 = IF $safe_depth >= 6 THEN
-        SELECT VALUE id FROM $lvl5 <-edges[WHERE edge_type = $edge_name AND (from.project_id ?? $project_id) = $project_id] <-from
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl7 = IF $safe_depth >= 7 THEN
-        SELECT VALUE id FROM $lvl6 <-edges[WHERE edge_type = $edge_name AND (from.project_id ?? $project_id) = $project_id] <-from
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl8 = IF $safe_depth >= 8 THEN
-        SELECT VALUE id FROM $lvl7 <-edges[WHERE edge_type = $edge_name AND (from.project_id ?? $project_id) = $project_id] <-from
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl9 = IF $safe_depth >= 9 THEN
-        SELECT VALUE id FROM $lvl8 <-edges[WHERE edge_type = $edge_name AND (from.project_id ?? $project_id) = $project_id] <-from
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $lvl10 = IF $safe_depth >= 10 THEN
-        SELECT VALUE id FROM $lvl9 <-edges[WHERE edge_type = $edge_name AND (from.project_id ?? $project_id) = $project_id] <-from
-        WHERE (project_id ?? $project_id) = $project_id
-    ELSE [] END;
-
-    LET $pairs = array::concat(
-        (SELECT VALUE { id: id, depth: 1 }  FROM $lvl1),
-        (SELECT VALUE { id: id, depth: 2 }  FROM $lvl2),
-        (SELECT VALUE { id: id, depth: 3 }  FROM $lvl3),
-        (SELECT VALUE { id: id, depth: 4 }  FROM $lvl4),
-        (SELECT VALUE { id: id, depth: 5 }  FROM $lvl5),
-        (SELECT VALUE { id: id, depth: 6 }  FROM $lvl6),
-        (SELECT VALUE { id: id, depth: 7 }  FROM $lvl7),
-        (SELECT VALUE { id: id, depth: 8 }  FROM $lvl8),
-        (SELECT VALUE { id: id, depth: 9 }  FROM $lvl9),
-        (SELECT VALUE { id: id, depth: 10 } FROM $lvl10)
+    -- Level 1: Direct dependents via JOIN (who depends on this node?)
+    LET $lvl1 = (
+        SELECT VALUE from FROM edges
+        WHERE to = $record
+          AND edge_type = $edge_name
+          AND (from.project_id = $project_id OR from.project_id = NONE)
     );
 
-    LET $min_depths = SELECT id, math::min(depth) AS dependent_depth FROM $pairs GROUP BY id;
+    -- Level 2: Dependents of level 1
+    LET $lvl2 = IF $safe_depth >= 2 AND array::len($lvl1) > 0 THEN (
+        SELECT VALUE from FROM edges
+        WHERE to INSIDE $lvl1
+          AND edge_type = $edge_name
+          AND (from.project_id = $project_id OR from.project_id = NONE)
+          AND from NOTINSIDE $lvl1
+          AND from != $record
+    ) ELSE [] END;
 
-    LET $raw = SELECT fn::node_info(id) AS node, dependent_depth FROM $min_depths;
+    -- Level 3: Dependents of level 2
+    LET $lvl3 = IF $safe_depth >= 3 AND array::len($lvl2) > 0 THEN (
+        SELECT VALUE from FROM edges
+        WHERE to INSIDE $lvl2
+          AND edge_type = $edge_name
+          AND (from.project_id = $project_id OR from.project_id = NONE)
+          AND from NOTINSIDE array::concat($lvl1, $lvl2)
+          AND from != $record
+    ) ELSE [] END;
 
-    RETURN SELECT
-        node.id       AS id,
-        node.name     AS name,
-        node.kind     AS kind,
-        node.location AS location,
-        node.language AS language,
-        node.content  AS content,
-        node.metadata AS metadata,
-        dependent_depth,
-        $safe_depth   AS requested_depth
-    FROM $raw
-    WHERE node != NONE;
+    -- Level 4: Dependents of level 3
+    LET $lvl4 = IF $safe_depth >= 4 AND array::len($lvl3) > 0 THEN (
+        SELECT VALUE from FROM edges
+        WHERE to INSIDE $lvl3
+          AND edge_type = $edge_name
+          AND (from.project_id = $project_id OR from.project_id = NONE)
+          AND from NOTINSIDE array::concat($lvl1, $lvl2, $lvl3)
+          AND from != $record
+    ) ELSE [] END;
+
+    -- Level 5: Dependents of level 4
+    LET $lvl5 = IF $safe_depth >= 5 AND array::len($lvl4) > 0 THEN (
+        SELECT VALUE from FROM edges
+        WHERE to INSIDE $lvl4
+          AND edge_type = $edge_name
+          AND (from.project_id = $project_id OR from.project_id = NONE)
+          AND from NOTINSIDE array::concat($lvl1, $lvl2, $lvl3, $lvl4)
+          AND from != $record
+    ) ELSE [] END;
+
+    -- Build results with depth tracking
+    LET $pairs = array::concat(
+        array::map($lvl1, |$n| { id: $n, depth: 1 }),
+        array::map($lvl2, |$n| { id: $n, depth: 2 }),
+        array::map($lvl3, |$n| { id: $n, depth: 3 }),
+        array::map($lvl4, |$n| { id: $n, depth: 4 }),
+        array::map($lvl5, |$n| { id: $n, depth: 5 })
+    );
+
+    -- Deduplicate keeping minimum depth
+    LET $min_depths = (SELECT id, math::min(depth) AS dependent_depth FROM $pairs GROUP BY id);
+
+    -- Enrich with node info
+    LET $raw = (SELECT fn::node_info(id) AS node, dependent_depth FROM $min_depths);
+
+    RETURN (
+        SELECT
+            node.id AS id,
+            node.name AS name,
+            node.kind AS kind,
+            node.location AS location,
+            node.language AS language,
+            node.content AS content,
+            node.metadata AS metadata,
+            dependent_depth,
+            $safe_depth AS requested_depth
+        FROM $raw
+        WHERE node != NONE
+    );
 };
 -- =============================================================================

@@ -307,6 +307,50 @@ enum Commands {
         #[arg(long, help = "Open graph in read-only mode for perf queries")]
         graph_readonly: bool,
     },
+
+    #[cfg(feature = "daemon")]
+    #[command(about = "Manage watch daemon for automatic re-indexing on file changes")]
+    Daemon {
+        #[command(subcommand)]
+        action: DaemonAction,
+    },
+}
+
+#[cfg(feature = "daemon")]
+#[derive(Subcommand)]
+enum DaemonAction {
+    #[command(about = "Start watch daemon for a project")]
+    Start {
+        #[arg(help = "Path to project directory", default_value = ".")]
+        path: PathBuf,
+
+        #[arg(long, help = "Run in foreground (default: daemonize)")]
+        foreground: bool,
+
+        #[arg(short, long, help = "Languages to watch", value_delimiter = ',')]
+        languages: Option<Vec<String>>,
+
+        #[arg(long, help = "Exclude patterns")]
+        exclude: Vec<String>,
+
+        #[arg(long, help = "Include patterns")]
+        include: Vec<String>,
+    },
+
+    #[command(about = "Stop running watch daemon")]
+    Stop {
+        #[arg(help = "Path to project directory", default_value = ".")]
+        path: PathBuf,
+    },
+
+    #[command(about = "Show watch daemon status")]
+    Status {
+        #[arg(help = "Path to project directory", default_value = ".")]
+        path: PathBuf,
+
+        #[arg(long, help = "Output as JSON")]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -652,6 +696,11 @@ async fn main() -> Result<()> {
             yes,
         } => {
             handle_clean(index, vectors, cache, all, yes).await?;
+        }
+
+        #[cfg(feature = "daemon")]
+        Commands::Daemon { action } => {
+            handle_daemon(action).await?;
         }
     }
 
@@ -2183,4 +2232,208 @@ impl Write for DebugLogWriter {
         let mut guard = self.file.lock().unwrap();
         guard.flush()
     }
+}
+
+// Daemon mode handlers
+#[cfg(feature = "daemon")]
+async fn handle_daemon(action: DaemonAction) -> Result<()> {
+    match action {
+        DaemonAction::Start {
+            path,
+            foreground,
+            languages,
+            exclude,
+            include,
+        } => {
+            handle_daemon_start(path, foreground, languages, exclude, include).await
+        }
+        DaemonAction::Stop { path } => handle_daemon_stop(path).await,
+        DaemonAction::Status { path, json } => handle_daemon_status(path, json).await,
+    }
+}
+
+#[cfg(feature = "daemon")]
+async fn handle_daemon_start(
+    path: PathBuf,
+    foreground: bool,
+    languages: Option<Vec<String>>,
+    exclude: Vec<String>,
+    include: Vec<String>,
+) -> Result<()> {
+    use codegraph_mcp::daemon::{PidFile, WatchConfig, WatchDaemon};
+    use codegraph_mcp::{IndexerConfig, ProjectIndexer};
+
+    let project_root = std::fs::canonicalize(&path)
+        .with_context(|| format!("Invalid project path: {:?}", path))?;
+
+    println!(
+        "{}",
+        format!("🚀 Starting watch daemon for: {}", project_root.display()).green()
+    );
+
+    // Check if daemon already running
+    let pid_path = PidFile::default_path(&project_root);
+    let pid_file = PidFile::new(&pid_path);
+    if pid_file.is_process_running()? {
+        anyhow::bail!(
+            "Daemon already running for this project (PID file: {:?})",
+            pid_path
+        );
+    }
+
+    // Create IndexerConfig
+    let indexer_config = IndexerConfig {
+        languages: languages.unwrap_or_default(),
+        exclude_patterns: exclude,
+        include_patterns: include,
+        project_root: project_root.clone(),
+        ..Default::default()
+    };
+
+    // Create WatchConfig
+    let watch_config = WatchConfig {
+        project_root: project_root.clone(),
+        debounce_ms: 30,
+        batch_timeout_ms: 200,
+        health_check_interval_secs: 30,
+        reconnect_backoff: Default::default(),
+        circuit_breaker: Default::default(),
+        indexer: indexer_config.clone(),
+    };
+
+    // Create ProjectIndexer
+    use codegraph_core::config_manager::ConfigManager;
+    let config_mgr = ConfigManager::load()
+        .with_context(|| "Failed to load configuration")?;
+    let global_config = config_mgr.config().clone();
+
+    let indexer = ProjectIndexer::new(
+        indexer_config,
+        &global_config,
+        indicatif::MultiProgress::new(),
+    )
+    .await
+    .with_context(|| "Failed to create project indexer")?;
+
+    // Create and start daemon
+    let mut daemon = WatchDaemon::new(watch_config)
+        .with_context(|| "Failed to create watch daemon")?;
+    daemon.set_indexer(indexer);
+
+    if foreground {
+        println!("{}", "Running in foreground. Press Ctrl+C to stop.".yellow());
+        daemon.start().await?;
+    } else {
+        // For now, just run in foreground (proper daemonization requires fork)
+        println!(
+            "{}",
+            "Note: Running in foreground mode. Use --foreground flag for explicit foreground mode."
+                .yellow()
+        );
+        println!("{}", "Press Ctrl+C to stop the daemon.".yellow());
+        daemon.start().await?;
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "daemon")]
+async fn handle_daemon_stop(path: PathBuf) -> Result<()> {
+    use codegraph_mcp::daemon::PidFile;
+    use nix::sys::signal::{kill, Signal};
+    use nix::unistd::Pid;
+
+    let project_root = std::fs::canonicalize(&path)
+        .with_context(|| format!("Invalid project path: {:?}", path))?;
+
+    let pid_path = PidFile::default_path(&project_root);
+    let pid_file = PidFile::new(&pid_path);
+
+    match pid_file.read()? {
+        Some(pid) => {
+            println!(
+                "{}",
+                format!("🛑 Stopping daemon (PID: {})...", pid).yellow()
+            );
+
+            // Send SIGTERM
+            let pid = Pid::from_raw(pid as i32);
+            match kill(pid, Signal::SIGTERM) {
+                Ok(_) => {
+                    println!("{}", "✅ Stop signal sent successfully".green());
+
+                    // Wait a bit and check if it stopped
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+                    if !pid_file.is_process_running()? {
+                        println!("{}", "✅ Daemon stopped".green());
+                    } else {
+                        println!(
+                            "{}",
+                            "⚠️  Daemon still running. May take a moment to shut down.".yellow()
+                        );
+                    }
+                }
+                Err(e) => {
+                    anyhow::bail!("Failed to send stop signal: {}", e);
+                }
+            }
+        }
+        None => {
+            println!(
+                "{}",
+                format!("No daemon running for: {}", project_root.display()).yellow()
+            );
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "daemon")]
+async fn handle_daemon_status(path: PathBuf, json: bool) -> Result<()> {
+    use codegraph_mcp::daemon::PidFile;
+
+    let project_root = std::fs::canonicalize(&path)
+        .with_context(|| format!("Invalid project path: {:?}", path))?;
+
+    let pid_path = PidFile::default_path(&project_root);
+    let pid_file = PidFile::new(&pid_path);
+
+    let (running, pid) = match pid_file.read()? {
+        Some(pid) => (pid_file.is_process_running()?, Some(pid)),
+        None => (false, None),
+    };
+
+    if json {
+        let status = serde_json::json!({
+            "project": project_root.display().to_string(),
+            "running": running,
+            "pid": pid,
+            "pid_file": pid_path.display().to_string(),
+        });
+        println!("{}", serde_json::to_string_pretty(&status)?);
+    } else {
+        println!("{}", "📊 Watch Daemon Status".bold());
+        println!("   Project: {}", project_root.display());
+        println!("   PID file: {}", pid_path.display());
+
+        if running {
+            println!(
+                "   Status: {} (PID: {})",
+                "Running".green(),
+                pid.unwrap_or(0)
+            );
+        } else {
+            println!("   Status: {}", "Stopped".red());
+            if pid.is_some() {
+                println!(
+                    "   {}",
+                    "⚠️  Stale PID file detected. Run 'daemon start' to clean up.".yellow()
+                );
+            }
+        }
+    }
+
+    Ok(())
 }

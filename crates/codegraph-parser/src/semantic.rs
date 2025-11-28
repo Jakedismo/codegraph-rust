@@ -151,20 +151,20 @@ pub struct SemanticAnalyzer {
 
 impl SemanticAnalyzer {
     pub fn new() -> Self {
-        let mut analyzers: HashMap<Language, Box<dyn LanguageSemanticAnalyzer>> = HashMap::new();
+        let mut language_analyzers: HashMap<Language, Box<dyn LanguageSemanticAnalyzer>> = HashMap::new();
 
         // Register language-specific analyzers
-        analyzers.insert(Language::Rust, Box::new(RustSemanticAnalyzer::new()));
-        analyzers.insert(
+        language_analyzers.insert(Language::Rust, Box::new(RustSemanticAnalyzer::new()));
+        language_analyzers.insert(
             Language::TypeScript,
             Box::new(TypeScriptSemanticAnalyzer::new()),
         );
-        analyzers.insert(
+        language_analyzers.insert(
             Language::JavaScript,
             Box::new(JavaScriptSemanticAnalyzer::new()),
         );
-        analyzers.insert(Language::Python, Box::new(PythonSemanticAnalyzer::new()));
-        analyzers.insert(Language::Go, Box::new(GoSemanticAnalyzer::new()));
+        language_analyzers.insert(Language::Python, Box::new(PythonSemanticAnalyzer::new()));
+        language_analyzers.insert(Language::Go, Box::new(GoSemanticAnalyzer::new()));
 
         Self { language_analyzers }
     }
