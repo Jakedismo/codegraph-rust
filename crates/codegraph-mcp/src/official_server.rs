@@ -803,9 +803,9 @@ impl ServerHandler for CodeGraphMCPServer {
             Ok(ListPromptsResult {
                 prompts: vec![Prompt {
                     name: "codegraph_initial_instructions".to_string(),
-                    title: Some("CodeGraph Initial Instructions for AI Agents".to_string()),
+                    title: Some("MANDATORY: CodeGraph Usage Protocol for AI Agents".to_string()),
                     description: Some(
-                        "Essential guide for using CodeGraph MCP tools efficiently. Learn when to use CodeGraph tools vs manual file reading, tool selection framework, context efficiency best practices, and common workflows.".to_string()
+                        "REQUIRED reading before using CodeGraph tools. Enforces context-efficient tool usage patterns. You MUST use CodeGraph agentic tools BEFORE grep/read/find. Includes tool selection decision tree, anti-patterns, and compliance checklist.".to_string()
                     ),
                     arguments: None,
                     icons: None,
@@ -825,7 +825,7 @@ impl ServerHandler for CodeGraphMCPServer {
             match name.as_str() {
                 "codegraph_initial_instructions" => Ok(GetPromptResult {
                     description: Some(
-                        "CodeGraph Initial Instructions - Essential guide for context-efficient tool usage".to_string()
+                        "MANDATORY: CodeGraph Usage Protocol - You MUST read and follow these instructions before using any CodeGraph tools".to_string()
                     ),
                     messages: vec![
                         PromptMessage {

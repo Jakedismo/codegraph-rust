@@ -1,576 +1,471 @@
-# CodeGraph MCP - Initial Instructions for AI Agents
+# CODEGRAPH MANDATORY USAGE PROTOCOL
+# ===================================
+# THESE INSTRUCTIONS ARE NON-NEGOTIABLE - FAILURE TO COMPLY WASTES CONTEXT
 
-## Introduction
+## CRITICAL: READ THIS FIRST
 
-CodeGraph is an **autonomous code intelligence system** powered by multi-step reasoning and graph analysis. Unlike traditional code search tools, CodeGraph's **agentic tools** autonomously decide which graph analysis functions to call based on your natural language queries.
+You have access to CodeGraph, an autonomous code intelligence system with 7 agentic tools that leverage a frontier reasoning model with 2M token context window.
 
-**Critical principle:** Use CodeGraph's agentic tools for **all codebase exploration**. These tools provide condensed, semantically-relevant, graph-analyzed context without burning your context window.
+**MANDATORY RULE #1:** You MUST use CodeGraph agentic tools for ALL codebase exploration BEFORE using any built-in file reading or grep tools.
 
-Utilising CodeGraph gives you access to a frontier reasoning models 2M token ctx window and deep multi-step analysis results over the whole codebase.
+**MANDATORY RULE #2:** You MUST NEVER use grep, find, read_file, or cat to explore a codebase when CodeGraph tools are available.
+
+**MANDATORY RULE #3:** You MUST let CodeGraph's multi-step reasoning complete - do NOT interrupt or assume you need more information while a tool is running.
 
 ---
 
-## Core Philosophy: Autonomous Codebase Intelligence
+## ENFORCEMENT PROTOCOL
 
-### ✅ The CodeGraph Way (Autonomous Agentic)
+### ALWAYS DO THESE THINGS:
 
-Agent: agentic_dependency_analysis("how does authentication integrate with the database?")
+1. **ALWAYS** start codebase work with `agentic_code_search` or `agentic_architecture_analysis`
+2. **ALWAYS** let CodeGraph decide which graph functions to call - trust the autonomous agent
+3. **ALWAYS** use specialized tools for specific analysis (dependency, call chain, API surface)
+4. **ALWAYS** read the full CodeGraph response before asking follow-up questions
+5. **ALWAYS** ask natural language questions - the tools understand intent
 
-CodeGraph autonomously:
-- Searches for authentication code
-- Identifies relevant nodes
-- Traces transitive dependencies
-- Analyzes coupling metrics
-- Maps call chains
-- Synthesizes findings
+### NEVER DO THESE THINGS:
 
-Result: Comprehensive answer in 150 lines, complete architectural understanding
+1. **NEVER** use grep/ripgrep/find to search code - use `agentic_code_search` instead
+2. **NEVER** read multiple files manually to understand a system - use `agentic_architecture_analysis`
+3. **NEVER** trace dependencies manually - use `agentic_dependency_analysis`
+4. **NEVER** follow call chains by reading files - use `agentic_call_chain_analysis`
+5. **NEVER** interrupt a running agentic tool - it's doing your work for you
+6. **NEVER** assume CodeGraph results are incomplete without reading them fully
+
 ---
 
-## How Agentic Tools Work
+## QUICK DECISION TREE
 
-### Architecture Overview
+```
+START: Need to understand or find code?
+│
+├── YES → Is CodeGraph connected?
+│         │
+│         ├── YES → MANDATORY: Use CodeGraph tool
+│         │         │
+│         │         ├── Finding code?        → agentic_code_search
+│         │         ├── Understanding deps?  → agentic_dependency_analysis
+│         │         ├── Tracing execution?   → agentic_call_chain_analysis
+│         │         ├── Architecture review? → agentic_architecture_analysis
+│         │         ├── API surface?         → agentic_api_surface_analysis
+│         │         ├── Context for changes? → agentic_context_builder
+│         │         └── Complex questions?   → agentic_semantic_question
+│         │
+│         └── NO → ONLY THEN may you use grep/read
+│
+└── NO → Proceed with other tools
+```
 
-Your Query
+**WARNING:** Using grep/read/find when CodeGraph is available is a VIOLATION of context efficiency. Every file you read manually is context you could have saved.
+
+---
+
+## THE 7 MANDATORY TOOLS
+
+### REQUIRED TOOL SELECTION
+
+| Your Need | REQUIRED Tool | VIOLATION to use instead |
+|-----------|---------------|-------------------------|
+| Find code | `agentic_code_search` | grep, ripgrep, find |
+| Dependency impact | `agentic_dependency_analysis` | manual file tracing |
+| Execution flow | `agentic_call_chain_analysis` | reading multiple files |
+| Architecture | `agentic_architecture_analysis` | reading directory trees |
+| Public APIs | `agentic_api_surface_analysis` | grepping for exports |
+| Pre-change context | `agentic_context_builder` | reading related files |
+| Complex Q&A | `agentic_semantic_question` | multi-file exploration |
+
+---
+
+## TOOL SPECIFICATIONS
+
+### 1. `agentic_code_search` - REQUIRED for finding code
+
+**MUST use when:**
+- Starting ANY exploration of unfamiliar code
+- Answering "where is X implemented?"
+- Finding code that does Y
+- Looking for patterns or examples
+
+**REQUIRED parameters:**
+- `query`: Natural language question (REQUIRED)
+
+**Example - CORRECT:**
+```json
+{"query": "how does JWT token validation work in this codebase?"}
+```
+
+**Example - VIOLATION (do NOT do this):**
+```bash
+# WRONG - This wastes context
+grep -r "jwt" src/
+cat src/auth/token.rs
+```
+
+---
+
+### 2. `agentic_dependency_analysis` - REQUIRED for impact analysis
+
+**MUST use when:**
+- Asking "what depends on this?"
+- Asking "what will break if I change X?"
+- Analyzing coupling before refactoring
+- Understanding module relationships
+
+**REQUIRED parameters:**
+- `query`: Dependency analysis question (REQUIRED)
+
+**Example - CORRECT:**
+```json
+{"query": "analyze what depends on the AuthService and what AuthService depends on"}
+```
+
+**Example - VIOLATION (do NOT do this):**
+```bash
+# WRONG - Manual dependency tracing
+grep -r "AuthService" src/
+cat src/auth/service.rs
+cat src/api/routes.rs  # following imports manually
+```
+
+---
+
+### 3. `agentic_call_chain_analysis` - REQUIRED for execution tracing
+
+**MUST use when:**
+- Tracing "how does execution flow from X to Y?"
+- Understanding "what's the call chain for Z?"
+- Debugging execution paths
+- Following data flow through the system
+
+**REQUIRED parameters:**
+- `query`: Call chain question (REQUIRED)
+
+**Example - CORRECT:**
+```json
+{"query": "trace the execution path from HTTP request handler to database query"}
+```
+
+**Example - VIOLATION (do NOT do this):**
+```bash
+# WRONG - Manual call tracing
+cat src/api/handler.rs
+cat src/service/user.rs  # following function calls
+cat src/db/repository.rs
+```
+
+---
+
+### 4. `agentic_architecture_analysis` - REQUIRED for system understanding
+
+**MUST use when:**
+- Starting work on any codebase
+- Understanding "what patterns does this code use?"
+- Analyzing system design
+- Reviewing layer separation
+
+**REQUIRED parameters:**
+- `query`: Architecture question (REQUIRED)
+
+**Example - CORRECT:**
+```json
+{"query": "analyze the overall architecture and design patterns in this codebase"}
+```
+
+**Example - VIOLATION (do NOT do this):**
+```bash
+# WRONG - Manual architecture exploration
+ls -la src/
+cat src/main.rs
+cat src/lib.rs
+find . -name "*.rs" | head -20
+```
+
+---
+
+### 5. `agentic_api_surface_analysis` - REQUIRED for interface analysis
+
+**MUST use when:**
+- Understanding "what's the public API?"
+- Analyzing breaking change risk
+- Reviewing exported interfaces
+- Understanding consumer usage
+
+**REQUIRED parameters:**
+- `query`: API surface question (REQUIRED)
+
+**Example - CORRECT:**
+```json
+{"query": "analyze the public API surface of the UserService module"}
+```
+
+**Example - VIOLATION (do NOT do this):**
+```bash
+# WRONG - Manual export searching
+grep -r "pub fn" src/user/
+grep -r "pub struct" src/user/
+```
+
+---
+
+### 6. `agentic_context_builder` - REQUIRED before implementing changes
+
+**MUST use when:**
+- Gathering context before implementing a feature
+- Understanding what needs modification
+- Collecting related code for a change
+- Preparing for code generation
+
+**REQUIRED parameters:**
+- `query`: Context gathering question (REQUIRED)
+
+**Example - CORRECT:**
+```json
+{"query": "gather context for adding rate limiting middleware to the API"}
+```
+
+**Example - VIOLATION (do NOT do this):**
+```bash
+# WRONG - Manual context gathering
+cat src/middleware/*.rs
+cat src/config/rate_limit.rs
+cat src/api/router.rs
+```
+
+---
+
+### 7. `agentic_semantic_question` - REQUIRED for complex Q&A
+
+**MUST use when:**
+- Questions spanning multiple subsystems
+- Complex "how does X relate to Y?"
+- Deep understanding questions
+- Questions requiring synthesis from many sources
+
+**REQUIRED parameters:**
+- `query`: Complex question (REQUIRED)
+
+**Example - CORRECT:**
+```json
+{"query": "how does error handling work across all layers of the application?"}
+```
+
+**Example - VIOLATION (do NOT do this):**
+```bash
+# WRONG - Manual semantic search
+grep -r "Error" src/
+grep -r "Result<" src/
+cat src/error/mod.rs
+# Reading 20 files to understand error handling
+```
+
+---
+
+## MANDATORY WORKFLOWS
+
+### Workflow 1: REQUIRED for implementing features
+
+```
+Step 1: agentic_architecture_analysis("how is [similar_feature] structured?")
     ↓
-Codegraph MCP (with multi-step reasoning)
+Step 2: agentic_context_builder("gather context for implementing [feature]")
     ↓
-Autonomous LLM Decision-Making:
-  - Which graph functions to call?
-  - What order to call them?
-  - How deep to traverse?
-  - What patterns to look for?
+Step 3: agentic_code_search("find [reference_implementation] for patterns")
     ↓
-SurrealDB Graph Functions:
-  - fn::get_transitive_dependencies()
-  - fn::get_reverse_dependencies()
-  - fn::trace_call_chain()
-  - fn::calculate_coupling_metrics()
-  - fn::get_hub_nodes()
-  - fn::detect_circular_dependencies()
+Step 4: agentic_dependency_analysis("what will [feature] need to integrate with?")
     ↓
-Synthesized, Context-Efficient Answer That You Can Use To Drill Down Further If Necessary
-
----
-
-## Available Agentic Tools
-
-All agentic tools follow the same pattern:
-1. **Input:** Natural language query
-2. **Processing:** Autonomous multi-step graph exploration
-3. **Output:** Synthesized analysis with code context
-
-### 🔍 1. `agentic_code_search`
-
-**What it does:** Autonomous graph exploration for finding and understanding code
-
-**When to use:**
-- "Where is X implemented?"
-- "Find code that does Y"
-- "How does Z work?"
-- Starting any code exploration task
-
-**How it works:**
-- Semantically searches for relevant code
-- Autonomously decides which nodes to explore
-- Traces relationships and dependencies
-- Provides context-rich results with explanations
-
-**Example:**
-
-```javascript
-agentic_code_search("how does JWT token validation work in this codebase?")
-
-// Returns: Autonomous analysis including:
-// - Token validation entry points
-// - Related middleware and utilities
-// - Integration with authentication flow
-// - Security considerations found in code
+Step 5: Implement using the comprehensive context gathered
 ```
 
-**Parameters:**
-- `query` (required): Natural language question or search term
+**VIOLATION:** Reading multiple files manually before using CodeGraph tools.
 
 ---
 
-### 📊 2. `agentic_dependency_analysis`
+### Workflow 2: REQUIRED for debugging
 
-**What it does:** Autonomous dependency chain and impact analysis
-
-**When to use:**
-- "What depends on this code?"
-- "What will break if I change X?"
-- "Map the dependency graph for Y"
-- Understanding impact before refactoring
-
-**How it works:**
-- Finds forward and reverse dependencies
-- Calculates coupling metrics (afferent/efferent)
-- Detects circular dependencies
-- Identifies stability vs instability
-
-**Example:**
-
-```javascript
-agentic_dependency_analysis("analyze dependencies of the AuthService module")
-
-// Returns: Autonomous analysis including:
-// - All modules that depend on AuthService (afferent)
-// - All modules AuthService depends on (efferent)
-// - Coupling metrics (instability score)
-// - Impact assessment for potential changes
-// - Circular dependency warnings if any
+```
+Step 1: agentic_code_search("[symptom] or [error message]")
+    ↓
+Step 2: agentic_call_chain_analysis("trace execution path involving [area]")
+    ↓
+Step 3: agentic_dependency_analysis("what affects [suspected_component]?")
+    ↓
+Step 4: Fix with full understanding of the system
 ```
 
-**Parameters:**
-- `query` (required): Dependency analysis question
+**VIOLATION:** Using grep to search for error messages before CodeGraph.
 
 ---
 
-### 🔗 3. `agentic_call_chain_analysis`
+### Workflow 3: REQUIRED for learning a codebase
 
-**What it does:** Autonomous execution flow tracing and call path analysis
-
-**When to use:**
-- "Trace the execution path from X to Y"
-- "What's the call chain for Z?"
-- "How does data flow through the system?"
-- Debugging execution flows
-
-**How it works:**
-- Traces call chains through the graph
-- Identifies execution paths
-- Maps data flow
-- Detects recursive calls
-
-**Example:**
-```javascript
-agentic_call_chain_analysis("trace the execution path from HTTP request to database query")
-
-// Returns: Autonomous analysis including:
-// - Complete call chain from entry point to DB
-// - Intermediate layers (routing → controller → service → repository)
-// - Data transformations along the path
-// - Error handling points
+```
+Step 1: agentic_architecture_analysis("overall application architecture")
+    ↓
+Step 2: agentic_code_search("entry points and main routing")
+    ↓
+Step 3: agentic_dependency_analysis("module dependencies and organization")
+    ↓
+Step 4: agentic_api_surface_analysis("public APIs and interfaces")
+    ↓
+Step 5: Deep dive with agentic_code_search for specific areas
 ```
 
-**Parameters:**
-- `query` (required): Call chain question
+**VIOLATION:** Reading random files or using `ls` to explore before CodeGraph.
 
 ---
 
-### 🏗️ 4. `agentic_architecture_analysis`
+### Workflow 4: REQUIRED for refactoring
 
-**What it does:** Autonomous architectural pattern assessment and design analysis
-
-**When to use:**
-- "What architectural patterns does this code use?"
-- "Analyze the system architecture"
-- "What design patterns are present?"
-- Understanding codebase organization
-
-**How it works:**
-- Identifies architectural patterns
-- Analyzes layer separation
-- Detects design patterns (Factory, Strategy, etc.)
-- Assesses code organization
-
-**Example:**
-```javascript
-agentic_architecture_analysis("what architectural patterns does the authentication system use?")
-
-// Returns: Autonomous analysis including:
-// - Layered architecture breakdown (API → Service → Repository)
-// - Design patterns identified (Strategy for auth providers)
-// - Separation of concerns analysis
-// - Coupling/cohesion assessment
-// - Recommendations for improvements
+```
+Step 1: agentic_code_search("find all [target] code")
+    ↓
+Step 2: agentic_dependency_analysis("full impact analysis of [target]")
+    ↓
+Step 3: agentic_call_chain_analysis("all execution paths through [target]")
+    ↓
+Step 4: agentic_api_surface_analysis("public interfaces affected")
+    ↓
+Step 5: agentic_context_builder("context for refactoring [target]")
+    ↓
+Step 6: Refactor with complete impact understanding
 ```
 
-**Parameters:**
-- `query` (required): Architecture analysis question
+**VIOLATION:** Manually searching for usages with grep before impact analysis.
 
 ---
 
-### 🌐 5. `agentic_api_surface_analysis`
+## CONTEXT EFFICIENCY MATHEMATICS
 
-**What it does:** Autonomous public interface and API contract analysis
+### Why These Rules Are MANDATORY
 
-**When to use:**
-- "What's the public API of X?"
-- "Analyze the external interface of Y"
-- "What methods are exposed to consumers?"
-- Understanding API design
+**Manual exploration of 6 files:**
+- 300 + 250 + 400 + 500 + 150 + 350 = 1,950 lines consumed
+- Relevant content: ~200 lines (10%)
+- **Context waste: 90%**
 
-**How it works:**
-- Identifies public vs private interfaces
-- Analyzes API contracts
-- Detects breaking change risks
-- Maps consumer usage
+**CodeGraph agentic analysis:**
+- Tool call returns ~250 lines of synthesized, relevant content
+- Relevant content: ~250 lines (100%)
+- **Context efficiency: 100%**
 
-**Example:**
-```javascript
-agentic_api_surface_analysis("analyze the public API surface of the UserService")
+**Result:** CodeGraph is 7.8x more context-efficient.
 
-// Returns: Autonomous analysis including:
-// - All public methods and their signatures
-// - Public vs private method breakdown
-// - Consumer usage patterns (who calls what)
-// - API stability assessment
-// - Breaking change risk analysis
+**EVERY file you read manually when CodeGraph is available burns irreplaceable context tokens.**
+
+---
+
+## ANTI-PATTERNS: WHAT NOT TO DO
+
+### Anti-Pattern 1: "Quick grep first"
+
+```bash
+# VIOLATION
+grep -r "authenticate" src/
+# Then reading results, then reading files...
 ```
 
-**Parameters:**
-- `query` (required): API surface question
+**CORRECT:** `agentic_code_search("how does authentication work?")`
 
 ---
 
-### 📦 6. `agentic_context_builder`
+### Anti-Pattern 2: "Let me read the directory structure"
 
-**What it does:** Autonomous comprehensive context gathering for code generation
-
-**When to use:**
-- "Gather context for implementing feature X"
-- "What context do I need to modify Y?"
-- Preparing to generate or modify code
-- Understanding full context around a change
-
-**How it works:**
-- Gathers relevant code context
-- Identifies related patterns
-- Collects dependencies
-- Synthesizes comprehensive picture
-
-**Example:**
-```javascript
-agentic_context_builder("gather context for adding rate limiting to the API")
-
-// Returns: Autonomous analysis including:
-// - Existing middleware patterns
-// - Where to hook into request processing
-// - Related configuration points
-// - Similar features for reference (caching, auth)
-// - Integration points and dependencies
+```bash
+# VIOLATION
+ls -la src/
+cat src/lib.rs
+find . -name "*.rs" | head
 ```
 
-**Parameters:**
-- `query` (required): Context gathering question
+**CORRECT:** `agentic_architecture_analysis("analyze the codebase structure and organization")`
 
 ---
 
-### ❓ 7. `agentic_semantic_question`
+### Anti-Pattern 3: "I'll trace this call manually"
 
-**What it does:** Autonomous complex codebase Q&A with semantic understanding
-
-**When to use:**
-- Complex questions requiring deep understanding
-- "How does the system handle X?"
-- "Explain the relationship between Y and Z"
-- Questions spanning multiple systems
-
-**How it works:**
-- Semantically understands the question
-- Autonomously explores relevant code
-- Synthesizes answer from multiple sources
-- Provides comprehensive explanation
-
-**Example:**
-```javascript
-agentic_semantic_question("how does error handling work across the application, and what patterns are used?")
-
-// Returns: Autonomous analysis including:
-// - Error handling strategies identified
-// - Pattern breakdown (Result types, try/catch, custom errors)
-// - Consistency analysis across modules
-// - Best practices observed
-// - Anti-patterns or issues detected
+```bash
+# VIOLATION
+cat src/handler.rs  # find function
+cat src/service.rs  # follow call
+cat src/repo.rs     # follow deeper
 ```
 
-**Parameters:**
-- `query` (required): Semantic question about the codebase
+**CORRECT:** `agentic_call_chain_analysis("trace execution from handler to database")`
 
 ---
 
-## Decision Framework: Which Tool to Use?
+### Anti-Pattern 4: "Let me check what depends on this"
 
-### Quick Selection Guide
+```bash
+# VIOLATION
+grep -r "UserService" src/
+# Manually reading each file that mentions it
+```
 
-What do you need?
-
-├─ 🔍 FIND & UNDERSTAND CODE
-│  └─ agentic_code_search
-│     "Where is X?" | "How does Y work?" | "Find code that does Z"
-│
-├─ 📊 ANALYZE DEPENDENCIES
-│  └─ agentic_dependency_analysis
-│     "What depends on X?" | "Impact of changing Y?" | "Coupling analysis"
-│
-├─ 🔗 TRACE EXECUTION
-│  └─ agentic_call_chain_analysis
-│     "Execution path from X to Y" | "Call chain for Z" | "Data flow"
-│
-├─ 🏗️ UNDERSTAND ARCHITECTURE
-│  └─ agentic_architecture_analysis
-│     "Architectural patterns?" | "Design analysis" | "Layer structure"
-│
-├─ 🌐 ANALYZE API
-│  └─ agentic_api_surface_analysis
-│     "Public API of X?" | "External interface" | "Breaking changes?"
-│
-├─ 📦 GATHER CONTEXT
-│  └─ agentic_context_builder
-│     "Context for implementing X" | "Before modifying Y"
-│
-└─ ❓ COMPLEX QUESTIONS
-   └─ agentic_semantic_question
-      "How does X relate to Y?" | "Explain Z across system"
-
-### When in Doubt
-
-**Default to `agentic_code_search`** for exploration, then use specialized tools for deeper analysis:
-
-1. Start: `agentic_code_search` - Find and understand the code
-2. Deepen: Use specialized tool based on what you learned
-3. Synthesize: `agentic_semantic_question` for comprehensive understanding
+**CORRECT:** `agentic_dependency_analysis("what depends on UserService and what does it depend on?")`
 
 ---
 
-## Common Workflows
+### Anti-Pattern 5: "I need context for this change"
 
-### 🚀 Workflow 1: Implementing a New Feature
+```bash
+# VIOLATION
+cat src/related_file1.rs
+cat src/related_file2.rs
+cat src/config.rs
+cat src/types.rs
+```
 
-Task: "Add rate limiting middleware to the API"
-
-Step 1: Understand existing patterns
-  → agentic_architecture_analysis("how is middleware structured in this API?")
-
-Step 2: Gather implementation context
-  → agentic_context_builder("gather context for adding rate limiting middleware")
-
-Step 3: Find similar features
-  → agentic_code_search("find existing middleware implementations for reference")
-
-Step 4: Analyze integration points
-  → agentic_dependency_analysis("analyze middleware registration and hook points")
-
-Step 5: Implement using gathered context
-  → Now you have complete understanding without reading 50 files
-
-**Context efficiency:** One tool call vs reading middleware/, config/, routes/ directories manually.
+**CORRECT:** `agentic_context_builder("gather context for [specific change]")`
 
 ---
 
-### 🐛 Workflow 2: Debugging an Issue
+## HOW CODEGRAPH WORKS INTERNALLY
 
-Task: "Users report authentication tokens expiring too quickly"
+When you call an agentic tool, CodeGraph autonomously:
 
-Step 1: Find the token logic
-  → agentic_code_search("JWT token creation and expiration logic")
+1. **Parses your natural language query** to understand intent
+2. **Decides which graph functions to call** from:
+   - `fn::get_transitive_dependencies()` - Full dependency chains
+   - `fn::get_reverse_dependencies()` - What depends on X
+   - `fn::trace_call_chain()` - Execution path analysis
+   - `fn::calculate_coupling_metrics()` - Ca, Ce, I metrics
+   - `fn::get_hub_nodes()` - Architectural hotspots
+   - `fn::detect_circular_dependencies()` - Cycle detection
+3. **Executes multi-step reasoning** with up to 20 steps
+4. **Synthesizes results** into coherent, actionable analysis
+5. **Returns structured output** with file paths and line numbers
 
-Step 2: Trace the execution path
-  → agentic_call_chain_analysis("trace token generation from login to storage")
-
-Step 3: Analyze dependencies
-  → agentic_dependency_analysis("what depends on token expiration configuration?")
-
-Step 4: Understand the system
-  → agentic_semantic_question("how does token lifecycle management work?")
-
-Step 5: Fix with full context
-  → Now you understand the complete token system
-
-**Context efficiency:** Complete understanding in 4 tool calls vs manually tracing through 20+ files.
+**You get the reasoning of a 2M context window model analyzing the entire codebase graph.**
 
 ---
 
-### 📚 Workflow 3: Learning a New Codebase
+## COMPLIANCE CHECKLIST
 
-Task: "Onboard to this React application"
+Before using ANY file reading or search tool, verify:
 
-Step 1: Architecture overview
-  → agentic_architecture_analysis("analyze the overall application architecture")
+- [ ] Have I used the appropriate CodeGraph agentic tool first?
+- [ ] Am I using grep/find/read ONLY for targeted verification after CodeGraph?
+- [ ] Did I read the full CodeGraph response before seeking more information?
+- [ ] Am I following the REQUIRED workflow for my task type?
 
-Step 2: Entry points and flow
-  → agentic_code_search("find application entry points and main routing")
-
-Step 3: Key patterns
-  → agentic_architecture_analysis("what design patterns are used throughout?")
-
-Step 4: Module structure
-  → agentic_dependency_analysis("analyze module dependencies and organization")
-
-Step 5: API contracts
-  → agentic_api_surface_analysis("what APIs and interfaces are exposed?")
-
-Step 6: Deep dive areas
-  → agentic_code_search for specific features you'll work on
-
-**Context efficiency:** Comprehensive codebase map without reading hundreds of files.
+**If any box is unchecked, you are in VIOLATION of the context efficiency protocol.**
 
 ---
 
-### 🔄 Workflow 4: Refactoring Code
+## SUMMARY OF MANDATORY RULES
 
-Task: "Extract database logic into repository layer"
+1. **CodeGraph FIRST** - Always use agentic tools before built-in exploration tools
+2. **Trust autonomy** - Let the agentic agent complete its multi-step analysis
+3. **Use specialized tools** - Match the tool to the analysis type
+4. **Read full responses** - Don't skip or skim CodeGraph results
+5. **Natural language** - Ask questions in natural language, not technical queries
+6. **Follow workflows** - Use the REQUIRED workflows for common tasks
 
-Step 1: Find current implementation
-  → agentic_code_search("find all direct database access in the codebase")
-
-Step 2: Analyze impact
-  → agentic_dependency_analysis("analyze dependencies of database access code")
-
-Step 3: Check for patterns
-  → agentic_architecture_analysis("analyze current data access patterns")
-
-Step 4: Trace usage
-  → agentic_call_chain_analysis("trace database query execution paths")
-
-Step 5: Plan changes
-  → agentic_context_builder("gather context for implementing repository pattern")
-
-Step 6: Verify safety
-  → agentic_api_surface_analysis("analyze public interfaces that will change")
-
-Step 7: Refactor with confidence
-  → Full impact understanding before touching any code
-
-**Context efficiency:** Complete refactoring plan without manually mapping 100+ call sites.
+**REMEMBER:** You have access to a 2M context window reasoning model that does the heavy lifting. Every manual file read is a waste of your limited context.
 
 ---
 
-## Best Practices
-
-### ✅ DO:
-
-1. **Ask natural language questions** - The agentic tools understand intent
-   - ✅ "how does authentication integrate with the database?"
-   - ✅ "what will break if I refactor the UserService?"
-
-2. **Trust autonomous exploration** - Let CodeGraph decide which how to analyse the codebase
-   - ✅ One tool call with comprehensive question
-   - ❌ Not manually calling multiple tools
-
-3. **Use specialized tools** - Each tool is optimized for specific analysis types
-   - ✅ `agentic_dependency_analysis` for impact analysis
-   - ❌ Not using `agentic_code_search` for everything
-
-4. **Start broad, then narrow** - Begin with overview, drill down as needed
-   - ✅ `agentic_architecture_analysis` → `agentic_code_search` for specifics
-   - ❌ Not immediately searching for specific functions
-
-### ❌ DON'T:
-
-1. **Don't manually read files first** - Use CodeGraph tools to find relevant code
-   - ❌ Reading src/auth/*.rs before understanding the system
-   - ✅ `agentic_code_search("authentication system")` first
-
-2. **Don't bypass agentic tools** - They provide autonomy and codebase intelligence
-   - ❌ Trying to revert back to manual exploration when tool calls last long
-   - ✅ Insights agent is doing your work for you it takes its time
-
-3. **Don't ask overly narrow questions initially** - Start with context
-   - ❌ "find the validateToken function"
-   - ✅ "how does token validation work in the authentication system?"
-
-4. **Don't ignore the autonomous results** - CodeGraph explored the codebase intelligently
-   - ❌ Immediately searching for more after getting results
-   - ✅ Reading and understanding what CodeGraph autonomously discovered
-
----
-
-## Context Efficiency Comparison
-
-### Manual Exploration (Old Way)
-
-Task: "Understand authentication system"
-
-Manual approach:
-- Read auth/login.rs (300 lines)
-- Read auth/session.rs (250 lines)
-- Read middleware/auth_middleware.rs (400 lines)
-- Read models/user.rs (500 lines)
-- Read config/auth_config.rs (150 lines)
-- Read database/user_repository.rs (350 lines)
-
-Total: 1,950 lines read
-Relevant: ~200 lines (10%)
-Context burned: 90% waste
-Time: 30+ minutes of reading
-
-### Agentic Exploration (CodeGraph Way)
-
-Task: "Understand authentication system"
-
-Agentic approach:
-→ agentic_architecture_analysis("analyze authentication system architecture")
-
-Returns:
-- Layered architecture breakdown
-- Key components and their relationships
-- Auth flow with code excerpts
-- Design patterns identified
-- Security considerations
-
-Total: ~250 lines of RELEVANT content
-Relevant: ~250 lines (100%)
-Context efficiency: 87% reduction
-Time: 5-10 seconds for complete understanding
-
-**Result:** 7.8x more efficient with better understanding.
-
----
-
-## Understanding the Autonomous Nature
-
-### What "Agentic" Means
-
-When you call an agentic tool, here's what happens behind the scenes:
-
-1. **Your query is analyzed** by an insights agent
-2. **The agent reasons** about what data it needs to answer the query
-3. **Multi-step exploration** happens autonomously:
-   - Search for relevant nodes
-   - Follow dependency chains
-   - Calculate metrics
-   - Detect patterns
-   - Trace call paths
-4. **Results are synthesized** into a coherent answer
-5. **Massive Context Savings** manual exploration is offloaded to a 2M ctx reasoning model
----
-
-## Quick Start Checklist
-
-When starting work on a codebase with CodeGraph:
-
-- [ ] Use `agentic_architecture_analysis` to understand overall structure
-- [ ] Use `agentic_code_search` for your first exploration question
-- [ ] Let autonomous exploration work - don't immediately search for more
-- [ ] Use specialized tools for specific analysis types
-- [ ] Read the comprehensive results before making decisions
-- [ ] Only read source files after CodeGraph narrows down locations
-- [ ] Trust the multi-step reasoning - it explored the codebase intelligently
-
----
-
-## Remember
-
-**CodeGraph provides autonomous, graph-powered code intelligence.**
-
-The goals:
-1. **Autonomous exploration** - The insights agent orchestrates codebase analysis
-2. **Context efficiency** - Get comprehensive understanding in minimal context
-3. **Multi-step reasoning** - Complex analysis happens in one tool call
-
-**Key principle:** Just ask your question in natural language. CodeGraph autonomously:
-- Decides which graph functions to call
-- Explores the dependency graph
-- Synthesizes findings
-- Provides comprehensive, context-efficient answers
-
-**Default workflow:** Ask question → Read autonomous analysis → Make informed decisions
-
----
-
-**Last Updated:** 2025-01-08
-**Version:** 3.0.0 (Agentic Tools Edition)
-**Requires:** `ai-enhanced` feature flag
+**Protocol Version:** 4.0.0 (Aggressive Enforcement Edition)
+**Status:** MANDATORY COMPLIANCE REQUIRED
