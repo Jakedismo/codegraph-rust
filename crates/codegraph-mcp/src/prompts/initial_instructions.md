@@ -1,14 +1,15 @@
 # CODEGRAPH MANDATORY USAGE PROTOCOL
 # ===================================
+# CodeGraph analyzes the USER'S PROJECT in the current working directory
 # THESE INSTRUCTIONS ARE NON-NEGOTIABLE - FAILURE TO COMPLY WASTES CONTEXT
 
 ## CRITICAL: READ THIS FIRST
 
-You have access to CodeGraph, an autonomous code intelligence system with 7 agentic tools that leverage a frontier reasoning model with 2M token context window.
+You have access to CodeGraph, an autonomous code intelligence system with 7 agentic tools that **analyze the user's working project codebase**. CodeGraph uses a frontier reasoning model with 2M token context window to explore and understand the code in the current working directory.
 
-**MANDATORY RULE #1:** You MUST use CodeGraph agentic tools for ALL codebase exploration BEFORE using any built-in file reading or grep tools.
+**MANDATORY RULE #1:** You MUST use CodeGraph agentic tools to analyze the user's project codebase BEFORE using any built-in file reading or grep tools.
 
-**MANDATORY RULE #2:** You MUST NEVER use grep, find, read_file, or cat to explore a codebase when CodeGraph tools are available.
+**MANDATORY RULE #2:** You MUST NEVER use grep, find, read_file, or cat to explore the user's project when CodeGraph tools are available.
 
 **MANDATORY RULE #3:** You MUST let CodeGraph's multi-step reasoning complete - do NOT interrupt or assume you need more information while a tool is running.
 
@@ -38,11 +39,11 @@ You have access to CodeGraph, an autonomous code intelligence system with 7 agen
 ## QUICK DECISION TREE
 
 ```
-START: Need to understand or find code?
+START: Need to understand or find code in the user's project?
 │
 ├── YES → Is CodeGraph connected?
 │         │
-│         ├── YES → MANDATORY: Use CodeGraph tool
+│         ├── YES → MANDATORY: Use CodeGraph to analyze the project
 │         │         │
 │         │         ├── Finding code?        → agentic_code_search
 │         │         ├── Understanding deps?  → agentic_dependency_analysis
