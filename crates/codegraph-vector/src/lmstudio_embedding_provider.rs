@@ -252,7 +252,10 @@ impl LmStudioEmbeddingProvider {
     fn infer_dimension_for_model(model: &str) -> usize {
         let model_lower = model.to_lowercase();
 
-        // Jina models
+        // Jina models (check specific variants before generic patterns)
+        if model_lower.contains("jina-embeddings-v4-text-code") {
+            return 2048;
+        }
         if model_lower.contains("jina-embeddings-v4") {
             return 2048;
         }
@@ -264,6 +267,11 @@ impl LmStudioEmbeddingProvider {
         }
         if model_lower.contains("jina-code-embeddings-0.5b") {
             return 896;
+        }
+
+        // Qwen models
+        if model_lower.contains("qwen3-embedding-0.6b-dwq") || model_lower.contains("qwen3-embedding-0.6b") {
+            return 1024;
         }
 
         // Nomic models
@@ -439,6 +447,7 @@ mod tests {
 
     #[test]
     fn test_dimension_inference() {
+        // Jina models
         assert_eq!(
             LmStudioEmbeddingProvider::infer_dimension_for_model("jinaai/jina-embeddings-v3"),
             1024
@@ -448,13 +457,33 @@ mod tests {
             2048
         );
         assert_eq!(
+            LmStudioEmbeddingProvider::infer_dimension_for_model("jinaai/jina-embeddings-v4-text-code"),
+            2048
+        );
+
+        // Qwen models
+        assert_eq!(
+            LmStudioEmbeddingProvider::infer_dimension_for_model("qwen3-embedding-0.6b-dwq"),
+            1024
+        );
+        assert_eq!(
+            LmStudioEmbeddingProvider::infer_dimension_for_model("Qwen/qwen3-embedding-0.6b"),
+            1024
+        );
+
+        // Nomic models
+        assert_eq!(
             LmStudioEmbeddingProvider::infer_dimension_for_model("nomic-ai/nomic-embed-text-v1.5"),
             768
         );
+
+        // BGE models
         assert_eq!(
             LmStudioEmbeddingProvider::infer_dimension_for_model("BAAI/bge-large-en-v1.5"),
             1024
         );
+
+        // Unknown model (default)
         assert_eq!(
             LmStudioEmbeddingProvider::infer_dimension_for_model("unknown-model"),
             1536  // Default

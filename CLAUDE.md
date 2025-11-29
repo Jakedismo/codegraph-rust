@@ -10,7 +10,7 @@ CodeGraph is a **semantic code intelligence platform** that transforms codebases
 - Semantic code search across entire codebases
 - LLM-powered code intelligence and dependency analysis
 - Automatic dependency graphs and code relationships
-- Fast vector search (FAISS local or SurrealDB cloud HNSW)
+- Fast vector search (SurrealDB HNSW)
 - Agentic MCP tools with tier-aware multi-step reasoning
 
 ## Common Commands
@@ -25,10 +25,10 @@ cargo build --workspace
 cargo build --workspace --release
 
 # Release with specific features (examples):
-cargo build --release --features "onnx,ollama,faiss"              # Local only
-cargo build --release --features "cloud-jina,anthropic,faiss"    # Cloud embeddings
-cargo build --release --features "cloud-surrealdb,openai,faiss"  # SurrealDB backend
-cargo build --release --features "all-cloud-providers,faiss"     # Everything
+cargo build --release --features "onnx,ollama"              # Local only
+cargo build --release --features "cloud-jina,anthropic"    # Cloud embeddings
+cargo build --release --features "cloud-surrealdb,openai"  # SurrealDB backend
+cargo build --release --features "all-cloud-providers"     # Everything
 ```
 
 ### Test Commands
@@ -94,13 +94,13 @@ cargo doc --workspace --no-deps --open
 
 ```bash
 # Build the MCP server binary (with AutoAgents experimental feature)
-cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,ollama"
+cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,ollama"
 
 # Or use Makefile target
 make build-mcp-autoagents
 
 # Or build without AutoAgents (uses legacy orchestrator)
-cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,faiss,ollama"
+cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,ollama"
 
 # Start MCP server (stdio mode - RECOMMENDED)
 ./target/release/codegraph start stdio
@@ -112,7 +112,7 @@ cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,f
 **HTTP Transport (Experimental):**
 - HTTP transport with SSE streaming is now available
 - Requires `server-http` feature flag
-- Build: `cargo build --release --features "ai-enhanced,autoagents-experimental,faiss,ollama,server-http"`
+- Build: `cargo build --release --features "ai-enhanced,autoagents-experimental,ollama,server-http"`
 - Start: `./target/release/codegraph start http --port 3000`
 - Endpoints:
   - `POST /mcp` - Send MCP requests (returns SSE stream)
@@ -125,7 +125,7 @@ cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,f
 
 ```bash
 # Build with HTTP support
-cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,ollama,server-http"
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,ollama,server-http"
 
 # Start HTTP server (default: http://127.0.0.1:3000)
 ./target/release/codegraph start http
@@ -187,7 +187,7 @@ CodeGraph uses a **layered workspace architecture** with 16 specialized crates:
   - IMPORTANT: Configuration is loaded from multiple sources with precedence
 
 ### Layer 2: Data Storage & Processing
-- **codegraph-vector**: Vector embeddings and search (FAISS local + SurrealDB HNSW cloud)
+- **codegraph-vector**: Vector embeddings and search (SurrealDB HNSW)
   - Supports ONNX, Ollama, LM Studio, OpenAI, Jina AI embedding providers
   - Dual-mode search: automatic fallback from cloud to local
 - **codegraph-cache**: Multi-tier caching (memory, disk, LRU)
@@ -219,8 +219,7 @@ CodeGraph uses a **layered workspace architecture** with 16 specialized crates:
 ### Layer 4: Integration Layer
 - **codegraph-mcp**: MCP server implementation (stdio + streamable HTTP)
   - Uses official `rmcp` Rust SDK (v0.7.0)
-  - **IMPORTANT**: MCP server now requires SurrealDB for agentic tools
-  - **DEPRECATED**: FAISS+RocksDB support in MCP server (still available in CLI/SDK)
+  - **IMPORTANT**: MCP server requires SurrealDB for agentic tools and vector search
   - Progress notifications for long-running agentic workflows
 - **codegraph-napi**: Node.js native bindings via napi-rs
   - Zero-overhead TypeScript integration
@@ -261,7 +260,7 @@ CodeGraph uses a **layered workspace architecture** with 16 specialized crates:
 ```bash
 make build-mcp-autoagents
 # or
-cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,faiss,ollama"
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,ollama"
 ```
 
 **Architecture:**
@@ -277,12 +276,12 @@ Claude Desktop → agentic_* MCP tools → CodeGraphExecutor
                                 GraphToolExecutor → SurrealDB
 ```
 
-### 2. MCP Server Architecture Change (v1.0.0)
-**⚠️ IMPORTANT**: The MCP server deprecated FAISS+RocksDB in favor of SurrealDB.
+### 2. MCP Server Architecture (v1.0.0+)
+**⚠️ IMPORTANT**: The MCP server requires SurrealDB for all operations.
 
 **Why this matters:**
 - **Agentic tools require SurrealDB**: The 7 agentic MCP tools (`agentic_*`) need SurrealDB for graph analysis
-- **Legacy support remains**: FAISS/RocksDB still work in CLI, SDK, and NAPI bindings
+- **Vector search**: SurrealDB HNSW index provides fast semantic search
 - **Setup required**: Must configure SurrealDB connection (local or free cloud instance)
 
 **Required Environment Variables for Agentic Tools:**
@@ -299,11 +298,11 @@ SURREALDB_PASSWORD=your-password
 CodeGraph uses **extensive feature flags** for conditional compilation. This is critical to understand:
 
 **Common Feature Combinations:**
-- `onnx,ollama,faiss` - Local-only setup
-- `lmstudio,ollama,faiss` - Local setup with LM Studio embeddings
-- `cloud-jina,anthropic,faiss` - Cloud embeddings + local vector store
-- `cloud-surrealdb,openai,faiss` - Cloud graph backend
-- `all-cloud-providers,faiss` - Everything
+- `onnx,ollama` - Local-only setup
+- `lmstudio,ollama` - Local setup with LM Studio embeddings
+- `cloud-jina,anthropic` - Cloud embeddings
+- `cloud-surrealdb,openai` - Cloud graph backend
+- `all-cloud-providers` - Everything
 
 **When working on code:**
 - Check `#[cfg(feature = "...")]` attributes
@@ -321,28 +320,17 @@ Configuration is loaded in this order (later overrides earlier):
 **Key config sections:**
 - `[embedding]` - Embedding provider, model, dimensions
 - `[llm]` - LLM provider, model, context window (affects tier detection!)
-- `[vector_store]` - Backend selection (faiss vs surrealdb)
-- `[surrealdb]` - SurrealDB connection details
+- `[surrealdb]` - SurrealDB connection details (required)
 
-### 4. Dual-Mode Search Architecture
-The semantic search system has two modes:
+### 4. Vector Search Architecture
+The semantic search system uses SurrealDB HNSW:
 
-**Local Mode (FAISS):**
-- Uses FAISS vector index + RocksDB for graph
-- 2-5ms query latency
-- No network calls
-- Default fallback if cloud unavailable
-
-**Cloud Mode (SurrealDB HNSW):**
+**SurrealDB HNSW Mode:**
 - Native graph database with HNSW vector index
 - 2-5ms query latency
-- Supports advanced graph queries
+- Supports advanced graph queries with full-text search
 - Optional Jina reranking for 2-stage retrieval
-
-**NAPI Implementation:**
-- `useCloud: true` → Try cloud first, fallback to local
-- `useCloud: false` → Use local only
-- Automatic mode detection based on config
+- Combines vector similarity + graph traversal in single query
 
 ## Important Files
 
@@ -405,7 +393,6 @@ The semantic search system has two modes:
 ### Performance Considerations
 
 **Caching is critical:**
-- FAISS index cache: 300-600 MB, 10-50× speedup
 - Embedding cache: ~90 MB, 10-100× speedup
 - Query cache: ~10 MB, 100× speedup
 - LRU cache for agentic results: 100 entries default
@@ -423,8 +410,7 @@ The semantic search system has two modes:
 
 **Key external dependencies:**
 - `tree-sitter-*` - Language parsing (12+ languages)
-- `faiss` - Vector search (requires system library)
-- `surrealdb` - Graph database
+- `surrealdb` - Graph database with HNSW vector search
 - `napi-rs` - Node.js native bindings
 - `axum` - Web framework for API
 
@@ -440,12 +426,6 @@ This makes cloud deployment free for testing and small projects.
 ## Common Issues
 
 ### Build Failures
-
-**"Could not find library faiss"**
-```bash
-brew install faiss  # macOS
-sudo apt-get install libfaiss-dev  # Ubuntu
-```
 
 **"Feature X not enabled"**
 - Check your build command includes the required feature flag
@@ -479,8 +459,8 @@ sudo apt-get install libfaiss-dev  # Ubuntu
 
 **MCP tests fail**
 - Check binary exists: `./target/release/codegraph` or `./target/debug/codegraph`
-- Try building with AutoAgents: `cargo build -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,faiss,ollama"`
-- Or without AutoAgents (legacy): `cargo build -p codegraph-mcp --bin codegraph --features "ai-enhanced,faiss,ollama"`
+- Try building with AutoAgents: `cargo build -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,ollama"`
+- Or without AutoAgents (legacy): `cargo build -p codegraph-mcp --bin codegraph --features "ai-enhanced,ollama"`
 
 ## Additional Resources
 

@@ -812,8 +812,18 @@ CodeGraph uses feature flags to enable only the components you need. Build with 
 |---------|----------|--------------|
 | `embeddings-local` | ONNX Runtime | Local CPU/GPU embeddings (all-MiniLM-L6-v2, etc.) |
 | `embeddings-ollama` | Ollama | Local embeddings (qwen3-embedding, all-mini-llm, embeddinggemma etc.) |
+| `lmstudio` | LM Studio | Local OpenAI-compatible embeddings (jina-v3/v4, qwen3-0.6b-dwq, nomic, bge, e5) - 20+ models with auto-dimension detection |
 | `embeddings-openai` | OpenAI | Cloud embeddings (text-embedding-3-large/small) |
 | `embeddings-jina` | Jina AI | Cloud embeddings (jina-embeddings-v4) + reranking |
+
+**Supported LM Studio Models:**
+- **Jina**: `jina-embeddings-v3` (1024), `jina-embeddings-v4` (2048), `jina-embeddings-v4-text-code` (2048), `jina-code-embeddings-1.5b` (1536), `jina-code-embeddings-0.5b` (896)
+- **Qwen**: `qwen3-embedding-0.6b-dwq` (1024), `qwen3-embedding-0.6b` (1024)
+- **Nomic**: `nomic-embed-text-v1.5` (768)
+- **BGE**: `bge-small` (384), `bge-base` (768), `bge-large` (1024)
+- **E5**: `e5-small` (384), `e5-base` (768), `e5-large` (1024)
+- **OpenAI**: `text-embedding-3-small` (1536), `text-embedding-3-large` (3072), `text-embedding-ada-002` (1536)
+- Unknown models default to 1536 dimensions
 
 ### LLM Providers (for Agentic Tools)
 
