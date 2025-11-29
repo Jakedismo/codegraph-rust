@@ -12,12 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### **LM Studio Embedding Provider**
 - **OpenAI-compatible embedding provider** for local LM Studio instances
 - **Automatic dimension detection** for 20+ embedding models:
-  - Jina models: `jina-embeddings-v3` (1024), `jina-embeddings-v4` (2048), `jina-embeddings-v4-text-code` (2048), `jina-code-embeddings-1.5b` (1536), `jina-code-embeddings-0.5b` (896)
+  - Jina models: `jina-embeddings-v3` (1024), `jina-embeddings-v4` (2048), `jina-embeddings-v4-text-code` (2048), `jina-code-embeddings-1.5b` (1536)
   - Qwen models: `qwen3-embedding-0.6b-dwq` (1024), `qwen3-embedding-0.6b` (1024)
   - Nomic models: `nomic-embed-text-v1.5` (768)
   - BGE models: `bge-small` (384), `bge-base` (768), `bge-large` (1024)
   - E5 models: `e5-small` (384), `e5-base` (768), `e5-large` (1024)
-  - OpenAI models: `text-embedding-3-small` (1536), `text-embedding-3-large` (3072), `text-embedding-ada-002` (1536)
   - Safe default: 1536 for unknown models
 - **Semantic text chunking** using Qwen2.5-Coder tokenizer with configurable max tokens (default: 8192)
 - **Exponential backoff retry** logic (3 attempts with 100ms base delay)

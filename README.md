@@ -320,7 +320,7 @@ lmstudio_url = "http://localhost:1234"
 **Step 1: Get API keys**
 - Anthropic: [console.anthropic.com](https://console.anthropic.com/)(Claude 4.5 models 1M/200k ctx)
 - OpenAI: [platform.openai.com](https://platform.openai.com/)(GPT-5 models 400k/200k ctx)
-- xAI: [x.ai](https://x.ai/) (Grok-4-fast with 2M ctx, $0.50-$1.50/M tokens)
+- xAI: [x.ai](https://x.ai/) (grok-4-1-fast-reasoning with 2M ctx, $0.50-$1.50/M tokens)
 - Jina AI: [jina.ai](https://jina.ai/) (for SOTA embeddings & reranking)
 - SurrealDB [https://www.surrealdb.com] (for graph dabase backend local or cloud based setup)
 
@@ -411,7 +411,7 @@ dimension = 1536
 [llm]
 enabled = true
 provider = "xai"
-model = "grok-4-fast"  # or "grok-4-turbo"
+model = "grok-4-1-fast-reasoning"  # or "grok-4-turbo"
 xai_api_key = "xai-..."  # or set XAI_API_KEY env var
 xai_base_url = "https://api.x.ai/v1"  # default, can be omitted
 reasoning_effort = "medium"  # Options: "minimal", "medium", "high"
@@ -775,7 +775,7 @@ flowchart TD
    - Small (<50K): Fast, terse responses for limited context models f.ex. local gemma3 etc.
    - Medium (50K-150K): Balanced analysis for Claude Haiku, gpt-5.1-codex-mini
    - Large (150K-400K): Detailed exploration for Sonnet, Opus, gpt-5.1, qwen3:4b
-   - Massive (>400K): Comprehensive deep-dives for grok-4-fast, gemini-3.0-pro, Sonnet[1m]
+   - Massive (>400K): Comprehensive deep-dives for grok-4-1-fast-reasoning, gemini-3.0-pro, Sonnet[1m]
 
 2. **Multi-Step Reasoning**: ReAct pattern with tier-specific limits
    - Each step can call internal graph analysis tools
@@ -817,21 +817,20 @@ CodeGraph uses feature flags to enable only the components you need. Build with 
 | `embeddings-jina` | Jina AI | Cloud embeddings (jina-embeddings-v4) + reranking |
 
 **Supported LM Studio Models:**
-- **Jina**: `jina-embeddings-v3` (1024), `jina-embeddings-v4` (2048), `jina-embeddings-v4-text-code` (2048), `jina-code-embeddings-1.5b` (1536), `jina-code-embeddings-0.5b` (896)
+- **Jina**: `jina-embeddings-v3` (1024), `jina-embeddings-v4` (2048), `jina-embeddings-v4-text-code` (2048), `jina-code-embeddings-1.5b` (1536)
 - **Qwen**: `qwen3-embedding-0.6b-dwq` (1024), `qwen3-embedding-0.6b` (1024)
 - **Nomic**: `nomic-embed-text-v1.5` (768)
 - **BGE**: `bge-small` (384), `bge-base` (768), `bge-large` (1024)
 - **E5**: `e5-small` (384), `e5-base` (768), `e5-large` (1024)
-- **OpenAI**: `text-embedding-3-small` (1536), `text-embedding-3-large` (3072), `text-embedding-ada-002` (1536)
 - Unknown models default to 1536 dimensions
 
 ### LLM Providers (for Agentic Tools)
 
 | Feature | Provider | Models/Notes |
 |---------|----------|--------------|
-| `anthropic` | Anthropic Claude | Claude Sonnet 4.5, Haiku 4.5, Opus 4.1 |
+| `anthropic` | Anthropic Claude | Claude Sonnet 4.5, Haiku 4.5, Opus 4.5 |
 | `openai-llm` | OpenAI | gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-mini |
-| `openai-compatible` | LM Studio, xAI, Ollama, custom | OpenAI-compatible APIs (grok-4-fast, local models) |
+| `openai-compatible` | LM Studio, xAI, Ollama, custom | OpenAI-compatible APIs (grok-4-1-fast-reasoning xai, kimi-k2-thinking openrouter local models) |
 
 ### Convenience Bundles
 
