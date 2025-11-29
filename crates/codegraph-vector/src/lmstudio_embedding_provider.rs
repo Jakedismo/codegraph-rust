@@ -319,29 +319,15 @@ impl LmStudioEmbeddingProvider {
         if model_lower.contains("jina-embeddings-v3") {
             return 1024;
         }
-        if model_lower.contains("jina-code-embeddings-1.5b") {
-            return 1536;
-        }
-        if model_lower.contains("jina-code-embeddings-0.5b") {
-            return 896;
-        }
 
         // Qwen models
-        if model_lower.contains("qwen3-embedding-0.6b-dwq") || model_lower.contains("qwen3-embedding-0.6b") {
+        if model_lower.contains("text-embedding-qwen3-embedding-0.6b") || model_lower.contains("qwen3-embedding-0.6b") {
             return 1024;
         }
 
         // Nomic models
         if model_lower.contains("nomic-embed-text-v1.5") || model_lower.contains("nomic-embed-text") {
             return 768;
-        }
-
-        // OpenAI models (if served via LM Studio)
-        if model_lower.contains("text-embedding-3-large") {
-            return 3072;
-        }
-        if model_lower.contains("text-embedding-3-small") || model_lower.contains("text-embedding-ada-002") {
-            return 1536;
         }
 
         // BGE models
@@ -520,7 +506,7 @@ mod tests {
 
         // Qwen models
         assert_eq!(
-            LmStudioEmbeddingProvider::infer_dimension_for_model("qwen3-embedding-0.6b-dwq"),
+            LmStudioEmbeddingProvider::infer_dimension_for_model("text-embedding-qwen3-embedding-0.6b"),
             1024
         );
         assert_eq!(
