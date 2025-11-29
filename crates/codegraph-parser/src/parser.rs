@@ -944,36 +944,36 @@ impl TreeSitterParser {
                     }
 
                     // REVOLUTIONARY: Use unified extractors for MAXIMUM SPEED
-                    if matches!(language, Language::Rust) {
+                    let ast_result = if matches!(language, Language::Rust) {
                         use crate::languages::rust::RustExtractor;
-                        Ok(RustExtractor::extract_with_edges(
+                        RustExtractor::extract_with_edges(
                             &tree_used,
                             &used_content,
                             &file_path,
-                        ))
+                        )
                     } else if matches!(language, Language::TypeScript) {
                         use crate::languages::javascript::TypeScriptExtractor;
-                        Ok(TypeScriptExtractor::extract_with_edges(
+                        TypeScriptExtractor::extract_with_edges(
                             &tree_used,
                             &used_content,
                             &file_path,
                             language.clone(),
-                        ))
+                        )
                     } else if matches!(language, Language::JavaScript) {
                         use crate::languages::javascript::TypeScriptExtractor;
-                        Ok(TypeScriptExtractor::extract_with_edges(
+                        TypeScriptExtractor::extract_with_edges(
                             &tree_used,
                             &used_content,
                             &file_path,
                             language.clone(),
-                        ))
+                        )
                     } else if matches!(language, Language::Python) {
                         use crate::languages::python::PythonExtractor;
-                        Ok(PythonExtractor::extract_with_edges(
+                        PythonExtractor::extract_with_edges(
                             &tree_used,
                             &used_content,
                             &file_path,
-                        ))
+                        )
                     } else {
                         // Fallback: use AstVisitor for other languages (no edges yet)
                         let mut visitor = crate::AstVisitor::new(
@@ -982,11 +982,16 @@ impl TreeSitterParser {
                             used_content.clone(),
                         );
                         visitor.visit(tree_used.root_node());
-                        Ok(ExtractionResult {
+                        ExtractionResult {
                             nodes: visitor.nodes,
                             edges: Vec::new(), // No edges for unsupported languages yet
-                        })
-                    }
+                        }
+                    };
+
+                    // Apply Fast ML enhancement for maximum graph completeness
+                    // Adds pattern-based edges and resolves unmatched references (<1ms overhead)
+                    let enhanced_result = crate::fast_ml::enhance_extraction(ast_result, &used_content);
+                    Ok(enhanced_result)
                 }
                 None => {
                     // Fallback: return empty result
