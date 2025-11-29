@@ -36,7 +36,7 @@ export CODEGRAPH_EMBEDDING_DIMENSION=1024               # 384, 768, 1024, 1536, 
 ```bash
 export CODEGRAPH_EMBEDDING_PROVIDER=lmstudio
 export CODEGRAPH_LMSTUDIO_MODEL=jina-embeddings-v3      # or jina-embeddings-v4, qwen3-embedding-0.6b, nomic-embed-text-v1.5, etc.
-export CODEGRAPH_LMSTUDIO_URL=http://localhost:1234/v1  # Default LM Studio endpoint
+export CODEGRAPH_LMSTUDIO_URL=http://localhost:1234     # Default LM Studio endpoint (the /v1 path is appended automatically)
 export CODEGRAPH_EMBEDDING_DIMENSION=1024               # Auto-detected for 20+ models, or set manually
 ```
 
@@ -310,7 +310,7 @@ Create `~/.codegraph/config.toml`:
 [embedding]
 provider = "lmstudio"
 model = "jinaai/jina-embeddings-v4"
-lmstudio_url = "http://localhost:1234/v1"
+lmstudio_url = "http://localhost:1234"
 dimension = 2048
 
 [llm]
@@ -324,7 +324,7 @@ lmstudio_url = "http://localhost:1234"
 ```bash
 export CODEGRAPH_EMBEDDING_PROVIDER=lmstudio
 export CODEGRAPH_LMSTUDIO_MODEL=jinaai/jina-embeddings-v4
-export CODEGRAPH_LMSTUDIO_URL=http://localhost:1234/v1
+export CODEGRAPH_LMSTUDIO_URL=http://localhost:1234
 export CODEGRAPH_EMBEDDING_DIMENSION=2048
 ```
 

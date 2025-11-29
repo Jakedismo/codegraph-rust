@@ -83,7 +83,7 @@ Next Steps
    [embedding]
    provider = "lmstudio"           # or ollama, jina, openai, onnx, local
    model = "jina-embeddings-v4"
-   lmstudio_url = "http://localhost:1234/v1"
+   lmstudio_url = "http://localhost:1234"
    dimension = 2048
 
    [llm]

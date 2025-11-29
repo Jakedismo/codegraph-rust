@@ -31,7 +31,7 @@ fn create_test_node(name: &str, content: &str) -> CodeNode {
 #[cfg(feature = "lmstudio")]
 fn create_test_config() -> LmStudioEmbeddingConfig {
     let api_base = std::env::var("LMSTUDIO_API_BASE")
-        .unwrap_or_else(|_| "http://localhost:1234/v1".to_string());
+        .unwrap_or_else(|_| "http://localhost:1234".to_string());
 
     let model = std::env::var("LMSTUDIO_EMBEDDING_MODEL")
         .unwrap_or_else(|_| "jinaai/jina-embeddings-v3".to_string());
@@ -470,7 +470,7 @@ async fn test_lmstudio_error_handling() {
 // 3. The model must support the /v1/embeddings endpoint
 //
 // Configuration (optional environment variables):
-// - LMSTUDIO_API_BASE: API base URL (default: http://localhost:1234/v1)
+// - LMSTUDIO_API_BASE: API base URL (default: http://localhost:1234)
 // - LMSTUDIO_EMBEDDING_MODEL: Model name (default: jinaai/jina-embeddings-v3)
 //
 // Run all tests:

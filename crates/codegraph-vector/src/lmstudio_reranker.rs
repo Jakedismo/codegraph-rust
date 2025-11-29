@@ -15,7 +15,7 @@ impl Default for LmStudioRerankerConfig {
     fn default() -> Self {
         Self {
             base_url: std::env::var("LMSTUDIO_URL")
-                .unwrap_or_else(|_| "http://localhost:1234/v1".to_string()),
+                .unwrap_or_else(|_| "http://localhost:1234".to_string()),
             api_key: std::env::var("LMSTUDIO_API_KEY").unwrap_or_else(|_| "lm-studio".to_string()),
             model: std::env::var("LMSTUDIO_RERANK_MODEL")
                 .unwrap_or_else(|_| "text-embedding-3-small".to_string()),
@@ -89,7 +89,7 @@ impl LmStudioReranker {
             input: inputs.clone(),
         };
 
-        let url = format!("{}/embeddings", self.config.base_url.trim_end_matches('/'));
+        let url = format!("{}/v1/embeddings", self.config.base_url.trim_end_matches('/'));
         let response = self
             .client
             .post(&url)

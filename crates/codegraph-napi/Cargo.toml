@@ -22,7 +22,6 @@ napi-derive = "2.16"
 tokio = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
-chrono = { workspace = true }
 tracing = { workspace = true }
 
 # Local crates

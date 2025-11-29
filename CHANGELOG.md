@@ -60,8 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Availability checking** via `/models` endpoint before initialization
 - **Configuration options**:
   - Environment variables: `CODEGRAPH_LMSTUDIO_MODEL`, `CODEGRAPH_LMSTUDIO_URL`, `CODEGRAPH_LMSTUDIO_TIMEOUT`, `CODEGRAPH_MAX_CHUNK_TOKENS`
-  - Config file: `embedding.provider = "lmstudio"`, `embedding.lmstudio_url = "http://localhost:1234/v1"`
-  - Default URL: `http://localhost:1234/v1`
+  - Config file: `embedding.provider = "lmstudio"`, `embedding.lmstudio_url = "http://localhost:1234"`
+  - Default URL: `http://localhost:1234` (the `/v1` path is appended automatically)
 - **Feature flag**: `lmstudio` (requires reqwest)
 - **Performance characteristics**: 50 texts/sec throughput, 500ms typical latency, high memory usage (running full model)
 - **Integration**: Seamless integration with `EmbeddingGenerator` factory, automatic provider selection based on config

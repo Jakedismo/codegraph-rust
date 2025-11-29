@@ -36,7 +36,7 @@ impl Default for LmStudioEmbeddingConfig {
     fn default() -> Self {
         Self {
             model: "jinaai/jina-embeddings-v3".to_string(),
-            api_base: "http://localhost:1234/v1".to_string(),
+            api_base: "http://localhost:1234".to_string(),
             timeout: Duration::from_secs(60),
             batch_size: 32,
             max_retries: 3,
@@ -186,7 +186,7 @@ impl LmStudioEmbeddingProvider {
 
     /// Call LM Studio embeddings endpoint
     async fn call_embed_endpoint(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        let url = format!("{}/embeddings", self.config.api_base);
+        let url = format!("{}/v1/embeddings", self.config.api_base.trim_end_matches('/'));
 
         let request = EmbeddingRequest {
             input: texts.to_vec(),

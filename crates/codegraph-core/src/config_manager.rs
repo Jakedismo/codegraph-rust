@@ -357,7 +357,7 @@ fn default_embedding_provider() -> String {
     "auto".to_string()
 }
 fn default_lmstudio_url() -> String {
-    "http://localhost:1234/v1".to_string()
+    "http://localhost:1234".to_string()
 }
 fn default_ollama_url() -> String {
     "http://localhost:11434".to_string()

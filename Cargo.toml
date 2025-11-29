@@ -29,6 +29,65 @@ authors = ["CodeGraph Team"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/codegraph/embedding-system"
 
+# Feature groups for common development scenarios
+[workspace.metadata.cargo-features]
+# Minimal build for MCP server development (fastest build times)
+mcp-minimal = [
+    "ai-enhanced",
+    "embeddings-ollama",
+    "codegraph-ai/anthropic"
+]
+
+# MCP development with LM Studio support
+mcp-lmstudio = [
+    "ai-enhanced",
+    "embeddings-ollama",
+    "embeddings-lmstudio",
+    "codegraph-ai/anthropic",
+    "codegraph-ai/openai-compatible"
+]
+
+# Full local stack (no cloud dependencies)
+local-stack = [
+    "daemon",
+    "ai-enhanced",
+    "embeddings-ollama",
+    "embeddings-lmstudio",
+    "embeddings-local",
+    "codegraph-ai/openai-compatible",
+    "autoagents-experimental"
+]
+
+# Cloud-enabled build
+cloud-enabled = [
+    "daemon",
+    "ai-enhanced",
+    "cloud",
+    "embeddings-jina",
+    "codegraph-ai/anthropic",
+    "codegraph-ai/openai-llm",
+    "server-http",
+    "autoagents-experimental"
+]
+
+# Everything (development/testing)
+full = [
+    "daemon",
+    "ai-enhanced",
+    "cloud",
+    "embeddings",
+    "embeddings-local",
+    "embeddings-openai",
+    "embeddings-ollama",
+    "embeddings-jina",
+    "embeddings-lmstudio",
+    "codegraph-ai/anthropic",
+    "codegraph-ai/openai-llm",
+    "codegraph-ai/openai-compatible",
+    "server-http",
+    "autoagents-experimental"
+]
+
 [workspace.dependencies]
 fastrand = "2.0"
 governor = { version = "0.10.1" }
@@ -223,13 +282,24 @@ inherits = "release"
 debug = true
 
 [profile.dev]
-opt-level = 1
+opt-level = 0        # Faster compilation (0 = no optimization)
 debug = true
 incremental = true
+codegen-units = 256  # Parallel codegen for faster builds
 
 [profile.test]
 opt-level = 1
 debug = true
+
+# Super-fast dev profile for rapid iteration
+[profile.fast-dev]
+inherits = "dev"
+opt-level = 0
+incremental = true
+codegen-units = 256
+debug = 1  # Line numbers only, not full debug info
+lto = false
+panic = "unwind"
 
 # Size-optimized release profile for smallest possible binaries
 [profile.release-size]
