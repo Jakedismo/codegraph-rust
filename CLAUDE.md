@@ -300,6 +300,7 @@ CodeGraph uses **extensive feature flags** for conditional compilation. This is 
 
 **Common Feature Combinations:**
 - `onnx,ollama,faiss` - Local-only setup
+- `lmstudio,ollama,faiss` - Local setup with LM Studio embeddings
 - `cloud-jina,anthropic,faiss` - Cloud embeddings + local vector store
 - `cloud-surrealdb,openai,faiss` - Cloud graph backend
 - `all-cloud-providers,faiss` - Everything
