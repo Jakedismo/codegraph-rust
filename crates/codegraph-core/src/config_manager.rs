@@ -578,6 +578,11 @@ impl ConfigManager {
                 config.embedding.dimension = dim;
             }
         }
+        if let Ok(batch) = std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE") {
+            if let Ok(size) = batch.parse() {
+                config.embedding.batch_size = size;
+            }
+        }
 
         // Jina configuration
         if let Ok(key) = std::env::var("JINA_API_KEY") {

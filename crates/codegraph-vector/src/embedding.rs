@@ -364,6 +364,7 @@ impl EmbeddingGenerator {
                     .merge_with_config(
                         embedding_config.model.clone(),
                         Some(embedding_config.lmstudio_url.clone()),
+                        Some(embedding_config.batch_size),
                     );
                 match crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider::new(lmstudio_config) {
                     Ok(provider) => {

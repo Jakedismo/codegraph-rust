@@ -34,7 +34,7 @@ impl Default for OllamaEmbeddingConfig {
         let batch_size = std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
-            .map(|value| value.clamp(1, 4096))
+            .map(|value| value.clamp(1, 256))
             .unwrap_or(32);
 
         let max_tokens_per_text = std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS")
@@ -65,7 +65,7 @@ impl From<&codegraph_core::EmbeddingConfig> for OllamaEmbeddingConfig {
             .unwrap_or_else(|| "nomic-embed-code".to_string());
 
         // Use batch_size from config (already has env var fallback in config loading)
-        let batch_size = config.batch_size.clamp(1, 4096);
+        let batch_size = config.batch_size.clamp(1, 256);
 
         let max_tokens_per_text = std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS")
             .ok()

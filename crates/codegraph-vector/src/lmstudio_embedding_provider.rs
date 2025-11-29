@@ -23,6 +23,8 @@ pub struct LmStudioEmbeddingConfig {
     pub api_base: String,
     /// Request timeout duration
     pub timeout: Duration,
+    /// Batch size for embedding requests
+    pub batch_size: usize,
     /// Maximum number of retry attempts for failed requests
     pub max_retries: usize,
     /// Maximum tokens per text chunk
@@ -31,10 +33,17 @@ pub struct LmStudioEmbeddingConfig {
 
 impl Default for LmStudioEmbeddingConfig {
     fn default() -> Self {
+        let batch_size = std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .map(|value| value.clamp(1, 256))
+            .unwrap_or(32);
+
         Self {
             model: "jinaai/jina-embeddings-v3".to_string(),
             api_base: "http://localhost:1234/v1".to_string(),
             timeout: Duration::from_secs(60),
+            batch_size,
             max_retries: 3,
             max_tokens_per_request: 8192,
         }
@@ -44,6 +53,12 @@ impl Default for LmStudioEmbeddingConfig {
 impl LmStudioEmbeddingConfig {
     /// Create configuration from environment variables
     pub fn from_env() -> Self {
+        let batch_size = std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .map(|value| value.clamp(1, 256))
+            .unwrap_or(32);
+
         Self {
             model: std::env::var("CODEGRAPH_LMSTUDIO_MODEL")
                 .unwrap_or_else(|_| "jinaai/jina-embeddings-v3".to_string()),
@@ -55,6 +70,7 @@ impl LmStudioEmbeddingConfig {
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(60),
             ),
+            batch_size,
             max_retries: std::env::var("CODEGRAPH_LMSTUDIO_MAX_RETRIES")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -71,6 +87,7 @@ impl LmStudioEmbeddingConfig {
         mut self,
         model: Option<String>,
         api_base: Option<String>,
+        batch_size: Option<usize>,
     ) -> Self {
         // Only use config values if env vars weren't set
         if std::env::var("CODEGRAPH_LMSTUDIO_MODEL").is_err() {
@@ -81,6 +98,11 @@ impl LmStudioEmbeddingConfig {
         if std::env::var("CODEGRAPH_LMSTUDIO_URL").is_err() {
             if let Some(url) = api_base {
                 self.api_base = url;
+            }
+        }
+        if std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE").is_err() {
+            if let Some(size) = batch_size {
+                self.batch_size = size.clamp(1, 256);
             }
         }
         self
@@ -110,7 +132,7 @@ impl LmStudioEmbeddingProvider {
         let performance_chars = ProviderCharacteristics {
             expected_throughput: 50.0,  // Local service, slower than Ollama (single model)
             typical_latency: Duration::from_millis(500),
-            max_batch_size: 32,
+            max_batch_size: config.batch_size,
             supports_streaming: false,
             requires_network: true,  // Local network
             memory_usage: crate::providers::MemoryUsage::High,  // Running full model
