@@ -425,12 +425,25 @@ mod tests {
         p.initialize().await.unwrap();
 
         let node = CodeNode {
-            id: "n1".into(),
+            id: uuid::Uuid::new_v4(),
             name: "foo".into(),
             language: Some(Language::Rust),
             node_type: Some(NodeType::Function),
+            location: codegraph_core::Location {
+                file_path: "test.rs".to_string(),
+                line: 1,
+                column: 0,
+                end_line: None,
+                end_column: None,
+            },
             content: Some("fn foo() { 1 }".into()),
-            children: None,
+            metadata: codegraph_core::Metadata {
+                attributes: std::collections::HashMap::new(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            },
+            embedding: None,
+            complexity: None,
         };
         let _ = p.infer(&node).await.unwrap();
     }

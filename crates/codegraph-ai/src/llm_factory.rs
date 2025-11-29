@@ -296,9 +296,9 @@ mod tests {
             provider: "ollama".to_string(),
             model: Some("qwen2.5-coder:14b".to_string()),
             ollama_url: "http://localhost:11434".to_string(),
-            context_window: config.context,
+            context_window: 128000,
             temperature: 0.1,
-            max_tokens: config.max_tokens,
+            max_tokens: 4096,
             timeout_secs: 120,
             ..Default::default()
         };
@@ -316,9 +316,7 @@ mod tests {
 
         let result = LLMProviderFactory::create_from_config(&config);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("LLM is not enabled"));
+        let err = result.err().unwrap();
+        assert!(err.to_string().contains("LLM is not enabled"));
     }
 }
