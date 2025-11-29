@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tokenizers::Tokenizer;
 use tracing::{debug, info, warn};
@@ -104,9 +105,17 @@ impl LmStudioEmbeddingProvider {
             .build()
             .map_err(|e| CodeGraphError::Network(format!("Failed to create HTTP client: {}", e)))?;
 
-        // Load tokenizer for token counting (same as OpenAI/Ollama)
-        let tokenizer = Tokenizer::from_pretrained("Qwen/Qwen2.5-Coder-32B-Instruct", None)
-            .expect("Failed to load Qwen2.5-Coder tokenizer for token counting");
+        // Load tokenizer for token counting from local file (no internet required)
+        let tokenizer_path = PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tokenizers/qwen2.5-coder.json"
+        ));
+        let tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| {
+            CodeGraphError::Validation(format!(
+                "Failed to load tokenizer from {:?}: {}. This tokenizer is required for chunking.",
+                tokenizer_path, e
+            ))
+        })?;
 
         let performance_chars = ProviderCharacteristics {
             expected_throughput: 50.0,  // Local service, slower than Ollama (single model)
