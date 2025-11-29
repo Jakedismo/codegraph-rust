@@ -453,7 +453,7 @@ impl EmbeddingProvider for LmStudioEmbeddingProvider {
     }
 
     fn provider_name(&self) -> &str {
-        "lmstudio"
+        "LM Studio"
     }
 
     async fn is_available(&self) -> bool {
