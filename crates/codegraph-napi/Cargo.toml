@@ -16,7 +16,7 @@ cloud = []
 [dependencies]
 # NAPI-RS
 napi = { version = "2.16", features = ["async", "tokio_rt", "napi8"] }
-napi-derive = "2.16"
+napi-derive = "3.3"
 
 # Workspace dependencies
 tokio = { workspace = true }
