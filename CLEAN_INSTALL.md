@@ -6,9 +6,9 @@ Follow these steps to remove every trace of a previous CodeGraph MCP installatio
    Close every terminal session that is running `codegraph start …` (Ctrl+C) so no process holds binaries or logs open.
 
 2. **Remove installed binaries**
-   If you used the installer, it dropped symlinks/binaries into `/usr/local/bin`. Remove them:
+   If you used the installer, it dropped symlinks/binaries into `/usr/.local/bin`. Remove them:
    ```bash
-   sudo rm -f /usr/local/bin/codegraph
+   sudo rm -f /usr/.local/bin/codegraph
    ```
 
 3. **Delete the installer support directory**  
@@ -32,7 +32,7 @@ Follow these steps to remove every trace of a previous CodeGraph MCP installatio
    ```bash
    ./install-codegraph-cloud.sh
    ```
-   This recreates `/usr/local/bin/codegraph` pointing at the freshly built release binary.
+   This recreates `/usr/.local/bin/codegraph` pointing at the freshly built release binary.
 
 7. **Rebuild your development binary**  
    Inside the repo, rebuild with the required features so the local `target/` tree matches your latest changes:

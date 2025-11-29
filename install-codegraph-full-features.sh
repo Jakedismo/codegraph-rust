@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Comprehensive feature set - everything enabled
-FEATURES="daemon,ai-enhanced,embeddings-local,embeddings-openai,embeddings-ollama,embeddings-jina,embeddings-lmstudio,codegraph-vector/jina,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers,server-http,autoagents-experimental,qwen-integration"
+FEATURES="daemon,ai-enhanced,embeddings-local,embeddings-openai,embeddings-ollama,embeddings-jina,embeddings-lmstudio,codegraph-vector/jina,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers,server-http,autoagents-experimental"
 SURR_URL="${CODEGRAPH_SURREALDB_URL:-ws://localhost:3004}"
 SURR_NAMESPACE="${CODEGRAPH_SURREALDB_NAMESPACE:-ouroboros}"
 SURR_DATABASE="${CODEGRAPH_SURREALDB_DATABASE:-codegraph}"
