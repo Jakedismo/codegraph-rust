@@ -580,8 +580,11 @@ impl CodeGraphMCPServer {
             ),
         }
 
-        // Create GraphToolExecutor
-        let tool_executor = Arc::new(crate::GraphToolExecutor::new(graph_functions));
+        // Create GraphToolExecutor with config for semantic search and reranking
+        let tool_executor = Arc::new(crate::GraphToolExecutor::new(
+            graph_functions,
+            Arc::new(config.clone()),
+        ));
 
         // Build CodeGraphExecutor
         let executor = CodeGraphExecutorBuilder::new()

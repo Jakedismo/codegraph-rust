@@ -187,18 +187,21 @@ impl GraphToolSchemas {
         }
     }
 
-    /// Schema for find_nodes_by_name function
+    /// Schema for find_nodes_by_name function (now with comprehensive semantic search)
     pub fn find_nodes_by_name() -> ToolSchema {
         ToolSchema {
             name: "find_nodes_by_name".to_string(),
-            description: "Search for nodes by (partial) name or file path within the current project context. \
-                Use this to resolve human-readable function or file names to concrete node IDs before other graph queries.".to_string(),
+            description: "Comprehensive semantic code search combining HNSW vector similarity, full-text analysis, and graph enrichment. \
+                Automatically finds semantically similar code using embeddings, supplements with full-text matches, and enriches results with \
+                dependencies, dependents, and file context. Use for any code discovery - handles both semantic queries ('find authentication logic') \
+                and specific searches ('JWT token validation').".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
                     "needle": {
                         "type": "string",
-                        "description": "Partial name or file path fragment to search for (case-insensitive name match, file_path contains match)"
+                        "description": "Natural language search query or specific code pattern. Examples: 'authentication logic', 'JWT validation', 'error handling'. \
+                            Supports both semantic similarity and exact/fuzzy text matching with automatic graph context enrichment."
                     },
                     "limit": {
                         "type": "integer",

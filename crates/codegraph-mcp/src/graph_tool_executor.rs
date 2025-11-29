@@ -1,6 +1,7 @@
 // ABOUTME: LLM tool executor for SurrealDB graph analysis functions
 // ABOUTME: Executes graph analysis tools by calling Rust SDK wrappers with validated parameters
 
+use codegraph_core::config_manager::CodeGraphConfig;
 use codegraph_graph::GraphFunctions;
 use lru::LruCache;
 use parking_lot::Mutex;
@@ -47,6 +48,8 @@ impl CacheStats {
 /// Receives tool calls from LLM and executes appropriate SurrealDB functions
 pub struct GraphToolExecutor {
     graph_functions: Arc<GraphFunctions>,
+    /// Configuration for embedding and reranking
+    config: Arc<CodeGraphConfig>,
     /// LRU cache for tool results (function_name + params → result)
     cache: Arc<Mutex<LruCache<String, JsonValue>>>,
     /// Cache statistics for observability
@@ -57,13 +60,14 @@ pub struct GraphToolExecutor {
 
 impl GraphToolExecutor {
     /// Create a new tool executor with GraphFunctions instance
-    pub fn new(graph_functions: Arc<GraphFunctions>) -> Self {
-        Self::with_cache(graph_functions, true, 100)
+    pub fn new(graph_functions: Arc<GraphFunctions>, config: Arc<CodeGraphConfig>) -> Self {
+        Self::with_cache(graph_functions, config, true, 100)
     }
 
     /// Create a new tool executor with custom cache configuration
     pub fn with_cache(
         graph_functions: Arc<GraphFunctions>,
+        config: Arc<CodeGraphConfig>,
         cache_enabled: bool,
         cache_size: usize,
     ) -> Self {
@@ -79,6 +83,7 @@ impl GraphToolExecutor {
 
         Self {
             graph_functions,
+            config,
             cache,
             cache_stats,
             cache_enabled,
@@ -344,28 +349,197 @@ impl GraphToolExecutor {
         }))
     }
 
-    /// Execute find_nodes_by_name
+    /// Execute semantic search with HNSW, full-text, and graph enrichment
+    /// Replaces simple substring matching with comprehensive semantic search
     async fn execute_find_nodes_by_name(&self, params: JsonValue) -> Result<JsonValue> {
-        let needle = params["needle"]
+        let query_text = params["needle"]
             .as_str()
             .ok_or_else(|| McpError::Protocol("Missing needle".to_string()))?;
 
         let limit = params["limit"].as_i64().unwrap_or(10) as usize;
 
-        let result = self
-            .graph_functions
-            .find_nodes_by_name(needle, limit)
+        // Step 1: Generate embedding for the query
+        use codegraph_vector::EmbeddingGenerator;
+
+        let embedder = EmbeddingGenerator::with_config(&self.config).await;
+        let query_embedding = embedder
+            .generate_text_embedding(query_text)
             .await
-            .map_err(|e| McpError::Protocol(format!("find_nodes_by_name failed: {}", e)))?;
+            .map_err(|e| McpError::Protocol(format!("Embedding generation failed: {}", e)))?;
+
+        // Step 2: Get embedding dimension from config
+        let dimension = self.config.embedding.dimension;
+
+        // Step 3: Call semantic search function with graph enrichment (always enabled)
+        let threshold = 0.7; // Configurable via environment variable
+        let include_graph_context = true; // Always enabled per requirements
+
+        let candidates = self
+            .graph_functions
+            .semantic_search_with_context(
+                query_text,
+                &query_embedding,
+                dimension,
+                limit,
+                threshold,
+                include_graph_context,
+            )
+            .await
+            .map_err(|e| {
+                McpError::Protocol(format!("semantic_search_with_context failed: {}", e))
+            })?;
+
+        // Step 4: Apply reranking if configured (Jina OR LM Studio)
+        let final_results = self.apply_reranking(query_text, candidates).await?;
 
         Ok(json!({
             "tool": "find_nodes_by_name",
             "parameters": {
-                "needle": needle,
-                "limit": limit
+                "query": query_text,
+                "limit": limit,
+                "dimension": dimension,
+                "threshold": threshold
             },
-            "result": result
+            "result": final_results
         }))
+    }
+
+    /// Apply reranking if configured (supports Jina AND LM Studio)
+    async fn apply_reranking(
+        &self,
+        query: &str,
+        candidates: Vec<serde_json::Value>,
+    ) -> Result<Vec<serde_json::Value>> {
+        // Check if Jina reranking is enabled
+        #[cfg(feature = "embeddings-jina")]
+        {
+            if self.config.embedding.jina_enable_reranking {
+                return self.apply_jina_reranking(query, candidates).await;
+            }
+        }
+
+        // Check if LM Studio reranking is enabled
+        if let Some(lmstudio_reranking) = self.config.llm.lmstudio_enable_reranking {
+            if lmstudio_reranking {
+                return self.apply_lmstudio_reranking(query, candidates).await;
+            }
+        }
+
+        // No reranking configured - return candidates as-is
+        Ok(candidates)
+    }
+
+    #[cfg(feature = "embeddings-jina")]
+    async fn apply_jina_reranking(
+        &self,
+        query: &str,
+        mut candidates: Vec<serde_json::Value>,
+    ) -> Result<Vec<serde_json::Value>> {
+        use codegraph_vector::jina::JinaClient;
+
+        info!("Applying Jina reranking to {} candidates", candidates.len());
+
+        // Build documents for reranking (extract content/name)
+        let documents: Vec<String> = candidates
+            .iter()
+            .map(|c| {
+                let name = c["name"].as_str().unwrap_or("");
+                let content = c["content"].as_str().unwrap_or("");
+                format!("{}: {}", name, content)
+            })
+            .collect();
+
+        // Call Jina reranker
+        let client = JinaClient::from_config(&self.config);
+        let reranked_indices = client
+            .rerank(query, &documents, candidates.len())
+            .await
+            .map_err(|e| McpError::Protocol(format!("Jina reranking failed: {}", e)))?;
+
+        // Reorder candidates based on reranking
+        let reranked: Vec<serde_json::Value> = reranked_indices
+            .into_iter()
+            .filter_map(|(idx, _score)| candidates.get(idx).cloned())
+            .collect();
+
+        Ok(reranked)
+    }
+
+    async fn apply_lmstudio_reranking(
+        &self,
+        query: &str,
+        mut candidates: Vec<serde_json::Value>,
+    ) -> Result<Vec<serde_json::Value>> {
+        use codegraph_ai::llm_provider::{GenerationConfig, LLMProvider, Message, MessageRole};
+
+        info!("Applying LM Studio reranking to {} candidates", candidates.len());
+
+        // Build reranking prompt for LM Studio
+        let documents_text: String = candidates
+            .iter()
+            .enumerate()
+            .map(|(idx, c)| {
+                let name = c["name"].as_str().unwrap_or("unknown");
+                let file_path = c["location"]["file_path"].as_str().unwrap_or("");
+                let content = c["content"].as_str().unwrap_or("");
+                format!("[{}] {}\nFile: {}\nCode: {}\n", idx, name, file_path, content)
+            })
+            .collect::<Vec<_>>()
+            .join("\n---\n");
+
+        let reranking_prompt = format!(
+            "Rerank the following code snippets by relevance to the query: \"{}\"\n\n\
+            Return ONLY a JSON array of indices in descending order of relevance.\n\
+            Example: [3,0,5,1,2]\n\n\
+            Documents:\n{}\n\n\
+            JSON array of indices:",
+            query, documents_text
+        );
+
+        // Create LM Studio provider for reranking
+        let lmstudio_config = codegraph_core::config_manager::LLMConfig {
+            enabled: true,
+            provider: "lmstudio".to_string(),
+            model: self.config.llm.lmstudio_reranking_model.clone(),
+            lmstudio_url: self.config.llm.lmstudio_url.clone(),
+            temperature: 0.1, // Low temperature for consistent ranking
+            max_tokens: 256,  // Just need the array
+            ..Default::default()
+        };
+
+        let provider = codegraph_ai::llm_factory::LLMProviderFactory::create_from_config(
+            &lmstudio_config,
+        )
+        .map_err(|e| McpError::Protocol(format!("Failed to create LM Studio provider: {}", e)))?;
+
+        // Call LM Studio with simple generation
+        let gen_config = GenerationConfig {
+            temperature: 0.1,
+            max_tokens: Some(256),
+            ..Default::default()
+        };
+
+        let messages = vec![Message {
+            role: MessageRole::User,
+            content: reranking_prompt,
+        }];
+
+        let response = provider
+            .generate_chat(&messages, &gen_config)
+            .await
+            .map_err(|e| McpError::Protocol(format!("LM Studio reranking request failed: {}", e)))?;
+
+        // Parse the indices array
+        let indices: Vec<usize> = serde_json::from_str(&response.content)
+            .map_err(|e| McpError::Protocol(format!("Failed to parse reranking response: {}", e)))?;
+
+        // Reorder candidates
+        let reranked: Vec<serde_json::Value> = indices
+            .into_iter()
+            .filter_map(|idx| candidates.get(idx).cloned())
+            .collect();
+
+        Ok(reranked)
     }
 
     /// Get all available tool schemas for registration

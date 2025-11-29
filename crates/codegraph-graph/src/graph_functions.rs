@@ -324,6 +324,64 @@ impl GraphFunctions {
 
         Ok(result)
     }
+
+    /// Comprehensive semantic search with HNSW vector search, full-text, and graph enrichment
+    ///
+    /// Calls fn::semantic_search_with_context in SurrealDB which combines:
+    /// - HNSW vector similarity search
+    /// - Full-text search using code_analyzer
+    /// - Graph enrichment with dependencies and file context
+    ///
+    /// # Parameters
+    /// - `query_text`: Original search query
+    /// - `query_embedding`: Pre-generated embedding vector
+    /// - `dimension`: Embedding dimension (384,768,1024,1536,2048,2560,3072,4096)
+    /// - `limit`: Maximum results
+    /// - `threshold`: Minimum similarity score (0.0-1.0)
+    /// - `include_graph_context`: Whether to enrich with graph data
+    pub async fn semantic_search_with_context(
+        &self,
+        query_text: &str,
+        query_embedding: &[f32],
+        dimension: usize,
+        limit: usize,
+        threshold: f32,
+        include_graph_context: bool,
+    ) -> Result<Vec<serde_json::Value>> {
+        debug!(
+            "Calling fn::semantic_search_with_context(project={}, query='{}', dim={}, limit={}, threshold={})",
+            self.project_id, query_text, dimension, limit, threshold
+        );
+
+        // Convert embedding to Value
+        let embedding_value: serde_json::Value =
+            serde_json::to_value(query_embedding).map_err(|e| {
+                CodeGraphError::Database(format!("Failed to serialize embedding: {}", e))
+            })?;
+
+        let result: Vec<serde_json::Value> = self
+            .db
+            .query("RETURN fn::semantic_search_with_context($project_id, $query_embedding, $query_text, $dimension, $limit, $threshold, $include_graph_context)")
+            .bind(("project_id", self.project_id.clone()))
+            .bind(("query_embedding", embedding_value))
+            .bind(("query_text", query_text.to_string()))
+            .bind(("dimension", dimension as i64))
+            .bind(("limit", limit as i64))
+            .bind(("threshold", threshold as f64))
+            .bind(("include_graph_context", include_graph_context))
+            .await
+            .map_err(|e| {
+                error!("Failed to call semantic_search_with_context: {}", e);
+                CodeGraphError::Database(format!("semantic_search_with_context failed: {}", e))
+            })?
+            .take(0)
+            .map_err(|e| {
+                error!("Failed to deserialize semantic_search_with_context results: {}", e);
+                CodeGraphError::Database(format!("Deserialization failed: {}", e))
+            })?;
+
+        Ok(result)
+    }
 }
 
 // ============================================================================

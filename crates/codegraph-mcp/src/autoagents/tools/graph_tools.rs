@@ -343,10 +343,13 @@ fn default_find_limit() -> i32 {
     10
 }
 
-/// Find nodes by (partial) name within project scope
+/// Comprehensive semantic code search with HNSW, full-text, and graph enrichment
 #[tool(
     name = "find_nodes_by_name",
-    description = "Search for nodes by partial name or file path within the current project. Returns IDs to use with other graph tools.",
+    description = "Semantic code search using HNSW vector similarity + full-text analysis + graph enrichment. \
+                   Finds semantically similar code, supplements with exact matches, and enriches with dependencies/dependents/file context. \
+                   Use for any code discovery: semantic queries ('auth logic') or specific searches ('JWT validate'). \
+                   Automatically applies reranking if configured.",
     input = FindNodesByNameArgs,
 )]
 pub struct FindNodesByName {
