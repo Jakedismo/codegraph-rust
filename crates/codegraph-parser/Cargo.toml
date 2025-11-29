@@ -43,6 +43,10 @@ num_cpus = { workspace = true }
 globset = { workspace = true }
 ignore = { workspace = true }
 
+# Fast ML for code analysis
+aho-corasick = "1.1"
+lsh-rs2 = "0.4.1"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 tokio-uring = { workspace = true, optional = true }
 
