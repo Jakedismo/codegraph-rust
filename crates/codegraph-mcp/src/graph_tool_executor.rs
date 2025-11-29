@@ -3,6 +3,7 @@
 
 use codegraph_core::config_manager::CodeGraphConfig;
 use codegraph_graph::GraphFunctions;
+use codegraph_vector::EmbeddingGenerator;
 use lru::LruCache;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -55,6 +56,8 @@ pub struct GraphToolExecutor {
     graph_functions: Arc<GraphFunctions>,
     /// Configuration for embedding and reranking
     config: Arc<CodeGraphConfig>,
+    /// Shared embedding generator (created once, reused for all queries)
+    embedding_generator: Arc<EmbeddingGenerator>,
     /// LRU cache for tool results (function_name + params → result)
     cache: Arc<Mutex<LruCache<String, JsonValue>>>,
     /// Cache statistics for observability
@@ -69,15 +72,20 @@ pub struct GraphToolExecutor {
 }
 
 impl GraphToolExecutor {
-    /// Create a new tool executor with GraphFunctions instance
-    pub fn new(graph_functions: Arc<GraphFunctions>, config: Arc<CodeGraphConfig>) -> Self {
-        Self::with_cache(graph_functions, config, true, 100)
+    /// Create a new tool executor with shared EmbeddingGenerator
+    pub fn new(
+        graph_functions: Arc<GraphFunctions>,
+        config: Arc<CodeGraphConfig>,
+        embedding_generator: Arc<EmbeddingGenerator>,
+    ) -> Self {
+        Self::with_cache(graph_functions, config, embedding_generator, true, 100)
     }
 
     /// Create a new tool executor with custom cache configuration
     pub fn with_cache(
         graph_functions: Arc<GraphFunctions>,
         config: Arc<CodeGraphConfig>,
+        embedding_generator: Arc<EmbeddingGenerator>,
         cache_enabled: bool,
         cache_size: usize,
     ) -> Self {
@@ -94,6 +102,7 @@ impl GraphToolExecutor {
         Self {
             graph_functions,
             config,
+            embedding_generator,
             cache,
             cache_stats,
             cache_enabled,
@@ -371,17 +380,15 @@ impl GraphToolExecutor {
 
         let limit = params["limit"].as_i64().unwrap_or(10) as usize;
 
-        // Step 1: Generate embedding for the query
-        use codegraph_vector::EmbeddingGenerator;
-
-        let embedder = EmbeddingGenerator::with_config(&self.config).await;
-        let query_embedding = embedder
+        // Step 1: Generate embedding using shared EmbeddingGenerator
+        let query_embedding = self
+            .embedding_generator
             .generate_text_embedding(query_text)
             .await
             .map_err(|e| McpError::Protocol(format!("Embedding generation failed: {}", e)))?;
 
-        // Step 2: Get embedding dimension from embedder (auto-detected from provider/model)
-        let dimension = embedder.dimension();
+        // Step 2: Get embedding dimension from shared generator (auto-detected)
+        let dimension = self.embedding_generator.dimension();
 
         // Step 3: Call semantic search function with graph enrichment (always enabled)
         let threshold = 0.7; // Configurable via environment variable

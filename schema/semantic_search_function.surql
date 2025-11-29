@@ -325,3 +325,4 @@ DEFINE FUNCTION fn::semantic_search_with_context(
         FROM $merged
     ) END;
     };
+    RETURN $final_results;

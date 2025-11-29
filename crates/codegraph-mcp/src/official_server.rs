@@ -580,10 +580,20 @@ impl CodeGraphMCPServer {
             ),
         }
 
-        // Create GraphToolExecutor with config for semantic search and reranking
+        // Create shared EmbeddingGenerator (once for entire server lifecycle)
+        use codegraph_vector::EmbeddingGenerator;
+        let embedding_generator = Arc::new(EmbeddingGenerator::with_config(&config).await);
+        tracing::info!(
+            "✅ Shared EmbeddingGenerator initialized (dimension: {}, provider: {})",
+            embedding_generator.dimension(),
+            config.embedding.provider
+        );
+
+        // Create GraphToolExecutor with shared embedding generator
         let tool_executor = Arc::new(crate::GraphToolExecutor::new(
             graph_functions,
             Arc::new(config.clone()),
+            embedding_generator,
         ));
 
         // Build CodeGraphExecutor
