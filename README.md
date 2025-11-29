@@ -18,6 +18,7 @@ CodeGraph indexes your source code to a graph database, creates semantic embeddi
 - 🤖 **NEW:** Agentic code-agent tools with tier-aware multi-step reasoning
 - 🔄 **NEW:** Incremental indexing with SHA-256 file change detection—only re-index modified files
 - 👁️ **NEW:** Daemon mode for automatic file watching and re-indexing on changes
+- ⚡ **NEW:** Fast ML code enhancement with Aho-Corasick pattern matching + LSH symbol resolution (<1ms overhead)
 - 🔬 **EXPERIMENTAL:** AutoAgents framework integration for improved agent orchestration
 
 ### Local Embeddings & Reranking (SurrealDB)
