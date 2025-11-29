@@ -13,7 +13,7 @@ use codegraph_graph::{
     SURR_EMBEDDING_COLUMN_2048, SURR_EMBEDDING_COLUMN_2560, SURR_EMBEDDING_COLUMN_384,
     SURR_EMBEDDING_COLUMN_4096, SURR_EMBEDDING_COLUMN_768,
 };
-use codegraph_parser::{get_ai_pattern_learner, TreeSitterParser};
+use codegraph_parser::TreeSitterParser;
 #[cfg(feature = "ai-enhanced")]
 use futures::{stream, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};

@@ -329,50 +329,52 @@ impl ToolRuntime for GetHubNodes {
     }
 }
 
-/// Parameters for find_nodes_by_name
+/// Parameters for semantic_code_search
 #[derive(Serialize, Deserialize, ToolInput, Debug)]
-pub struct FindNodesByNameArgs {
-    #[input(description = "Partial function/file name to search for (case-insensitive)")]
-    needle: String,
+pub struct SemanticCodeSearchArgs {
+    #[input(description = "Natural language search query (e.g., 'authentication logic', 'error handling', 'JWT validation', 'user controller')")]
+    query: String,
     #[input(description = "Maximum number of results (1-50, default: 10)")]
-    #[serde(default = "default_find_limit")]
+    #[serde(default = "default_search_limit")]
     limit: i32,
 }
 
-fn default_find_limit() -> i32 {
+fn default_search_limit() -> i32 {
     10
 }
 
-/// Comprehensive semantic code search with HNSW, full-text, and graph enrichment
+/// Semantic code search using AI embeddings, full-text analysis, and graph enrichment
 #[tool(
-    name = "find_nodes_by_name",
-    description = "Semantic code search using HNSW vector similarity + full-text analysis + graph enrichment. \
-                   Finds semantically similar code, supplements with exact matches, and enriches with dependencies/dependents/file context. \
-                   Use for any code discovery: semantic queries ('auth logic') or specific searches ('JWT validate'). \
+    name = "semantic_code_search",
+    description = "Primary code discovery tool using AI embeddings + full-text analysis + graph enrichment. \
+                   Accepts natural language queries (e.g., 'authentication logic', 'error handling code', 'database models'). \
+                   Combines HNSW vector similarity (70%) with fuzzy text matching (30%) for comprehensive results. \
+                   Enriches results with dependencies, dependents, and file context. \
+                   Works for both conceptual searches and specific identifiers. \
                    Automatically applies reranking if configured.",
-    input = FindNodesByNameArgs,
+    input = SemanticCodeSearchArgs,
 )]
-pub struct FindNodesByName {
+pub struct SemanticCodeSearch {
     executor: Arc<GraphToolExecutorAdapter>,
 }
 
-impl FindNodesByName {
+impl SemanticCodeSearch {
     pub fn new(executor: Arc<GraphToolExecutorAdapter>) -> Self {
         Self { executor }
     }
 }
 
 #[async_trait::async_trait]
-impl ToolRuntime for FindNodesByName {
+impl ToolRuntime for SemanticCodeSearch {
     async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
-        let typed_args: FindNodesByNameArgs = serde_json::from_value(args)?;
+        let typed_args: SemanticCodeSearchArgs = serde_json::from_value(args)?;
 
         let result = self
             .executor
             .execute_sync(
-                "find_nodes_by_name",
+                "semantic_code_search",
                 serde_json::json!({
-                    "needle": typed_args.needle,
+                    "query": typed_args.query,
                     "limit": typed_args.limit
                 }),
             )

@@ -197,7 +197,7 @@ impl GraphToolExecutor {
                 self.execute_get_reverse_dependencies(parameters.clone())
                     .await?
             }
-            "find_nodes_by_name" => self.execute_find_nodes_by_name(parameters.clone()).await?,
+            "semantic_code_search" => self.execute_semantic_code_search(parameters.clone()).await?,
             _ => {
                 return Err(
                     McpError::Protocol(format!("Tool not implemented: {}", tool_name)).into(),
@@ -371,12 +371,12 @@ impl GraphToolExecutor {
         }))
     }
 
-    /// Execute semantic search with HNSW, full-text, and graph enrichment
-    /// Replaces simple substring matching with comprehensive semantic search
-    async fn execute_find_nodes_by_name(&self, params: JsonValue) -> Result<JsonValue> {
-        let query_text = params["needle"]
+    /// Execute semantic code search with HNSW, full-text, and graph enrichment
+    /// Accepts natural language queries for comprehensive semantic search
+    async fn execute_semantic_code_search(&self, params: JsonValue) -> Result<JsonValue> {
+        let query_text = params["query"]
             .as_str()
-            .ok_or_else(|| McpError::Protocol("Missing needle".to_string()))?;
+            .ok_or_else(|| McpError::Protocol("Missing query".to_string()))?;
 
         let limit = params["limit"].as_i64().unwrap_or(10) as usize;
 
@@ -413,7 +413,7 @@ impl GraphToolExecutor {
         let final_results = self.apply_reranking(query_text, candidates).await?;
 
         Ok(json!({
-            "tool": "find_nodes_by_name",
+            "tool": "semantic_code_search",
             "parameters": {
                 "query": query_text,
                 "limit": limit,
