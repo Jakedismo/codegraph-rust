@@ -13,7 +13,7 @@ codegraph-core = { workspace = true }
 codegraph-api = { workspace = true }
 axum = { workspace = true }
 
-axum-test = "18.1"
+axum-test = "18.2"
 serial_test = "3.0"
 futures = { workspace = true }
 
