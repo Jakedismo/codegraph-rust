@@ -17,6 +17,8 @@ pub struct EmbeddingGenerator {
     ollama_provider: Option<crate::ollama_embedding_provider::OllamaEmbeddingProvider>,
     #[cfg(feature = "jina")]
     jina_provider: Option<crate::jina_provider::JinaEmbeddingProvider>,
+    #[cfg(feature = "lmstudio")]
+    lmstudio_provider: Option<crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider>,
     tokenizer: Arc<Tokenizer>,
 }
 
@@ -64,6 +66,8 @@ impl EmbeddingGenerator {
             ollama_provider: None,
             #[cfg(feature = "jina")]
             jina_provider: None,
+            #[cfg(feature = "lmstudio")]
+            lmstudio_provider: None,
             tokenizer: Arc::new(tokenizer),
         }
     }
@@ -353,6 +357,41 @@ impl EmbeddingGenerator {
                     }
                 }
             }
+        } else if provider == "lmstudio" {
+            #[cfg(feature = "lmstudio")]
+            {
+                let lmstudio_config = crate::lmstudio_embedding_provider::LmStudioEmbeddingConfig::from_env()
+                    .merge_with_config(
+                        embedding_config.model.clone(),
+                        Some(embedding_config.lmstudio_url.clone()),
+                    );
+                match crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider::new(lmstudio_config) {
+                    Ok(provider) => {
+                        tracing::info!("🔍 Checking LM Studio availability...");
+                        if provider.check_availability().await {
+                            use crate::providers::EmbeddingProvider;
+                            tracing::info!("✅ LM Studio embeddings initialized (from config)");
+                            base.model_config.dimension = provider.embedding_dimension();
+                            base.lmstudio_provider = Some(provider);
+                        } else {
+                            tracing::error!(
+                                "❌ LM Studio not available at {}",
+                                embedding_config.lmstudio_url
+                            );
+                            tracing::error!(
+                                "   Make sure LM Studio is running with an embedding model loaded"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to initialize LM Studio embeddings: {}", e);
+                    }
+                }
+            }
+            #[cfg(not(feature = "lmstudio"))]
+            {
+                tracing::error!("❌ 'lmstudio' feature is NOT ENABLED - cannot use LM Studio provider!");
+            }
         }
         // Add other providers (ONNX, local, etc.) as needed following the same pattern
 
@@ -404,6 +443,27 @@ impl EmbeddingGenerator {
             if embs.len() != nodes.len() {
                 return Err(CodeGraphError::Vector(format!(
                     "Ollama provider returned {} embeddings for {} inputs",
+                    embs.len(),
+                    nodes.len()
+                )));
+            }
+            return Ok(embs);
+        }
+
+        // Prefer LM Studio provider for batch processing (local OpenAI-compatible)
+        #[cfg(feature = "lmstudio")]
+        if let Some(lmstudio) = &self.lmstudio_provider {
+            use crate::providers::EmbeddingProvider;
+            tracing::debug!(
+                target: "codegraph_vector::embeddings",
+                "Using LM Studio {} for batch: {} items",
+                lmstudio.provider_name(),
+                nodes.len()
+            );
+            let embs = lmstudio.generate_embeddings(nodes).await?;
+            if embs.len() != nodes.len() {
+                return Err(CodeGraphError::Vector(format!(
+                    "LM Studio provider returned {} embeddings for {} inputs",
                     embs.len(),
                     nodes.len()
                 )));

@@ -74,6 +74,7 @@ onnx = ["dep:ort", "dep:hf-hub", "dep:ndarray"]
 onnx-coreml = ["onnx"]
 ollama = ["dep:reqwest"]
 jina = ["dep:reqwest"]
+lmstudio = ["dep:reqwest"]
 lmstudio-reranker = ["dep:reqwest"]
 
 [[example]]

@@ -26,6 +26,9 @@ pub mod ollama_embedding_provider;
 #[cfg(feature = "jina")]
 pub mod jina_provider;
 
+#[cfg(feature = "lmstudio")]
+pub mod lmstudio_embedding_provider;
+
 pub mod surreal_store;
 
 #[cfg(feature = "persistent")]
@@ -66,6 +69,9 @@ pub use ollama_embedding_provider::*;
 
 #[cfg(feature = "jina")]
 pub use jina_provider::*;
+
+#[cfg(feature = "lmstudio")]
+pub use lmstudio_embedding_provider::*;
 
 pub use surreal_store::*;
 
