@@ -5,10 +5,10 @@ Follow these steps to remove every trace of a previous CodeGraph MCP installatio
 1. **Stop running servers**  
    Close every terminal session that is running `codegraph start …` (Ctrl+C) so no process holds binaries or logs open.
 
-2. **Remove installed binaries**  
+2. **Remove installed binaries**
    If you used the installer, it dropped symlinks/binaries into `/usr/local/bin`. Remove them:
    ```bash
-   sudo rm -f /usr/local/bin/codegraph /usr/local/bin/codegraph-official
+   sudo rm -f /usr/local/bin/codegraph
    ```
 
 3. **Delete the installer support directory**  

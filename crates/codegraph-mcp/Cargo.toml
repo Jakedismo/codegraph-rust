@@ -80,10 +80,6 @@ serial_test = "3.2"
 name = "codegraph"
 path = "src/bin/codegraph.rs"
 
-[[bin]]
-name = "codegraph-official"
-path = "src/bin/codegraph-official.rs"
-
 [features]
 default = []
 daemon = ["codegraph-parser/watcher-experimental"]
