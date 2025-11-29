@@ -357,7 +357,7 @@ struct OpenAIRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     instructions: Option<String>,
     #[serde(
-        rename = "max_completion_tokens",
+        rename = "max_output_tokens",
         skip_serializing_if = "Option::is_none"
     )]
     max_completion_tokens: Option<usize>,
@@ -461,7 +461,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&request).unwrap();
-        assert!(json.contains("\"max_completion_tokens\""));
+        assert!(json.contains("\"max_output_tokens\""));
         assert!(!json.contains("\"max_completion_token\""));
     }
 }
