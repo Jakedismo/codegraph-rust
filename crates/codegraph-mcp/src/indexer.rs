@@ -1674,8 +1674,8 @@ impl ProjectIndexer {
         use codegraph_vector::{search::SemanticSearch, EmbeddingGenerator};
         use std::sync::Arc;
 
-        // Create a simple embedding for the target symbol
-        let embedder = EmbeddingGenerator::with_auto_from_env().await;
+        // Use same config as main indexing for consistency
+        let embedder = EmbeddingGenerator::with_config(&self.global_config).await;
         if let Ok(target_embedding) = embedder.generate_text_embedding(target_symbol).await {
             // Find the most similar symbol in our symbol map using cosine similarity
             let mut best_match: Option<(NodeId, f32)> = None;
