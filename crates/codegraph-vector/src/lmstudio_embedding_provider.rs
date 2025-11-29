@@ -33,79 +33,58 @@ pub struct LmStudioEmbeddingConfig {
 
 impl Default for LmStudioEmbeddingConfig {
     fn default() -> Self {
-        let batch_size = std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .map(|value| value.clamp(1, 256))
-            .unwrap_or(32);
-
         Self {
             model: "jinaai/jina-embeddings-v3".to_string(),
             api_base: "http://localhost:1234/v1".to_string(),
             timeout: Duration::from_secs(60),
-            batch_size,
+            batch_size: 32,
             max_retries: 3,
             max_tokens_per_request: 8192,
         }
     }
 }
 
-impl LmStudioEmbeddingConfig {
-    /// Create configuration from environment variables
-    pub fn from_env() -> Self {
-        let batch_size = std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE")
+impl From<&codegraph_core::EmbeddingConfig> for LmStudioEmbeddingConfig {
+    fn from(config: &codegraph_core::EmbeddingConfig) -> Self {
+        // Get model from config, fallback to env var, then to default
+        let model = config
+            .model
+            .clone()
+            .or_else(|| std::env::var("CODEGRAPH_LMSTUDIO_MODEL").ok())
+            .or_else(|| std::env::var("CODEGRAPH_EMBEDDING_MODEL").ok())
+            .unwrap_or_else(|| "jinaai/jina-embeddings-v3".to_string());
+
+        // Timeout from env var or default
+        let timeout = Duration::from_secs(
+            std::env::var("CODEGRAPH_LMSTUDIO_TIMEOUT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(60),
+        );
+
+        // Batch size from config (central config already loaded from env)
+        let batch_size = config.batch_size.clamp(1, 256);
+
+        // Max retries from env var or default
+        let max_retries = std::env::var("CODEGRAPH_LMSTUDIO_MAX_RETRIES")
             .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .map(|value| value.clamp(1, 256))
-            .unwrap_or(32);
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(3);
+
+        // Max tokens from env var or default
+        let max_tokens_per_request = std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(8192);
 
         Self {
-            model: std::env::var("CODEGRAPH_LMSTUDIO_MODEL")
-                .unwrap_or_else(|_| "jinaai/jina-embeddings-v3".to_string()),
-            api_base: std::env::var("CODEGRAPH_LMSTUDIO_URL")
-                .unwrap_or_else(|_| "http://localhost:8000/v1".to_string()),
-            timeout: Duration::from_secs(
-                std::env::var("CODEGRAPH_LMSTUDIO_TIMEOUT")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(60),
-            ),
+            model,
+            api_base: config.lmstudio_url.clone(),
+            timeout,
             batch_size,
-            max_retries: std::env::var("CODEGRAPH_LMSTUDIO_MAX_RETRIES")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(3),
-            max_tokens_per_request: std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(8192),
+            max_retries,
+            max_tokens_per_request,
         }
-    }
-
-    /// Merge with config file values (env vars take precedence)
-    pub fn merge_with_config(
-        mut self,
-        model: Option<String>,
-        api_base: Option<String>,
-        batch_size: Option<usize>,
-    ) -> Self {
-        // Only use config values if env vars weren't set
-        if std::env::var("CODEGRAPH_LMSTUDIO_MODEL").is_err() {
-            if let Some(m) = model {
-                self.model = m;
-            }
-        }
-        if std::env::var("CODEGRAPH_LMSTUDIO_URL").is_err() {
-            if let Some(url) = api_base {
-                self.api_base = url;
-            }
-        }
-        if std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE").is_err() {
-            if let Some(size) = batch_size {
-                self.batch_size = size.clamp(1, 256);
-            }
-        }
-        self
     }
 }
 

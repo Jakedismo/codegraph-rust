@@ -31,26 +31,13 @@ pub struct OllamaEmbeddingConfig {
 
 impl Default for OllamaEmbeddingConfig {
     fn default() -> Self {
-        let batch_size = std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .map(|value| value.clamp(1, 256))
-            .unwrap_or(32);
-
-        let max_tokens_per_text = std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(512);
-
         Self {
-            model_name: std::env::var("CODEGRAPH_EMBEDDING_MODEL")
-                .unwrap_or_else(|_| "nomic-embed-code".to_string()),
-            base_url: std::env::var("CODEGRAPH_OLLAMA_URL")
-                .unwrap_or_else(|_| "http://localhost:11434".to_string()),
+            model_name: "nomic-embed-code".to_string(),
+            base_url: "http://localhost:11434".to_string(),
             timeout: Duration::from_secs(60),
-            batch_size,
+            batch_size: 32,
             max_retries: 3,
-            max_tokens_per_text,
+            max_tokens_per_text: 512,
         }
     }
 }

@@ -360,12 +360,7 @@ impl EmbeddingGenerator {
         } else if provider == "lmstudio" {
             #[cfg(feature = "lmstudio")]
             {
-                let lmstudio_config = crate::lmstudio_embedding_provider::LmStudioEmbeddingConfig::from_env()
-                    .merge_with_config(
-                        embedding_config.model.clone(),
-                        Some(embedding_config.lmstudio_url.clone()),
-                        Some(embedding_config.batch_size),
-                    );
+                let lmstudio_config = crate::lmstudio_embedding_provider::LmStudioEmbeddingConfig::from(embedding_config);
                 match crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider::new(lmstudio_config) {
                     Ok(provider) => {
                         tracing::info!("🔍 Checking LM Studio availability...");
