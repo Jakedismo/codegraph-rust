@@ -23,18 +23,30 @@ CodeGraph indexes your source code to a graph database, creates semantic embeddi
 
 ### Local Embeddings & Reranking (SurrealDB)
 
-CodeGraph now writes Ollama/LM Studio embeddings directly into SurrealDB’s dedicated HNSW columns. Pick the model you want and set the matching env vars before running `codegraph index`:
+CodeGraph supports multiple local embedding providers (Ollama, LM Studio, ONNX) and writes embeddings directly into SurrealDB's dedicated HNSW columns. Pick the provider you want and set the matching env vars before running `codegraph index`:
 
+**Option 1: Ollama**
 ```bash
 export CODEGRAPH_EMBEDDING_PROVIDER=ollama
 export CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b   # or all-mini-llm, qwen3-embedding:4b, embeddinggemma etc.
 export CODEGRAPH_EMBEDDING_DIMENSION=1024               # 384, 768, 1024, 1536, 2048, 2560, 3072 or 4096 dimensions supported
+```
 
-# Optional local reranking (LM Studio exposes an OpenAI-compatible reranker endpoint)
+**Option 2: LM Studio (OpenAI-compatible)**
+```bash
+export CODEGRAPH_EMBEDDING_PROVIDER=lmstudio
+export CODEGRAPH_LMSTUDIO_MODEL=jina-embeddings-v3      # or jina-embeddings-v4, qwen3-embedding-0.6b, nomic-embed-text-v1.5, etc.
+export CODEGRAPH_LMSTUDIO_URL=http://localhost:1234/v1  # Default LM Studio endpoint
+export CODEGRAPH_EMBEDDING_DIMENSION=1024               # Auto-detected for 20+ models, or set manually
+```
+
+**Optional local reranking:**
+```bash
+# LM Studio exposes an OpenAI-compatible reranker endpoint
 export CODEGRAPH_RERANKING_PROVIDER=lmstudio
 ```
 
-We automatically route embeddings to `embedding_384`, `embedding_768`, `embedding_1024`, `embedding_2048`, `embedding_2056`, or `embedding_4096` and keep reranking disabled unless a provider is configured.
+We automatically route embeddings to `embedding_384`, `embedding_768`, `embedding_1024`, `embedding_2048`, `embedding_2560`, or `embedding_4096` columns and keep reranking disabled unless a provider is configured.
 
 ---
 
@@ -282,18 +294,23 @@ ollama_url = "http://localhost:11434"
 ```bash
 cd codegraph-rust
 
-# Build with OpenAI-compatible support (for LM Studio)
-cargo build --release --features "openai-compatible"
+# Build MCP server with LM Studio support (recommended)
+make build-mcp-autoagents
+
+# Or build manually with feature flags
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,embeddings-lmstudio,codegraph-ai/openai-compatible"
 ```
 
 **Step 5: Configure**
+
+**Option A: Config file (recommended)**
 
 Create `~/.codegraph/config.toml`:
 ```toml
 [embedding]
 provider = "lmstudio"
 model = "jinaai/jina-embeddings-v4"
-lmstudio_url = "http://localhost:1234"
+lmstudio_url = "http://localhost:1234/v1"
 dimension = 2048
 
 [llm]
@@ -301,6 +318,14 @@ enabled = true
 provider = "lmstudio"
 model = "lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF"
 lmstudio_url = "http://localhost:1234"
+```
+
+**Option B: Environment variables**
+```bash
+export CODEGRAPH_EMBEDDING_PROVIDER=lmstudio
+export CODEGRAPH_LMSTUDIO_MODEL=jinaai/jina-embeddings-v4
+export CODEGRAPH_LMSTUDIO_URL=http://localhost:1234/v1
+export CODEGRAPH_EMBEDDING_DIMENSION=2048
 ```
 
 **Step 6: Index and run**

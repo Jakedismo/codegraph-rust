@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### **LM Studio Embedding Provider - Full Environment Variable Support**
+- **Fixed `with_auto_from_env()`** to support LM Studio provider (previously only supported Jina and Ollama)
+- **Added `embeddings-lmstudio` feature flag** to MCP crate for explicit LM Studio support
+- **Exposed in build scripts**: Added to `build-mcp-autoagents` and `build-mcp-http` Makefile targets
+- **Environment variable detection**: `CODEGRAPH_EMBEDDING_PROVIDER=lmstudio` now properly initializes provider
+- **Architectural improvement**: Consolidates embedding initialization to single code path
+  - Symbol resolution now uses `with_config()` instead of `with_auto_from_env()`
+  - Eliminates duplicate initialization logic and configuration inconsistencies
+  - Single source of truth for all embedding configuration
+- **Impact**: LM Studio embeddings now work in all code paths (main indexing, symbol resolution, API)
+
 #### **Fast ML Code Enhancement (Always-On)**
 - **Aho-Corasick pattern matching** for sub-microsecond multi-pattern code analysis (50-500ns per file)
   - Detects common patterns: `use`, `impl`, `class`, `extends`, `async fn`, `trait`, `import`, etc.
