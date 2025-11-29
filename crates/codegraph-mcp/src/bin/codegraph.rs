@@ -2409,15 +2409,13 @@ fn optimize_for_memory(
                 _ => 16,        // <16GB: Minimal batch on constrained systems
             }
         } else {
-            // ONNX/OpenAI can handle much larger batches
+            // ONNX/OpenAI/LM Studio: Reasonable batches to avoid throttling
             match memory_gb {
-                128.. => 20480,    // 128GB+: Ultra-high batch size
-                96..=127 => 15360, // 96-127GB: Very high batch size
-                64..=95 => 10240,  // 64-95GB: High batch size
-                48..=63 => 5120,   // 48-63GB: Medium-high batch size
-                32..=47 => 2048,   // 32-47GB: Medium batch size
-                16..=31 => 512,    // 16-31GB: Conservative batch size
-                _ => 100,          // <16GB: Keep default
+                128.. => 256,      // 128GB+: Maximum safe batch size
+                64..=127 => 128,   // 64-127GB: Large batch for good throughput
+                32..=63 => 64,     // 32-63GB: Medium batch size
+                16..=31 => 32,     // 16-31GB: Conservative batch size
+                _ => 16,           // <16GB: Minimal batch to avoid memory pressure
             }
         }
     } else {
