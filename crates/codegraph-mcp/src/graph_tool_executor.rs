@@ -9,7 +9,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use tokio::sync::OnceCell;
 use tracing::{debug, info};
+
+#[cfg(feature = "embeddings-jina")]
+use codegraph_vector::jina_provider::{JinaConfig, JinaEmbeddingProvider};
+use codegraph_vector::lmstudio_reranker::{LmStudioReranker, LmStudioRerankerConfig};
 
 const TOOL_PROGRESS_LOG_TARGET: &str = "codegraph::mcp::tools";
 
@@ -56,6 +61,11 @@ pub struct GraphToolExecutor {
     cache_stats: Arc<Mutex<CacheStats>>,
     /// Whether caching is enabled
     cache_enabled: bool,
+    /// Lazy-initialized Jina provider for reranking
+    #[cfg(feature = "embeddings-jina")]
+    jina_provider: Arc<OnceCell<Option<JinaEmbeddingProvider>>>,
+    /// Lazy-initialized LM Studio reranker
+    lmstudio_reranker: Arc<OnceCell<Option<LmStudioReranker>>>,
 }
 
 impl GraphToolExecutor {
@@ -87,6 +97,9 @@ impl GraphToolExecutor {
             cache,
             cache_stats,
             cache_enabled,
+            #[cfg(feature = "embeddings-jina")]
+            jina_provider: Arc::new(OnceCell::new()),
+            lmstudio_reranker: Arc::new(OnceCell::new()),
         }
     }
 
@@ -367,8 +380,8 @@ impl GraphToolExecutor {
             .await
             .map_err(|e| McpError::Protocol(format!("Embedding generation failed: {}", e)))?;
 
-        // Step 2: Get embedding dimension from config
-        let dimension = self.config.embedding.dimension;
+        // Step 2: Get embedding dimension from embedder (auto-detected from provider/model)
+        let dimension = embedder.dimension();
 
         // Step 3: Call semantic search function with graph enrichment (always enabled)
         let threshold = 0.7; // Configurable via environment variable
@@ -433,13 +446,28 @@ impl GraphToolExecutor {
     async fn apply_jina_reranking(
         &self,
         query: &str,
-        mut candidates: Vec<serde_json::Value>,
+        candidates: Vec<serde_json::Value>,
     ) -> Result<Vec<serde_json::Value>> {
-        use codegraph_vector::jina::JinaClient;
-
         info!("Applying Jina reranking to {} candidates", candidates.len());
 
-        // Build documents for reranking (extract content/name)
+        // Lazy-initialize Jina provider
+        let provider = self
+            .jina_provider
+            .get_or_init(|| async {
+                let jina_config = JinaConfig::from(&self.config.embedding);
+                JinaEmbeddingProvider::new(jina_config).ok()
+            })
+            .await;
+
+        let provider = match provider {
+            Some(p) => p,
+            None => {
+                tracing::warn!("Jina provider not initialized, skipping reranking");
+                return Ok(candidates);
+            }
+        };
+
+        // Extract documents for reranking (name + content)
         let documents: Vec<String> = candidates
             .iter()
             .map(|c| {
@@ -449,96 +477,90 @@ impl GraphToolExecutor {
             })
             .collect();
 
-        // Call Jina reranker
-        let client = JinaClient::from_config(&self.config);
-        let reranked_indices = client
-            .rerank(query, &documents, candidates.len())
+        // Call Jina reranker (returns Vec<RerankResult> with index and relevance_score)
+        let rerank_results = provider
+            .rerank(query, documents)
             .await
             .map_err(|e| McpError::Protocol(format!("Jina reranking failed: {}", e)))?;
 
-        // Reorder candidates based on reranking
-        let reranked: Vec<serde_json::Value> = reranked_indices
+        // Reorder candidates based on reranking (using index from RerankResult)
+        let reranked: Vec<serde_json::Value> = rerank_results
             .into_iter()
-            .filter_map(|(idx, _score)| candidates.get(idx).cloned())
+            .filter_map(|result| candidates.get(result.index).cloned())
             .collect();
 
+        info!("Jina reranking complete: {} results", reranked.len());
         Ok(reranked)
     }
 
     async fn apply_lmstudio_reranking(
         &self,
         query: &str,
-        mut candidates: Vec<serde_json::Value>,
+        candidates: Vec<serde_json::Value>,
     ) -> Result<Vec<serde_json::Value>> {
-        use codegraph_ai::llm_provider::{GenerationConfig, LLMProvider, Message, MessageRole};
-
         info!("Applying LM Studio reranking to {} candidates", candidates.len());
 
-        // Build reranking prompt for LM Studio
-        let documents_text: String = candidates
+        // Lazy-initialize LM Studio reranker
+        let reranker = self
+            .lmstudio_reranker
+            .get_or_init(|| async {
+                // Try environment-based detection first
+                if let Some(reranker) = LmStudioReranker::from_env() {
+                    return Some(reranker);
+                }
+
+                // Fallback to config-based initialization
+                if let Some(true) = self.config.llm.lmstudio_enable_reranking {
+                    let config = LmStudioRerankerConfig {
+                        base_url: self.config.llm.lmstudio_url.clone(),
+                        api_key: "lm-studio".to_string(), // LM Studio doesn't require real auth
+                        model: self
+                            .config
+                            .llm
+                            .lmstudio_reranking_model
+                            .clone()
+                            .unwrap_or_else(|| "text-embedding-3-small".to_string()),
+                        timeout: std::time::Duration::from_secs(60),
+                    };
+                    return Some(LmStudioReranker::new(config));
+                }
+
+                None
+            })
+            .await;
+
+        let reranker = match reranker {
+            Some(r) => r,
+            None => {
+                tracing::warn!("LM Studio reranker not initialized, skipping reranking");
+                return Ok(candidates);
+            }
+        };
+
+        // Extract documents for reranking
+        let documents: Vec<String> = candidates
             .iter()
-            .enumerate()
-            .map(|(idx, c)| {
+            .map(|c| {
                 let name = c["name"].as_str().unwrap_or("unknown");
                 let file_path = c["location"]["file_path"].as_str().unwrap_or("");
                 let content = c["content"].as_str().unwrap_or("");
-                format!("[{}] {}\nFile: {}\nCode: {}\n", idx, name, file_path, content)
+                format!("{}\nFile: {}\n{}", name, file_path, content)
             })
-            .collect::<Vec<_>>()
-            .join("\n---\n");
-
-        let reranking_prompt = format!(
-            "Rerank the following code snippets by relevance to the query: \"{}\"\n\n\
-            Return ONLY a JSON array of indices in descending order of relevance.\n\
-            Example: [3,0,5,1,2]\n\n\
-            Documents:\n{}\n\n\
-            JSON array of indices:",
-            query, documents_text
-        );
-
-        // Create LM Studio provider for reranking
-        let lmstudio_config = codegraph_core::config_manager::LLMConfig {
-            enabled: true,
-            provider: "lmstudio".to_string(),
-            model: self.config.llm.lmstudio_reranking_model.clone(),
-            lmstudio_url: self.config.llm.lmstudio_url.clone(),
-            temperature: 0.1, // Low temperature for consistent ranking
-            max_tokens: 256,  // Just need the array
-            ..Default::default()
-        };
-
-        let provider = codegraph_ai::llm_factory::LLMProviderFactory::create_from_config(
-            &lmstudio_config,
-        )
-        .map_err(|e| McpError::Protocol(format!("Failed to create LM Studio provider: {}", e)))?;
-
-        // Call LM Studio with simple generation
-        let gen_config = GenerationConfig {
-            temperature: 0.1,
-            max_tokens: Some(256),
-            ..Default::default()
-        };
-
-        let messages = vec![Message {
-            role: MessageRole::User,
-            content: reranking_prompt,
-        }];
-
-        let response = provider
-            .generate_chat(&messages, &gen_config)
-            .await
-            .map_err(|e| McpError::Protocol(format!("LM Studio reranking request failed: {}", e)))?;
-
-        // Parse the indices array
-        let indices: Vec<usize> = serde_json::from_str(&response.content)
-            .map_err(|e| McpError::Protocol(format!("Failed to parse reranking response: {}", e)))?;
-
-        // Reorder candidates
-        let reranked: Vec<serde_json::Value> = indices
-            .into_iter()
-            .filter_map(|idx| candidates.get(idx).cloned())
             .collect();
 
+        // Call LM Studio reranker (uses embeddings, not LLM prompts)
+        let rerank_results = reranker
+            .rerank(query, &documents)
+            .await
+            .map_err(|e| McpError::Protocol(format!("LM Studio reranking failed: {}", e)))?;
+
+        // Reorder candidates based on reranking
+        let reranked: Vec<serde_json::Value> = rerank_results
+            .into_iter()
+            .filter_map(|result| candidates.get(result.index).cloned())
+            .collect();
+
+        info!("LM Studio reranking complete: {} results", reranked.len());
         Ok(reranked)
     }
 
