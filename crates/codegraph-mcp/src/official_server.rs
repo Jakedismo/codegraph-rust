@@ -26,11 +26,6 @@ use uuid::Uuid;
 
 use crate::prompts::INITIAL_INSTRUCTIONS;
 
-#[cfg(feature = "qwen-integration")]
-use crate::cache::{init_cache, CacheConfig};
-#[cfg(feature = "qwen-integration")]
-use crate::qwen::{QwenClient, QwenConfig};
-
 /// Parameter structs following official rmcp SDK pattern
 // #[derive(Deserialize, JsonSchema)]
 // struct IncrementRequest {
@@ -214,9 +209,6 @@ fn default_doc_style() -> String {
 pub struct CodeGraphMCPServer {
     /// Simple counter for demonstration
     counter: Arc<Mutex<i32>>,
-    /// Cached Qwen client for AI-enhanced features
-    #[cfg(feature = "qwen-integration")]
-    qwen_client: Arc<Mutex<Option<QwenClient>>>,
     /// Official MCP tool router (required by macros)
     tool_router: ToolRouter<Self>,
 }
@@ -226,8 +218,6 @@ impl CodeGraphMCPServer {
     pub fn new() -> Self {
         Self {
             counter: Arc::new(Mutex::new(0)),
-            #[cfg(feature = "qwen-integration")]
-            qwen_client: Arc::new(Mutex::new(None)),
             tool_router: Self::tool_router(),
         }
     }
@@ -403,47 +393,6 @@ impl CodeGraphMCPServer {
 }
 
 impl CodeGraphMCPServer {
-    /// Initialize Qwen integration (separate from tool router)
-    pub async fn initialize_qwen(&self) {
-        #[cfg(feature = "qwen-integration")]
-        {
-            // Initialize intelligent cache
-            let cache_config = CacheConfig::default();
-            init_cache(cache_config);
-
-            let config = QwenConfig::default();
-            let client = QwenClient::new(config.clone());
-
-            match client.check_availability().await {
-                Ok(true) => {
-                    tracing::info!("Qwen2.5-Coder-14B-128K available for CodeGraph intelligence");
-                    let mut qwen_lock = self.qwen_client.lock().await;
-                    *qwen_lock = Some(client);
-                }
-                Ok(false) => {
-                    tracing::warn!(
-                        "Qwen2.5-Coder model not found. Install with: ollama pull {}",
-                        config.model_name
-                    );
-                }
-                Err(e) => {
-                    tracing::error!("Failed to connect to Qwen2.5-Coder: {}", e);
-                }
-            }
-        }
-        #[cfg(not(feature = "qwen-integration"))]
-        {
-            tracing::debug!("Qwen integration not enabled in this build");
-        }
-    }
-
-    /// Get cached Qwen client if available
-    #[cfg(feature = "qwen-integration")]
-    pub async fn get_qwen_client(&self) -> Option<QwenClient> {
-        let qwen_lock = self.qwen_client.lock().await;
-        qwen_lock.clone()
-    }
-
     /// Auto-detect context tier from environment or config
     #[cfg(feature = "ai-enhanced")]
     fn detect_context_tier() -> crate::ContextTier {

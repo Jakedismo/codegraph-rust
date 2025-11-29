@@ -892,7 +892,6 @@ async fn handle_start(
 
             // Create and initialize the revolutionary CodeGraph server with official SDK
             let server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
-            server.initialize_qwen().await;
 
             if atty::is(Stream::Stderr) {
                 eprintln!(

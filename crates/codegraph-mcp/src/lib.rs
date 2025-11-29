@@ -40,21 +40,8 @@ pub mod http_server;
 #[cfg(feature = "autoagents-experimental")]
 pub mod autoagents;
 
-#[cfg(feature = "qwen-integration")]
-pub mod cache;
 pub mod config_manager;
-#[cfg(feature = "qwen-integration")]
-pub mod context_optimizer;
-pub mod pattern_detector;
-#[cfg(feature = "qwen-integration")]
-pub mod performance;
 pub mod prompts;
-#[cfg(feature = "qwen-integration")]
-pub mod qwen;
-#[cfg(feature = "qwen-integration")]
-pub mod qwen_prompts;
-#[cfg(feature = "qwen-integration")]
-pub mod tools_schema;
 
 #[cfg(feature = "ai-enhanced")]
 pub use agentic_orchestrator::{
