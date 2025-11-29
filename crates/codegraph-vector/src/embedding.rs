@@ -116,7 +116,8 @@ impl EmbeddingGenerator {
             feature = "openai",
             feature = "onnx",
             feature = "ollama",
-            feature = "jina"
+            feature = "jina",
+            feature = "lmstudio"
         ))]
         let mut base = Self::new(ModelConfig::default());
         #[cfg(not(any(
@@ -124,7 +125,8 @@ impl EmbeddingGenerator {
             feature = "openai",
             feature = "onnx",
             feature = "ollama",
-            feature = "jina"
+            feature = "jina",
+            feature = "lmstudio"
         )))]
         let base = Self::new(ModelConfig::default());
         let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
@@ -269,6 +271,32 @@ impl EmbeddingGenerator {
                         tracing::error!("   Make sure JINA_API_KEY environment variable is set");
                     }
                 }
+            }
+        } else if provider == "lmstudio" {
+            #[cfg(feature = "lmstudio")]
+            {
+                let lmstudio_config = crate::lmstudio_embedding_provider::LmStudioEmbeddingConfig::default();
+                match crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider::new(lmstudio_config) {
+                    Ok(provider) => {
+                        tracing::info!("🔍 Checking LM Studio availability...");
+                        if provider.check_availability().await {
+                            use crate::providers::EmbeddingProvider;
+                            tracing::info!("✅ LM Studio embeddings initialized (from env)");
+                            base.model_config.dimension = provider.embedding_dimension();
+                            base.lmstudio_provider = Some(provider);
+                        } else {
+                            tracing::error!("❌ LM Studio not available at default URL");
+                            tracing::error!("   Make sure LM Studio is running with an embedding model loaded");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to initialize LM Studio embeddings: {}", e);
+                    }
+                }
+            }
+            #[cfg(not(feature = "lmstudio"))]
+            {
+                tracing::error!("❌ 'lmstudio' feature is NOT ENABLED - cannot use LM Studio provider!");
             }
         }
         base

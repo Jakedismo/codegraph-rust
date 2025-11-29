@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-FEATURES="daemon,ai-enhanced,autoagents-experimental,qwen-integration,embeddings-ollama,server-http,codegraph-graph/surrealdb"
+FEATURES="daemon,ai-enhanced,autoagents-experimental,qwen-integration,embeddings-ollama,embeddings-lmstudio,server-http,codegraph-graph/surrealdb"
 INSTALL_DIR="${CODEGRAPH_INSTALL_DIR:-$HOME/.local/bin}"
 TARGET_BIN="target/release/codegraph"
 
