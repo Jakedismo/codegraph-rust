@@ -249,6 +249,53 @@ impl LmStudioEmbeddingProvider {
         Ok(all_embeddings)
     }
 
+    /// Generate embedding for a single text string (convenience method)
+    pub async fn generate_single_embedding(&self, text: &str) -> Result<Vec<f32>> {
+        let chunks = self.prepare_text(text);
+
+        if chunks.len() == 1 {
+            // Single chunk - direct embedding
+            let embeddings = self.call_embed_endpoint(&chunks).await?;
+            embeddings
+                .into_iter()
+                .next()
+                .ok_or_else(|| CodeGraphError::Vector("LM Studio returned no embedding".to_string()))
+        } else {
+            // Multiple chunks - average embeddings (for long text)
+            let embeddings = self.process_in_batches(chunks).await?;
+            let dimension = embeddings.first().map(|e| e.len()).unwrap_or(0);
+
+            if dimension == 0 {
+                return Err(CodeGraphError::Vector(
+                    "LM Studio returned zero-dimensional embedding".to_string(),
+                ));
+            }
+
+            // Average all chunk embeddings
+            let mut averaged = vec![0.0f32; dimension];
+            for embedding in &embeddings {
+                for (i, val) in embedding.iter().enumerate() {
+                    averaged[i] += val;
+                }
+            }
+
+            let count = embeddings.len() as f32;
+            for val in &mut averaged {
+                *val /= count;
+            }
+
+            // Normalize
+            let norm: f32 = averaged.iter().map(|x| x * x).sum::<f32>().sqrt();
+            if norm > 0.0 {
+                for val in &mut averaged {
+                    *val /= norm;
+                }
+            }
+
+            Ok(averaged)
+        }
+    }
+
     /// Infer embedding dimension from model name
     fn infer_dimension_for_model(model: &str) -> usize {
         let model_lower = model.to_lowercase();

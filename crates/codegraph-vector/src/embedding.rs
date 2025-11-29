@@ -560,6 +560,12 @@ impl EmbeddingGenerator {
             return ollama.generate_single_embedding(text).await;
         }
 
+        // Prefer LM Studio provider when available (local OpenAI-compatible embeddings)
+        #[cfg(feature = "lmstudio")]
+        if let Some(lmstudio) = &self.lmstudio_provider {
+            return lmstudio.generate_single_embedding(text).await;
+        }
+
         // Prefer advanced engine when available
         #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
         if let Some(engine) = &self.advanced {
