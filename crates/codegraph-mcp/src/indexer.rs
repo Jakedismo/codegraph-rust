@@ -297,12 +297,32 @@ impl SurrealWriterHandle {
                             .collect();
 
                         if !node_ids.is_empty() {
+                            let delete_symbols = r#"
+                        LET $node_ids = $ids;
+                        DELETE symbol_embeddings WHERE
+                            string::split(string::trim(node_id), ':')[1] IN $node_ids;
+                    "#;
+                            if let Err(e) = guard
+                                .db()
+                                .query(delete_symbols)
+                                .bind(("ids", node_ids.clone()))
+                                .await
+                            {
+                                error!(
+                                    "Failed to delete symbol_embeddings for files {:?}: {}",
+                                    file_paths, e
+                                );
+                                last_error = Some(anyhow!(e.to_string()));
+                            }
+                        }
+
+                        if !node_ids.is_empty() {
                             let edge_query = r#"
-                                LET $node_ids = $ids;
-                                DELETE edges WHERE
-                                    string::split(string::trim(from), ':')[1] IN $node_ids OR
-                                    string::split(string::trim(to), ':')[1] IN $node_ids
-                            "#;
+                        LET $node_ids = $ids;
+                        DELETE edges WHERE
+                            string::split(string::trim(from), ':')[1] IN $node_ids OR
+                            string::split(string::trim(to), ':')[1] IN $node_ids
+                    "#;
                             if let Err(e) =
                                 guard.db().query(edge_query).bind(("ids", node_ids)).await
                             {
@@ -739,7 +759,7 @@ impl ProjectIndexer {
             }
 
             info!(
-                "🔄 Incrementally indexing {} changed files",
+                "🔄 Incrementally indexing {} changed files (delete-then-insert semantics)",
                 files_to_reindex.len()
             );
 
@@ -758,6 +778,17 @@ impl ProjectIndexer {
         // STAGE 1: File Collection & Parsing
         let files = files_to_index;
         let total_files = files.len();
+
+        // PRE-DELETE for modified files to avoid dupes/stale data
+        let modified_paths: Vec<String> = files
+            .iter()
+            .map(|(p, _)| p.to_string_lossy().to_string())
+            .collect();
+        if !modified_paths.is_empty() && self.has_file_metadata().await.unwrap_or(false) {
+            info!("🧹 Removing existing nodes/edges/file_metadata for changed files");
+            self.delete_data_for_files(&modified_paths).await?;
+        }
+
         info!(
             "🌳 Starting AST parsing (TreeSitter + fast_ml semantics) for {} files across {} languages",
             total_files,
@@ -2330,12 +2361,10 @@ impl ProjectIndexer {
             return Ok(());
         }
 
-        // delete nodes
+        // Use writer to delete nodes, edges, and file metadata as one ordered operation
         self.surreal_writer_handle()?
             .enqueue_delete_nodes_by_file(file_paths.to_vec(), &self.project_id)
-            .await?;
-        // delete edges and metadata handled by writer based on returned node ids
-        Ok(())
+            .await
     }
 
     /// Persist file metadata for incremental indexing change tracking

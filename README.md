@@ -236,10 +236,10 @@ cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents,autoag
 ```
 
 **Why use multi-provider LATS?**
-- **Selection**: Use fast, cheap models (gpt-4o-mini) for rapid node selection
-- **Expansion**: Use reasoning models (claude-3-5-sonnet) for generating high-quality next steps
-- **Evaluation**: Use specialized reasoning models (o1-preview) for accurate state evaluation
-- **Cost optimization**: Balance quality and cost by using expensive models only where needed
+- **Selection**: Use fast, cheap models (gpt-5.1-codex-mini) for rapid node selection
+- **Expansion**: Use reasoning models (grok-4-1-fast-reasoning) for generating high-quality next steps
+- **Evaluation**: Use specialized reasoning models (Opus 4.5)) for accurate state evaluation
+- **Cost optimization**: Balance quality and cost by using expensive models only where needed (local for cheapest and most fun combinations and grok-4-1-fast-reasoning for everything dirt cheap and amazing results)
 
 ---
 
