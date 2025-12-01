@@ -6,12 +6,13 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
 
 ## Agentic MCP Tools (What, When, How)
 
-- **What they do:** The MCP server ships multi-step agentic tools (e.g., `agentic_code_search`, `agentic_dependency_analysis`, `agentic_call_chain_analysis`, `agentic_architecture_analysis`, `agentic_context_builder`, `agentic_semantic_question`) that plan, call graph tools, and return synthesized answers.
+- **What they do:** The MCP server ships multi-step agentic tools (e.g., `agentic_code_search`, `agentic_dependency_analysis`, `agentic_call_chain_analysis`, `agentic_architecture_analysis`, `agentic_api_surface_analysis`, `agentic_context_builder`, `agentic_semantic_question`) that plan, call graph tools, and return synthesized answers.
 - **When to use:** 
   - Need an LLM to explore unfamiliar code paths → use `agentic_call_chain_analysis`.
   - Need impact/dep mapping before edits → use `agentic_dependency_analysis`.
   - Need a broad architectural map → use `agentic_architecture_analysis`.
   - Need quick semantic answers with citations → use `agentic_semantic_question` or `agentic_code_search`.
+  - Need to understand repository API design, public surfaces? → use`agentic_api_surface_analysis`
 - **Prerequisites:** Index the repo first (`codegraph index . -r -l language`) so graph and embeddings exist. For live edits, run the mcp server with `codegraph start stdio --watch` (daemon) to keep results current.
 - **How to invoke in clients without MCP “instructions” support:** Call the prompt tool `read_initial_instructions` once; it returns the same guidance the MCP instructions feature would have injected. Example (stdio):
   ```
@@ -247,6 +248,54 @@ cargo build --release -p codegraph-mcp --features "ai-enhanced,ollama"
 - 🔄 Legacy orchestrator remains as stable fallback
 
 The experimental feature is opt-in via build flag and does not affect existing functionality when disabled.
+
+---
+
+## 🔬 Agent Architecture Selection
+
+CodeGraph supports two agent architectures for agentic MCP tools, allowing you to choose between speed and quality:
+
+### ReAct (Default) - Fast, Single-Pass Reasoning
+- **Best for**: Quick queries, simple analysis tasks, rapid iterations
+- **Algorithm**: Single-pass reasoning with action execution
+- **Performance**: Fastest response times (30-60 seconds typical)
+- **Set**: `CODEGRAPH_AGENT_ARCHITECTURE=react` (or leave unset)
+
+### LATS (Language Agent Tree Search) - Higher Quality, Multi-Step Reasoning
+- **Best for**: Complex queries requiring exploration, architectural analysis, deep dependency chains
+- **Algorithm**: UCT-based tree search with beam width and depth control
+- **Performance**: Slower but higher quality (60-120 seconds typical)
+- **Requires**: `--features autoagents-lats` at build time
+- **Set**: `CODEGRAPH_AGENT_ARCHITECTURE=lats`
+
+### LATS Multi-Provider Configuration
+
+LATS supports using different LLM providers for different phases of the tree search:
+
+```bash
+# Use different models for different LATS phases
+export CODEGRAPH_LATS_SELECTION_PROVIDER=openai
+export CODEGRAPH_LATS_SELECTION_MODEL=gpt-4o-mini
+export CODEGRAPH_LATS_EXPANSION_PROVIDER=anthropic
+export CODEGRAPH_LATS_EXPANSION_MODEL=claude-3-5-sonnet-20241022
+export CODEGRAPH_LATS_EVALUATION_PROVIDER=openai
+export CODEGRAPH_LATS_EVALUATION_MODEL=o1-preview
+
+# Algorithm tuning
+export CODEGRAPH_LATS_BEAM_WIDTH=3      # Number of best paths to keep (default: 3)
+export CODEGRAPH_LATS_MAX_DEPTH=5       # Maximum search depth (default: 5)
+```
+
+**Build with LATS support:**
+```bash
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,autoagents-lats,ollama"
+```
+
+**Why use multi-provider LATS?**
+- **Selection**: Use fast, cheap models (gpt-4o-mini) for rapid node selection
+- **Expansion**: Use reasoning models (claude-3-5-sonnet) for generating high-quality next steps
+- **Evaluation**: Use specialized reasoning models (o1-preview) for accurate state evaluation
+- **Cost optimization**: Balance quality and cost by using expensive models only where needed
 
 ---
 

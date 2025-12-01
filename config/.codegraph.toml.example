@@ -129,6 +129,35 @@ timeout_secs = 120
 insights_mode = "context-only"
 
 # ============================================================================
+# Agent Architecture Configuration (AutoAgents Experimental)
+# ============================================================================
+# Note: Requires building with --features autoagents-experimental
+
+# Agent architecture: "react" or "lats"
+# - "react": Fast single-pass reasoning (default)
+# - "lats": Language Agent Tree Search for higher quality (requires --features autoagents-lats)
+# agent_architecture = "react"
+
+# LATS-specific configuration (only used when agent_architecture = "lats")
+# Note: All LATS features require --features autoagents-lats at build time
+
+# Selection phase: Fast, cheap model for choosing best nodes to explore
+# lats_selection_provider = "openai"
+# lats_selection_model = "gpt-4o-mini"
+
+# Expansion phase: Reasoning model for generating high-quality next steps
+# lats_expansion_provider = "anthropic"
+# lats_expansion_model = "claude-3-5-sonnet-20241022"
+
+# Evaluation phase: Specialized model for accurate state assessment
+# lats_evaluation_provider = "openai"
+# lats_evaluation_model = "o1-preview"
+
+# Algorithm tuning
+# lats_beam_width = 3  # Number of best paths to keep during search (default: 3)
+# lats_max_depth = 5   # Maximum search depth (default: 5)
+
+# ============================================================================
 # Performance Configuration
 # ============================================================================
 [performance]

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### **LATS Agent Architecture** (Experimental)
+- **Language Agent Tree Search**: UCT-based tree search for higher-quality agentic analysis
+  - Toggle via `CODEGRAPH_AGENT_ARCHITECTURE=lats` environment variable
+  - Configurable beam width and max depth for exploration control
+  - Multi-provider support: different LLMs for selection/expansion/evaluation phases
+  - Feature-gated: requires `--features autoagents-lats` at build time
+- **AgentArchitecture enum**: Runtime architecture selection (ReAct vs LATS)
+- **AgentExecutorTrait**: Abstraction for pluggable agent implementations
+- **AgentExecutorFactory**: Architecture-aware executor creation with tier detection
+- **LATS-specific configuration**:
+  - `CODEGRAPH_LATS_SELECTION_PROVIDER/MODEL` - Fast model for node selection
+  - `CODEGRAPH_LATS_EXPANSION_PROVIDER/MODEL` - Reasoning model for generating next steps
+  - `CODEGRAPH_LATS_EVALUATION_PROVIDER/MODEL` - Evaluation model for state assessment
+  - `CODEGRAPH_LATS_BEAM_WIDTH` - Number of best paths to keep (default: 3)
+  - `CODEGRAPH_LATS_MAX_DEPTH` - Maximum search depth (default: 5)
+
 ### ⚠️ BREAKING CHANGES
 - **LLM Providers**: Default to Responses API for LM Studio and OpenAI-compatible providers
   - **Who's affected**: Users with older OpenAI-compatible providers that only support Chat Completions API
