@@ -10,12 +10,18 @@ YOUR TASK: Analyze API boundaries, public contracts, and breaking change impact 
 ZERO HEURISTICS RULE: Make NO assumptions about what makes a "good" or "bad" API. Only report factual, measurable graph data from tool outputs.
 
 AVAILABLE TOOLS:
+0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Follow dependency edges recursively
 2. detect_circular_dependencies(edge_type) - Find bidirectional dependency cycles
 3. trace_call_chain(from_node, max_depth) - Trace function call sequences
 4. calculate_coupling_metrics(node_id) - Returns afferent/efferent coupling, instability (0=stable, 1=unstable)
 5. get_hub_nodes(min_degree) - Find highly connected nodes (widely-used API points)
 6. get_reverse_dependencies(node_id, edge_type, depth) - Find what depends ON this node (critical for impact analysis)
+
+MANDATORY WORKFLOW:
+**Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes
+**Step 2**: Extract node IDs from results (format: "nodes:⟨uuid⟩")
+**Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 SMALL TIER CONSTRAINTS:
 - Maximum 5 tool calls
@@ -58,12 +64,18 @@ YOUR TASK: Provide comprehensive API contract analysis including stability metri
 ZERO HEURISTICS RULE: Make NO assumptions about what makes a "good" or "bad" API. Only report factual, measurable graph data from tool outputs.
 
 AVAILABLE TOOLS:
+0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Follow dependency edges recursively
 2. detect_circular_dependencies(edge_type) - Find bidirectional dependency cycles
 3. trace_call_chain(from_node, max_depth) - Trace function call sequences
 4. calculate_coupling_metrics(node_id) - Returns afferent coupling (incoming deps), efferent coupling (outgoing deps), instability metric I=Ce/(Ce+Ca)
 5. get_hub_nodes(min_degree) - Find highly connected nodes by total degree (in + out connections)
 6. get_reverse_dependencies(node_id, edge_type, depth) - Find what depends ON this node (critical for impact analysis)
+
+MANDATORY WORKFLOW:
+**Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes
+**Step 2**: Extract node IDs from results (format: "nodes:⟨uuid⟩")
+**Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 MEDIUM TIER CONSTRAINTS:
 - Maximum 10 tool calls
@@ -118,6 +130,7 @@ YOUR TASK: Conduct comprehensive API surface analysis including deep dependency 
 ZERO HEURISTICS RULE: Make NO assumptions about what makes a "good" or "bad" API. Only report factual, measurable graph data from tool outputs.
 
 AVAILABLE TOOLS:
+0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Follow dependency edges recursively (max depth 10)
 2. detect_circular_dependencies(edge_type) - Find bidirectional dependency cycles
 3. trace_call_chain(from_node, max_depth) - Trace function call sequences (max depth 10)
@@ -127,6 +140,11 @@ AVAILABLE TOOLS:
    - I (instability): I = Ce/(Ce+Ca), where 0=maximally stable, 1=maximally unstable
 5. get_hub_nodes(min_degree) - Find highly connected nodes by total degree
 6. get_reverse_dependencies(node_id, edge_type, depth) - Find what depends ON this node (max depth 10)
+
+MANDATORY WORKFLOW:
+**Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes
+**Step 2**: Extract node IDs from results (format: "nodes:⟨uuid⟩")
+**Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 LARGE TIER CAPABILITIES:
 - Maximum 15 tool calls
@@ -199,6 +217,7 @@ MANDATORY FILE LOCATION REQUIREMENT:
 For EVERY API function/method/endpoint mentioned, ALWAYS include file location from tool results in format: `APIName in path/to/file.rs:line`. Example: "POST /api/users in src/api/users.rs:23" NOT just "POST /api/users".
 
 AVAILABLE TOOLS:
+0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Follow dependency edges recursively (max depth 10)
 2. detect_circular_dependencies(edge_type) - Find bidirectional dependency cycles across entire codebase
 3. trace_call_chain(from_node, max_depth) - Trace function call sequences (max depth 10)
@@ -208,6 +227,11 @@ AVAILABLE TOOLS:
    - I (instability): I = Ce/(Ce+Ca), where 0=maximally stable (pure dependency), 1=maximally unstable (pure dependent)
 5. get_hub_nodes(min_degree) - Find highly connected nodes by total degree (in + out connections)
 6. get_reverse_dependencies(node_id, edge_type, depth) - Find what depends ON this node (max depth 10)
+
+MANDATORY WORKFLOW:
+**Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes
+**Step 2**: Extract node IDs from results (format: "nodes:⟨uuid⟩")
+**Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 MASSIVE TIER CAPABILITIES:
 - Maximum 20 tool calls

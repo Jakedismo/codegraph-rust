@@ -1,29 +1,51 @@
 # CodeGraph
 
-> Turn your codebase into a searchable knowledge graph powered by embeddings and LLMs
+**Code-intelligence MCP server that shifts context gathering and code execution from async agents to a dedicated agent server.**
 
-CodeGraph indexes your source code to a graph database, creates semantic embeddings, and exposes a **Model Context Protocol (MCP)** server that AI tools (Claude Desktop, LM Studio, etc.) can query for project-aware context.
+CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed context to AI agents, eliminating the need for agents to burn tokens gathering project information. Instead of async agents like Claude Code executing searches and building dependency graphs, CodeGraph's MCP server handles these operations efficiently and exposes them through standardized tools.
 
-**✨ What you get:**
-- 🧩 **NEW:** SurrealDB indexing now supports local embeddings (Ollama + LM Studio) and local reranking—just set the env vars and we’ll write to the right HNSW column automatically
-- 🔍 Semantic code search across your entire codebase
-- 🧠 LLM-powered code intelligence and analysis
-- 📊 Automatic dependency graphs and code relationships
-- ⚡ Fast vector search backed by SurrealDB HNSW (2-5ms query latency)
-- 🔌 MCP server for AI tool integration (stdio and streamable HTTP)
-- ⚙️ Easy-to-use CLI interface
-- ☁️ **NEW:** Jina AI cloud embeddings with modifiable models and dimensions and reranking
-- 🗄️ **NEW:** SurrealDB HNSW backend for cloud-native and local vector search
-- 📦 **NEW:** Node.js NAPI bindings for zero-overhead TypeScript integration
-- 🤖 **NEW:** Agentic code-agent tools with tier-aware multi-step reasoning
-- 🔄 **NEW:** Incremental indexing with SHA-256 file change detection—only re-index modified files
-- 👁️ **NEW:** Daemon mode for automatic file watching and re-indexing on changes
-- ⚡ **NEW:** Fast ML code enhancement with Aho-Corasick pattern matching + LSH symbol resolution (<1ms overhead)
-- 🔬 **EXPERIMENTAL:** AutoAgents framework integration for improved agent orchestration
+## Features
 
-### Local Embeddings & Reranking (SurrealDB)
+**Core Capabilities:**
+- Semantic code search with vector embeddings
+- LLM-powered code intelligence and dependency analysis
+- Automatic dependency graph construction and traversal
+- Agentic code-agent tools with tier-aware multi-step reasoning
+- Incremental indexing with change detection (only re-index modified files)
+- Daemon mode for automatic file watching and re-indexing
 
-CodeGraph supports multiple local embedding providers (Ollama, LM Studio, ONNX) and writes embeddings directly into SurrealDB's dedicated HNSW columns. Pick the provider you want and set the matching env vars before running `codegraph index`:
+**LLM Providers:**
+- Anthropic Claude (Sonnet, Opus, Haiku - 4.5. family)
+- OpenAI (GPT-5.1, GPT-5.1-codex)
+- Ollama (local models)
+- LM Studio (OpenAI-compatible)
+- xAI Grok (Grok-4.1-fast-reasoning for true codebase understanding 2M ctx!)
+- Any OpenAI-compatible provider
+
+**Embedding Providers:**
+- Ollama (local: all-minilm, qwen3-embedding, jina-embeddings-v4 etc.)
+- LM Studio (local: jina-embeddings-v4, qwen3-embedding family etc.)
+- Jina AI (cloud: jina-embeddings-v4 with configurable dimensions)
+- OpenAI (cloud: text-embedding-3-small/large)
+- ONNX (local: BGE, E5, MiniLM models)
+
+**Vector Database:**
+- SurrealDB HNSW index (2-5ms query latency)
+- Supports 384, 768, 1024, 1536, 2048, 2560, 3072, 4096 dimensions
+- Cloud-native or local deployment
+
+**MCP Integration:**
+- Stdio transport (production-ready)
+- Streamable HTTP transport with SSE (experimental)
+- Compatible with Claude Desktop, Continue, and any MCP client
+
+---
+
+## Quick Start
+
+### 1. Configure Embedding Provider
+
+CodeGraph writes embeddings directly into SurrealDB's dimension-specific HNSW columns. Choose your provider:
 
 **Option 1: Ollama**
 ```bash
@@ -57,7 +79,6 @@ We automatically route embeddings to `embedding_384`, `embedding_768`, `embeddin
 ### What Changed:
 - ❌ **MCP server** no longer uses FAISS vector search or RocksDB graph storage
 - ❌ **CLI and SDK** no longer support FAISS/RocksDB for local operations
-- ✅ **NAPI bindings** still provide TypeScript access to all features
 - 🆕 **MCP code-agent tools** now require SurrealDB for graph analysis
 
 ### Required Setup for Code-Agent Tools:
@@ -944,116 +965,6 @@ cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experi
 
 ---
 
-## 📦 Node.js Integration (NAPI Bindings)
-
-### Zero-Overhead TypeScript Integration
-
-CodeGraph provides native Node.js bindings through NAPI-RS for seamless TypeScript/JavaScript integration:
-
-**Key Features:**
-- 🚀 **Native Performance**: Direct Rust-to-Node.js bindings with zero serialization overhead
-- 📘 **Auto-Generated Types**: TypeScript definitions generated directly from Rust code
-- ⚡ **Async Runtime**: Full tokio async support integrated with Node.js event loop
-- 🔄 **Hot-Reload Config**: Update configuration without restarting your Node.js process
-
-### Installation
-
-**Option 1: Direct Install (Recommended)**
-```bash
-# Build the addon
-cd crates/codegraph-napi
-npm install
-npm run build
-
-# Install in your project
-cd /path/to/your-project
-npm install /path/to/codegraph-rust/crates/codegraph-napi
-```
-
-**Option 2: Pack and Install**
-```bash
-# Build and pack
-cd crates/codegraph-napi
-npm install
-npm run build
-npm pack  # Creates codegraph-napi-1.0.0.tgz
-
-# Install in your project
-cd /path/to/your-project
-npm install /path/to/codegraph-rust/crates/codegraph-napi/codegraph-napi-1.0.0.tgz
-```
-
-### API Examples
-
-**Semantic Search:**
-```typescript
-import { semanticSearch } from 'codegraph-napi';
-
-const results = await semanticSearch('find authentication code', {
-  limit: 10,
-  useCloud: true,      // Use cloud search with automatic fallback
-  reranking: true      // Enable Jina reranking (if configured)
-});
-
-console.log(`Found ${results.totalCount} results in ${results.searchTimeMs}ms`);
-console.log(`Search mode: ${results.modeUsed}`);  // "local" or "cloud"
-```
-
-**Configuration Management:**
-```typescript
-import { getCloudConfig, reloadConfig } from 'codegraph-napi';
-
-// Check cloud feature availability
-const config = await getCloudConfig();
-console.log('Jina AI enabled:', config.jina_enabled);
-console.log('SurrealDB enabled:', config.surrealdb_enabled);
-
-// Hot-reload configuration without restart
-await reloadConfig();
-```
-
-**Embedding Operations:**
-```typescript
-import { getEmbeddingStats, countTokens } from 'codegraph-napi';
-
-// Get embedding provider stats
-const stats = await getEmbeddingStats();
-console.log(`Provider: ${stats.provider}, Dimension: ${stats.dimension}`);
-
-// Count tokens for cost estimation (Jina AI)
-const tokens = await countTokens("query text");
-console.log(`Token count: ${tokens}`);
-```
-
-**Graph Navigation:**
-```typescript
-import { getNeighbors, getGraphStats } from 'codegraph-napi';
-
-// Get connected nodes
-const neighbors = await getNeighbors(nodeId);
-
-// Get graph statistics
-const stats = await getGraphStats();
-console.log(`Nodes: ${stats.node_count}, Edges: ${stats.edge_count}`);
-```
-
-### Build Options
-
-**Feature flags for selective compilation:**
-```bash
-# Local-only (local surrealDB, no cloud)
-npm run build  # Uses default = ["local"]
-
-# Cloud-only (no local surrealDB
-npm run build -- --features cloud
-
-# Full build (local + cloud)
-npm run build -- --features full
-```
-
-**See [NAPI README](crates/codegraph-napi/README.md) for complete documentation.**
-
-
 ## 🤝 Contributing
 
 We welcome contributions!
@@ -1081,7 +992,6 @@ Dual-licensed under MIT and Apache 2.0. See `LICENSE-MIT` and `LICENSE-APACHE` f
 
 ## 📚 Learn More
 
-- **[NAPI Bindings Guide](crates/codegraph-napi/README.md)** - Complete TypeScript integration documentation
 - **[Cloud Providers Guide](docs/CLOUD_PROVIDERS.md)** - Detailed cloud provider setup
 - **[Configuration Reference](config/.codegraph.toml.example)** - All configuration options
 - **[Changelog](CHANGELOG.md)** - Version history and release notes

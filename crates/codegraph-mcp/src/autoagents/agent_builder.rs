@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 /// Convert CodeGraph Message to AutoAgents ChatMessage
+#[cfg(test)]
 pub(crate) fn convert_to_chat_message(msg: &Message) -> ChatMessage {
     let builder = match msg.role {
         MessageRole::System => ChatMessageBuilder::new(ChatRole::System),
@@ -29,6 +30,7 @@ pub(crate) fn convert_to_chat_message(msg: &Message) -> ChatMessage {
 }
 
 /// Convert CodeGraph Messages to AutoAgents ChatMessages
+#[cfg(test)]
 pub(crate) fn convert_messages(messages: &[Message]) -> Vec<ChatMessage> {
     messages.iter().map(convert_to_chat_message).collect()
 }
@@ -215,6 +217,7 @@ impl std::fmt::Display for CodeGraphChatResponse {
 #[derive(Debug, Deserialize)]
 struct CodeGraphLLMResponse {
     #[serde(default)]
+    #[allow(dead_code)]
     reasoning: Option<String>,
     #[serde(default)]
     tool_call: Option<CodeGraphToolCall>,
@@ -424,6 +427,7 @@ pub struct CodeGraphReActAgent {
     tools: Vec<Arc<dyn ToolT>>,
     system_prompt: String,
     analysis_type: AnalysisType,
+    #[allow(dead_code)]
     max_iterations: usize,
 }
 

@@ -10,11 +10,10 @@ use rkyv::api::high::HighValidator;
 use rkyv::{access, access_unchecked, Archive};
 use std::{
     fs::{File, OpenOptions},
-    io::{Seek, SeekFrom},
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tracing::{debug, error, instrument, warn};
+use tracing::{debug, instrument, warn};
 
 /// Memory-mapped file reader with zero-copy access
 pub struct MmapReader {
@@ -252,14 +251,14 @@ impl ThreadSafeMmap {
     }
 
     /// Get a read lock on the mapped data
-    pub fn read(&self) -> ThreadSafeMmapReadGuard {
+    pub fn read(&self) -> ThreadSafeMmapReadGuard<'_> {
         ThreadSafeMmapReadGuard {
             guard: self.mmap.read(),
         }
     }
 
     /// Get a write lock on the mapped data
-    pub fn write(&self) -> ThreadSafeMmapWriteGuard {
+    pub fn write(&self) -> ThreadSafeMmapWriteGuard<'_> {
         ThreadSafeMmapWriteGuard {
             guard: self.mmap.write(),
         }
@@ -333,6 +332,7 @@ pub struct MmapCircularBuffer {
     head: Arc<parking_lot::Mutex<usize>>,
     tail: Arc<parking_lot::Mutex<usize>>,
     capacity: usize,
+    #[allow(dead_code)]
     path: PathBuf,
 }
 

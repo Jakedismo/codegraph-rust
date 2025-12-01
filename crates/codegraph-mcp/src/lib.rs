@@ -18,7 +18,9 @@ pub mod context_builder_prompts;
 pub mod dependency_analysis_prompts;
 pub mod error;
 pub mod estimation;
+#[cfg(feature = "embeddings")]
 pub mod graph_tool_executor;
+#[cfg(feature = "embeddings")]
 pub mod graph_tool_schemas;
 pub mod heartbeat;
 pub mod indexer;
@@ -42,6 +44,7 @@ pub mod autoagents;
 
 pub mod config_manager;
 pub mod prompts;
+pub mod debug_logger;
 
 #[cfg(feature = "ai-enhanced")]
 pub use agentic_orchestrator::{
@@ -54,7 +57,9 @@ pub use estimation::{
     build_symbol_index, EmbeddingThroughputConfig, RepositoryEstimate, RepositoryEstimator,
     TimeEstimates,
 };
+#[cfg(feature = "embeddings")]
 pub use graph_tool_executor::{CacheStats, GraphToolExecutor};
+#[cfg(feature = "embeddings")]
 pub use graph_tool_schemas::{GraphToolSchemas, ToolSchema};
 pub use heartbeat::*;
 pub use indexer::{IndexStats, IndexerConfig, ProjectIndexer};
@@ -71,6 +76,3 @@ pub use daemon::{
     BackoffConfig, CircuitBreakerConfig, CircuitState, DaemonState, DaemonStatus, HealthMonitor,
     PidFile, SessionMetrics, WatchConfig, WatchDaemon, WatchSession,
 };
-
-#[cfg(feature = "qwen-integration")]
-pub use qwen::{QwenClient, QwenConfig, QwenResult};

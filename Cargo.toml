@@ -12,9 +12,6 @@ members = [
     "crates/codegraph-zerocopy",
 
     "crates/codegraph-ai",
-    "crates/codegraph-api",
-    "crates/codegraph-napi",
-    "tests/integration"
 ]
 exclude = ["scripts", "vendor/rmcp", "vendor/semchunk-rs"]
 default-members = [
@@ -254,7 +251,6 @@ codegraph-graph = { path = "crates/codegraph-graph" }
 codegraph-parser = { path = "crates/codegraph-parser" }
 codegraph-vector = { path = "crates/codegraph-vector", default-features = false }
 codegraph-cache = { path = "crates/codegraph-cache", default-features = false }
-codegraph-api = { path = "crates/codegraph-api" }
 codegraph-mcp = { path = "crates/codegraph-mcp" }
 
 codegraph-zerocopy = { path = "crates/codegraph-zerocopy" }

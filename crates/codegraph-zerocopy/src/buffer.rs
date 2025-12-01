@@ -7,7 +7,7 @@ use crate::{ZeroCopyError, ZeroCopyResult};
 use arc_swap::ArcSwap;
 use bytes::{Bytes, BytesMut};
 use crossbeam_queue::{ArrayQueue, SegQueue};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use std::{
     alloc::{alloc, dealloc, Layout},
     ptr::NonNull,
@@ -19,6 +19,7 @@ use std::{
 use tracing::{debug, instrument, trace, warn};
 
 /// Alignment for zero-copy buffers
+#[allow(dead_code)]
 const CACHE_LINE_SIZE: usize = 64;
 
 /// Pool of reusable buffers to minimize allocations

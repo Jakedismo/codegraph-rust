@@ -594,6 +594,9 @@ fn log_tool_call_start(tool_name: &str, parameters: &JsonValue) {
         "Tool input payload: {}",
         parameters
     );
+
+    // Debug logging to file if enabled
+    crate::debug_logger::DebugLogger::log_tool_start(tool_name, parameters);
 }
 
 fn log_tool_call_finish(tool_name: &str, result: &JsonValue) {
@@ -608,6 +611,9 @@ fn log_tool_call_finish(tool_name: &str, result: &JsonValue) {
         "Tool output payload: {}",
         result
     );
+
+    // Debug logging to file if enabled
+    crate::debug_logger::DebugLogger::log_tool_finish(tool_name, result);
 }
 
 #[cfg(test)]

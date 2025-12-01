@@ -497,7 +497,9 @@ struct ResponsesAPIRequest {
 
 #[derive(Debug, Deserialize)]
 struct ResponseAPIResponse {
+    #[allow(dead_code)]
     id: String,
+    #[allow(dead_code)]
     object: String,
     #[serde(default)]
     status: Option<String>,
@@ -562,6 +564,7 @@ struct ChatMessage {
 #[derive(Debug, Deserialize)]
 struct ChatCompletionsResponse {
     id: String,
+    #[allow(dead_code)]
     object: String,
     choices: Vec<ChatChoice>,
     usage: Option<ChatUsage>,

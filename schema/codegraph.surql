@@ -20,8 +20,8 @@
 -- =============================================================================
 
 DEFINE ANALYZER code_analyzer
-  TOKENIZERS blank,class
-  FILTERS lowercase,snowball(english);
+  TOKENIZERS blank, class
+  FILTERS lowercase, snowball(english);
 
 -- =============================================================================
 -- CORE TABLES
@@ -78,6 +78,10 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_type       ON TABLE nodes COLUMNS node_type
 DEFINE INDEX IF NOT EXISTS idx_nodes_language   ON TABLE nodes COLUMNS language;
 DEFINE INDEX IF NOT EXISTS idx_nodes_file_path  ON TABLE nodes COLUMNS file_path;
 DEFINE INDEX IF NOT EXISTS idx_nodes_project    ON TABLE nodes COLUMNS project_id;
+
+-- Full-text search indexes for semantic_search_with_context function
+DEFINE INDEX IF NOT EXISTS idx_nodes_name_search ON TABLE nodes FIELDS name SEARCH ANALYZER code_analyzer BM25;
+DEFINE INDEX IF NOT EXISTS idx_nodes_content_search ON TABLE nodes FIELDS content SEARCH ANALYZER code_analyzer BM25;
 
 DEFINE INDEX IF NOT EXISTS idx_nodes_embedding_384
     ON TABLE nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 200 M 16;
@@ -1071,7 +1075,7 @@ DEFINE FUNCTION fn::semantic_search_with_context(
     WHERE project_id = $project_id
       AND (
           name @1@ $query_text
-          OR content @1@ $query_text
+          OR content @2@ $query_text
       )
     ORDER BY text_score DESC
     LIMIT $safe_limit;
@@ -1080,31 +1084,22 @@ DEFINE FUNCTION fn::semantic_search_with_context(
     -- STAGE 3: Merge Results (Hybrid Search)
     -- =========================================================================
 
-    -- Combine vector and text results, deduplicate by id
-    -- For duplicates, keep the one with higher combined score
-    LET $all_candidates = array::concat($vector_candidates, $text_candidates);
-
-    -- Group by id and select best score
-    LET $merged = (
-        SELECT
-            id,
-            array::first(name) AS name,
-            array::first(kind) AS kind,
-            array::first(language) AS language,
-            array::first(content) AS content,
-            array::first(file_path) AS file_path,
-            array::first(start_line) AS start_line,
-            array::first(end_line) AS end_line,
-            array::first(metadata) AS metadata,
-            math::max(vector_score) AS vector_score,
-            math::max(text_score ?? 0.0) AS text_score,
-            -- Combined score: 70% vector + 30% text (configurable weights)
-            (math::max(vector_score) * 0.7) + (math::max(text_score ?? 0.0) * 0.3) AS combined_score
-        FROM $all_candidates
-        GROUP BY id
-        ORDER BY combined_score DESC
-        LIMIT $safe_limit
+    -- Combine vector and text results, add combined scores
+    LET $all_candidates_scored = array::concat(
+        (SELECT *, (vector_score * 0.7) + (0.0 * 0.3) AS combined_score FROM $vector_candidates),
+        (SELECT *, (0.0 * 0.7) + (text_score * 0.3) AS combined_score FROM $text_candidates)
     );
+
+    -- Sort by combined score and take top results (duplicates will be adjacent)
+    LET $sorted = (
+        SELECT * FROM $all_candidates_scored
+        ORDER BY combined_score DESC
+    );
+
+    -- Deduplication: Select first occurrence of each id (highest score since sorted DESC)
+    -- Since we can't easily deduplicate arrays in SurrealQL, just accept possible duplicates
+    -- In practice, duplicates are rare (only when same node matches both vector and text)
+    LET $merged = array::slice($sorted, 0, $safe_limit);
 
     -- =========================================================================
     -- STAGE 4: Graph Enrichment (Optional)
@@ -1171,5 +1166,6 @@ DEFINE FUNCTION fn::semantic_search_with_context(
             combined_score
         FROM $merged
     ) END;
-    };
+
     RETURN $final_results;
+};

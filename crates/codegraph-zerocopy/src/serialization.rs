@@ -8,11 +8,11 @@ use rkyv::api::high::{HighDeserializer, HighSerializer, HighValidator};
 use rkyv::ser::allocator::ArenaHandle;
 use rkyv::util::AlignedVec;
 use rkyv::{
-    access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, rancor::Failure,
+    access, access_unchecked, from_bytes, rancor::Failure,
     to_bytes, Archive, Deserialize, Serialize,
 };
 use std::sync::Arc;
-use tracing::{debug, instrument, trace};
+use tracing::instrument;
 
 /// A zero-copy serializer that reuses buffers
 #[derive(Debug)]

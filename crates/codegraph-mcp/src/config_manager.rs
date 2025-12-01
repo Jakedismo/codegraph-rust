@@ -9,15 +9,12 @@ use codegraph_core::Result;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
-#[cfg(feature = "qwen-integration")]
-use std::time::Duration;
 use tracing::{debug, info, warn};
 
 /// Complete configuration for CodeGraph MCP server
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CodeGraphConfig {
     pub server: ServerConfig,
-    pub qwen: QwenModelConfig,
     pub cache: CacheConfig,
     pub performance: PerformanceConfig,
     pub features: FeatureConfig,
@@ -39,18 +36,6 @@ pub enum TransportType {
     Stdio,
     Http,
     Dual,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QwenModelConfig {
-    pub model_name: String,
-    pub base_url: String,
-    pub context_window: usize,
-    pub max_tokens: usize,
-    pub temperature: f32,
-    pub timeout_seconds: u64,
-    pub connect_timeout_ms: u64,
-    pub enable_caching: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,7 +64,6 @@ pub struct PerformanceTargets {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FeatureConfig {
-    pub enable_qwen_integration: bool,
     pub enable_caching: bool,
     pub enable_pattern_detection: bool,
     pub enable_performance_monitoring: bool,
@@ -112,21 +96,6 @@ impl Default for ServerConfig {
             log_level: "info".to_string(),
             max_connections: 100,
             timeout_seconds: 30,
-        }
-    }
-}
-
-impl Default for QwenModelConfig {
-    fn default() -> Self {
-        Self {
-            model_name: "qwen2.5-coder-14b-128k".to_string(),
-            base_url: "http://localhost:11434".to_string(),
-            context_window: 128000,
-            max_tokens: 1024,
-            temperature: 0.1,
-            timeout_seconds: 180,
-            connect_timeout_ms: 5_000,
-            enable_caching: true,
         }
     }
 }
@@ -167,7 +136,6 @@ impl Default for PerformanceTargets {
 impl Default for FeatureConfig {
     fn default() -> Self {
         Self {
-            enable_qwen_integration: true,
             enable_caching: true,
             enable_pattern_detection: true,
             enable_performance_monitoring: true,
@@ -253,52 +221,6 @@ impl ConfigManager {
             debug!("Override log level from environment");
         }
 
-        // Qwen model configuration
-        if let Ok(model_name) = env::var("CODEGRAPH_MODEL") {
-            config.qwen.model_name = model_name;
-            debug!("Override Qwen model name from environment");
-        }
-
-        if let Ok(base_url) = env::var("CODEGRAPH_OLLAMA_URL") {
-            config.qwen.base_url = base_url;
-            debug!("Override Ollama URL from environment");
-        }
-
-        if let Ok(context_window) = env::var("CODEGRAPH_CONTEXT_WINDOW") {
-            if let Ok(context_num) = context_window.parse::<usize>() {
-                config.qwen.context_window = context_num;
-                debug!("Override context window from environment");
-            }
-        }
-
-        if let Ok(max_tokens) = env::var("CODEGRAPH_QWEN_MAX_TOKENS") {
-            if let Ok(tokens) = max_tokens.parse::<usize>() {
-                config.qwen.max_tokens = tokens;
-                debug!("Override Qwen max tokens from environment");
-            }
-        }
-
-        if let Ok(temperature) = env::var("CODEGRAPH_TEMPERATURE") {
-            if let Ok(temp_num) = temperature.parse::<f32>() {
-                config.qwen.temperature = temp_num;
-                debug!("Override temperature from environment");
-            }
-        }
-
-        if let Ok(timeout) = env::var("CODEGRAPH_QWEN_TIMEOUT_SECS") {
-            if let Ok(secs) = timeout.parse::<u64>() {
-                config.qwen.timeout_seconds = secs;
-                debug!("Override Qwen request timeout from environment");
-            }
-        }
-
-        if let Ok(connect_timeout) = env::var("CODEGRAPH_QWEN_CONNECT_TIMEOUT_MS") {
-            if let Ok(ms) = connect_timeout.parse::<u64>() {
-                config.qwen.connect_timeout_ms = ms;
-                debug!("Override Qwen connect timeout from environment");
-            }
-        }
-
         // Cache configuration
         if let Ok(cache_size) = env::var("CODEGRAPH_CACHE_SIZE") {
             if let Ok(size_num) = cache_size.parse::<usize>() {
@@ -320,11 +242,6 @@ impl ConfigManager {
             debug!("Override cache enable from environment");
         }
 
-        if let Ok(enable_qwen) = env::var("CODEGRAPH_ENABLE_QWEN") {
-            config.features.enable_qwen_integration = enable_qwen.to_lowercase() == "true";
-            debug!("Override Qwen enable from environment");
-        }
-
         config
     }
 
@@ -341,27 +258,6 @@ impl ConfigManager {
             return Err(codegraph_core::CodeGraphError::Configuration(
                 "Empty host configuration".to_string(),
             ));
-        }
-
-        // Validate Qwen configuration
-        if config.qwen.context_window == 0 {
-            return Err(codegraph_core::CodeGraphError::Configuration(
-                "Invalid context window: 0".to_string(),
-            ));
-        }
-
-        if config.qwen.context_window > 200000 {
-            warn!(
-                "Very large context window: {} tokens, may cause memory issues",
-                config.qwen.context_window
-            );
-        }
-
-        if config.qwen.temperature < 0.0 || config.qwen.temperature > 2.0 {
-            return Err(codegraph_core::CodeGraphError::Configuration(format!(
-                "Invalid temperature: {} (must be 0.0-2.0)",
-                config.qwen.temperature
-            )));
         }
 
         // Validate cache configuration
@@ -413,14 +309,6 @@ impl ConfigManager {
             log_level = \"{}\"\n\
             max_connections = {}\n\
             timeout_seconds = {}\n\n\
-            [qwen]\n\
-            model_name = \"{}\"\n\
-            base_url = \"{}\"\n\
-            context_window = {}  # Qwen2.5-Coder-14B-128K context window\n\
-            max_tokens = {}\n\
-            temperature = {}  # Lower = more consistent, higher = more creative\n\
-            timeout_seconds = {}\n\
-            enable_caching = {}\n\n\
             [cache]\n\
             max_entries = {}\n\
             ttl_seconds = {}  # 30 minutes\n\
@@ -436,7 +324,6 @@ impl ConfigManager {
             impact_analysis_ms = {}\n\
             pattern_detection_ms = {}\n\n\
             [features]\n\
-            enable_qwen_integration = {}\n\
             enable_caching = {}\n\
             enable_pattern_detection = {}\n\
             enable_performance_monitoring = {}\n\
@@ -446,13 +333,6 @@ impl ConfigManager {
             example_config.server.log_level,
             example_config.server.max_connections,
             example_config.server.timeout_seconds,
-            example_config.qwen.model_name,
-            example_config.qwen.base_url,
-            example_config.qwen.context_window,
-            example_config.qwen.max_tokens,
-            example_config.qwen.temperature,
-            example_config.qwen.timeout_seconds,
-            example_config.qwen.enable_caching,
             example_config.cache.max_entries,
             example_config.cache.ttl_seconds,
             example_config.cache.semantic_similarity_threshold,
@@ -476,7 +356,6 @@ impl ConfigManager {
                 .performance
                 .performance_targets
                 .pattern_detection_ms,
-            example_config.features.enable_qwen_integration,
             example_config.features.enable_caching,
             example_config.features.enable_pattern_detection,
             example_config.features.enable_performance_monitoring,
@@ -489,15 +368,12 @@ impl ConfigManager {
         format!(
             "CodeGraph MCP Configuration:\n\
             🌐 Server: {}:{} ({:?})\n\
-            🧠 Model: {} ({}K context)\n\
             💾 Cache: {} entries, {}MB limit\n\
             📊 Performance: {} concurrent, logging {}\n\
-            🎛️  Features: Qwen={}, Cache={}, Patterns={}, Monitoring={}",
+            🎛️  Features: Cache={}, Patterns={}, Monitoring={}",
             config.server.host,
             config.server.port,
             config.server.transport,
-            config.qwen.model_name,
-            config.qwen.context_window / 1000,
             config.cache.max_entries,
             config.cache.max_memory_mb,
             config.performance.max_concurrent_requests,
@@ -505,11 +381,6 @@ impl ConfigManager {
                 "enabled"
             } else {
                 "disabled"
-            },
-            if config.features.enable_qwen_integration {
-                "✅"
-            } else {
-                "❌"
             },
             if config.features.enable_caching {
                 "✅"
@@ -542,28 +413,24 @@ impl ConfigManager {
         // Optimize based on available memory
         if system_memory_gb >= 32 {
             // Optimal configuration for 32GB+ systems
-            config.qwen.context_window = 128000; // Full context window
             config.cache.max_memory_mb = 800; // Larger cache
             config.performance.max_concurrent_requests = 5; // More concurrent requests
             info!("✅ Optimized for high-memory system (32GB+)");
         } else if system_memory_gb >= 24 {
             // Good configuration for 24-31GB systems
-            config.qwen.context_window = 100000; // Reduced context window
             config.cache.max_memory_mb = 500; // Standard cache
             config.performance.max_concurrent_requests = 3; // Moderate concurrency
             info!("⚠️ Optimized for medium-memory system (24-31GB)");
         } else if system_memory_gb >= 16 {
             // Minimal configuration for 16-23GB systems
-            config.qwen.context_window = 64000; // Half context window
             config.cache.max_memory_mb = 256; // Smaller cache
             config.performance.max_concurrent_requests = 2; // Low concurrency
             warn!("⚠️ Optimized for low-memory system (16-23GB) - reduced performance");
         } else {
             // Very constrained configuration
-            config.features.enable_qwen_integration = false; // Disable Qwen
             config.cache.max_memory_mb = 128; // Minimal cache
             config.performance.max_concurrent_requests = 1; // Single request
-            warn!("❌ Insufficient memory (<16GB) - Qwen integration disabled");
+            warn!("⚠️ Low memory (<16GB) - reduced performance");
         }
 
         config
@@ -649,35 +516,5 @@ impl ConfigManager {
             export CODEGRAPH_CACHE_SIZE=500\n\
             export CODEGRAPH_ENABLE_CACHE=true\n"
             .to_string()
-    }
-}
-
-/// Convert configuration to runtime types
-#[cfg(feature = "qwen-integration")]
-impl From<CodeGraphConfig> for crate::qwen::QwenConfig {
-    fn from(config: CodeGraphConfig) -> Self {
-        let mut cfg = crate::qwen::QwenConfig::default();
-        cfg.model_name = config.qwen.model_name;
-        cfg.base_url = config.qwen.base_url;
-        cfg.context_window = config.qwen.context_window;
-        cfg.max_tokens = config.qwen.max_tokens;
-        cfg.temperature = config.qwen.temperature;
-        cfg.request_timeout = (config.qwen.timeout_seconds > 0)
-            .then(|| Duration::from_secs(config.qwen.timeout_seconds));
-        cfg.connect_timeout = Duration::from_millis(config.qwen.connect_timeout_ms.max(1));
-        cfg
-    }
-}
-
-#[cfg(feature = "qwen-integration")]
-impl From<CodeGraphConfig> for crate::cache::CacheConfig {
-    fn from(config: CodeGraphConfig) -> Self {
-        Self {
-            max_entries: config.cache.max_entries,
-            default_ttl: Duration::from_secs(config.cache.ttl_seconds),
-            semantic_similarity_threshold: config.cache.semantic_similarity_threshold,
-            enable_semantic_matching: config.cache.enable_semantic_matching,
-            max_memory_mb: config.cache.max_memory_mb,
-        }
     }
 }

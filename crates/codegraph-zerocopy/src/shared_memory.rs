@@ -5,21 +5,19 @@
 
 use crate::{ZeroCopyError, ZeroCopyResult};
 use memmap2::{MmapMut, MmapOptions};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use rkyv::api::high::HighValidator;
 use rkyv::{access, access_unchecked, Archive};
 use std::{
-    ffi::CString,
     fs::{File, OpenOptions},
     marker::PhantomData,
     path::Path,
-    ptr::NonNull,
     sync::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
         Arc,
     },
 };
-use tracing::{debug, error, instrument, trace, warn};
+use tracing::{debug, instrument, trace, warn};
 
 /// Shared memory segment for inter-process communication
 pub struct SharedMemorySegment {
@@ -139,7 +137,7 @@ impl SharedMemorySegment {
     }
 
     /// Get a reader handle for this shared memory segment
-    pub fn reader(&self) -> SharedMemoryReader {
+    pub fn reader(&self) -> SharedMemoryReader<'_> {
         unsafe {
             (*self.header).readers.fetch_add(1, Ordering::AcqRel);
         }
@@ -151,7 +149,7 @@ impl SharedMemorySegment {
     }
 
     /// Get a writer handle for this shared memory segment
-    pub fn writer(&self) -> ZeroCopyResult<SharedMemoryWriter> {
+    pub fn writer(&self) -> ZeroCopyResult<SharedMemoryWriter<'_>> {
         // Try to acquire write lock
         unsafe {
             if (*self.header)

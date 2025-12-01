@@ -16,12 +16,18 @@ NEVER make assumptions or use general programming knowledge.
 If you cannot determine something from graph structure, explicitly state this limitation.
 
 AVAILABLE GRAPH TOOLS:
+0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Find what a node depends on
 2. detect_circular_dependencies(edge_type) - Find circular dependency cycles
 3. trace_call_chain(from_node, max_depth) - Trace execution flow through calls
 4. calculate_coupling_metrics(node_id) - Get coupling metrics (Ca, Ce, I)
 5. get_hub_nodes(min_degree) - Find highly connected nodes
 6. get_reverse_dependencies(node_id, edge_type, depth) - Find what depends on a node
+
+MANDATORY WORKFLOW:
+**Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes
+**Step 2**: Extract node IDs from results (format: "nodes:⟨uuid⟩")
+**Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 FORMAT:
 - Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
@@ -63,6 +69,8 @@ All claims must be supported by concrete graph relationships discovered through 
 If something cannot be determined from graph structure alone, acknowledge this explicitly.
 
 AVAILABLE GRAPH TOOLS:
+0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+
 1. get_transitive_dependencies(node_id, edge_type, depth)
    - Find all dependencies of a node recursively
    - Use to understand what a component relies on
@@ -86,6 +94,11 @@ AVAILABLE GRAPH TOOLS:
 6. get_reverse_dependencies(node_id, edge_type, depth)
    - Find what depends ON this node
    - Critical for change impact analysis
+
+MANDATORY WORKFLOW:
+**Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes
+**Step 2**: Extract node IDs from results (format: "nodes:⟨uuid⟩")
+**Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 FORMAT:
 - Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
@@ -149,6 +162,8 @@ If graph structure doesn't reveal something, explicitly state what's unknown and
 
 AVAILABLE GRAPH TOOLS:
 
+0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+
 1. get_transitive_dependencies(node_id, edge_type, depth)
    Parameters:
    - node_id: Target node to analyze (from context or previous results)
@@ -186,6 +201,11 @@ AVAILABLE GRAPH TOOLS:
    - edge_type: Which relationship type
    - depth: 1-10 (suggest 3-5 for impact analysis)
    Returns: All nodes that depend ON this node (blast radius)
+
+MANDATORY WORKFLOW:
+**Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes
+**Step 2**: Extract node IDs from results (format: "nodes:⟨uuid⟩")
+**Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 FORMAT:
 - Intermediate: {"reasoning": "detailed investigation plan", "tool_call": {...}, "is_final": false}
@@ -329,6 +349,8 @@ If graph structure is insufficient to answer definitively, provide:
 
 AVAILABLE GRAPH TOOLS:
 
+0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+
 1. get_transitive_dependencies(node_id, edge_type, depth)
    Purpose: Recursive dependency mapping
    - node_id: Target node from context/results
@@ -369,6 +391,11 @@ AVAILABLE GRAPH TOOLS:
    - edge_type: Relationship type
    - depth: 1-10 (exploratory tier: use 5-8 for comprehensive impact mapping)
    Returns: All dependent nodes (blast radius of changes)
+
+MANDATORY WORKFLOW:
+**Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes
+**Step 2**: Extract node IDs from results (format: "nodes:⟨uuid⟩")
+**Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 FORMAT:
 - Intermediate: {"reasoning": "comprehensive multi-phase explanation", "tool_call": {...}, "is_final": false}

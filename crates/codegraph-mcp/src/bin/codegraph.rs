@@ -561,6 +561,9 @@ async fn main() -> Result<()> {
     // Load .env file if present
     dotenv::dotenv().ok();
 
+    // Initialize debug logger (enabled with CODEGRAPH_DEBUG=1)
+    codegraph_mcp::debug_logger::DebugLogger::init();
+
     let cli = Cli::parse();
 
     // Load configuration once at startup
@@ -778,9 +781,9 @@ async fn handle_start(
     match transport {
         TransportType::Stdio {
             buffer_size: _,
-            enable_daemon,
-            watch_path,
-            disable_daemon,
+            enable_daemon: _,
+            watch_path: _,
+            disable_daemon: _,
         } => {
             // Configure logging to file for stdio transport (stdout/stderr are used for MCP protocol)
             // Logs will be written to .codegraph/logs/mcp-server.log

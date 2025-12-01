@@ -45,11 +45,6 @@ cargo test -p codegraph-core
 # Run specific test
 cargo test --workspace -- <test_name>
 
-# E2E tests for API
-make e2e
-# or
-cargo test -p codegraph-api -- --nocapture
-
 # MCP tools integration tests (Python)
 # First, install Python dependencies:
 uv sync  # Recommended
@@ -158,27 +153,9 @@ CODEGRAPH_HTTP_PORT=3000        # Listen port
 CODEGRAPH_HTTP_KEEP_ALIVE=15   # SSE keep-alive seconds
 ```
 
-### NAPI (Node.js Bindings)
-
-```bash
-cd crates/codegraph-napi
-
-# Install dependencies
-npm install
-
-# Build native addon
-npm run build
-
-# Run tests
-npm test
-
-# Run graph functions example
-npm run example:graph
-```
-
 ## Architecture
 
-CodeGraph uses a **layered workspace architecture** with 16 specialized crates:
+CodeGraph uses a **layered workspace architecture** with 13 specialized crates:
 
 ### Layer 1: Core Foundation
 - **codegraph-core**: Configuration management, shared types, logging
@@ -221,14 +198,9 @@ CodeGraph uses a **layered workspace architecture** with 16 specialized crates:
   - Uses official `rmcp` Rust SDK (v0.7.0)
   - **IMPORTANT**: MCP server requires SurrealDB for agentic tools and vector search
   - Progress notifications for long-running agentic workflows
-- **codegraph-napi**: Node.js native bindings via napi-rs
-  - Zero-overhead TypeScript integration
-  - Auto-generated type definitions
-  - Dual-mode search, graph functions, config management
 
 ### Layer 5: User Interfaces
 - **codegraph-cli**: Command-line interface
-- **codegraph-api**: GraphQL + REST API with Swagger/OpenAPI docs
 
 ### Supporting Infrastructure
 - **codegraph-git**: Git integration (diffs, commits, blame)
@@ -307,7 +279,6 @@ CodeGraph uses **extensive feature flags** for conditional compilation. This is 
 **When working on code:**
 - Check `#[cfg(feature = "...")]` attributes
 - Some modules only compile with specific features
-- NAPI bindings have separate feature sets: `local`, `cloud`, `full`
 
 ### 3. Configuration Hierarchy
 Configuration is loaded in this order (later overrides earlier):
@@ -341,8 +312,6 @@ The semantic search system uses SurrealDB HNSW:
 ### Documentation
 - `README.md` - User-facing setup and usage guide
 - `CHANGELOG.md` - Version history and migration guides
-- `crates/codegraph-napi/README.md` - Node.js integration guide
-- `crates/codegraph-napi/GRAPH_FUNCTIONS_GUIDE.md` - Graph analysis API reference
 
 ### Testing
 - `test_mcp_tools.py` - MCP tools integration test
@@ -366,7 +335,6 @@ The semantic search system uses SurrealDB HNSW:
 1. Define in `crates/codegraph-mcp/src/official_server.rs`
 2. Add to `list_tools()` method
 3. Handle in `call_tool()` match statement
-4. Update NAPI types if exposing to TypeScript
 
 **Adding a new LLM provider:**
 1. Implement `LLMProvider` trait in `codegraph-ai/src/llm_factory.rs`
@@ -383,10 +351,8 @@ The semantic search system uses SurrealDB HNSW:
 ### Testing Strategy
 
 **Unit tests**: Each crate has `#[cfg(test)]` modules
-**Integration tests**: `tests/integration/` directory
 **E2E tests**:
 - MCP protocol: `test_mcp_tools.py`, `test_agentic_tools.py`
-- API: `cargo test -p codegraph-api`
 
 **Important**: Agentic tool tests can take 10-90 seconds each due to multi-step LLM reasoning.
 
@@ -446,10 +412,6 @@ This makes cloud deployment free for testing and small projects.
 - Set environment variable: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `JINA_API_KEY`
 - Or add to `~/.codegraph/local.toml`
 
-**NAPI linking errors**
-- Run `npm install` in `crates/codegraph-napi/`
-- For M-series Macs, ensure Rosetta 2 is not interfering
-
 ### Test Failures
 
 **Agentic tests timeout**
@@ -467,7 +429,6 @@ This makes cloud deployment free for testing and small projects.
 - **Cloud Providers Guide**: `docs/CLOUD_PROVIDERS.md`
 - **LM Studio Setup**: `LMSTUDIO_SETUP.md`
 - **Configuration Guide**: `docs/CONFIGURATION_GUIDE.md`
-- **NAPI Graph Functions**: `crates/codegraph-napi/GRAPH_FUNCTIONS_GUIDE.md`
 
 ---
 
