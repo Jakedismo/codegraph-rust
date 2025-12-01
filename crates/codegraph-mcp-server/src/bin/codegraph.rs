@@ -6,7 +6,11 @@ use codegraph_mcp::{
     EmbeddingThroughputConfig, IndexerConfig, ProcessManager, ProjectIndexer, RepositoryEstimate,
     RepositoryEstimator,
 };
-use colored::*;
+use codegraph_mcp_core::debug_logger::DebugLogger;
+use codegraph_mcp_server::CodeGraphMCPServer;
+#[cfg(feature = "daemon")]
+use codegraph_mcp_daemon::{DaemonManager, PidFile, WatchConfig, WatchDaemon};
+use colored::Colorize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rmcp::ServiceExt;
 use std::fs::File;
@@ -562,7 +566,7 @@ async fn main() -> Result<()> {
     dotenv::dotenv().ok();
 
     // Initialize debug logger (enabled with CODEGRAPH_DEBUG=1)
-    codegraph_mcp::debug_logger::DebugLogger::init();
+    DebugLogger::init();
 
     let cli = Cli::parse();
 
@@ -813,7 +817,7 @@ async fn handle_start(
 
             // Start background daemon if enabled
             #[cfg(feature = "daemon")]
-            let mut daemon_manager: Option<codegraph_mcp::daemon::DaemonManager> = None;
+            let mut daemon_manager: Option<DaemonManager> = None;
 
             #[cfg(feature = "daemon")]
             {
@@ -848,11 +852,8 @@ async fn handle_start(
                             ..global_config.daemon.clone()
                         };
 
-                        let mut dm = codegraph_mcp::daemon::DaemonManager::new(
-                            daemon_config,
-                            global_config,
-                            project_root.clone(),
-                        );
+                        let mut dm =
+                            DaemonManager::new(daemon_config, global_config, project_root.clone());
 
                         match dm.start_background().await {
                             Ok(()) => {
@@ -894,7 +895,7 @@ async fn handle_start(
             }
 
             // Create and initialize the revolutionary CodeGraph server with official SDK
-            let server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
+            let server = CodeGraphMCPServer::new();
 
             if atty::is(Stream::Stderr) {
                 eprintln!(
@@ -903,7 +904,8 @@ async fn handle_start(
             }
 
             // Use official rmcp STDIO transport for perfect compliance
-            let service = server.serve(rmcp::transport::stdio()).await.map_err(|e| {
+            let service: rmcp::service::RunningService<rmcp::RoleServer, CodeGraphMCPServer> =
+                server.serve(rmcp::transport::stdio()).await.map_err(|e| {
                 if atty::is(Stream::Stderr) {
                     eprintln!("❌ Failed to start official MCP server: {}", e);
                 }
@@ -968,7 +970,7 @@ async fn handle_start(
 
                 // Start background daemon if enabled
                 #[cfg(feature = "daemon")]
-                let mut daemon_manager: Option<codegraph_mcp::daemon::DaemonManager> = None;
+                let mut daemon_manager: Option<DaemonManager> = None;
 
                 #[cfg(feature = "daemon")]
                 {
@@ -999,11 +1001,8 @@ async fn handle_start(
                                 ..global_config.daemon.clone()
                             };
 
-                            let mut dm = codegraph_mcp::daemon::DaemonManager::new(
-                                daemon_config,
-                                global_config,
-                                project_root.clone(),
-                            );
+                            let mut dm =
+                                DaemonManager::new(daemon_config, global_config, project_root.clone());
 
                             match dm.start_background().await {
                                 Ok(()) => {
@@ -1055,7 +1054,7 @@ async fn handle_start(
 
                 // Service factory - creates new CodeGraphMCPServer for each session
                 let service_factory = || {
-                    let server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
+                    let server = CodeGraphMCPServer::new();
                     // Note: initialize_qwen() is async, but service factory must be sync
                     // Qwen initialization will happen on first use
                     Ok(server)
@@ -1971,7 +1970,7 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
 
 async fn handle_agent_status(json: bool) -> Result<()> {
     use codegraph_core::config_manager::ConfigManager;
-    use codegraph_mcp::context_aware_limits::ContextTier;
+use codegraph_mcp_core::context_aware_limits::ContextTier;
 
     // Load configuration
     let config_mgr = ConfigManager::load().context("Failed to load configuration")?;
@@ -2492,7 +2491,6 @@ async fn handle_daemon_start(
     exclude: Vec<String>,
     include: Vec<String>,
 ) -> Result<()> {
-    use codegraph_mcp::daemon::{PidFile, WatchConfig, WatchDaemon};
     use codegraph_mcp::{IndexerConfig, ProjectIndexer};
 
     let project_root = std::fs::canonicalize(&path)
@@ -2571,7 +2569,6 @@ async fn handle_daemon_start(
 
 #[cfg(feature = "daemon")]
 async fn handle_daemon_stop(path: PathBuf) -> Result<()> {
-    use codegraph_mcp::daemon::PidFile;
     use nix::sys::signal::{kill, Signal};
     use nix::unistd::Pid;
 
@@ -2624,15 +2621,13 @@ async fn handle_daemon_stop(path: PathBuf) -> Result<()> {
 
 #[cfg(feature = "daemon")]
 async fn handle_daemon_status(path: PathBuf, json: bool) -> Result<()> {
-    use codegraph_mcp::daemon::PidFile;
-
     let project_root = std::fs::canonicalize(&path)
         .with_context(|| format!("Invalid project path: {:?}", path))?;
 
     let pid_path = PidFile::default_path(&project_root);
     let pid_file = PidFile::new(&pid_path);
 
-    let (running, pid) = match pid_file.read()? {
+    let (running, pid): (bool, Option<u32>) = match pid_file.read()? {
         Some(pid) => (pid_file.is_process_running()?, Some(pid)),
         None => (false, None),
     };

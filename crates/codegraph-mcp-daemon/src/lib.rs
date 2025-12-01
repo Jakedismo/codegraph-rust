@@ -4,3 +4,4 @@
 pub mod daemon;
 
 pub use daemon::*;
+pub use codegraph_mcp::{IndexerConfig, ProjectIndexer};

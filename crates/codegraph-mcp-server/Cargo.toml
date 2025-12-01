@@ -9,15 +9,18 @@ license = "Apache-2.0"
 path = "src/lib.rs"
 
 [features]
+default = ["daemon"]
 ai-enhanced = ["codegraph-mcp-autoagents", "codegraph-ai", "codegraph-mcp-autoagents/autoagents-experimental"]
 server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
 autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental"]
 embeddings = ["codegraph-mcp-tools/embeddings"]
+daemon = ["dep:codegraph-mcp-daemon"]
 
 [dependencies]
 codegraph-mcp-core = { path = "../codegraph-mcp-core" }
 codegraph-mcp-tools = { path = "../codegraph-mcp-tools" }
 codegraph-mcp-autoagents = { path = "../codegraph-mcp-autoagents", optional = true }
+codegraph-mcp-daemon = { path = "../codegraph-mcp-daemon", optional = true }
 codegraph-core = { path = "../codegraph-core" }
 codegraph-graph = { path = "../codegraph-graph" }
 codegraph-vector = { path = "../codegraph-vector" }
@@ -37,6 +40,18 @@ axum = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true }
 tower = { workspace = true, optional = true }
 http-body-util = { version = "0.1", optional = true }
+colored = { workspace = true }
+indicatif = { workspace = true }
+atty = { workspace = true }
+chrono = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde_yaml = "0.9"
+anyhow = { workspace = true }
+codegraph-mcp = { path = "../codegraph-mcp" }
+tracing-appender = { workspace = true }
+dirs = "6.0.0"
+dotenv = "0.15"
+nix = { version = "0.30.1", features = ["process", "signal"] }
 
 [dev-dependencies]
 serial_test = "3.2"

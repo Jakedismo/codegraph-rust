@@ -179,7 +179,12 @@ impl WatchSession {
         if !self.config.indexer.languages.is_empty() {
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 let ext_lower = ext.to_lowercase();
-                let matches_language = self.config.indexer.languages.iter().any(|lang| {
+                let matches_language = self
+                    .config
+                    .indexer
+                    .languages
+                    .iter()
+                    .any(|lang: &String| {
                     match lang.to_lowercase().as_str() {
                         "rust" => ext_lower == "rs",
                         "python" => ext_lower == "py",

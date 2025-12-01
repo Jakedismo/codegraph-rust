@@ -1,13 +1,13 @@
 # CodeGraph
 
-**Code-intelligence MCP server that shifts context gathering and code execution from async agents to a dedicated agent server.**
+**Use your entire codebase as semantically searchable context for you coding agents, indexes your whole project to a graph intelligently with ML-enhanced Node,Edge and Symbol discovery integrated with regular AST-parsing and exposes intelligent context through mcp-server and agentic context gathering tools.**
 
 CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed context to AI agents, eliminating the need for agents to burn tokens gathering project information. Instead of async agents like Claude Code executing searches and building dependency graphs, CodeGraph's MCP server handles these operations efficiently and exposes them through standardized tools.
 
 ## Features
 
 **Core Capabilities:**
-- Semantic code search with vector embeddings
+- Semantic code search with vector embeddings (and optional reranking of text results)
 - LLM-powered code intelligence and dependency analysis
 - Automatic dependency graph construction and traversal
 - Agentic code-agent tools with tier-aware multi-step reasoning
@@ -15,7 +15,7 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
 - Daemon mode for automatic file watching and re-indexing
 
 **LLM Providers:**
-- Anthropic Claude (Sonnet, Opus, Haiku - 4.5. family)
+- Anthropic Claude (Sonnet, Opus, Haiku - 4.5 model family)
 - OpenAI (GPT-5.1, GPT-5.1-codex)
 - Ollama (local models)
 - LM Studio (OpenAI-compatible)
@@ -64,7 +64,7 @@ use_completions_api = true
 **MCP Integration:**
 - Stdio transport (production-ready)
 - Streamable HTTP transport with SSE (experimental)
-- Compatible with Claude Desktop, Continue, and any MCP client
+- Compatible with Claude Code, Gemini, Claude Desktop, Cursor etc. (Haven't tested with Codex due to it's extreme sandbox)
 
 ---
 
@@ -933,9 +933,13 @@ flowchart TD
    - Tool call logging for debugging
 
 4. **Initial Instructions**: Auto-loaded when MCP server connects
-   - Agent discovers available tools and their capabilities
+   - The in-built Agent discovers available tools and their capabilities
    - Learns tier configuration and limits
    - Understands caching and orchestration settings
+   - Understands the context of the graphDB and it's structure. 
+
+5. **No parameters needed**: External client using the mcp-servers agentic tools only need to pass semantic queries for minimal cognitive load
+   - Server uses mcp-protocols instructions feature to broadcast the capabilities of the server automatically to clients that support it
 
 ---
 

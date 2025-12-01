@@ -9,8 +9,14 @@ license = "Apache-2.0"
 path = "src/lib.rs"
 
 [dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
 codegraph-mcp-core = { path = "../codegraph-mcp-core" }
 codegraph-core = { path = "../codegraph-core" }
+codegraph-mcp = { path = "../codegraph-mcp" }
+codegraph-parser = { path = "../codegraph-parser", features = ["watcher-experimental"] }
+glob-match = "0.2"
+indicatif = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
