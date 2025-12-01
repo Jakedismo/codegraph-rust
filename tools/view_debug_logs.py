@@ -17,21 +17,37 @@ from datetime import datetime
 import time
 
 def find_latest_log():
-    """Find the most recent debug log file"""
-    debug_dir = Path(".codegraph/debug")
-    if not debug_dir.exists():
-        print("❌ No debug directory found at .codegraph/debug")
-        print("   Set CODEGRAPH_DEBUG=1 to enable debug logging")
-        sys.exit(1)
+    """Find the most recent debug log file.
 
-    log_files = list(debug_dir.glob("agentic_debug_*.jsonl"))
-    if not log_files:
-        print("❌ No debug log files found in .codegraph/debug/")
-        print("   Set CODEGRAPH_DEBUG=1 and run agentic tools to generate logs")
-        sys.exit(1)
+    Search order:
+      1) CODEGRAPH_DEBUG_DIR (if set)
+      2) ./.codegraph/debug (cwd)
+      3) ~/.codegraph/debug (user cache)
+    """
+    candidates = []
 
-    latest = max(log_files, key=lambda p: p.stat().st_mtime)
-    return latest
+    import os
+    env_dir = os.environ.get("CODEGRAPH_DEBUG_DIR")
+    if env_dir:
+        candidates.append(Path(env_dir))
+
+    candidates.append(Path(".codegraph/debug"))
+    candidates.append(Path.home() / ".codegraph" / "debug")
+
+    for debug_dir in candidates:
+        if not debug_dir.exists():
+            continue
+        log_files = list(debug_dir.glob("agentic_debug_*.jsonl"))
+        if log_files:
+            latest = max(log_files, key=lambda p: p.stat().st_mtime)
+            return latest
+
+    print("❌ No debug log files found.")
+    print("   Looked in:")
+    for d in candidates:
+        print(f"     - {d}")
+    print("   Set CODEGRAPH_DEBUG=1 and run agentic tools to generate logs")
+    sys.exit(1)
 
 def format_timestamp(ts_str):
     """Format ISO timestamp to readable format"""

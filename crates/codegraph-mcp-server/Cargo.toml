@@ -10,7 +10,12 @@ path = "src/lib.rs"
 
 [features]
 default = ["daemon"]
-ai-enhanced = ["codegraph-mcp-autoagents", "codegraph-ai", "codegraph-mcp-autoagents/autoagents-experimental"]
+ai-enhanced = [
+    "codegraph-mcp-autoagents",
+    "codegraph-ai",
+    "codegraph-mcp-autoagents/autoagents-experimental",
+    "codegraph-ai/all-cloud-providers"
+]
 server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
 autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental"]
 embeddings = ["codegraph-mcp-tools/embeddings"]
