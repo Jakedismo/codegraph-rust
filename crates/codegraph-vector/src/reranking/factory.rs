@@ -1,13 +1,13 @@
 // ABOUTME: Factory for creating reranker instances based on configuration
 // ABOUTME: Supports Jina API and Ollama chat-based reranking providers
-use super::Reranker;
 #[cfg(feature = "jina")]
 use super::jina::JinaReranker;
 #[cfg(feature = "ollama")]
 use super::ollama::OllamaReranker;
-use anyhow::Result;
+use super::Reranker;
 #[cfg(any(feature = "jina", feature = "ollama"))]
 use anyhow::Context;
+use anyhow::Result;
 use codegraph_core::{RerankConfig, RerankProvider};
 use std::sync::Arc;
 
@@ -19,23 +19,21 @@ pub fn create_reranker(config: &RerankConfig) -> Result<Option<Arc<dyn Reranker>
         RerankProvider::Jina => {
             #[cfg(feature = "jina")]
             {
-                let reranker = JinaReranker::new(config)
-                    .context("Failed to create Jina reranker")?;
+                let reranker =
+                    JinaReranker::new(config).context("Failed to create Jina reranker")?;
                 Ok(Some(Arc::new(reranker)))
             }
             #[cfg(not(feature = "jina"))]
             {
-                anyhow::bail!(
-                    "RerankProvider::Jina requested but the 'jina' feature is disabled"
-                )
+                anyhow::bail!("RerankProvider::Jina requested but the 'jina' feature is disabled")
             }
         }
 
         RerankProvider::Ollama => {
             #[cfg(feature = "ollama")]
             {
-                let reranker = OllamaReranker::new(config)
-                    .context("Failed to create Ollama reranker")?;
+                let reranker =
+                    OllamaReranker::new(config).context("Failed to create Ollama reranker")?;
                 Ok(Some(Arc::new(reranker)))
             }
             #[cfg(not(feature = "ollama"))]

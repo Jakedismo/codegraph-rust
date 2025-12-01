@@ -172,10 +172,8 @@ impl Reranker for JinaReranker {
                             last_error =
                                 Some(anyhow::anyhow!("Jina rerank API error: {}", error_msg));
                         } else {
-                            last_error = Some(anyhow::anyhow!(
-                                "Jina rerank API error: HTTP {}",
-                                status
-                            ));
+                            last_error =
+                                Some(anyhow::anyhow!("Jina rerank API error: HTTP {}", status));
                         }
                     }
                 }
@@ -196,9 +194,8 @@ impl Reranker for JinaReranker {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            anyhow::anyhow!("All Jina rerank API retry attempts failed")
-        }))
+        Err(last_error
+            .unwrap_or_else(|| anyhow::anyhow!("All Jina rerank API retry attempts failed")))
     }
 
     fn model_name(&self) -> &str {

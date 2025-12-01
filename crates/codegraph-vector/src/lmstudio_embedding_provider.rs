@@ -1,11 +1,7 @@
 // ABOUTME: LM Studio embedding provider implementation using OpenAI-compatible API
 // ABOUTME: Provides local embedding generation without authentication requirements
 
-use crate::{
-    providers::{
-        BatchConfig, EmbeddingMetrics, EmbeddingProvider, ProviderCharacteristics,
-    },
-};
+use crate::providers::{BatchConfig, EmbeddingMetrics, EmbeddingProvider, ProviderCharacteristics};
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use reqwest::Client;
@@ -118,12 +114,12 @@ impl LmStudioEmbeddingProvider {
         })?;
 
         let performance_chars = ProviderCharacteristics {
-            expected_throughput: 50.0,  // Local service, slower than Ollama (single model)
+            expected_throughput: 50.0, // Local service, slower than Ollama (single model)
             typical_latency: Duration::from_millis(500),
             max_batch_size: config.batch_size,
             supports_streaming: false,
-            requires_network: true,  // Local network
-            memory_usage: crate::providers::MemoryUsage::High,  // Running full model
+            requires_network: true,                            // Local network
+            memory_usage: crate::providers::MemoryUsage::High, // Running full model
         };
 
         info!(
@@ -186,7 +182,10 @@ impl LmStudioEmbeddingProvider {
 
     /// Call LM Studio embeddings endpoint
     async fn call_embed_endpoint(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        let url = format!("{}/v1/embeddings", self.config.api_base.trim_end_matches('/'));
+        let url = format!(
+            "{}/v1/embeddings",
+            self.config.api_base.trim_end_matches('/')
+        );
 
         let request = EmbeddingRequest {
             input: texts.to_vec(),
@@ -203,22 +202,13 @@ impl LmStudioEmbeddingProvider {
                 tokio::time::sleep(backoff).await;
             }
 
-            match self
-                .client
-                .post(&url)
-                .json(&request)
-                .send()
-                .await
-            {
+            match self.client.post(&url).json(&request).send().await {
                 Ok(response) => {
                     if response.status().is_success() {
                         match response.json::<EmbeddingResponse>().await {
                             Ok(resp) => {
-                                let embeddings: Vec<Vec<f32>> = resp
-                                    .data
-                                    .into_iter()
-                                    .map(|item| item.embedding)
-                                    .collect();
+                                let embeddings: Vec<Vec<f32>> =
+                                    resp.data.into_iter().map(|item| item.embedding).collect();
                                 return Ok(embeddings);
                             }
                             Err(e) => {
@@ -228,10 +218,8 @@ impl LmStudioEmbeddingProvider {
                     } else {
                         let status = response.status();
                         let error_text = response.text().await.unwrap_or_default();
-                        last_error = Some(format!(
-                            "LM Studio API error ({}): {}",
-                            status, error_text
-                        ));
+                        last_error =
+                            Some(format!("LM Studio API error ({}): {}", status, error_text));
                     }
                 }
                 Err(e) => {
@@ -240,9 +228,9 @@ impl LmStudioEmbeddingProvider {
             }
         }
 
-        Err(CodeGraphError::Network(
-            last_error.unwrap_or_else(|| "LM Studio embedding request failed".to_string()),
-        ))
+        Err(CodeGraphError::Network(last_error.unwrap_or_else(|| {
+            "LM Studio embedding request failed".to_string()
+        })))
     }
 
     /// Process texts in batches with chunking
@@ -265,10 +253,9 @@ impl LmStudioEmbeddingProvider {
         if chunks.len() == 1 {
             // Single chunk - direct embedding
             let embeddings = self.call_embed_endpoint(&chunks).await?;
-            embeddings
-                .into_iter()
-                .next()
-                .ok_or_else(|| CodeGraphError::Vector("LM Studio returned no embedding".to_string()))
+            embeddings.into_iter().next().ok_or_else(|| {
+                CodeGraphError::Vector("LM Studio returned no embedding".to_string())
+            })
         } else {
             // Multiple chunks - average embeddings (for long text)
             let embeddings = self.process_in_batches(chunks).await?;
@@ -330,12 +317,15 @@ impl LmStudioEmbeddingProvider {
         }
 
         // Qwen models
-        if model_lower.contains("text-embedding-qwen3-embedding-0.6b") || model_lower.contains("qwen3-embedding-0.6b") {
+        if model_lower.contains("text-embedding-qwen3-embedding-0.6b")
+            || model_lower.contains("qwen3-embedding-0.6b")
+        {
             return 1024;
         }
 
         // Nomic models
-        if model_lower.contains("nomic-embed-text-v1.5") || model_lower.contains("nomic-embed-text") {
+        if model_lower.contains("nomic-embed-text-v1.5") || model_lower.contains("nomic-embed-text")
+        {
             return 768;
         }
 
@@ -362,10 +352,7 @@ impl LmStudioEmbeddingProvider {
         }
 
         // Safe default
-        warn!(
-            "Unknown model '{}', using default dimension 1536",
-            model
-        );
+        warn!("Unknown model '{}', using default dimension 1536", model);
         1536
     }
 }
@@ -509,13 +496,17 @@ mod tests {
             2048
         );
         assert_eq!(
-            LmStudioEmbeddingProvider::infer_dimension_for_model("jinaai/jina-embeddings-v4-text-code"),
+            LmStudioEmbeddingProvider::infer_dimension_for_model(
+                "jinaai/jina-embeddings-v4-text-code"
+            ),
             2048
         );
 
         // Qwen models
         assert_eq!(
-            LmStudioEmbeddingProvider::infer_dimension_for_model("text-embedding-qwen3-embedding-0.6b"),
+            LmStudioEmbeddingProvider::infer_dimension_for_model(
+                "text-embedding-qwen3-embedding-0.6b"
+            ),
             1024
         );
         assert_eq!(
@@ -538,7 +529,7 @@ mod tests {
         // Unknown model (default)
         assert_eq!(
             LmStudioEmbeddingProvider::infer_dimension_for_model("unknown-model"),
-            1536  // Default
+            1536 // Default
         );
     }
 

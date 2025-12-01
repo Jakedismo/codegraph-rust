@@ -280,15 +280,12 @@ impl GraphFunctions {
             .bind(("project_id", self.project_id.clone()))
             .await
             .map_err(|e| {
-                CodeGraphError::Database(format!(
-                    "count_nodes_for_project query failed: {}",
-                    e
-                ))
+                CodeGraphError::Database(format!("count_nodes_for_project query failed: {}", e))
             })?;
 
-        let count: Option<usize> = response.take(0).map_err(|e| {
-            CodeGraphError::Database(format!("Failed to deserialize count: {}", e))
-        })?;
+        let count: Option<usize> = response
+            .take(0)
+            .map_err(|e| CodeGraphError::Database(format!("Failed to deserialize count: {}", e)))?;
 
         Ok(count.unwrap_or(0))
     }

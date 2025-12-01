@@ -1,12 +1,12 @@
 // ABOUTME: Debug logging module for agentic tool execution
 // ABOUTME: Captures tool inputs/outputs and reasoning steps when CODEGRAPH_DEBUG=1
 
+use chrono::Utc;
 use serde_json::Value as JsonValue;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use chrono::Utc;
 
 /// Global debug logger instance
 static DEBUG_LOGGER: Mutex<Option<DebugLogger>> = Mutex::new(None);
@@ -57,11 +57,7 @@ impl DebugLogger {
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
         let log_path = log_dir.join(format!("agentic_debug_{}.jsonl", timestamp));
 
-        match OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_path)
-        {
+        match OpenOptions::new().create(true).append(true).open(&log_path) {
             Ok(file) => {
                 let logger = DebugLogger {
                     file: Some(file),
@@ -257,13 +253,12 @@ macro_rules! debug_log {
     };
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::fs;
     use uuid::Uuid;
-    use serial_test::serial;
 
     fn setup_temp_logger() -> PathBuf {
         let dir = std::env::temp_dir().join(format!("cg_debug_{}", Uuid::new_v4()));

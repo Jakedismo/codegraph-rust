@@ -1,12 +1,12 @@
 // ABOUTME: Defines the AgentExecutorTrait for pluggable agent architectures
 // ABOUTME: Enables runtime switching between ReAct, LATS, and future agent types
 
-use async_trait::async_trait;
-use codegraph_mcp_core::agent_architecture::AgentArchitecture;
-use codegraph_mcp_core::context_aware_limits::ContextTier;
-use codegraph_mcp_core::analysis::AnalysisType;
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use crate::autoagents::executor::ExecutorError;
+use async_trait::async_trait;
+use codegraph_mcp_core::agent_architecture::AgentArchitecture;
+use codegraph_mcp_core::analysis::AnalysisType;
+use codegraph_mcp_core::context_aware_limits::ContextTier;
 
 /// Universal executor trait for all agent architectures
 ///

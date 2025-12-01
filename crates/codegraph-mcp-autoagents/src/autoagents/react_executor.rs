@@ -1,16 +1,16 @@
 // ABOUTME: ReAct executor implementing AgentExecutorTrait
 // ABOUTME: Self-contained ReAct implementation using CodeGraphAgentBuilder
 
-use async_trait::async_trait;
-use codegraph_mcp_core::agent_architecture::AgentArchitecture;
-use codegraph_mcp_core::context_aware_limits::ContextTier;
-use codegraph_mcp_core::analysis::AnalysisType;
-use codegraph_mcp_tools::GraphToolExecutor;
-use codegraph_ai::llm_provider::LLMProvider;
-use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
-use crate::autoagents::executor_trait::AgentExecutorTrait;
-use crate::autoagents::executor::ExecutorError;
 use crate::autoagents::agent_builder::{AgentHandle, CodeGraphAgentBuilder};
+use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
+use crate::autoagents::executor::ExecutorError;
+use crate::autoagents::executor_trait::AgentExecutorTrait;
+use async_trait::async_trait;
+use codegraph_ai::llm_provider::LLMProvider;
+use codegraph_mcp_core::agent_architecture::AgentArchitecture;
+use codegraph_mcp_core::analysis::AnalysisType;
+use codegraph_mcp_core::context_aware_limits::ContextTier;
+use codegraph_mcp_tools::GraphToolExecutor;
 use std::sync::Arc;
 
 /// ReAct executor implementing AgentExecutorTrait
@@ -38,10 +38,7 @@ impl ReActExecutor {
     }
 
     /// Build CodeGraph agent with specified tier and analysis type
-    async fn build_agent(
-        &self,
-        analysis_type: AnalysisType,
-    ) -> Result<AgentHandle, ExecutorError> {
+    async fn build_agent(&self, analysis_type: AnalysisType) -> Result<AgentHandle, ExecutorError> {
         let builder = CodeGraphAgentBuilder::new(
             self.llm_provider.clone(),
             self.tool_executor.clone(),

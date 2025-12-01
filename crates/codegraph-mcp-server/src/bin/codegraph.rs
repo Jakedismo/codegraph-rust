@@ -7,9 +7,9 @@ use codegraph_mcp::{
     RepositoryEstimator,
 };
 use codegraph_mcp_core::debug_logger::DebugLogger;
-use codegraph_mcp_server::CodeGraphMCPServer;
 #[cfg(feature = "daemon")]
 use codegraph_mcp_daemon::{DaemonManager, PidFile, WatchConfig, WatchDaemon};
+use codegraph_mcp_server::CodeGraphMCPServer;
 use colored::Colorize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rmcp::ServiceExt;
@@ -416,7 +416,10 @@ enum TransportType {
         watch_path: Option<PathBuf>,
 
         /// Explicitly disable daemon even if config enables it
-        #[arg(long = "no-watch", help = "Explicitly disable daemon even if config enables it")]
+        #[arg(
+            long = "no-watch",
+            help = "Explicitly disable daemon even if config enables it"
+        )]
         disable_daemon: bool,
     },
 
@@ -457,7 +460,10 @@ enum TransportType {
         watch_path: Option<PathBuf>,
 
         /// Explicitly disable daemon even if config enables it
-        #[arg(long = "no-watch", help = "Explicitly disable daemon even if config enables it")]
+        #[arg(
+            long = "no-watch",
+            help = "Explicitly disable daemon even if config enables it"
+        )]
         disable_daemon: bool,
     },
 
@@ -489,7 +495,10 @@ enum TransportType {
         watch_path: Option<PathBuf>,
 
         /// Explicitly disable daemon even if config enables it
-        #[arg(long = "no-watch", help = "Explicitly disable daemon even if config enables it")]
+        #[arg(
+            long = "no-watch",
+            help = "Explicitly disable daemon even if config enables it"
+        )]
         disable_daemon: bool,
     },
 }
@@ -906,11 +915,11 @@ async fn handle_start(
             // Use official rmcp STDIO transport for perfect compliance
             let service: rmcp::service::RunningService<rmcp::RoleServer, CodeGraphMCPServer> =
                 server.serve(rmcp::transport::stdio()).await.map_err(|e| {
-                if atty::is(Stream::Stderr) {
-                    eprintln!("❌ Failed to start official MCP server: {}", e);
-                }
-                anyhow::anyhow!("MCP server startup failed: {}", e)
-            })?;
+                    if atty::is(Stream::Stderr) {
+                        eprintln!("❌ Failed to start official MCP server: {}", e);
+                    }
+                    anyhow::anyhow!("MCP server startup failed: {}", e)
+                })?;
 
             if atty::is(Stream::Stderr) {
                 eprintln!("🚀 Official MCP server started with revolutionary capabilities");
@@ -942,7 +951,16 @@ async fn handle_start(
             disable_daemon,
         } => {
             #[cfg(not(feature = "server-http"))]
-            let _ = (host, port, tls, cert, key, enable_daemon, watch_path, disable_daemon);
+            let _ = (
+                host,
+                port,
+                tls,
+                cert,
+                key,
+                enable_daemon,
+                watch_path,
+                disable_daemon,
+            );
             #[cfg(not(feature = "server-http"))]
             {
                 eprintln!("🚧 HTTP transport requires the 'server-http' feature");
@@ -1001,8 +1019,11 @@ async fn handle_start(
                                 ..global_config.daemon.clone()
                             };
 
-                            let mut dm =
-                                DaemonManager::new(daemon_config, global_config, project_root.clone());
+                            let mut dm = DaemonManager::new(
+                                daemon_config,
+                                global_config,
+                                project_root.clone(),
+                            );
 
                             match dm.start_background().await {
                                 Ok(()) => {
@@ -1970,7 +1991,7 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
 
 async fn handle_agent_status(json: bool) -> Result<()> {
     use codegraph_core::config_manager::ConfigManager;
-use codegraph_mcp_core::context_aware_limits::ContextTier;
+    use codegraph_mcp_core::context_aware_limits::ContextTier;
 
     // Load configuration
     let config_mgr = ConfigManager::load().context("Failed to load configuration")?;
@@ -2413,11 +2434,11 @@ fn optimize_for_memory(
         } else {
             // ONNX/OpenAI/LM Studio: Reasonable batches to avoid throttling
             match memory_gb {
-                128.. => 256,      // 128GB+: Maximum safe batch size
-                64..=127 => 128,   // 64-127GB: Large batch for good throughput
-                32..=63 => 64,     // 32-63GB: Medium batch size
-                16..=31 => 32,     // 16-31GB: Conservative batch size
-                _ => 16,           // <16GB: Minimal batch to avoid memory pressure
+                128.. => 256,    // 128GB+: Maximum safe batch size
+                64..=127 => 128, // 64-127GB: Large batch for good throughput
+                32..=63 => 64,   // 32-63GB: Medium batch size
+                16..=31 => 32,   // 16-31GB: Conservative batch size
+                _ => 16,         // <16GB: Minimal batch to avoid memory pressure
             }
         }
     } else {
@@ -2475,9 +2496,7 @@ async fn handle_daemon(action: DaemonAction) -> Result<()> {
             languages,
             exclude,
             include,
-        } => {
-            handle_daemon_start(path, foreground, languages, exclude, include).await
-        }
+        } => handle_daemon_start(path, foreground, languages, exclude, include).await,
         DaemonAction::Stop { path } => handle_daemon_stop(path).await,
         DaemonAction::Status { path, json } => handle_daemon_status(path, json).await,
     }
@@ -2533,8 +2552,7 @@ async fn handle_daemon_start(
 
     // Create ProjectIndexer
     use codegraph_core::config_manager::ConfigManager;
-    let config_mgr = ConfigManager::load()
-        .with_context(|| "Failed to load configuration")?;
+    let config_mgr = ConfigManager::load().with_context(|| "Failed to load configuration")?;
     let global_config = config_mgr.config().clone();
 
     let indexer = ProjectIndexer::new(
@@ -2546,12 +2564,15 @@ async fn handle_daemon_start(
     .with_context(|| "Failed to create project indexer")?;
 
     // Create and start daemon
-    let mut daemon = WatchDaemon::new(watch_config)
-        .with_context(|| "Failed to create watch daemon")?;
+    let mut daemon =
+        WatchDaemon::new(watch_config).with_context(|| "Failed to create watch daemon")?;
     daemon.set_indexer(indexer);
 
     if foreground {
-        println!("{}", "Running in foreground. Press Ctrl+C to stop.".yellow());
+        println!(
+            "{}",
+            "Running in foreground. Press Ctrl+C to stop.".yellow()
+        );
         daemon.start().await?;
     } else {
         // For now, just run in foreground (proper daemonization requires fork)

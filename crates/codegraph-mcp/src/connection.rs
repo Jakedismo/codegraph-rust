@@ -1,10 +1,10 @@
 use crate::heartbeat::HeartbeatManager;
 use crate::transport::{backoff_durations, IncomingFrame, Transport, WebSocketTransport};
 use codegraph_mcp_core::{
+    error::{McpError, Result},
     message::*,
     protocol::{handshake, parse_response_typed, McpProtocol},
     version::{ProtocolVersion, VersionNegotiator, DEFAULT_VERSION},
-    error::{McpError, Result},
 };
 use dashmap::DashMap;
 use serde::de::DeserializeOwned;

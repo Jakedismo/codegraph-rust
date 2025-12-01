@@ -33,8 +33,8 @@ pub struct WatchSession {
 impl WatchSession {
     /// Create a new watch session
     pub async fn new(config: WatchConfig) -> Result<Self> {
-        let mut watcher = FileSystemWatcher::new()
-            .context("Failed to create file system watcher")?;
+        let mut watcher =
+            FileSystemWatcher::new().context("Failed to create file system watcher")?;
 
         // Configure watcher based on config
         watcher.set_debounce_duration(Duration::from_millis(config.debounce_ms));
@@ -42,12 +42,15 @@ impl WatchSession {
 
         // Set include patterns from indexer config if specified
         if !config.indexer.include_patterns.is_empty() {
-            watcher.set_include_patterns(&config.indexer.include_patterns)
+            watcher
+                .set_include_patterns(&config.indexer.include_patterns)
                 .context("Failed to set include patterns")?;
         }
 
         // Add watch directory
-        watcher.add_watch_directory(&config.project_root).await
+        watcher
+            .add_watch_directory(&config.project_root)
+            .await
             .context("Failed to add watch directory")?;
 
         let tracked_files = watcher.get_tracked_files();
@@ -167,7 +170,9 @@ impl WatchSession {
             batch_id,
             indexed,
             deleted,
-            Utc::now().signed_duration_since(batch.timestamp).num_milliseconds()
+            Utc::now()
+                .signed_duration_since(batch.timestamp)
+                .num_milliseconds()
         );
 
         Ok((indexed, deleted))
@@ -179,12 +184,7 @@ impl WatchSession {
         if !self.config.indexer.languages.is_empty() {
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 let ext_lower = ext.to_lowercase();
-                let matches_language = self
-                    .config
-                    .indexer
-                    .languages
-                    .iter()
-                    .any(|lang: &String| {
+                let matches_language = self.config.indexer.languages.iter().any(|lang: &String| {
                     match lang.to_lowercase().as_str() {
                         "rust" => ext_lower == "rs",
                         "python" => ext_lower == "py",
@@ -192,7 +192,9 @@ impl WatchSession {
                         "javascript" => ext_lower == "js" || ext_lower == "jsx",
                         "go" => ext_lower == "go",
                         "java" => ext_lower == "java",
-                        "cpp" | "c++" => ext_lower == "cpp" || ext_lower == "hpp" || ext_lower == "cc",
+                        "cpp" | "c++" => {
+                            ext_lower == "cpp" || ext_lower == "hpp" || ext_lower == "cc"
+                        }
                         "c" => ext_lower == "c" || ext_lower == "h",
                         _ => false,
                     }
@@ -217,7 +219,9 @@ impl WatchSession {
     async fn reindex_file(&self, path: &std::path::Path) -> Result<()> {
         // The indexer handles upsert semantics - no duplicates created
         if let Some(indexer) = &self.indexer {
-            indexer.index_single_file(path).await
+            indexer
+                .index_single_file(path)
+                .await
                 .with_context(|| format!("Failed to reindex {:?}", path))?;
         } else {
             warn!("No indexer set, skipping reindex of {:?}", path);
@@ -228,7 +232,9 @@ impl WatchSession {
     /// Delete all data for a file
     async fn delete_file_data(&self, path: &std::path::Path) -> Result<()> {
         if let Some(indexer) = &self.indexer {
-            indexer.delete_file_data(path).await
+            indexer
+                .delete_file_data(path)
+                .await
                 .with_context(|| format!("Failed to delete data for {:?}", path))?;
         } else {
             warn!("No indexer set, skipping delete for {:?}", path);

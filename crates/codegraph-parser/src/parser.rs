@@ -946,11 +946,7 @@ impl TreeSitterParser {
                     // REVOLUTIONARY: Use unified extractors for MAXIMUM SPEED
                     let ast_result = if matches!(language, Language::Rust) {
                         use crate::languages::rust::RustExtractor;
-                        RustExtractor::extract_with_edges(
-                            &tree_used,
-                            &used_content,
-                            &file_path,
-                        )
+                        RustExtractor::extract_with_edges(&tree_used, &used_content, &file_path)
                     } else if matches!(language, Language::TypeScript) {
                         use crate::languages::javascript::TypeScriptExtractor;
                         TypeScriptExtractor::extract_with_edges(
@@ -969,11 +965,7 @@ impl TreeSitterParser {
                         )
                     } else if matches!(language, Language::Python) {
                         use crate::languages::python::PythonExtractor;
-                        PythonExtractor::extract_with_edges(
-                            &tree_used,
-                            &used_content,
-                            &file_path,
-                        )
+                        PythonExtractor::extract_with_edges(&tree_used, &used_content, &file_path)
                     } else {
                         // Fallback: use AstVisitor for other languages (no edges yet)
                         let mut visitor = crate::AstVisitor::new(
@@ -990,7 +982,8 @@ impl TreeSitterParser {
 
                     // Apply Fast ML enhancement for maximum graph completeness
                     // Adds pattern-based edges and resolves unmatched references (<1ms overhead)
-                    let enhanced_result = crate::fast_ml::enhance_extraction(ast_result, &used_content);
+                    let enhanced_result =
+                        crate::fast_ml::enhance_extraction(ast_result, &used_content);
                     Ok(enhanced_result)
                 }
                 None => {

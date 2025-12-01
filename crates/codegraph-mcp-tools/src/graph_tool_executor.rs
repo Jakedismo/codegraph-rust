@@ -93,12 +93,14 @@ impl GraphToolExecutor {
         }));
 
         // Initialize reranker from config
-        let reranker = create_reranker(&config.rerank)
-            .ok()
-            .flatten();
+        let reranker = create_reranker(&config.rerank).ok().flatten();
 
         if let Some(ref reranker) = reranker {
-            info!("Reranker initialized: {} ({})", reranker.model_name(), reranker.provider_name());
+            info!(
+                "Reranker initialized: {} ({})",
+                reranker.model_name(),
+                reranker.provider_name()
+            );
         }
 
         Self {
@@ -199,14 +201,13 @@ impl GraphToolExecutor {
                         .await?
                 }
                 "semantic_code_search" => {
-                    self.execute_semantic_code_search(parameters.clone()).await?
+                    self.execute_semantic_code_search(parameters.clone())
+                        .await?
                 }
                 _ => {
-                    return Err(McpError::Protocol(format!(
-                        "Tool not implemented: {}",
-                        tool_name
-                    ))
-                    .into());
+                    return Err(
+                        McpError::Protocol(format!("Tool not implemented: {}", tool_name)).into(),
+                    );
                 }
             };
 
@@ -468,10 +469,8 @@ impl GraphToolExecutor {
                 .map_err(|e| McpError::Protocol(format!("Reranking failed: {}", e)))?;
 
             // Convert back to original format
-            let reranked: Vec<serde_json::Value> = results
-                .into_iter()
-                .filter_map(|r| r.metadata)
-                .collect();
+            let reranked: Vec<serde_json::Value> =
+                results.into_iter().filter_map(|r| r.metadata).collect();
 
             Ok(reranked)
         } else {

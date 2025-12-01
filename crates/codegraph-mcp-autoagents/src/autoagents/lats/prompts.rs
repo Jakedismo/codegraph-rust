@@ -33,8 +33,10 @@ impl LATSPrompts {
                 ));
 
                 if let Some(ref action) = node.action {
-                    node_descriptions.push_str(&format!("  Action: {} - {}\n",
-                        action.tool_name, action.reasoning));
+                    node_descriptions.push_str(&format!(
+                        "  Action: {} - {}\n",
+                        action.tool_name, action.reasoning
+                    ));
                 }
 
                 if let Some(ref obs) = node.observation {
@@ -71,10 +73,7 @@ Respond with a JSON object:
 }}
 
 Select between 1 and {} nodes."#,
-            query,
-            node_descriptions,
-            beam_width,
-            beam_width
+            query, node_descriptions, beam_width, beam_width
         )
     }
 
@@ -90,11 +89,7 @@ Select between 1 and {} nodes."#,
     ///
     /// # Returns
     /// A prompt that asks the LLM to generate new actions
-    pub fn expansion_prompt(
-        node: &SearchNode,
-        query: &str,
-        available_tools: &[String],
-    ) -> String {
+    pub fn expansion_prompt(node: &SearchNode, query: &str, available_tools: &[String]) -> String {
         let tools_list = available_tools.join(", ");
 
         // Build path context
@@ -146,9 +141,7 @@ Respond with a JSON object:
 }}
 
 Generate between 1 and 3 actions."#,
-            query,
-            path_context,
-            tools_list
+            query, path_context, tools_list
         )
     }
 
@@ -165,7 +158,8 @@ Generate between 1 and 3 actions."#,
     /// # Returns
     /// A prompt that asks the LLM to score the node
     pub fn evaluation_prompt(node: &SearchNode, observation: &JsonValue, query: &str) -> String {
-        let obs_str = serde_json::to_string_pretty(observation).unwrap_or_else(|_| "{}".to_string());
+        let obs_str =
+            serde_json::to_string_pretty(observation).unwrap_or_else(|_| "{}".to_string());
 
         let action_desc = if let Some(ref action) = node.action {
             format!("Tool: {} - {}", action.tool_name, action.reasoning)
@@ -201,10 +195,7 @@ Respond with a JSON object:
 }}
 
 Provide a score between 0.0 and 1.0."#,
-            query,
-            node.thought,
-            action_desc,
-            obs_str
+            query, node.thought, action_desc, obs_str
         )
     }
 

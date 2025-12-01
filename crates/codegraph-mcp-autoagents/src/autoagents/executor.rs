@@ -2,9 +2,9 @@
 // ABOUTME: Orchestrates architecture detection, factory-based executor creation, and delegation
 
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
+use codegraph_ai::llm_provider::LLMProvider;
 use codegraph_mcp_core::analysis::AnalysisType;
 use codegraph_mcp_tools::GraphToolExecutor;
-use codegraph_ai::llm_provider::LLMProvider;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -45,16 +45,15 @@ impl CodeGraphExecutor {
         use crate::autoagents::executor_factory::AgentExecutorFactory;
 
         // Create factory for architecture-specific executors
-        let factory = AgentExecutorFactory::new(
-            llm_provider,
-            tool_executor,
-            config.clone(),
-        );
+        let factory = AgentExecutorFactory::new(llm_provider, tool_executor, config.clone());
 
         // Detect architecture from environment or config
         let architecture = AgentExecutorFactory::detect_architecture();
 
-        Self { factory, architecture }
+        Self {
+            factory,
+            architecture,
+        }
     }
 
     /// Execute agentic analysis with automatic architecture selection
@@ -97,7 +96,10 @@ impl CodeGraphExecutorBuilder {
         self
     }
 
-    pub fn config(mut self, config: Arc<codegraph_mcp_core::config_manager::CodeGraphConfig>) -> Self {
+    pub fn config(
+        mut self,
+        config: Arc<codegraph_mcp_core::config_manager::CodeGraphConfig>,
+    ) -> Self {
         self.config = Some(config);
         self
     }

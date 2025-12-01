@@ -24,14 +24,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::prompt_selector::AnalysisType;
+use crate::prompts::INITIAL_INSTRUCTIONS;
+use codegraph_ai::agentic_schemas::AgenticOutput;
 use codegraph_mcp_autoagents::{CodeGraphAgentOutput, CodeGraphExecutor, CodeGraphExecutorBuilder};
-use codegraph_mcp_core::debug_logger::DebugLogger;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
+use codegraph_mcp_core::debug_logger::DebugLogger;
 use codegraph_mcp_tools::GraphToolExecutor;
 use codegraph_vector::EmbeddingGenerator;
-use codegraph_ai::agentic_schemas::AgenticOutput;
-use crate::prompts::INITIAL_INSTRUCTIONS;
-use crate::prompt_selector::AnalysisType;
 
 /// Parameter structs following official rmcp SDK pattern
 // #[derive(Deserialize, JsonSchema)]
@@ -289,13 +289,8 @@ impl CodeGraphMCPServer {
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(
-            AnalysisType::DependencyAnalysis,
-            &request.query,
-            peer,
-            meta,
-        )
-        .await
+        self.execute_agentic_workflow(AnalysisType::DependencyAnalysis, &request.query, peer, meta)
+            .await
     }
 
     /// Agentic call chain analysis with multi-step tracing
@@ -309,13 +304,8 @@ impl CodeGraphMCPServer {
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(
-            AnalysisType::CallChainAnalysis,
-            &request.query,
-            peer,
-            meta,
-        )
-        .await
+        self.execute_agentic_workflow(AnalysisType::CallChainAnalysis, &request.query, peer, meta)
+            .await
     }
 
     /// Agentic architecture analysis with multi-step system exploration
@@ -349,13 +339,8 @@ impl CodeGraphMCPServer {
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(
-            AnalysisType::ApiSurfaceAnalysis,
-            &request.query,
-            peer,
-            meta,
-        )
-        .await
+        self.execute_agentic_workflow(AnalysisType::ApiSurfaceAnalysis, &request.query, peer, meta)
+            .await
     }
 
     /// Agentic context builder with multi-step comprehensive context gathering
@@ -369,13 +354,8 @@ impl CodeGraphMCPServer {
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(
-            AnalysisType::ContextBuilder,
-            &request.query,
-            peer,
-            meta,
-        )
-        .await
+        self.execute_agentic_workflow(AnalysisType::ContextBuilder, &request.query, peer, meta)
+            .await
     }
 
     /// Agentic semantic question answering with multi-step exploration
@@ -389,13 +369,8 @@ impl CodeGraphMCPServer {
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(
-            AnalysisType::SemanticQuestion,
-            &request.query,
-            peer,
-            meta,
-        )
-        .await
+        self.execute_agentic_workflow(AnalysisType::SemanticQuestion, &request.query, peer, meta)
+            .await
     }
 }
 
@@ -463,9 +438,9 @@ impl CodeGraphMCPServer {
         peer: Peer<RoleServer>,
         meta: Meta,
     ) -> Result<CallToolResult, McpError> {
-        use codegraph_mcp_autoagents::{CodeGraphExecutor, CodeGraphExecutorBuilder};
         use codegraph_ai::llm_factory::LLMProviderFactory;
         use codegraph_graph::GraphFunctions;
+        use codegraph_mcp_autoagents::{CodeGraphExecutor, CodeGraphExecutorBuilder};
         use std::sync::Arc;
 
         // Auto-detect context tier
@@ -476,8 +451,8 @@ impl CodeGraphMCPServer {
         DebugLogger::log_agent_start(query, analysis_type.as_str(), &format!("{:?}", tier));
 
         // Load config for LLM provider
-        let config_manager =
-            codegraph_core::config_manager::ConfigManager::load().map_err(|e| McpError {
+        let config_manager = codegraph_core::config_manager::ConfigManager::load()
+            .map_err(|e| McpError {
                 code: rmcp::model::ErrorCode(-32603),
                 message: format!("Failed to load config: {}", e).into(),
                 data: None,
@@ -489,8 +464,8 @@ impl CodeGraphMCPServer {
         let config = config_manager.config();
 
         // Create LLM provider
-        let llm_provider =
-            LLMProviderFactory::create_from_config(&config.llm).map_err(|e| McpError {
+        let llm_provider = LLMProviderFactory::create_from_config(&config.llm)
+            .map_err(|e| McpError {
                 code: rmcp::model::ErrorCode(-32603),
                 message: format!("Failed to create LLM provider: {}", e).into(),
                 data: None,

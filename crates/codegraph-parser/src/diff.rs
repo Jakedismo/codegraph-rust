@@ -457,7 +457,10 @@ impl DiffBasedParser {
             visitor.visit(new_tree.root_node());
 
             // Count how many nodes we had to reparse
-            let reparse_count = affected_nodes_owned.iter().filter(|n| n.needs_reparse).count();
+            let reparse_count = affected_nodes_owned
+                .iter()
+                .filter(|n| n.needs_reparse)
+                .count();
 
             Ok::<_, CodeGraphError>((visitor.nodes, new_tree, reparse_count))
         })
@@ -466,9 +469,7 @@ impl DiffBasedParser {
 
         info!(
             "Incremental parse completed for {}: {} nodes affected, {} reparsed",
-            file_path_for_log,
-            affected_nodes_len,
-            reparse_count
+            file_path_for_log, affected_nodes_len, reparse_count
         );
 
         Ok(IncrementalParseResult {
@@ -568,11 +569,7 @@ impl SemanticAnalyzer {
             for node in old_nodes {
                 if self.is_semantically_dependent(node, affected) {
                     semantic_affected.push(AffectedNode {
-                        node_id: format!(
-                            "semantic:{}:{}",
-                            node.node_type,
-                            node.name.as_str()
-                        ),
+                        node_id: format!("semantic:{}:{}", node.node_type, node.name.as_str()),
                         node_type: node.node_type.clone(),
                         range: TextRange::new(
                             node.start_byte.unwrap_or(0),

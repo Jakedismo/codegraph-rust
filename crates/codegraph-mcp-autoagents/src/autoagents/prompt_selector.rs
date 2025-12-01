@@ -14,8 +14,6 @@ use crate::call_chain_prompts::{
 use crate::code_search_prompts::{
     CODE_SEARCH_BALANCED, CODE_SEARCH_DETAILED, CODE_SEARCH_EXPLORATORY, CODE_SEARCH_TERSE,
 };
-use codegraph_mcp_core::context_aware_limits::ContextTier;
-pub use codegraph_mcp_core::analysis::AnalysisType;
 use crate::context_builder_prompts::{
     CONTEXT_BUILDER_BALANCED, CONTEXT_BUILDER_DETAILED, CONTEXT_BUILDER_EXPLORATORY,
     CONTEXT_BUILDER_TERSE,
@@ -28,6 +26,8 @@ use crate::semantic_question_prompts::{
     SEMANTIC_QUESTION_BALANCED, SEMANTIC_QUESTION_DETAILED, SEMANTIC_QUESTION_EXPLORATORY,
     SEMANTIC_QUESTION_TERSE,
 };
+pub use codegraph_mcp_core::analysis::AnalysisType;
+use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_core::error::{McpError, Result};
 use std::collections::HashMap;
 use tracing::debug;
@@ -85,7 +85,7 @@ impl PromptSelector {
     }
 
     /// Select appropriate prompt for given analysis type and context tier
-        pub fn select_prompt(&self, analysis_type: AnalysisType, tier: ContextTier) -> Result<&str> {
+    pub fn select_prompt(&self, analysis_type: AnalysisType, tier: ContextTier) -> Result<&str> {
         let verbosity = PromptVerbosity::from(tier);
         debug!(
             "Selecting prompt: type={:?}, tier={:?}, verbosity={:?}",
@@ -141,7 +141,7 @@ impl PromptSelector {
     ///
     /// These will be replaced by subagent-generated prompts in Phase 2B
     fn load_default_prompts(&mut self) {
-                {
+        {
             for analysis_type in AnalysisType::all() {
                 for verbosity in [
                     PromptVerbosity::Terse,
@@ -157,7 +157,7 @@ impl PromptSelector {
     }
 
     /// Generate a default prompt (now using specialized prompts for all analysis types)
-        fn generate_default_prompt(
+    fn generate_default_prompt(
         &self,
         analysis_type: AnalysisType,
         verbosity: PromptVerbosity,

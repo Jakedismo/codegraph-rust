@@ -72,8 +72,11 @@ impl PatternMatcher {
     }
 
     /// Enhance extraction result with pattern-based edges AND node enrichment (50-500ns per file)
-    pub fn enhance_extraction(&self, mut result: ExtractionResult, content: &str) -> ExtractionResult {
-
+    pub fn enhance_extraction(
+        &self,
+        mut result: ExtractionResult,
+        content: &str,
+    ) -> ExtractionResult {
         // Find all pattern matches in content (SIMD-accelerated, sub-microsecond)
         let matches: Vec<_> = self.automaton.find_iter(content).collect();
 
@@ -106,7 +109,10 @@ impl PatternMatcher {
                     let mut metadata = HashMap::new();
                     metadata.insert("pattern".to_string(), pattern_name.clone());
                     metadata.insert("pattern_count".to_string(), count.to_string());
-                    metadata.insert("fast_ml_enhancement".to_string(), "pattern_match".to_string());
+                    metadata.insert(
+                        "fast_ml_enhancement".to_string(),
+                        "pattern_match".to_string(),
+                    );
 
                     new_edges.push(EdgeRelationship {
                         from: first_node.id,
@@ -135,12 +141,12 @@ impl PatternMatcher {
             for node in &mut result.nodes {
                 // Enrich nodes that represent the file or module scope
                 if matches!(node.node_type, Some(codegraph_core::NodeType::Module))
-                    || node.node_type.is_none() {
+                    || node.node_type.is_none()
+                {
                     // Add pattern context to metadata
-                    node.metadata.attributes.insert(
-                        "fast_ml_patterns".to_string(),
-                        pattern_names.join(", "),
-                    );
+                    node.metadata
+                        .attributes
+                        .insert("fast_ml_patterns".to_string(), pattern_names.join(", "));
                     node.metadata.attributes.insert(
                         "fast_ml_pattern_count".to_string(),
                         matches.len().to_string(),

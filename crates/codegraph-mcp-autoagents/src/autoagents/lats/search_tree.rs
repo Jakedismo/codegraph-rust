@@ -117,9 +117,7 @@ impl SearchTree {
 
     /// Get a reference to a node
     pub fn get_node(&self, id: NodeId) -> Result<&SearchNode, SearchTreeError> {
-        self.nodes
-            .get(&id)
-            .ok_or(SearchTreeError::NodeNotFound(id))
+        self.nodes.get(&id).ok_or(SearchTreeError::NodeNotFound(id))
     }
 
     /// Get a mutable reference to a node
@@ -209,9 +207,7 @@ impl SearchTree {
             let best_child = current
                 .children
                 .iter()
-                .filter_map(|&child_id| {
-                    self.nodes.get(&child_id).map(|child| (child_id, child))
-                })
+                .filter_map(|&child_id| self.nodes.get(&child_id).map(|child| (child_id, child)))
                 .max_by(|(_, a), (_, b)| {
                     a.score
                         .partial_cmp(&b.score)

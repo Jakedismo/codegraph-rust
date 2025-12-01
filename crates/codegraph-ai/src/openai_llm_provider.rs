@@ -356,10 +356,7 @@ struct OpenAIRequest {
     input: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     instructions: Option<String>,
-    #[serde(
-        rename = "max_output_tokens",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "max_output_tokens", skip_serializing_if = "Option::is_none")]
     max_completion_tokens: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning: Option<Reasoning>,

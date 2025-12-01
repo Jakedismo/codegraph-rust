@@ -18,8 +18,6 @@ use crate::call_chain_prompts::{
 use crate::code_search_prompts::{
     CODE_SEARCH_BALANCED, CODE_SEARCH_DETAILED, CODE_SEARCH_EXPLORATORY, CODE_SEARCH_TERSE,
 };
-use codegraph_mcp_core::context_aware_limits::ContextTier;
-pub use codegraph_mcp_core::analysis::AnalysisType;
 #[cfg(feature = "ai-enhanced")]
 use crate::context_builder_prompts::{
     CONTEXT_BUILDER_BALANCED, CONTEXT_BUILDER_DETAILED, CONTEXT_BUILDER_EXPLORATORY,
@@ -35,6 +33,8 @@ use crate::semantic_question_prompts::{
     SEMANTIC_QUESTION_BALANCED, SEMANTIC_QUESTION_DETAILED, SEMANTIC_QUESTION_EXPLORATORY,
     SEMANTIC_QUESTION_TERSE,
 };
+pub use codegraph_mcp_core::analysis::AnalysisType;
+use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_core::error::{McpError, Result};
 use std::collections::HashMap;
 #[cfg(feature = "ai-enhanced")]

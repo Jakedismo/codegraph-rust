@@ -8,8 +8,8 @@ use rkyv::api::high::{HighDeserializer, HighSerializer, HighValidator};
 use rkyv::ser::allocator::ArenaHandle;
 use rkyv::util::AlignedVec;
 use rkyv::{
-    access, access_unchecked, from_bytes, rancor::Failure,
-    to_bytes, Archive, Deserialize, Serialize,
+    access, access_unchecked, from_bytes, rancor::Failure, to_bytes, Archive, Deserialize,
+    Serialize,
 };
 use std::sync::Arc;
 use tracing::instrument;

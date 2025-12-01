@@ -14,11 +14,12 @@ ai-enhanced = [
     "codegraph-mcp-autoagents",
     "codegraph-ai",
     "codegraph-mcp-autoagents/autoagents-experimental",
-    "codegraph-ai/all-cloud-providers"
+    "codegraph-ai/all-cloud-providers",
+    "codegraph-mcp/ai-enhanced"
 ]
 server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
-autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental"]
-embeddings = ["codegraph-mcp-tools/embeddings"]
+autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental", "codegraph-mcp/autoagents-experimental"]
+embeddings = ["codegraph-mcp-tools/embeddings", "codegraph-mcp/embeddings"]
 daemon = ["dep:codegraph-mcp-daemon"]
 
 [dependencies]

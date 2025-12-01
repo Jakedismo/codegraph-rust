@@ -163,17 +163,15 @@ impl DaemonManager {
 
         // Create ProjectIndexer
         // Use a hidden progress bar for background daemon
-        let progress = indicatif::MultiProgress::with_draw_target(
-            indicatif::ProgressDrawTarget::hidden(),
-        );
+        let progress =
+            indicatif::MultiProgress::with_draw_target(indicatif::ProgressDrawTarget::hidden());
 
         let indexer = ProjectIndexer::new(indexer_config, &global_config, progress)
             .await
             .context("Failed to create project indexer for daemon")?;
 
         // Create and configure daemon
-        let mut daemon =
-            WatchDaemon::new(watch_config).context("Failed to create watch daemon")?;
+        let mut daemon = WatchDaemon::new(watch_config).context("Failed to create watch daemon")?;
         daemon.set_indexer(indexer);
 
         // Run daemon with shutdown coordination

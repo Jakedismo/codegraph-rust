@@ -6,13 +6,13 @@ use super::search_tree::{NodeId, SearchNode, SearchTree, ToolAction};
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use crate::autoagents::executor::ExecutorError;
 use crate::autoagents::executor_trait::AgentExecutorTrait;
+use async_trait::async_trait;
 use codegraph_ai::llm_provider::LLMProvider;
 use codegraph_mcp_core::agent_architecture::AgentArchitecture;
 use codegraph_mcp_core::analysis::AnalysisType;
 use codegraph_mcp_core::config_manager::CodeGraphConfig;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{debug, info};
@@ -186,7 +186,9 @@ impl LATSExecutor {
         leaf_nodes.sort_by(|a, b| {
             let uct_a = tree.uct_score(*a, self.config.exploration_weight);
             let uct_b = tree.uct_score(*b, self.config.exploration_weight);
-            uct_b.partial_cmp(&uct_a).unwrap_or(std::cmp::Ordering::Equal)
+            uct_b
+                .partial_cmp(&uct_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Select top beam_width nodes
@@ -235,7 +237,8 @@ impl LATSExecutor {
         let mut expansions = Vec::new();
 
         for &node_id in nodes {
-            let node = tree.get_node(node_id)
+            let node = tree
+                .get_node(node_id)
                 .map_err(|e| ExecutorError::ExecutionFailed(e.to_string()))?;
 
             let provider = self.provider_router.get_provider(LATSPhase::Expansion);
@@ -250,7 +253,8 @@ impl LATSExecutor {
             config.response_format = Some(ResponseFormat::JsonObject);
             config.temperature = 0.7; // Higher temperature for creativity in expansion
 
-            let response = provider.generate_chat(&messages, &config)
+            let response = provider
+                .generate_chat(&messages, &config)
                 .await
                 .map_err(|e| ExecutorError::ExecutionFailed(format!("LLM call failed: {}", e)))?;
 
@@ -278,7 +282,11 @@ impl LATSExecutor {
 
             // Execute each action
             for action in expansion.actions {
-                let observation = match self.tool_executor.execute(&action.tool_name, action.parameters.clone()).await {
+                let observation = match self
+                    .tool_executor
+                    .execute(&action.tool_name, action.parameters.clone())
+                    .await
+                {
                     Ok(result) => result,
                     Err(e) => {
                         debug!(
@@ -360,7 +368,8 @@ impl LATSExecutor {
             config.response_format = Some(ResponseFormat::JsonObject);
             config.temperature = 0.3; // Lower temperature for evaluation consistency
 
-            let response = provider.generate_chat(&messages, &config)
+            let response = provider
+                .generate_chat(&messages, &config)
                 .await
                 .map_err(|e| ExecutorError::ExecutionFailed(format!("LLM call failed: {}", e)))?;
 
@@ -432,15 +441,15 @@ impl LATSExecutor {
             // Propagate score upward to ancestors
             let mut current_id = node_id;
             while let Some(parent_id) = tree.get_parent(current_id) {
-                let parent = tree.get_node(parent_id)
+                let parent = tree
+                    .get_node(parent_id)
                     .map_err(|e| ExecutorError::ExecutionFailed(e.to_string()))?;
 
                 // Collect scores of all children
-                let child_scores: Vec<f32> = parent.children
+                let child_scores: Vec<f32> = parent
+                    .children
                     .iter()
-                    .filter_map(|child_id| {
-                        tree.get_node(*child_id).ok().map(|child| child.score)
-                    })
+                    .filter_map(|child_id| tree.get_node(*child_id).ok().map(|child| child.score))
                     .collect();
 
                 if child_scores.is_empty() {
@@ -448,7 +457,10 @@ impl LATSExecutor {
                 }
 
                 // Calculate new score: weighted average of max and mean child scores
-                let max_child_score = child_scores.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+                let max_child_score = child_scores
+                    .iter()
+                    .copied()
+                    .fold(f32::NEG_INFINITY, f32::max);
                 let avg_child_score = child_scores.iter().sum::<f32>() / child_scores.len() as f32;
 
                 // UCT-style update: favor best paths but consider average
@@ -517,7 +529,8 @@ impl LATSExecutor {
         config.response_format = Some(ResponseFormat::JsonObject);
         config.temperature = 0.3; // Lower temperature for consistent synthesis
 
-        let response = provider.generate_chat(&messages, &config)
+        let response = provider
+            .generate_chat(&messages, &config)
             .await
             .map_err(|e| ExecutorError::ExecutionFailed(format!("LLM call failed: {}", e)))?;
 
@@ -565,7 +578,8 @@ impl LATSExecutor {
         }
 
         // Alternative check: if any leaf node has very high score (>0.9), consider it a solution
-        let has_high_score_leaf = tree.get_leaf_nodes()
+        let has_high_score_leaf = tree
+            .get_leaf_nodes()
             .iter()
             .filter_map(|&id| tree.get_node(id).ok())
             .any(|node| node.score > 0.9);

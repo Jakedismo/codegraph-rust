@@ -1,4 +1,9 @@
-use crate::{error::Result, message::*, version::{ProtocolVersion, VersionNegotiator, DEFAULT_VERSION}, McpError};
+use crate::{
+    error::Result,
+    message::*,
+    version::{ProtocolVersion, VersionNegotiator, DEFAULT_VERSION},
+    McpError,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
 use uuid::Uuid;

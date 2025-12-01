@@ -136,9 +136,9 @@ impl ProviderRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
     use codegraph_ai::llm_provider::LLMProvider;
     use codegraph_mcp_core::config_manager::CodeGraphConfig;
-    use async_trait::async_trait;
 
     // Mock LLM provider for testing
     struct MockProvider {
@@ -174,7 +174,8 @@ mod tests {
             &self,
             _messages: &[codegraph_ai::llm_provider::Message],
             _config: &codegraph_ai::llm_provider::GenerationConfig,
-        ) -> codegraph_ai::llm_provider::LLMResult<codegraph_ai::llm_provider::LLMResponse> {
+        ) -> codegraph_ai::llm_provider::LLMResult<codegraph_ai::llm_provider::LLMResponse>
+        {
             Ok(codegraph_ai::llm_provider::LLMResponse {
                 content: "mock response".to_string(),
                 total_tokens: Some(10),
@@ -217,7 +218,9 @@ mod tests {
     #[test]
     fn test_provider_stats() {
         let config = CodeGraphConfig::default();
-        let mock_provider = Arc::new(MockProvider { name: "test-provider" }) as Arc<dyn LLMProvider>;
+        let mock_provider = Arc::new(MockProvider {
+            name: "test-provider",
+        }) as Arc<dyn LLMProvider>;
 
         let router = ProviderRouter::new(&config, mock_provider);
         let stats = router.stats();

@@ -332,7 +332,9 @@ impl ToolRuntime for GetHubNodes {
 /// Parameters for semantic_code_search
 #[derive(Serialize, Deserialize, ToolInput, Debug)]
 pub struct SemanticCodeSearchArgs {
-    #[input(description = "Natural language search query (e.g., 'authentication logic', 'error handling', 'JWT validation', 'user controller')")]
+    #[input(
+        description = "Natural language search query (e.g., 'authentication logic', 'error handling', 'JWT validation', 'user controller')"
+    )]
     query: String,
     #[input(description = "Maximum number of results (1-50, default: 10)")]
     #[serde(default = "default_search_limit")]

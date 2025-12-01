@@ -107,7 +107,10 @@ impl WatchDaemon {
         info!(
             "Daemon started: watching {:?} ({} files)",
             self.config.project_root,
-            self.session.as_ref().map(|s| s.files_tracked()).unwrap_or(0)
+            self.session
+                .as_ref()
+                .map(|s| s.files_tracked())
+                .unwrap_or(0)
         );
 
         // Run event loop

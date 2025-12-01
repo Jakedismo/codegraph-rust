@@ -63,7 +63,7 @@ impl SymbolResolver {
         if self.lsh.is_none() {
             // LSH configuration: 5 projections, 10 hash tables, 128 dimensions
             let mut lsh = LshMem::new(5, 10, self.dim)
-                .srp()  // Signed Random Projections for cosine similarity
+                .srp() // Signed Random Projections for cosine similarity
                 .expect("Failed to create LSH index");
 
             // Store all vectors
@@ -97,7 +97,10 @@ impl SymbolResolver {
                     let mut metadata = HashMap::new();
                     metadata.insert("original_target".to_string(), edge.to.clone());
                     metadata.insert("resolved_target".to_string(), similar.clone());
-                    metadata.insert("fast_ml_enhancement".to_string(), "lsh_resolution".to_string());
+                    metadata.insert(
+                        "fast_ml_enhancement".to_string(),
+                        "lsh_resolution".to_string(),
+                    );
 
                     new_edges.push(EdgeRelationship {
                         from: edge.from,
@@ -143,8 +146,12 @@ impl SymbolResolver {
             // Find which symbol this vector belongs to
             for (sym, vec) in &self.symbol_vectors {
                 // Compare vectors (approximate match due to floating point)
-                if vec.len() == candidate_vec.len() &&
-                   vec.iter().zip(candidate_vec.iter()).all(|(a, b)| (a - b).abs() < 0.001) {
+                if vec.len() == candidate_vec.len()
+                    && vec
+                        .iter()
+                        .zip(candidate_vec.iter())
+                        .all(|(a, b)| (a - b).abs() < 0.001)
+                {
                     let score = Self::string_similarity(symbol, sym);
                     if score > best_score && score >= self.min_similarity_threshold {
                         best_score = score;
@@ -239,13 +246,11 @@ mod tests {
         let mut resolver = SymbolResolver::new();
 
         let result = ExtractionResult {
-            nodes: vec![
-                CodeNode {
-                    id: NodeId::new_v4(),
-                    name: "HashMap".to_string(),
-                    ..Default::default()
-                },
-            ],
+            nodes: vec![CodeNode {
+                id: NodeId::new_v4(),
+                name: "HashMap".to_string(),
+                ..Default::default()
+            }],
             edges: vec![],
         };
 

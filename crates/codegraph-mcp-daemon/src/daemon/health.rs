@@ -186,8 +186,7 @@ impl HealthMonitor {
         *self.consecutive_failures.write().await = 0;
         *self.consecutive_successes.write().await = 0;
         *self.circuit_opened_at.write().await = None;
-        *self.current_backoff.write().await =
-            Duration::from_secs(self.backoff_config.initial_secs);
+        *self.current_backoff.write().await = Duration::from_secs(self.backoff_config.initial_secs);
         info!("Circuit breaker reset to initial state");
     }
 }

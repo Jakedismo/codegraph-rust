@@ -165,10 +165,8 @@ Relevance score:"#,
                                 }
                             }
                             Err(e) => {
-                                last_error = Some(anyhow::anyhow!(
-                                    "Failed to parse Ollama response: {}",
-                                    e
-                                ));
+                                last_error =
+                                    Some(anyhow::anyhow!("Failed to parse Ollama response: {}", e));
                             }
                         }
                     } else {
@@ -198,9 +196,8 @@ Relevance score:"#,
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            anyhow::anyhow!("All Ollama rerank retry attempts failed")
-        }))
+        Err(last_error
+            .unwrap_or_else(|| anyhow::anyhow!("All Ollama rerank retry attempts failed")))
     }
 }
 
@@ -248,7 +245,11 @@ impl Reranker for OllamaReranker {
         }
 
         // Sort by score descending
-        scored_docs.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored_docs.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Take top N
         scored_docs.truncate(top_n);

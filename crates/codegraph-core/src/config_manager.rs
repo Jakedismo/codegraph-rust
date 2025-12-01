@@ -234,8 +234,8 @@ impl Default for LLMConfig {
             mcp_code_agent_max_output_tokens: None, // Use tier-based defaults if not set
             reasoning_effort: None,     // Only for reasoning models
             timeout_secs: default_timeout_secs(),
-            use_completions_api: false,  // Default to Responses API
-            lats: None, // No LATS config by default
+            use_completions_api: false, // Default to Responses API
+            lats: None,                 // No LATS config by default
         }
     }
 }
@@ -292,9 +292,15 @@ impl Default for LATSProviderConfig {
     }
 }
 
-fn default_lats_beam_width() -> usize { 3 }
-fn default_lats_max_depth() -> usize { 5 }
-fn default_lats_exploration_weight() -> f32 { 1.414 } // sqrt(2) for UCT
+fn default_lats_beam_width() -> usize {
+    3
+}
+fn default_lats_max_depth() -> usize {
+    5
+}
+fn default_lats_exploration_weight() -> f32 {
+    1.414
+} // sqrt(2) for UCT
 
 /// Validate LATS beam width parameter (must be 1-100)
 fn validate_lats_beam_width(w: usize) -> Option<usize> {

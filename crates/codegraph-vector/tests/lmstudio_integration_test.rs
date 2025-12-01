@@ -30,8 +30,8 @@ fn create_test_node(name: &str, content: &str) -> CodeNode {
 /// Helper to create test configuration with environment variable fallback
 #[cfg(feature = "lmstudio")]
 fn create_test_config() -> LmStudioEmbeddingConfig {
-    let api_base = std::env::var("LMSTUDIO_API_BASE")
-        .unwrap_or_else(|_| "http://localhost:1234".to_string());
+    let api_base =
+        std::env::var("LMSTUDIO_API_BASE").unwrap_or_else(|_| "http://localhost:1234".to_string());
 
     let model = std::env::var("LMSTUDIO_EMBEDDING_MODEL")
         .unwrap_or_else(|_| "jinaai/jina-embeddings-v3".to_string());
@@ -119,7 +119,9 @@ async fn test_lmstudio_single_text_embedding() {
         .expect("Failed to create provider - check test_lmstudio_availability first");
 
     if !provider.check_availability().await {
-        eprintln!("⚠️  SKIPPING: LM Studio not available. Run test_lmstudio_availability for diagnosis.");
+        eprintln!(
+            "⚠️  SKIPPING: LM Studio not available. Run test_lmstudio_availability for diagnosis."
+        );
         return;
     }
 
@@ -157,7 +159,10 @@ async fn test_lmstudio_single_text_embedding() {
             assert!(!has_nan, "Embedding should not contain NaN values");
 
             println!("✅ Embedding validation passed");
-            println!("📊 Sample values: {:?}", &embedding[..5.min(embedding.len())]);
+            println!(
+                "📊 Sample values: {:?}",
+                &embedding[..5.min(embedding.len())]
+            );
         }
         Err(e) => {
             panic!(
@@ -175,10 +180,7 @@ async fn test_lmstudio_single_text_embedding() {
                         \"input\": [\"test\"],\n\
                         \"model\": \"{}\"\n\
                       }}'",
-                e,
-                config.model,
-                config.api_base,
-                config.model
+                e, config.model, config.api_base, config.model
             );
         }
     }
@@ -197,7 +199,9 @@ async fn test_lmstudio_codenode_embedding() {
         .expect("Failed to create provider - check test_lmstudio_availability first");
 
     if !provider.check_availability().await {
-        eprintln!("⚠️  SKIPPING: LM Studio not available. Run test_lmstudio_availability for diagnosis.");
+        eprintln!(
+            "⚠️  SKIPPING: LM Studio not available. Run test_lmstudio_availability for diagnosis."
+        );
         return;
     }
 
@@ -249,7 +253,9 @@ async fn test_lmstudio_batch_embeddings() {
         .expect("Failed to create provider - check test_lmstudio_availability first");
 
     if !provider.check_availability().await {
-        eprintln!("⚠️  SKIPPING: LM Studio not available. Run test_lmstudio_availability for diagnosis.");
+        eprintln!(
+            "⚠️  SKIPPING: LM Studio not available. Run test_lmstudio_availability for diagnosis."
+        );
         return;
     }
 
@@ -259,8 +265,14 @@ async fn test_lmstudio_batch_embeddings() {
         create_test_node("function1", "fn add(a: i32, b: i32) -> i32 { a + b }"),
         create_test_node("function2", "fn subtract(a: i32, b: i32) -> i32 { a - b }"),
         create_test_node("function3", "fn multiply(a: i32, b: i32) -> i32 { a * b }"),
-        create_test_node("function4", "fn divide(a: i32, b: i32) -> Option<i32> { if b != 0 { Some(a / b) } else { None } }"),
-        create_test_node("function5", "fn power(base: i32, exp: u32) -> i32 { base.pow(exp) }"),
+        create_test_node(
+            "function4",
+            "fn divide(a: i32, b: i32) -> Option<i32> { if b != 0 { Some(a / b) } else { None } }",
+        ),
+        create_test_node(
+            "function5",
+            "fn power(base: i32, exp: u32) -> i32 { base.pow(exp) }",
+        ),
     ];
 
     println!("📦 Generating embeddings for {} nodes...", nodes.len());
@@ -271,10 +283,17 @@ async fn test_lmstudio_batch_embeddings() {
 
     match result {
         Ok(embeddings) => {
-            println!("✅ Successfully generated batch embeddings in {:?}", duration);
+            println!(
+                "✅ Successfully generated batch embeddings in {:?}",
+                duration
+            );
             println!("📏 Generated {} embeddings", embeddings.len());
 
-            assert_eq!(embeddings.len(), nodes.len(), "Should generate one embedding per node");
+            assert_eq!(
+                embeddings.len(),
+                nodes.len(),
+                "Should generate one embedding per node"
+            );
 
             for (i, embedding) in embeddings.iter().enumerate() {
                 assert!(!embedding.is_empty(), "Embedding {} should not be empty", i);
@@ -320,7 +339,9 @@ async fn test_lmstudio_batch_with_metrics() {
         .expect("Failed to create provider - check test_lmstudio_availability first");
 
     if !provider.check_availability().await {
-        eprintln!("⚠️  SKIPPING: LM Studio not available. Run test_lmstudio_availability for diagnosis.");
+        eprintln!(
+            "⚠️  SKIPPING: LM Studio not available. Run test_lmstudio_availability for diagnosis."
+        );
         return;
     }
 
@@ -380,7 +401,9 @@ async fn test_lmstudio_long_text_chunking() {
         .expect("Failed to create provider - check test_lmstudio_availability first");
 
     if !provider.check_availability().await {
-        eprintln!("⚠️  SKIPPING: LM Studio not available. Run test_lmstudio_availability for diagnosis.");
+        eprintln!(
+            "⚠️  SKIPPING: LM Studio not available. Run test_lmstudio_availability for diagnosis."
+        );
         return;
     }
 
@@ -439,7 +462,7 @@ async fn test_lmstudio_error_handling() {
     let bad_config = LmStudioEmbeddingConfig {
         model: "test-model".to_string(),
         api_base: "http://localhost:9999/v1".to_string(), // Invalid port
-        timeout: Duration::from_secs(2), // Short timeout
+        timeout: Duration::from_secs(2),                  // Short timeout
         batch_size: 32,
         max_retries: 1, // Only 1 retry for faster test
         max_tokens_per_request: 8192,

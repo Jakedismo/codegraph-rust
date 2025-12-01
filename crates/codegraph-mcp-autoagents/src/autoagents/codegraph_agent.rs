@@ -67,10 +67,7 @@ impl CodeGraphAgentOutput {
 
         // Case 2: Empty or whitespace-only response
         if resp.trim().is_empty() {
-            return Some(format!(
-                "empty response (done=true, tools={})",
-                tool_count
-            ));
+            return Some(format!("empty response (done=true, tools={})", tool_count));
         }
 
         // Case 3: Agent completed but didn't use any tools and gave minimal response

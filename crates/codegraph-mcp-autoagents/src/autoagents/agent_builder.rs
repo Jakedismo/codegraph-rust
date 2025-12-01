@@ -3,10 +3,10 @@
 // ABOUTME: Builder for tier-aware CodeGraph agents with graph analysis tools
 
 use async_trait::async_trait;
-use autoagents::llm::chat::ChatProvider;
-use autoagents::llm::chat::{ChatMessage, ChatResponse, ChatRole, Tool};
 #[cfg(test)]
 use autoagents::llm::chat::ChatMessageBuilder;
+use autoagents::llm::chat::ChatProvider;
+use autoagents::llm::chat::{ChatMessage, ChatResponse, ChatRole, Tool};
 use autoagents::llm::completion::{CompletionProvider, CompletionRequest, CompletionResponse};
 use autoagents::llm::embedding::EmbeddingProvider;
 use autoagents::llm::error::LLMError;
@@ -137,13 +137,15 @@ impl ChatProvider for CodeGraphChatAdapter {
         let response_format = if allow_response_format {
             json_schema
                 .and_then(|schema| {
-                    schema.schema.map(|schema_value| ResponseFormat::JsonSchema {
-                        json_schema: codegraph_ai::llm_provider::JsonSchema {
-                            name: schema.name,
-                            schema: schema_value,
-                            strict: schema.strict.unwrap_or(true),
-                        },
-                    })
+                    schema
+                        .schema
+                        .map(|schema_value| ResponseFormat::JsonSchema {
+                            json_schema: codegraph_ai::llm_provider::JsonSchema {
+                                name: schema.name,
+                                schema: schema_value,
+                                strict: schema.strict.unwrap_or(true),
+                            },
+                        })
                 })
                 .or_else(|| Some(Self::codegraph_toolcall_schema()))
         } else {
@@ -301,15 +303,18 @@ impl ChatResponse for CodeGraphChatResponse {
                 );
 
                 let step_number = self.step_counter.fetch_add(1, Ordering::SeqCst) as usize;
-                let thought = parsed
-                    .reasoning
-                    .as_deref()
-                    .unwrap_or("");
+                let thought = parsed.reasoning.as_deref().unwrap_or("");
                 let action = parsed
                     .tool_call
                     .as_ref()
                     .map(|t| t.tool_name.as_str())
-                    .or_else(|| if parsed.is_final { Some("final_answer") } else { None });
+                    .or_else(|| {
+                        if parsed.is_final {
+                            Some("final_answer")
+                        } else {
+                            None
+                        }
+                    });
                 DebugLogger::log_reasoning_step(step_number, thought, action);
 
                 if parsed.tool_call.is_none() && !parsed.is_final {
@@ -467,8 +472,8 @@ impl<T: AgentDeriveT + AgentHooks + Clone> AgentExecutor for TierAwareReActAgent
 use crate::autoagents::tier_plugin::TierAwarePromptPlugin;
 use crate::autoagents::tools::graph_tools::*;
 use crate::autoagents::tools::tool_executor_adapter::GraphToolFactory;
-use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_core::analysis::AnalysisType;
+use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
 
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
@@ -788,7 +793,8 @@ mod tests {
             &self,
             messages: &[Message],
             _config: &codegraph_ai::llm_provider::GenerationConfig,
-        ) -> codegraph_ai::llm_provider::LLMResult<codegraph_ai::llm_provider::LLMResponse> {
+        ) -> codegraph_ai::llm_provider::LLMResult<codegraph_ai::llm_provider::LLMResponse>
+        {
             Ok(codegraph_ai::llm_provider::LLMResponse {
                 content: format!("Echo: {}", messages.last().unwrap().content),
                 total_tokens: Some(10),

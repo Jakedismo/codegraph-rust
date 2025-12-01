@@ -1,14 +1,14 @@
 // ABOUTME: Factory for creating architecture-specific agent executors
 // ABOUTME: Supports runtime selection via CODEGRAPH_AGENT_ARCHITECTURE
 
+use crate::autoagents::executor::ExecutorError;
+use crate::autoagents::executor_trait::AgentExecutorTrait;
+use crate::autoagents::react_executor::ReActExecutor;
+use codegraph_ai::llm_provider::LLMProvider;
 use codegraph_mcp_core::agent_architecture::AgentArchitecture;
 use codegraph_mcp_core::config_manager::CodeGraphConfig;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
-use codegraph_ai::llm_provider::LLMProvider;
-use crate::autoagents::executor_trait::AgentExecutorTrait;
-use crate::autoagents::executor::ExecutorError;
-use crate::autoagents::react_executor::ReActExecutor;
 use std::sync::Arc;
 
 /// Factory for creating architecture-specific agent executors
@@ -47,13 +47,11 @@ impl AgentExecutorFactory {
         let tier = self.detect_tier();
 
         match architecture {
-            AgentArchitecture::ReAct => {
-                Ok(Box::new(ReActExecutor::new(
-                    self.llm_provider.clone(),
-                    self.tool_executor.clone(),
-                    tier,
-                )))
-            }
+            AgentArchitecture::ReAct => Ok(Box::new(ReActExecutor::new(
+                self.llm_provider.clone(),
+                self.tool_executor.clone(),
+                tier,
+            ))),
             #[cfg(feature = "autoagents-lats")]
             AgentArchitecture::LATS => {
                 use crate::autoagents::lats::executor::LATSExecutor;
@@ -66,11 +64,10 @@ impl AgentExecutorFactory {
                 )))
             }
             #[cfg(not(feature = "autoagents-lats"))]
-            AgentArchitecture::LATS => {
-                Err(ExecutorError::BuildFailed(
-                    "LATS requires 'autoagents-lats' feature. Rebuild with --features autoagents-lats".to_string()
-                ))
-            }
+            AgentArchitecture::LATS => Err(ExecutorError::BuildFailed(
+                "LATS requires 'autoagents-lats' feature. Rebuild with --features autoagents-lats"
+                    .to_string(),
+            )),
         }
     }
 
@@ -145,9 +142,6 @@ mod tests {
     #[test]
     fn test_lats_architecture_enum() {
         // Verify LATS architecture enum format
-        assert_eq!(
-            format!("{}", AgentArchitecture::LATS),
-            "lats"
-        );
+        assert_eq!(format!("{}", AgentArchitecture::LATS), "lats");
     }
 }

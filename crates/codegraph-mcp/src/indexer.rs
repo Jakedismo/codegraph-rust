@@ -10,8 +10,9 @@ use codegraph_core::{CodeNode, EdgeRelationship, NodeId, NodeType};
 use codegraph_graph::{
     edge::CodeEdge, FileMetadataRecord, NodeEmbeddingRecord, ProjectMetadataRecord,
     SurrealDbConfig, SurrealDbStorage, SymbolEmbeddingRecord, SURR_EMBEDDING_COLUMN_1024,
-    SURR_EMBEDDING_COLUMN_2048, SURR_EMBEDDING_COLUMN_2560, SURR_EMBEDDING_COLUMN_384,
-    SURR_EMBEDDING_COLUMN_4096, SURR_EMBEDDING_COLUMN_768,
+    SURR_EMBEDDING_COLUMN_1536, SURR_EMBEDDING_COLUMN_2048, SURR_EMBEDDING_COLUMN_2560,
+    SURR_EMBEDDING_COLUMN_3072, SURR_EMBEDDING_COLUMN_384, SURR_EMBEDDING_COLUMN_4096,
+    SURR_EMBEDDING_COLUMN_768,
 };
 use codegraph_parser::TreeSitterParser;
 #[cfg(feature = "ai-enhanced")]
@@ -61,8 +62,10 @@ enum SurrealEmbeddingColumn {
     Embedding384,
     Embedding768,
     Embedding1024,
+    Embedding1536,
     Embedding2048,
     Embedding2560,
+    Embedding3072,
     Embedding4096,
 }
 
@@ -72,8 +75,10 @@ impl SurrealEmbeddingColumn {
             SurrealEmbeddingColumn::Embedding384 => SURR_EMBEDDING_COLUMN_384,
             SurrealEmbeddingColumn::Embedding768 => SURR_EMBEDDING_COLUMN_768,
             SurrealEmbeddingColumn::Embedding1024 => SURR_EMBEDDING_COLUMN_1024,
+            SurrealEmbeddingColumn::Embedding1536 => SURR_EMBEDDING_COLUMN_1536,
             SurrealEmbeddingColumn::Embedding2048 => SURR_EMBEDDING_COLUMN_2048,
             SurrealEmbeddingColumn::Embedding2560 => SURR_EMBEDDING_COLUMN_2560,
+            SurrealEmbeddingColumn::Embedding3072 => SURR_EMBEDDING_COLUMN_3072,
             SurrealEmbeddingColumn::Embedding4096 => SURR_EMBEDDING_COLUMN_4096,
         }
     }
@@ -83,8 +88,10 @@ impl SurrealEmbeddingColumn {
             SurrealEmbeddingColumn::Embedding384 => 384,
             SurrealEmbeddingColumn::Embedding768 => 768,
             SurrealEmbeddingColumn::Embedding1024 => 1024,
+            SurrealEmbeddingColumn::Embedding1536 => 1536,
             SurrealEmbeddingColumn::Embedding2048 => 2048,
             SurrealEmbeddingColumn::Embedding2560 => 2560,
+            SurrealEmbeddingColumn::Embedding3072 => 3072,
             SurrealEmbeddingColumn::Embedding4096 => 4096,
         }
     }
@@ -168,6 +175,11 @@ enum SurrealWriteJob {
     Edges(Vec<CodeEdge>),
     NodeEmbeddings(Vec<NodeEmbeddingRecord>),
     SymbolEmbeddings(Vec<SymbolEmbeddingRecord>),
+    FileMetadata(Vec<FileMetadataRecord>),
+    DeleteNodesByFile {
+        file_paths: Vec<String>,
+        project_id: String,
+    },
     ProjectMetadata(ProjectMetadataRecord),
     Flush(oneshot::Sender<Result<()>>),
     Shutdown(oneshot::Sender<Result<()>>),
@@ -235,6 +247,79 @@ impl SurrealWriterHandle {
                         if let Err(err) = result {
                             error!("Surreal symbol embedding batch failed: {}", err);
                             last_error = Some(anyhow!(err.to_string()));
+                        }
+                    }
+                    SurrealWriteJob::FileMetadata(records) => {
+                        if records.is_empty() {
+                            continue;
+                        }
+                        let result = {
+                            let guard = storage.lock().await;
+                            guard.upsert_file_metadata_batch(&records).await
+                        };
+                        if let Err(err) = result {
+                            error!("Surreal file metadata batch failed: {}", err);
+                            last_error = Some(anyhow!(err.to_string()));
+                        }
+                    }
+                    SurrealWriteJob::DeleteNodesByFile {
+                        file_paths,
+                        project_id,
+                    } => {
+                        if file_paths.is_empty() {
+                            continue;
+                        }
+
+                        let mut guard = storage.lock().await;
+                        let delete_nodes_query = "DELETE nodes WHERE project_id = $project_id AND file_path IN $file_paths RETURN BEFORE";
+                        let mut result = match guard
+                            .db()
+                            .query(delete_nodes_query)
+                            .bind(("project_id", project_id.clone()))
+                            .bind(("file_paths", file_paths.clone()))
+                            .await
+                        {
+                            Ok(res) => res,
+                            Err(e) => {
+                                error!("Failed to delete nodes for files {:?}: {}", file_paths, e);
+                                last_error = Some(anyhow!(e.to_string()));
+                                continue;
+                            }
+                        };
+
+                        let deleted_nodes: Vec<HashMap<String, serde_json::Value>> =
+                            result.take(0).unwrap_or_default();
+                        let node_ids: Vec<String> = deleted_nodes
+                            .iter()
+                            .filter_map(|n| {
+                                n.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
+                            })
+                            .collect();
+
+                        if !node_ids.is_empty() {
+                            let edge_query = r#"
+                                LET $node_ids = $ids;
+                                DELETE edges WHERE
+                                    string::split(string::trim(from), ':')[1] IN $node_ids OR
+                                    string::split(string::trim(to), ':')[1] IN $node_ids
+                            "#;
+                            if let Err(e) =
+                                guard.db().query(edge_query).bind(("ids", node_ids)).await
+                            {
+                                error!("Failed to delete edges for files {:?}: {}", file_paths, e);
+                                last_error = Some(anyhow!(e.to_string()));
+                            }
+                        }
+
+                        if let Err(e) = guard
+                            .delete_file_metadata_for_files(&project_id, &file_paths)
+                            .await
+                        {
+                            error!(
+                                "Failed to delete file metadata for files {:?}: {}",
+                                file_paths, e
+                            );
+                            last_error = Some(anyhow!(e.to_string()));
                         }
                     }
                     SurrealWriteJob::ProjectMetadata(record) => {
@@ -305,6 +390,33 @@ impl SurrealWriterHandle {
         }
         self.tx
             .send(SurrealWriteJob::SymbolEmbeddings(records))
+            .await
+            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
+    }
+
+    async fn enqueue_file_metadata(&self, records: Vec<FileMetadataRecord>) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        self.tx
+            .send(SurrealWriteJob::FileMetadata(records))
+            .await
+            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
+    }
+
+    async fn enqueue_delete_nodes_by_file(
+        &self,
+        file_paths: Vec<String>,
+        project_id: &str,
+    ) -> Result<()> {
+        if file_paths.is_empty() {
+            return Ok(());
+        }
+        self.tx
+            .send(SurrealWriteJob::DeleteNodesByFile {
+                file_paths,
+                project_id: project_id.to_string(),
+            })
             .await
             .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
     }
@@ -647,11 +759,11 @@ impl ProjectIndexer {
         let files = files_to_index;
         let total_files = files.len();
         info!(
-            "🌳 Starting TreeSitter AST parsing for {} files across {} languages",
+            "🌳 Starting AST parsing (TreeSitter + fast_ml semantics) for {} files across {} languages",
             total_files,
             file_config.languages.len()
         );
-        info!("🔗 Unified extraction: Nodes + Edges + Relationships in single pass");
+        info!("🔗 Unified extraction: Nodes + Edges + Relationships in single fast_ml+AST pass");
 
         // REVOLUTIONARY: Use unified extraction for nodes + edges in single pass (FASTEST approach)
         // Clone files for parsing (we need them again for metadata persistence)
@@ -674,7 +786,7 @@ impl ProjectIndexer {
         };
 
         let parse_completion_msg = format!(
-            "🌳 AST Analysis complete: {}/{} files (✅ {:.1}% success) | 📊 {} nodes + {} edges | ⚡ {:.0} lines/s",
+            "🌳 Unified fast_ml + AST extraction complete: {}/{} files (✅ {:.1}% success) | 📊 {} nodes + {} edges | ⚡ {:.0} lines/s",
             pstats.parsed_files, pstats.total_files, success_rate, total_nodes_extracted, total_edges_extracted, pstats.lines_per_second
         );
 
@@ -1240,6 +1352,9 @@ impl ProjectIndexer {
         self.persist_file_metadata(&file_paths_only, &nodes, &edges)
             .await?;
         self.flush_surreal_writer().await?;
+        self.verify_file_metadata_count(file_paths_only.len())
+            .await?;
+        self.verify_project_metadata_present().await?;
 
         // COMPREHENSIVE INDEXING COMPLETION SUMMARY
         let avg_nodes_per_file = if stats.files > 0 {
@@ -2215,47 +2330,11 @@ impl ProjectIndexer {
             return Ok(());
         }
 
-        let storage = self.surreal.lock().await;
-
-        // Delete nodes for these files
-        let query = "DELETE nodes WHERE project_id = $project_id AND file_path IN $file_paths RETURN BEFORE";
-        let mut result = storage
-            .db()
-            .query(query)
-            .bind(("project_id", self.project_id.clone()))
-            .bind(("file_paths", file_paths.to_vec()))
-            .await
-            .map_err(|e| anyhow!("Failed to delete nodes: {}", e))?;
-
-        let deleted_nodes: Vec<HashMap<String, serde_json::Value>> =
-            result.take(0).unwrap_or_default();
-        let node_ids: Vec<String> = deleted_nodes
-            .iter()
-            .filter_map(|n| n.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
-            .collect();
-
-        if !node_ids.is_empty() {
-            // Delete edges connected to these nodes
-            let edge_query = r#"
-                LET $node_ids = $ids;
-                DELETE edges WHERE
-                    string::split(string::trim(from), ':')[1] IN $node_ids OR
-                    string::split(string::trim(to), ':')[1] IN $node_ids
-            "#;
-            storage
-                .db()
-                .query(edge_query)
-                .bind(("ids", node_ids))
-                .await
-                .map_err(|e| anyhow!("Failed to delete edges: {}", e))?;
-        }
-
-        // Delete file metadata
-        storage
-            .delete_file_metadata_for_files(&self.project_id, file_paths)
+        // delete nodes
+        self.surreal_writer_handle()?
+            .enqueue_delete_nodes_by_file(file_paths.to_vec(), &self.project_id)
             .await?;
-
-        info!("Deleted data for {} files", file_paths.len());
+        // delete edges and metadata handled by writer based on returned node ids
         Ok(())
     }
 
@@ -2266,7 +2345,6 @@ impl ProjectIndexer {
         nodes: &[CodeNode],
         edges: &[EdgeRelationship],
     ) -> Result<()> {
-        let storage = self.surreal.lock().await;
         let mut file_metadata_records = Vec::new();
 
         // Create progress bar for file metadata
@@ -2345,8 +2423,8 @@ impl ProjectIndexer {
         }
 
         // Batch upsert file metadata
-        storage
-            .upsert_file_metadata_batch(&file_metadata_records)
+        self.surreal_writer_handle()?
+            .enqueue_file_metadata(file_metadata_records)
             .await?;
 
         metadata_pb.finish_with_message(format!(
@@ -2472,6 +2550,58 @@ impl ProjectIndexer {
                 Err(e) => warn!("⚠️ Failed to read SurrealDB edge count: {}", e),
             },
             Err(e) => warn!("⚠️ SurrealDB edge count query failed: {}", e),
+        }
+    }
+
+    async fn verify_file_metadata_count(&self, expected_files: usize) -> Result<()> {
+        if expected_files == 0 {
+            return Ok(());
+        }
+
+        let db = {
+            let storage = self.surreal.lock().await;
+            storage.db()
+        };
+
+        let mut resp = db
+            .query("SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id")
+            .bind(("project_id", self.project_id.clone()))
+            .await
+            .context("Failed to verify file_metadata count")?;
+        let count: Option<i64> = resp.take(0)?;
+        let count = count.unwrap_or(0);
+
+        if count < expected_files as i64 {
+            Err(anyhow!(
+                "file_metadata count {} is less than expected {} for project {}",
+                count,
+                expected_files,
+                self.project_id
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn verify_project_metadata_present(&self) -> Result<()> {
+        let db = {
+            let storage = self.surreal.lock().await;
+            storage.db()
+        };
+
+        let mut resp = db
+            .query("SELECT VALUE count() FROM project_metadata WHERE project_id = $project_id")
+            .bind(("project_id", self.project_id.clone()))
+            .await
+            .context("Failed to verify project_metadata count")?;
+        let count: Option<i64> = resp.take(0)?;
+        if count.unwrap_or(0) < 1 {
+            Err(anyhow!(
+                "project_metadata missing for project {}; ensure schema applied and permissions allow writes",
+                self.project_id
+            ))
+        } else {
+            Ok(())
         }
     }
 
@@ -2773,7 +2903,8 @@ impl ProjectIndexer {
         info!("Indexing single file: {}", file_path_str);
 
         // Step 1: Parse file with tree-sitter to extract nodes and edges
-        let extraction_result = self.parser
+        let extraction_result = self
+            .parser
             .parse_file_with_edges(&file_path_str)
             .await
             .with_context(|| format!("Failed to parse file: {}", file_path_str))?;
@@ -2810,31 +2941,36 @@ impl ProjectIndexer {
                     debug!("Generated embeddings for {} nodes", nodes.len());
                 }
                 Err(e) => {
-                    warn!("Failed to generate embeddings for file {}: {}", file_path_str, e);
+                    warn!(
+                        "Failed to generate embeddings for file {}: {}",
+                        file_path_str, e
+                    );
                     // Continue without embeddings - not a fatal error
                 }
             }
         }
 
         // Step 4: Persist nodes via upsert (handles duplicates automatically)
-        self.persist_nodes_batch(&nodes).await
+        self.persist_nodes_batch(&nodes)
+            .await
             .with_context(|| format!("Failed to persist nodes for file: {}", file_path_str))?;
 
         // Step 5: Persist node embeddings
         #[cfg(feature = "embeddings")]
         {
             if let Err(e) = self.persist_node_embeddings(&nodes).await {
-                warn!("Failed to persist embeddings for file {}: {}", file_path_str, e);
+                warn!(
+                    "Failed to persist embeddings for file {}: {}",
+                    file_path_str, e
+                );
                 // Continue - not a fatal error
             }
         }
 
         // Step 6: Handle intra-file edges
         // Build a set of node IDs in this file for quick lookup
-        let node_ids: std::collections::HashSet<_> = nodes
-            .iter()
-            .map(|n| n.id.to_string())
-            .collect();
+        let node_ids: std::collections::HashSet<_> =
+            nodes.iter().map(|n| n.id.to_string()).collect();
 
         // Build symbol name to node ID map for edge resolution
         let symbol_map: std::collections::HashMap<String, codegraph_core::NodeId> = nodes
@@ -2862,12 +2998,21 @@ impl ProjectIndexer {
             .collect();
 
         if !resolved_edges.is_empty() {
-            info!("Persisting {} intra-file edges for {}", resolved_edges.len(), file_path_str);
-            self.enqueue_edges(resolved_edges).await
+            info!(
+                "Persisting {} intra-file edges for {}",
+                resolved_edges.len(),
+                file_path_str
+            );
+            self.enqueue_edges(resolved_edges)
+                .await
                 .with_context(|| format!("Failed to persist edges for file: {}", file_path_str))?;
         }
 
-        info!("Successfully indexed file: {} ({} nodes)", file_path_str, nodes.len());
+        info!(
+            "Successfully indexed file: {} ({} nodes)",
+            file_path_str,
+            nodes.len()
+        );
         Ok(())
     }
 
@@ -2952,11 +3097,13 @@ fn resolve_surreal_embedding_column(dim: usize) -> Result<SurrealEmbeddingColumn
         384 => Ok(SurrealEmbeddingColumn::Embedding384),
         768 => Ok(SurrealEmbeddingColumn::Embedding768),
         1024 => Ok(SurrealEmbeddingColumn::Embedding1024),
+        1536 => Ok(SurrealEmbeddingColumn::Embedding1536),
         2048 => Ok(SurrealEmbeddingColumn::Embedding2048),
         2560 => Ok(SurrealEmbeddingColumn::Embedding2560),
+        3072 => Ok(SurrealEmbeddingColumn::Embedding3072),
         4096 => Ok(SurrealEmbeddingColumn::Embedding4096),
         other => Err(anyhow!(
-            "Unsupported embedding dimension {}. Supported: 384, 768, 1024, 2048, 2560, 4096",
+            "Unsupported embedding dimension {}. Supported: 384, 768, 1024, 1536, 2048, 2560, 3072, 4096",
             other
         )),
     }
@@ -2990,6 +3137,22 @@ mod tests {
             resolve_surreal_embedding_column(2560).expect("2560-d embeddings should be supported");
         assert_eq!(column.column_name(), SURR_EMBEDDING_COLUMN_2560);
         assert_eq!(column.dimension(), 2560);
+    }
+
+    #[test]
+    fn surreal_embedding_column_supports_1536_dimension() {
+        let column =
+            resolve_surreal_embedding_column(1536).expect("1536-d embeddings should be supported");
+        assert_eq!(column.column_name(), SURR_EMBEDDING_COLUMN_1536);
+        assert_eq!(column.dimension(), 1536);
+    }
+
+    #[test]
+    fn surreal_embedding_column_supports_3072_dimension() {
+        let column =
+            resolve_surreal_embedding_column(3072).expect("3072-d embeddings should be supported");
+        assert_eq!(column.column_name(), SURR_EMBEDDING_COLUMN_3072);
+        assert_eq!(column.dimension(), 3072);
     }
 }
 
