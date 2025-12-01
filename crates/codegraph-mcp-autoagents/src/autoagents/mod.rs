@@ -8,6 +8,12 @@ pub mod codegraph_agent;
 #[cfg(feature = "autoagents-experimental")]
 pub mod executor;
 #[cfg(feature = "autoagents-experimental")]
+pub mod executor_trait;
+#[cfg(feature = "autoagents-experimental")]
+pub mod react_executor;
+#[cfg(feature = "autoagents-experimental")]
+pub mod executor_factory;
+#[cfg(feature = "autoagents-experimental")]
 pub mod progress_notifier;
 #[cfg(feature = "autoagents-experimental")]
 pub mod tier_plugin;
@@ -41,6 +47,12 @@ pub use agent_builder::{AgentHandle, CodeGraphAgentBuilder, CodeGraphChatAdapter
 pub use codegraph_agent::CodeGraphAgentOutput;
 #[cfg(feature = "autoagents-experimental")]
 pub use executor::{CodeGraphExecutor, CodeGraphExecutorBuilder, ExecutorError};
+#[cfg(feature = "autoagents-experimental")]
+pub use executor_trait::AgentExecutorTrait;
+#[cfg(feature = "autoagents-experimental")]
+pub use react_executor::ReActExecutor;
+#[cfg(feature = "autoagents-experimental")]
+pub use executor_factory::AgentExecutorFactory;
 #[cfg(feature = "autoagents-experimental")]
 pub use tier_plugin::TierAwarePromptPlugin;
 #[cfg(feature = "autoagents-experimental")]
