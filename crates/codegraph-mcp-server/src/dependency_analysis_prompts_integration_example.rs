@@ -1,7 +1,7 @@
 // ABOUTME: Example integration of dependency analysis prompts into PromptSelector
 // ABOUTME: Shows how to replace placeholder prompts with tier-optimized dependency analysis prompts
 
-use crate::context_aware_limits::ContextTier;
+use codegraph_mcp_core::context_aware_limits::ContextTier;
 use crate::dependency_analysis_prompts::*;
 use crate::prompt_selector::{AnalysisType, PromptSelector, PromptVerbosity};
 

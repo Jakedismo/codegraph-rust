@@ -1,74 +1,74 @@
-#[cfg(feature = "ai-enhanced")]
-pub mod agentic_api_surface_prompts;
-#[cfg(feature = "ai-enhanced")]
-pub mod agentic_orchestrator;
-#[cfg(feature = "ai-enhanced")]
-pub mod architecture_analysis_prompts;
-#[cfg(feature = "ai-enhanced")]
-pub mod call_chain_prompts;
-#[cfg(feature = "ai-enhanced")]
-pub mod code_search_prompts;
 pub mod connection;
-pub mod context_aware_limits;
 #[cfg(feature = "daemon")]
 pub mod daemon;
-#[cfg(feature = "ai-enhanced")]
-pub mod context_builder_prompts;
-#[cfg(feature = "ai-enhanced")]
-pub mod dependency_analysis_prompts;
-pub mod error;
 pub mod estimation;
-#[cfg(feature = "embeddings")]
-pub mod graph_tool_executor;
-#[cfg(feature = "embeddings")]
-pub mod graph_tool_schemas;
 pub mod heartbeat;
 pub mod indexer;
-pub mod message;
-pub mod official_server;
-pub mod process;
-pub mod prompt_selector;
-pub mod protocol;
-#[cfg(feature = "ai-enhanced")]
-pub mod semantic_question_prompts;
 pub mod transport;
-pub mod version;
 
-#[cfg(feature = "server-http")]
-pub mod http_config;
-#[cfg(feature = "server-http")]
-pub mod http_server;
-
-#[cfg(feature = "autoagents-experimental")]
-pub mod autoagents;
-
-pub mod config_manager;
-pub mod prompts;
-pub mod debug_logger;
-
-#[cfg(feature = "ai-enhanced")]
-pub use agentic_orchestrator::{
-    AgenticConfig, AgenticOrchestrator, AgenticResult, ReasoningStep, ToolCallStats,
-};
 pub use connection::*;
-pub use context_aware_limits::{ContextAwareLimits, ContextTier};
-pub use error::{McpError, Result};
+pub use codegraph_mcp_core::{
+    context_aware_limits::{ContextAwareLimits, ContextTier},
+    error::{McpError, Result},
+    message::*,
+    process::{ProcessInfo, ProcessManager, ProcessStatus},
+    protocol::*,
+    version::*,
+    config_manager::*,
+    debug_logger::*,
+};
 pub use estimation::{
     build_symbol_index, EmbeddingThroughputConfig, RepositoryEstimate, RepositoryEstimator,
     TimeEstimates,
 };
 #[cfg(feature = "embeddings")]
-pub use graph_tool_executor::{CacheStats, GraphToolExecutor};
-#[cfg(feature = "embeddings")]
-pub use graph_tool_schemas::{GraphToolSchemas, ToolSchema};
+pub use codegraph_mcp_tools::{CacheStats, GraphToolExecutor, GraphToolSchemas, ToolSchema};
 pub use heartbeat::*;
 pub use indexer::{IndexStats, IndexerConfig, ProjectIndexer};
-pub use message::*;
-pub use process::{ProcessInfo, ProcessManager, ProcessStatus};
-pub use prompt_selector::{AnalysisType, PromptSelector, PromptSelectorStats, PromptVerbosity};
-pub use protocol::*;
 pub use transport::*;
-pub use version::*;
+
+// Re-export server modules to preserve existing paths
+pub mod official_server {
+    pub use codegraph_mcp_server::official_server::*;
+}
+#[cfg(feature = "server-http")]
+pub mod http_server {
+    pub use codegraph_mcp_server::http_server::*;
+}
+#[cfg(feature = "server-http")]
+pub mod http_config {
+    pub use codegraph_mcp_server::http_config::*;
+}
+pub mod prompt_selector {
+    pub use codegraph_mcp_server::prompt_selector::*;
+}
+pub mod prompts {
+    pub use codegraph_mcp_server::prompts::*;
+}
+pub mod agentic_api_surface_prompts {
+    pub use codegraph_mcp_server::agentic_api_surface_prompts::*;
+}
+pub mod architecture_analysis_prompts {
+    pub use codegraph_mcp_server::architecture_analysis_prompts::*;
+}
+pub mod call_chain_prompts {
+    pub use codegraph_mcp_server::call_chain_prompts::*;
+}
+pub mod code_search_prompts {
+    pub use codegraph_mcp_server::code_search_prompts::*;
+}
+pub mod context_builder_prompts {
+    pub use codegraph_mcp_server::context_builder_prompts::*;
+}
+pub mod dependency_analysis_prompts {
+    pub use codegraph_mcp_server::dependency_analysis_prompts::*;
+}
+pub mod dependency_analysis_prompts_integration_example {
+    pub use codegraph_mcp_server::dependency_analysis_prompts_integration_example::*;
+}
+pub mod semantic_question_prompts {
+    pub use codegraph_mcp_server::semantic_question_prompts::*;
+}
 
 // Daemon mode exports
 #[cfg(feature = "daemon")]

@@ -1,9 +1,11 @@
 use crate::heartbeat::HeartbeatManager;
-use crate::message::*;
-use crate::protocol::{handshake, parse_response_typed, McpProtocol};
 use crate::transport::{backoff_durations, IncomingFrame, Transport, WebSocketTransport};
-use crate::version::{ProtocolVersion, VersionNegotiator, DEFAULT_VERSION};
-use crate::{McpError, Result};
+use codegraph_mcp_core::{
+    message::*,
+    protocol::{handshake, parse_response_typed, McpProtocol},
+    version::{ProtocolVersion, VersionNegotiator, DEFAULT_VERSION},
+    error::{McpError, Result},
+};
 use dashmap::DashMap;
 use serde::de::DeserializeOwned;
 use serde::Serialize;

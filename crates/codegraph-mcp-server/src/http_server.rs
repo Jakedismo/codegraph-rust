@@ -1,7 +1,7 @@
+#![cfg(feature = "server-http")]
 // ABOUTME: HTTP server implementation using rmcp StreamableHttpService
 // ABOUTME: Provides session-based HTTP transport with SSE streaming for progress notifications
 
-#[cfg(feature = "server-http")]
 use crate::http_config::HttpServerConfig;
 use crate::official_server::CodeGraphMCPServer;
 use axum::Router;

@@ -1,9 +1,10 @@
 // ABOUTME: AutoAgents plugin for tier-aware prompt injection
 // ABOUTME: Selects prompts based on LLM context window and analysis type
 
-use crate::context_aware_limits::ContextTier;
-use crate::McpError;
-use crate::{AnalysisType, PromptSelector};
+use codegraph_mcp_core::context_aware_limits::ContextTier;
+use codegraph_mcp_core::error::McpError;
+use codegraph_mcp_core::analysis::AnalysisType;
+use crate::autoagents::prompt_selector::PromptSelector;
 
 /// Plugin that provides tier-aware system prompts and limits
 pub struct TierAwarePromptPlugin {
@@ -25,7 +26,7 @@ impl TierAwarePromptPlugin {
     pub fn get_system_prompt(&self) -> Result<String, McpError> {
         self.prompt_selector
             .select_prompt(self.analysis_type, self.tier)
-            .map(|s| s.to_string())
+            .map(|s: &str| s.to_string())
     }
 
     /// Get tier-appropriate max_iterations (max_steps in original plan)

@@ -24,8 +24,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::debug_logger::DebugLogger;
+use codegraph_mcp_autoagents::{CodeGraphAgentOutput, CodeGraphExecutor, CodeGraphExecutorBuilder};
+use codegraph_mcp_core::debug_logger::DebugLogger;
+use codegraph_mcp_core::context_aware_limits::ContextTier;
+use codegraph_mcp_tools::GraphToolExecutor;
+use codegraph_vector::EmbeddingGenerator;
+use codegraph_ai::agentic_schemas::AgenticOutput;
 use crate::prompts::INITIAL_INSTRUCTIONS;
+use crate::prompt_selector::AnalysisType;
 
 /// Parameter structs following official rmcp SDK pattern
 // #[derive(Deserialize, JsonSchema)]
@@ -268,7 +274,7 @@ impl CodeGraphMCPServer {
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(crate::AnalysisType::CodeSearch, &request.query, peer, meta)
+        self.execute_agentic_workflow(AnalysisType::CodeSearch, &request.query, peer, meta)
             .await
     }
 
@@ -284,7 +290,7 @@ impl CodeGraphMCPServer {
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
         self.execute_agentic_workflow(
-            crate::AnalysisType::DependencyAnalysis,
+            AnalysisType::DependencyAnalysis,
             &request.query,
             peer,
             meta,
@@ -304,7 +310,7 @@ impl CodeGraphMCPServer {
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
         self.execute_agentic_workflow(
-            crate::AnalysisType::CallChainAnalysis,
+            AnalysisType::CallChainAnalysis,
             &request.query,
             peer,
             meta,
@@ -324,7 +330,7 @@ impl CodeGraphMCPServer {
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
         self.execute_agentic_workflow(
-            crate::AnalysisType::ArchitectureAnalysis,
+            AnalysisType::ArchitectureAnalysis,
             &request.query,
             peer,
             meta,
@@ -344,7 +350,7 @@ impl CodeGraphMCPServer {
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
         self.execute_agentic_workflow(
-            crate::AnalysisType::ApiSurfaceAnalysis,
+            AnalysisType::ApiSurfaceAnalysis,
             &request.query,
             peer,
             meta,
@@ -364,7 +370,7 @@ impl CodeGraphMCPServer {
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
         self.execute_agentic_workflow(
-            crate::AnalysisType::ContextBuilder,
+            AnalysisType::ContextBuilder,
             &request.query,
             peer,
             meta,
@@ -384,7 +390,7 @@ impl CodeGraphMCPServer {
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
         self.execute_agentic_workflow(
-            crate::AnalysisType::SemanticQuestion,
+            AnalysisType::SemanticQuestion,
             &request.query,
             peer,
             meta,
@@ -396,11 +402,11 @@ impl CodeGraphMCPServer {
 impl CodeGraphMCPServer {
     /// Auto-detect context tier from environment or config
     #[cfg(feature = "ai-enhanced")]
-    fn detect_context_tier() -> crate::ContextTier {
+    fn detect_context_tier() -> ContextTier {
         // Try CODEGRAPH_CONTEXT_WINDOW env var first
         if let Ok(context_window_str) = std::env::var("CODEGRAPH_CONTEXT_WINDOW") {
             if let Ok(context_window) = context_window_str.parse::<usize>() {
-                return crate::ContextTier::from_context_window(context_window);
+                return ContextTier::from_context_window(context_window);
             }
         }
 
@@ -408,12 +414,12 @@ impl CodeGraphMCPServer {
         match codegraph_core::config_manager::ConfigManager::load() {
             Ok(config_manager) => {
                 let config = config_manager.config();
-                crate::ContextTier::from_context_window(config.llm.context_window)
+                ContextTier::from_context_window(config.llm.context_window)
             }
             Err(_) => {
                 // Default to Medium tier if config can't be loaded
                 tracing::warn!("Failed to load config, defaulting to Medium context tier");
-                crate::ContextTier::Medium
+                ContextTier::Medium
             }
         }
     }
@@ -452,12 +458,12 @@ impl CodeGraphMCPServer {
     #[cfg(feature = "ai-enhanced")]
     async fn execute_agentic_workflow(
         &self,
-        analysis_type: crate::AnalysisType,
+        analysis_type: AnalysisType,
         query: &str,
         peer: Peer<RoleServer>,
         meta: Meta,
     ) -> Result<CallToolResult, McpError> {
-        use crate::autoagents::{CodeGraphExecutor, CodeGraphExecutorBuilder};
+        use codegraph_mcp_autoagents::{CodeGraphExecutor, CodeGraphExecutorBuilder};
         use codegraph_ai::llm_factory::LLMProviderFactory;
         use codegraph_graph::GraphFunctions;
         use std::sync::Arc;
@@ -545,8 +551,8 @@ impl CodeGraphMCPServer {
         }
 
         // Create shared EmbeddingGenerator (once for entire server lifecycle)
-        use codegraph_vector::EmbeddingGenerator;
-        let embedding_generator = Arc::new(EmbeddingGenerator::with_config(&config).await);
+        let embedding_generator: Arc<EmbeddingGenerator> =
+            Arc::new(EmbeddingGenerator::with_config(&config).await);
         tracing::info!(
             "✅ Shared EmbeddingGenerator initialized (dimension: {}, provider: {})",
             embedding_generator.dimension(),
@@ -554,7 +560,7 @@ impl CodeGraphMCPServer {
         );
 
         // Create GraphToolExecutor with shared embedding generator
-        let tool_executor = Arc::new(crate::GraphToolExecutor::new(
+        let tool_executor = Arc::new(GraphToolExecutor::new(
             graph_functions,
             Arc::new(config.clone()),
             embedding_generator,
@@ -576,7 +582,7 @@ impl CodeGraphMCPServer {
             })?;
 
         // Execute agentic workflow
-        let result = executor
+        let result: CodeGraphAgentOutput = executor
             .execute(query.to_string(), analysis_type)
             .await
             .map_err(|e| {
@@ -604,7 +610,7 @@ impl CodeGraphMCPServer {
         );
 
         let structured_output = match analysis_type {
-            crate::AnalysisType::CodeSearch => {
+            AnalysisType::CodeSearch => {
                 match serde_json::from_str::<CodeSearchOutput>(&result.answer) {
                     Ok(o) => {
                         tracing::info!("✅ Successfully parsed CodeSearchOutput");
@@ -616,7 +622,7 @@ impl CodeGraphMCPServer {
                     }
                 }
             }
-            crate::AnalysisType::DependencyAnalysis => {
+            AnalysisType::DependencyAnalysis => {
                 match serde_json::from_str::<DependencyAnalysisOutput>(&result.answer) {
                     Ok(o) => {
                         tracing::info!("✅ Successfully parsed DependencyAnalysisOutput");
@@ -628,7 +634,7 @@ impl CodeGraphMCPServer {
                     }
                 }
             }
-            crate::AnalysisType::CallChainAnalysis => {
+            AnalysisType::CallChainAnalysis => {
                 match serde_json::from_str::<CallChainOutput>(&result.answer) {
                     Ok(o) => {
                         tracing::info!("✅ Successfully parsed CallChainOutput");
@@ -640,7 +646,7 @@ impl CodeGraphMCPServer {
                     }
                 }
             }
-            crate::AnalysisType::ArchitectureAnalysis => {
+            AnalysisType::ArchitectureAnalysis => {
                 match serde_json::from_str::<ArchitectureAnalysisOutput>(&result.answer) {
                     Ok(o) => {
                         tracing::info!("✅ Successfully parsed ArchitectureAnalysisOutput");
@@ -652,7 +658,7 @@ impl CodeGraphMCPServer {
                     }
                 }
             }
-            crate::AnalysisType::ApiSurfaceAnalysis => {
+            AnalysisType::ApiSurfaceAnalysis => {
                 match serde_json::from_str::<APISurfaceOutput>(&result.answer) {
                     Ok(o) => {
                         tracing::info!("✅ Successfully parsed APISurfaceOutput");
@@ -664,7 +670,7 @@ impl CodeGraphMCPServer {
                     }
                 }
             }
-            crate::AnalysisType::ContextBuilder => {
+            AnalysisType::ContextBuilder => {
                 match serde_json::from_str::<ContextBuilderOutput>(&result.answer) {
                     Ok(o) => {
                         tracing::info!("✅ Successfully parsed ContextBuilderOutput");
@@ -676,7 +682,7 @@ impl CodeGraphMCPServer {
                     }
                 }
             }
-            crate::AnalysisType::SemanticQuestion => {
+            AnalysisType::SemanticQuestion => {
                 match serde_json::from_str::<SemanticQuestionOutput>(&result.answer) {
                     Ok(o) => {
                         tracing::info!("✅ Successfully parsed SemanticQuestionOutput");
@@ -725,7 +731,7 @@ impl CodeGraphMCPServer {
     #[cfg(not(feature = "ai-enhanced"))]
     async fn execute_agentic_workflow(
         &self,
-        analysis_type: crate::AnalysisType,
+        analysis_type: AnalysisType,
         query: &str,
         _peer: Peer<RoleServer>,
         _meta: Meta,

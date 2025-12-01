@@ -180,6 +180,7 @@ struct EmbeddingRequest {
 
 /// Jina API response structure for embeddings
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct EmbeddingResponse {
     model: String,
     object: Option<String>,
@@ -188,6 +189,7 @@ struct EmbeddingResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct EmbeddingData {
     #[serde(default)]
     object: Option<String>,
@@ -196,6 +198,7 @@ struct EmbeddingData {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct Usage {
     total_tokens: usize,
     #[serde(default)]
@@ -214,6 +217,7 @@ struct RerankRequest {
 
 /// Jina reranking response structure
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct RerankResponse {
     model: String,
     object: Vec<String>,
@@ -222,6 +226,7 @@ struct RerankResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct RerankUsage {
     total_tokens: usize,
 }

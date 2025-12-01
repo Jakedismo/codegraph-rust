@@ -3,13 +3,15 @@
 
 use crate::autoagents::agent_builder::{AgentHandle, CodeGraphAgentBuilder};
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
-use crate::context_aware_limits::ContextTier;
-use crate::{AnalysisType, GraphToolExecutor};
+use codegraph_mcp_core::context_aware_limits::ContextTier;
+use codegraph_mcp_core::analysis::AnalysisType;
+use codegraph_mcp_tools::GraphToolExecutor;
 use codegraph_ai::llm_provider::LLMProvider;
 use std::sync::Arc;
+use thiserror::Error;
 
 /// Error type for executor operations
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum ExecutorError {
     #[error("Agent build failed: {0}")]
     BuildFailed(String),

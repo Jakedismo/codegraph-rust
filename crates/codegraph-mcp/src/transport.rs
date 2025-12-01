@@ -1,4 +1,5 @@
-use crate::{heartbeat::HeartbeatManager, message::JsonRpcMessage, McpError, Result};
+use crate::heartbeat::HeartbeatManager;
+use codegraph_mcp_core::{message::JsonRpcMessage, McpError, Result};
 use futures::{stream::SplitSink, SinkExt, StreamExt};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::{broadcast, RwLock};

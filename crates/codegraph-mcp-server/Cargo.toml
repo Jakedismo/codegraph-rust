@@ -1,0 +1,42 @@
+[package]
+name = "codegraph-mcp-server"
+version = "0.1.0"
+edition = "2021"
+authors = ["Solita CodeGraph"]
+license = "Apache-2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+ai-enhanced = ["codegraph-mcp-autoagents", "codegraph-ai", "codegraph-mcp-autoagents/autoagents-experimental"]
+server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
+autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental"]
+embeddings = ["codegraph-mcp-tools/embeddings"]
+
+[dependencies]
+codegraph-mcp-core = { path = "../codegraph-mcp-core" }
+codegraph-mcp-tools = { path = "../codegraph-mcp-tools" }
+codegraph-mcp-autoagents = { path = "../codegraph-mcp-autoagents", optional = true }
+codegraph-core = { path = "../codegraph-core" }
+codegraph-graph = { path = "../codegraph-graph" }
+codegraph-vector = { path = "../codegraph-vector" }
+codegraph-ai = { path = "../codegraph-ai", optional = true }
+rmcp = { workspace = true }
+futures = { workspace = true }
+schemars = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+http-body-util = { version = "0.1", optional = true }
+
+[dev-dependencies]
+serial_test = "3.2"

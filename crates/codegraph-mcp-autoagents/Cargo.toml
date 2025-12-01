@@ -1,0 +1,28 @@
+[package]
+name = "codegraph-mcp-autoagents"
+version = "0.1.0"
+edition = "2021"
+authors = ["Solita CodeGraph"]
+license = "Apache-2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+autoagents-experimental = []
+
+[dependencies]
+codegraph-mcp-core = { path = "../codegraph-mcp-core" }
+codegraph-mcp-tools = { path = "../codegraph-mcp-tools" }
+codegraph-ai = { path = "../codegraph-ai" }
+autoagents = { workspace = true }
+autoagents-derive = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+schemars = { workspace = true }
+thiserror = { workspace = true }

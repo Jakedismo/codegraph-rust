@@ -1,5 +1,13 @@
 use thiserror::Error;
 
+pub type Result<T> = std::result::Result<T, McpError>;
+
+impl From<anyhow::Error> for McpError {
+    fn from(e: anyhow::Error) -> Self {
+        McpError::Protocol(e.to_string())
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum McpError {
     #[error("WebSocket error: {0}")]
@@ -62,5 +70,3 @@ pub enum McpError {
     #[error("Conflict resolution error: {0}")]
     Conflict(String),
 }
-
-pub type Result<T> = std::result::Result<T, McpError>;

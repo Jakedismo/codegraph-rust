@@ -4,16 +4,18 @@
 
 use async_trait::async_trait;
 use autoagents::llm::chat::ChatProvider;
-use autoagents::llm::chat::{ChatMessage, ChatMessageBuilder, ChatResponse, ChatRole, Tool};
+use autoagents::llm::chat::{ChatMessage, ChatResponse, ChatRole, Tool};
+#[cfg(test)]
+use autoagents::llm::chat::ChatMessageBuilder;
 use autoagents::llm::completion::{CompletionProvider, CompletionRequest, CompletionResponse};
 use autoagents::llm::embedding::EmbeddingProvider;
 use autoagents::llm::error::LLMError;
 use autoagents::llm::models::{ModelListRequest, ModelListResponse, ModelsProvider};
 use autoagents::llm::{FunctionCall, ToolCall};
 use codegraph_ai::llm_provider::{
-    LLMProvider as CodeGraphLLM, LLMResponse, Message, MessageRole, ProviderCharacteristics,
-    ResponseFormat,
+    LLMProvider as CodeGraphLLM, Message, MessageRole, ResponseFormat,
 };
+use codegraph_mcp_core::debug_logger::DebugLogger;
 use serde::Deserialize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -308,7 +310,7 @@ impl ChatResponse for CodeGraphChatResponse {
                     .as_ref()
                     .map(|t| t.tool_name.as_str())
                     .or_else(|| if parsed.is_final { Some("final_answer") } else { None });
-                crate::debug_logger::DebugLogger::log_reasoning_step(step_number, thought, action);
+                DebugLogger::log_reasoning_step(step_number, thought, action);
 
                 if parsed.tool_call.is_none() && !parsed.is_final {
                     tracing::warn!(
@@ -465,8 +467,9 @@ impl<T: AgentDeriveT + AgentHooks + Clone> AgentExecutor for TierAwareReActAgent
 use crate::autoagents::tier_plugin::TierAwarePromptPlugin;
 use crate::autoagents::tools::graph_tools::*;
 use crate::autoagents::tools::tool_executor_adapter::GraphToolFactory;
-use crate::context_aware_limits::ContextTier;
-use crate::{AnalysisType, GraphToolExecutor};
+use codegraph_mcp_core::context_aware_limits::ContextTier;
+use codegraph_mcp_core::analysis::AnalysisType;
+use codegraph_mcp_tools::GraphToolExecutor;
 
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use autoagents::core::agent::memory::SlidingWindowMemory;

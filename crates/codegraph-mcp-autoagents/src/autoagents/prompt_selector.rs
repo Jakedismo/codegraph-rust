@@ -1,105 +1,36 @@
 // ABOUTME: Context-tier aware prompt selector for agentic analysis workflows
 // ABOUTME: Selects optimized system prompts based on analysis type and LLM context window size
 
-#[cfg(feature = "ai-enhanced")]
 use crate::agentic_api_surface_prompts::{
     API_SURFACE_BALANCED, API_SURFACE_DETAILED, API_SURFACE_EXPLORATORY, API_SURFACE_TERSE,
 };
-#[cfg(feature = "ai-enhanced")]
 use crate::architecture_analysis_prompts::{
     ARCHITECTURE_ANALYSIS_BALANCED, ARCHITECTURE_ANALYSIS_DETAILED,
     ARCHITECTURE_ANALYSIS_EXPLORATORY, ARCHITECTURE_ANALYSIS_TERSE,
 };
-#[cfg(feature = "ai-enhanced")]
 use crate::call_chain_prompts::{
     CALL_CHAIN_BALANCED, CALL_CHAIN_DETAILED, CALL_CHAIN_EXPLORATORY, CALL_CHAIN_TERSE,
 };
-#[cfg(feature = "ai-enhanced")]
 use crate::code_search_prompts::{
     CODE_SEARCH_BALANCED, CODE_SEARCH_DETAILED, CODE_SEARCH_EXPLORATORY, CODE_SEARCH_TERSE,
 };
-use crate::context_aware_limits::ContextTier;
-#[cfg(feature = "ai-enhanced")]
+use codegraph_mcp_core::context_aware_limits::ContextTier;
+pub use codegraph_mcp_core::analysis::AnalysisType;
 use crate::context_builder_prompts::{
     CONTEXT_BUILDER_BALANCED, CONTEXT_BUILDER_DETAILED, CONTEXT_BUILDER_EXPLORATORY,
     CONTEXT_BUILDER_TERSE,
 };
-#[cfg(feature = "ai-enhanced")]
 use crate::dependency_analysis_prompts::{
     DEPENDENCY_ANALYSIS_BALANCED, DEPENDENCY_ANALYSIS_DETAILED, DEPENDENCY_ANALYSIS_EXPLORATORY,
     DEPENDENCY_ANALYSIS_TERSE,
 };
-use crate::error::McpError;
-#[cfg(feature = "ai-enhanced")]
 use crate::semantic_question_prompts::{
     SEMANTIC_QUESTION_BALANCED, SEMANTIC_QUESTION_DETAILED, SEMANTIC_QUESTION_EXPLORATORY,
     SEMANTIC_QUESTION_TERSE,
 };
-use crate::Result;
+use codegraph_mcp_core::error::{McpError, Result};
 use std::collections::HashMap;
-#[cfg(feature = "ai-enhanced")]
 use tracing::debug;
-
-/// Types of code analysis that can be performed
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AnalysisType {
-    /// Search for code patterns, symbols, or references
-    CodeSearch,
-    /// Analyze dependency relationships and impact
-    DependencyAnalysis,
-    /// Trace execution call chains
-    CallChainAnalysis,
-    /// Analyze architectural patterns and quality
-    ArchitectureAnalysis,
-    /// Analyze public API surface and contracts
-    ApiSurfaceAnalysis,
-    /// Build comprehensive context for code generation
-    ContextBuilder,
-    /// Answer semantic questions about code
-    SemanticQuestion,
-}
-
-impl AnalysisType {
-    /// Get the string identifier for this analysis type
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            AnalysisType::CodeSearch => "code_search",
-            AnalysisType::DependencyAnalysis => "dependency_analysis",
-            AnalysisType::CallChainAnalysis => "call_chain_analysis",
-            AnalysisType::ArchitectureAnalysis => "architecture_analysis",
-            AnalysisType::ApiSurfaceAnalysis => "api_surface_analysis",
-            AnalysisType::ContextBuilder => "context_builder",
-            AnalysisType::SemanticQuestion => "semantic_question",
-        }
-    }
-
-    /// Parse from string identifier
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "code_search" => Some(AnalysisType::CodeSearch),
-            "dependency_analysis" => Some(AnalysisType::DependencyAnalysis),
-            "call_chain_analysis" => Some(AnalysisType::CallChainAnalysis),
-            "architecture_analysis" => Some(AnalysisType::ArchitectureAnalysis),
-            "api_surface_analysis" => Some(AnalysisType::ApiSurfaceAnalysis),
-            "context_builder" => Some(AnalysisType::ContextBuilder),
-            "semantic_question" => Some(AnalysisType::SemanticQuestion),
-            _ => None,
-        }
-    }
-
-    /// Get all analysis types
-    pub fn all() -> Vec<Self> {
-        vec![
-            AnalysisType::CodeSearch,
-            AnalysisType::DependencyAnalysis,
-            AnalysisType::CallChainAnalysis,
-            AnalysisType::ArchitectureAnalysis,
-            AnalysisType::ApiSurfaceAnalysis,
-            AnalysisType::ContextBuilder,
-            AnalysisType::SemanticQuestion,
-        ]
-    }
-}
 
 /// Verbosity level based on context tier
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -154,8 +85,7 @@ impl PromptSelector {
     }
 
     /// Select appropriate prompt for given analysis type and context tier
-    #[cfg(feature = "ai-enhanced")]
-    pub fn select_prompt(&self, analysis_type: AnalysisType, tier: ContextTier) -> Result<&str> {
+        pub fn select_prompt(&self, analysis_type: AnalysisType, tier: ContextTier) -> Result<&str> {
         let verbosity = PromptVerbosity::from(tier);
         debug!(
             "Selecting prompt: type={:?}, tier={:?}, verbosity={:?}",
@@ -171,14 +101,6 @@ impl PromptSelector {
                     analysis_type, verbosity
                 ))
             })
-    }
-
-    #[cfg(not(feature = "ai-enhanced"))]
-    pub fn select_prompt(&self, analysis_type: AnalysisType, tier: ContextTier) -> Result<&str> {
-        let _ = (analysis_type, tier);
-        Err(McpError::Protocol(
-            "Prompt selection requires the `ai-enhanced` feature".to_string(),
-        ))
     }
 
     /// Register a custom prompt for a specific analysis type and verbosity
@@ -219,8 +141,7 @@ impl PromptSelector {
     ///
     /// These will be replaced by subagent-generated prompts in Phase 2B
     fn load_default_prompts(&mut self) {
-        #[cfg(feature = "ai-enhanced")]
-        {
+                {
             for analysis_type in AnalysisType::all() {
                 for verbosity in [
                     PromptVerbosity::Terse,
@@ -236,8 +157,7 @@ impl PromptSelector {
     }
 
     /// Generate a default prompt (now using specialized prompts for all analysis types)
-    #[cfg(feature = "ai-enhanced")]
-    fn generate_default_prompt(
+        fn generate_default_prompt(
         &self,
         analysis_type: AnalysisType,
         verbosity: PromptVerbosity,

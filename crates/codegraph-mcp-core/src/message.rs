@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::error::McpError;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -253,7 +254,7 @@ pub fn validate_message(message: &JsonRpcMessage) -> crate::Result<()> {
             JsonRpcV2Message::Request(req) => {
                 // jsonrpc version is handled by enum tag validation
                 if req.method.is_empty() {
-                    return Err(crate::McpError::InvalidMessage(
+                    return Err(McpError::InvalidMessage(
                         "Method cannot be empty".to_string(),
                     ));
                 }
@@ -265,7 +266,7 @@ pub fn validate_message(message: &JsonRpcMessage) -> crate::Result<()> {
             JsonRpcV2Message::Notification(notif) => {
                 // jsonrpc version is handled by enum tag validation
                 if notif.method.is_empty() {
-                    return Err(crate::McpError::InvalidMessage(
+                    return Err(McpError::InvalidMessage(
                         "Method cannot be empty".to_string(),
                     ));
                 }
@@ -283,7 +284,8 @@ mod tests {
     #[test]
     fn test_serialize_request() {
         let req = JsonRpcRequest::new(json!(1), "initialize", Some(json!({"test": true})));
-        let serialized = serde_json::to_string(&req).unwrap();
+        let msg = JsonRpcMessage::V2(JsonRpcV2Message::Request(req));
+        let serialized = serde_json::to_string(&msg).unwrap();
         assert!(serialized.contains("\"jsonrpc\":\"2.0\""));
         assert!(serialized.contains("\"id\":1"));
         assert!(serialized.contains("\"method\":\"initialize\""));
@@ -292,7 +294,8 @@ mod tests {
     #[test]
     fn test_serialize_response() {
         let res = JsonRpcResponse::success(json!(1), json!({"result": "success"}));
-        let serialized = serde_json::to_string(&res).unwrap();
+        let msg = JsonRpcMessage::V2(JsonRpcV2Message::Response(res));
+        let serialized = serde_json::to_string(&msg).unwrap();
         assert!(serialized.contains("\"jsonrpc\":\"2.0\""));
         assert!(serialized.contains("\"id\":1"));
         assert!(serialized.contains("\"result\""));
@@ -301,7 +304,8 @@ mod tests {
     #[test]
     fn test_serialize_notification() {
         let notif = JsonRpcNotification::new("cancelled", Some(json!({"requestId": 1})));
-        let serialized = serde_json::to_string(&notif).unwrap();
+        let msg = JsonRpcMessage::V2(JsonRpcV2Message::Notification(notif));
+        let serialized = serde_json::to_string(&msg).unwrap();
         assert!(serialized.contains("\"jsonrpc\":\"2.0\""));
         assert!(serialized.contains("\"method\":\"cancelled\""));
         assert!(!serialized.contains("\"id\""));

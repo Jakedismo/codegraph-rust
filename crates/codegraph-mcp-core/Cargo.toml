@@ -1,0 +1,32 @@
+[package]
+name = "codegraph-mcp-core"
+version = "1.0.0"
+edition = "2021"
+authors = ["CodeGraph Team"]
+license = "MIT OR Apache-2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+codegraph-core = { path = "../codegraph-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+anyhow = { workspace = true }
+nix = { workspace = true, features = ["process", "signal"] }
+regex = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+tokio-tungstenite = { workspace = true }
+url = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+serial_test = "3.2"

@@ -1,0 +1,27 @@
+[package]
+name = "codegraph-mcp-tools"
+version = "0.1.0"
+edition = "2021"
+authors = ["Solita CodeGraph"]
+license = "Apache-2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+embeddings = []
+jina = []
+ollama = []
+
+[dependencies]
+codegraph-core = { path = "../codegraph-core" }
+codegraph-graph = { path = "../codegraph-graph" }
+codegraph-vector = { path = "../codegraph-vector" }
+codegraph-mcp-core = { path = "../codegraph-mcp-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+async-trait = { workspace = true }
+lru = { workspace = true }

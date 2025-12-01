@@ -1,4 +1,5 @@
-use anyhow::{Context, Result};
+use anyhow::Context;
+use crate::error::Result;
 use dashmap::DashMap;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
@@ -245,7 +246,7 @@ impl ProcessManager {
 
         // Check if process is actually running
         if !self.is_process_running(pid)? {
-            return Err(anyhow::anyhow!("Server is not running"));
+            return Err(anyhow::anyhow!("Server is not running").into());
         }
 
         // Find process info
@@ -255,7 +256,7 @@ impl ProcessManager {
             }
         }
 
-        Err(anyhow::anyhow!("Process information not found"))
+        Err(anyhow::anyhow!("Process information not found").into())
     }
 
     async fn write_pid_file(&self, path: &Path, pid: u32) -> Result<()> {
@@ -270,8 +271,11 @@ impl ProcessManager {
 
     async fn read_pid_file(&self, path: &Path) -> Result<u32> {
         let content = fs::read_to_string(path).context("Failed to read PID file")?;
-
-        content.trim().parse::<u32>().context("Invalid PID in file")
+        let pid = content
+            .trim()
+            .parse::<u32>()
+            .context("Invalid PID in file")?;
+        Ok(pid)
     }
 
     fn find_running_server_pid(&self) -> Result<u32> {
@@ -280,14 +284,14 @@ impl ProcessManager {
                 return Ok(entry.value().pid);
             }
         }
-        Err(anyhow::anyhow!("No running server found"))
+        Err(anyhow::anyhow!("No running server found").into())
     }
 
     fn is_process_running(&self, pid: u32) -> Result<bool> {
         match signal::kill(Pid::from_raw(pid as i32), None) {
             Ok(_) => Ok(true),
             Err(nix::errno::Errno::ESRCH) => Ok(false),
-            Err(e) => Err(anyhow::anyhow!("Failed to check process: {}", e)),
+            Err(e) => Err(anyhow::anyhow!("Failed to check process: {}", e).into()),
         }
     }
 

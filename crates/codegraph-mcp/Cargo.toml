@@ -55,6 +55,8 @@ codegraph-parser = { workspace = true }
 codegraph-graph = { workspace = true, features = ["surrealdb"] }
 codegraph-vector = { workspace = true, optional = true, default-features = false }
 codegraph-ai = { workspace = true, optional = true }  # Re-enabled for AI-powered symbol resolution
+codegraph-mcp-autoagents = { path = "../codegraph-mcp-autoagents", optional = true }
+codegraph-mcp-server = { path = "../codegraph-mcp-server" }
 semchunk-rs = "0.1"  # Semantic chunking for long code nodes
 tokenizers = "0.22"  # Qwen2.5-Coder tokenizer for accurate token counting
 # codegraph-api not used directly here; avoid pulling heavy deps
@@ -63,11 +65,8 @@ tokenizers = "0.22"  # Qwen2.5-Coder tokenizer for accurate token counting
 # AutoAgents framework for agentic workflows
 autoagents = { git = "https://github.com/liquidos-ai/AutoAgents", optional = true }
 autoagents-derive = { git = "https://github.com/liquidos-ai/AutoAgents", optional = true }
-
-axum = { workspace = true, optional = true }
-hyper = { workspace = true, optional = true }
-tower = { workspace = true, optional = true }
-http-body-util = { version = "0.1", optional = true }
+codegraph-mcp-core = { path = "../codegraph-mcp-core" }
+codegraph-mcp-tools = { path = "../codegraph-mcp-tools", optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -75,20 +74,16 @@ anyhow = { workspace = true }
 serial_test = "3.2"
 # rmcp already available through main dependencies for testing
 
-[[bin]]
-name = "codegraph"
-path = "src/bin/codegraph.rs"
-
 [features]
 default = []
 daemon = ["codegraph-parser/watcher-experimental"]
-embeddings = ["dep:codegraph-vector"]
+embeddings = ["dep:codegraph-vector", "dep:codegraph-mcp-tools"]
 embeddings-local = ["embeddings", "codegraph-vector/local-embeddings"]
 embeddings-openai = ["embeddings", "codegraph-vector/openai"]
 embeddings-ollama = ["embeddings", "codegraph-vector/ollama"]
 embeddings-jina = ["embeddings", "codegraph-vector/jina"]
 embeddings-lmstudio = ["embeddings", "codegraph-vector/lmstudio"]
 cloud = ["embeddings-jina", "codegraph-graph/surrealdb"]
-server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
-ai-enhanced = ["dep:codegraph-ai", "embeddings", "autoagents-experimental", "codegraph-ai/openai-compatible"]
-autoagents-experimental = ["dep:autoagents", "dep:autoagents-derive"]
+server-http = ["codegraph-mcp-server/server-http"]
+ai-enhanced = ["dep:codegraph-ai", "embeddings", "autoagents-experimental", "codegraph-ai/openai-compatible", "codegraph-mcp-server/ai-enhanced"]
+autoagents-experimental = ["dep:autoagents", "dep:autoagents-derive", "codegraph-mcp-server/autoagents-experimental"]

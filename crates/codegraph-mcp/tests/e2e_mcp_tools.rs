@@ -306,7 +306,7 @@ async fn test_impact_analysis() -> Result<()> {
         (
             json!({
                 "target_function": "CodeGraphMCPServer",
-                "file_path": "crates/codegraph-mcp/src/official_server.rs",
+                "file_path": "crates/codegraph-mcp-server/src/official_server.rs",
                 "change_type": "modify"
             }),
             "MCP server structure impact",
@@ -314,7 +314,7 @@ async fn test_impact_analysis() -> Result<()> {
         (
             json!({
                 "target_function": "enhanced_search",
-                "file_path": "crates/codegraph-mcp/src/official_server.rs",
+                "file_path": "crates/codegraph-mcp-server/src/official_server.rs",
                 "change_type": "refactor"
             }),
             "Tool function refactor impact",

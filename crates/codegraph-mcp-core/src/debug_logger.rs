@@ -20,6 +20,13 @@ pub struct DebugLogger {
 }
 
 impl DebugLogger {
+    /// Access current log file path (for tests/diagnostics)
+    pub fn current_log_path() -> Option<PathBuf> {
+        DEBUG_LOGGER
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|l| l.log_path.clone()))
+    }
     /// Initialize the global debug logger
     pub fn init() {
         let enabled = std::env::var("CODEGRAPH_DEBUG")
@@ -95,6 +102,17 @@ impl DebugLogger {
         });
 
         Self::write_entry(&entry);
+    }
+
+    /// Flush underlying file (used in tests)
+    pub fn flush() {
+        if let Ok(mut guard) = DEBUG_LOGGER.lock() {
+            if let Some(logger) = guard.as_mut() {
+                if let Some(file) = &mut logger.file {
+                    let _ = file.flush();
+                }
+            }
+        }
     }
 
     /// Log a tool call completion event
@@ -237,4 +255,101 @@ macro_rules! debug_log {
     (agent_finish, $success:expr, $output:expr, $error:expr) => {
         $crate::debug_logger::DebugLogger::log_agent_finish($success, $output, $error);
     };
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use uuid::Uuid;
+    use serial_test::serial;
+
+    fn setup_temp_logger() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("cg_debug_{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        // reset global logger to avoid cross-test accumulation
+        *DEBUG_LOGGER.lock().unwrap() = None;
+        std::env::set_var("CODEGRAPH_DEBUG", "1");
+        std::env::set_var("CODEGRAPH_DEBUG_DIR", &dir);
+        DebugLogger::init();
+        let path = DebugLogger::current_log_path().expect("log path");
+        // ensure empty file for the test
+        std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap();
+        path
+    }
+
+    fn read_events(path: &PathBuf) -> Vec<serde_json::Value> {
+        let data = fs::read_to_string(path).unwrap();
+        data.lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
+    }
+
+    #[test]
+    #[serial]
+    fn tool_start_finish_logged_in_order() {
+        let dir = setup_temp_logger();
+        let params = serde_json::json!({"foo": "bar"});
+        let result = serde_json::json!({"ok": true});
+
+        DebugLogger::log_tool_start("demo_tool", &params);
+        DebugLogger::log_tool_finish("demo_tool", &result);
+        DebugLogger::flush();
+
+        let events = read_events(&dir);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["event"], "tool_call_start");
+        assert_eq!(events[0]["tool"], "demo_tool");
+        assert_eq!(events[1]["event"], "tool_call_finish");
+        assert_eq!(events[1]["tool"], "demo_tool");
+    }
+
+    #[test]
+    #[serial]
+    fn agent_start_and_error_finish_logged() {
+        let dir = setup_temp_logger();
+        DebugLogger::log_agent_start("q", "analysis", "Medium");
+        DebugLogger::log_agent_finish(false, None, Some("boom"));
+        DebugLogger::flush();
+
+        let events = read_events(&dir);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["event"], "agent_execution_start");
+        assert_eq!(events[1]["event"], "agent_execution_finish");
+        assert_eq!(events[1]["success"], false);
+        assert_eq!(events[1]["error"], "boom");
+    }
+
+    #[test]
+    #[serial]
+    fn tool_error_logged_after_start() {
+        let dir = setup_temp_logger();
+        let params = serde_json::json!({"foo": "bar"});
+        DebugLogger::log_tool_start("demo", &params);
+        DebugLogger::log_tool_error("demo", &params, "fail");
+        DebugLogger::flush();
+
+        let events = read_events(&dir);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["event"], "tool_call_start");
+        assert_eq!(events[1]["event"], "tool_call_error");
+    }
+
+    #[test]
+    #[serial]
+    fn reasoning_steps_keep_order() {
+        let dir = setup_temp_logger();
+        DebugLogger::log_reasoning_step(1, "t1", Some("a"));
+        DebugLogger::log_reasoning_step(2, "t2", Some("b"));
+        DebugLogger::flush();
+        let events = read_events(&dir);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["step"], 1);
+        assert_eq!(events[1]["step"], 2);
+    }
 }

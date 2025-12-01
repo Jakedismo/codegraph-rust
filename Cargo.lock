@@ -427,12 +427,49 @@ dependencies = [
 [[package]]
 name = "autoagents"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74ec243f75118d32aa99fa9390c34ee8ab7740abdfde2712cb7fe451d092c626"
+dependencies = [
+ "async-trait",
+ "autoagents-core 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "autoagents-derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "autoagents-llm 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "autoagents"
+version = "0.3.0"
 source = "git+https://github.com/liquidos-ai/AutoAgents#d045c5736c33aaf56140bf145d84cd15686980ba"
 dependencies = [
  "async-trait",
- "autoagents-core",
- "autoagents-derive",
- "autoagents-llm",
+ "autoagents-core 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
+ "autoagents-derive 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
+ "autoagents-llm 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
+]
+
+[[package]]
+name = "autoagents-core"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f0d837fe0a6066a4788547424e21772a56c59225b409763a7e80d2fc0a09bde"
+dependencies = [
+ "async-trait",
+ "autoagents-llm 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures",
+ "futures-core",
+ "futures-util",
+ "getrandom 0.3.4",
+ "log",
+ "ractor",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -441,7 +478,7 @@ version = "0.3.0"
 source = "git+https://github.com/liquidos-ai/AutoAgents#d045c5736c33aaf56140bf145d84cd15686980ba"
 dependencies = [
  "async-trait",
- "autoagents-llm",
+ "autoagents-llm 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
  "futures",
  "futures-core",
  "futures-util",
@@ -462,6 +499,20 @@ dependencies = [
 [[package]]
 name = "autoagents-derive"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4946ae91fa5ce9339b43c7164d52c34b25ecec97b289b39051df57d905b0c49b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "strum 0.27.2",
+ "syn 2.0.111",
+]
+
+[[package]]
+name = "autoagents-derive"
+version = "0.3.0"
 source = "git+https://github.com/liquidos-ai/AutoAgents#d045c5736c33aaf56140bf145d84cd15686980ba"
 dependencies = [
  "proc-macro2",
@@ -470,6 +521,34 @@ dependencies = [
  "serde_json",
  "strum 0.27.2",
  "syn 2.0.111",
+]
+
+[[package]]
+name = "autoagents-llm"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b04ae8943e84fd72251ce270eb143b9f665c59978bc2ed03f524373ab12d9d68"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "dirs 6.0.0",
+ "either",
+ "futures",
+ "getrandom 0.3.4",
+ "log",
+ "reqwest",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "strum 0.27.2",
+ "strum_macros 0.27.2",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
+ "ureq 3.1.4",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -1274,14 +1353,17 @@ dependencies = [
  "anyhow",
  "async-trait",
  "atty",
- "autoagents",
- "autoagents-derive",
- "axum",
+ "autoagents 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
+ "autoagents-derive 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
  "chrono",
  "clap",
  "codegraph-ai",
  "codegraph-core",
  "codegraph-graph",
+ "codegraph-mcp-autoagents",
+ "codegraph-mcp-core",
+ "codegraph-mcp-server",
+ "codegraph-mcp-tools",
  "codegraph-parser",
  "codegraph-vector",
  "colored",
@@ -1291,8 +1373,6 @@ dependencies = [
  "fastrand",
  "futures",
  "glob-match",
- "http-body-util",
- "hyper",
  "indicatif 0.18.3",
  "lru 0.16.2",
  "nix",
@@ -1316,13 +1396,117 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.28.0",
  "toml",
- "tower",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
  "url",
  "uuid",
  "walkdir",
+]
+
+[[package]]
+name = "codegraph-mcp-autoagents"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "autoagents 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "autoagents-derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "codegraph-ai",
+ "codegraph-mcp-core",
+ "codegraph-mcp-tools",
+ "futures",
+ "parking_lot",
+ "schemars 1.1.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "codegraph-mcp-core"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "codegraph-core",
+ "dashmap 6.1.0",
+ "nix",
+ "parking_lot",
+ "regex",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-tungstenite 0.28.0",
+ "toml",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "codegraph-mcp-daemon"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "codegraph-core",
+ "codegraph-mcp-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "codegraph-mcp-server"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "clap",
+ "codegraph-ai",
+ "codegraph-core",
+ "codegraph-graph",
+ "codegraph-mcp-autoagents",
+ "codegraph-mcp-core",
+ "codegraph-mcp-tools",
+ "codegraph-vector",
+ "futures",
+ "http-body-util",
+ "hyper",
+ "rmcp",
+ "schemars 1.1.0",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "thiserror 2.0.17",
+ "tokio",
+ "tower",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "codegraph-mcp-tools"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "codegraph-core",
+ "codegraph-graph",
+ "codegraph-mcp-core",
+ "codegraph-vector",
+ "lru 0.16.2",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tracing",
 ]
 
 [[package]]

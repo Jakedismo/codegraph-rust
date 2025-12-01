@@ -2,8 +2,9 @@
 // ABOUTME: Executes graph analysis tools by calling Rust SDK wrappers with validated parameters
 
 use codegraph_core::config_manager::CodeGraphConfig;
-use codegraph_core::CodeNode;
 use codegraph_graph::GraphFunctions;
+use codegraph_mcp_core::debug_logger::DebugLogger;
+use codegraph_mcp_core::error::{McpError, Result};
 use codegraph_vector::reranking::{factory::create_reranker, RerankDocument, Reranker};
 use codegraph_vector::EmbeddingGenerator;
 use lru::LruCache;
@@ -16,9 +17,7 @@ use tracing::{debug, info};
 
 const TOOL_PROGRESS_LOG_TARGET: &str = "codegraph::mcp::tools";
 
-use crate::error::McpError;
 use crate::graph_tool_schemas::GraphToolSchemas;
-use crate::Result;
 
 /// Statistics about LRU cache performance
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -236,23 +235,10 @@ impl GraphToolExecutor {
                 Ok(result)
             }
             Err(err) => {
-                crate::debug_logger::DebugLogger::log_tool_error(
-                    tool_name,
-                    &parameters,
-                    &format!("{}", err),
-                );
+                DebugLogger::log_tool_error(tool_name, &parameters, &format!("{}", err));
                 Err(err)
             }
         }
-    }
-
-    fn log_error_and_return(
-        tool_name: &str,
-        parameters: &JsonValue,
-        error: McpError,
-    ) -> Result<JsonValue> {
-        crate::debug_logger::DebugLogger::log_tool_error(tool_name, parameters, &error.to_string());
-        Err(error.into())
     }
 
     /// Execute get_transitive_dependencies
@@ -536,7 +522,7 @@ fn log_tool_call_start(tool_name: &str, parameters: &JsonValue) {
     );
 
     // Debug logging to file if enabled
-    crate::debug_logger::DebugLogger::log_tool_start(tool_name, parameters);
+    DebugLogger::log_tool_start(tool_name, parameters);
 }
 
 fn log_tool_call_finish(tool_name: &str, result: &JsonValue) {
@@ -553,7 +539,7 @@ fn log_tool_call_finish(tool_name: &str, result: &JsonValue) {
     );
 
     // Debug logging to file if enabled
-    crate::debug_logger::DebugLogger::log_tool_finish(tool_name, result);
+    DebugLogger::log_tool_finish(tool_name, result);
 }
 
 #[cfg(test)]

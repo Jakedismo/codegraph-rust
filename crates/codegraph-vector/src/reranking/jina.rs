@@ -22,6 +22,7 @@ struct JinaRerankRequest {
 
 /// Jina reranking response structure
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct JinaRerankResponse {
     model: String,
     results: Vec<JinaRerankResult>,
@@ -35,6 +36,7 @@ struct JinaRerankResult {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct JinaRerankUsage {
     total_tokens: usize,
     #[serde(default)]
