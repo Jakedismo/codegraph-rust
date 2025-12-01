@@ -10,6 +10,7 @@ path = "src/lib.rs"
 
 [features]
 autoagents-experimental = []
+autoagents-lats = []  # LATS algorithm support (experimental)
 
 [dependencies]
 codegraph-mcp-core = { path = "../codegraph-mcp-core" }

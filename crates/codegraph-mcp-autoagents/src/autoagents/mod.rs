@@ -39,7 +39,7 @@ pub mod dependency_analysis_prompts;
 pub mod dependency_analysis_prompts_integration_example;
 #[cfg(feature = "autoagents-experimental")]
 pub mod semantic_question_prompts;
-#[cfg(feature = "autoagents-experimental")]
+#[cfg(all(feature = "autoagents-experimental", feature = "autoagents-lats"))]
 pub mod lats;
 
 // Re-exports
@@ -59,5 +59,5 @@ pub use executor_factory::AgentExecutorFactory;
 pub use tier_plugin::TierAwarePromptPlugin;
 #[cfg(feature = "autoagents-experimental")]
 pub use prompt_selector::{PromptSelector, PromptSelectorStats, PromptVerbosity};
-#[cfg(feature = "autoagents-experimental")]
-pub use lats::{SearchTree, SearchNode, NodeId, ToolAction, SearchTreeError, ProviderRouter, LATSPhase, ProviderStats};
+#[cfg(all(feature = "autoagents-experimental", feature = "autoagents-lats"))]
+pub use lats::{SearchTree, SearchNode, NodeId, ToolAction, SearchTreeError, ProviderRouter, LATSPhase, ProviderStats, LATSPrompts, LATSExecutor, LATSConfig};
