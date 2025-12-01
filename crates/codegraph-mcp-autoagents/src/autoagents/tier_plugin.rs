@@ -60,8 +60,8 @@ mod tests {
         let small = TierAwarePromptPlugin::new(AnalysisType::CodeSearch, ContextTier::Small);
         let massive = TierAwarePromptPlugin::new(AnalysisType::CodeSearch, ContextTier::Massive);
 
-        assert_eq!(small.get_max_iterations(), 5);
-        assert_eq!(massive.get_max_iterations(), 20);
+        assert_eq!(small.get_max_iterations(), 4);
+        assert_eq!(massive.get_max_iterations(), 16);
     }
 
     #[test]

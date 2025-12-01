@@ -788,8 +788,8 @@ mod tests {
             &self,
             messages: &[Message],
             _config: &codegraph_ai::llm_provider::GenerationConfig,
-        ) -> codegraph_ai::llm_provider::LLMResult<LLMResponse> {
-            Ok(LLMResponse {
+        ) -> codegraph_ai::llm_provider::LLMResult<codegraph_ai::llm_provider::LLMResponse> {
+            Ok(codegraph_ai::llm_provider::LLMResponse {
                 content: format!("Echo: {}", messages.last().unwrap().content),
                 total_tokens: Some(10),
                 prompt_tokens: None,
@@ -811,8 +811,8 @@ mod tests {
             "mock-model"
         }
 
-        fn characteristics(&self) -> ProviderCharacteristics {
-            ProviderCharacteristics {
+        fn characteristics(&self) -> codegraph_ai::llm_provider::ProviderCharacteristics {
+            codegraph_ai::llm_provider::ProviderCharacteristics {
                 max_tokens: 4096,
                 avg_latency_ms: 1,
                 rpm_limit: None,
