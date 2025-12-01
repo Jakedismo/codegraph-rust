@@ -114,6 +114,23 @@ impl DebugLogger {
         Self::write_entry(&entry);
     }
 
+    /// Log a tool call error event
+    pub fn log_tool_error(tool_name: &str, parameters: &JsonValue, error: &str) {
+        if !Self::is_enabled() {
+            return;
+        }
+
+        let entry = serde_json::json!({
+            "timestamp": Utc::now().to_rfc3339(),
+            "event": "tool_call_error",
+            "tool": tool_name,
+            "parameters": parameters,
+            "error": error,
+        });
+
+        Self::write_entry(&entry);
+    }
+
     /// Log an agentic reasoning step
     pub fn log_reasoning_step(step_number: usize, thought: &str, action: Option<&str>) {
         if !Self::is_enabled() {
@@ -207,6 +224,9 @@ macro_rules! debug_log {
     };
     (tool_finish, $tool:expr, $result:expr) => {
         $crate::debug_logger::DebugLogger::log_tool_finish($tool, $result);
+    };
+    (tool_error, $tool:expr, $params:expr, $error:expr) => {
+        $crate::debug_logger::DebugLogger::log_tool_error($tool, $params, $error);
     };
     (reasoning, $step:expr, $thought:expr, $action:expr) => {
         $crate::debug_logger::DebugLogger::log_reasoning_step($step, $thought, $action);

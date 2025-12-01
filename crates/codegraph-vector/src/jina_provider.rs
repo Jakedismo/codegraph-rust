@@ -450,6 +450,15 @@ impl JinaEmbeddingProvider {
 
     /// Get the embedding dimension for the current model
     pub fn embedding_dimension(&self) -> usize {
+        // Priority 1: CODEGRAPH_EMBEDDING_DIMENSION environment variable
+        if let Some(dim) = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+        {
+            return dim;
+        }
+
+        // Priority 2: Infer from model name (deprecated - users should set dimension explicitly)
         match self.config.model.as_str() {
             "jina-code-embeddings-1.5b" => 1536,
             "jina-code-embeddings-0.5b" => 896,

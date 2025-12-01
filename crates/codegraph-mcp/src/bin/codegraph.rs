@@ -780,10 +780,10 @@ async fn handle_start(
 
     match transport {
         TransportType::Stdio {
-            buffer_size: _,
-            enable_daemon: _,
-            watch_path: _,
-            disable_daemon: _,
+            buffer_size: _buffer_size,
+            enable_daemon,
+            watch_path,
+            disable_daemon,
         } => {
             // Configure logging to file for stdio transport (stdout/stderr are used for MCP protocol)
             // Logs will be written to .codegraph/logs/mcp-server.log

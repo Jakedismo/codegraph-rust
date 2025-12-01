@@ -307,6 +307,15 @@ impl LmStudioEmbeddingProvider {
 
     /// Infer embedding dimension from model name
     fn infer_dimension_for_model(model: &str) -> usize {
+        // Priority 1: CODEGRAPH_EMBEDDING_DIMENSION environment variable
+        if let Some(dim) = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+        {
+            return dim;
+        }
+
+        // Priority 2: Infer from model name (deprecated - users should set dimension explicitly)
         let model_lower = model.to_lowercase();
 
         // Jina models (check specific variants before generic patterns)

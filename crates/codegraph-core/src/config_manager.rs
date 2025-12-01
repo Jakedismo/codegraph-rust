@@ -93,6 +93,14 @@ pub struct EmbeddingConfig {
     #[serde(default = "default_jina_reranking_top_n")]
     pub jina_reranking_top_n: usize,
 
+    /// Enable generic embedding-based reranking (works with any provider)
+    #[serde(default)]
+    pub enable_reranking: bool,
+
+    /// Number of top results to return after reranking
+    #[serde(default = "default_reranking_top_n")]
+    pub reranking_top_n: usize,
+
     /// Jina late chunking
     #[serde(default)]
     pub jina_late_chunking: bool,
@@ -123,6 +131,8 @@ impl Default for EmbeddingConfig {
             jina_enable_reranking: false,
             jina_reranking_model: default_jina_reranking_model(),
             jina_reranking_top_n: default_jina_reranking_top_n(),
+            enable_reranking: false,
+            reranking_top_n: default_reranking_top_n(),
             jina_late_chunking: false,
             jina_task: default_jina_task(),
             dimension: default_embedding_dimension(),
@@ -209,14 +219,6 @@ pub struct LLMConfig {
     #[serde(default)]
     pub reasoning_effort: Option<String>,
 
-    /// Enable LM Studio-based reranking for semantic search
-    #[serde(default)]
-    pub lmstudio_enable_reranking: Option<bool>,
-
-    /// LM Studio model to use for reranking (if different from main model)
-    #[serde(default)]
-    pub lmstudio_reranking_model: Option<String>,
-
     /// Request timeout in seconds
     #[serde(default = "default_timeout_secs")]
     pub timeout_secs: u64,
@@ -242,8 +244,6 @@ impl Default for LLMConfig {
             max_completion_token: None, // Will use max_tokens if not set
             mcp_code_agent_max_output_tokens: None, // Use tier-based defaults if not set
             reasoning_effort: None,     // Only for reasoning models
-            lmstudio_enable_reranking: None, // Disabled by default
-            lmstudio_reranking_model: None,  // Will use main model if not set
             timeout_secs: default_timeout_secs(),
         }
     }
@@ -370,6 +370,9 @@ fn default_jina_reranking_model() -> String {
 }
 fn default_jina_reranking_top_n() -> usize {
     10
+}
+fn default_reranking_top_n() -> usize {
+    50
 }
 fn default_jina_task() -> String {
     "code.query".to_string()

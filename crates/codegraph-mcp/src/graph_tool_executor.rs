@@ -2,6 +2,7 @@
 // ABOUTME: Executes graph analysis tools by calling Rust SDK wrappers with validated parameters
 
 use codegraph_core::config_manager::CodeGraphConfig;
+use codegraph_core::CodeNode;
 use codegraph_graph::GraphFunctions;
 use codegraph_vector::EmbeddingGenerator;
 use lru::LruCache;
@@ -15,7 +16,6 @@ use tracing::{debug, info};
 
 #[cfg(feature = "embeddings-jina")]
 use codegraph_vector::jina_provider::{JinaConfig, JinaEmbeddingProvider};
-use codegraph_vector::lmstudio_reranker::{LmStudioReranker, LmStudioRerankerConfig};
 
 const TOOL_PROGRESS_LOG_TARGET: &str = "codegraph::mcp::tools";
 
@@ -67,8 +67,6 @@ pub struct GraphToolExecutor {
     /// Lazy-initialized Jina provider for reranking
     #[cfg(feature = "embeddings-jina")]
     jina_provider: Arc<OnceCell<Option<JinaEmbeddingProvider>>>,
-    /// Lazy-initialized LM Studio reranker
-    lmstudio_reranker: Arc<OnceCell<Option<LmStudioReranker>>>,
 }
 
 impl GraphToolExecutor {
@@ -108,7 +106,6 @@ impl GraphToolExecutor {
             cache_enabled,
             #[cfg(feature = "embeddings-jina")]
             jina_provider: Arc::new(OnceCell::new()),
-            lmstudio_reranker: Arc::new(OnceCell::new()),
         }
     }
 
@@ -145,83 +142,113 @@ impl GraphToolExecutor {
     pub async fn execute(&self, tool_name: &str, parameters: JsonValue) -> Result<JsonValue> {
         log_tool_call_start(tool_name, &parameters);
 
-        // Validate tool exists
-        let _schema = GraphToolSchemas::get_by_name(tool_name)
-            .ok_or_else(|| McpError::Protocol(format!("Unknown tool: {}", tool_name)))?;
+        let exec_result: Result<JsonValue> = async {
+            // Validate tool exists
+            let _schema = GraphToolSchemas::get_by_name(tool_name)
+                .ok_or_else(|| McpError::Protocol(format!("Unknown tool: {}", tool_name)))?;
 
-        let project_id = self.graph_functions.project_id();
+            let project_id = self.graph_functions.project_id();
 
-        // Check cache if enabled
-        if self.cache_enabled {
-            let cache_key = Self::cache_key(project_id, tool_name, &parameters);
+            // Check cache if enabled
+            if self.cache_enabled {
+                let cache_key = Self::cache_key(project_id, tool_name, &parameters);
 
-            // Try cache lookup
-            {
-                let mut cache = self.cache.lock();
-                if let Some(cached_result) = cache.get(&cache_key) {
-                    // Cache hit
-                    let mut stats = self.cache_stats.lock();
-                    stats.hits += 1;
-                    debug!("Cache hit for {}: {}", tool_name, cache_key);
-                    let cached = cached_result.clone();
-                    log_tool_call_finish(tool_name, &cached);
-                    return Ok(cached);
+                // Try cache lookup
+                {
+                    let mut cache = self.cache.lock();
+                    if let Some(cached_result) = cache.get(&cache_key) {
+                        // Cache hit
+                        let mut stats = self.cache_stats.lock();
+                        stats.hits += 1;
+                        debug!("Cache hit for {}: {}", tool_name, cache_key);
+                        let cached = cached_result.clone();
+                        log_tool_call_finish(tool_name, &cached);
+                        return Ok(cached);
+                    }
                 }
+
+                // Cache miss - record it
+                {
+                    let mut stats = self.cache_stats.lock();
+                    stats.misses += 1;
+                }
+                debug!("Cache miss for {}: {}", tool_name, cache_key);
             }
 
-            // Cache miss - record it
-            {
+            // Execute based on tool name
+            let result = match tool_name {
+                "get_transitive_dependencies" => {
+                    self.execute_get_transitive_dependencies(parameters.clone())
+                        .await?
+                }
+                "detect_circular_dependencies" => {
+                    self.execute_detect_circular_dependencies(parameters.clone())
+                        .await?
+                }
+                "trace_call_chain" => self.execute_trace_call_chain(parameters.clone()).await?,
+                "calculate_coupling_metrics" => {
+                    self.execute_calculate_coupling_metrics(parameters.clone())
+                        .await?
+                }
+                "get_hub_nodes" => self.execute_get_hub_nodes(parameters.clone()).await?,
+                "get_reverse_dependencies" => {
+                    self.execute_get_reverse_dependencies(parameters.clone())
+                        .await?
+                }
+                "semantic_code_search" => {
+                    self.execute_semantic_code_search(parameters.clone()).await?
+                }
+                _ => {
+                    return Err(McpError::Protocol(format!(
+                        "Tool not implemented: {}",
+                        tool_name
+                    ))
+                    .into());
+                }
+            };
+
+            // Cache the result if enabled
+            if self.cache_enabled {
+                let cache_key = Self::cache_key(project_id, tool_name, &parameters);
+                let mut cache = self.cache.lock();
+                let was_evicted = cache.len() >= cache.cap().get();
+                cache.put(cache_key, result.clone());
+
+                // Update stats
                 let mut stats = self.cache_stats.lock();
-                stats.misses += 1;
+                if was_evicted {
+                    stats.evictions += 1;
+                }
+                stats.current_size = cache.len();
             }
-            debug!("Cache miss for {}: {}", tool_name, cache_key);
+
+            Ok(result)
         }
+        .await;
 
-        // Execute based on tool name
-        let result = match tool_name {
-            "get_transitive_dependencies" => {
-                self.execute_get_transitive_dependencies(parameters.clone())
-                    .await?
+        match exec_result {
+            Ok(result) => {
+                log_tool_call_finish(tool_name, &result);
+                Ok(result)
             }
-            "detect_circular_dependencies" => {
-                self.execute_detect_circular_dependencies(parameters.clone())
-                    .await?
+            Err(err) => {
+                crate::debug_logger::DebugLogger::log_tool_error(
+                    tool_name,
+                    &parameters,
+                    &format!("{}", err),
+                );
+                Err(err)
             }
-            "trace_call_chain" => self.execute_trace_call_chain(parameters.clone()).await?,
-            "calculate_coupling_metrics" => {
-                self.execute_calculate_coupling_metrics(parameters.clone())
-                    .await?
-            }
-            "get_hub_nodes" => self.execute_get_hub_nodes(parameters.clone()).await?,
-            "get_reverse_dependencies" => {
-                self.execute_get_reverse_dependencies(parameters.clone())
-                    .await?
-            }
-            "semantic_code_search" => self.execute_semantic_code_search(parameters.clone()).await?,
-            _ => {
-                return Err(
-                    McpError::Protocol(format!("Tool not implemented: {}", tool_name)).into(),
-                )
-            }
-        };
-
-        // Cache the result if enabled
-        if self.cache_enabled {
-            let cache_key = Self::cache_key(project_id, tool_name, &parameters);
-            let mut cache = self.cache.lock();
-            let was_evicted = cache.len() >= cache.cap().get();
-            cache.put(cache_key, result.clone());
-
-            // Update stats
-            let mut stats = self.cache_stats.lock();
-            if was_evicted {
-                stats.evictions += 1;
-            }
-            stats.current_size = cache.len();
         }
+    }
 
-        log_tool_call_finish(tool_name, &result);
-        Ok(result)
+    fn log_error_and_return(
+        tool_name: &str,
+        parameters: &JsonValue,
+        error: McpError,
+    ) -> Result<JsonValue> {
+        crate::debug_logger::DebugLogger::log_tool_error(tool_name, parameters, &error.to_string());
+        Err(error.into())
     }
 
     /// Execute get_transitive_dependencies
@@ -424,13 +451,13 @@ impl GraphToolExecutor {
         }))
     }
 
-    /// Apply reranking if configured (supports Jina AND LM Studio)
+    /// Apply reranking if configured (supports Jina, generic embedding, and LM Studio)
     async fn apply_reranking(
         &self,
         query: &str,
         candidates: Vec<serde_json::Value>,
     ) -> Result<Vec<serde_json::Value>> {
-        // Check if Jina reranking is enabled
+        // Priority 1: Jina reranking (native reranking model)
         #[cfg(feature = "embeddings-jina")]
         {
             if self.config.embedding.jina_enable_reranking {
@@ -438,11 +465,9 @@ impl GraphToolExecutor {
             }
         }
 
-        // Check if LM Studio reranking is enabled
-        if let Some(lmstudio_reranking) = self.config.llm.lmstudio_enable_reranking {
-            if lmstudio_reranking {
-                return self.apply_lmstudio_reranking(query, candidates).await;
-            }
+        // Priority 2: Generic embedding-based reranking (any provider)
+        if self.config.embedding.enable_reranking {
+            return self.rerank_with_embeddings(query, candidates).await;
         }
 
         // No reranking configured - return candidates as-is
@@ -500,75 +525,68 @@ impl GraphToolExecutor {
         Ok(reranked)
     }
 
-    async fn apply_lmstudio_reranking(
+    /// Generic embedding-based reranking (works with any provider)
+    async fn rerank_with_embeddings(
         &self,
         query: &str,
         candidates: Vec<serde_json::Value>,
     ) -> Result<Vec<serde_json::Value>> {
-        info!("Applying LM Studio reranking to {} candidates", candidates.len());
+        let top_n = self.config.embedding.reranking_top_n;
+        info!("Applying embedding-based reranking to {} candidates (top_n={})", candidates.len(), top_n);
 
-        // Lazy-initialize LM Studio reranker
-        let reranker = self
-            .lmstudio_reranker
-            .get_or_init(|| async {
-                // Try environment-based detection first
-                if let Some(reranker) = LmStudioReranker::from_env() {
-                    return Some(reranker);
-                }
+        // Generate query embedding
+        let mut query_node = CodeNode::new("__query__".to_string());
+        query_node.content = Some(query.to_string());
 
-                // Fallback to config-based initialization
-                if let Some(true) = self.config.llm.lmstudio_enable_reranking {
-                    let config = LmStudioRerankerConfig {
-                        base_url: self.config.llm.lmstudio_url.clone(),
-                        api_key: "lm-studio".to_string(), // LM Studio doesn't require real auth
-                        model: self
-                            .config
-                            .llm
-                            .lmstudio_reranking_model
-                            .clone()
-                            .unwrap_or_else(|| "text-embedding-3-small".to_string()),
-                        timeout: std::time::Duration::from_secs(60),
-                    };
-                    return Some(LmStudioReranker::new(config));
-                }
-
-                None
-            })
-            .await;
-
-        let reranker = match reranker {
-            Some(r) => r,
-            None => {
-                tracing::warn!("LM Studio reranker not initialized, skipping reranking");
-                return Ok(candidates);
-            }
-        };
-
-        // Extract documents for reranking
-        let documents: Vec<String> = candidates
-            .iter()
-            .map(|c| {
-                let name = c["name"].as_str().unwrap_or("unknown");
-                let file_path = c["location"]["file_path"].as_str().unwrap_or("");
-                let content = c["content"].as_str().unwrap_or("");
-                format!("{}\nFile: {}\n{}", name, file_path, content)
-            })
-            .collect();
-
-        // Call LM Studio reranker (uses embeddings, not LLM prompts)
-        let rerank_results = reranker
-            .rerank(query, &documents)
+        let query_embedding = self.embedding_generator
+            .generate(&query_node)
             .await
-            .map_err(|e| McpError::Protocol(format!("LM Studio reranking failed: {}", e)))?;
+            .map_err(|e| McpError::Protocol(format!("Failed to generate query embedding: {}", e)))?;
 
-        // Reorder candidates based on reranking
-        let reranked: Vec<serde_json::Value> = rerank_results
+        // Generate embeddings for all candidates
+        let mut scored_candidates = Vec::new();
+        for (idx, candidate) in candidates.iter().enumerate() {
+            let name = candidate["name"].as_str().unwrap_or("unknown");
+            let file_path = candidate["location"]["file_path"].as_str().unwrap_or("");
+            let content = candidate["content"].as_str().unwrap_or("");
+            let doc_text = format!("{}\nFile: {}\n{}", name, file_path, content);
+
+            let mut doc_node = CodeNode::new(format!("__doc_{}__", idx));
+            doc_node.content = Some(doc_text);
+
+            let doc_embedding = self.embedding_generator
+                .generate(&doc_node)
+                .await
+                .map_err(|e| McpError::Protocol(format!("Failed to generate document embedding: {}", e)))?;
+
+            // Calculate cosine similarity
+            let similarity = Self::cosine_similarity(&query_embedding, &doc_embedding);
+            scored_candidates.push((idx, similarity, candidate.clone()));
+        }
+
+        // Sort by similarity (descending) and take top N
+        scored_candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let reranked: Vec<serde_json::Value> = scored_candidates
             .into_iter()
-            .filter_map(|result| candidates.get(result.index).cloned())
+            .take(top_n)
+            .map(|(_, _, candidate)| candidate)
             .collect();
 
-        info!("LM Studio reranking complete: {} results", reranked.len());
+        info!("Embedding-based reranking complete: {} results", reranked.len());
         Ok(reranked)
+    }
+
+    /// Calculate cosine similarity between two embeddings
+    fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+        let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+        if norm_a == 0.0 || norm_b == 0.0 {
+            return 0.0;
+        }
+
+        dot_product / (norm_a * norm_b)
     }
 
     /// Get all available tool schemas for registration

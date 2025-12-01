@@ -75,7 +75,6 @@ onnx-coreml = ["onnx"]
 ollama = ["dep:reqwest"]
 jina = ["dep:reqwest"]
 lmstudio = ["dep:reqwest"]
-lmstudio-reranker = ["dep:reqwest"]
 
 [[example]]
 name = "rag_demo"

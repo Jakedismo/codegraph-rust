@@ -217,9 +217,13 @@ impl EmbeddingModelConfig {
     }
 
     pub fn validate(&self) -> Result<()> {
+        // Validate dimension is one of the supported values
+        const SUPPORTED_DIMENSIONS: &[usize] = &[384, 768, 1024, 1536, 2048, 2560, 3072, 4096];
         anyhow::ensure!(
-            self.dimension > 0 && self.dimension <= 8192,
-            "Embedding dimension must be between 1 and 8192"
+            SUPPORTED_DIMENSIONS.contains(&self.dimension),
+            "Embedding dimension must be one of: 384, 768, 1024, 1536, 2048, 2560, 3072, 4096. \
+             Got: {}. Set CODEGRAPH_EMBEDDING_DIMENSION environment variable to override.",
+            self.dimension
         );
 
         match &self.provider {
@@ -392,7 +396,7 @@ impl EmbeddingPreset {
             name: "jina-v4".to_string(),
             description: "Jina embeddings-v4 model (multimodal, code-optimized with reranking)"
                 .to_string(),
-            config: EmbeddingModelConfig::for_jina("jina-embeddings-v4", 1024),
+            config: EmbeddingModelConfig::for_jina("jina-embeddings-v4", 2048),
         }
     }
 

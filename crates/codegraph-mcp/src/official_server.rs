@@ -18,12 +18,13 @@ use rmcp::{
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::debug_logger::DebugLogger;
 use crate::prompts::INITIAL_INSTRUCTIONS;
 
 /// Parameter structs following official rmcp SDK pattern
@@ -466,12 +467,18 @@ impl CodeGraphMCPServer {
 
         tracing::info!("AutoAgents {} (tier={:?})", analysis_type.as_str(), tier);
 
+        DebugLogger::log_agent_start(query, analysis_type.as_str(), &format!("{:?}", tier));
+
         // Load config for LLM provider
         let config_manager =
             codegraph_core::config_manager::ConfigManager::load().map_err(|e| McpError {
                 code: rmcp::model::ErrorCode(-32603),
                 message: format!("Failed to load config: {}", e).into(),
                 data: None,
+            })
+            .map_err(|e| {
+                DebugLogger::log_agent_finish(false, None, Some(&e.message));
+                e
             })?;
         let config = config_manager.config();
 
@@ -481,6 +488,10 @@ impl CodeGraphMCPServer {
                 code: rmcp::model::ErrorCode(-32603),
                 message: format!("Failed to create LLM provider: {}", e).into(),
                 data: None,
+            })
+            .map_err(|e| {
+                DebugLogger::log_agent_finish(false, None, Some(&e.message));
+                e
             })?;
 
         // Create GraphFunctions with SurrealDB connection
@@ -507,6 +518,10 @@ impl CodeGraphMCPServer {
                     code: rmcp::model::ErrorCode(-32603),
                     message: format!("Failed to create SurrealDB storage: {}. Ensure SurrealDB is running on ws://localhost:3004", e).into(),
                     data: None,
+                })
+                .map_err(|e| {
+                    DebugLogger::log_agent_finish(false, None, Some(&e.message));
+                    e
                 })?;
 
             Arc::new(GraphFunctions::new(storage.db()))
@@ -550,20 +565,28 @@ impl CodeGraphMCPServer {
             .llm_provider(llm_provider)
             .tool_executor(tool_executor)
             .build()
-            .map_err(|e| McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: format!("Failed to build AutoAgents executor: {}", e).into(),
-                data: None,
+            .map_err(|e| {
+                let err = McpError {
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: format!("Failed to build AutoAgents executor: {}", e).into(),
+                    data: None,
+                };
+                DebugLogger::log_agent_finish(false, None, Some(&err.message));
+                err
             })?;
 
         // Execute agentic workflow
         let result = executor
             .execute(query.to_string(), analysis_type)
             .await
-            .map_err(|e| McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: format!("AutoAgents workflow failed: {}", e).into(),
-                data: None,
+            .map_err(|e| {
+                let err = McpError {
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: format!("AutoAgents workflow failed: {}", e).into(),
+                    data: None,
+                };
+                DebugLogger::log_agent_finish(false, None, Some(&err.message));
+                err
             })?;
 
         // Parse structured output from answer field (contains JSON schema)
@@ -689,6 +712,8 @@ impl CodeGraphMCPServer {
                 "framework": "AutoAgents",
             })
         };
+
+        DebugLogger::log_agent_finish(true, Some(&response_json), None);
 
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(&response_json)

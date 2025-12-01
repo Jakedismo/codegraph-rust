@@ -39,8 +39,6 @@ pub mod incremental;
 pub mod persistent;
 
 pub mod insights_generator;
-#[cfg(feature = "lmstudio-reranker")]
-pub mod lmstudio_reranker;
 pub mod ml;
 pub mod rag;
 pub mod reranker; // NEW: Fast reranking pipeline for insights generation // NEW: High-performance insights with reranking
@@ -84,8 +82,6 @@ pub use incremental::*;
 pub use persistent::*;
 
 pub use insights_generator::*;
-#[cfg(feature = "lmstudio-reranker")]
-pub use lmstudio_reranker::*;
 pub use rag::*;
 pub use reranker::*; // Re-export reranker types // Re-export insights types
 

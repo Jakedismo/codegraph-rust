@@ -23,11 +23,14 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
 - Any OpenAI-compatible provider
 
 **Embedding Providers:**
-- Ollama (local: all-minilm, qwen3-embedding, jina-embeddings-v4 etc.)
-- LM Studio (local: jina-embeddings-v4, qwen3-embedding family etc.)
-- Jina AI (cloud: jina-embeddings-v4 with configurable dimensions)
-- OpenAI (cloud: text-embedding-3-small/large)
-- ONNX (local: BGE, E5, MiniLM models)
+- **Any model** with supported dimensions: 384, 768, 1024, 1536, 2048, 2560, 3072, 4096
+- Ollama (local models: qwen, jina, nomic, bge, e5, minilm, etc.)
+- LM Studio (local models via OpenAI-compatible API)
+- Jina AI (cloud API with reranking)
+- OpenAI (cloud API)
+- ONNX Runtime (local CPU/GPU inference)
+- Set `CODEGRAPH_EMBEDDING_DIMENSION` to use any model
+- Configure `CODEGRAPH_MAX_CHUNK_TOKENS` based on your model's context window
 
 **Vector Database:**
 - SurrealDB HNSW index (2-5ms query latency)
@@ -47,28 +50,76 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
 
 CodeGraph writes embeddings directly into SurrealDB's dimension-specific HNSW columns. Choose your provider:
 
-**Option 1: Ollama**
+**Option 1: Ollama (any model)**
 ```bash
 export CODEGRAPH_EMBEDDING_PROVIDER=ollama
-export CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b   # or all-mini-llm, qwen3-embedding:4b, embeddinggemma etc.
-export CODEGRAPH_EMBEDDING_DIMENSION=1024               # 384, 768, 1024, 1536, 2048, 2560, 3072 or 4096 dimensions supported
+export CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b   # Use ANY Ollama embedding model
+export CODEGRAPH_EMBEDDING_DIMENSION=1024               # Match your model's output: 384, 768, 1024, 1536, 2048, 2560, 3072, or 4096
+export CODEGRAPH_MAX_CHUNK_TOKENS=2048                  # Match your model's context window
 ```
 
-**Option 2: LM Studio (OpenAI-compatible)**
+**Option 2: LM Studio (any OpenAI-compatible model)**
 ```bash
 export CODEGRAPH_EMBEDDING_PROVIDER=lmstudio
-export CODEGRAPH_LMSTUDIO_MODEL=jina-embeddings-v3      # or jina-embeddings-v4, qwen3-embedding-0.6b, nomic-embed-text-v1.5, etc.
+export CODEGRAPH_LMSTUDIO_MODEL=jina-embeddings-v3      # Use ANY model loaded in LM Studio
+export CODEGRAPH_EMBEDDING_DIMENSION=1024               # Match your model's output dimension
+export CODEGRAPH_MAX_CHUNK_TOKENS=2048                  # Match your model's context window
 export CODEGRAPH_LMSTUDIO_URL=http://localhost:1234     # Default LM Studio endpoint (the /v1 path is appended automatically)
-export CODEGRAPH_EMBEDDING_DIMENSION=1024               # Auto-detected for 20+ models, or set manually
 ```
 
-**Optional local reranking:**
+We automatically route embeddings to `embedding_384`, `embedding_768`, `embedding_1024`, `embedding_2048`, `embedding_2560`, or `embedding_4096` columns based on your model's dimension.
+
+### 2. Reranking (Optional)
+
+CodeGraph supports two types of reranking to improve search result quality:
+
+**Option 1: Native Reranking (Jina AI only)**
+- Uses dedicated reranking models for highest quality
+- Available only with Jina AI cloud API
+- Two-stage retrieval: semantic search + dedicated reranking
+
+```toml
+# In ~/.codegraph/config.toml
+[embedding]
+provider = "jina"
+jina_enable_reranking = true
+jina_reranking_model = "jina-reranker-v3"
+```
+
+**Option 2: Generic Embedding-Based Reranking (All providers)**
+- Works with **ANY** embedding provider (Ollama, LM Studio, ONNX, OpenAI, Jina)
+- Uses cosine similarity between query and document embeddings
+- No additional API calls required
+
 ```bash
-# LM Studio exposes an OpenAI-compatible reranker endpoint
-export CODEGRAPH_RERANKING_PROVIDER=lmstudio
+# Via environment variables
+export CODEGRAPH_ENABLE_RERANKING=true
+export CODEGRAPH_RERANKING_TOP_N=50  # Optional, default is 50
 ```
 
-We automatically route embeddings to `embedding_384`, `embedding_768`, `embedding_1024`, `embedding_2048`, `embedding_2560`, or `embedding_4096` columns and keep reranking disabled unless a provider is configured.
+Or in `~/.codegraph/config.toml`:
+```toml
+[embedding]
+enable_reranking = true
+reranking_top_n = 50  # Number of results to fetch before reranking
+```
+
+**Recommended Models for Generic Reranking:**
+- **Ollama**: `qwen3-embedding:0.6b`, `bge-reranker-large`, or any embedding model
+- **LM Studio**: Load any reranking-optimized embedding model (BGE, Jina, etc.)
+- **ONNX**: BGE reranker models from HuggingFace
+- **OpenAI/Jina**: Works with any embedding model
+
+**How Generic Reranking Works:**
+1. Fetches top-N results from vector search (default: 50)
+2. Re-embeds the query and all candidate documents
+3. Computes precise cosine similarity scores
+4. Re-ranks results by similarity and returns top matches
+
+**Performance Notes:**
+- Native reranking (Jina): 80-200ms per query
+- Generic reranking: Depends on embedding provider speed
+- Both methods significantly improve result quality over vector search alone
 
 ---
 
@@ -855,21 +906,33 @@ CodeGraph uses feature flags to enable only the components you need. Build with 
 
 ### Embedding Providers
 
-| Feature | Provider | Models/Notes |
-|---------|----------|--------------|
-| `embeddings-local` | ONNX Runtime | Local CPU/GPU embeddings (all-MiniLM-L6-v2, etc.) |
-| `embeddings-ollama` | Ollama | Local embeddings (qwen3-embedding, all-mini-llm, embeddinggemma etc.) |
-| `lmstudio` | LM Studio | Local OpenAI-compatible embeddings (jina-v3/v4, qwen3-0.6b-dwq, nomic, bge, e5) - 20+ models with auto-dimension detection |
-| `embeddings-openai` | OpenAI | Cloud embeddings (text-embedding-3-large/small) |
-| `embeddings-jina` | Jina AI | Cloud embeddings (jina-embeddings-v4) + reranking |
+**Dimension-Based Model Support:**
 
-**Supported LM Studio Models:**
-- **Jina**: `jina-embeddings-v3` (1024), `jina-embeddings-v4` (2048), `jina-embeddings-v4-text-code` (2048), `jina-code-embeddings-1.5b` (1536)
-- **Qwen**: `qwen3-embedding-0.6b-dwq` (1024), `qwen3-embedding-0.6b` (1024)
-- **Nomic**: `nomic-embed-text-v1.5` (768)
-- **BGE**: `bge-small` (384), `bge-base` (768), `bge-large` (1024)
-- **E5**: `e5-small` (384), `e5-base` (768), `e5-large` (1024)
-- Unknown models default to 1536 dimensions
+CodeGraph supports **any embedding model** that outputs one of these dimensions:
+- **384, 768, 1024, 1536, 2048, 2560, 3072, 4096**
+
+Set the dimension explicitly to use any model:
+```bash
+export CODEGRAPH_EMBEDDING_DIMENSION=2048   # Match your model's output dimension
+export CODEGRAPH_MAX_CHUNK_TOKENS=2048      # Match your model's context window
+```
+
+| Feature | Provider | Notes |
+|---------|----------|-------|
+| `embeddings-local` | ONNX Runtime | Local CPU/GPU inference. Any ONNX model with supported dimensions. |
+| `embeddings-ollama` | Ollama | Any Ollama embedding model (qwen, jina, nomic, bge, e5, minilm, etc.) |
+| `lmstudio` | LM Studio | Any model via OpenAI-compatible API. Auto-detects dimensions from common models. |
+| `embeddings-openai` | OpenAI | Cloud API. Supports text-embedding-3-small (1536) and text-embedding-3-large (3072). |
+| `embeddings-jina` | Jina AI | Cloud API with reranking. Supports jina-embeddings-v3 (1024) and jina-embeddings-v4 (2048). |
+
+**Configuration Priority:**
+1. `CODEGRAPH_EMBEDDING_DIMENSION` environment variable (recommended)
+2. Model inference from name (fallback, limited to known models)
+
+**Chunk Size Configuration:**
+- `CODEGRAPH_MAX_CHUNK_TOKENS` controls how text is split before embedding
+- Set this based on your embedding model's maximum context window
+- Examples: 512 for small models, 2048 for medium, 8192 for large context models
 
 ### LLM Providers (for Agentic Tools)
 

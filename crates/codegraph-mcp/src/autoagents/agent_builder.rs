@@ -130,6 +130,7 @@ impl ChatProvider for CodeGraphChatAdapter {
         Ok(Box::new(CodeGraphChatResponse {
             content: response.content,
             _total_tokens: response.total_tokens.unwrap_or(0),
+            step_counter: Arc::new(AtomicU64::new(1)),
         }))
     }
 
@@ -205,6 +206,7 @@ impl autoagents::llm::LLMProvider for CodeGraphChatAdapter {}
 struct CodeGraphChatResponse {
     content: String,
     _total_tokens: usize,
+    step_counter: Arc<AtomicU64>,
 }
 
 impl std::fmt::Display for CodeGraphChatResponse {
@@ -259,6 +261,18 @@ impl ChatResponse for CodeGraphChatResponse {
                     parsed.tool_call.is_some(),
                     parsed.is_final
                 );
+
+                let step_number = self.step_counter.fetch_add(1, Ordering::SeqCst) as usize;
+                let thought = parsed
+                    .reasoning
+                    .as_deref()
+                    .unwrap_or("");
+                let action = parsed
+                    .tool_call
+                    .as_ref()
+                    .map(|t| t.tool_name.as_str())
+                    .or_else(|| if parsed.is_final { Some("final_answer") } else { None });
+                crate::debug_logger::DebugLogger::log_reasoning_step(step_number, thought, action);
 
                 // If there's a tool_call and is_final is false, convert to AutoAgents format
                 if let Some(tool_call) = parsed.tool_call {
@@ -636,6 +650,7 @@ mod tests {
             }"#
             .to_string(),
             _total_tokens: 0,
+            step_counter: Arc::new(AtomicU64::new(1)),
         };
 
         let tool_calls = response.tool_calls().expect("tool call not parsed");
@@ -660,6 +675,7 @@ mod tests {
             }"#
             .to_string(),
             _total_tokens: 0,
+            step_counter: Arc::new(AtomicU64::new(1)),
         };
 
         let tool_calls = response.tool_calls().expect("tool call not parsed");
@@ -685,6 +701,7 @@ mod tests {
             }"#
             .to_string(),
             _total_tokens: 0,
+            step_counter: Arc::new(AtomicU64::new(1)),
         };
 
         let tool_calls = response.tool_calls().expect("tool call not parsed");
@@ -709,6 +726,7 @@ mod tests {
             }"#
             .to_string(),
             _total_tokens: 0,
+            step_counter: Arc::new(AtomicU64::new(1)),
         };
 
         let tool_calls = response.tool_calls().expect("tool call not parsed");

@@ -1341,8 +1341,10 @@ struct SurrealNodeRecord {
 pub const SURR_EMBEDDING_COLUMN_384: &str = "embedding_384";
 pub const SURR_EMBEDDING_COLUMN_768: &str = "embedding_768";
 pub const SURR_EMBEDDING_COLUMN_1024: &str = "embedding_1024";
+pub const SURR_EMBEDDING_COLUMN_1536: &str = "embedding_1536";
 pub const SURR_EMBEDDING_COLUMN_2048: &str = "embedding_2048";
 pub const SURR_EMBEDDING_COLUMN_2560: &str = "embedding_2560";
+pub const SURR_EMBEDDING_COLUMN_3072: &str = "embedding_3072";
 pub const SURR_EMBEDDING_COLUMN_4096: &str = "embedding_4096";
 
 fn normalized_embedding_column(column: &str) -> Option<&'static str> {
@@ -1350,8 +1352,10 @@ fn normalized_embedding_column(column: &str) -> Option<&'static str> {
         SURR_EMBEDDING_COLUMN_384 => Some(SURR_EMBEDDING_COLUMN_384),
         SURR_EMBEDDING_COLUMN_768 => Some(SURR_EMBEDDING_COLUMN_768),
         SURR_EMBEDDING_COLUMN_1024 => Some(SURR_EMBEDDING_COLUMN_1024),
+        SURR_EMBEDDING_COLUMN_1536 => Some(SURR_EMBEDDING_COLUMN_1536),
         SURR_EMBEDDING_COLUMN_2048 => Some(SURR_EMBEDDING_COLUMN_2048),
         SURR_EMBEDDING_COLUMN_2560 => Some(SURR_EMBEDDING_COLUMN_2560),
+        SURR_EMBEDDING_COLUMN_3072 => Some(SURR_EMBEDDING_COLUMN_3072),
         SURR_EMBEDDING_COLUMN_4096 => Some(SURR_EMBEDDING_COLUMN_4096),
         _ => None,
     }
@@ -1362,9 +1366,21 @@ pub fn surreal_embedding_column_for_dimension(dim: usize) -> &'static str {
         384 => SURR_EMBEDDING_COLUMN_384,
         768 => SURR_EMBEDDING_COLUMN_768,
         1024 => SURR_EMBEDDING_COLUMN_1024,
+        1536 => SURR_EMBEDDING_COLUMN_1536,
+        2048 => SURR_EMBEDDING_COLUMN_2048,
         2560 => SURR_EMBEDDING_COLUMN_2560,
+        3072 => SURR_EMBEDDING_COLUMN_3072,
         4096 => SURR_EMBEDDING_COLUMN_4096,
-        _ => SURR_EMBEDDING_COLUMN_2048,
+        _ => {
+            // Fallback to 2048 for unsupported dimensions
+            // TODO: Consider returning Result<&'static str, Error> instead of silent fallback
+            tracing::warn!(
+                "Unsupported embedding dimension {}, falling back to 2048. \
+                 Supported dimensions: 384, 768, 1024, 1536, 2048, 2560, 3072, 4096",
+                dim
+            );
+            SURR_EMBEDDING_COLUMN_2048
+        }
     }
 }
 

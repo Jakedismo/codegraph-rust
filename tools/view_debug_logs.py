@@ -105,6 +105,21 @@ def print_reasoning_step(entry):
     if action:
         print(f"  🎬 Action: {action}")
 
+
+def print_tool_error(entry):
+    """Print tool call error event"""
+    ts = format_timestamp(entry['timestamp'])
+    tool = entry.get('tool', 'unknown')
+    error = entry.get('error', 'unknown error')
+    params = entry.get('parameters', {})
+
+    print(f"{ts} ❌ TOOL ERROR: {tool}")
+    print(f"  ⚠️  Error: {error}")
+    if params:
+        print("  📥 Parameters:")
+        for key, value in params.items():
+            print(f"     {key}: {format_json_compact(value, 100)}")
+
 def print_agent_start(entry):
     """Print agent execution start"""
     ts = format_timestamp(entry['timestamp'])
@@ -144,6 +159,7 @@ def process_entry(entry):
     handlers = {
         'tool_call_start': print_tool_start,
         'tool_call_finish': print_tool_finish,
+        'tool_call_error': print_tool_error,
         'reasoning_step': print_reasoning_step,
         'agent_execution_start': print_agent_start,
         'agent_execution_finish': print_agent_finish,
