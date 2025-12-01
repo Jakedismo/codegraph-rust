@@ -171,18 +171,9 @@ api_base = "http://localhost:11434"
 
 ---
 
-## ⚠️ Important: MCP Server Architecture Change
+## SurrealDB Setup for Agentic Tools
 
-**FAISS+RocksDB support in MCP server is deprecated** in favor of SurrealDB-based architecture.
-
-### What Changed:
-- ❌ **MCP server** no longer uses FAISS vector search or RocksDB graph storage
-- ❌ **CLI and SDK** no longer support FAISS/RocksDB for local operations
-- 🆕 **MCP code-agent tools** now require SurrealDB for graph analysis
-
-### Required Setup for Code-Agent Tools:
-
-The new agentic MCP tools (`agentic_code_search`, `agentic_dependency_analysis`, etc.) require SurrealDB:
+The agentic MCP tools (`agentic_code_search`, `agentic_dependency_analysis`, etc.) require SurrealDB for graph analysis:
 
 **Option 1: Free Cloud Instance (Recommended)**
 - Sign up at [Surreal Cloud](https://surrealdb.com/cloud)
@@ -202,56 +193,9 @@ surreal start --bind 127.0.0.1:3004 --user root --pass root memory
 - 🆓 **SurrealDB Cloud**: 1GB free instance at [surrealdb.com/cloud](https://surrealdb.com/cloud)
 - 🆓 **Jina AI**: 10 million free API tokens at [jina.ai](https://jina.ai) for embeddings and reranking
 
-### Why This Change:
-- **Native graph capabilities**: SurrealDB provides built-in graph database features
-- **Unified storage**: Single database for both vectors and graph relationships and extendable to relational and document use-cases!
-- **Cloud-native**: Better support for distributed deployments
-- **Reduced complexity**: Eliminates custom RocksDB integration layer
-
-**See [CHANGELOG.md](CHANGELOG.md) for detailed migration guide.**
-
 ---
 
-## 🔬 Experimental: AutoAgents Framework
-
-CodeGraph now supports the **AutoAgents framework** for agentic orchestration as an experimental feature.
-
-### What is AutoAgents?
-- Modern Rust-based agent framework with ReAct (Reasoning + Acting) pattern
-- Replaces ~1,200 lines of custom orchestration code
-- Maintains compatibility with all 7 existing agentic MCP tools
-- Same tier-aware prompting system (Small/Medium/Large/Massive)
-
-### Enabling AutoAgents
-
-**Build with experimental feature:**
-```bash
-# Using Makefile
-make build-mcp-autoagents
-
-# Or directly with cargo
-cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,ollama"
-
-# HTTP server with AutoAgents
-cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,embeddings-ollama,server-http"
-```
-
-**Without AutoAgents (default):**
-```bash
-cargo build --release -p codegraph-mcp --features "ai-enhanced,ollama"
-```
-
-### Status
-- ✅ Core implementation complete
-- ⏳ Testing and validation in progress
-- 📝 Feedback welcome via GitHub issues
-- 🔄 Legacy orchestrator remains as stable fallback
-
-The experimental feature is opt-in via build flag and does not affect existing functionality when disabled.
-
----
-
-## 🔬 Agent Architecture Selection
+## Agent Architecture Selection
 
 CodeGraph supports two agent architectures for agentic MCP tools, allowing you to choose between speed and quality:
 
@@ -288,7 +232,7 @@ export CODEGRAPH_LATS_MAX_DEPTH=5       # Maximum search depth (default: 5)
 
 **Build with LATS support:**
 ```bash
-cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,autoagents-lats,ollama"
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents,autoagents-lats,ollama"
 ```
 
 **Why use multi-provider LATS?**
@@ -466,7 +410,7 @@ cd codegraph-rust
 make build-mcp-autoagents
 
 # Or build manually with feature flags
-cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,embeddings-lmstudio,codegraph-ai/openai-compatible"
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents,embeddings-lmstudio,codegraph-ai/openai-compatible"
 ```
 
 **Step 5: Configure**
@@ -1017,7 +961,8 @@ CodeGraph uses feature flags to enable only the components you need. Build with 
 |---------|-------------|----------|
 | `ai-enhanced` | Agentic MCP tools | Enables 7 agentic workflows with multi-step reasoning |
 | `server-http` | HTTP/SSE transport | Experimental HTTP server (use STDIO for production) |
-| `autoagents-experimental` | AutoAgents framework | ReAct orchestration (experimental, replaces custom orchestrator) |
+| `autoagents` | Agent orchestration | ReAct agent architecture (default for agentic tools) |
+| `autoagents-lats` | LATS algorithm | Optional higher-quality tree search architecture |
 
 ### Embedding Providers
 
@@ -1088,8 +1033,11 @@ cargo build --release --features "cloud,anthropic"
 # Everything (local + cloud)
 cargo build --release --features "all-cloud-providers,onnx,ollama,cloud"
 
-# HTTP server with AutoAgents (experimental)
-cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents-experimental,embeddings-ollama,server-http"
+# HTTP server with agent orchestration
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents,embeddings-ollama,server-http"
+
+# With LATS tree search architecture
+cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents,autoagents-lats,embeddings-ollama"
 ```
 
 ---
