@@ -1,9 +1,7 @@
 // ABOUTME: High-level executor wrapper for AutoAgents workflows
-// ABOUTME: Orchestrates tier detection, agent building, and execution
+// ABOUTME: Orchestrates architecture detection, factory-based executor creation, and delegation
 
-use crate::autoagents::agent_builder::{AgentHandle, CodeGraphAgentBuilder};
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
-use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_core::analysis::AnalysisType;
 use codegraph_mcp_tools::GraphToolExecutor;
 use codegraph_ai::llm_provider::LLMProvider;
@@ -29,95 +27,47 @@ pub enum ExecutorError {
 /// High-level executor for AutoAgents-based code analysis
 ///
 /// This orchestrates the complete workflow:
-/// 1. Detect ContextTier from LLM configuration
-/// 2. Build tier-aware agent with CodeGraphAgentBuilder
-/// 3. Execute agent with user query
+/// 1. Detect agent architecture from configuration
+/// 2. Use factory to create architecture-specific executor
+/// 3. Delegate execution to the executor
 /// 4. Return structured output
 pub struct CodeGraphExecutor {
-    llm_provider: Arc<dyn LLMProvider>,
-    tool_executor: Arc<GraphToolExecutor>,
+    factory: crate::autoagents::executor_factory::AgentExecutorFactory,
+    architecture: codegraph_mcp_core::agent_architecture::AgentArchitecture,
 }
 
 impl CodeGraphExecutor {
-    pub fn new(llm_provider: Arc<dyn LLMProvider>, tool_executor: Arc<GraphToolExecutor>) -> Self {
-        Self {
+    pub fn new(
+        llm_provider: Arc<dyn LLMProvider>,
+        tool_executor: Arc<GraphToolExecutor>,
+        config: Arc<codegraph_mcp_core::config_manager::CodeGraphConfig>,
+    ) -> Self {
+        use crate::autoagents::executor_factory::AgentExecutorFactory;
+
+        // Create factory for architecture-specific executors
+        let factory = AgentExecutorFactory::new(
             llm_provider,
             tool_executor,
-        }
+            config.clone(),
+        );
+
+        // Detect architecture from environment or config
+        let architecture = AgentExecutorFactory::detect_architecture();
+
+        Self { factory, architecture }
     }
 
-    /// Execute agentic analysis with automatic tier detection
+    /// Execute agentic analysis with automatic architecture selection
     pub async fn execute(
         &self,
         query: String,
         analysis_type: AnalysisType,
     ) -> Result<CodeGraphAgentOutput, ExecutorError> {
-        // Step 1: Detect context tier from LLM
-        let tier = self.detect_tier().await?;
+        // Create architecture-specific executor via factory
+        let executor = self.factory.create(self.architecture)?;
 
-        // Step 2: Build tier-aware agent
-        let agent_handle = self.build_agent(tier, analysis_type).await?;
-
-        // Step 3: Execute agent with query
-        let output = self.run_agent(agent_handle, query).await?;
-
-        Ok(output)
-    }
-
-    /// Detect ContextTier from LLM provider configuration
-    async fn detect_tier(&self) -> Result<ContextTier, ExecutorError> {
-        // Use the LLM provider's context window size to determine tier
-        // This matches the existing tier detection logic in codegraph-ai
-
-        // Get model info from provider (implementation depends on LLMProvider interface)
-        // For now, default to Medium tier - this will be refined based on actual LLM config
-
-        // TODO: Implement actual tier detection by:
-        // 1. Getting model name from LLMProvider
-        // 2. Looking up context window size in model registry
-        // 3. Mapping context window to ContextTier
-
-        Ok(ContextTier::Medium)
-    }
-
-    /// Build CodeGraph agent with specified tier and analysis type
-    async fn build_agent(
-        &self,
-        tier: ContextTier,
-        analysis_type: AnalysisType,
-    ) -> Result<AgentHandle, ExecutorError> {
-        let builder = CodeGraphAgentBuilder::new(
-            self.llm_provider.clone(),
-            self.tool_executor.clone(),
-            tier,
-            analysis_type,
-        );
-
-        builder
-            .build()
-            .await
-            .map_err(|e| ExecutorError::BuildFailed(e.to_string()))
-    }
-
-    /// Execute agent and convert output
-    async fn run_agent(
-        &self,
-        agent_handle: AgentHandle,
-        query: String,
-    ) -> Result<CodeGraphAgentOutput, ExecutorError> {
-        use autoagents::core::agent::task::Task;
-
-        // Execute the agent with the query wrapped in a Task
-        let react_output = agent_handle
-            .agent
-            .agent
-            .run(Task::new(&query))
-            .await
-            .map_err(|e| ExecutorError::ExecutionFailed(e.to_string()))?;
-
-        // Convert ReActAgentOutput to CodeGraphAgentOutput
-        // The From impl handles this conversion
-        Ok(react_output.into())
+        // Delegate execution to the architecture-specific executor
+        executor.execute(query, analysis_type).await
     }
 }
 
@@ -125,6 +75,7 @@ impl CodeGraphExecutor {
 pub struct CodeGraphExecutorBuilder {
     llm_provider: Option<Arc<dyn LLMProvider>>,
     tool_executor: Option<Arc<GraphToolExecutor>>,
+    config: Option<Arc<codegraph_mcp_core::config_manager::CodeGraphConfig>>,
 }
 
 impl CodeGraphExecutorBuilder {
@@ -132,6 +83,7 @@ impl CodeGraphExecutorBuilder {
         Self {
             llm_provider: None,
             tool_executor: None,
+            config: None,
         }
     }
 
@@ -145,6 +97,11 @@ impl CodeGraphExecutorBuilder {
         self
     }
 
+    pub fn config(mut self, config: Arc<codegraph_mcp_core::config_manager::CodeGraphConfig>) -> Self {
+        self.config = Some(config);
+        self
+    }
+
     pub fn build(self) -> Result<CodeGraphExecutor, ExecutorError> {
         let llm_provider = self
             .llm_provider
@@ -154,7 +111,13 @@ impl CodeGraphExecutorBuilder {
             .tool_executor
             .ok_or_else(|| ExecutorError::BuildFailed("Tool executor required".to_string()))?;
 
-        Ok(CodeGraphExecutor::new(llm_provider, tool_executor))
+        // Config is optional for backward compatibility
+        // If not provided, create default config
+        let config = self.config.unwrap_or_else(|| {
+            Arc::new(codegraph_mcp_core::config_manager::CodeGraphConfig::default())
+        });
+
+        Ok(CodeGraphExecutor::new(llm_provider, tool_executor, config))
     }
 }
 

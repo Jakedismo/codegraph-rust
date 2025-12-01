@@ -2,6 +2,8 @@
 // ABOUTME: Supports runtime selection via CODEGRAPH_AGENT_ARCHITECTURE
 
 use codegraph_mcp_core::agent_architecture::AgentArchitecture;
+use codegraph_mcp_core::config_manager::CodeGraphConfig;
+use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
 use codegraph_ai::llm_provider::LLMProvider;
 use crate::autoagents::executor_trait::AgentExecutorTrait;
@@ -18,16 +20,21 @@ use std::sync::Arc;
 pub struct AgentExecutorFactory {
     llm_provider: Arc<dyn LLMProvider>,
     tool_executor: Arc<GraphToolExecutor>,
+    // Reserved for Phase 2 LATS implementation
+    #[allow(dead_code)]
+    config: Arc<CodeGraphConfig>,
 }
 
 impl AgentExecutorFactory {
     pub fn new(
         llm_provider: Arc<dyn LLMProvider>,
         tool_executor: Arc<GraphToolExecutor>,
+        config: Arc<CodeGraphConfig>,
     ) -> Self {
         Self {
             llm_provider,
             tool_executor,
+            config,
         }
     }
 
@@ -36,11 +43,15 @@ impl AgentExecutorFactory {
         &self,
         architecture: AgentArchitecture,
     ) -> Result<Box<dyn AgentExecutorTrait>, ExecutorError> {
+        // Detect tier from LLM configuration
+        let tier = self.detect_tier();
+
         match architecture {
             AgentArchitecture::ReAct => {
                 Ok(Box::new(ReActExecutor::new(
                     self.llm_provider.clone(),
                     self.tool_executor.clone(),
+                    tier,
                 )))
             }
             AgentArchitecture::LATS => {
@@ -50,6 +61,15 @@ impl AgentExecutorFactory {
                 ))
             }
         }
+    }
+
+    /// Detect ContextTier from LLM provider configuration
+    fn detect_tier(&self) -> ContextTier {
+        // Get context window from config if available
+        // For Phase 1, default to Medium tier
+        // TODO: In Phase 2, extract context window from LLM config
+        // and use ContextTier::from_context_window()
+        ContextTier::Medium
     }
 
     /// Detect architecture from environment or use default
