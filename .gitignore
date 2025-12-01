@@ -182,3 +182,6 @@ SESSION-MEMORY.md
 /test_output/
 /test_output_http/
 CODEX_JOURNAL.md
+idd-state.graphson
+todo.md
+*.spec.md
