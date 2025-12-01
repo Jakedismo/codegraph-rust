@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-FEATURES="daemon,ai-enhanced,autoagents-experimental,embeddings-ollama,embeddings-lmstudio,server-http,codegraph-graph/surrealdb"
+FEATURE_FLAGS="--all-features"
 INSTALL_DIR="${CODEGRAPH_INSTALL_DIR:-$HOME/.local/bin}"
 TARGET_BIN="target/release/codegraph"
 
@@ -30,9 +30,9 @@ export MACOSX_DEPLOYMENT_TARGET=11.0
 info "Running cargo build --release with features: ${FEATURES}"
 
 cargo build --release \
-    --package codegraph-mcp \
+    --package codegraph-mcp-server \
     --bin codegraph \
-    --features "${FEATURES}"
+    ${FEATURE_FLAGS}
 
 test -f "${TARGET_BIN}" || fail "Release binary was not produced at ${TARGET_BIN}"
 

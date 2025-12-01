@@ -4,8 +4,8 @@
 
 set -euo pipefail
 
-# Comprehensive feature set - everything enabled
-FEATURES="daemon,ai-enhanced,embeddings-local,embeddings-openai,embeddings-ollama,embeddings-jina,embeddings-lmstudio,codegraph-vector/jina,codegraph-graph/surrealdb,codegraph-ai/all-cloud-providers,server-http,autoagents-experimental"
+# Build with all available features on the server crate
+FEATURE_FLAGS="--all-features"
 SURR_URL="${CODEGRAPH_SURREALDB_URL:-ws://localhost:3004}"
 SURR_NAMESPACE="${CODEGRAPH_SURREALDB_NAMESPACE:-ouroboros}"
 SURR_DATABASE="${CODEGRAPH_SURREALDB_DATABASE:-codegraph}"
@@ -46,7 +46,8 @@ info "Features: ${FEATURES}"
 info ""
 info "This may take 5-10 minutes depending on your machine..."
 
-cargo install --path crates/codegraph-mcp --features "${FEATURES}" --force
+# Binary now lives in the server crate after the MCP split
+cargo install --path crates/codegraph-mcp-server --bin codegraph ${FEATURE_FLAGS} --force
 
 info "CodeGraph (full features) installed to ${INSTALL_PATH}"
 cat <<EOF

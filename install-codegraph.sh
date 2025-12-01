@@ -4,7 +4,8 @@
 
 set -euo pipefail
 
-FEATURES="daemon,ai-enhanced,embeddings,embeddings-local,embeddings-openai,embeddings-lmstudio,embeddings-ollama,embeddings-jina,cloud,server-http,codegraph-graph/surrealdb,autoagents-experimental"
+# Build with all available features on the server crate
+FEATURE_FLAGS="--all-features"
 SURR_URL="ws://localhost:3004"
 SURR_NAMESPACE="ouroboros"
 SURR_DATABASE="codegraph"
@@ -31,7 +32,8 @@ fi
 export MACOSX_DEPLOYMENT_TARGET=11.0
 info "Compiling CodeGraph with features: ${FEATURES}"
 
-cargo install --path crates/codegraph-mcp --features "${FEATURES}" --force
+# Binary now lives in the server crate after the MCP split
+cargo install --path crates/codegraph-mcp-server --bin codegraph ${FEATURE_FLAGS} --force
 
 info "CodeGraph installed to ${INSTALL_PATH}"
 cat <<EOF
