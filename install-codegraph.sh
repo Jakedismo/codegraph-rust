@@ -30,7 +30,7 @@ else
 fi
 
 export MACOSX_DEPLOYMENT_TARGET=11.0
-info "Compiling CodeGraph with features: ${FEATURES}"
+info "Compiling CodeGraph with features: ${FEATURE_FLAGS}"
 
 # Binary now lives in the server crate after the MCP split
 cargo install --path crates/codegraph-mcp-server --bin codegraph ${FEATURE_FLAGS} --force

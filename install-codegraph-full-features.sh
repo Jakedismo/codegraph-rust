@@ -42,7 +42,7 @@ fi
 
 export MACOSX_DEPLOYMENT_TARGET=11.0
 info "Compiling CodeGraph with ALL features..."
-info "Features: ${FEATURES}"
+info "Features: ${FEATURE_FLAGS}"
 info ""
 info "This may take 5-10 minutes depending on your machine..."
 

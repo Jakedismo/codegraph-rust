@@ -27,7 +27,7 @@ else
 fi
 
 export MACOSX_DEPLOYMENT_TARGET=11.0
-info "Running cargo build --release with features: ${FEATURES}"
+info "Running cargo build --release with features: ${FEATURE_FLAGS}"
 
 cargo build --release \
     --package codegraph-mcp-server \
