@@ -30,3 +30,59 @@ impl std::fmt::Display for AgentArchitecture {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_valid_react() {
+        assert_eq!(
+            AgentArchitecture::parse("react"),
+            Some(AgentArchitecture::ReAct)
+        );
+        assert_eq!(
+            AgentArchitecture::parse("ReAct"),
+            Some(AgentArchitecture::ReAct)
+        );
+        assert_eq!(
+            AgentArchitecture::parse("REACT"),
+            Some(AgentArchitecture::ReAct)
+        );
+    }
+
+    #[test]
+    fn test_parse_valid_lats() {
+        assert_eq!(
+            AgentArchitecture::parse("lats"),
+            Some(AgentArchitecture::LATS)
+        );
+        assert_eq!(
+            AgentArchitecture::parse("LATS"),
+            Some(AgentArchitecture::LATS)
+        );
+        assert_eq!(
+            AgentArchitecture::parse("Lats"),
+            Some(AgentArchitecture::LATS)
+        );
+    }
+
+    #[test]
+    fn test_parse_invalid() {
+        assert_eq!(AgentArchitecture::parse("invalid"), None);
+        assert_eq!(AgentArchitecture::parse(""), None);
+        assert_eq!(AgentArchitecture::parse("tot"), None);
+        assert_eq!(AgentArchitecture::parse("reflexion"), None);
+    }
+
+    #[test]
+    fn test_display() {
+        assert_eq!(format!("{}", AgentArchitecture::ReAct), "react");
+        assert_eq!(format!("{}", AgentArchitecture::LATS), "lats");
+    }
+
+    #[test]
+    fn test_default() {
+        assert_eq!(AgentArchitecture::default(), AgentArchitecture::ReAct);
+    }
+}

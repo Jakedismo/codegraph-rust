@@ -241,7 +241,7 @@ impl Default for LLMConfig {
 }
 
 /// LATS-specific multi-provider configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LATSProviderConfig {
     /// Provider for selection phase (node scoring)
     #[serde(default)]
@@ -274,9 +274,69 @@ pub struct LATSProviderConfig {
     pub exploration_weight: f32,
 }
 
+impl Default for LATSProviderConfig {
+    fn default() -> Self {
+        Self {
+            selection_provider: None,
+            selection_model: None,
+            expansion_provider: None,
+            expansion_model: None,
+            evaluation_provider: None,
+            evaluation_model: None,
+            backprop_provider: None,
+            backprop_model: None,
+            beam_width: default_lats_beam_width(),
+            max_depth: default_lats_max_depth(),
+            exploration_weight: default_lats_exploration_weight(),
+        }
+    }
+}
+
 fn default_lats_beam_width() -> usize { 3 }
 fn default_lats_max_depth() -> usize { 5 }
 fn default_lats_exploration_weight() -> f32 { 1.414 } // sqrt(2) for UCT
+
+/// Validate LATS beam width parameter (must be 1-100)
+fn validate_lats_beam_width(w: usize) -> Option<usize> {
+    if (1..=100).contains(&w) {
+        Some(w)
+    } else {
+        tracing::warn!(
+            value = w,
+            "Invalid CODEGRAPH_LATS_BEAM_WIDTH (must be 1-100), using default: {}",
+            default_lats_beam_width()
+        );
+        None
+    }
+}
+
+/// Validate LATS max depth parameter (must be 1-50)
+fn validate_lats_max_depth(d: usize) -> Option<usize> {
+    if (1..=50).contains(&d) {
+        Some(d)
+    } else {
+        tracing::warn!(
+            value = d,
+            "Invalid CODEGRAPH_LATS_MAX_DEPTH (must be 1-50), using default: {}",
+            default_lats_max_depth()
+        );
+        None
+    }
+}
+
+/// Validate LATS exploration weight parameter (must be 0.0-10.0)
+fn validate_lats_exploration_weight(w: f32) -> Option<f32> {
+    if (0.0..=10.0).contains(&w) {
+        Some(w)
+    } else {
+        tracing::warn!(
+            value = w,
+            "Invalid CODEGRAPH_LATS_EXPLORATION_WEIGHT (must be 0.0-10.0), using default: {}",
+            default_lats_exploration_weight()
+        );
+        None
+    }
+}
 
 /// Performance and resource configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -714,24 +774,37 @@ impl ConfigManager {
         }
         if let Ok(width) = std::env::var("CODEGRAPH_LATS_BEAM_WIDTH") {
             if let Ok(w) = width.parse() {
-                lats_config.beam_width = w;
-                has_lats_config = true;
+                if let Some(validated) = validate_lats_beam_width(w) {
+                    lats_config.beam_width = validated;
+                    has_lats_config = true;
+                }
             }
         }
         if let Ok(depth) = std::env::var("CODEGRAPH_LATS_MAX_DEPTH") {
             if let Ok(d) = depth.parse() {
-                lats_config.max_depth = d;
-                has_lats_config = true;
+                if let Some(validated) = validate_lats_max_depth(d) {
+                    lats_config.max_depth = validated;
+                    has_lats_config = true;
+                }
             }
         }
         if let Ok(weight) = std::env::var("CODEGRAPH_LATS_EXPLORATION_WEIGHT") {
             if let Ok(w) = weight.parse() {
-                lats_config.exploration_weight = w;
-                has_lats_config = true;
+                if let Some(validated) = validate_lats_exploration_weight(w) {
+                    lats_config.exploration_weight = validated;
+                    has_lats_config = true;
+                }
             }
         }
 
         if has_lats_config {
+            tracing::debug!(
+                selection_provider = ?lats_config.selection_provider,
+                beam_width = lats_config.beam_width,
+                max_depth = lats_config.max_depth,
+                exploration_weight = lats_config.exploration_weight,
+                "LATS configuration loaded from environment variables"
+            );
             config.llm.lats = Some(lats_config);
         }
 
@@ -911,5 +984,66 @@ mod tests {
         let mut bad_config = config.clone();
         bad_config.embedding.provider = "invalid".to_string();
         assert!(ConfigManager::validate_config(&bad_config).is_err());
+    }
+
+    #[test]
+    fn test_lats_provider_config_default() {
+        let config = LATSProviderConfig::default();
+        assert_eq!(config.beam_width, 3);
+        assert_eq!(config.max_depth, 5);
+        assert_eq!(config.exploration_weight, 1.414);
+        assert!(config.selection_provider.is_none());
+        assert!(config.selection_model.is_none());
+        assert!(config.expansion_provider.is_none());
+        assert!(config.expansion_model.is_none());
+        assert!(config.evaluation_provider.is_none());
+        assert!(config.evaluation_model.is_none());
+        assert!(config.backprop_provider.is_none());
+        assert!(config.backprop_model.is_none());
+    }
+
+    #[test]
+    fn test_validate_lats_beam_width_valid() {
+        assert_eq!(validate_lats_beam_width(1), Some(1));
+        assert_eq!(validate_lats_beam_width(3), Some(3));
+        assert_eq!(validate_lats_beam_width(50), Some(50));
+        assert_eq!(validate_lats_beam_width(100), Some(100));
+    }
+
+    #[test]
+    fn test_validate_lats_beam_width_invalid() {
+        assert_eq!(validate_lats_beam_width(0), None);
+        assert_eq!(validate_lats_beam_width(101), None);
+        assert_eq!(validate_lats_beam_width(1000), None);
+    }
+
+    #[test]
+    fn test_validate_lats_max_depth_valid() {
+        assert_eq!(validate_lats_max_depth(1), Some(1));
+        assert_eq!(validate_lats_max_depth(5), Some(5));
+        assert_eq!(validate_lats_max_depth(25), Some(25));
+        assert_eq!(validate_lats_max_depth(50), Some(50));
+    }
+
+    #[test]
+    fn test_validate_lats_max_depth_invalid() {
+        assert_eq!(validate_lats_max_depth(0), None);
+        assert_eq!(validate_lats_max_depth(51), None);
+        assert_eq!(validate_lats_max_depth(100), None);
+    }
+
+    #[test]
+    fn test_validate_lats_exploration_weight_valid() {
+        assert_eq!(validate_lats_exploration_weight(0.0), Some(0.0));
+        assert_eq!(validate_lats_exploration_weight(1.414), Some(1.414));
+        assert_eq!(validate_lats_exploration_weight(5.0), Some(5.0));
+        assert_eq!(validate_lats_exploration_weight(10.0), Some(10.0));
+    }
+
+    #[test]
+    fn test_validate_lats_exploration_weight_invalid() {
+        assert_eq!(validate_lats_exploration_weight(-0.1), None);
+        assert_eq!(validate_lats_exploration_weight(10.1), None);
+        assert_eq!(validate_lats_exploration_weight(100.0), None);
     }
 }
