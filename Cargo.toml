@@ -240,7 +240,7 @@ approx = "0.5"
 criterion = { version = "0.7.0", features = ["html_reports", "async_tokio"] }
 
 # LRU cache utility
-lru = "0.16.1"
+lru = "0.16.2"
 
 # Official MCP Rust SDK
 rmcp = { version = "0.7.0", features = ["server", "transport-io", "transport-streamable-http-server"] }
