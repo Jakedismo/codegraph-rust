@@ -37,7 +37,7 @@ atty = { workspace = true }
 clap = { workspace = true }
 colored = { workspace = true }
 indicatif = { workspace = true }
-dirs = "5.0"
+dirs = "6.0"
 dotenv = "0.15"
 nix = { version = "0.30.1", features = ["process", "signal"] }
 notify = "8.2.0"
@@ -56,7 +56,7 @@ codegraph-graph = { workspace = true, features = ["surrealdb"] }
 codegraph-vector = { workspace = true, optional = true, default-features = false }
 codegraph-ai = { workspace = true, optional = true }  # Re-enabled for AI-powered symbol resolution
 semchunk-rs = "0.1"  # Semantic chunking for long code nodes
-tokenizers = "0.20"  # Qwen2.5-Coder tokenizer for accurate token counting
+tokenizers = "0.22"  # Qwen2.5-Coder tokenizer for accurate token counting
 # codegraph-api not used directly here; avoid pulling heavy deps
 ## core-rag-mcp-server intentionally not linked to keep binary lean
 

@@ -129,9 +129,15 @@ impl From<&codegraph_core::EmbeddingConfig> for JinaConfig {
             truncate: std::env::var("JINA_TRUNCATE")
                 .map(|v| v != "false")
                 .unwrap_or(true),
-            enable_reranking: config.jina_enable_reranking,
-            reranking_model: config.jina_reranking_model.clone(),
-            reranking_top_n: config.jina_reranking_top_n,
+            enable_reranking: std::env::var("JINA_ENABLE_RERANKING")
+                .map(|v| v == "true")
+                .unwrap_or(true),
+            reranking_model: std::env::var("JINA_RERANKING_MODEL")
+                .unwrap_or_else(|_| "jina-reranker-v3".to_string()),
+            reranking_top_n: std::env::var("JINA_RERANKING_TOP_N")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10),
             batch_size: config.batch_size.max(1),
             max_concurrent: 10,
             max_tokens_per_text: std::env::var("JINA_MAX_TOKENS")

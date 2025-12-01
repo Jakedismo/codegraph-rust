@@ -1,3 +1,4 @@
+use crate::rerank_config::RerankConfig;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -27,6 +28,10 @@ pub struct CodeGraphConfig {
     /// Embedding provider configuration
     #[serde(default)]
     pub embedding: EmbeddingConfig,
+
+    /// Reranking provider configuration
+    #[serde(default)]
+    pub rerank: RerankConfig,
 
     /// LLM configuration for insights
     #[serde(default)]
@@ -81,26 +86,6 @@ pub struct EmbeddingConfig {
     #[serde(default = "default_jina_api_base")]
     pub jina_api_base: String,
 
-    /// Enable Jina reranking
-    #[serde(default)]
-    pub jina_enable_reranking: bool,
-
-    /// Jina reranking model
-    #[serde(default = "default_jina_reranking_model")]
-    pub jina_reranking_model: String,
-
-    /// Jina reranking top N results
-    #[serde(default = "default_jina_reranking_top_n")]
-    pub jina_reranking_top_n: usize,
-
-    /// Enable generic embedding-based reranking (works with any provider)
-    #[serde(default)]
-    pub enable_reranking: bool,
-
-    /// Number of top results to return after reranking
-    #[serde(default = "default_reranking_top_n")]
-    pub reranking_top_n: usize,
-
     /// Jina late chunking
     #[serde(default)]
     pub jina_late_chunking: bool,
@@ -128,11 +113,6 @@ impl Default for EmbeddingConfig {
             openai_api_key: None,
             jina_api_key: None,
             jina_api_base: default_jina_api_base(),
-            jina_enable_reranking: false,
-            jina_reranking_model: default_jina_reranking_model(),
-            jina_reranking_top_n: default_jina_reranking_top_n(),
-            enable_reranking: false,
-            reranking_top_n: default_reranking_top_n(),
             jina_late_chunking: false,
             jina_task: default_jina_task(),
             dimension: default_embedding_dimension(),
@@ -365,15 +345,6 @@ fn default_ollama_url() -> String {
 fn default_jina_api_base() -> String {
     "https://api.jina.ai/v1".to_string()
 }
-fn default_jina_reranking_model() -> String {
-    "jina-reranker-v3".to_string()
-}
-fn default_jina_reranking_top_n() -> usize {
-    10
-}
-fn default_reranking_top_n() -> usize {
-    50
-}
 fn default_jina_task() -> String {
     "code.query".to_string()
 }
@@ -595,14 +566,21 @@ impl ConfigManager {
             config.embedding.jina_api_base = base;
         }
         if let Ok(enable) = std::env::var("JINA_ENABLE_RERANKING") {
-            config.embedding.jina_enable_reranking = enable.to_lowercase() == "true";
+            if enable.to_lowercase() == "true" {
+                config.rerank.provider = crate::RerankProvider::Jina;
+            }
         }
         if let Ok(model) = std::env::var("JINA_RERANKING_MODEL") {
-            config.embedding.jina_reranking_model = model;
+            if config.rerank.jina.is_none() {
+                config.rerank.jina = Some(crate::JinaRerankConfig::default());
+            }
+            if let Some(ref mut jina) = config.rerank.jina {
+                jina.model = model;
+            }
         }
         if let Ok(top_n) = std::env::var("JINA_RERANKING_TOP_N") {
             if let Ok(n) = top_n.parse() {
-                config.embedding.jina_reranking_top_n = n;
+                config.rerank.top_n = n;
             }
         }
         if let Ok(chunking) = std::env::var("JINA_LATE_CHUNKING") {

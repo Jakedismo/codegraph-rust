@@ -4,6 +4,7 @@
 use codegraph_core::config_manager::CodeGraphConfig;
 use codegraph_core::CodeNode;
 use codegraph_graph::GraphFunctions;
+use codegraph_vector::reranking::{factory::create_reranker, RerankDocument, Reranker};
 use codegraph_vector::EmbeddingGenerator;
 use lru::LruCache;
 use parking_lot::Mutex;
@@ -11,11 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::OnceCell;
 use tracing::{debug, info};
-
-#[cfg(feature = "embeddings-jina")]
-use codegraph_vector::jina_provider::{JinaConfig, JinaEmbeddingProvider};
 
 const TOOL_PROGRESS_LOG_TARGET: &str = "codegraph::mcp::tools";
 
@@ -64,9 +61,8 @@ pub struct GraphToolExecutor {
     cache_stats: Arc<Mutex<CacheStats>>,
     /// Whether caching is enabled
     cache_enabled: bool,
-    /// Lazy-initialized Jina provider for reranking
-    #[cfg(feature = "embeddings-jina")]
-    jina_provider: Arc<OnceCell<Option<JinaEmbeddingProvider>>>,
+    /// Reranker for semantic search result refinement
+    reranker: Option<Arc<dyn Reranker>>,
 }
 
 impl GraphToolExecutor {
@@ -97,6 +93,15 @@ impl GraphToolExecutor {
             max_size: cache_size,
         }));
 
+        // Initialize reranker from config
+        let reranker = create_reranker(&config.rerank)
+            .ok()
+            .flatten();
+
+        if let Some(ref reranker) = reranker {
+            info!("Reranker initialized: {} ({})", reranker.model_name(), reranker.provider_name());
+        }
+
         Self {
             graph_functions,
             config,
@@ -104,8 +109,7 @@ impl GraphToolExecutor {
             cache,
             cache_stats,
             cache_enabled,
-            #[cfg(feature = "embeddings-jina")]
-            jina_provider: Arc::new(OnceCell::new()),
+            reranker,
         }
     }
 
@@ -451,142 +455,60 @@ impl GraphToolExecutor {
         }))
     }
 
-    /// Apply reranking if configured (supports Jina, generic embedding, and LM Studio)
+    /// Apply reranking if configured using text-based reranking system
     async fn apply_reranking(
         &self,
         query: &str,
         candidates: Vec<serde_json::Value>,
     ) -> Result<Vec<serde_json::Value>> {
-        // Priority 1: Jina reranking (native reranking model)
-        #[cfg(feature = "embeddings-jina")]
-        {
-            if self.config.embedding.jina_enable_reranking {
-                return self.apply_jina_reranking(query, candidates).await;
-            }
-        }
+        if let Some(ref reranker) = self.reranker {
+            let top_n = self.config.rerank.top_n;
 
-        // Priority 2: Generic embedding-based reranking (any provider)
-        if self.config.embedding.enable_reranking {
-            return self.rerank_with_embeddings(query, candidates).await;
-        }
+            // Convert candidates to RerankDocuments
+            let documents: Vec<RerankDocument> = candidates
+                .iter()
+                .enumerate()
+                .map(|(idx, candidate)| RerankDocument {
+                    id: idx.to_string(),
+                    text: Self::extract_text_from_candidate(candidate),
+                    metadata: Some(candidate.clone()),
+                })
+                .collect();
 
-        // No reranking configured - return candidates as-is
-        Ok(candidates)
-    }
-
-    #[cfg(feature = "embeddings-jina")]
-    async fn apply_jina_reranking(
-        &self,
-        query: &str,
-        candidates: Vec<serde_json::Value>,
-    ) -> Result<Vec<serde_json::Value>> {
-        info!("Applying Jina reranking to {} candidates", candidates.len());
-
-        // Lazy-initialize Jina provider
-        let provider = self
-            .jina_provider
-            .get_or_init(|| async {
-                let jina_config = JinaConfig::from(&self.config.embedding);
-                JinaEmbeddingProvider::new(jina_config).ok()
-            })
-            .await;
-
-        let provider = match provider {
-            Some(p) => p,
-            None => {
-                tracing::warn!("Jina provider not initialized, skipping reranking");
-                return Ok(candidates);
-            }
-        };
-
-        // Extract documents for reranking (name + content)
-        let documents: Vec<String> = candidates
-            .iter()
-            .map(|c| {
-                let name = c["name"].as_str().unwrap_or("");
-                let content = c["content"].as_str().unwrap_or("");
-                format!("{}: {}", name, content)
-            })
-            .collect();
-
-        // Call Jina reranker (returns Vec<RerankResult> with index and relevance_score)
-        let rerank_results = provider
-            .rerank(query, documents)
-            .await
-            .map_err(|e| McpError::Protocol(format!("Jina reranking failed: {}", e)))?;
-
-        // Reorder candidates based on reranking (using index from RerankResult)
-        let reranked: Vec<serde_json::Value> = rerank_results
-            .into_iter()
-            .filter_map(|result| candidates.get(result.index).cloned())
-            .collect();
-
-        info!("Jina reranking complete: {} results", reranked.len());
-        Ok(reranked)
-    }
-
-    /// Generic embedding-based reranking (works with any provider)
-    async fn rerank_with_embeddings(
-        &self,
-        query: &str,
-        candidates: Vec<serde_json::Value>,
-    ) -> Result<Vec<serde_json::Value>> {
-        let top_n = self.config.embedding.reranking_top_n;
-        info!("Applying embedding-based reranking to {} candidates (top_n={})", candidates.len(), top_n);
-
-        // Generate query embedding
-        let mut query_node = CodeNode::new("__query__".to_string());
-        query_node.content = Some(query.to_string());
-
-        let query_embedding = self.embedding_generator
-            .generate(&query_node)
-            .await
-            .map_err(|e| McpError::Protocol(format!("Failed to generate query embedding: {}", e)))?;
-
-        // Generate embeddings for all candidates
-        let mut scored_candidates = Vec::new();
-        for (idx, candidate) in candidates.iter().enumerate() {
-            let name = candidate["name"].as_str().unwrap_or("unknown");
-            let file_path = candidate["location"]["file_path"].as_str().unwrap_or("");
-            let content = candidate["content"].as_str().unwrap_or("");
-            let doc_text = format!("{}\nFile: {}\n{}", name, file_path, content);
-
-            let mut doc_node = CodeNode::new(format!("__doc_{}__", idx));
-            doc_node.content = Some(doc_text);
-
-            let doc_embedding = self.embedding_generator
-                .generate(&doc_node)
+            // Rerank using the configured provider
+            let results = reranker
+                .rerank(query, documents, top_n)
                 .await
-                .map_err(|e| McpError::Protocol(format!("Failed to generate document embedding: {}", e)))?;
+                .map_err(|e| McpError::Protocol(format!("Reranking failed: {}", e)))?;
 
-            // Calculate cosine similarity
-            let similarity = Self::cosine_similarity(&query_embedding, &doc_embedding);
-            scored_candidates.push((idx, similarity, candidate.clone()));
+            // Convert back to original format
+            let reranked: Vec<serde_json::Value> = results
+                .into_iter()
+                .filter_map(|r| r.metadata)
+                .collect();
+
+            Ok(reranked)
+        } else {
+            // No reranking configured
+            Ok(candidates)
         }
-
-        // Sort by similarity (descending) and take top N
-        scored_candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        let reranked: Vec<serde_json::Value> = scored_candidates
-            .into_iter()
-            .take(top_n)
-            .map(|(_, _, candidate)| candidate)
-            .collect();
-
-        info!("Embedding-based reranking complete: {} results", reranked.len());
-        Ok(reranked)
     }
 
-    /// Calculate cosine similarity between two embeddings
-    fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-        let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    /// Extract text content from a candidate for reranking
+    fn extract_text_from_candidate(candidate: &serde_json::Value) -> String {
+        let mut text_parts = Vec::new();
 
-        if norm_a == 0.0 || norm_b == 0.0 {
-            return 0.0;
+        if let Some(name) = candidate.get("name").and_then(|v| v.as_str()) {
+            text_parts.push(name.to_string());
+        }
+        if let Some(content) = candidate.get("content").and_then(|v| v.as_str()) {
+            text_parts.push(content.to_string());
+        }
+        if let Some(file_path) = candidate.get("file_path").and_then(|v| v.as_str()) {
+            text_parts.push(format!("File: {}", file_path));
         }
 
-        dot_product / (norm_a * norm_b)
+        text_parts.join(" ")
     }
 
     /// Get all available tool schemas for registration

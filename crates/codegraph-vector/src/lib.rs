@@ -42,6 +42,7 @@ pub mod insights_generator;
 pub mod ml;
 pub mod rag;
 pub mod reranker; // NEW: Fast reranking pipeline for insights generation // NEW: High-performance insights with reranking
+pub mod reranking; // NEW: Text-based reranking for RAG (Jina API, Ollama chat)
 
 pub use embedding::*;
 pub use embeddings::generator::AdvancedEmbeddingGenerator;
@@ -66,7 +67,9 @@ pub use onnx_provider::*;
 pub use ollama_embedding_provider::*;
 
 #[cfg(feature = "jina")]
-pub use jina_provider::*;
+pub use jina_provider::{
+    JinaConfig, JinaEmbeddingProvider, MAX_NODE_TEXTS_HARD_LIMIT, MAX_REL_TEXTS_HARD_LIMIT,
+};
 
 #[cfg(feature = "lmstudio")]
 pub use lmstudio_embedding_provider::*;
@@ -84,6 +87,7 @@ pub use persistent::*;
 pub use insights_generator::*;
 pub use rag::*;
 pub use reranker::*; // Re-export reranker types // Re-export insights types
+pub use reranking::*; // Re-export text-based reranking types
 
 // Re-export common types for convenience
 pub use codegraph_core::{CodeGraphError, NodeId, Result};

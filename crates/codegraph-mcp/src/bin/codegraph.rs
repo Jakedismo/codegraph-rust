@@ -1884,9 +1884,13 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
                         "provider": config.embedding.provider,
                         "model": config.embedding.model,
                         "dimension": config.embedding.dimension,
-                        "jina_enable_reranking": config.embedding.jina_enable_reranking,
-                        "jina_reranking_model": config.embedding.jina_reranking_model,
                         "jina_task": config.embedding.jina_task,
+                    },
+                    "rerank": {
+                        "provider": config.rerank.provider,
+                        "top_n": config.rerank.top_n,
+                        "jina_model": config.rerank.jina.as_ref().map(|j| &j.model),
+                        "ollama_model": config.rerank.ollama.as_ref().map(|o| &o.model),
                     },
                     "llm": {
                         "enabled": config.llm.enabled,
@@ -1908,24 +1912,21 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
                 println!("  Vector Dimension: {}", config.embedding.dimension);
 
                 if config.embedding.provider == "jina" {
-                    println!("\n  {}", "Jina Settings:".green().bold());
+                    println!("\n  {}", "Jina Embedding Settings:".green().bold());
                     println!("    API Base: {}", config.embedding.jina_api_base);
-                    println!(
-                        "    Reranking Enabled: {}",
-                        config.embedding.jina_enable_reranking
-                    );
-                    if config.embedding.jina_enable_reranking {
-                        println!(
-                            "    Reranking Model: {}",
-                            config.embedding.jina_reranking_model
-                        );
-                        println!(
-                            "    Reranking Top-N: {}",
-                            config.embedding.jina_reranking_top_n
-                        );
-                    }
                     println!("    Late Chunking: {}", config.embedding.jina_late_chunking);
                     println!("    Task: {}", config.embedding.jina_task);
+                }
+
+                // Reranking configuration (separate from embedding)
+                println!("\n  {}", "Reranking Settings:".green().bold());
+                println!("    Provider: {:?}", config.rerank.provider);
+                println!("    Top-N: {}", config.rerank.top_n);
+                if let Some(ref jina) = config.rerank.jina {
+                    println!("    Jina Model: {}", jina.model);
+                }
+                if let Some(ref ollama) = config.rerank.ollama {
+                    println!("    Ollama Model: {}", ollama.model);
                 }
 
                 println!("\n  {}", "LLM Settings:".green().bold());

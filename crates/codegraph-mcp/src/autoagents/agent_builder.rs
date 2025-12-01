@@ -12,6 +12,7 @@ use autoagents::llm::models::{ModelListRequest, ModelListResponse, ModelsProvide
 use autoagents::llm::{FunctionCall, ToolCall};
 use codegraph_ai::llm_provider::{
     LLMProvider as CodeGraphLLM, LLMResponse, Message, MessageRole, ProviderCharacteristics,
+    ResponseFormat,
 };
 use serde::Deserialize;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -44,6 +45,34 @@ pub struct CodeGraphChatAdapter {
 impl CodeGraphChatAdapter {
     pub fn new(provider: Arc<dyn CodeGraphLLM>, tier: ContextTier) -> Self {
         Self { provider, tier }
+    }
+
+    /// Schema that enforces CodeGraph tool-call envelope expected by AutoAgents
+    fn codegraph_toolcall_schema() -> ResponseFormat {
+        use serde_json::json;
+        ResponseFormat::JsonSchema {
+            json_schema: codegraph_ai::llm_provider::JsonSchema {
+                name: "codegraph_tool_call".to_string(),
+                schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "reasoning": {"type": "string"},
+                        "tool_call": {
+                            "type": "object",
+                            "properties": {
+                                "tool_name": {"type": "string"},
+                                "parameters": {"type": "object"}
+                            },
+                            "required": ["tool_name", "parameters"]
+                        },
+                        "is_final": {"type": "boolean"}
+                    },
+                    "required": ["reasoning", "is_final"],
+                    "additionalProperties": true
+                }),
+                strict: true,
+            },
+        }
     }
 
     /// Get tier-aware max_tokens, respecting environment variable override
@@ -100,17 +129,17 @@ impl ChatProvider for CodeGraphChatAdapter {
             .collect();
 
         // Convert AutoAgents json_schema to CodeGraph ResponseFormat
-        let response_format = json_schema.and_then(|schema| {
-            schema.schema.map(|schema_value| {
-                codegraph_ai::llm_provider::ResponseFormat::JsonSchema {
+        let response_format = json_schema
+            .and_then(|schema| {
+                schema.schema.map(|schema_value| ResponseFormat::JsonSchema {
                     json_schema: codegraph_ai::llm_provider::JsonSchema {
                         name: schema.name,
                         schema: schema_value,
                         strict: schema.strict.unwrap_or(true),
                     },
-                }
+                })
             })
-        });
+            .or_else(|| Some(Self::codegraph_toolcall_schema()));
 
         // Call CodeGraph LLM provider with structured output support
         let config = codegraph_ai::llm_provider::GenerationConfig {
@@ -273,6 +302,13 @@ impl ChatResponse for CodeGraphChatResponse {
                     .map(|t| t.tool_name.as_str())
                     .or_else(|| if parsed.is_final { Some("final_answer") } else { None });
                 crate::debug_logger::DebugLogger::log_reasoning_step(step_number, thought, action);
+
+                if parsed.tool_call.is_none() && !parsed.is_final {
+                    tracing::warn!(
+                        "Parsed response without tool_call while is_final=false; content preview: {}",
+                        &self.content.chars().take(200).collect::<String>()
+                    );
+                }
 
                 // If there's a tool_call and is_final is false, convert to AutoAgents format
                 if let Some(tool_call) = parsed.tool_call {

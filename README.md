@@ -26,11 +26,15 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
 - **Any model** with supported dimensions: 384, 768, 1024, 1536, 2048, 2560, 3072, 4096
 - Ollama (local models: qwen, jina, nomic, bge, e5, minilm, etc.)
 - LM Studio (local models via OpenAI-compatible API)
-- Jina AI (cloud API with reranking)
+- Jina AI (cloud API)
 - OpenAI (cloud API)
 - ONNX Runtime (local CPU/GPU inference)
 - Set `CODEGRAPH_EMBEDDING_DIMENSION` to use any model
 - Configure `CODEGRAPH_MAX_CHUNK_TOKENS` based on your model's context window
+
+**Reranking Providers:**
+- Jina AI (cloud API with jina-reranker-v3)
+- Ollama (local chat models: Qwen3-Reranker, etc.)
 
 **Vector Database:**
 - SurrealDB HNSW index (2-5ms query latency)
@@ -71,55 +75,63 @@ We automatically route embeddings to `embedding_384`, `embedding_768`, `embeddin
 
 ### 2. Reranking (Optional)
 
-CodeGraph supports two types of reranking to improve search result quality:
+CodeGraph supports **text-based reranking** to improve search result quality using cross-encoder models:
 
-**Option 1: Native Reranking (Jina AI only)**
-- Uses dedicated reranking models for highest quality
-- Available only with Jina AI cloud API
-- Two-stage retrieval: semantic search + dedicated reranking
+**How Reranking Works:**
+1. Fast semantic search retrieves initial candidates (HNSW vector search)
+2. Reranker scores query-document pairs using **text content** (not embeddings)
+3. Results re-ranked by relevance score for higher precision
 
-```toml
-# In ~/.codegraph/config.toml
-[embedding]
-provider = "jina"
-jina_enable_reranking = true
-jina_reranking_model = "jina-reranker-v3"
-```
-
-**Option 2: Generic Embedding-Based Reranking (All providers)**
-- Works with **ANY** embedding provider (Ollama, LM Studio, ONNX, OpenAI, Jina)
-- Uses cosine similarity between query and document embeddings
-- No additional API calls required
+**Option 1: Jina AI Reranking** (Cloud API)
+- Uses jina-reranker-v3 cross-encoder model
+- Highest quality, purpose-built for reranking
+- Requires Jina API key
 
 ```bash
-# Via environment variables
-export CODEGRAPH_ENABLE_RERANKING=true
-export CODEGRAPH_RERANKING_TOP_N=50  # Optional, default is 50
+export CODEGRAPH_RERANK_PROVIDER=jina
+export JINA_API_KEY=jina_...
 ```
 
 Or in `~/.codegraph/config.toml`:
 ```toml
-[embedding]
-enable_reranking = true
-reranking_top_n = 50  # Number of results to fetch before reranking
+[rerank]
+provider = "jina"
+top_n = 10  # Number of results after reranking
+
+[rerank.jina]
+model = "jina-reranker-v3"
+api_key_env = "JINA_API_KEY"
 ```
 
-**Recommended Models for Generic Reranking:**
-- **Ollama**: `qwen3-embedding:0.6b`, `bge-reranker-large`, or any embedding model
-- **LM Studio**: Load any reranking-optimized embedding model (BGE, Jina, etc.)
-- **ONNX**: BGE reranker models from HuggingFace
-- **OpenAI/Jina**: Works with any embedding model
+**Option 2: Ollama Reranking** (Local, Free)
+- Uses chat models for relevance scoring (e.g., Qwen3-Reranker)
+- Runs locally via Ollama
+- No API key required
 
-**How Generic Reranking Works:**
-1. Fetches top-N results from vector search (default: 50)
-2. Re-embeds the query and all candidate documents
-3. Computes precise cosine similarity scores
-4. Re-ranks results by similarity and returns top matches
+```bash
+# Pull the model first
+ollama pull dengcao/Qwen3-Reranker-4B:Q5_K_M
+
+# Configure CodeGraph
+export CODEGRAPH_RERANK_PROVIDER=ollama
+export CODEGRAPH_OLLAMA_RERANK_MODEL="dengcao/Qwen3-Reranker-4B:Q5_K_M"
+```
+
+Or in `~/.codegraph/config.toml`:
+```toml
+[rerank]
+provider = "ollama"
+top_n = 10
+
+[rerank.ollama]
+model = "dengcao/Qwen3-Reranker-4B:Q5_K_M"
+api_base = "http://localhost:11434"
+```
 
 **Performance Notes:**
-- Native reranking (Jina): 80-200ms per query
-- Generic reranking: Depends on embedding provider speed
-- Both methods significantly improve result quality over vector search alone
+- Jina reranking: 80-200ms per query (cloud API)
+- Ollama reranking: Varies by model (local inference)
+- Both significantly improve result precision over vector search alone
 
 ---
 
@@ -429,7 +441,7 @@ cd codegraph-rust
 # Build with all cloud providers
 cargo build --release --features "anthropic,openai-llm,openai"
 
-# Or with Jina AI cloud embeddings (Matryoska dimensions + reranking)
+# Or with Jina AI cloud embeddings
 cargo build --release --features "cloud-jina,anthropic"
 
 # Or with SurrealDB HNSW cloud/local vector backend
@@ -479,15 +491,21 @@ max_completion_token = 128000
 reasoning_effort = "medium"  # reasoning models: "minimal", "medium", "high"
 ```
 
-**For Jina AI (cloud embeddings with reranking):**
+**For Jina AI (cloud embeddings + reranking):**
 ```toml
 [embedding]
 provider = "jina"
 model = "jina-embeddings-v4"
 jina_api_key = "jina_..."  # or set JINA_API_KEY env var
 dimension = 2048 # or matryoshka 1024,512,256 adjust the schemas/*.surql file HNSW vector index to match your embedding model dimensions
-jina_enable_reranking = true  # Optional two-stage retrieval
-jina_reranking_model = "jina-reranker-v3"
+
+[rerank]
+provider = "jina"  # Optional two-stage retrieval
+top_n = 10
+
+[rerank.jina]
+model = "jina-reranker-v3"
+api_key_env = "JINA_API_KEY"
 
 [llm]
 enabled = true
@@ -923,7 +941,7 @@ export CODEGRAPH_MAX_CHUNK_TOKENS=2048      # Match your model's context window
 | `embeddings-ollama` | Ollama | Any Ollama embedding model (qwen, jina, nomic, bge, e5, minilm, etc.) |
 | `lmstudio` | LM Studio | Any model via OpenAI-compatible API. Auto-detects dimensions from common models. |
 | `embeddings-openai` | OpenAI | Cloud API. Supports text-embedding-3-small (1536) and text-embedding-3-large (3072). |
-| `embeddings-jina` | Jina AI | Cloud API with reranking. Supports jina-embeddings-v3 (1024) and jina-embeddings-v4 (2048). |
+| `embeddings-jina` | Jina AI | Cloud API. Supports jina-embeddings-v3 (1024) and jina-embeddings-v4 (2048). Use `CODEGRAPH_RERANK_PROVIDER=jina` for reranking. |
 
 **Configuration Priority:**
 1. `CODEGRAPH_EMBEDDING_DIMENSION` environment variable (recommended)

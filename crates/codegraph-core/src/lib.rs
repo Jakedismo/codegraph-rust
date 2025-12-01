@@ -4,6 +4,7 @@ pub mod cli_config;
 pub mod config;
 pub mod config_manager; // NEW: Simplified configuration system
 pub mod embedding_config;
+pub mod rerank_config;
 pub mod error;
 pub mod incremental;
 pub mod integration;
@@ -31,6 +32,7 @@ pub use config::{
 };
 pub use config_manager::*;
 pub use embedding_config::*;
+pub use rerank_config::*;
 pub use error::*;
 pub use incremental::*;
 pub use integration::*;
