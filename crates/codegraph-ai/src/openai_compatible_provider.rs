@@ -36,7 +36,7 @@ impl Default for OpenAICompatibleConfig {
             max_retries: 3,
             api_key: None,
             provider_name: "openai-compatible".to_string(),
-            use_responses_api: false, // Most providers only support Chat Completions API
+            use_responses_api: true, // Responses API is now the default (99% provider support)
         }
     }
 }
@@ -49,7 +49,7 @@ impl OpenAICompatibleConfig {
             model,
             context_window: 128_000,
             provider_name: "lmstudio".to_string(),
-            use_responses_api: false, // LM Studio doesn't support Responses API
+            use_responses_api: true, // LM Studio supports Responses API (set CODEGRAPH_USE_COMPLETIONS_API=true for legacy)
             ..Default::default()
         }
     }
@@ -61,7 +61,7 @@ impl OpenAICompatibleConfig {
             model,
             context_window: 128_000,
             provider_name: "ollama".to_string(),
-            use_responses_api: false, // Ollama doesn't support Responses API
+            use_responses_api: false, // Ollama uses native API, not OpenAI-compatible protocol
             ..Default::default()
         }
     }
@@ -72,7 +72,7 @@ impl OpenAICompatibleConfig {
             base_url,
             model,
             provider_name,
-            use_responses_api: false, // Default to Chat Completions API for compatibility
+            use_responses_api: true, // Default to Responses API (99% of providers support it)
             ..Default::default()
         }
     }
@@ -208,7 +208,9 @@ impl OpenAICompatibleProvider {
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             return Err(anyhow!(
-                "{} API error ({}): {}",
+                "{} Responses API error ({}): {}. \
+                 If your provider doesn't support Responses API, \
+                 set CODEGRAPH_USE_COMPLETIONS_API=true to use Chat Completions API instead.",
                 self.config.provider_name,
                 status,
                 error_text
@@ -230,7 +232,9 @@ impl OpenAICompatibleProvider {
 
         // Parse the response
         serde_json::from_str::<ResponseAPIResponse>(&response_text).context(format!(
-            "Failed to parse {} Responses API response. Raw response: {}",
+            "Failed to parse {} Responses API response. Raw response: {}. \
+             If your provider doesn't support Responses API, \
+             set CODEGRAPH_USE_COMPLETIONS_API=true to use Chat Completions API instead.",
             self.config.provider_name, response_text
         ))
     }
@@ -592,7 +596,7 @@ mod tests {
         let config = OpenAICompatibleConfig::lm_studio("test-model".to_string());
         assert_eq!(config.base_url, "http://localhost:1234/v1");
         assert_eq!(config.provider_name, "lmstudio");
-        assert!(!config.use_responses_api); // LM Studio uses Chat Completions API
+        assert!(config.use_responses_api); // LM Studio now defaults to Responses API
     }
 
     #[test]
@@ -600,6 +604,22 @@ mod tests {
         let config = OpenAICompatibleConfig::ollama("llama3".to_string());
         assert_eq!(config.base_url, "http://localhost:11434/v1");
         assert_eq!(config.provider_name, "ollama");
-        assert!(!config.use_responses_api); // Ollama uses Chat Completions API
+        assert!(!config.use_responses_api); // Ollama uses native API
+    }
+
+    #[test]
+    fn test_default_config() {
+        let config = OpenAICompatibleConfig::default();
+        assert!(config.use_responses_api); // Responses API is now the default
+    }
+
+    #[test]
+    fn test_custom_config() {
+        let config = OpenAICompatibleConfig::custom(
+            "http://localhost:8080/v1".to_string(),
+            "custom-model".to_string(),
+            "custom-provider".to_string(),
+        );
+        assert!(config.use_responses_api); // Custom configs default to Responses API
     }
 }

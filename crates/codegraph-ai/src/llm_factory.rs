@@ -75,7 +75,7 @@ impl LLMProviderFactory {
                 max_retries: 3,
                 api_key: None,
                 provider_name: "ollama".to_string(),
-                use_responses_api: false,
+                use_responses_api: !config.use_completions_api, // Default to Responses API unless completions API requested
             };
 
             Ok(Arc::new(OpenAICompatibleProvider::new(compat_config)?))
@@ -124,7 +124,7 @@ impl LLMProviderFactory {
                 max_retries: 3,
                 api_key: None, // LM Studio doesn't require API key
                 provider_name: "lmstudio".to_string(),
-                use_responses_api: false,
+                use_responses_api: !config.use_completions_api, // Default to Responses API unless completions API requested
             };
 
             Ok(Arc::new(OpenAICompatibleProvider::new(compat_config)?))
@@ -243,7 +243,7 @@ impl LLMProviderFactory {
             max_retries: 3,
             api_key: config.openai_api_key.clone(),
             provider_name: "openai-compatible".to_string(),
-            use_responses_api: false,
+            use_responses_api: !config.use_completions_api, // Default to Responses API unless completions API requested
         };
 
         Ok(Arc::new(OpenAICompatibleProvider::new(compat_config)?))

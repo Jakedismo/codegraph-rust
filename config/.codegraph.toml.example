@@ -116,6 +116,12 @@ max_tokens = 4096
 # Request timeout in seconds
 timeout_secs = 120
 
+# Use legacy Chat Completions API instead of modern Responses API
+# Only needed for old providers that don't support Responses API
+# Default: false (use Responses API)
+# Note: Ollama always uses its native API regardless of this setting
+# use_completions_api = false
+
 # Insights mode: "context-only", "balanced", or "deep"
 # - context-only: Return context only (fastest, for agents)
 # - balanced: Process top 10 files with LLM (good speed/quality)

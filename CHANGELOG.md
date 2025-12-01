@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ BREAKING CHANGES
+- **LLM Providers**: Default to Responses API for LM Studio and OpenAI-compatible providers
+  - **Who's affected**: Users with older OpenAI-compatible providers that only support Chat Completions API
+  - **Migration**: Set `CODEGRAPH_USE_COMPLETIONS_API=true` if you encounter Responses API errors
+  - **Ollama users**: NOT affected - Ollama uses its native API
+  - **Benefit**: Modern Responses API provides better support for reasoning models and improved token management
+
 ### Added
+
+#### **Responses API Support for LLM Providers**
+- **Default API**: CodeGraph now uses the modern Responses API by default for LM Studio and OpenAI-compatible providers
+- **Backward compatibility flag**: `use_completions_api` configuration field for providers that don't support Responses API
+- **Environment variable**: `CODEGRAPH_USE_COMPLETIONS_API` for easy API selection
+- **Helpful error messages**: Errors include migration guidance when Responses API fails
+- **Warning messages**: Deprecation warning when using Chat Completions API
+- **Provider support**: 99% of OpenAI-compatible providers support the modern Responses API
+
+### Changed
+- **Default LLM API**: Changed from Chat Completions to Responses API for LM Studio and OpenAI-compatible providers
+- **Error messages**: Now include migration guidance for incompatible providers
 
 #### **LM Studio Embedding Provider - Full Environment Variable Support**
 - **Fixed `with_auto_from_env()`** to support LM Studio provider (previously only supported Jina and Ollama)

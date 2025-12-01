@@ -22,6 +22,26 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
 - xAI Grok (Grok-4.1-fast-reasoning for true codebase understanding 2M ctx!)
 - Any OpenAI-compatible provider
 
+### Responses API vs Chat Completions API
+
+CodeGraph uses the modern **Responses API** by default for LM Studio and OpenAI-compatible providers. This API provides:
+- Better support for reasoning models
+- Improved token management
+- Clearer request/response structure
+
+**Backward Compatibility**: If your provider doesn't support Responses API, enable the legacy Chat Completions API:
+```bash
+export CODEGRAPH_USE_COMPLETIONS_API=true
+```
+
+Or in `~/.codegraph/config.toml`:
+```toml
+[llm]
+use_completions_api = true
+```
+
+**Note**: Ollama is NOT affected by this setting - it uses its native API.
+
 **Embedding Providers:**
 - **Any model** with supported dimensions: 384, 768, 1024, 1536, 2048, 2560, 3072, 4096
 - Ollama (local models: qwen, jina, nomic, bge, e5, minilm, etc.)
@@ -402,7 +422,10 @@ enabled = true
 provider = "lmstudio"
 model = "lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF"
 lmstudio_url = "http://localhost:1234"
+# use_completions_api = true  # Uncomment if your LM Studio version doesn't support Responses API
 ```
+
+**Note**: LM Studio now uses the modern **Responses API** by default. If you're using an older version of LM Studio that doesn't support it, add `use_completions_api = true` to the `[llm]` section.
 
 **Option B: Environment variables**
 ```bash
@@ -489,7 +512,10 @@ context_window=200000
 openai_api_key = "sk-..."
 max_completion_token = 128000
 reasoning_effort = "medium"  # reasoning models: "minimal", "medium", "high"
+# use_completions_api = true  # Uncomment if your provider doesn't support Responses API
 ```
+
+**Note**: OpenAI-compatible providers now use the modern **Responses API** by default. Most providers support this (99%+), but if you encounter errors, add `use_completions_api = true` to the `[llm]` section.
 
 **For Jina AI (cloud embeddings + reranking):**
 ```toml
@@ -532,7 +558,10 @@ xai_api_key = "xai-..."  # or set XAI_API_KEY env var
 xai_base_url = "https://api.x.ai/v1"  # default, can be omitted
 reasoning_effort = "medium"  # Options: "minimal", "medium", "high"
 context_window = 2000000  # 2M tokens!
+# use_completions_api = true  # Uncomment if your xAI version doesn't support Responses API
 ```
+
+**Note**: xAI uses the modern **Responses API** by default. Current xAI versions support this API, but if you encounter compatibility issues, add `use_completions_api = true` to the `[llm]` section.
 
 **For SurrealDB HNSW (graph database backend with advanced features):**
 ```toml

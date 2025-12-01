@@ -129,17 +129,24 @@ impl ChatProvider for CodeGraphChatAdapter {
             .collect();
 
         // Convert AutoAgents json_schema to CodeGraph ResponseFormat
-        let response_format = json_schema
-            .and_then(|schema| {
-                schema.schema.map(|schema_value| ResponseFormat::JsonSchema {
-                    json_schema: codegraph_ai::llm_provider::JsonSchema {
-                        name: schema.name,
-                        schema: schema_value,
-                        strict: schema.strict.unwrap_or(true),
-                    },
+        let provider_name = self.provider.provider_name().to_lowercase();
+        let allow_response_format = provider_name != "openai" && provider_name != "azure-openai";
+
+        let response_format = if allow_response_format {
+            json_schema
+                .and_then(|schema| {
+                    schema.schema.map(|schema_value| ResponseFormat::JsonSchema {
+                        json_schema: codegraph_ai::llm_provider::JsonSchema {
+                            name: schema.name,
+                            schema: schema_value,
+                            strict: schema.strict.unwrap_or(true),
+                        },
+                    })
                 })
-            })
-            .or_else(|| Some(Self::codegraph_toolcall_schema()));
+                .or_else(|| Some(Self::codegraph_toolcall_schema()))
+        } else {
+            None
+        };
 
         // Call CodeGraph LLM provider with structured output support
         let config = codegraph_ai::llm_provider::GenerationConfig {

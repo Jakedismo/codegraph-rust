@@ -202,6 +202,11 @@ pub struct LLMConfig {
     /// Request timeout in seconds
     #[serde(default = "default_timeout_secs")]
     pub timeout_secs: u64,
+
+    /// Use legacy Chat Completions API instead of modern Responses API
+    /// Set CODEGRAPH_USE_COMPLETIONS_API=true to enable backward compatibility
+    #[serde(default)]
+    pub use_completions_api: bool,
 }
 
 impl Default for LLMConfig {
@@ -225,6 +230,7 @@ impl Default for LLMConfig {
             mcp_code_agent_max_output_tokens: None, // Use tier-based defaults if not set
             reasoning_effort: None,     // Only for reasoning models
             timeout_secs: default_timeout_secs(),
+            use_completions_api: false,  // Default to Responses API
         }
     }
 }
@@ -621,6 +627,12 @@ impl ConfigManager {
             }
         }
 
+        // API selection
+        if let Ok(use_completions) = std::env::var("CODEGRAPH_USE_COMPLETIONS_API") {
+            config.llm.use_completions_api =
+                use_completions.to_lowercase() == "true" || use_completions == "1";
+        }
+
         // Logging
         if let Ok(level) = std::env::var("RUST_LOG") {
             config.logging.level = level;
@@ -670,6 +682,15 @@ impl ConfigManager {
                     other
                 )))
             }
+        }
+
+        // Warn about deprecated API usage
+        if config.llm.use_completions_api {
+            tracing::warn!(
+                "⚠️  Using legacy Chat Completions API. \
+                 Consider upgrading to Responses API for better performance. \
+                 Set CODEGRAPH_USE_COMPLETIONS_API=false or remove the variable."
+            );
         }
 
         // Validate log level
