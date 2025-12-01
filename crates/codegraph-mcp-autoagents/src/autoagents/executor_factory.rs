@@ -54,10 +54,21 @@ impl AgentExecutorFactory {
                     tier,
                 )))
             }
+            #[cfg(feature = "autoagents-lats")]
             AgentArchitecture::LATS => {
-                // Placeholder for Phase 2 implementation
+                use crate::autoagents::lats::executor::LATSExecutor;
+
+                Ok(Box::new(LATSExecutor::new(
+                    self.config.clone(),
+                    self.llm_provider.clone(),
+                    self.tool_executor.clone(),
+                    tier,
+                )))
+            }
+            #[cfg(not(feature = "autoagents-lats"))]
+            AgentArchitecture::LATS => {
                 Err(ExecutorError::BuildFailed(
-                    "LATS architecture not yet implemented. Use 'react' architecture or unset CODEGRAPH_AGENT_ARCHITECTURE.".to_string()
+                    "LATS requires 'autoagents-lats' feature. Rebuild with --features autoagents-lats".to_string()
                 ))
             }
         }
@@ -130,11 +141,10 @@ mod tests {
         std::env::remove_var("CODEGRAPH_AGENT_ARCHITECTURE");
     }
 
+    #[cfg(feature = "autoagents-lats")]
     #[test]
-    fn test_lats_not_implemented() {
-        // LATS should return an error until Phase 2
-        // We can't test this without mocking the providers,
-        // but we can verify the architecture enum
+    fn test_lats_architecture_enum() {
+        // Verify LATS architecture enum format
         assert_eq!(
             format!("{}", AgentArchitecture::LATS),
             "lats"
