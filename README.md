@@ -4,12 +4,27 @@
 
 CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed context to AI agents, eliminating the need for agents to burn tokens gathering project information. Instead of async agents like Claude Code executing searches and building dependency graphs, CodeGraph's MCP server handles these operations efficiently and exposes them through standardized tools.
 
+## Agentic MCP Tools (What, When, How)
+
+- **What they do:** The MCP server ships multi-step agentic tools (e.g., `agentic_code_search`, `agentic_dependency_analysis`, `agentic_call_chain_analysis`, `agentic_architecture_analysis`, `agentic_context_builder`, `agentic_semantic_question`) that plan, call graph tools, and return synthesized answers.
+- **When to use:** 
+  - Need an LLM to explore unfamiliar code paths → use `agentic_call_chain_analysis`.
+  - Need impact/dep mapping before edits → use `agentic_dependency_analysis`.
+  - Need a broad architectural map → use `agentic_architecture_analysis`.
+  - Need quick semantic answers with citations → use `agentic_semantic_question` or `agentic_code_search`.
+- **Prerequisites:** Index the repo first (`codegraph index . -r -l language`) so graph and embeddings exist. For live edits, run the mcp server with `codegraph start stdio --watch` (daemon) to keep results current.
+- **How to invoke in clients without MCP “instructions” support:** Call the prompt tool `read_initial_instructions` once; it returns the same guidance the MCP instructions feature would have injected. Example (stdio):
+  ```
+  -> call tool: read_initial_instructions
+  ```
+  In HTTP/SSE clients, invoke the same tool or copy its response into your system prompt.
+
 ## Features
 
 **Core Capabilities:**
-- Semantic code search with vector embeddings (and optional reranking of text results)
+- Semantic code search with vector embeddings (and optional reranking of graphDB results)
 - LLM-powered code intelligence and dependency analysis
-- Automatic dependency graph construction and traversal
+- Automatic AST+ML Enhanced dependency graph construction and traversal
 - Agentic code-agent tools with tier-aware multi-step reasoning
 - Incremental indexing with change detection (only re-index modified files)
 - Daemon mode for automatic file watching and re-indexing
@@ -18,9 +33,9 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
 - Anthropic Claude (Sonnet, Opus, Haiku - 4.5 model family)
 - OpenAI (GPT-5.1, GPT-5.1-codex)
 - Ollama (local models)
-- LM Studio (OpenAI-compatible)
+- LM Studio (Local models)
 - xAI Grok (Grok-4.1-fast-reasoning for true codebase understanding 2M ctx!)
-- Any OpenAI-compatible provider
+- Any OpenAI-compatible provider (OpenRouter Kimi-K2 Thinking)
 
 ### Responses API vs Chat Completions API
 
@@ -49,14 +64,14 @@ use_completions_api = true
 - Jina AI (cloud API)
 - OpenAI (cloud API)
 - ONNX Runtime (local CPU/GPU inference)
-- Set `CODEGRAPH_EMBEDDING_DIMENSION` to use any model
-- Configure `CODEGRAPH_MAX_CHUNK_TOKENS` based on your model's context window
+- Set `CODEGRAPH_EMBEDDING_DIMENSION` to match the dimension of the model of your choosing (and that is supported by codegraph)
+- Configure `CODEGRAPH_MAX_CHUNK_TOKENS` based on your model's context window (80% is pretty safe to create good chunks if chunking triggers, use f.ex. qwen3-embedding family models with 32k context for clean <500 rows per file codebases for great quality)
 
 **Reranking Providers:**
 - Jina AI (cloud API with jina-reranker-v3)
-- Ollama (local chat models: Qwen3-Reranker, etc.)
+- Ollama (local chat models: Qwen3-Reranker family, etc.)
 
-**Vector Database:**
+**Vector & Graph Database:**
 - SurrealDB HNSW index (2-5ms query latency)
 - Supports 384, 768, 1024, 1536, 2048, 2560, 3072, 4096 dimensions
 - Cloud-native or local deployment
@@ -79,15 +94,15 @@ CodeGraph writes embeddings directly into SurrealDB's dimension-specific HNSW co
 export CODEGRAPH_EMBEDDING_PROVIDER=ollama
 export CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b   # Use ANY Ollama embedding model
 export CODEGRAPH_EMBEDDING_DIMENSION=1024               # Match your model's output: 384, 768, 1024, 1536, 2048, 2560, 3072, or 4096
-export CODEGRAPH_MAX_CHUNK_TOKENS=2048                  # Match your model's context window
+export CODEGRAPH_MAX_CHUNK_TOKENS=32000                  # Match your model's context window
 ```
 
 **Option 2: LM Studio (any OpenAI-compatible model)**
 ```bash
 export CODEGRAPH_EMBEDDING_PROVIDER=lmstudio
-export CODEGRAPH_LMSTUDIO_MODEL=jina-embeddings-v3      # Use ANY model loaded in LM Studio
-export CODEGRAPH_EMBEDDING_DIMENSION=1024               # Match your model's output dimension
-export CODEGRAPH_MAX_CHUNK_TOKENS=2048                  # Match your model's context window
+export CODEGRAPH_LMSTUDIO_MODEL=jina-embeddings-v4      # Use ANY model loaded in LM Studio
+export CODEGRAPH_EMBEDDING_DIMENSION=2048               # Match your model's output dimension
+export CODEGRAPH_MAX_CHUNK_TOKENS=8196                  # Match your model's context window
 export CODEGRAPH_LMSTUDIO_URL=http://localhost:1234     # Default LM Studio endpoint (the /v1 path is appended automatically)
 ```
 
