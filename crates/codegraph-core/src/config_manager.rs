@@ -207,6 +207,10 @@ pub struct LLMConfig {
     /// Set CODEGRAPH_USE_COMPLETIONS_API=true to enable backward compatibility
     #[serde(default)]
     pub use_completions_api: bool,
+
+    /// LATS-specific multi-provider configuration
+    #[serde(default)]
+    pub lats: Option<LATSProviderConfig>,
 }
 
 impl Default for LLMConfig {
@@ -231,9 +235,48 @@ impl Default for LLMConfig {
             reasoning_effort: None,     // Only for reasoning models
             timeout_secs: default_timeout_secs(),
             use_completions_api: false,  // Default to Responses API
+            lats: None, // No LATS config by default
         }
     }
 }
+
+/// LATS-specific multi-provider configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LATSProviderConfig {
+    /// Provider for selection phase (node scoring)
+    #[serde(default)]
+    pub selection_provider: Option<String>,
+    pub selection_model: Option<String>,
+
+    /// Provider for expansion phase (generating new thoughts)
+    #[serde(default)]
+    pub expansion_provider: Option<String>,
+    pub expansion_model: Option<String>,
+
+    /// Provider for evaluation phase (assessing quality)
+    #[serde(default)]
+    pub evaluation_provider: Option<String>,
+    pub evaluation_model: Option<String>,
+
+    /// Provider for backpropagation phase (updating scores)
+    #[serde(default)]
+    pub backprop_provider: Option<String>,
+    pub backprop_model: Option<String>,
+
+    /// LATS algorithm parameters
+    #[serde(default = "default_lats_beam_width")]
+    pub beam_width: usize,
+
+    #[serde(default = "default_lats_max_depth")]
+    pub max_depth: usize,
+
+    #[serde(default = "default_lats_exploration_weight")]
+    pub exploration_weight: f32,
+}
+
+fn default_lats_beam_width() -> usize { 3 }
+fn default_lats_max_depth() -> usize { 5 }
+fn default_lats_exploration_weight() -> f32 { 1.414 } // sqrt(2) for UCT
 
 /// Performance and resource configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -631,6 +674,65 @@ impl ConfigManager {
         if let Ok(use_completions) = std::env::var("CODEGRAPH_USE_COMPLETIONS_API") {
             config.llm.use_completions_api =
                 use_completions.to_lowercase() == "true" || use_completions == "1";
+        }
+
+        // LATS configuration
+        let mut has_lats_config = false;
+        let mut lats_config = config.llm.lats.take().unwrap_or_default();
+
+        if let Ok(provider) = std::env::var("CODEGRAPH_LATS_SELECTION_PROVIDER") {
+            lats_config.selection_provider = Some(provider);
+            has_lats_config = true;
+        }
+        if let Ok(model) = std::env::var("CODEGRAPH_LATS_SELECTION_MODEL") {
+            lats_config.selection_model = Some(model);
+            has_lats_config = true;
+        }
+        if let Ok(provider) = std::env::var("CODEGRAPH_LATS_EXPANSION_PROVIDER") {
+            lats_config.expansion_provider = Some(provider);
+            has_lats_config = true;
+        }
+        if let Ok(model) = std::env::var("CODEGRAPH_LATS_EXPANSION_MODEL") {
+            lats_config.expansion_model = Some(model);
+            has_lats_config = true;
+        }
+        if let Ok(provider) = std::env::var("CODEGRAPH_LATS_EVALUATION_PROVIDER") {
+            lats_config.evaluation_provider = Some(provider);
+            has_lats_config = true;
+        }
+        if let Ok(model) = std::env::var("CODEGRAPH_LATS_EVALUATION_MODEL") {
+            lats_config.evaluation_model = Some(model);
+            has_lats_config = true;
+        }
+        if let Ok(provider) = std::env::var("CODEGRAPH_LATS_BACKPROP_PROVIDER") {
+            lats_config.backprop_provider = Some(provider);
+            has_lats_config = true;
+        }
+        if let Ok(model) = std::env::var("CODEGRAPH_LATS_BACKPROP_MODEL") {
+            lats_config.backprop_model = Some(model);
+            has_lats_config = true;
+        }
+        if let Ok(width) = std::env::var("CODEGRAPH_LATS_BEAM_WIDTH") {
+            if let Ok(w) = width.parse() {
+                lats_config.beam_width = w;
+                has_lats_config = true;
+            }
+        }
+        if let Ok(depth) = std::env::var("CODEGRAPH_LATS_MAX_DEPTH") {
+            if let Ok(d) = depth.parse() {
+                lats_config.max_depth = d;
+                has_lats_config = true;
+            }
+        }
+        if let Ok(weight) = std::env::var("CODEGRAPH_LATS_EXPLORATION_WEIGHT") {
+            if let Ok(w) = weight.parse() {
+                lats_config.exploration_weight = w;
+                has_lats_config = true;
+            }
+        }
+
+        if has_lats_config {
+            config.llm.lats = Some(lats_config);
         }
 
         // Logging
