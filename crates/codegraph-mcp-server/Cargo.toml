@@ -20,6 +20,18 @@ ai-enhanced = [
 server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
 autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental", "codegraph-mcp/autoagents-experimental"]
 embeddings = ["codegraph-mcp-tools/embeddings", "codegraph-mcp/embeddings"]
+embeddings-ollama = ["embeddings", "codegraph-mcp/embeddings-ollama"]
+embeddings-openai = ["embeddings", "codegraph-mcp/embeddings-openai"]
+embeddings-jina = ["embeddings", "codegraph-mcp/embeddings-jina"]
+embeddings-lmstudio = ["embeddings", "codegraph-mcp/embeddings-lmstudio"]
+embeddings-local = ["embeddings", "codegraph-mcp/embeddings-local"]
+all-embeddings = [
+    "embeddings-ollama",
+    "embeddings-openai",
+    "embeddings-jina",
+    "embeddings-lmstudio",
+    "embeddings-local"
+]
 daemon = ["dep:codegraph-mcp-daemon"]
 
 [dependencies]
