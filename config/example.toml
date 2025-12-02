@@ -1,0 +1,66 @@
+# CodeGraph example configuration (copy to ~/.codegraph/config.toml or use CODEGRAPH_* env vars)
+
+[embedding]
+# provider options: ollama | openai | jina | lmstudio
+provider = "ollama"
+model = "qwen3-embedding:0.6b"
+dimension = 1024
+batch_size = 32
+normalize_embeddings = true
+cache_enabled = true
+ollama_url = "http://localhost:11434"
+# Optional: override chunk size for longer-context models
+# env: CODEGRAPH_CHUNK_MAX_TOKENS=2048
+# skip_chunking = false
+
+[llm]
+provider = "ollama"   # or openai / anthropic / openai-compatible / xai / lmstudio
+model = "qwen3:4b"
+context_window = 252000
+max_retries = 3
+
+[rerank]
+# Optional reranking provider: jina | lmstudio
+provider = "jina"
+model = "jina-reranker-v3"
+top_n = 10
+candidates = 256
+
+[database]
+backend = "surrealdb"
+
+[database.surrealdb]
+connection = "ws://localhost:3004"
+namespace = "codegraph"
+database = "main"
+# username = "root"
+# password is best set via env: CODEGRAPH__DATABASE__SURREALDB__PASSWORD
+strict_mode = false
+auto_migrate = true
+
+[server]
+host = "0.0.0.0"
+port = 3003
+
+[performance]
+# Global knobs for indexing/embedding
+batch_size = 64           # embedding batch size (overrides via CODEGRAPH_EMBEDDINGS_BATCH_SIZE)
+workers = 4               # caps Rayon threads (leave one core free by default)
+max_concurrent = 4        # concurrent embedding requests
+max_texts_per_request = 256
+
+[monitoring]
+enabled = true
+metrics_enabled = true
+trace_enabled = false
+metrics_interval_secs = 60
+
+[security]
+require_auth = false
+rate_limit_per_minute = 1200
+
+# Secrets are provided via environment variables; do not commit secrets to this file.
+# Examples:
+#   OPENAI_API_KEY=sk-...
+#   ANTHROPIC_API_KEY=...
+#   JINA_API_KEY=...

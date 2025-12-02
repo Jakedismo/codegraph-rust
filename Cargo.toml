@@ -98,6 +98,8 @@ lazy_static = "1.4.0"
 tokio = { version = "1.39", features = ["full"] }
 async-trait = "0.1"
 futures = "0.3"
+rmcp = { version = "0.7.0", features = ["server", "transport-io", "transport-streamable-http-server"] }
+semchunk-rs = { version = "0.4", features = ["serde"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -257,9 +259,6 @@ criterion = { version = "0.7.0", features = ["html_reports", "async_tokio"] }
 # LRU cache utility
 lru = "0.16.1"
 
-# Official MCP Rust SDK
-rmcp = { version = "0.7.0", features = ["server", "transport-io", "transport-streamable-http-server"] }
-
 # Internal crates
 codegraph-core = { path = "crates/codegraph-core" }
 codegraph-graph = { path = "crates/codegraph-graph" }
@@ -275,10 +274,6 @@ codegraph-ai = { path = "crates/codegraph-ai" }
 
 # Development dependencies
 
-
-[patch.crates-io]
-rmcp = { path = "vendor/rmcp" }
-semchunk-rs = { path = "vendor/semchunk-rs" }
 
 [profile.release]
 # Performance-oriented release (kept as-is for general builds)

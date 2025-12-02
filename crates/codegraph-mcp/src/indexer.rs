@@ -2776,12 +2776,16 @@ impl ProjectIndexer {
         };
 
         let mut resp = db
-            .query("SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id")
+            .query("SELECT count() AS count FROM file_metadata WHERE project_id = $project_id")
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to verify file_metadata count")?;
-        let counts: Vec<i64> = resp.take(0)?;
-        let count = counts.get(0).cloned().unwrap_or(0);
+        let counts: Vec<serde_json::Value> = resp.take(0)?;
+        let count = counts
+            .get(0)
+            .and_then(|v| v.get("count"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
 
         if count < expected_files as i64 {
             Err(anyhow!(
@@ -2802,12 +2806,16 @@ impl ProjectIndexer {
         };
 
         let mut resp = db
-            .query("SELECT VALUE count() FROM project_metadata WHERE project_id = $project_id")
+            .query("SELECT count() AS count FROM project_metadata WHERE project_id = $project_id")
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to verify project_metadata count")?;
-        let counts: Vec<i64> = resp.take(0)?;
-        let count = counts.get(0).cloned().unwrap_or(0);
+        let counts: Vec<serde_json::Value> = resp.take(0)?;
+        let count = counts
+            .get(0)
+            .and_then(|v| v.get("count"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
         if count < 1 {
             Err(anyhow!(
                 "project_metadata missing for project {}; ensure schema applied and permissions allow writes",
