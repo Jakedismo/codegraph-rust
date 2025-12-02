@@ -1024,6 +1024,7 @@ impl ProjectIndexer {
 
             let processed_atomic = Arc::new(AtomicU64::new(0));
             let max_concurrent = self.config.max_concurrent.max(1);
+            let chunk_db_batch = chunk_embedding_db_batch_size();
             let embedder = &self.embedder;
 
             let mut batch_stream = stream::iter(chunk_batches.into_iter().map(|(texts, metas)| async move {
@@ -1057,7 +1058,9 @@ impl ProjectIndexer {
                     }
                 }
 
-                self.enqueue_chunk_embeddings(records).await?;
+                for batch in records.chunks(chunk_db_batch) {
+                    self.enqueue_chunk_embeddings(batch.to_vec()).await?;
+                }
 
                 let done = processed_atomic.fetch_add(metas.len() as u64, Ordering::Relaxed)
                     + metas.len() as u64;
@@ -2406,7 +2409,7 @@ impl ProjectIndexer {
         };
 
         let mut response = db
-            .query("SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id")
+            .query("SELECT count() AS count FROM file_metadata WHERE project_id = $project_id GROUP ALL")
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to query file_metadata count")?;
@@ -2716,7 +2719,7 @@ impl ProjectIndexer {
         };
 
         match db
-            .query("SELECT VALUE count() FROM chunks WHERE project_id = $project_id")
+            .query("SELECT count() AS count FROM chunks WHERE project_id = $project_id GROUP ALL")
             .bind(("project_id", self.project_id.clone()))
             .await
         {
@@ -2806,7 +2809,7 @@ impl ProjectIndexer {
         };
 
         let mut resp = db
-            .query("SELECT count() AS count FROM project_metadata WHERE project_id = $project_id")
+            .query("SELECT count() AS count FROM project_metadata WHERE project_id = $project_id GROUP ALL")
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to verify project_metadata count")?;
@@ -3476,6 +3479,15 @@ fn symbol_embedding_db_batch_size() -> usize {
         .and_then(|value| value.parse::<usize>().ok())
         .map(|parsed| parsed.clamp(1, MAX))
         .unwrap_or(SYMBOL_EMBEDDING_DB_BATCH_LIMIT)
+}
+
+fn chunk_embedding_db_batch_size() -> usize {
+    const MAX: usize = 512;
+    std::env::var("CODEGRAPH_CHUNK_DB_BATCH_SIZE")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .map(|parsed| parsed.clamp(1, MAX))
+        .unwrap_or(512)
 }
 
 fn resolve_surreal_embedding_column(dim: usize) -> Result<SurrealEmbeddingColumn> {
