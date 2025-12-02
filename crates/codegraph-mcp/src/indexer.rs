@@ -1001,6 +1001,10 @@ impl ProjectIndexer {
             "🧩 Persisting chunk embeddings",
         );
         let batch = self.config.batch_size.max(1);
+        info!(
+            "   ⚙️ Effective embedding batch size: {} (CODEGRAPH_EMBEDDINGS_BATCH_SIZE clamped to 512 for DB writes)",
+            batch
+        );
         #[allow(unused_mut)]
         #[cfg(feature = "embeddings")]
         let mut processed: u64;
