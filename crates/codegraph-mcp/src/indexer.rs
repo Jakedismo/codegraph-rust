@@ -492,6 +492,18 @@ impl ProjectIndexer {
         global_config: &codegraph_core::config_manager::CodeGraphConfig,
         multi_progress: MultiProgress,
     ) -> Result<Self> {
+        // Cap Rayon global thread pool to avoid CPU starvation
+        let rayon_threads = config.workers.max(2);
+        if let Err(e) = rayon::ThreadPoolBuilder::new()
+            .num_threads(rayon_threads)
+            .build_global()
+        {
+            // Pool may already be built elsewhere; log and continue
+            debug!("Rayon global pool unchanged: {}", e);
+        } else {
+            info!("🔧 Rayon threads capped to {} (config.workers)", rayon_threads);
+        }
+
         // Allow runtime override for embedding batch size
         if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
             if let Ok(parsed) = val.parse::<usize>() {

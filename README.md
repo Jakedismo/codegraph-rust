@@ -6,7 +6,7 @@
 - **Single pass extraction:** Unified TreeSitter + FastML walk produces nodes, edges, symbols in one pass, then lightweight pattern+symbol resolution enriches results.
 - **Node annotations:** Project/organization/repo IDs, language, type, complexity, chunk_count recorded for retrieval and filtering.
 - **Chunk → embed → persist:** Nodes are chunked using a model-aware tokenizer unless `CODEGRAPH_EMBEDDING_SKIP_CHUNKING=1`. Each chunk gets an embedding; writes go to SurrealDB tables `nodes`, `edges`, `symbol_embeddings`, `chunks`.
-- **Hybrid search functions:** Surreal functions combine HNSW vector search + lexical + graph context. MCP chooses chunk or node search based on the env flag, preserving relevance and context.
+- **Hybrid search functions:** Surreal functions combine HNSW vector search + lexical + graph context. Internal semantic_search tool of MCP-server (used by the in-built agent to get context) chooses chunk or node search based on the env flag, preserving relevance and context.
 - **Incremental tracking:** File/project metadata stored to support `--watch` incremental re-indexing and dedup by project_id + file_path.
 - **Batched + resilient:** Embedding calls and Surreal upserts are batched; sizes tunable via `CODEGRAPH_EMBEDDINGS_BATCH_SIZE` and provider-specific env vars.
 
@@ -20,11 +20,11 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
   - Need impact/dep mapping before edits → use `agentic_dependency_analysis`.
   - Need a broad architectural map → use `agentic_architecture_analysis`.
   - Need quick semantic answers with citations → use `agentic_semantic_question` or `agentic_code_search`.
-  - Need to understand repository API design, public surfaces? → use`agentic_api_surface_analysis`
-  - Need pre-chewn semantically rich context for a task use →`agentic_context_builder
-- All these tools internally execute a reasoning agent with built-in graph analysis and semantic search tools. The agent does multi-step graph analysis on your indexed codebase and semantic similarity hybrid searches (0.7 vector similarity, 0.3 lexical search) so that it gains a comprehensive understanding of your codebase so it can answer the question given by the client.
+  - Need to understand repository API design, public surfaces → use`agentic_api_surface_analysis`
+  - Need pre-chewn semantically rich context for a feature development → `agentic_context_builder`  
+- All these tools internally execute a reasoning agent (ReACT or LATS) with built-in graph analysis- and semantic search tools. The agent does multi-step graph analysis on your indexed codebase and semantic similarity hybrid searches (0.7 vector similarity, 0.3 lexical search) so that it gains a comprehensive understanding of your codebaset before answering clients query.
 - The Depth and quality of provided answers is governed by a 4-tier prompt mechanism, less detailed faster analyses for models with smaller ctx windows more broader comprehensive analyses for models with larger ctx windows.
-- This enabled running local models in systems with limited resources and chaining tool uses for comprehensive context while using models like grok-4-1-fast-reasoning give you the full monty in one go.
+- This enables running local models in systems with limited resources and the agent chaining tool uses for comprehensive context while using models like grok-4-1-fast-reasoning give you the full monty in one go.
 - **Prerequisites:** Index your codebase first (`codegraph index . -r -l language`) so graph and embeddings exist. For live edits, run the mcp server with `codegraph start stdio --watch` (daemon) to keep results current.
 - **How to invoke in clients without MCP “instructions” support:** Call the prompt tool `read_initial_instructions` once; it returns the same guidance the MCP instructions feature would have injected. Example (stdio):
   ```
@@ -35,12 +35,13 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
 ## Features
 
 **Core Capabilities:**
-- Semantic code search with vector embeddings (and optional reranking of graphDB results)
+- Hybrid lexical+semantic code+graph traversal search with vector embeddings and BM25 weighted and graph query combined (and optional reranking of graphDB results)
 - LLM-powered code intelligence and dependency analysis
 - Automatic AST+Fast ML Enhanced dependency graph construction and surrealDB functions enabled fast traversal
 - Agentic MCP tools with tier-aware multi-step reasoning based on used models ctx window
 - Incremental indexing with change detection (only re-index modified files)
 - Daemon mode for automatic file watching and re-indexing
+- Automatic chunking (and support for disabling it - more speed)
 
 **LLM Providers:**
 - Anthropic Claude (Sonnet, Opus, Haiku - 4.5 model family)
@@ -250,8 +251,8 @@ cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents,autoag
 
 **Why use multi-provider LATS?**
 - **Selection**: Use fast, cheap models (gpt-5.1-codex-mini) for rapid node selection
-- **Expansion**: Use reasoning models (grok-4-1-fast-reasoning) for generating high-quality next steps
-- **Evaluation**: Use specialized reasoning models (Opus 4.5)) for accurate state evaluation
+- **Expansion**: Use reasoning models (grok-4-1-fast-reasoning, Claude 4.5, Opus 4.5, GPT-5.1) for generating high-quality next steps
+- **Evaluation**: Use specialized reasoning models (Opus 4.5, GPT-5.1-codex) for accurate state evaluation
 - **Cost optimization**: Balance quality and cost by using expensive models only where needed (local for cheapest and most fun combinations and grok-4-1-fast-reasoning for everything dirt cheap and amazing results)
 
 ### Agent Reliability Settings
