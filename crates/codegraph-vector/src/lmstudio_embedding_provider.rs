@@ -234,7 +234,7 @@ impl LmStudioEmbeddingProvider {
     }
 
     /// Process texts in batches with chunking
-    async fn process_in_batches(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
+    pub async fn process_in_batches(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
         let mut all_embeddings = Vec::new();
         let batch_size = self.performance_chars.max_batch_size;
 

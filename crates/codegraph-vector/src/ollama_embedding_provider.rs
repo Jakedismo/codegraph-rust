@@ -94,6 +94,10 @@ pub struct OllamaEmbeddingProvider {
 }
 
 impl OllamaEmbeddingProvider {
+    pub fn max_batch_size(&self) -> usize {
+        self.config.batch_size
+    }
+
     pub fn new(config: OllamaEmbeddingConfig) -> Self {
         let characteristics = ProviderCharacteristics {
             expected_throughput: 100.0,                  // Expected texts per second
@@ -307,7 +311,7 @@ impl OllamaEmbeddingProvider {
         Ok(response_data.embeddings)
     }
 
-    async fn generate_embeddings_for_texts(
+    pub async fn generate_embeddings_for_texts(
         &self,
         texts: &[String],
         batch_size: usize,

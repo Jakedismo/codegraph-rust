@@ -494,14 +494,20 @@ impl ProjectIndexer {
     ) -> Result<Self> {
         // Cap Rayon global thread pool to avoid CPU starvation
         let rayon_threads = config.workers.max(2);
-        if let Err(e) = rayon::ThreadPoolBuilder::new()
+        if std::env::var("RAYON_NUM_THREADS").is_err() {
+            std::env::set_var("RAYON_NUM_THREADS", rayon_threads.to_string());
+        }
+        let rayon_pool_built = rayon::ThreadPoolBuilder::new()
             .num_threads(rayon_threads)
             .build_global()
-        {
-            // Pool may already be built elsewhere; log and continue
-            debug!("Rayon global pool unchanged: {}", e);
-        } else {
+            .is_ok();
+        if rayon_pool_built {
             info!("🔧 Rayon threads capped to {} (config.workers)", rayon_threads);
+        } else {
+            warn!(
+                "Rayon global pool already set elsewhere. Falling back to local pool for chunking. Current RAYON_NUM_THREADS={:?}.",
+                std::env::var("RAYON_NUM_THREADS").ok()
+            );
         }
 
         // Allow runtime override for embedding batch size
@@ -821,21 +827,35 @@ impl ProjectIndexer {
 
         // Build chunk plan early so we can annotate nodes with chunk counts before persistence
         #[cfg(feature = "embeddings")]
-        let chunk_plan: ChunkPlan = self.embedder.chunk_nodes(&nodes);
-        #[cfg(feature = "embeddings")]
-        {
-            let total_chunks = chunk_plan.stats.total_chunks;
+        let chunk_plan: ChunkPlan = {
+            let start = std::time::Instant::now();
+            // If global pool already exists, use a local pool to honor worker cap for this section
+            let chunker = || self.embedder.chunk_nodes(&nodes);
+            let plan = if rayon::current_num_threads() == rayon::current_thread_index().unwrap_or(0) {
+                // Fallback: build a local pool (safe even if global exists)
+                let rayon_threads = self.config.workers.max(2);
+                let pool = rayon::ThreadPoolBuilder::new()
+                    .num_threads(rayon_threads)
+                    .build()
+                    .expect("failed to build local rayon pool for chunking");
+                pool.install(chunker)
+            } else {
+                chunker()
+            };
+            let elapsed = start.elapsed();
             info!(
-                "🧩 Chunking enabled: {} nodes → {} chunks",
-                chunk_plan.stats.total_nodes,
-                total_chunks
+                "🧩 Chunk plan built: {} nodes → {} chunks in {:.1?}",
+                plan.stats.total_nodes,
+                plan.stats.total_chunks,
+                elapsed
             );
-            if total_chunks == 0 && !nodes.is_empty() {
+            if plan.stats.total_chunks == 0 && !nodes.is_empty() {
                 warn!(
                     "Chunking produced zero chunks. Check CODEGRAPH_EMBEDDING_SKIP_CHUNKING, embedding provider availability, and model max_tokens settings."
                 );
             }
-        }
+            plan
+        };
         #[cfg(not(feature = "embeddings"))]
         {
             info!("⚠️ Embeddings feature disabled at compile time; chunking skipped");

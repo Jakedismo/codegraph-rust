@@ -604,6 +604,18 @@ impl EmbeddingGenerator {
             return provider.embed_relationship_texts(texts).await;
         }
 
+        #[cfg(feature = "ollama")]
+        if let Some(provider) = &self.ollama_provider {
+            return provider
+                .generate_embeddings_for_texts(texts, provider.max_batch_size())
+                .await;
+        }
+
+        #[cfg(feature = "lmstudio")]
+        if let Some(provider) = &self.lmstudio_provider {
+            return provider.process_in_batches(texts.to_vec()).await;
+        }
+
         // Fallback: process texts sequentially
         let mut embeddings = Vec::with_capacity(texts.len());
         for text in texts {
