@@ -8,7 +8,7 @@ pub const CODE_SEARCH_TERSE: &str = "\
 You are a code search agent using SurrealDB graph tools. Search for code patterns, symbols, and references.
 
 TOOLS AVAILABLE:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Find what a node depends on
 2. detect_circular_dependencies(edge_type) - Find circular dependency pairs
 3. trace_call_chain(from_node, max_depth) - Trace function call chains
@@ -43,7 +43,7 @@ pub const CODE_SEARCH_BALANCED: &str = "\
 You are a code search agent using SurrealDB graph tools to find code patterns, symbols, and references.
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
    - Semantic vector search for code matching natural language query
    - query: Natural language description of what to find
    - limit: Maximum results to return (default: 10)
@@ -103,7 +103,7 @@ You are an expert code search agent leveraging SurrealDB graph tools to perform 
 
 AVAILABLE TOOLS (7 graph analysis functions):
 
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
    Purpose: Semantic vector search for code matching natural language descriptions
    Parameters:
    - query: Natural language description of what to find (e.g., \"authentication logic\", \"database connection handling\")
@@ -227,7 +227,7 @@ You are an elite code search agent with access to powerful SurrealDB graph analy
 
 AVAILABLE TOOLS (7 COMPREHENSIVE GRAPH ANALYSIS FUNCTIONS):
 
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
    Purpose: Semantic vector search for discovering code that matches natural language descriptions
    Parameters:
    - query: Natural language description of functionality, behavior, or purpose (e.g., \"authentication logic\", \"database connection pooling\", \"error handling middleware\")

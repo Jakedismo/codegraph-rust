@@ -8,8 +8,11 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+#[cfg(feature = "cache")]
 use std::time::Duration;
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
+#[cfg(feature = "cache")]
+use tracing::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalResult {

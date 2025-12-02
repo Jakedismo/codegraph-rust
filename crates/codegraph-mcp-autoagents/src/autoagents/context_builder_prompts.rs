@@ -8,7 +8,7 @@ YOUR MISSION:
 Build MINIMAL but ESSENTIAL context for code understanding or generation. You have limited capacity - be surgical.
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Map what this code needs
 2. detect_circular_dependencies(edge_type) - Find dependency cycles
 3. trace_call_chain(from_node, max_depth) - Understand execution flow
@@ -53,7 +53,7 @@ YOUR MISSION:
 Build BALANCED, ACTIONABLE context for code understanding or generation. Balance thoroughness with efficiency.
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Map what this code needs
 2. detect_circular_dependencies(edge_type) - Find dependency cycles
 3. trace_call_chain(from_node, max_depth) - Understand execution flow
@@ -102,7 +102,7 @@ YOUR MISSION:
 Build DETAILED, MULTI-DIMENSIONAL context for code understanding or generation. Be thorough and explore multiple facets.
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Map what this code needs
 2. detect_circular_dependencies(edge_type) - Find dependency cycles
 3. trace_call_chain(from_node, max_depth) - Understand execution flow
@@ -157,7 +157,7 @@ MANDATORY FILE LOCATION REQUIREMENT:
 For EVERY code element mentioned, ALWAYS include file location from tool results in format: `Name in path/to/file.rs:line`. Example: "parse_config in src/config/parser.rs:89" NOT just "parse_config".
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Map what this code needs
 2. detect_circular_dependencies(edge_type) - Find dependency cycles
 3. trace_call_chain(from_node, max_depth) - Understand execution flow

@@ -25,6 +25,8 @@ pub struct OpenAIConfig {
     pub max_retries: u32,
     /// Optional organization ID
     pub organization: Option<String>,
+    /// Optional reasoning effort (for reasoning models)
+    pub reasoning_effort: Option<String>,
 }
 
 impl Default for OpenAIConfig {
@@ -37,6 +39,7 @@ impl Default for OpenAIConfig {
             timeout_secs: 120,
             max_retries: 3,
             organization: std::env::var("OPENAI_ORG_ID").ok(),
+            reasoning_effort: None,
         }
     }
 }
@@ -72,7 +75,7 @@ impl OpenAIProvider {
     /// Check if this is a reasoning model
     fn is_reasoning_model(&self) -> bool {
         let model = self.config.model.to_lowercase();
-        model.starts_with("gpt-5")
+        model.starts_with("gpt-5") || model.starts_with('o')
     }
 
     /// Send a request to OpenAI Responses API with retry logic
@@ -129,6 +132,16 @@ impl OpenAIProvider {
             .collect::<Vec<_>>()
             .join("\n\n");
 
+        let model_lower = self.config.model.to_lowercase();
+        let _is_reasoning = self.is_reasoning_model();
+
+        // Default reasoning effort for GPT-5.1 family when not provided
+        let reasoning_effort = if is_reasoning && model_lower.starts_with("gpt-5.1") {
+            Some(config.reasoning_effort.clone().unwrap_or_else(|| "medium".to_string()))
+        } else {
+            config.reasoning_effort.clone()
+        };
+
         // Build request based on model type
         let mut request = OpenAIRequest {
             model: self.config.model.clone(),
@@ -139,7 +152,8 @@ impl OpenAIProvider {
             temperature: None,
             top_p: None,
             stop: config.stop.clone(),
-            response_format: config.response_format.clone(),
+            // OpenAI Responses API moved format under text.format; to avoid 400s we omit for now
+            response_format: None,
         };
 
         // Only add sampling parameters for non-reasoning models
@@ -148,7 +162,7 @@ impl OpenAIProvider {
             request.top_p = config.top_p;
         } else {
             // Add reasoning effort for reasoning models
-            request.reasoning = config.reasoning_effort.as_ref().map(|effort| Reasoning {
+            request.reasoning = reasoning_effort.as_ref().map(|effort| Reasoning {
                 effort: effort.clone(),
             });
         }

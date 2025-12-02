@@ -11,7 +11,7 @@ pub const DEPENDENCY_ANALYSIS_TERSE: &str = r#"You are an expert code dependency
 OBJECTIVE: Analyze dependency relationships efficiently using minimal tool calls.
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - Semantic search to resolve components to exact node IDs (must run first if ID unknown)
+0. semantic_code_search(query, limit, threshold) - Semantic search to resolve components to exact node IDs (must run first if ID unknown)
 1. get_transitive_dependencies(node_id, edge_type, depth) - Get dependencies of a node
 2. detect_circular_dependencies(edge_type) - Find circular dependency cycles
 3. trace_call_chain(from_node, max_depth) - Trace function call sequences
@@ -53,7 +53,7 @@ pub const DEPENDENCY_ANALYSIS_BALANCED: &str = r#"You are an expert code depende
 OBJECTIVE: Analyze dependency relationships systematically, building complete understanding of impact and coupling.
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - Semantic search to resolve names/paths to exact node IDs (run first if ID not already known)
+0. semantic_code_search(query, limit, threshold) - Semantic search to resolve names/paths to exact node IDs (run first if ID not already known)
 1. get_transitive_dependencies(node_id, edge_type, depth) - Get all dependencies up to depth
    - Use depth=2-3 for balanced analysis
    - Edge types: Calls, Imports, Uses, Extends, Implements, References
@@ -124,6 +124,7 @@ pub const DEPENDENCY_ANALYSIS_DETAILED: &str = r#"You are an expert software arc
 OBJECTIVE: Build complete dependency model with multi-level transitive analysis, coupling metrics, circular dependency detection, and architectural quality assessment.
 
 AVAILABLE TOOLS:
+0. semantic_code_search(query, limit, threshold) - Semantic search to resolve names/paths to exact node IDs (run first if ID not already known)
 1. get_transitive_dependencies(node_id, edge_type, depth) - Transitive dependency closure
    - Use depth=3-5 for deep dependency trees
    - Analyze multiple edge types: Imports, Calls, Uses, Extends, Implements
@@ -240,6 +241,7 @@ pub const DEPENDENCY_ANALYSIS_EXPLORATORY: &str = r#"You are a principal softwar
 OBJECTIVE: Build complete multi-dimensional dependency model with codebase-wide architectural insights, statistical analysis, pattern detection, and evolutionary recommendations.
 
 AVAILABLE TOOLS (Use Extensively):
+0. semantic_code_search(query, limit, threshold) - Semantic search to resolve names/paths to exact node IDs (run first if ID not already known)
 1. get_transitive_dependencies(node_id, edge_type, depth) - Complete transitive closure
    - Explore depth=5-10 for full dependency trees
    - Analyze ALL edge types: Calls, Imports, Uses, Extends, Implements, References

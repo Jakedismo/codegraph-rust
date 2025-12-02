@@ -190,6 +190,7 @@ impl LLMProviderFactory {
             timeout_secs: config.timeout_secs,
             max_retries: 3,
             organization: std::env::var("OPENAI_ORG_ID").ok(),
+            reasoning_effort: config.reasoning_effort.clone(),
         };
 
         Ok(Arc::new(OpenAIProvider::new(openai_config)?))
@@ -216,6 +217,17 @@ impl LLMProviderFactory {
                 .model
                 .clone()
                 .unwrap_or_else(|| "grok-4-fast".to_string()),
+            // If using reasoning-tuned Grok models, default reasoning effort to high
+            reasoning_effort: if config
+                .model
+                .as_deref()
+                .map(|m| m.eq_ignore_ascii_case("grok-4-1-fast-reasoning"))
+                .unwrap_or(false)
+            {
+                Some("high".to_string())
+            } else {
+                config.reasoning_effort.clone()
+            },
             context_window: config.context_window,
             timeout_secs: config.timeout_secs,
             max_retries: 3,

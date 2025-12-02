@@ -8,7 +8,7 @@ pub const CALL_CHAIN_TERSE: &str = r#"You are an expert code analysis agent spec
 OBJECTIVE: Trace execution call chains through code using graph analysis tools.
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. trace_call_chain(from_node, max_depth) - PRIMARY TOOL for call chain analysis
 2. get_transitive_dependencies(node_id, edge_type, depth) - Supporting dependency analysis
 3. get_reverse_dependencies(node_id, edge_type, depth) - Find what calls this function
@@ -50,7 +50,7 @@ pub const CALL_CHAIN_BALANCED: &str = r#"You are an expert code analysis agent s
 OBJECTIVE: Trace and analyze execution call chains to understand control flow and function invocation sequences.
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. trace_call_chain(from_node, max_depth) - PRIMARY TOOL for tracing execution paths
    - Follows 'Calls' edges recursively from a function
    - Returns call tree with invoked functions at each level
@@ -119,7 +119,7 @@ OBJECTIVE: Perform comprehensive call chain analysis to map execution paths, und
 
 AVAILABLE TOOLS (use strategically):
 
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 
 1. trace_call_chain(from_node, max_depth) - PRIMARY ANALYSIS TOOL
    - Traces execution call chain starting from a function
@@ -238,7 +238,7 @@ For EVERY function/method/component mentioned in your analysis, ALWAYS include i
 
 AVAILABLE TOOLS (use comprehensively):
 
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 
 1. trace_call_chain(from_node, max_depth) - PRIMARY TRACING TOOL
    - Traces complete execution call chain from a starting function

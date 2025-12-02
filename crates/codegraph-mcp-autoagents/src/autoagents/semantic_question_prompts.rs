@@ -16,7 +16,7 @@ NEVER make assumptions or use general programming knowledge.
 If you cannot determine something from graph structure, explicitly state this limitation.
 
 AVAILABLE GRAPH TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Find what a node depends on
 2. detect_circular_dependencies(edge_type) - Find circular dependency cycles
 3. trace_call_chain(from_node, max_depth) - Trace execution flow through calls
@@ -69,7 +69,7 @@ All claims must be supported by concrete graph relationships discovered through 
 If something cannot be determined from graph structure alone, acknowledge this explicitly.
 
 AVAILABLE GRAPH TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 
 1. get_transitive_dependencies(node_id, edge_type, depth)
    - Find all dependencies of a node recursively
@@ -162,7 +162,7 @@ If graph structure doesn't reveal something, explicitly state what's unknown and
 
 AVAILABLE GRAPH TOOLS:
 
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 
 1. get_transitive_dependencies(node_id, edge_type, depth)
    Parameters:
@@ -349,7 +349,7 @@ If graph structure is insufficient to answer definitively, provide:
 
 AVAILABLE GRAPH TOOLS:
 
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 
 1. get_transitive_dependencies(node_id, edge_type, depth)
    Purpose: Recursive dependency mapping

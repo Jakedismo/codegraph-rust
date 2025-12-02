@@ -12,7 +12,7 @@ use std::sync::Arc;
 pub struct GetTransitiveDependenciesArgs {
     #[input(description = "The ID of the code node to analyze (e.g., 'nodes:123')")]
     node_id: String,
-    #[input(description = "Type of dependency relationship to follow (default: 'Calls')")]
+    #[input(description = "Type of dependency relationship to follow (edge-types: 'Calls, Imports, Uses, Extends, Implements, References', default: 'Calls')")]
     #[serde(default = "default_edge_type")]
     edge_type: String,
     #[input(description = "Maximum traversal depth (1-10, default: 3)")]
@@ -77,7 +77,7 @@ impl ToolRuntime for GetTransitiveDependencies {
 pub struct GetReverseDependenciesArgs {
     #[input(description = "The ID of the code node to analyze")]
     node_id: String,
-    #[input(description = "Type of dependency relationship (default: 'Calls')")]
+    #[input(description = "Type of dependency relationship (edge-types: 'Calls, Imports, Uses, Extends, Implements, References', default: 'Calls')")]
     #[serde(default = "default_edge_type")]
     edge_type: String,
     #[input(description = "Maximum traversal depth (default: 3)")]
@@ -185,7 +185,7 @@ impl ToolRuntime for TraceCallChain {
 /// Parameters for detect_cycles
 #[derive(Serialize, Deserialize, ToolInput, Debug)]
 pub struct DetectCyclesArgs {
-    #[input(description = "Type of dependency edge to check (default: 'Calls')")]
+    #[input(description = "Type of dependency edge to check ((edge-types: 'Calls, Imports, Uses, Extends, Implements, References', default: 'Calls')")]
     #[serde(default = "default_edge_type")]
     edge_type: String,
 }
@@ -333,27 +333,32 @@ impl ToolRuntime for GetHubNodes {
 #[derive(Serialize, Deserialize, ToolInput, Debug)]
 pub struct SemanticCodeSearchArgs {
     #[input(
-        description = "Natural language search query (e.g., 'authentication logic', 'error handling', 'JWT validation', 'user controller')"
+        description = "Search query (e.g., How is authentication handled?, database models, error handling code etc.)"
     )]
     query: String,
-    #[input(description = "Maximum number of results (1-50, default: 10)")]
+    #[input(description = "Maximum number of results (1-50, default: 50)")]
     #[serde(default = "default_search_limit")]
     limit: i32,
+    #[input(description = "Similarity threshold 0.0-1.0 (optional, default 0.6; lower to broaden matches)")]
+    #[serde(default = "default_search_threshold")]
+    threshold: f64,
 }
 
 fn default_search_limit() -> i32 {
     10
 }
 
+fn default_search_threshold() -> f64 {
+    0.6
+}
+
 /// Semantic code search using AI embeddings, full-text analysis, and graph enrichment
 #[tool(
     name = "semantic_code_search",
-    description = "Primary code discovery tool using AI embeddings + full-text analysis + graph enrichment. \
-                   Accepts natural language queries (e.g., 'authentication logic', 'error handling code', 'database models'). \
-                   Combines HNSW vector similarity (70%) with fuzzy text matching (30%) for comprehensive results. \
-                   Enriches results with dependencies, dependents, and file context. \
+    description = "Primary code discovery tool using advanced hybrid search with graph-traversal. \
+                   Accepts natural language queries ((e.g., How is authentication handled?, database models, error handling code etc.) be robust in your queries). \
                    Works for both conceptual searches and specific identifiers. \
-                   Automatically applies reranking if configured.",
+                   Returns relevant code snippets, definitions, and related nodes ranked by relevance.",
     input = SemanticCodeSearchArgs,
 )]
 pub struct SemanticCodeSearch {
@@ -377,7 +382,8 @@ impl ToolRuntime for SemanticCodeSearch {
                 "semantic_code_search",
                 serde_json::json!({
                     "query": typed_args.query,
-                    "limit": typed_args.limit
+                    "limit": typed_args.limit,
+                    "threshold": typed_args.threshold
                 }),
             )
             .map_err(|e| {

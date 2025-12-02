@@ -109,12 +109,14 @@ struct ExpandedNode {
 struct EvaluatedNode {
     node: ExpandedNode,
     score: f32,
+    #[allow(dead_code)]
     reasoning: String,
     is_solution: bool,
 }
 
 /// Selection phase output from LLM
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 struct SelectionOutput {
     selected_node_ids: Vec<NodeId>,
     reasoning: String,
@@ -144,6 +146,7 @@ struct EvaluationOutput {
 
 /// Backpropagation phase output from LLM
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 struct BackpropUpdate {
     new_score: f32,
     reasoning: String,

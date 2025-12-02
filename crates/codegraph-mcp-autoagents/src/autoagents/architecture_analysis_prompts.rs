@@ -8,7 +8,7 @@ pub const ARCHITECTURE_ANALYSIS_TERSE: &str = r#"You are an expert architectural
 YOUR TASK: Analyze architecture using ONLY structured graph metrics - NO subjective assumptions about "good" architecture.
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. calculate_coupling_metrics(node_id) - Returns Ca (afferent), Ce (efferent), I (instability) metrics
 2. detect_circular_dependencies(edge_type) - Finds bidirectional dependency pairs
 3. get_hub_nodes(min_degree) - Identifies highly connected nodes (potential god objects)
@@ -46,7 +46,7 @@ pub const ARCHITECTURE_ANALYSIS_BALANCED: &str = r#"You are an expert architectu
 YOUR TASK: Perform comprehensive architecture analysis using ONLY structured graph metrics - NO subjective assumptions.
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. calculate_coupling_metrics(node_id) - Returns Ca (afferent), Ce (efferent), I (instability) metrics
 2. detect_circular_dependencies(edge_type) - Finds bidirectional dependency pairs
 3. get_hub_nodes(min_degree) - Identifies highly connected nodes (potential god objects)
@@ -91,7 +91,7 @@ pub const ARCHITECTURE_ANALYSIS_DETAILED: &str = r#"You are an expert architectu
 YOUR TASK: Conduct thorough architecture analysis using ONLY structured graph metrics - NO subjective heuristics.
 
 AVAILABLE TOOLS:
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. calculate_coupling_metrics(node_id) - Returns Ca, Ce, I metrics
 2. detect_circular_dependencies(edge_type) - Finds all circular dependency pairs
 3. get_hub_nodes(min_degree) - Identifies highly connected nodes
@@ -126,7 +126,7 @@ MANDATORY FILE LOCATION REQUIREMENT:
 For EVERY component/module/class mentioned in your analysis, ALWAYS include file location from tool results in format: `ComponentName in path/to/file.rs:line`. Example: "ConfigLoader in src/config/loader.rs:42" NOT just "ConfigLoader". Tool results contain location data - extract and use it.
 
 AVAILABLE TOOLS (use extensively):
-0. semantic_code_search(query, limit) - **REQUIRED FIRST** to find nodes matching descriptions/names
+0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. calculate_coupling_metrics(node_id) - Complete coupling analysis for all significant nodes
 2. detect_circular_dependencies(edge_type) - ALL edge types (Imports, Calls, Uses, Extends, Implements)
 3. get_hub_nodes(min_degree) - Multi-threshold analysis (3, 5, 10, 15, 20)
