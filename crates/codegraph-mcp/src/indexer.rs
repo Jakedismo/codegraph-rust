@@ -19,7 +19,7 @@ use codegraph_parser::TreeSitterParser;
 #[cfg(feature = "ai-enhanced")]
 use futures::{stream, StreamExt};
 #[cfg(feature = "embeddings")]
-use codegraph_vector::embeddings::generator::ChunkPlan;
+use codegraph_vector::prep::chunker::ChunkPlan;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use num_cpus;
 use rayon::prelude::*;
@@ -381,22 +381,22 @@ impl SurrealWriterHandle {
             .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
     }
 
-    async fn enqueue_symbol_embeddings(&self, records: Vec<SymbolEmbeddingRecord>) -> Result<()> {
-        if records.is_empty() {
-            return Ok(());
-        }
-        self.tx
-            .send(SurrealWriteJob::SymbolEmbeddings(records))
-            .await
-            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
-    }
-
     async fn enqueue_chunk_embeddings(&self, records: Vec<ChunkEmbeddingRecord>) -> Result<()> {
         if records.is_empty() {
             return Ok(());
         }
         self.tx
             .send(SurrealWriteJob::ChunkEmbeddings(records))
+            .await
+            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
+    }
+
+    async fn enqueue_symbol_embeddings(&self, records: Vec<SymbolEmbeddingRecord>) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        self.tx
+            .send(SurrealWriteJob::SymbolEmbeddings(records))
             .await
             .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
     }
@@ -912,7 +912,8 @@ impl ProjectIndexer {
             "🧠 Embedding chunks (vector batch)",
         );
         let batch = self.config.batch_size.max(1);
-        let processed: u64 = 0;
+        #[allow(unused_mut)]
+        let mut processed: u64 = 0;
 
         // Enhanced embedding phase logging
         let provider = &self.global_config.embedding.provider;
@@ -943,10 +944,10 @@ impl ProjectIndexer {
             {
                 // Prepare text batch ordered like metas
                 let texts: Vec<String> = chunk_batch.iter().map(|c| c.text.clone()).collect();
-                let embs = self.embedder.embed_texts(&texts).await?;
+                let embs: Vec<Vec<f32>> = self.embedder.embed_texts_batched(&texts).await?;
 
                 // Build chunk embedding records
-                let mut records = Vec::with_capacity(meta_batch.len());
+                let mut records: Vec<ChunkEmbeddingRecord> = Vec::with_capacity(meta_batch.len());
                 for ((meta, text), emb) in meta_batch.iter().zip(texts.iter()).zip(embs.iter()) {
                     let Some(node) = nodes.get(meta.node_index) else {
                         warn!(
@@ -2746,6 +2747,18 @@ impl ProjectIndexer {
         let handle = self.surreal_writer_handle()?;
         for chunk in records.chunks(batch_size) {
             handle.enqueue_symbol_embeddings(chunk.to_vec()).await?;
+        }
+        Ok(())
+    }
+
+    async fn enqueue_chunk_embeddings(&self, records: Vec<ChunkEmbeddingRecord>) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        let batch_size = self.config.batch_size.max(1);
+        let handle = self.surreal_writer_handle()?;
+        for chunk in records.chunks(batch_size) {
+            handle.enqueue_chunk_embeddings(chunk.to_vec()).await?;
         }
         Ok(())
     }
