@@ -6,6 +6,7 @@ use crate::estimation::{
     extend_symbol_index, parse_files_with_unified_extraction as shared_unified_parse,
 };
 use anyhow::{anyhow, Context, Result};
+use biome_js_parser::{parse_script, JsParserOptions};
 use codegraph_core::{CodeNode, EdgeRelationship, NodeId, NodeType};
 use codegraph_graph::{
     edge::CodeEdge, FileMetadataRecord, NodeEmbeddingRecord, ProjectMetadataRecord,
@@ -19,6 +20,7 @@ use codegraph_parser::TreeSitterParser;
 use futures::{stream, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use num_cpus;
+use python_parser::ast::{Expr, ExprKind};
 use rayon::prelude::*;
 use regex::Regex;
 use rustc_demangle::try_demangle;
@@ -1160,6 +1162,30 @@ impl ProjectIndexer {
                                 target_id = Some(id);
                                 resolution_type = "normalized";
                                 break;
+                            }
+                        }
+
+                        // JS/TS normalization
+                        if target_id.is_none() {
+                            for variant in Self::normalize_js_symbol(&edge_rel.to) {
+                                tried = true;
+                                if let Some(&id) = symbol_map.get(&variant) {
+                                    target_id = Some(id);
+                                    resolution_type = "normalized";
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Python normalization
+                        if target_id.is_none() {
+                            for variant in Self::normalize_python_symbol(&edge_rel.to) {
+                                tried = true;
+                                if let Some(&id) = symbol_map.get(&variant) {
+                                    target_id = Some(id);
+                                    resolution_type = "normalized";
+                                    break;
+                                }
                             }
                         }
 
@@ -3020,6 +3046,46 @@ impl ProjectIndexer {
             }
         }
 
+        out
+    }
+
+    fn normalize_js_symbol(target: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let opts = JsParserOptions::default();
+        if let Ok(parsed) = parse_script(target, opts) {
+            // Extract last identifier token from the syntax text as a fallback
+            let text = parsed.syntax().text().to_string();
+            if let Some(last) = text
+                .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
+                .filter(|s| !s.is_empty())
+                .last()
+            {
+                out.push(last.to_string());
+                out.push(last.to_lowercase());
+            }
+            out.push(text);
+        }
+        out
+    }
+
+    fn normalize_python_symbol(target: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        if let Ok(expr) = python_parser::parse_expression(target) {
+            match expr.node {
+                ExprKind::Name { id, .. } => {
+                    out.push(id.clone());
+                    out.push(id.to_lowercase());
+                }
+                ExprKind::Attribute { value, attr, .. } => {
+                    // Recursively flatten attribute chain if possible
+                    let base = format!("{:?}.{}", value, attr);
+                    out.push(base.clone());
+                    out.push(attr.clone());
+                    out.push(attr.to_lowercase());
+                }
+                _ => {}
+            }
+        }
         out
     }
 
