@@ -123,6 +123,8 @@ impl fmt::Display for MessageRole {
 pub struct LLMResponse {
     /// Generated text content
     pub content: String,
+    /// Alias for content when agents expect an explicit answer field
+    pub answer: String,
     /// Total tokens used in the request
     pub total_tokens: Option<usize>,
     /// Tokens used in the prompt

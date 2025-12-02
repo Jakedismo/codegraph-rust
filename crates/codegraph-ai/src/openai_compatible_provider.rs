@@ -366,7 +366,14 @@ impl LLMProvider for OpenAICompatibleProvider {
             .collect::<Vec<_>>()
             .join("\n");
 
+        let content = if content.is_empty() {
+            serde_json::to_string(&response.output).unwrap_or_default()
+        } else {
+            content
+        };
+
         Ok(LLMResponse {
+            answer: content.clone(),
             content,
             total_tokens: response.usage.as_ref().map(|u| u.total_tokens),
             prompt_tokens: response.usage.as_ref().map(|u| u.input_tokens),
@@ -510,7 +517,7 @@ struct ResponseAPIResponse {
     usage: Option<ResponseUsage>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ResponseOutputItem {
     #[serde(rename = "type")]
     output_type: String,
@@ -518,7 +525,7 @@ struct ResponseOutputItem {
     content: Vec<ResponseOutputContent>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ResponseOutputContent {
     #[serde(rename = "type")]
     content_type: String,

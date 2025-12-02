@@ -181,6 +181,7 @@ impl LLMProvider for AnthropicProvider {
 
         Ok(LLMResponse {
             content,
+            answer: content.clone(),
             total_tokens: Some(response.usage.input_tokens + response.usage.output_tokens),
             prompt_tokens: Some(response.usage.input_tokens),
             completion_tokens: Some(response.usage.output_tokens),

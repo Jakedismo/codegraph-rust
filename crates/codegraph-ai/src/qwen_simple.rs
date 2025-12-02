@@ -292,8 +292,10 @@ impl LLMProvider for QwenClient {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to parse Qwen response: {}", e))?;
 
+        let content = response_data.response.clone();
         Ok(LLMResponse {
-            content: response_data.response,
+            answer: content.clone(),
+            content,
             total_tokens: Some(
                 response_data.prompt_eval_count.unwrap_or(0)
                     + response_data.eval_count.unwrap_or(0),

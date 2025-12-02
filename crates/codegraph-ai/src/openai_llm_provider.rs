@@ -152,8 +152,8 @@ impl OpenAIProvider {
             temperature: None,
             top_p: None,
             stop: config.stop.clone(),
-            // OpenAI Responses API moved format under text.format; to avoid 400s we omit for now
-            response_format: None,
+            // Use JSON output from Responses API so agents get a structured answer field
+            response_format: Some(crate::llm_provider::ResponseFormat::JsonObject),
         };
 
         // Only add sampling parameters for non-reasoning models
@@ -237,7 +237,15 @@ impl LLMProvider for OpenAIProvider {
             .collect::<Vec<_>>()
             .join("\n");
 
+        // Fallback: if empty, serialize the output array for structured answers
+        let content = if content.is_empty() {
+            serde_json::to_string(&response.output).unwrap_or_default()
+        } else {
+            content
+        };
+
         Ok(LLMResponse {
+            answer: content.clone(),
             content,
             total_tokens: response.usage.as_ref().map(|u| u.total_tokens),
             prompt_tokens: response.usage.as_ref().map(|u| u.input_tokens),
@@ -397,7 +405,7 @@ struct OpenAIResponse {
     usage: Option<OpenAIUsage>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct OutputItem {
     #[serde(rename = "type")]
     output_type: String,
@@ -405,7 +413,7 @@ struct OutputItem {
     content: Vec<OutputContent>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct OutputContent {
     #[serde(rename = "type")]
     content_type: String,
