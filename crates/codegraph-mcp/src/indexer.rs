@@ -841,9 +841,8 @@ impl ProjectIndexer {
         #[cfg(feature = "embeddings")]
         let chunk_plan: ChunkPlan = {
             let start = std::time::Instant::now();
-            let use_local_pool = !rayon_pool_built;
             let chunker = || self.embedder.chunk_nodes(&nodes);
-            let plan = if use_local_pool {
+            let plan = {
                 let threads = std::env::var("RAYON_NUM_THREADS")
                     .ok()
                     .and_then(|v| v.parse::<usize>().ok())
@@ -853,8 +852,6 @@ impl ProjectIndexer {
                     .build()
                     .expect("failed to build local rayon pool for chunking");
                 pool.install(chunker)
-            } else {
-                chunker()
             };
             let elapsed = start.elapsed();
             info!(
@@ -1027,18 +1024,16 @@ impl ProjectIndexer {
 
             let processed_atomic = Arc::new(AtomicU64::new(0));
             let max_concurrent = self.config.max_concurrent.max(1);
+            let embedder = &self.embedder;
 
-            let mut batch_stream = stream::iter(chunk_batches.into_iter().map(|(texts, metas)| {
-                let embedder = self.embedder.clone();
-                async move {
-                    let embs = embedder.embed_texts_batched(&texts).await;
-                    (texts, metas, embs)
-                }
+            let mut batch_stream = stream::iter(chunk_batches.into_iter().map(|(texts, metas)| async move {
+                let embs = embedder.embed_texts_batched(&texts).await;
+                (texts, metas, embs)
             }))
             .buffer_unordered(max_concurrent);
 
             while let Some((texts, metas, embs_result)) = batch_stream.next().await {
-                let embs = embs_result?;
+                let embs: Vec<Vec<f32>> = embs_result?;
                 if embs.len() != metas.len() {
                     warn!(
                         "Chunk embedding batch size mismatch: got {} embeddings for {} metas",
@@ -3665,3 +3660,5 @@ struct FileStats {
     traits: usize,
     embeddings: usize,
 }
+#[cfg(feature = "embeddings")]
+use codegraph_vector::prep::chunker::ChunkMeta;
