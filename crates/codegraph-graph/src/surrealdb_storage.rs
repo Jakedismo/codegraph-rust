@@ -1558,6 +1558,7 @@ pub struct ChunkEmbeddingRecord {
     pub parent_node: String,
     pub chunk_index: i32,
     pub text: String,
+    pub project_id: String,
     pub embedding_384: Option<Vec<f64>>,
     pub embedding_768: Option<Vec<f64>>,
     pub embedding_1024: Option<Vec<f64>>,
@@ -1579,6 +1580,7 @@ impl ChunkEmbeddingRecord {
         embedding: &[f32],
         embedding_model: &str,
         embedding_column: &str,
+        project_id: &str,
     ) -> Self {
         let embedding_vec: Vec<f64> = embedding.iter().map(|&f| f as f64).collect();
         let (
@@ -1687,6 +1689,7 @@ impl ChunkEmbeddingRecord {
             parent_node: parent_node.to_string(),
             chunk_index: chunk_index as i32,
             text,
+            project_id: project_id.to_string(),
             embedding_384,
             embedding_768,
             embedding_1024,
@@ -1775,6 +1778,7 @@ FOR $doc IN $batch {
         parent_node = type::thing('nodes', $doc.parent_node),
         chunk_index = $doc.chunk_index,
         text = $doc.text,
+        project_id = $doc.project_id,
         embedding_384 = $doc.embedding_384,
         embedding_768 = $doc.embedding_768,
         embedding_1024 = $doc.embedding_1024,

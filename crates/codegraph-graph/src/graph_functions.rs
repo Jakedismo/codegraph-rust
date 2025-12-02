@@ -346,6 +346,21 @@ impl GraphFunctions {
         threshold: f32,
         include_graph_context: bool,
     ) -> Result<Vec<serde_json::Value>> {
+        let skip_chunking = std::env::var("CODEGRAPH_EMBEDDING_SKIP_CHUNKING")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        if !skip_chunking {
+            return self
+                .semantic_search_chunks_with_context(
+                    query_text,
+                    query_embedding,
+                    dimension,
+                    limit,
+                    threshold,
+                    include_graph_context,
+                )
+                .await;
+        }
         debug!(
             "Calling fn::semantic_search_with_context(project={}, query='{}', dim={}, limit={}, threshold={})",
             self.project_id, query_text, dimension, limit, threshold
@@ -375,6 +390,52 @@ impl GraphFunctions {
             .take(0)
             .map_err(|e| {
                 error!("Failed to deserialize semantic_search_with_context results: {}", e);
+                CodeGraphError::Database(format!("Deserialization failed: {}", e))
+            })?;
+
+        Ok(result)
+    }
+
+    async fn semantic_search_chunks_with_context(
+        &self,
+        query_text: &str,
+        query_embedding: &[f32],
+        dimension: usize,
+        limit: usize,
+        threshold: f32,
+        include_graph_context: bool,
+    ) -> Result<Vec<serde_json::Value>> {
+        debug!(
+            "Calling fn::semantic_search_chunks_with_context(project={}, query='{}', dim={}, limit={}, threshold={})",
+            self.project_id, query_text, dimension, limit, threshold
+        );
+
+        let embedding_value: serde_json::Value =
+            serde_json::to_value(query_embedding).map_err(|e| {
+                CodeGraphError::Database(format!("Failed to serialize embedding: {}", e))
+            })?;
+
+        let result: Vec<serde_json::Value> = self
+            .db
+            .query("RETURN fn::semantic_search_chunks_with_context($project_id, $query_embedding, $query_text, $dimension, $limit, $threshold, $include_graph_context)")
+            .bind(("project_id", self.project_id.clone()))
+            .bind(("query_embedding", embedding_value))
+            .bind(("query_text", query_text.to_string()))
+            .bind(("dimension", dimension as i64))
+            .bind(("limit", limit as i64))
+            .bind(("threshold", threshold as f64))
+            .bind(("include_graph_context", include_graph_context))
+            .await
+            .map_err(|e| {
+                error!("Failed to call semantic_search_chunks_with_context: {}", e);
+                CodeGraphError::Database(format!("semantic_search_chunks_with_context failed: {}", e))
+            })?
+            .take(0)
+            .map_err(|e| {
+                error!(
+                    "Failed to deserialize semantic_search_chunks_with_context results: {}",
+                    e
+                );
                 CodeGraphError::Database(format!("Deserialization failed: {}", e))
             })?;
 

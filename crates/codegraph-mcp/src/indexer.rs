@@ -804,6 +804,28 @@ impl ProjectIndexer {
         let total_nodes_extracted = nodes.len();
         let total_edges_extracted = edges.len();
 
+        // Build chunk plan early so we can annotate nodes with chunk counts before persistence
+        #[cfg(feature = "embeddings")]
+        let chunk_plan: ChunkPlan = self.embedder.chunk_nodes(&nodes);
+        #[cfg(not(feature = "embeddings"))]
+        let _chunk_plan: Option<()> = None;
+
+        #[cfg(feature = "embeddings")]
+        {
+            let mut node_chunk_counts: std::collections::HashMap<usize, usize> =
+                std::collections::HashMap::new();
+            for meta in &chunk_plan.metas {
+                *node_chunk_counts.entry(meta.node_index).or_insert(0) += 1;
+            }
+
+            for (idx, node) in nodes.iter_mut().enumerate() {
+                let count = node_chunk_counts.get(&idx).cloned().unwrap_or(0);
+                node.metadata
+                    .attributes
+                    .insert("chunk_count".to_string(), count.to_string());
+            }
+        }
+
         let success_rate = if pstats.total_files > 0 {
             (pstats.parsed_files as f64 / pstats.total_files as f64) * 100.0
         } else {
@@ -880,12 +902,6 @@ impl ProjectIndexer {
         store_nodes_pb.finish_with_message("📈 Stored nodes (symbol map ready)");
         self.log_surreal_node_count(total_nodes_extracted).await;
 
-        // Generate semantic embeddings for vector search capabilities (chunk-aware)
-        #[cfg(feature = "embeddings")]
-        let chunk_plan: ChunkPlan = self.embedder.chunk_nodes(&nodes);
-        #[cfg(not(feature = "embeddings"))]
-        let chunk_plan: Option<()> = None;
-
         #[cfg(feature = "embeddings")]
         let total_chunks = chunk_plan.chunks.len() as u64;
         #[cfg(not(feature = "embeddings"))]
@@ -909,6 +925,7 @@ impl ProjectIndexer {
             "   🗄️ SurrealDB column: {}",
             self.embedding_column.column_name()
         );
+        
         let total_nodes = nodes.len() as u64;
         info!("   📊 Nodes to embed: {} semantic entities", total_nodes);
         info!(
@@ -931,13 +948,23 @@ impl ProjectIndexer {
                 // Build chunk embedding records
                 let mut records = Vec::with_capacity(meta_batch.len());
                 for ((meta, text), emb) in meta_batch.iter().zip(texts.iter()).zip(embs.iter()) {
+                    let Some(node) = nodes.get(meta.node_index) else {
+                        warn!(
+                            "Chunk meta references out-of-bounds node index {} (nodes len {})",
+                            meta.node_index,
+                            nodes.len()
+                        );
+                        continue;
+                    };
+
                     records.push(ChunkEmbeddingRecord::new(
-                        &meta.node_index.to_string(),
+                        &node.id.to_string(),
                         meta.chunk_index,
                         text.clone(),
                         emb,
                         &self.embedding_model,
                         self.embedding_column.column_name(),
+                        &self.project_id,
                     ));
                 }
                 self.enqueue_chunk_embeddings(records).await?;

@@ -116,6 +116,7 @@ DEFINE TABLE IF NOT EXISTS chunks SCHEMAFULL
 DEFINE FIELD IF NOT EXISTS parent_node   ON TABLE chunks TYPE record<nodes>;
 DEFINE FIELD IF NOT EXISTS chunk_index   ON TABLE chunks TYPE int;
 DEFINE FIELD IF NOT EXISTS text          ON TABLE chunks TYPE string;
+DEFINE FIELD IF NOT EXISTS project_id    ON TABLE chunks TYPE string;
 DEFINE FIELD IF NOT EXISTS embedding_384   ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 384;
 DEFINE FIELD IF NOT EXISTS embedding_768   ON TABLE chunks TYPE option<array<float>>
@@ -936,7 +937,6 @@ DEFINE FUNCTION fn::get_reverse_dependencies($project_id: string, $node_id: any,
 --     true
 --   )
 -- =============================================================================
-
 DEFINE FUNCTION fn::semantic_search_with_context(
     $project_id: string,
     $query_embedding: array<float>,
@@ -946,16 +946,19 @@ DEFINE FUNCTION fn::semantic_search_with_context(
     $threshold: float,
     $include_graph_context: bool
 ) {
-    -- Validate and normalize parameters
+    --------------------------------------------------------------------------
+    -- PARAM SAFETY
+    --------------------------------------------------------------------------
     LET $safe_limit = IF $limit > 0 AND $limit <= 100 THEN $limit ELSE 10 END;
-    LET $safe_threshold = IF $threshold >= 0.0 AND $threshold <= 1.0 THEN $threshold ELSE 0.7 END;
+    LET $safe_threshold =
+        IF $threshold >= 0.0 AND $threshold <= 1.0
+        THEN $threshold
+        ELSE 0.7
+        END;
 
-    -- =========================================================================
-    -- STAGE 1: HNSW Vector Search (Semantic Similarity)
-    -- =========================================================================
-
-    -- Select appropriate embedding field based on dimension
-    -- SurrealDB requires we query each dimension separately due to type system
+    --------------------------------------------------------------------------
+    -- STAGE 1: HNSW VECTOR SEARCH (semantic similarity)
+    --------------------------------------------------------------------------
     LET $vector_candidates = IF $dimension = 384 THEN (
         SELECT
             id,
@@ -1102,12 +1105,9 @@ DEFINE FUNCTION fn::semantic_search_with_context(
         LIMIT $safe_limit
     ) ELSE [] END;
 
-    -- =========================================================================
-    -- STAGE 2: Full-Text Search (using code_analyzer)
-    -- =========================================================================
-
-    -- Search using the code_analyzer for fuzzy matching on content and name
-    -- This catches exact matches and variations the vector search might miss
+    --------------------------------------------------------------------------
+    -- STAGE 2: FULL-TEXT SEARCH
+    --------------------------------------------------------------------------
     LET $text_candidates = SELECT
         id,
         name,
@@ -1118,76 +1118,85 @@ DEFINE FUNCTION fn::semantic_search_with_context(
         start_line,
         end_line,
         metadata,
-        0.0 AS vector_score,  -- No vector score for text matches
-        search::score(1) AS text_score  -- Full-text relevance score
+        0.0 AS vector_score,
+        search::score(1) AS text_score
     FROM nodes
     WHERE project_id = $project_id
       AND (
-          name @1@ $query_text
+          name    @1@ $query_text
           OR content @2@ $query_text
       )
     ORDER BY text_score DESC
     LIMIT $safe_limit;
 
-    -- =========================================================================
-    -- STAGE 3: Merge Results (Hybrid Search)
-    -- =========================================================================
-
-    -- Combine vector and text results, add combined scores
+    --------------------------------------------------------------------------
+    -- STAGE 3: HYBRID MERGE (vector + text)
+    --------------------------------------------------------------------------
     LET $all_candidates_scored = array::concat(
-        (SELECT *, (vector_score * 0.7) + (0.0 * 0.3) AS combined_score FROM $vector_candidates),
-        (SELECT *, (0.0 * 0.7) + (text_score * 0.3) AS combined_score FROM $text_candidates)
+        (
+            SELECT
+                *,
+                (vector_score * 0.7) + (0.0 * 0.3) AS combined_score
+            FROM $vector_candidates
+        ),
+        (
+            SELECT
+                *,
+                (0.0 * 0.7) + (text_score * 0.3) AS combined_score
+            FROM $text_candidates
+        )
     );
 
-    -- Sort by combined score and take top results (duplicates will be adjacent)
     LET $sorted = (
         SELECT * FROM $all_candidates_scored
         ORDER BY combined_score DESC
     );
 
-    -- Deduplication: Select first occurrence of each id (highest score since sorted DESC)
-    -- Since we can't easily deduplicate arrays in SurrealQL, just accept possible duplicates
-    -- In practice, duplicates are rare (only when same node matches both vector and text)
     LET $merged = array::slice($sorted, 0, $safe_limit);
 
-    -- =========================================================================
-    -- STAGE 4: Graph Enrichment (Optional)
-    -- =========================================================================
-
+    --------------------------------------------------------------------------
+    -- STAGE 4: OPTIONAL GRAPH ENRICHMENT (using $parent, no FOR / AS)
+    --------------------------------------------------------------------------
     LET $final_results = IF $include_graph_context THEN (
-        -- Enrich each result with graph context
         SELECT
-            id,
-            name,
-            kind,
-            language,
-            content,
+            $parent.id        AS id,
+            $parent.name      AS name,
+            $parent.kind      AS kind,
+            $parent.language  AS language,
+            $parent.content   AS content,
             {
-                file_path: file_path,
-                start_line: start_line,
-                end_line: end_line
-            } AS location,
-            metadata,
-            vector_score,
-            text_score,
-            combined_score,
-            -- Direct dependencies (what this node calls/uses)
+                file_path:  $parent.file_path,
+                start_line: $parent.start_line,
+                end_line:   $parent.end_line
+            }                 AS location,
+            $parent.metadata  AS metadata,
+            $parent.vector_score   AS vector_score,
+            $parent.text_score     AS text_score,
+            $parent.combined_score AS combined_score,
+
+            -- Direct dependencies (what this node calls / uses)
             (
                 SELECT VALUE fn::node_reference(<string>out)
-                FROM ->calls, ->imports, ->uses
+                FROM ($parent.id)->calls, ($parent.id)->imports, ($parent.id)->uses
                 WHERE out.project_id = $project_id
                 LIMIT 5
             ) AS direct_dependencies,
-            -- Direct dependents (what calls/uses this node)
+
+            -- Direct dependents (what calls / uses this node)
             (
                 SELECT VALUE fn::node_reference(<string>in)
-                FROM <-calls, <-imports, <-uses
+                FROM ($parent.id)<-calls, ($parent.id)<-imports, ($parent.id)<-uses
                 WHERE in.project_id = $project_id
                 LIMIT 5
             ) AS direct_dependents,
-            -- File siblings (other nodes in same file, for context)
+
+            -- File siblings (other nodes in the same file)
             (
-                SELECT id, name, node_type, start_line AS kind
+                SELECT
+                    id,
+                    name,
+                    node_type,
+                    start_line
                 FROM nodes
                 WHERE project_id = $project_id
                   AND file_path = $parent.file_path
@@ -1195,9 +1204,10 @@ DEFINE FUNCTION fn::semantic_search_with_context(
                 ORDER BY start_line
                 LIMIT 5
             ) AS file_siblings
-        FROM $merged
+        FROM (
+            SELECT * FROM $merged
+        )
     ) ELSE (
-        -- Without graph context, just return basic results
         SELECT
             id,
             name,
@@ -1205,9 +1215,9 @@ DEFINE FUNCTION fn::semantic_search_with_context(
             language,
             content,
             {
-                file_path: file_path,
+                file_path:  file_path,
                 start_line: start_line,
-                end_line: end_line
+                end_line:   end_line
             } AS location,
             metadata,
             vector_score,
@@ -1217,4 +1227,155 @@ DEFINE FUNCTION fn::semantic_search_with_context(
     ) END;
 
     RETURN $final_results;
-};
+}
+PERMISSIONS FULL;
+
+DEFINE FUNCTION fn::semantic_search_chunks_with_context(
+    $project_id: string,
+    $query_embedding: array<float>,
+    $query_text: string,
+    $dimension: int,
+    $limit: int,
+    $threshold: float,
+    $include_graph_context: bool
+) {
+    -- Safety guards
+    LET $safe_limit = IF $limit > 0 AND $limit <= 100 THEN $limit ELSE 10 END;
+    LET $safe_threshold =
+        IF $threshold >= 0.0 AND $threshold <= 1.0
+        THEN $threshold
+        ELSE 0.7
+        END;
+
+    -- Dimension-dependent vector search
+    LET $vector_candidates = IF $dimension = 384 THEN (
+        SELECT
+            id,
+            parent_node,
+            chunk_index,
+            text,
+            vector::similarity::cosine(embedding_384, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_384 IS NOT NONE
+            AND vector::similarity::cosine(embedding_384, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $safe_limit
+    ) ELSE IF $dimension = 768 THEN (
+        SELECT
+            id,
+            parent_node,
+            chunk_index,
+            text,
+            vector::similarity::cosine(embedding_768, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_768 IS NOT NONE
+            AND vector::similarity::cosine(embedding_768, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $safe_limit
+    ) ELSE IF $dimension = 1024 THEN (
+        SELECT
+            id,
+            parent_node,
+            chunk_index,
+            text,
+            vector::similarity::cosine(embedding_1024, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_1024 IS NOT NONE
+            AND vector::similarity::cosine(embedding_1024, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $safe_limit
+    ) ELSE IF $dimension = 1536 THEN (
+        SELECT
+            id,
+            parent_node,
+            chunk_index,
+            text,
+            vector::similarity::cosine(embedding_1536, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_1536 IS NOT NONE
+            AND vector::similarity::cosine(embedding_1536, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $safe_limit
+    ) ELSE IF $dimension = 2048 THEN (
+        SELECT
+            id,
+            parent_node,
+            chunk_index,
+            text,
+            vector::similarity::cosine(embedding_2048, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_2048 IS NOT NONE
+            AND vector::similarity::cosine(embedding_2048, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $safe_limit
+    ) ELSE IF $dimension = 2560 THEN (
+        SELECT
+            id,
+            parent_node,
+            chunk_index,
+            text,
+            vector::similarity::cosine(embedding_2560, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_2560 IS NOT NONE
+            AND vector::similarity::cosine(embedding_2560, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $safe_limit
+    ) ELSE IF $dimension = 3072 THEN (
+        SELECT
+            id,
+            parent_node,
+            chunk_index,
+            text,
+            vector::similarity::cosine(embedding_3072, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_3072 IS NOT NONE
+            AND vector::similarity::cosine(embedding_3072, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $safe_limit
+    ) ELSE (
+        SELECT
+            id,
+            parent_node,
+            chunk_index,
+            text,
+            vector::similarity::cosine(embedding_4096, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_4096 IS NOT NONE
+            AND vector::similarity::cosine(embedding_4096, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $safe_limit
+    ) END;
+
+    LET $vector_results = array::flatten([$vector_candidates]);
+
+    -- Attach node context
+    LET $results = (
+        SELECT
+            id,
+            chunk_index,
+            text,
+            vector_score,
+
+            -- Node context (resolved per row)
+            (SELECT VALUE id        FROM nodes WHERE id = parent_node LIMIT 1)[0] AS node_id,
+            (SELECT VALUE name      FROM nodes WHERE id = parent_node LIMIT 1)[0] AS name,
+            (SELECT VALUE node_type FROM nodes WHERE id = parent_node LIMIT 1)[0] AS kind,
+            (SELECT VALUE language  FROM nodes WHERE id = parent_node LIMIT 1)[0] AS language,
+            (SELECT VALUE file_path FROM nodes WHERE id = parent_node LIMIT 1)[0] AS file_path,
+            (SELECT VALUE start_line FROM nodes WHERE id = parent_node LIMIT 1)[0] AS start_line,
+            (SELECT VALUE end_line   FROM nodes WHERE id = parent_node LIMIT 1)[0] AS end_line,
+            (SELECT VALUE metadata   FROM nodes WHERE id = parent_node LIMIT 1)[0] AS metadata
+        FROM $vector_results
+    );
+
+    RETURN $results;
+}
+PERMISSIONS FULL;
