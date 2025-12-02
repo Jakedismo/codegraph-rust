@@ -15,7 +15,14 @@ use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{debug, info};
+use std::time::Duration;
+use tracing::{debug, info, warn};
+
+/// Default per-iteration timeout in seconds
+const DEFAULT_ITERATION_TIMEOUT_SECS: u64 = 60;
+
+/// High score threshold for early termination
+const HIGH_SCORE_THRESHOLD: f32 = 0.9;
 
 /// LATS algorithm configuration
 #[derive(Debug, Clone)]
@@ -28,6 +35,10 @@ pub struct LATSConfig {
     pub exploration_weight: f32,
     /// Context tier for this executor
     pub tier: ContextTier,
+    /// Per-iteration timeout in seconds (0 = unlimited)
+    pub iteration_timeout_secs: u64,
+    /// Maximum tree nodes before termination (0 = auto-calculate from beam_width * max_depth * 2)
+    pub max_tree_nodes: usize,
 }
 
 impl Default for LATSConfig {
@@ -37,6 +48,8 @@ impl Default for LATSConfig {
             max_depth: 5,
             exploration_weight: 1.414, // sqrt(2)
             tier: ContextTier::Medium,
+            iteration_timeout_secs: DEFAULT_ITERATION_TIMEOUT_SECS,
+            max_tree_nodes: 0, // Auto-calculate
         }
     }
 }
@@ -44,12 +57,40 @@ impl Default for LATSConfig {
 impl LATSConfig {
     /// Create LATS config from CodeGraph config and tier
     pub fn from_codegraph_config(_config: &CodeGraphConfig, tier: ContextTier) -> Self {
-        // TODO: In Phase 3, read from config.llm.lats for custom beam_width, max_depth, etc.
-        // For Phase 2, use defaults with provided tier
+        // Read configuration from environment variables
+        let iteration_timeout_secs = std::env::var("CODEGRAPH_LATS_ITERATION_TIMEOUT_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_ITERATION_TIMEOUT_SECS);
+
+        let max_tree_nodes = std::env::var("CODEGRAPH_AGENT_MAX_TREE_NODES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
 
         Self {
             tier,
+            iteration_timeout_secs,
+            max_tree_nodes,
             ..Default::default()
+        }
+    }
+
+    /// Calculate effective max tree nodes (auto-calculate if 0)
+    pub fn effective_max_tree_nodes(&self) -> usize {
+        if self.max_tree_nodes == 0 {
+            self.beam_width * self.max_depth * 2
+        } else {
+            self.max_tree_nodes
+        }
+    }
+
+    /// Get iteration timeout as Duration (returns very large if 0)
+    pub fn iteration_timeout(&self) -> Duration {
+        if self.iteration_timeout_secs == 0 {
+            Duration::from_secs(u64::MAX / 2)
+        } else {
+            Duration::from_secs(self.iteration_timeout_secs)
         }
     }
 }
@@ -570,22 +611,69 @@ impl LATSExecutor {
         })
     }
 
-    /// Check if a solution has been found
-    fn is_solution_found(&self, tree: &SearchTree, evaluated_nodes: &[EvaluatedNode]) -> bool {
-        // Check if any recently evaluated node is marked as a solution
+    /// Check if a solution has been found, returning the termination reason
+    fn check_termination(
+        &self,
+        tree: &SearchTree,
+        evaluated_nodes: &[EvaluatedNode],
+    ) -> Option<TerminationReason> {
+        // Check 1: Any node marked as solution
         if evaluated_nodes.iter().any(|node| node.is_solution) {
-            return true;
+            return Some(TerminationReason::SolutionFound);
         }
 
-        // Alternative check: if any leaf node has very high score (>0.9), consider it a solution
+        // Check 2: Any leaf node has very high score
         let has_high_score_leaf = tree
             .get_leaf_nodes()
             .iter()
             .filter_map(|&id| tree.get_node(id).ok())
-            .any(|node| node.score > 0.9);
+            .any(|node| node.score > HIGH_SCORE_THRESHOLD);
 
-        has_high_score_leaf
+        if has_high_score_leaf {
+            return Some(TerminationReason::HighScore);
+        }
+
+        // Check 3: Tree size limit exceeded
+        let max_nodes = self.config.effective_max_tree_nodes();
+        if tree.node_count() >= max_nodes {
+            return Some(TerminationReason::TreeSizeExceeded);
+        }
+
+        None
     }
+
+    /// Log early termination event when CODEGRAPH_DEBUG is set
+    fn log_early_termination(&self, reason: &TerminationReason, tree: &SearchTree) {
+        if std::env::var("CODEGRAPH_DEBUG").is_ok() {
+            let reason_str = match reason {
+                TerminationReason::HighScore => "high_score",
+                TerminationReason::SolutionFound => "solution_found",
+                TerminationReason::TreeSizeExceeded => "tree_size_exceeded",
+                TerminationReason::IterationTimeout => "iteration_timeout",
+            };
+
+            info!(
+                target: "lats_early_termination",
+                reason = reason_str,
+                tree_size = tree.node_count(),
+                max_allowed = self.config.effective_max_tree_nodes(),
+                "LATS search terminated early"
+            );
+        }
+    }
+}
+
+/// Reason for early termination
+#[derive(Debug, Clone, PartialEq)]
+pub enum TerminationReason {
+    /// Solution node marked with is_solution flag
+    SolutionFound,
+    /// Node achieved score > 0.9
+    HighScore,
+    /// Tree size limit exceeded
+    TreeSizeExceeded,
+    /// Per-iteration timeout occurred
+    IterationTimeout,
 }
 
 #[async_trait]
@@ -599,6 +687,8 @@ impl AgentExecutorTrait for LATSExecutor {
             target: "lats::executor",
             analysis_type = ?analysis_type,
             query_len = query.len(),
+            max_tree_nodes = self.config.effective_max_tree_nodes(),
+            iteration_timeout_secs = self.config.iteration_timeout_secs,
             "Starting LATS execution"
         );
 
@@ -626,6 +716,8 @@ impl AgentExecutorTrait for LATSExecutor {
         );
 
         // Phase 2: Iterative LATS search
+        let mut termination_reason: Option<TerminationReason> = None;
+
         for iteration in 0..self.config.max_depth {
             debug!(
                 target: "lats::executor",
@@ -633,6 +725,12 @@ impl AgentExecutorTrait for LATSExecutor {
                 tree_size = tree.node_count(),
                 "Starting LATS iteration"
             );
+
+            // Check tree size before starting iteration
+            if let Some(reason) = self.check_termination(&tree, &[]) {
+                termination_reason = Some(reason);
+                break;
+            }
 
             // Step 1: Selection - choose promising nodes to expand
             let selected_nodes = self.select_nodes(&tree, &query).await?;
@@ -646,22 +744,44 @@ impl AgentExecutorTrait for LATSExecutor {
                 break;
             }
 
-            // Step 2: Expansion - generate new thought/action candidates
-            let expansions = self.expand_nodes(&tree, &selected_nodes, &query).await?;
+            // Steps 2-4 wrapped in per-iteration timeout
+            let iteration_timeout = self.config.iteration_timeout();
+            let iteration_result = tokio::time::timeout(iteration_timeout, async {
+                // Step 2: Expansion - generate new thought/action candidates
+                let expansions = self.expand_nodes(&tree, &selected_nodes, &query).await?;
 
-            // Step 3: Evaluation - assess quality of expanded nodes
-            let evaluated = self.evaluate_nodes(&expansions, &query).await?;
+                // Step 3: Evaluation - assess quality of expanded nodes
+                let evaluated = self.evaluate_nodes(&expansions, &query).await?;
+
+                Ok::<_, ExecutorError>((expansions, evaluated))
+            })
+            .await;
+
+            let (expansions, evaluated) = match iteration_result {
+                Ok(Ok(result)) => result,
+                Ok(Err(e)) => {
+                    // Execution error - propagate
+                    return Err(e);
+                }
+                Err(_elapsed) => {
+                    // Iteration timeout - log and fall back to best solution
+                    warn!(
+                        target: "lats::executor",
+                        iteration = iteration,
+                        timeout_secs = self.config.iteration_timeout_secs,
+                        "LATS iteration timed out"
+                    );
+                    termination_reason = Some(TerminationReason::IterationTimeout);
+                    break;
+                }
+            };
 
             // Step 4: Backpropagation - update scores up the tree
             self.backpropagate(&mut tree, &evaluated).await?;
 
-            // Check for solution
-            if self.is_solution_found(&tree, &evaluated) {
-                info!(
-                    target: "lats::executor",
-                    iteration = iteration,
-                    "Solution found, terminating search"
-                );
+            // Check for solution or termination conditions
+            if let Some(reason) = self.check_termination(&tree, &evaluated) {
+                termination_reason = Some(reason);
                 break;
             }
 
@@ -673,13 +793,40 @@ impl AgentExecutorTrait for LATSExecutor {
             );
         }
 
+        // Log early termination if applicable
+        if let Some(ref reason) = termination_reason {
+            self.log_early_termination(reason, &tree);
+        }
+
         // Phase 3: Extract best path and synthesize final answer
         let best_path = self.extract_best_path(&tree);
-        let output = self.synthesize_answer(&tree, best_path, &query).await?;
+        let mut output = self.synthesize_answer(&tree, best_path, &query).await?;
+
+        // Add warning if terminated due to tree size or timeout
+        if let Some(reason) = &termination_reason {
+            match reason {
+                TerminationReason::TreeSizeExceeded => {
+                    output.findings = format!(
+                        "WARNING: Search tree size limit ({}) exceeded. Result may be incomplete.\n\n{}",
+                        self.config.effective_max_tree_nodes(),
+                        output.findings
+                    );
+                }
+                TerminationReason::IterationTimeout => {
+                    output.findings = format!(
+                        "WARNING: Iteration timeout ({}s) occurred. Result based on partial exploration.\n\n{}",
+                        self.config.iteration_timeout_secs,
+                        output.findings
+                    );
+                }
+                _ => {} // High score and solution found are success cases
+            }
+        }
 
         info!(
             target: "lats::executor",
             tree_size = tree.node_count(),
+            termination_reason = ?termination_reason,
             "LATS execution completed"
         );
 
@@ -705,6 +852,8 @@ mod tests {
         assert_eq!(config.beam_width, 3);
         assert_eq!(config.max_depth, 5);
         assert_eq!(config.exploration_weight, 1.414);
+        assert_eq!(config.iteration_timeout_secs, DEFAULT_ITERATION_TIMEOUT_SECS);
+        assert_eq!(config.max_tree_nodes, 0); // Auto-calculate
     }
 
     #[test]
@@ -716,5 +865,95 @@ mod tests {
         assert_eq!(lats_config.tier, ContextTier::Large);
         assert_eq!(lats_config.beam_width, 3);
         assert_eq!(lats_config.max_depth, 5);
+        // Note: iteration_timeout_secs may be set from env, just verify tier
+    }
+
+    // Env-based tests need special handling due to parallel execution
+    // Using unique values to detect contamination
+
+    #[test]
+    fn test_lats_config_from_env_timeout() {
+        // Use unique value unlikely to be set by other tests
+        std::env::set_var("CODEGRAPH_LATS_ITERATION_TIMEOUT_SECS", "42");
+        let cg_config = CodeGraphConfig::default();
+        let lats_config = LATSConfig::from_codegraph_config(&cg_config, ContextTier::Medium);
+        assert_eq!(lats_config.iteration_timeout_secs, 42);
+        std::env::remove_var("CODEGRAPH_LATS_ITERATION_TIMEOUT_SECS");
+    }
+
+    #[test]
+    fn test_lats_config_from_env_tree_nodes() {
+        std::env::set_var("CODEGRAPH_AGENT_MAX_TREE_NODES", "99");
+        let cg_config = CodeGraphConfig::default();
+        let lats_config = LATSConfig::from_codegraph_config(&cg_config, ContextTier::Medium);
+        assert_eq!(lats_config.max_tree_nodes, 99);
+        std::env::remove_var("CODEGRAPH_AGENT_MAX_TREE_NODES");
+    }
+
+    #[test]
+    fn test_effective_max_tree_nodes_auto_calculate() {
+        let config = LATSConfig {
+            beam_width: 3,
+            max_depth: 5,
+            max_tree_nodes: 0, // Auto-calculate
+            ..Default::default()
+        };
+        // Auto-calculated: beam_width * max_depth * 2 = 3 * 5 * 2 = 30
+        assert_eq!(config.effective_max_tree_nodes(), 30);
+    }
+
+    #[test]
+    fn test_effective_max_tree_nodes_explicit() {
+        let config = LATSConfig {
+            beam_width: 3,
+            max_depth: 5,
+            max_tree_nodes: 100, // Explicit
+            ..Default::default()
+        };
+        assert_eq!(config.effective_max_tree_nodes(), 100);
+    }
+
+    #[test]
+    fn test_iteration_timeout_duration() {
+        let config = LATSConfig {
+            iteration_timeout_secs: 30,
+            ..Default::default()
+        };
+        assert_eq!(config.iteration_timeout().as_secs(), 30);
+    }
+
+    #[test]
+    fn test_iteration_timeout_zero_is_unlimited() {
+        let config = LATSConfig {
+            iteration_timeout_secs: 0,
+            ..Default::default()
+        };
+        // Zero means unlimited - should be very large
+        assert!(config.iteration_timeout().as_secs() > 1_000_000);
+    }
+
+    #[test]
+    fn test_termination_reason_enum() {
+        assert_eq!(
+            format!("{:?}", TerminationReason::HighScore),
+            "HighScore"
+        );
+        assert_eq!(
+            format!("{:?}", TerminationReason::SolutionFound),
+            "SolutionFound"
+        );
+        assert_eq!(
+            format!("{:?}", TerminationReason::TreeSizeExceeded),
+            "TreeSizeExceeded"
+        );
+        assert_eq!(
+            format!("{:?}", TerminationReason::IterationTimeout),
+            "IterationTimeout"
+        );
+    }
+
+    #[test]
+    fn test_high_score_threshold() {
+        assert_eq!(HIGH_SCORE_THRESHOLD, 0.9);
     }
 }

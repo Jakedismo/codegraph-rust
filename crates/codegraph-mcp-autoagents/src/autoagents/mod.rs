@@ -48,7 +48,10 @@ pub use agent_builder::{AgentHandle, CodeGraphAgentBuilder, CodeGraphChatAdapter
 #[cfg(feature = "autoagents-experimental")]
 pub use codegraph_agent::CodeGraphAgentOutput;
 #[cfg(feature = "autoagents-experimental")]
-pub use executor::{CodeGraphExecutor, CodeGraphExecutorBuilder, ExecutorError};
+pub use executor::{
+    is_context_overflow_error, transform_context_overflow, CodeGraphExecutor,
+    CodeGraphExecutorBuilder, ExecutorError,
+};
 #[cfg(feature = "autoagents-experimental")]
 pub use executor_factory::AgentExecutorFactory;
 #[cfg(feature = "autoagents-experimental")]
@@ -56,7 +59,7 @@ pub use executor_trait::AgentExecutorTrait;
 #[cfg(all(feature = "autoagents-experimental", feature = "autoagents-lats"))]
 pub use lats::{
     LATSConfig, LATSExecutor, LATSPhase, LATSPrompts, NodeId, ProviderRouter, ProviderStats,
-    SearchNode, SearchTree, SearchTreeError, ToolAction,
+    SearchNode, SearchTree, SearchTreeError, TerminationReason, ToolAction,
 };
 #[cfg(feature = "autoagents-experimental")]
 pub use prompt_selector::{PromptSelector, PromptSelectorStats, PromptVerbosity};

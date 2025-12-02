@@ -38,6 +38,20 @@ pub(crate) fn convert_messages(messages: &[Message]) -> Vec<ChatMessage> {
     messages.iter().map(convert_to_chat_message).collect()
 }
 
+/// Default memory window size for all tiers (40 messages)
+const DEFAULT_MEMORY_WINDOW: usize = 40;
+
+/// Read memory window size from environment or use default.
+/// Uses fixed default of 40 for all tiers (not tier-based).
+/// Override via CODEGRAPH_AGENT_MEMORY_WINDOW env var if needed.
+/// Memory window of 0 means unlimited history (use with caution).
+pub(crate) fn read_memory_window_config() -> usize {
+    std::env::var("CODEGRAPH_AGENT_MEMORY_WINDOW")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_MEMORY_WINDOW)
+}
+
 /// Adapter that bridges codegraph_ai::LLMProvider to AutoAgents ChatProvider
 pub struct CodeGraphChatAdapter {
     provider: Arc<dyn CodeGraphLLM>,
@@ -564,8 +578,14 @@ impl CodeGraphAgentBuilder {
             .get_system_prompt()
             .map_err(|e| AutoAgentsError::CustomError(e.to_string()))?;
 
-        // Create memory (sliding window keeps last N messages)
-        let memory_size = tier_plugin.get_max_iterations() * 2;
+        // Create memory with fixed default of 40 messages for all tiers.
+        // 40 messages allows proper multi-step analysis without context issues.
+        let memory_size = read_memory_window_config();
+        tracing::debug!(
+            memory_window = memory_size,
+            tier = ?self.tier,
+            "Agent memory window configured"
+        );
         let memory = Box::new(SlidingWindowMemory::new(memory_size));
 
         // Get executor adapter for tool construction
@@ -891,5 +911,42 @@ mod tests {
             analysis_type: AnalysisType::CodeSearch,
             max_iterations: 10,
         }
+    }
+
+    #[test]
+    fn test_memory_window_default_value() {
+        // Clear env var to test default
+        std::env::remove_var("CODEGRAPH_AGENT_MEMORY_WINDOW");
+        let memory_size = read_memory_window_config();
+        assert_eq!(memory_size, 40, "Default memory window should be 40 for all tiers");
+    }
+
+    #[test]
+    fn test_memory_window_from_env() {
+        std::env::set_var("CODEGRAPH_AGENT_MEMORY_WINDOW", "100");
+        let memory_size = read_memory_window_config();
+        assert_eq!(memory_size, 100);
+        std::env::remove_var("CODEGRAPH_AGENT_MEMORY_WINDOW");
+    }
+
+    #[test]
+    fn test_memory_window_zero_is_unlimited() {
+        std::env::set_var("CODEGRAPH_AGENT_MEMORY_WINDOW", "0");
+        let memory_size = read_memory_window_config();
+        assert_eq!(memory_size, 0, "Zero should mean unlimited history");
+        std::env::remove_var("CODEGRAPH_AGENT_MEMORY_WINDOW");
+    }
+
+    #[test]
+    fn test_memory_window_invalid_fallback() {
+        std::env::set_var("CODEGRAPH_AGENT_MEMORY_WINDOW", "not_a_number");
+        let memory_size = read_memory_window_config();
+        assert_eq!(memory_size, 40, "Invalid value should fall back to default");
+        std::env::remove_var("CODEGRAPH_AGENT_MEMORY_WINDOW");
+    }
+
+    #[test]
+    fn test_default_memory_window_constant() {
+        assert_eq!(DEFAULT_MEMORY_WINDOW, 40, "Default should be 40 messages");
     }
 }
