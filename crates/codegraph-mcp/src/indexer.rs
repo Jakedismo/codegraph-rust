@@ -2779,7 +2779,9 @@ impl ProjectIndexer {
         };
 
         let mut resp = db
-            .query("SELECT count() AS count FROM file_metadata WHERE project_id = $project_id")
+            .query(
+                "SELECT count() AS count FROM file_metadata WHERE project_id = $project_id GROUP ALL",
+            )
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to verify file_metadata count")?;

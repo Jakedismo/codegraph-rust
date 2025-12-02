@@ -110,10 +110,8 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_file_type
 -- -----------------------------------------------------------------------------
 -- TABLE: chunks (chunked embeddings)
 -- -----------------------------------------------------------------------------
-DEFINE TABLE IF NOT EXISTS chunks SCHEMAFULL
+DEFINE TABLE IF NOT EXISTS chunks SCHEMAFULL PERMISSIONS FULL
   COMMENT 'Chunked embeddings for long nodes (tokenizer-aware chunking)';
-DEFINE PERMISSIONS FOR TABLE chunks FULL;
-
 DEFINE FIELD IF NOT EXISTS parent_node   ON TABLE chunks TYPE record<nodes>;
 DEFINE FIELD IF NOT EXISTS chunk_index   ON TABLE chunks TYPE int;
 DEFINE FIELD IF NOT EXISTS text          ON TABLE chunks TYPE string;
