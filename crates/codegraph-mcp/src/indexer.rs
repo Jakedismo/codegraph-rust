@@ -1002,7 +1002,10 @@ impl ProjectIndexer {
         );
         let batch = self.config.batch_size.max(1);
         #[allow(unused_mut)]
-        let mut processed: u64 = 0;
+        #[cfg(feature = "embeddings")]
+        let mut processed: u64;
+        #[cfg(not(feature = "embeddings"))]
+        let processed: u64 = 0;
 
         // Enhanced embedding phase logging
         let provider = &self.global_config.embedding.provider;
@@ -1045,7 +1048,8 @@ impl ProjectIndexer {
 
             let processed_atomic = Arc::new(AtomicU64::new(0));
             let max_concurrent = self.config.max_concurrent.max(1);
-            let chunk_db_batch = chunk_embedding_db_batch_size();
+            // DB batch size: prefer explicit env override, otherwise match embedding batch size
+            let chunk_db_batch = chunk_embedding_db_batch_size(batch);
             let embedder = &self.embedder;
 
             let mut batch_stream = stream::iter(chunk_batches.into_iter().map(|(texts, metas)| async move {
@@ -1088,7 +1092,11 @@ impl ProjectIndexer {
                 embed_pb.set_position(done.min(total_chunks));
                 chunk_store_pb.set_position(done.min(total_chunks));
             }
+
+            processed = processed_atomic.load(Ordering::Relaxed);
         }
+        #[cfg(not(feature = "embeddings"))]
+        let processed: u64 = 0;
         let embedding_rate = if total_chunks > 0 {
             processed as f64 / total_chunks as f64 * 100.0
         } else {
@@ -3504,13 +3512,13 @@ fn symbol_embedding_db_batch_size() -> usize {
         .unwrap_or(SYMBOL_EMBEDDING_DB_BATCH_LIMIT)
 }
 
-fn chunk_embedding_db_batch_size() -> usize {
+fn chunk_embedding_db_batch_size(fallback: usize) -> usize {
     const MAX: usize = 512;
     std::env::var("CODEGRAPH_CHUNK_DB_BATCH_SIZE")
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
         .map(|parsed| parsed.clamp(1, MAX))
-        .unwrap_or(512)
+        .unwrap_or(fallback.min(MAX))
 }
 
 fn resolve_surreal_embedding_column(dim: usize) -> Result<SurrealEmbeddingColumn> {

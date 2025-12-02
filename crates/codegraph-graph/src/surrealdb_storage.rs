@@ -768,30 +768,37 @@ impl SurrealDbStorage {
     }
 
     pub async fn upsert_project_metadata(&self, record: ProjectMetadataRecord) -> Result<()> {
-        let payload = json!({
-            "project_id": record.project_id,
-            "name": record.name,
-            "root_path": record.root_path,
-            "primary_language": record.primary_language,
-            "file_count": record.file_count,
-            "node_count": record.node_count,
-            "edge_count": record.edge_count,
-            "avg_coverage_score": record.avg_coverage_score,
-            "last_analyzed": record.last_analyzed,
-            "codegraph_version": record.codegraph_version,
-            "organization_id": record.organization_id,
-            "domain": record.domain,
-            "metadata": json!({}),
-        });
-
-        let _: Option<HashMap<String, JsonValue>> = self
+        let resp = self
             .db
-            .update(("project_metadata", record.project_id.clone()))
-            .content(payload)
+            .query(
+                "UPSERT type::thing('project_metadata', $id) SET \
+                 project_id = $pid, name = $name, root_path = $root, primary_language = $lang, \
+                 file_count = $files, node_count = $nodes, edge_count = $edges, \
+                 avg_coverage_score = $cov, last_analyzed = time::now(), codegraph_version = $ver, \
+                 organization_id = $org, domain = $dom, metadata = $meta, \
+                 created_at = time::now(), updated_at = time::now();"
+            )
+            .bind(("id", record.project_id.clone()))
+            .bind(("pid", record.project_id.clone()))
+            .bind(("name", record.name.clone()))
+            .bind(("root", record.root_path.clone()))
+            .bind(("lang", record.primary_language.clone()))
+            .bind(("files", record.file_count))
+            .bind(("nodes", record.node_count))
+            .bind(("edges", record.edge_count))
+            .bind(("cov", record.avg_coverage_score))
+            .bind(("ver", record.codegraph_version.clone()))
+            .bind(("org", record.organization_id.clone()))
+            .bind(("dom", record.domain.clone()))
+            .bind(("meta", json!({})))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!("Failed to upsert project metadata: {}", e))
             })?;
+
+        resp.check().map_err(|e| {
+            CodeGraphError::Database(format!("Project metadata upsert error: {}", e))
+        })?;
 
         Ok(())
     }
