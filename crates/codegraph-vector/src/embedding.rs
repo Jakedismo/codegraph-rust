@@ -348,7 +348,7 @@ impl EmbeddingGenerator {
             {
                 tracing::info!("✅ 'ollama' feature is ENABLED");
                 let ollama_config =
-                    crate::ollama_embedding_provider::OllamaEmbeddingConfig::from(embedding_config);
+                    crate::ollama_embedding_provider::OllamaEmbeddingConfig::from(&embedding_config);
                 tracing::info!(
                     "🔧 Created OllamaEmbeddingConfig: model='{}', url='{}'",
                     ollama_config.model_name,
@@ -388,7 +388,7 @@ impl EmbeddingGenerator {
         } else if provider == "jina" {
             #[cfg(feature = "jina")]
             {
-                let jina_config = crate::jina_provider::JinaConfig::from(embedding_config);
+                let jina_config = crate::jina_provider::JinaConfig::from(&embedding_config);
                 match crate::jina_provider::JinaEmbeddingProvider::new(jina_config) {
                     Ok(provider) => {
                         tracing::info!("✅ Jina embeddings initialized (from config)");
@@ -408,7 +408,7 @@ impl EmbeddingGenerator {
             {
                 let lmstudio_config =
                     crate::lmstudio_embedding_provider::LmStudioEmbeddingConfig::from(
-                        embedding_config,
+                        &embedding_config,
                     );
                 match crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider::new(
                     lmstudio_config,

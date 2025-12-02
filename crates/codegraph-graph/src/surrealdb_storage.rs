@@ -789,10 +789,22 @@ impl SurrealDbStorage {
             return Ok(());
         }
 
+        // Use SET syntax (like nodes/edges) instead of CONTENT to avoid ID conflicts
         let query = r#"
             LET $batch = $data;
             FOR $doc IN $batch {
-                UPSERT type::thing('file_metadata', $doc.id) CONTENT $doc;
+                UPSERT type::thing('file_metadata', $doc.id) SET
+                    file_path = $doc.file_path,
+                    project_id = $doc.project_id,
+                    content_hash = $doc.content_hash,
+                    modified_at = $doc.modified_at,
+                    file_size = $doc.file_size,
+                    last_indexed_at = $doc.last_indexed_at,
+                    node_count = $doc.node_count,
+                    edge_count = $doc.edge_count,
+                    language = $doc.language,
+                    parse_errors = $doc.parse_errors,
+                    updated_at = time::now();
             }
         "#;
 
