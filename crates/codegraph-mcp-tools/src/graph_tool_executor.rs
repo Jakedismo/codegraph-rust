@@ -397,6 +397,11 @@ impl GraphToolExecutor {
             .ok_or_else(|| McpError::Protocol("Missing query".to_string()))?;
 
         let limit = params["limit"].as_i64().unwrap_or(10) as usize;
+        let threshold = params["threshold"]
+            .as_f64()
+            .or_else(|| std::env::var("CODEGRAPH_SEMSEARCH_THRESHOLD").ok()?.parse::<f64>().ok())
+            .map(|v| v.clamp(0.0, 1.0))
+            .unwrap_or(0.6);
 
         // Step 1: Generate embedding using shared EmbeddingGenerator
         let query_embedding = self
@@ -409,7 +414,6 @@ impl GraphToolExecutor {
         let dimension = self.embedding_generator.dimension();
 
         // Step 3: Call semantic search function with graph enrichment (always enabled)
-        let threshold = 0.7; // Configurable via environment variable
         let include_graph_context = true; // Always enabled per requirements
 
         let candidates = self
@@ -419,7 +423,7 @@ impl GraphToolExecutor {
                 &query_embedding,
                 dimension,
                 limit,
-                threshold,
+                threshold as f32,
                 include_graph_context,
             )
             .await

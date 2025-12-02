@@ -698,6 +698,24 @@ impl ConfigManager {
                 config.rerank.top_n = n;
             }
         }
+
+        // Generic rerank toggles (CODEGRAPH_*), higher priority than JINA_ENABLE_RERANKING
+        if let Ok(enable) = std::env::var("CODEGRAPH_ENABLE_RERANKING") {
+            if enable.to_lowercase() == "true" {
+                // Default to Jina unless a provider is explicitly set elsewhere
+                if matches!(config.rerank.provider, crate::RerankProvider::None) {
+                    config.rerank.provider = crate::RerankProvider::Jina;
+                }
+            } else {
+                config.rerank.provider = crate::RerankProvider::None;
+            }
+        }
+
+        if let Ok(top_n) = std::env::var("CODEGRAPH_RERANKING_CANDIDATES") {
+            if let Ok(n) = top_n.parse() {
+                config.rerank.top_n = n;
+            }
+        }
         if let Ok(chunking) = std::env::var("JINA_LATE_CHUNKING") {
             config.embedding.jina_late_chunking = chunking.to_lowercase() == "true";
         }

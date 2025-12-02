@@ -235,6 +235,12 @@ impl GraphToolSchemas {
                         "minimum": 1,
                         "maximum": 50,
                         "default": 10
+                    },
+                    "threshold": {
+                        "type": "number",
+                        "description": "Similarity threshold 0.0–1.0 (optional, defaults to env CODEGRAPH_SEMSEARCH_THRESHOLD or 0.6)",
+                        "minimum": 0.0,
+                        "maximum": 1.0
                     }
                 },
                 "required": ["query"]

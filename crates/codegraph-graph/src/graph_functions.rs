@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 use surrealdb::{engine::any::Any, Surreal};
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 /// Wrapper for SurrealDB graph analysis functions
 /// Provides type-safe Rust interfaces for calling SurrealDB functions
@@ -427,8 +427,16 @@ impl GraphFunctions {
             .bind(("include_graph_context", include_graph_context))
             .await
             .map_err(|e| {
-                error!("Failed to call semantic_search_chunks_with_context: {}", e);
-                CodeGraphError::Database(format!("semantic_search_chunks_with_context failed: {}", e))
+                let msg = e.to_string();
+                if msg.contains("semantic_search_chunks_with_context") {
+                    warn!(
+                        "semantic_search_chunks_with_context missing in DB; falling back to fn::semantic_search_with_context"
+                    );
+                    CodeGraphError::Database("MISSING_CHUNK_FN".into())
+                } else {
+                    error!("Failed to call semantic_search_chunks_with_context: {}", msg);
+                    CodeGraphError::Database(format!("semantic_search_chunks_with_context failed: {}", msg))
+                }
             })?
             .take(0)
             .map_err(|e| {

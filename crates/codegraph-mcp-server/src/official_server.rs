@@ -501,15 +501,29 @@ impl CodeGraphMCPServer {
         let graph_functions = {
             use codegraph_graph::SurrealDbStorage;
 
+            // Use CODEGRAPH_* env if present; fall back to SURREALDB_*; else defaults
+            let connection = std::env::var("CODEGRAPH_SURREALDB_URL")
+                .or_else(|_| std::env::var("SURREALDB_URL"))
+                .unwrap_or_else(|_| "ws://localhost:3004".to_string());
+            let namespace = std::env::var("CODEGRAPH_SURREALDB_NAMESPACE")
+                .or_else(|_| std::env::var("SURREALDB_NAMESPACE"))
+                .unwrap_or_else(|_| "ouroboros".to_string());
+            let database = std::env::var("CODEGRAPH_SURREALDB_DATABASE")
+                .or_else(|_| std::env::var("SURREALDB_DATABASE"))
+                .unwrap_or_else(|_| "codegraph".to_string());
+            let username = std::env::var("CODEGRAPH_SURREALDB_USERNAME")
+                .or_else(|_| std::env::var("SURREALDB_USERNAME"))
+                .ok();
+            let password = std::env::var("CODEGRAPH_SURREALDB_PASSWORD")
+                .or_else(|_| std::env::var("SURREALDB_PASSWORD"))
+                .ok();
+
             let surrealdb_config = codegraph_graph::SurrealDbConfig {
-                connection: std::env::var("SURREALDB_URL")
-                    .unwrap_or_else(|_| "ws://localhost:3004".to_string()),
-                namespace: std::env::var("SURREALDB_NAMESPACE")
-                    .unwrap_or_else(|_| "codegraph".to_string()),
-                database: std::env::var("SURREALDB_DATABASE")
-                    .unwrap_or_else(|_| "main".to_string()),
-                username: std::env::var("SURREALDB_USERNAME").ok(),
-                password: std::env::var("SURREALDB_PASSWORD").ok(),
+                connection,
+                namespace,
+                database,
+                username,
+                password,
                 strict_mode: false,
                 auto_migrate: false,
                 cache_enabled: false,

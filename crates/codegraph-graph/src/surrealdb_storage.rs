@@ -1769,6 +1769,8 @@ FOR $doc IN $batch {
 const UPSERT_SYMBOL_EMBEDDINGS_QUERY: &str = r#"
 LET $batch = $data;
 FOR $doc IN $batch {
+    LET $node_rec = if $doc.node_id != NONE { type::thing('nodes', $doc.node_id) } else { NONE };
+    LET $edge_rec = if $doc.source_edge_id != NONE { type::thing('edges', $doc.source_edge_id) } else { NONE };
     UPSERT type::thing('symbol_embeddings', $doc.id) SET
         symbol = $doc.symbol,
         normalized_symbol = $doc.normalized_symbol,
@@ -1781,8 +1783,8 @@ FOR $doc IN $batch {
         embedding_2560 = $doc.embedding_2560,
         embedding_4096 = $doc.embedding_4096,
         embedding_model = $doc.embedding_model,
-        node_id = $doc.node_id,
-        source_edge_id = $doc.source_edge_id,
+        node_id = $node_rec,
+        source_edge_id = $edge_rec,
         metadata = $doc.metadata,
         access_count = $doc.access_count;
 }

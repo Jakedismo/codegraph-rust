@@ -19,6 +19,7 @@ ai-enhanced = [
 ]
 server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
 autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental", "codegraph-mcp/autoagents-experimental"]
+autoagents-lats = ["codegraph-mcp-autoagents/autoagents-lats", "codegraph-mcp/autoagents-lats"]
 embeddings = ["codegraph-mcp-tools/embeddings", "codegraph-mcp/embeddings"]
 embeddings-ollama = ["embeddings", "codegraph-mcp/embeddings-ollama"]
 embeddings-openai = ["embeddings", "codegraph-mcp/embeddings-openai"]

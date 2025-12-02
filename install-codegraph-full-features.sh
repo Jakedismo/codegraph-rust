@@ -4,8 +4,8 @@
 
 set -euo pipefail
 
-# Build with all available features on the server crate
-FEATURE_FLAGS="--all-features"
+# Build with all available features on the server crate, plus LATS explicitly
+FEATURE_FLAGS="--all-features --features autoagents-lats"
 SURR_URL="${CODEGRAPH_SURREALDB_URL:-ws://localhost:3004}"
 SURR_NAMESPACE="${CODEGRAPH_SURREALDB_NAMESPACE:-ouroboros}"
 SURR_DATABASE="${CODEGRAPH_SURREALDB_DATABASE:-codegraph}"
