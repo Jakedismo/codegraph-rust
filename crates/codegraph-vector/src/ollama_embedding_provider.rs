@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokenizers::Tokenizer;
 use tokio::time::timeout;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::prep::chunker::{build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode};
 use crate::providers::{
@@ -323,7 +323,7 @@ impl OllamaEmbeddingProvider {
         let mut all_embeddings = Vec::with_capacity(texts.len());
 
         for (batch_idx, batch) in texts.chunks(batch_size).enumerate() {
-            debug!(
+            trace!(
                 "Sending Ollama embed batch {} ({} items)",
                 batch_idx + 1,
                 batch.len()

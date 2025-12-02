@@ -71,6 +71,7 @@ pub struct RAGSystem {
     embedding_generator: Arc<EmbeddingGenerator>,
     query_cache: Arc<RwLock<HashMap<String, QueryResult>>>,
     #[cfg(feature = "cache")]
+    #[allow(dead_code)]
     advanced_query_cache: Arc<RwLock<QueryCache>>,
     metrics: Arc<RwLock<SystemMetrics>>,
 }
@@ -102,10 +103,13 @@ impl RAGSystem {
         let advanced_query_cache = {
             let cache_config = QueryCacheConfig {
                 base_config: codegraph_cache::CacheConfig {
-                    max_entries: config.cache_size,
+                    max_size: config.cache_size,
                     max_memory_bytes: 200 * 1024 * 1024, // 200MB for query cache
-                    default_ttl: std::time::Duration::from_secs(7200),
+                    default_ttl: Some(std::time::Duration::from_secs(7200)),
+                    cleanup_interval: std::time::Duration::from_secs(300),
+                    enable_metrics: true,
                     enable_compression: true,
+                    compression_threshold_bytes: 1024,
                 },
                 similarity_threshold: 0.85,
                 max_query_dimension: 1024,

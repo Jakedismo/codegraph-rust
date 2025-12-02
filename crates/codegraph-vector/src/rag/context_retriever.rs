@@ -1,6 +1,6 @@
 use crate::{EmbeddingGenerator, SemanticSearch};
 #[cfg(feature = "cache")]
-use codegraph_cache::{CacheConfig, EmbeddingCache};
+use codegraph_cache::{AiCache, CacheConfig, EmbeddingCache};
 use codegraph_core::CodeGraphError;
 use codegraph_core::{CodeNode, NodeId, Result};
 #[cfg(feature = "cache")]
@@ -8,7 +8,8 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, instrument};
+use std::time::Duration;
+use tracing::{debug, info, instrument};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalResult {
@@ -64,10 +65,13 @@ impl ContextRetriever {
         #[cfg(feature = "cache")]
         let embedding_cache = {
             let cache_config = CacheConfig {
-                max_entries: 10_000,
+                max_size: 10_000,
                 max_memory_bytes: 100 * 1024 * 1024, // 100MB
-                default_ttl: std::time::Duration::from_secs(3600),
+                default_ttl: Some(Duration::from_secs(3600)),
+                cleanup_interval: Duration::from_secs(300),
+                enable_metrics: true,
                 enable_compression: true,
+                compression_threshold_bytes: 1024,
             };
             Arc::new(RwLock::new(EmbeddingCache::new(cache_config)))
         };
@@ -86,10 +90,13 @@ impl ContextRetriever {
         #[cfg(feature = "cache")]
         let embedding_cache = {
             let cache_config = CacheConfig {
-                max_entries: 10_000,
+                max_size: 10_000,
                 max_memory_bytes: 100 * 1024 * 1024, // 100MB
-                default_ttl: std::time::Duration::from_secs(3600),
+                default_ttl: Some(Duration::from_secs(3600)),
+                cleanup_interval: Duration::from_secs(300),
+                enable_metrics: true,
                 enable_compression: true,
+                compression_threshold_bytes: 1024,
             };
             Arc::new(RwLock::new(EmbeddingCache::new(cache_config)))
         };
@@ -286,7 +293,8 @@ impl ContextRetriever {
             let key = format!("query_{:x}", hasher.finalize());
 
             // Check cache
-            if let Ok(Some(cached_embedding)) = self.embedding_cache.write().await.get(&key).await {
+            let mut cache = self.embedding_cache.write();
+            if let Ok(Some(cached_embedding)) = cache.get(&key).await {
                 info!("🎯 Cache hit for query embedding");
                 return Ok(cached_embedding);
             }
@@ -301,8 +309,7 @@ impl ContextRetriever {
             let _ = self
                 .embedding_cache
                 .write()
-                .await
-                .insert(key, embedding.clone(), std::time::Duration::from_secs(3600))
+                .insert(key, embedding.clone(), Some(Duration::from_secs(3600)))
                 .await;
             info!("💾 Cached query embedding");
             return Ok(embedding);
