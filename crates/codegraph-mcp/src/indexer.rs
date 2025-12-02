@@ -21,13 +21,20 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use num_cpus;
 use rayon::prelude::*;
 use regex::Regex;
+use rustc_demangle::try_demangle;
 use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use symbolic_demangle::{demangle, DemangleOptions, Language};
+use symbolic_demangle::{demangle, DemangleOptions, Language};
+use syn::{parse_str as parse_syn_path, Path as SynPath, PathArguments};
+use syn::{parse_str as parse_syn_path, Path as SynPath, PathArguments};
 use tokio::fs as tokio_fs;
 use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex};
 use tokio::task::JoinHandle;
@@ -1132,6 +1139,8 @@ impl ProjectIndexer {
             let total_resolved = AtomicUsize::new(0);
 
             // Process all chunks in parallel using M4 Max cores
+            let mut unresolved_samples: Vec<String> = Vec::new();
+
             let chunk_results: Vec<_> = chunks
                 .par_iter()
                 .enumerate()
@@ -1140,38 +1149,53 @@ impl ProjectIndexer {
                     let mut chunk_stats = (0, 0, 0, 0); // (exact, pattern, ai, unresolved)
 
                     for edge_rel in chunk.iter() {
-                        // Multi-pattern symbol resolution
-                        let (target_id, resolution_type) =
-                            if let Some(&id) = symbol_map.get(&edge_rel.to) {
-                                (Some(id), "exact")
-                            } else if let Some(simple_name) = edge_rel.to.split("::").last() {
-                                if let Some(&id) = symbol_map.get(simple_name) {
-                                    (Some(id), "simple_name")
-                                } else {
-                                    let lowercase = edge_rel.to.to_lowercase();
-                                    if let Some(&id) = symbol_map.get(&lowercase) {
-                                        (Some(id), "case_variant")
-                                    } else {
-                                        let clean_target =
-                                            edge_rel.to.replace("()", "").replace("!", "");
-                                        if let Some(&id) = symbol_map.get(&clean_target) {
-                                            (Some(id), "clean_pattern")
-                                        } else {
-                                            (None, "unresolved")
-                                        }
-                                    }
+                        let mut target_id = None;
+                        let mut resolution_type = "unresolved";
+
+                        let mut tried = false;
+                        // Rust-first normalization
+                        for variant in Self::normalize_rust_symbol(&edge_rel.to) {
+                            tried = true;
+                            if let Some(&id) = symbol_map.get(&variant) {
+                                target_id = Some(id);
+                                resolution_type = "normalized";
+                                break;
+                            }
+                        }
+
+                        if target_id.is_none() {
+                            for variant in normalize_symbol_target(&edge_rel.to) {
+                                tried = true;
+                                if let Some(&id) = symbol_map.get(&variant) {
+                                    target_id = Some(id);
+                                    resolution_type = "normalized";
+                                    break;
                                 }
-                            } else {
-                                (None, "unresolved")
-                            };
+                            }
+                        }
+
+                        if target_id.is_none() && !tried {
+                            if let Some(&id) = symbol_map.get(&variant) {
+                                target_id = Some(id);
+                                resolution_type = "normalized";
+                                break;
+                            }
+                        }
+
+                        if target_id.is_none() {
+                            if let Some(simple_name) = edge_rel.to.split("::").last() {
+                                if let Some(&id) = symbol_map.get(simple_name) {
+                                    target_id = Some(id);
+                                    resolution_type = "simple_name";
+                                }
+                            }
+                        }
 
                         if let Some(target_id) = target_id {
                             // Track resolution method for statistics
                             match resolution_type {
-                                "exact" => chunk_stats.0 += 1,
-                                "simple_name" | "case_variant" | "clean_pattern" => {
-                                    chunk_stats.1 += 1
-                                }
+                                "normalized" | "exact" => chunk_stats.0 += 1,
+                                "simple_name" => chunk_stats.1 += 1,
                                 _ => {}
                             }
 
@@ -1201,6 +1225,9 @@ impl ProjectIndexer {
                                     ));
                                 } else {
                                     chunk_stats.3 += 1; // Unresolved count
+                                    if unresolved_samples.len() < 10 {
+                                        unresolved_samples.push(edge_rel.to.clone());
+                                    }
                                 }
                             }
                             #[cfg(not(feature = "ai-enhanced"))]
@@ -1251,56 +1278,94 @@ impl ProjectIndexer {
                 all_resolved_edges.extend(chunk_edges);
             }
 
-            // REVOLUTIONARY: Bulk database operations for M4 Max performance
-            info!(
-                "💾 Bulk storing {} resolved edges using native RocksDB bulk operations",
-                all_resolved_edges.len()
-            );
-            let bulk_start = std::time::Instant::now();
+            // Store resolved edges via writer
+            if !all_resolved_edges.is_empty() {
+                let serializable_edges: Vec<_> = all_resolved_edges
+                    .iter()
+                    .map(
+                        |(from, to, edge_type, metadata)| codegraph_graph::edge::CodeEdge {
+                            id: uuid::Uuid::new_v4(),
+                            from: *from,
+                            to: *to,
+                            edge_type: edge_type.clone(),
+                            weight: 1.0,
+                            metadata: metadata.clone(),
+                        },
+                    )
+                    .collect();
 
-            // Convert to SerializableEdge format for bulk operations
-            let serializable_edges: Vec<_> = all_resolved_edges
-                .iter()
-                .map(|(from, to, edge_type, metadata)| {
-                    // Create temporary CodeEdge for bulk storage
-                    codegraph_graph::edge::CodeEdge {
-                        id: uuid::Uuid::new_v4(),
-                        from: *from,
-                        to: *to,
-                        edge_type: edge_type.clone(),
-                        weight: 1.0,
-                        metadata: metadata.clone(),
-                    }
-                })
-                .collect();
-
-            // OPTIMIZED: Parallel bulk edge insertion for M4 Max performance
-            let bulk_start_time = std::time::Instant::now();
-            let mut bulk_success = 0;
-
-            // Process edges in parallel batches for maximum throughput
-            let batch_size = 1000; // Optimized for M4 Max memory
-            for batch in serializable_edges.chunks(batch_size) {
-                let mut inserted_batch = Vec::with_capacity(batch.len());
-                for edge in batch {
-                    inserted_batch.push(edge.clone());
-                    bulk_success += 1;
+                let stored_edges_local = serializable_edges.len();
+                if let Err(err) = self.enqueue_edges(serializable_edges).await {
+                    warn!("⚠️ Failed to store resolved edges: {}", err);
                 }
-                if !inserted_batch.is_empty() {
-                    self.enqueue_edges(inserted_batch).await?;
-                    self.log_surrealdb_status("edges-batch-queued");
+
+                let resolution_time = resolution_start.elapsed();
+                let resolution_rate_local = (stored_edges_local as f64 / edge_count as f64) * 100.0;
+
+                let edge_msg = format!(
+                    "🔗 Dependencies resolved: {}/{} relationships ({:.1}% success) | ⚡ {:.1}s",
+                    stored_edges_local,
+                    edge_count,
+                    resolution_rate_local,
+                    resolution_time.as_secs_f64()
+                );
+                edge_pb.finish_with_message(edge_msg);
+
+                info!("🔗 M4 MAX PARALLEL PROCESSING RESULTS:");
+                info!(
+                    "   ✅ Successfully stored: {} edges ({:.1}% of extracted relationships)",
+                    stored_edges_local, resolution_rate_local
+                );
+                info!(
+                    "   🎯 Exact matches: {} (direct symbol found)",
+                    exact_matches
+                );
+                info!(
+                    "   🔄 Pattern matches: {} (simplified/cleaned symbols)",
+                    pattern_matches
+                );
+                #[cfg(feature = "ai-enhanced")]
+                info!(
+                    "   🧠 AI semantic matches: {} (similarity-based resolution)",
+                    ai_matches
+                );
+                info!(
+                    "   ❌ Unresolved: {} (external dependencies/dynamic calls)",
+                    unresolved_edges
+                );
+                if !unresolved_samples.is_empty() && std::env::var("CODEGRAPH_DEBUG").is_ok() {
+                    info!("   🔍 Sample unresolved targets: {:?}", unresolved_samples);
                 }
-                edge_pb.set_position(bulk_success as u64);
+                info!(
+                    "   ⚡ M4 Max performance: {:.0} edges/s ({} cores utilized)",
+                    edge_count as f64 / resolution_time.as_secs_f64(),
+                    num_cpus::get()
+                );
+                info!(
+                    "   🚀 Parallel efficiency: {} chunks processed across {} cores",
+                    total_chunks,
+                    num_cpus::get()
+                );
+
+                if resolution_rate_local >= 80.0 {
+                    info!(
+                        "🎉 EXCELLENT: {:.1}% resolution rate achieved!",
+                        resolution_rate_local
+                    );
+                } else if resolution_rate_local >= 60.0 {
+                    info!(
+                        "👍 GOOD: {:.1}% resolution rate. Consider enabling ai-enhanced or improving symbol normalization.",
+                        resolution_rate_local
+                    );
+                } else {
+                    warn!(
+                        "⚠️ LOW resolution rate: {:.1}%. Check normalization and embeddings.",
+                        resolution_rate_local
+                    );
+                }
+            } else {
+                edge_pb.finish_with_message("No resolved edges to store");
             }
-
-            let stored_edges_local = bulk_success;
-            let bulk_time = bulk_start_time.elapsed();
-            info!(
-                "💾 M4 MAX OPTIMIZED: {} edges stored in {:.2}s ({:.0} edges/s)",
-                stored_edges_local,
-                bulk_time.as_secs_f64(),
-                stored_edges_local as f64 / bulk_time.as_secs_f64()
-            );
 
             let resolution_time = resolution_start.elapsed();
             let resolution_rate_local = (stored_edges_local as f64 / edge_count as f64) * 100.0;
@@ -2849,6 +2914,113 @@ impl ProjectIndexer {
 
     fn normalize_symbol(symbol: &str) -> String {
         symbol.trim().to_lowercase()
+    }
+
+    fn normalize_symbol_target(target: &str) -> Vec<String> {
+        // Apply simple, pure string normalizations; return a set of candidate variants
+        let mut variants = Vec::new();
+
+        let mut base = target.trim();
+
+        // Strip trailing macro bang
+        if let Some(stripped) = base.strip_suffix('!') {
+            base = stripped;
+        }
+
+        // Strip call parentheses and args: take up to first '('
+        if let Some(idx) = base.find('(') {
+            base = &base[..idx];
+        }
+
+        // Strip generics by removing everything from first '<' that has a matching '>'
+        let mut generic_stripped = String::new();
+        let mut depth = 0;
+        for ch in base.chars() {
+            if ch == '<' {
+                depth += 1;
+                continue;
+            }
+            if ch == '>' && depth > 0 {
+                depth -= 1;
+                continue;
+            }
+            if depth == 0 {
+                generic_stripped.push(ch);
+            }
+        }
+        let mut cleaned = generic_stripped.trim().to_string();
+
+        // Strip trait qualification: "Type as Trait::method" -> "Type::method"
+        if let Some(pos) = cleaned.find(" as ") {
+            let after = &cleaned[pos + 4..];
+            if let Some(idx) = after.find("::") {
+                cleaned = format!("{}{}", &cleaned[..pos], &after[idx..]);
+            }
+        }
+
+        // Strip leading self:: / super:: / crate::
+        let prefixes = ["self::", "super::", "crate::"];
+        for p in prefixes {
+            if let Some(stripped) = cleaned.strip_prefix(p) {
+                cleaned = stripped.to_string();
+                break;
+            }
+        }
+
+        let lower = cleaned.to_lowercase();
+
+        variants.push(cleaned.clone());
+        variants.push(lower.clone());
+
+        // Push last path segment variants
+        if let Some(last) = cleaned.rsplit("::").next() {
+            variants.push(last.to_string());
+            variants.push(last.to_lowercase());
+        }
+
+        variants.sort();
+        variants.dedup();
+        variants
+    }
+
+    fn normalize_rust_symbol(target: &str) -> Vec<String> {
+        // Demangle if possible
+        let demangled = try_demangle(target)
+            .map(|d| d.to_string())
+            .unwrap_or_else(|_| target.to_string());
+
+        let symbolic = demangle(
+            &demangled,
+            DemangleOptions::default().language(Language::Rust),
+        )
+        .unwrap_or_else(|_| demangled.clone());
+
+        let mut out = Vec::new();
+
+        // Strip generics/path args via syn
+        if let Ok(path) = parse_syn_path::<SynPath>(&symbolic) {
+            let mut simple = Vec::new();
+            for seg in path.segments {
+                let mut name = seg.ident.to_string();
+                // Drop any generic arguments (PathArguments)
+                match seg.arguments {
+                    PathArguments::None => {}
+                    _ => {}
+                }
+                simple.push(name);
+            }
+            if !simple.is_empty() {
+                let joined = simple.join("::");
+                out.push(joined.clone());
+                out.push(joined.to_lowercase());
+                if let Some(last) = simple.last() {
+                    out.push(last.clone());
+                    out.push(last.to_lowercase());
+                }
+            }
+        }
+
+        out
     }
 
     fn create_progress_bar(&self, total: u64, message: &str) -> ProgressBar {

@@ -66,6 +66,9 @@ autoagents = { git = "https://github.com/liquidos-ai/AutoAgents", optional = tru
 autoagents-derive = { git = "https://github.com/liquidos-ai/AutoAgents", optional = true }
 codegraph-mcp-core = { path = "../codegraph-mcp-core" }
 codegraph-mcp-tools = { path = "../codegraph-mcp-tools", optional = true }
+biome_js_parser = "0.5.7"
+python-parser = "0.2.0"
+unicode-bom = "2.0.3"
 
 [dev-dependencies]
 tempfile = { workspace = true }
