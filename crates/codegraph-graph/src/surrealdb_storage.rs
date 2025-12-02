@@ -596,7 +596,7 @@ impl SurrealDbStorage {
         // Serialize to owned values to satisfy static requirement of Surreal bindings
         let owned: Vec<ChunkEmbeddingRecord> = records.to_vec();
 
-        let mut resp = self
+        let resp = self
             .db
             .query(UPSERT_CHUNK_EMBEDDINGS_QUERY)
             .bind(("data", owned))
