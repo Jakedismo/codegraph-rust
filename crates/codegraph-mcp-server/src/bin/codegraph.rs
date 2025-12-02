@@ -554,6 +554,14 @@ enum ConfigAction {
     #[command(about = "Validate configuration")]
     Validate,
 
+    #[command(about = "Run SurrealDB connectivity/schema canary (debug)")]
+    DbCheck {
+        #[arg(long, help = "Namespace to use (overrides env)")]
+        namespace: Option<String>,
+        #[arg(long, help = "Database to use (overrides env)")]
+        database: Option<String>,
+    },
+
     #[command(about = "Show orchestrator-agent configuration metadata")]
     AgentStatus {
         #[arg(long, help = "Show as JSON")]
@@ -748,6 +756,12 @@ async fn main() -> Result<()> {
         }
         Commands::Config { action } => {
             handle_config(action).await?;
+        }
+        Commands::DbCheck {
+            namespace,
+            database,
+        } => {
+            handle_db_check(namespace, database).await?;
         }
         Commands::Stats {
             index,

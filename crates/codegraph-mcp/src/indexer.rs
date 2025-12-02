@@ -3322,6 +3322,10 @@ impl ProjectIndexer {
 
         let path = path.as_ref().to_path_buf();
         let (tx, mut rx) = mpsc::channel(100);
+        let debounce_ms: u64 = std::env::var("CODEGRAPH_WATCH_DEBOUNCE_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(300);
 
         let mut watcher =
             notify::recommended_watcher(move |res: std::result::Result<Event, _>| {
@@ -3333,13 +3337,24 @@ impl ProjectIndexer {
         watcher.watch(&path, RecursiveMode::Recursive)?;
         info!("Watching for changes in: {:?}", path);
 
+        use std::collections::HashMap;
+        use std::time::{Duration, Instant};
+        let mut last_events: HashMap<PathBuf, Instant> = HashMap::new();
+
         while let Some(event) = rx.recv().await {
             match event.kind {
                 EventKind::Modify(ModifyKind::Data(_)) | EventKind::Create(_) => {
                     for path in event.paths {
                         if self.should_index(&path) {
-                            info!("File changed: {:?}, reindexing...", path);
-                            // No-op stub for now
+                            let now = Instant::now();
+                            let entry = last_events.entry(path.clone()).or_insert(now);
+                            if now.duration_since(*entry).as_millis() as u64 >= debounce_ms {
+                                *entry = now;
+                                info!("File changed: {:?}, reindexing (debounced)...", path);
+                                // TODO: trigger incremental index of single file
+                            } else {
+                                debug!("Debounced change for {:?}", path);
+                            }
                         }
                     }
                 }
