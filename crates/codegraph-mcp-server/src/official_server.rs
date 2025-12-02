@@ -400,12 +400,13 @@ impl CodeGraphMCPServer {
     }
 
     /// Creates a progress notification callback that sends MCP protocol notifications
+    /// with message support for 3-stage progress updates
     #[cfg(feature = "ai-enhanced")]
-    fn create_progress_callback(
+    fn create_progress_callback_with_message(
         peer: Peer<RoleServer>,
         progress_token: ProgressToken,
-    ) -> Arc<dyn Fn(f64, Option<f64>) -> BoxFuture<'static, ()> + Send + Sync> {
-        Arc::new(move |progress, total| {
+    ) -> codegraph_mcp_autoagents::ProgressCallback {
+        Arc::new(move |progress, message| {
             let peer = peer.clone();
             let progress_token = progress_token.clone();
 
@@ -415,8 +416,8 @@ impl CodeGraphMCPServer {
                     params: ProgressNotificationParam {
                         progress_token: progress_token.clone(),
                         progress,
-                        total,
-                        message: None, // Optional progress message
+                        total: Some(1.0), // Total is always 1.0 for 3-stage progress
+                        message,
                     },
                     extensions: Default::default(),
                 };
@@ -440,7 +441,7 @@ impl CodeGraphMCPServer {
     ) -> Result<CallToolResult, McpError> {
         use codegraph_ai::llm_factory::LLMProviderFactory;
         use codegraph_graph::GraphFunctions;
-        use codegraph_mcp_autoagents::{CodeGraphExecutor, CodeGraphExecutorBuilder};
+        use codegraph_mcp_autoagents::{CodeGraphExecutor, CodeGraphExecutorBuilder, ProgressNotifier};
         use std::sync::Arc;
 
         // Auto-detect context tier
@@ -450,29 +451,50 @@ impl CodeGraphMCPServer {
 
         DebugLogger::log_agent_start(query, analysis_type.as_str(), &format!("{:?}", tier));
 
+        // Create progress notifier for 3-stage notifications
+        let progress_notifier = if let Some(progress_token) = meta.get_progress_token() {
+            let callback = Self::create_progress_callback_with_message(peer.clone(), progress_token);
+            ProgressNotifier::new(callback, analysis_type.as_str())
+        } else {
+            ProgressNotifier::noop()
+        };
+
+        // Stage 1: Agent started (progress: 0.0)
+        progress_notifier.notify_started().await;
+
         // Load config for LLM provider
         let config_manager = codegraph_core::config_manager::ConfigManager::load()
-            .map_err(|e| McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: format!("Failed to load config: {}", e).into(),
-                data: None,
-            })
             .map_err(|e| {
-                DebugLogger::log_agent_finish(false, None, Some(&e.message));
-                e
+                let error_msg = format!("Failed to load config: {}", e);
+                let notifier = progress_notifier.clone();
+                let error_for_spawn = error_msg.clone();
+                tokio::spawn(async move {
+                    notifier.notify_error(&error_for_spawn).await;
+                });
+                DebugLogger::log_agent_finish(false, None, Some(&error_msg));
+                McpError {
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: error_msg.into(),
+                    data: None,
+                }
             })?;
         let config = config_manager.config();
 
         // Create LLM provider
         let llm_provider = LLMProviderFactory::create_from_config(&config.llm)
-            .map_err(|e| McpError {
-                code: rmcp::model::ErrorCode(-32603),
-                message: format!("Failed to create LLM provider: {}", e).into(),
-                data: None,
-            })
             .map_err(|e| {
-                DebugLogger::log_agent_finish(false, None, Some(&e.message));
-                e
+                let error_msg = format!("Failed to create LLM provider: {}", e);
+                let notifier = progress_notifier.clone();
+                let error_for_spawn = error_msg.clone();
+                tokio::spawn(async move {
+                    notifier.notify_error(&error_for_spawn).await;
+                });
+                DebugLogger::log_agent_finish(false, None, Some(&error_msg));
+                McpError {
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: error_msg.into(),
+                    data: None,
+                }
             })?;
 
         // Create GraphFunctions with SurrealDB connection
@@ -495,14 +517,19 @@ impl CodeGraphMCPServer {
 
             let storage = SurrealDbStorage::new(surrealdb_config)
                 .await
-                .map_err(|e| McpError {
-                    code: rmcp::model::ErrorCode(-32603),
-                    message: format!("Failed to create SurrealDB storage: {}. Ensure SurrealDB is running on ws://localhost:3004", e).into(),
-                    data: None,
-                })
                 .map_err(|e| {
-                    DebugLogger::log_agent_finish(false, None, Some(&e.message));
-                    e
+                    let error_msg = format!("Failed to create SurrealDB storage: {}. Ensure SurrealDB is running on ws://localhost:3004", e);
+                    let notifier = progress_notifier.clone();
+                    let error_for_spawn = error_msg.clone();
+                    tokio::spawn(async move {
+                        notifier.notify_error(&error_for_spawn).await;
+                    });
+                    DebugLogger::log_agent_finish(false, None, Some(&error_msg));
+                    McpError {
+                        code: rmcp::model::ErrorCode(-32603),
+                        message: error_msg.into(),
+                        data: None,
+                    }
                 })?;
 
             Arc::new(GraphFunctions::new(storage.db()))
@@ -547,28 +574,42 @@ impl CodeGraphMCPServer {
             .tool_executor(tool_executor)
             .build()
             .map_err(|e| {
-                let err = McpError {
+                let error_msg = format!("Failed to build AutoAgents executor: {}", e);
+                let notifier = progress_notifier.clone();
+                let error_for_spawn = error_msg.clone();
+                tokio::spawn(async move {
+                    notifier.notify_error(&error_for_spawn).await;
+                });
+                DebugLogger::log_agent_finish(false, None, Some(&error_msg));
+                McpError {
                     code: rmcp::model::ErrorCode(-32603),
-                    message: format!("Failed to build AutoAgents executor: {}", e).into(),
+                    message: error_msg.into(),
                     data: None,
-                };
-                DebugLogger::log_agent_finish(false, None, Some(&err.message));
-                err
+                }
             })?;
 
+        // Stage 2: Agent analyzing with tools (progress: 0.5)
+        // Sent after all setup is complete, before actual agent execution
+        progress_notifier.notify_analyzing().await;
+
         // Execute agentic workflow
-        let result: CodeGraphAgentOutput = executor
+        let result: CodeGraphAgentOutput = match executor
             .execute(query.to_string(), analysis_type)
             .await
-            .map_err(|e| {
-                let err = McpError {
+        {
+            Ok(output) => output,
+            Err(e) => {
+                let error_msg = format!("AutoAgents workflow failed: {}", e);
+                // Stage 3: Error notification (progress: 1.0)
+                progress_notifier.notify_error(&error_msg).await;
+                DebugLogger::log_agent_finish(false, None, Some(&error_msg));
+                return Err(McpError {
                     code: rmcp::model::ErrorCode(-32603),
-                    message: format!("AutoAgents workflow failed: {}", e).into(),
+                    message: error_msg.into(),
                     data: None,
-                };
-                DebugLogger::log_agent_finish(false, None, Some(&err.message));
-                err
-            })?;
+                });
+            }
+        };
 
         // Parse structured output from answer field (contains JSON schema)
         use codegraph_ai::agentic_schemas::*;
@@ -695,6 +736,9 @@ impl CodeGraphMCPServer {
         };
 
         DebugLogger::log_agent_finish(true, Some(&response_json), None);
+
+        // Stage 3: Agent complete (progress: 1.0)
+        progress_notifier.notify_complete().await;
 
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(&response_json)

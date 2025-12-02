@@ -62,6 +62,8 @@ pub use lats::{
     SearchNode, SearchTree, SearchTreeError, TerminationReason, ToolAction,
 };
 #[cfg(feature = "autoagents-experimental")]
+pub use progress_notifier::{ProgressCallback, ProgressNotifier, ProgressStage};
+#[cfg(feature = "autoagents-experimental")]
 pub use prompt_selector::{PromptSelector, PromptSelectorStats, PromptVerbosity};
 #[cfg(feature = "autoagents-experimental")]
 pub use react_executor::ReActExecutor;
