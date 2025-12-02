@@ -98,8 +98,9 @@ lazy_static = "1.4.0"
 tokio = { version = "1.39", features = ["full"] }
 async-trait = "0.1"
 futures = "0.3"
-rmcp = { version = "0.7.0", features = ["server", "transport-io", "transport-streamable-http-server"] }
-semchunk-rs = { version = "0.4", features = ["serde"] }
+rmcp = { version = "0.10.0", features = ["server", "transport-io", "transport-streamable-http-server"] }
+semchunk-rs = { version = "0.1.1" }
+tokenizers = { version = "0.22.1", default-features = false, features = ["http"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

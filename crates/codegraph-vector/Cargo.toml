@@ -35,7 +35,7 @@ unicode-normalization = "0.1"
 candle-core = { version = "0.9.1", optional = true, default-features = false, features = ["metal"] }
 candle-nn = { version = "0.9.1", optional = true, default-features = false }
 candle-transformers = { version = "0.9.1", optional = true, default-features = false }
-tokenizers = { version = "0.20", features = ["http"] }  # Always available for token counting in Jina provider
+tokenizers = { workspace = true }  # Always available for token counting in Jina provider
 hf-hub = { version = "0.4", optional = true, default-features = true, features = ["tokio"] }
 lru = { workspace = true }
 
@@ -44,7 +44,7 @@ reqwest = { workspace = true, optional = true }
 
 # ONNX Runtime provider (optional)
 ort = { version = "2.0.0-rc.10", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries"] }
-semchunk-rs = "0.1.1"
+semchunk-rs = { workspace = true }
 fxhash = "0.2.1"
 
 

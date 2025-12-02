@@ -703,6 +703,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bisection"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "021e079a1bab0ecce6cf4b4b74c0c37afa4a697136eb3b127875c84a8f04a8c3"
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5938,6 +5944,8 @@ dependencies = [
 [[package]]
 name = "rmcp"
 version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "534fd1cd0601e798ac30545ff2b7f4a62c6f14edd4aaed1cc5eb1e85f69f09af"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -6361,6 +6369,12 @@ dependencies = [
 [[package]]
 name = "semchunk-rs"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffc31a170a39b61d087c4ea71de9d8c98546992b2929132c8fbc57ed5d6dfb3b"
+dependencies = [
+ "bisection",
+ "regex",
+]
 
 [[package]]
 name = "semver"
