@@ -13,7 +13,11 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
   - Need a broad architectural map → use `agentic_architecture_analysis`.
   - Need quick semantic answers with citations → use `agentic_semantic_question` or `agentic_code_search`.
   - Need to understand repository API design, public surfaces? → use`agentic_api_surface_analysis`
-- **Prerequisites:** Index the repo first (`codegraph index . -r -l language`) so graph and embeddings exist. For live edits, run the mcp server with `codegraph start stdio --watch` (daemon) to keep results current.
+  - Need pre-chewn semantically rich context for a task use →`agentic_context_builder
+- All these tools internally execute a reasoning agent with built-in graph analysis and semantic search tools. The agent does multi-step graph analysis on your indexed codebase and semantic similarity hybrid searches (0.7 vector similarity, 0.3 lexical search) so that it gains a comprehensive understanding of your codebase so it can answer the question given by the client.
+- The Depth and quality of provided answers is governed by a 4-tier prompt mechanism, less detailed faster analyses for models with smaller ctx windows more broader comprehensive analyses for models with larger ctx windows.
+- This enabled running local models in systems with limited resources and chaining tool uses for comprehensive context while using models like grok-4-1-fast-reasoning give you the full monty in one go.
+- **Prerequisites:** Index your codebase first (`codegraph index . -r -l language`) so graph and embeddings exist. For live edits, run the mcp server with `codegraph start stdio --watch` (daemon) to keep results current.
 - **How to invoke in clients without MCP “instructions” support:** Call the prompt tool `read_initial_instructions` once; it returns the same guidance the MCP instructions feature would have injected. Example (stdio):
   ```
   -> call tool: read_initial_instructions
@@ -25,8 +29,8 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
 **Core Capabilities:**
 - Semantic code search with vector embeddings (and optional reranking of graphDB results)
 - LLM-powered code intelligence and dependency analysis
-- Automatic AST+ML Enhanced dependency graph construction and traversal
-- Agentic code-agent tools with tier-aware multi-step reasoning
+- Automatic AST+Fast ML Enhanced dependency graph construction and surrealDB functions enabled fast traversal
+- Agentic MCP tools with tier-aware multi-step reasoning based on used models ctx window
 - Incremental indexing with change detection (only re-index modified files)
 - Daemon mode for automatic file watching and re-indexing
 
@@ -78,9 +82,10 @@ use_completions_api = true
 - Cloud-native or local deployment
 
 **MCP Integration:**
-- Stdio transport (production-ready)
+- Stdio transport (production-ready) - when adding to a client point to the absolute path of your built codegraph binary - codegraph start stdio as cmd and arguments doesn't seem to work for most clients
 - Streamable HTTP transport with SSE (experimental)
-- Compatible with Claude Code, Gemini, Claude Desktop, Cursor etc. (Haven't tested with Codex due to it's extreme sandbox)
+- Compatible with CLI Agents Claude Code, Gemini, Qwen, Cursor-Agent (Haven't tested with Codex due to it's extreme sandbox) - won't work with stdio with f.ex. cursor because working project is inferred from MCP servers process location, but http is there for this reason - run in your working project `codegraph start http --port PORT` and add to your client as codegraph url:http://localhost:PORT/mcp
+- Two agent architectures: default ReACT (fast, single-shot reasoning) and **new** LATS (Language Agent Tree Search; slower, more comprehensive and thorough answers - uses more tokens)
 
 ---
 
