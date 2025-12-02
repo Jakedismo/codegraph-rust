@@ -246,6 +246,27 @@ cargo build --release -p codegraph-mcp --features "ai-enhanced,autoagents,autoag
 - **Evaluation**: Use specialized reasoning models (Opus 4.5)) for accurate state evaluation
 - **Cost optimization**: Balance quality and cost by using expensive models only where needed (local for cheapest and most fun combinations and grok-4-1-fast-reasoning for everything dirt cheap and amazing results)
 
+### Agent Reliability Settings
+
+Configure timeouts and resource limits for agent execution:
+
+```bash
+# Global agent timeout (default: 300 seconds, 0 = unlimited)
+export CODEGRAPH_AGENT_TIMEOUT_SECS=300
+
+# LATS per-iteration timeout (default: 60 seconds, 0 = unlimited)
+export CODEGRAPH_LATS_ITERATION_TIMEOUT_SECS=60
+
+# Maximum tree nodes for LATS (default: auto-calculated from beam_width * max_depth * 2)
+export CODEGRAPH_AGENT_MAX_TREE_NODES=0
+
+# Agent memory window size (default: 40 messages, 0 = unlimited)
+export CODEGRAPH_AGENT_MEMORY_WINDOW=40
+
+# Enable debug logging for agent execution
+export CODEGRAPH_DEBUG=1
+```
+
 ---
 
 ## 📋 Table of Contents

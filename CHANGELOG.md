@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### **Agent Reliability Improvements**
+- **Execution Timeout Handling** (R1):
+  - Configurable global timeout for all agentic tool executions (default: 300 seconds)
+  - Environment variable: `CODEGRAPH_AGENT_TIMEOUT_SECS` (set to 0 for unlimited)
+  - Graceful timeout error with elapsed time and steps completed
+  - Debug logging when `CODEGRAPH_DEBUG=1`
+
+- **3-Stage Progress Notifications** (R2):
+  - Stage 1 (0.0): "Agent started: {analysis_type}" - sent at workflow start
+  - Stage 2 (0.5): "Agent analyzing with tools..." - sent after first tool execution
+  - Stage 3 (1.0): "Agent analysis complete" or error message - sent at workflow end
+  - MCP protocol compliant notifications via rmcp SDK
+  - Non-blocking async notification delivery
+
+- **LATS Early Termination** (R3):
+  - Score-based termination: stops when solution score > 0.9
+  - Solution flag termination: stops when `is_solution` is true
+  - Per-iteration timeout: `CODEGRAPH_LATS_ITERATION_TIMEOUT_SECS` (default: 60s)
+  - Tree size limit: `CODEGRAPH_AGENT_MAX_TREE_NODES` (default: auto-calculated)
+  - Debug logging with termination reason (high_score, solution_found, tree_size_exceeded, iteration_timeout)
+
+- **Context Overflow API Error Handling** (R4):
+  - Detects context window overflow from LLM API errors
+  - Pattern matching for: "context_length_exceeded", "maximum context length", "too many tokens", etc.
+  - Returns user-friendly error: "Context window limit reached. Query too complex for model's capacity."
+  - Debug logging when `CODEGRAPH_DEBUG=1`
+
+- **Memory Window Size Fix** (R5):
+  - Changed default memory window from tier-based (10-40) to fixed 40 messages
+  - Environment variable: `CODEGRAPH_AGENT_MEMORY_WINDOW` (default: 40, set to 0 for unlimited)
+  - Applies to both ReAct and LATS agents
+
 #### **LATS Agent Architecture** (Experimental)
 - **Language Agent Tree Search**: UCT-based tree search for higher-quality agentic analysis
   - Toggle via `CODEGRAPH_AGENT_ARCHITECTURE=lats` environment variable
