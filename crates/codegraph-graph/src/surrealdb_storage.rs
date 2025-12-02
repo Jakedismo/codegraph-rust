@@ -487,6 +487,11 @@ impl SurrealDbStorage {
             organization_id: node.metadata.attributes.get("organization_id").cloned(),
             repository_url: node.metadata.attributes.get("repository_url").cloned(),
             domain: node.metadata.attributes.get("domain").cloned(),
+            chunk_count: node
+                .metadata
+                .attributes
+                .get("chunk_count")
+                .and_then(|v| v.parse::<i64>().ok()),
         })
     }
 
@@ -572,6 +577,32 @@ impl SurrealDbStorage {
             .map_err(|e| {
                 CodeGraphError::Database(format!(
                     "Failed to upsert symbol embedding batch ({} items): {}",
+                    records.len(),
+                    truncate_surreal_error(&e)
+                ))
+            })?;
+
+        Ok(())
+    }
+
+    pub async fn upsert_chunk_embeddings_batch(
+        &self,
+        records: &[ChunkEmbeddingRecord],
+    ) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+
+        // Serialize to owned values to satisfy static requirement of Surreal bindings
+        let owned: Vec<ChunkEmbeddingRecord> = records.to_vec();
+
+        self.db
+            .query(UPSERT_CHUNK_EMBEDDINGS_QUERY)
+            .bind(("data", owned))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Failed to upsert chunk embedding batch ({} items): {}",
                     records.len(),
                     truncate_surreal_error(&e)
                 ))
@@ -790,6 +821,7 @@ impl SurrealDbStorage {
         }
 
         // Use SET syntax (like nodes/edges) instead of CONTENT to avoid ID conflicts
+        // Cast datetime strings to SurrealDB datetime type using <datetime>
         let query = r#"
             LET $batch = $data;
             FOR $doc IN $batch {
@@ -797,9 +829,9 @@ impl SurrealDbStorage {
                     file_path = $doc.file_path,
                     project_id = $doc.project_id,
                     content_hash = $doc.content_hash,
-                    modified_at = $doc.modified_at,
+                    modified_at = <datetime>$doc.modified_at,
                     file_size = $doc.file_size,
-                    last_indexed_at = $doc.last_indexed_at,
+                    last_indexed_at = <datetime>$doc.last_indexed_at,
                     node_count = $doc.node_count,
                     edge_count = $doc.edge_count,
                     language = $doc.language,
@@ -1462,6 +1494,8 @@ struct SurrealNodeRecord {
     repository_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     domain: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    chunk_count: Option<i64>,
 }
 
 pub const SURR_EMBEDDING_COLUMN_384: &str = "embedding_384";
@@ -1518,6 +1552,156 @@ pub struct NodeEmbeddingRecord {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ChunkEmbeddingRecord {
+    pub id: String,
+    pub parent_node: String,
+    pub chunk_index: i32,
+    pub text: String,
+    pub embedding_384: Option<Vec<f64>>,
+    pub embedding_768: Option<Vec<f64>>,
+    pub embedding_1024: Option<Vec<f64>>,
+    pub embedding_1536: Option<Vec<f64>>,
+    pub embedding_2048: Option<Vec<f64>>,
+    pub embedding_2560: Option<Vec<f64>>,
+    pub embedding_3072: Option<Vec<f64>>,
+    pub embedding_4096: Option<Vec<f64>>,
+    pub embedding_model: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl ChunkEmbeddingRecord {
+    pub fn new(
+        parent_node: &str,
+        chunk_index: usize,
+        text: String,
+        embedding: &[f32],
+        embedding_model: &str,
+        embedding_column: &str,
+    ) -> Self {
+        let embedding_vec: Vec<f64> = embedding.iter().map(|&f| f as f64).collect();
+        let (
+            embedding_384,
+            embedding_768,
+            embedding_1024,
+            embedding_1536,
+            embedding_2048,
+            embedding_2560,
+            embedding_3072,
+            embedding_4096,
+        ) = match embedding_column {
+            SURR_EMBEDDING_COLUMN_384 => (
+                Some(embedding_vec),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+            SURR_EMBEDDING_COLUMN_768 => (
+                None,
+                Some(embedding_vec),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+            SURR_EMBEDDING_COLUMN_1024 => (
+                None,
+                None,
+                Some(embedding_vec),
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+            SURR_EMBEDDING_COLUMN_1536 => (
+                None,
+                None,
+                None,
+                Some(embedding_vec),
+                None,
+                None,
+                None,
+                None,
+            ),
+            SURR_EMBEDDING_COLUMN_2048 => (
+                None,
+                None,
+                None,
+                None,
+                Some(embedding_vec),
+                None,
+                None,
+                None,
+            ),
+            SURR_EMBEDDING_COLUMN_2560 => (
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(embedding_vec),
+                None,
+                None,
+            ),
+            SURR_EMBEDDING_COLUMN_3072 => (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(embedding_vec),
+                None,
+            ),
+            SURR_EMBEDDING_COLUMN_4096 => (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(embedding_vec),
+            ),
+            _ => (None, None, None, None, None, None, None, None),
+        };
+
+        let id = {
+            let mut hasher = Sha256::new();
+            hasher.update(parent_node.as_bytes());
+            hasher.update(b":");
+            hasher.update(chunk_index.to_le_bytes());
+            format!("{:x}", hasher.finalize())
+        };
+
+        Self {
+            id,
+            parent_node: parent_node.to_string(),
+            chunk_index: chunk_index as i32,
+            text,
+            embedding_384,
+            embedding_768,
+            embedding_1024,
+            embedding_1536,
+            embedding_2048,
+            embedding_2560,
+            embedding_3072,
+            embedding_4096,
+            embedding_model: embedding_model.to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+}
+
 const UPSERT_NODES_QUERY: &str = r#"
 LET $batch = $data;
 FOR $doc IN $batch {
@@ -1544,6 +1728,7 @@ FOR $doc IN $batch {
         organization_id = $doc.organization_id,
         repository_url = $doc.repository_url,
         domain = $doc.domain,
+        chunk_count = $doc.chunk_count,
         updated_at = time::now();
 }
 "#;
@@ -1580,6 +1765,27 @@ FOR $doc IN $batch {
         source_edge_id = $doc.source_edge_id,
         metadata = $doc.metadata,
         access_count = $doc.access_count;
+}
+"#;
+
+const UPSERT_CHUNK_EMBEDDINGS_QUERY: &str = r#"
+LET $batch = $data;
+FOR $doc IN $batch {
+    UPSERT type::thing('chunks', $doc.id) SET
+        parent_node = type::thing('nodes', $doc.parent_node),
+        chunk_index = $doc.chunk_index,
+        text = $doc.text,
+        embedding_384 = $doc.embedding_384,
+        embedding_768 = $doc.embedding_768,
+        embedding_1024 = $doc.embedding_1024,
+        embedding_1536 = $doc.embedding_1536,
+        embedding_2048 = $doc.embedding_2048,
+        embedding_2560 = $doc.embedding_2560,
+        embedding_3072 = $doc.embedding_3072,
+        embedding_4096 = $doc.embedding_4096,
+        embedding_model = $doc.embedding_model,
+        created_at = $doc.created_at,
+        updated_at = time::now();
 }
 "#;
 

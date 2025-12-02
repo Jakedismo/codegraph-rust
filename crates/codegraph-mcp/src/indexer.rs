@@ -14,9 +14,12 @@ use codegraph_graph::{
     SURR_EMBEDDING_COLUMN_3072, SURR_EMBEDDING_COLUMN_384, SURR_EMBEDDING_COLUMN_4096,
     SURR_EMBEDDING_COLUMN_768,
 };
+use codegraph_graph::ChunkEmbeddingRecord;
 use codegraph_parser::TreeSitterParser;
 #[cfg(feature = "ai-enhanced")]
 use futures::{stream, StreamExt};
+#[cfg(feature = "embeddings")]
+use codegraph_vector::embeddings::generator::ChunkPlan;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use num_cpus;
 use rayon::prelude::*;
@@ -180,6 +183,7 @@ enum SurrealWriteJob {
     Edges(Vec<CodeEdge>),
     NodeEmbeddings(Vec<NodeEmbeddingRecord>),
     SymbolEmbeddings(Vec<SymbolEmbeddingRecord>),
+    ChunkEmbeddings(Vec<ChunkEmbeddingRecord>),
     FileMetadata(Vec<FileMetadataRecord>),
     DeleteNodesByFile {
         file_paths: Vec<String>,
@@ -203,78 +207,49 @@ impl SurrealWriterHandle {
             while let Some(job) = rx.recv().await {
                 match job {
                     SurrealWriteJob::Nodes(nodes) => {
-                        if nodes.is_empty() {
-                            continue;
-                        }
-                        let result = {
-                            let mut guard = storage.lock().await;
-                            guard.upsert_nodes_batch(&nodes).await
-                        };
-                        if let Err(err) = result {
+                        if nodes.is_empty() { continue; }
+                        if let Err(err) = { let mut guard = storage.lock().await; guard.upsert_nodes_batch(&nodes).await } {
                             error!("Surreal node batch failed: {}", err);
                             last_error = Some(anyhow!(err.to_string()));
                         }
                     }
                     SurrealWriteJob::Edges(edges) => {
-                        if edges.is_empty() {
-                            continue;
-                        }
-                        let result = {
-                            let mut guard = storage.lock().await;
-                            guard.upsert_edges_batch(&edges).await
-                        };
-                        if let Err(err) = result {
+                        if edges.is_empty() { continue; }
+                        if let Err(err) = { let mut guard = storage.lock().await; guard.upsert_edges_batch(&edges).await } {
                             error!("Surreal edge batch failed: {}", err);
                             last_error = Some(anyhow!(err.to_string()));
                         }
                     }
                     SurrealWriteJob::NodeEmbeddings(records) => {
-                        if records.is_empty() {
-                            continue;
-                        }
-                        let result = {
-                            let guard = storage.lock().await;
-                            guard.update_node_embeddings_batch(&records).await
-                        };
-                        if let Err(err) = result {
+                        if records.is_empty() { continue; }
+                        if let Err(err) = { let guard = storage.lock().await; guard.update_node_embeddings_batch(&records).await } {
                             error!("Surreal node embedding batch failed: {}", err);
                             last_error = Some(anyhow!(err.to_string()));
                         }
                     }
                     SurrealWriteJob::SymbolEmbeddings(records) => {
-                        if records.is_empty() {
-                            continue;
-                        }
-                        let result = {
-                            let guard = storage.lock().await;
-                            guard.upsert_symbol_embeddings_batch(&records).await
-                        };
-                        if let Err(err) = result {
+                        if records.is_empty() { continue; }
+                        if let Err(err) = { let guard = storage.lock().await; guard.upsert_symbol_embeddings_batch(&records).await } {
                             error!("Surreal symbol embedding batch failed: {}", err);
                             last_error = Some(anyhow!(err.to_string()));
                         }
                     }
-                    SurrealWriteJob::FileMetadata(records) => {
-                        if records.is_empty() {
-                            continue;
+                    SurrealWriteJob::ChunkEmbeddings(records) => {
+                        if records.is_empty() { continue; }
+                        if let Err(err) = { let guard = storage.lock().await; guard.upsert_chunk_embeddings_batch(&records).await } {
+                            error!("Surreal chunk embedding batch failed: {}", err);
+                            last_error = Some(anyhow!(err.to_string()));
                         }
-                        let result = {
-                            let guard = storage.lock().await;
-                            guard.upsert_file_metadata_batch(&records).await
-                        };
-                        if let Err(err) = result {
+                    }
+                    SurrealWriteJob::FileMetadata(records) => {
+                        if records.is_empty() { continue; }
+                        if let Err(err) = { let guard = storage.lock().await; guard.upsert_file_metadata_batch(&records).await } {
                             error!("Surreal file metadata batch failed: {}", err);
                             last_error = Some(anyhow!(err.to_string()));
                         }
                     }
-                    SurrealWriteJob::DeleteNodesByFile {
-                        file_paths,
-                        project_id,
-                    } => {
-                        if file_paths.is_empty() {
-                            continue;
-                        }
-
+                    SurrealWriteJob::DeleteNodesByFile { file_paths, project_id } => {
+                        if file_paths.is_empty() { continue; }
                         let guard = storage.lock().await;
                         let delete_nodes_query = "DELETE nodes WHERE project_id = $project_id AND file_path IN $file_paths RETURN BEFORE";
                         let mut result = match guard
@@ -348,10 +323,7 @@ impl SurrealWriterHandle {
                         }
                     }
                     SurrealWriteJob::ProjectMetadata(record) => {
-                        let result = {
-                            let guard = storage.lock().await;
-                            guard.upsert_project_metadata(record).await
-                        };
+                        let result = { let guard = storage.lock().await; guard.upsert_project_metadata(record).await };
                         if let Err(err) = result {
                             error!("Surreal project metadata write failed: {}", err);
                             last_error = Some(anyhow!(err.to_string()));
@@ -415,6 +387,16 @@ impl SurrealWriterHandle {
         }
         self.tx
             .send(SurrealWriteJob::SymbolEmbeddings(records))
+            .await
+            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
+    }
+
+    async fn enqueue_chunk_embeddings(&self, records: Vec<ChunkEmbeddingRecord>) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        self.tx
+            .send(SurrealWriteJob::ChunkEmbeddings(records))
             .await
             .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
     }
@@ -898,15 +880,23 @@ impl ProjectIndexer {
         store_nodes_pb.finish_with_message("📈 Stored nodes (symbol map ready)");
         self.log_surreal_node_count(total_nodes_extracted).await;
 
-        // Generate semantic embeddings for vector search capabilities
-        let total = nodes.len() as u64;
+        // Generate semantic embeddings for vector search capabilities (chunk-aware)
+        #[cfg(feature = "embeddings")]
+        let chunk_plan: ChunkPlan = self.embedder.chunk_nodes(&nodes);
+        #[cfg(not(feature = "embeddings"))]
+        let chunk_plan: Option<()> = None;
+
+        #[cfg(feature = "embeddings")]
+        let total_chunks = chunk_plan.chunks.len() as u64;
+        #[cfg(not(feature = "embeddings"))]
+        let total_chunks = 0u64;
         let embed_pb = self.create_batch_progress_bar(
-            total,
+            total_chunks,
             self.config.batch_size,
-            "🧠 Embedding nodes (vector batch)",
+            "🧠 Embedding chunks (vector batch)",
         );
         let batch = self.config.batch_size.max(1);
-        let mut processed = 0u64;
+        let processed: u64 = 0;
 
         // Enhanced embedding phase logging
         let provider = &self.global_config.embedding.provider;
@@ -919,56 +909,54 @@ impl ProjectIndexer {
             "   🗄️ SurrealDB column: {}",
             self.embedding_column.column_name()
         );
-        info!("   📊 Nodes to embed: {} semantic entities", total);
+        let total_nodes = nodes.len() as u64;
+        info!("   📊 Nodes to embed: {} semantic entities", total_nodes);
         info!(
             "   ⚡ Batch size: {} (optimized for {} system)",
             batch,
             self.estimate_system_memory()
         );
         info!("   🎯 Target: Enable similarity search and AI-powered analysis");
-        for chunk in nodes.chunks_mut(batch) {
-            #[cfg(feature = "embeddings")]
+        // Embed chunks and persist chunk embeddings
+        #[cfg(feature = "embeddings")]
+        {
+            let mut chunk_iter = chunk_plan.chunks.chunks(batch);
+            let mut meta_iter = chunk_plan.metas.chunks(batch);
+            while let (Some(chunk_batch), Some(meta_batch)) = (chunk_iter.next(), meta_iter.next())
             {
-                let embs = self.embedder.generate_embeddings(&chunk).await?;
-                debug!(
-                    "🔍 EMBEDDING DEBUG: Generated {} embeddings for {} nodes",
-                    embs.len(),
-                    chunk.len()
-                );
-                for (n, e) in chunk.iter_mut().zip(embs.into_iter()) {
-                    n.embedding = Some(e);
-                }
-                let attached_count = chunk.iter().filter(|n| n.embedding.is_some()).count();
-                debug!(
-                    "🔍 EMBEDDING DEBUG: {}/{} nodes now have embeddings attached",
-                    attached_count,
-                    chunk.len()
-                );
-            }
-            #[cfg(not(feature = "embeddings"))]
-            {
-                for n in chunk.iter_mut() {
-                    let text = prepare_node_text(n);
-                    let emb = simple_text_embedding(&text, self.vector_dim);
-                    n.embedding = Some(normalize(&emb));
-                }
-            }
+                // Prepare text batch ordered like metas
+                let texts: Vec<String> = chunk_batch.iter().map(|c| c.text.clone()).collect();
+                let embs = self.embedder.embed_texts(&texts).await?;
 
-            self.persist_node_embeddings(chunk).await?;
-            processed += chunk.len() as u64;
-            embed_pb.set_position(processed.min(total));
+                // Build chunk embedding records
+                let mut records = Vec::with_capacity(meta_batch.len());
+                for ((meta, text), emb) in meta_batch.iter().zip(texts.iter()).zip(embs.iter()) {
+                    records.push(ChunkEmbeddingRecord::new(
+                        &meta.node_index.to_string(),
+                        meta.chunk_index,
+                        text.clone(),
+                        emb,
+                        &self.embedding_model,
+                        self.embedding_column.column_name(),
+                    ));
+                }
+                self.enqueue_chunk_embeddings(records).await?;
+
+                processed += meta_batch.len() as u64;
+                embed_pb.set_position(processed.min(total_chunks));
+            }
         }
-        let embedding_rate = if total > 0 {
-            processed as f64 / total as f64 * 100.0
+        let embedding_rate = if total_chunks > 0 {
+            processed as f64 / total_chunks as f64 * 100.0
         } else {
             100.0
         };
 
         let provider = &self.global_config.embedding.provider;
         let embed_completion_msg = format!(
-            "💾 Semantic embeddings complete: {}/{} nodes (✅ {:.1}% success) | 🤖 {} | 📐 {}-dim | 🚀 Batch: {}",
+            "💾 Semantic embeddings complete: {}/{} chunks (✅ {:.1}% success) | 🤖 {} | 📐 {}-dim | 🚀 Batch: {}",
             processed,
-            total,
+            total_chunks,
             embedding_rate,
             provider,
             self.vector_dim,
@@ -976,7 +964,14 @@ impl ProjectIndexer {
         );
         embed_pb.finish_with_message(embed_completion_msg);
 
-        stats.embeddings = nodes.iter().filter(|n| n.embedding.is_some()).count();
+        // Node embedding: keep pooled embedding as average of its chunks
+        #[cfg(feature = "embeddings")]
+        {
+            // For now, skip storing node-level embedding when chunking is enabled.
+            // Retrieval should use chunk embeddings directly.
+        }
+
+        stats.embeddings = processed as usize;
 
         // Enhanced embedding completion statistics
         info!("💾 Semantic embedding generation results:");

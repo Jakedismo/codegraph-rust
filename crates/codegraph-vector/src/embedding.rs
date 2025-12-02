@@ -115,6 +115,11 @@ impl EmbeddingGenerator {
         build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
     }
 
+    /// Expose chunking so callers can persist chunk-level embeddings.
+    pub fn chunk_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+        self.build_plan_for_nodes(nodes)
+    }
+
     pub fn dimension(&self) -> usize {
         self.model_config.dimension
     }
