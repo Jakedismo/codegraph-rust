@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::env;
 use tokio::fs;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
@@ -669,13 +670,17 @@ impl TreeSitterParser {
             result
         });
 
-        // Apply timeout protection - fail fast for problematic files
+        // Apply timeout protection - configurable via CODEGRAPH_PARSER_TIMEOUT_SECS
+        let base_timeout: u64 = env::var("CODEGRAPH_PARSER_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(10);
         let timeout_duration = if content_len > 1_000_000 {
-            Duration::from_secs(60) // Large files get more time
+            Duration::from_secs(base_timeout.max(300)) // Large files get more time
         } else if content_len > 100_000 {
-            Duration::from_secs(30) // Medium files get moderate time
+            Duration::from_secs((base_timeout * 3).max(200)) // Medium files get moderate time
         } else {
-            Duration::from_secs(10) // Small files should parse quickly
+            Duration::from_secs(base_timeout.max(150)) // Small files should parse quickly
         };
 
         match tokio::time::timeout(timeout_duration, parsing_task).await {

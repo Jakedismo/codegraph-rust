@@ -18,35 +18,40 @@ impl PatternMatcher {
     /// Create pattern matcher from common code patterns
     pub fn new() -> Self {
         // Common code patterns across languages
+        // Language-scoped patterns to avoid useless matches
         let pattern_configs = vec![
             // Rust patterns
-            ("std::", EdgeType::Uses),
-            ("derive(", EdgeType::Uses),
-            ("impl ", EdgeType::Implements),
-            ("trait ", EdgeType::Defines),
-            ("async fn", EdgeType::Defines),
-            ("pub fn", EdgeType::Defines),
-            ("use ", EdgeType::Uses),
-            // TypeScript patterns
-            ("import ", EdgeType::Uses),
-            ("export ", EdgeType::Defines),
-            ("async ", EdgeType::Defines),
-            ("interface ", EdgeType::Defines),
-            ("class ", EdgeType::Defines),
-            ("extends ", EdgeType::Extends),
-            ("implements ", EdgeType::Implements),
-            // Python patterns
-            ("from ", EdgeType::Uses),
-            ("import ", EdgeType::Uses),
-            ("class ", EdgeType::Defines),
-            ("def ", EdgeType::Defines),
-            ("async def", EdgeType::Defines),
-            // Go patterns
-            ("package ", EdgeType::Defines),
-            ("import ", EdgeType::Uses),
-            ("func ", EdgeType::Defines),
-            ("type ", EdgeType::Defines),
-            ("interface ", EdgeType::Defines),
+            ("rust:std::", EdgeType::Uses),
+            ("rust:derive(", EdgeType::Uses),
+            ("rust:impl ", EdgeType::Implements),
+            ("rust:trait ", EdgeType::Defines),
+            ("rust:async fn", EdgeType::Defines),
+            ("rust:pub fn", EdgeType::Defines),
+            ("rust:use ", EdgeType::Uses),
+            // TypeScript / JavaScript
+            ("ts:import ", EdgeType::Uses),
+            ("ts:export ", EdgeType::Defines),
+            ("ts:async ", EdgeType::Defines),
+            ("ts:interface ", EdgeType::Defines),
+            ("ts:class ", EdgeType::Defines),
+            ("ts:extends ", EdgeType::Extends),
+            ("ts:implements ", EdgeType::Implements),
+            ("js:import ", EdgeType::Uses),
+            ("js:export ", EdgeType::Defines),
+            ("js:class ", EdgeType::Defines),
+            ("js:extends ", EdgeType::Extends),
+            // Python
+            ("py:from ", EdgeType::Uses),
+            ("py:import ", EdgeType::Uses),
+            ("py:class ", EdgeType::Defines),
+            ("py:def ", EdgeType::Defines),
+            ("py:async def", EdgeType::Defines),
+            // Go
+            ("go:package ", EdgeType::Defines),
+            ("go:import ", EdgeType::Uses),
+            ("go:func ", EdgeType::Defines),
+            ("go:type ", EdgeType::Defines),
+            ("go:interface ", EdgeType::Defines),
         ];
 
         let patterns: Vec<String> = pattern_configs.iter().map(|(p, _)| p.to_string()).collect();
@@ -56,7 +61,7 @@ impl PatternMatcher {
             .collect();
 
         let automaton = AhoCorasickBuilder::new()
-            .match_kind(aho_corasick::MatchKind::LeftmostFirst)
+            .match_kind(aho_corasick::MatchKind::LeftmostLongest)
             .build(&patterns)
             .expect("Failed to build Aho-Corasick automaton");
 
@@ -77,8 +82,25 @@ impl PatternMatcher {
         mut result: ExtractionResult,
         content: &str,
     ) -> ExtractionResult {
+        // Prefix content with language marker to gate matches (e.g., "rust:", "py:")
+        let mut gated_content = String::with_capacity(content.len() + 4);
+        let lang_prefix = match result
+            .nodes
+            .first()
+            .and_then(|n| n.language.as_ref())
+        {
+            Some(codegraph_core::Language::Rust) => "rust:",
+            Some(codegraph_core::Language::TypeScript) => "ts:",
+            Some(codegraph_core::Language::JavaScript) => "js:",
+            Some(codegraph_core::Language::Python) => "py:",
+            Some(codegraph_core::Language::Go) => "go:",
+            _ => "",
+        };
+        gated_content.push_str(lang_prefix);
+        gated_content.push_str(content);
+
         // Find all pattern matches in content (SIMD-accelerated, sub-microsecond)
-        let matches: Vec<_> = self.automaton.find_iter(content).collect();
+        let matches: Vec<_> = self.automaton.find_iter(&gated_content).collect();
 
         if matches.is_empty() {
             return result;

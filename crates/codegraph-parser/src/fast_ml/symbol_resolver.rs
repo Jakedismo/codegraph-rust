@@ -27,8 +27,8 @@ impl SymbolResolver {
             lsh: None,
             symbols: Vec::new(),
             symbol_vectors: HashMap::new(),
-            min_similarity_threshold: 0.7,
-            dim: 128, // Character-based hash dimension
+            min_similarity_threshold: 0.8,
+            dim: 64, // Character-based hash dimension (lighter/faster)
         }
     }
 
@@ -59,10 +59,10 @@ impl SymbolResolver {
             return;
         }
 
-        // Initialize LSH index if not already done
+        // Initialize LSH index if not already done (leaner params)
         if self.lsh.is_none() {
-            // LSH configuration: 5 projections, 10 hash tables, 128 dimensions
-            let mut lsh = LshMem::new(5, 10, self.dim)
+            // LSH configuration: fewer projections/tables for speed
+            let mut lsh = LshMem::new(3, 6, self.dim)
                 .srp() // Signed Random Projections for cosine similarity
                 .expect("Failed to create LSH index");
 
@@ -79,6 +79,10 @@ impl SymbolResolver {
 
     /// Resolve similar symbols for unmatched references (100-500μs per query)
     pub fn resolve_symbols(&self, mut result: ExtractionResult) -> ExtractionResult {
+        // Skip resolver for very small files to avoid overhead
+        if result.nodes.len() < 2 {
+            return result;
+        }
         let mut new_edges = Vec::new();
 
         // Find edges pointing to symbols that don't exist in nodes
