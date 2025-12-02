@@ -176,7 +176,8 @@ impl LocalEmbeddingProvider {
         build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
     }
 
-    /// Tokenize text and create input tensors
+    /// Tokenize text and create input tensors (kept for potential batching; unused in current flow)
+    #[allow(dead_code)]
     fn tokenize_text(&self, text: &str) -> Result<(Tensor, Tensor)> {
         let encoding = self
             .tokenizer
@@ -211,7 +212,8 @@ impl LocalEmbeddingProvider {
         Ok((token_ids, attention_mask))
     }
 
-    /// Apply pooling strategy to get final embedding
+    /// Apply pooling strategy to get final embedding (unused in current flow)
+    #[allow(dead_code)]
     fn apply_pooling(&self, sequence_output: &Tensor, attention_mask: &Tensor) -> Result<Tensor> {
         match self.config.pooling_strategy {
             PoolingStrategy::Cls => {
@@ -262,7 +264,8 @@ impl LocalEmbeddingProvider {
         }
     }
 
-    /// Generate embedding for a single text using the loaded model
+    /// Generate embedding for a single text using the loaded model (unused helper)
+    #[allow(dead_code)]
     async fn generate_single_embedding(&self, text: String) -> Result<Vec<f32>> {
         let model = Arc::clone(&self.model);
         let tokenizer = Arc::clone(&self.tokenizer);

@@ -32,13 +32,16 @@ struct ChatOptions {
 /// Ollama chat response structure
 #[derive(Debug, Deserialize)]
 struct OllamaChatResponse {
+    #[allow(dead_code)]
     model: String,
     message: ResponseMessage,
+    #[allow(dead_code)]
     done: bool,
 }
 
 #[derive(Debug, Deserialize)]
 struct ResponseMessage {
+    #[allow(dead_code)]
     role: String,
     content: String,
 }
