@@ -100,7 +100,7 @@ async-trait = "0.1"
 futures = "0.3"
 rmcp = { version = "0.10.0", features = ["server", "transport-io", "transport-streamable-http-server"] }
 semchunk-rs = { version = "0.1.1" }
-tokenizers = { version = "0.22.1", default-features = false, features = ["http"] }
+tokenizers = { version = "0.22.2", default-features = false, features = ["http", "fancy-regex", "onig"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
