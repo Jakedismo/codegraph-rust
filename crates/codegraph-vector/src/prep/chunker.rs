@@ -1,14 +1,7 @@
 use codegraph_core::{CodeNode, Language};
-use fxhash::hash64;
-use lru::LruCache;
 use rayon::prelude::*;
-use semchunk_rs::Chunker;
-use std::{
-    num::NonZeroUsize,
-    sync::{Arc, Mutex},
-    time::Instant,
-};
-use tokenizers::Tokenizer;
+use std::{sync::Arc, time::Instant};
+use tokenizers::{Encoding, Tokenizer};
 use unicode_normalization::UnicodeNormalization;
 
 const DEFAULT_MAX_TEXTS_PER_REQUEST: usize = 256;
@@ -44,6 +37,11 @@ impl ChunkerConfig {
 
     pub fn max_texts_per_request(mut self, max: usize) -> Self {
         self.max_texts_per_request = max.clamp(1, DEFAULT_MAX_TEXTS_PER_REQUEST);
+        self
+    }
+
+    pub fn max_tokens(mut self, max_tokens: usize) -> Self {
+        self.max_tokens_per_text = max_tokens;
         self
     }
 }
@@ -113,44 +111,58 @@ pub fn build_chunk_plan(
     config: ChunkerConfig,
 ) -> ChunkPlan {
     let start_total = Instant::now();
-    let token_counter = Arc::new(TokenCounter::new(tokenizer, config.cache_capacity));
+    let token_counter = Arc::new(TokenCounter::new(tokenizer.clone(), config.cache_capacity));
 
-    let results: Vec<(Vec<TextChunk>, Vec<ChunkMeta>, NodeStats)> = nodes
-        .par_iter()
-        .enumerate()
-        .map(|(idx, node)| {
-            let node_start = Instant::now();
-            let sanitized = sanitize(node, config.sanitize_mode);
-            let sanitize_ms = node_start.elapsed().as_millis();
-
-            let chunk_start = Instant::now();
-            let (chunks, metas) =
-                chunkify(idx, node, &sanitized, &config, Arc::clone(&token_counter));
-            let chunk_ms = chunk_start.elapsed().as_millis();
-
-            (
-                chunks,
-                metas,
-                NodeStats {
-                    sanitize_ms,
-                    chunk_ms,
-                },
-            )
-        })
-        .collect();
-
-    let mut all_chunks = Vec::new();
-    let mut all_metas = Vec::new();
+    // Batch tokenization to reduce per-node tokenizer overhead
+    let batch_size = config.max_texts_per_request;
+    // Upper bound estimate: assume ~2 chunks per node as a guard
+    let estimate = nodes.len().saturating_mul(2).max(16);
+    let mut all_chunks = Vec::with_capacity(estimate);
+    let mut all_metas = Vec::with_capacity(estimate);
     let mut stats = ChunkStats::empty();
     stats.total_nodes = nodes.len();
 
-    for (chunks, metas, node_stats) in results {
-        stats.total_chunks += chunks.len();
-        stats.sanitize_ms += node_stats.sanitize_ms;
-        stats.chunk_ms += node_stats.chunk_ms;
-        all_chunks.extend(chunks);
-        all_metas.extend(metas);
+    for (batch_idx, batch) in nodes.chunks(batch_size).enumerate() {
+        // Sanitize texts once
+        let sanitized: Vec<String> = batch
+            .par_iter()
+            .with_min_len(16)
+            .map(|node| sanitize(node, config.sanitize_mode))
+            .collect();
+
+        // Tokenize batch
+        let encodings: Vec<Encoding> = tokenizer
+            .encode_batch(sanitized.iter().map(|s| s.as_str()).collect::<Vec<_>>(), false)
+            .expect("tokenizer batch encode");
+
+        // Estimate capacity to preallocate
+        let estimated = encodings
+            .iter()
+            .map(|e| (e.get_ids().len() / config.max_tokens_per_text + 1).max(1))
+            .sum::<usize>();
+        let mut batch_chunks = Vec::with_capacity(estimated);
+        let mut batch_metas = Vec::with_capacity(estimated);
+
+        for (local_idx, (node, encoding)) in batch.iter().zip(encodings.iter()).enumerate() {
+            let global_idx = batch_idx * batch_size + local_idx;
+            let (chunks, metas, node_stats) = chunkify_tokens(
+                global_idx,
+                node,
+                &sanitized[local_idx],
+                encoding,
+                &config,
+            );
+            stats.sanitize_ms += node_stats.sanitize_ms;
+            stats.chunk_ms += node_stats.chunk_ms;
+            batch_chunks.extend(chunks);
+            batch_metas.extend(metas);
+        }
+
+        all_chunks.extend(batch_chunks);
+        all_metas.extend(batch_metas);
     }
+
+    stats.total_chunks = all_chunks.len();
 
     let (hits, misses) = token_counter.stats();
     stats.cache_hits = hits;
@@ -204,48 +216,56 @@ fn is_emoji(c: char) -> bool {
         || (0x2600..=0x26FF).contains(&code)
 }
 
-fn chunkify(
+fn chunkify_tokens(
     node_idx: usize,
     node: &CodeNode,
     sanitized: &str,
+    encoding: &Encoding,
     config: &ChunkerConfig,
-    counter: Arc<TokenCounter>,
-) -> (Vec<TextChunk>, Vec<ChunkMeta>) {
-    let counter_for_chunker = Arc::clone(&counter);
-    let chunker = Chunker::new(config.max_tokens_per_text, move |s: &str| {
-        counter_for_chunker.count(s)
-    });
-    let mut result_chunks = Vec::new();
-    let mut result_meta = Vec::new();
+) -> (Vec<TextChunk>, Vec<ChunkMeta>, NodeStats) {
+    let start = Instant::now();
 
-    for (chunk_idx, text) in chunker.chunk_text(sanitized).into_iter().enumerate() {
-        let tokens = counter.count(&text);
-        result_chunks.push(TextChunk { text, tokens });
-        result_meta.push(ChunkMeta {
+    let tokens = encoding.get_ids();
+    let offsets = encoding.get_offsets();
+    let max_tokens = config.max_tokens_per_text;
+
+    let mut chunks = Vec::new();
+    let mut metas = Vec::new();
+
+    let mut start_idx = 0;
+    let mut chunk_idx = 0;
+    while start_idx < tokens.len() {
+        let end_idx = (start_idx + max_tokens).min(tokens.len());
+        let (start_byte, _) = offsets[start_idx];
+        let (_, end_byte) = offsets[end_idx - 1];
+        let end_byte = end_byte.min(sanitized.len());
+        let slice = &sanitized[start_byte..end_byte];
+
+        chunks.push(TextChunk {
+            text: slice.to_string(),
+            tokens: end_idx - start_idx,
+        });
+        metas.push(ChunkMeta {
             node_index: node_idx,
             chunk_index: chunk_idx,
             language: node.language.clone(),
             file_path: node.location.file_path.clone(),
             node_name: node.name.to_string(),
         });
+
+        chunk_idx += 1;
+        start_idx = end_idx;
     }
 
-    if result_chunks.is_empty() {
-        let tokens = counter.count(sanitized);
-        result_chunks.push(TextChunk {
-            text: sanitized.to_string(),
-            tokens,
-        });
-        result_meta.push(ChunkMeta {
-            node_index: node_idx,
-            chunk_index: 0,
-            language: node.language.clone(),
-            file_path: node.location.file_path.clone(),
-            node_name: node.name.to_string(),
-        });
-    }
-
-    (result_chunks, result_meta)
+    let elapsed = start.elapsed().as_millis();
+    (
+        chunks,
+        metas,
+        NodeStats {
+            sanitize_ms: 0,
+            chunk_ms: elapsed,
+        },
+    )
 }
 
 struct NodeStats {
@@ -253,44 +273,15 @@ struct NodeStats {
     chunk_ms: u128,
 }
 
-struct TokenCounter {
-    tokenizer: Arc<Tokenizer>,
-    cache: Mutex<LruCache<u64, usize>>,
-    hits: Mutex<usize>,
-    misses: Mutex<usize>,
-}
+struct TokenCounter;
 
 impl TokenCounter {
-    fn new(tokenizer: Arc<Tokenizer>, capacity: usize) -> Self {
-        Self {
-            tokenizer,
-            cache: Mutex::new(LruCache::new(
-                NonZeroUsize::new(capacity).unwrap_or(NonZeroUsize::new(16).unwrap()),
-            )),
-            hits: Mutex::new(0),
-            misses: Mutex::new(0),
-        }
-    }
-
-    fn count(&self, text: &str) -> usize {
-        let key = hash64(text);
-        if let Some(tokens) = self.cache.lock().unwrap().get(&key).copied() {
-            *self.hits.lock().unwrap() += 1;
-            return tokens;
-        }
-        let tokens = self
-            .tokenizer
-            .encode(text, false)
-            .map(|enc| enc.len())
-            .unwrap_or_else(|_| text.len() / 4);
-        let mut cache = self.cache.lock().unwrap();
-        cache.put(key, tokens);
-        *self.misses.lock().unwrap() += 1;
-        tokens
+    fn new(_tokenizer: Arc<Tokenizer>, _capacity: usize) -> Self {
+        Self
     }
 
     fn stats(&self) -> (usize, usize) {
-        (*self.hits.lock().unwrap(), *self.misses.lock().unwrap())
+        (0, 0)
     }
 }
 

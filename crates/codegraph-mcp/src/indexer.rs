@@ -492,20 +492,32 @@ impl ProjectIndexer {
         global_config: &codegraph_core::config_manager::CodeGraphConfig,
         multi_progress: MultiProgress,
     ) -> Result<Self> {
-        // Cap Rayon global thread pool to avoid CPU starvation
-        let rayon_threads = config.workers.max(2);
+        // Cap Rayon threads to a sensible default: leave one core free and obey user overrides
+        let available = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4);
+        let env_workers = std::env::var("CODEGRAPH_WORKERS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok());
+        let requested = env_workers.unwrap_or(config.workers);
+        let target_threads = requested
+            .max(2)
+            .min(rayon::max_num_threads().max(2))
+            .min(available.saturating_sub(1).max(2));
+
         if std::env::var("RAYON_NUM_THREADS").is_err() {
-            std::env::set_var("RAYON_NUM_THREADS", rayon_threads.to_string());
+            std::env::set_var("RAYON_NUM_THREADS", target_threads.to_string());
         }
+
         let rayon_pool_built = rayon::ThreadPoolBuilder::new()
-            .num_threads(rayon_threads)
+            .num_threads(target_threads)
             .build_global()
             .is_ok();
         if rayon_pool_built {
-            info!("🔧 Rayon threads capped to {} (config.workers)", rayon_threads);
+            info!("🔧 Rayon threads capped to {} (workers/env)", target_threads);
         } else {
             warn!(
-                "Rayon global pool already set elsewhere. Falling back to local pool for chunking. Current RAYON_NUM_THREADS={:?}.",
+                "Rayon global pool already set elsewhere. Using local pool for chunking. Current RAYON_NUM_THREADS={:?}.",
                 std::env::var("RAYON_NUM_THREADS").ok()
             );
         }
@@ -829,13 +841,15 @@ impl ProjectIndexer {
         #[cfg(feature = "embeddings")]
         let chunk_plan: ChunkPlan = {
             let start = std::time::Instant::now();
-            // If global pool already exists, use a local pool to honor worker cap for this section
+            let use_local_pool = !rayon_pool_built;
             let chunker = || self.embedder.chunk_nodes(&nodes);
-            let plan = if rayon::current_num_threads() == rayon::current_thread_index().unwrap_or(0) {
-                // Fallback: build a local pool (safe even if global exists)
-                let rayon_threads = self.config.workers.max(2);
+            let plan = if use_local_pool {
+                let threads = std::env::var("RAYON_NUM_THREADS")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or_else(|| self.config.workers.max(2));
                 let pool = rayon::ThreadPoolBuilder::new()
-                    .num_threads(rayon_threads)
+                    .num_threads(threads)
                     .build()
                     .expect("failed to build local rayon pool for chunking");
                 pool.install(chunker)
@@ -995,44 +1009,65 @@ impl ProjectIndexer {
         // Embed chunks and persist chunk embeddings
         #[cfg(feature = "embeddings")]
         {
-            let mut chunk_iter = chunk_plan.chunks.chunks(batch);
-            let mut meta_iter = chunk_plan.metas.chunks(batch);
-            while let (Some(chunk_batch), Some(meta_batch)) = (chunk_iter.next(), meta_iter.next())
-            {
-                // Prepare text batch ordered like metas
-                let texts: Vec<String> = chunk_batch.iter().map(|c| c.text.clone()).collect();
-                let embs: Vec<Vec<f32>> = self.embedder.embed_texts_batched(&texts).await?;
+            use futures::stream::{self, StreamExt};
+            use std::sync::atomic::{AtomicU64, Ordering};
 
-                // Build chunk embedding records
-                let mut records: Vec<ChunkEmbeddingRecord> = Vec::with_capacity(meta_batch.len());
-                for ((meta, text), emb) in meta_batch.iter().zip(texts.iter()).zip(embs.iter()) {
-                    let Some(node) = nodes.get(meta.node_index) else {
-                        warn!(
-                            "Chunk meta references out-of-bounds node index {} (nodes len {})",
-                            meta.node_index,
-                            nodes.len()
-                        );
-                        continue;
-                    };
-
-                    records.push(ChunkEmbeddingRecord::new(
-                        &node.id.to_string(),
-                        meta.chunk_index,
-                        text.clone(),
-                        emb,
-                        &self.embedding_model,
-                        self.embedding_column.column_name(),
-                        &self.project_id,
-                    ));
+            let chunk_batches: Vec<(Vec<String>, Vec<ChunkMeta>)> = {
+                let mut batches = Vec::new();
+                let mut chunk_iter = chunk_plan.chunks.chunks(batch);
+                let mut meta_iter = chunk_plan.metas.chunks(batch);
+                while let (Some(chunk_batch), Some(meta_batch)) =
+                    (chunk_iter.next(), meta_iter.next())
+                {
+                    let texts: Vec<String> = chunk_batch.iter().map(|c| c.text.clone()).collect();
+                    batches.push((texts, meta_batch.to_vec()));
                 }
+                batches
+            };
+
+            let processed_atomic = Arc::new(AtomicU64::new(0));
+            let max_concurrent = self.config.max_concurrent.max(1);
+
+            let mut batch_stream = stream::iter(chunk_batches.into_iter().map(|(texts, metas)| {
+                let embedder = self.embedder.clone();
+                async move {
+                    let embs = embedder.embed_texts_batched(&texts).await;
+                    (texts, metas, embs)
+                }
+            }))
+            .buffer_unordered(max_concurrent);
+
+            while let Some((texts, metas, embs_result)) = batch_stream.next().await {
+                let embs = embs_result?;
+                if embs.len() != metas.len() {
+                    warn!(
+                        "Chunk embedding batch size mismatch: got {} embeddings for {} metas",
+                        embs.len(),
+                        metas.len()
+                    );
+                }
+
+                let mut records: Vec<ChunkEmbeddingRecord> = Vec::with_capacity(metas.len());
+                for ((meta, text), emb) in metas.iter().zip(texts.iter()).zip(embs.iter()) {
+                    if let Some(node) = nodes.get(meta.node_index) {
+                        records.push(ChunkEmbeddingRecord::new(
+                            &node.id.to_string(),
+                            meta.chunk_index,
+                            text.clone(),
+                            emb,
+                            &self.embedding_model,
+                            self.embedding_column.column_name(),
+                            &self.project_id,
+                        ));
+                    }
+                }
+
                 self.enqueue_chunk_embeddings(records).await?;
 
-                chunk_store_pb.set_position(
-                    (chunk_store_pb.position() + meta_batch.len() as u64).min(total_chunks),
-                );
-
-                processed += meta_batch.len() as u64;
-                embed_pb.set_position(processed.min(total_chunks));
+                let done = processed_atomic.fetch_add(metas.len() as u64, Ordering::Relaxed)
+                    + metas.len() as u64;
+                embed_pb.set_position(done.min(total_chunks));
+                chunk_store_pb.set_position(done.min(total_chunks));
             }
         }
         let embedding_rate = if total_chunks > 0 {

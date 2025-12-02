@@ -100,12 +100,17 @@ impl EmbeddingGenerator {
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
 
+        let max_tokens_env = std::env::var("CODEGRAPH_CHUNK_MAX_TOKENS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok());
+        let max_tokens = max_tokens_env.unwrap_or(self.model_config.max_tokens);
+
         if skip_chunking {
             ChunkerConfig::new(u32::MAX as usize)
                 .sanitize_mode(SanitizeMode::AsciiFastPath)
                 .cache_capacity(2048)
         } else {
-            ChunkerConfig::new(self.model_config.max_tokens)
+            ChunkerConfig::new(max_tokens)
                 .sanitize_mode(SanitizeMode::AsciiFastPath)
                 .cache_capacity(2048)
         }
