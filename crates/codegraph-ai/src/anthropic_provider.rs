@@ -179,9 +179,11 @@ impl LLMProvider for AnthropicProvider {
             .collect::<Vec<_>>()
             .join("");
 
+        let content_clone = content.clone();
+
         Ok(LLMResponse {
             content,
-            answer: content.clone(),
+            answer: content_clone,
             total_tokens: Some(response.usage.input_tokens + response.usage.output_tokens),
             prompt_tokens: Some(response.usage.input_tokens),
             completion_tokens: Some(response.usage.output_tokens),

@@ -30,7 +30,7 @@ DEFINE ANALYZER code_analyzer
 -- -----------------------------------------------------------------------------
 -- TABLE: nodes
 -- -----------------------------------------------------------------------------
-DEFINE TABLE IF NOT EXISTS nodes SCHEMAFULL
+DEFINE TABLE IF NOT EXISTS nodes SCHEMAFULL PERMISSIONS FULL
   COMMENT 'Code entities from AST parsing with semantic embeddings';
 
 -- Core fields (id is built-in record type, no need to define it)
@@ -158,7 +158,7 @@ DEFINE INDEX IF NOT EXISTS idx_chunks_embedding_4096
 -- -----------------------------------------------------------------------------
 -- TABLE: edges
 -- -----------------------------------------------------------------------------
-DEFINE TABLE IF NOT EXISTS edges SCHEMAFULL
+DEFINE TABLE IF NOT EXISTS edges SCHEMAFULL PERMISSIONS FULL
   COMMENT 'Code relationships (Calls, Imports, Uses, Extends, Implements, References)';
 
 -- id is built-in record type, no need to define it
@@ -208,6 +208,7 @@ DEFINE INDEX IF NOT EXISTS idx_metadata_key
 -- TABLE: project_metadata
 -- -----------------------------------------------------------------------------
 DEFINE TABLE IF NOT EXISTS project_metadata SCHEMAFULL
+  PERMISSIONS FULL
   COMMENT 'Project registry with CodeGraph statistics';
 
 -- Core fields
@@ -389,8 +390,7 @@ DEFINE FUNCTION fn::node_info($node_id: record) {
     FROM ONLY $node_id;
 
     RETURN $res;
-};
-
+}PERMISSIONS FULL;
 -- -----------------------------------------------------------------------------
 -- FUNCTION: node_reference (UNCHANGED)
 -- -----------------------------------------------------------------------------
@@ -406,8 +406,7 @@ DEFINE FUNCTION fn::node_reference($node_id: string) {
         kind: $info.kind,
         location: $info.location
     };
-};
-
+}PERMISSIONS FULL;
 -- -----------------------------------------------------------------------------
 -- FUNCTION: find_nodes_by_name (PROJECT SCOPED)
 -- -----------------------------------------------------------------------------
@@ -432,15 +431,13 @@ DEFINE FUNCTION fn::find_nodes_by_name($project_id: string, $needle: string, $li
       )
     ORDER BY name
     LIMIT $max;
-};
-
+}PERMISSIONS FULL;
 -- -----------------------------------------------------------------------------
 -- FUNCTION: edge_types (UNCHANGED)
 -- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::edge_types() {
     RETURN ['calls', 'imports', 'uses', 'extends', 'implements', 'references'];
-};
-
+}PERMISSIONS FULL;
 -- -----------------------------------------------------------------------------
 -- FUNCTION: get_transitive_dependencies (FIXED - uses JOIN instead of arrows)
 -- Arrow syntax only works with RELATE-created edges, not regular tables
@@ -540,8 +537,7 @@ DEFINE FUNCTION fn::get_transitive_dependencies($project_id: string, $node_id: a
         FROM $raw
         WHERE node != NONE
     );
-};
-
+}PERMISSIONS FULL;
 -- -----------------------------------------------------------------------------
 -- FUNCTION: detect_circular_dependencies (UNCHANGED)
 -- -----------------------------------------------------------------------------
@@ -594,8 +590,7 @@ DEFINE FUNCTION fn::detect_circular_dependencies($project_id: string, $edge_type
         node2
     FROM $raw
     WHERE node1 != NONE AND node2 != NONE;
-};
-
+}PERMISSIONS FULL;
 -- -----------------------------------------------------------------------------
 -- FUNCTION: trace_call_chain (UNCHANGED)
 -- -----------------------------------------------------------------------------
@@ -640,8 +635,7 @@ DEFINE FUNCTION fn::trace_call_chain($project_id: string, $from_node: any, $max_
         $safe_depth AS requested_depth
     FROM $raw
     WHERE node != NONE;
-};
-
+}PERMISSIONS FULL;
 -- -----------------------------------------------------------------------------
 -- FUNCTION: calculate_coupling_metrics (UNCHANGED)
 -- -----------------------------------------------------------------------------
@@ -704,8 +698,7 @@ DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: st
         dependents: $dependents_info,
         dependencies: $dependencies_info
     };
-};
-
+}PERMISSIONS FULL;
 -- -----------------------------------------------------------------------------
 -- FUNCTION: get_hub_nodes (UNCHANGED)
 -- -----------------------------------------------------------------------------
@@ -795,13 +788,12 @@ DEFINE FUNCTION fn::get_hub_nodes($project_id: string, $min_degree: int) {
     WHERE node != NONE
       AND (afferent_degree + efferent_degree) >= $threshold
     ORDER BY total_degree DESC;
-};
-
+}PERMISSIONS FULL;
 -- -----------------------------------------------------------------------------
 -- FUNCTION: get_reverse_dependencies (FIXED - uses JOIN instead of arrows)
 -- Finds nodes that depend ON the given node (who calls this?)
 -- -----------------------------------------------------------------------------
-DEFINE FUNCTION fn::get_reverse_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
+DEFINE FUNCTION  fn::get_reverse_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
     LET $safe_depth = IF $depth > 0 AND $depth <= 5 THEN $depth ELSE 3 END;
     LET $edge_name = string::lowercase($edge_type ?? 'calls');
 
@@ -896,7 +888,7 @@ DEFINE FUNCTION fn::get_reverse_dependencies($project_id: string, $node_id: any,
         FROM $raw
         WHERE node != NONE
     );
-};
+} PERMISSIONS FULL;
 -- =============================================================================
 -- ABOUTME: Comprehensive semantic search function for CodeGraph agentic tools
 -- ABOUTME: Combines HNSW vector search, full-text analyzer search, and graph enrichment
