@@ -3584,8 +3584,8 @@ pub fn prepare_node_text(node: &CodeNode) -> String {
                     .unwrap_or_else(|_| (s.len() + 3) / 4)
             };
 
-            let chunker = semchunk_rs::Chunker::new(max_chunk_tokens, token_counter);
-            let chunks = chunker.chunk_text(&text);
+            let chunker = semchunk_rs::Chunker::new(max_chunk_tokens, Box::new(token_counter));
+            let chunks = chunker.chunk(&text);
 
             if let Some(first_chunk) = chunks.first() {
                 text = first_chunk.clone();

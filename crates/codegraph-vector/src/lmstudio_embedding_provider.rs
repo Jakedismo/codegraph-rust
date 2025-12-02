@@ -170,13 +170,16 @@ impl LmStudioEmbeddingProvider {
             // Semantic chunking for large text
             use semchunk_rs::Chunker;
             let tokenizer = self.tokenizer.clone();
-            let chunker = Chunker::new(self.config.max_tokens_per_request, move |s: &str| {
-                tokenizer
-                    .encode(s, false)
-                    .map(|enc| enc.len())
-                    .unwrap_or_else(|_| (s.len() + 3) / 4) // Fallback to char approximation
-            });
-            chunker.chunk_text(text)
+            let chunker = Chunker::new(
+                self.config.max_tokens_per_request,
+                Box::new(move |s: &str| {
+                    tokenizer
+                        .encode(s, false)
+                        .map(|enc| enc.len())
+                        .unwrap_or_else(|_| (s.len() + 3) / 4) // Fallback to char approximation
+                }),
+            );
+            chunker.chunk(text)
         }
     }
 

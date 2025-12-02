@@ -331,7 +331,7 @@ impl ConfigManager {
             // Create default.toml if it doesn't exist
             let default_config = codegraph_dir.join("default.toml");
             if !default_config.exists() {
-                let default_content = include_str!("../../../config/default.toml");
+                let default_content = include_str!("../../../config/example.toml");
                 fs::write(&default_config, default_content)
                     .context("Failed to write default config")?;
                 info!("Created default config: {:?}", default_config);
