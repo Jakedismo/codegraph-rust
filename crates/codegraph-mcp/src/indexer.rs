@@ -931,6 +931,11 @@ impl ProjectIndexer {
             self.config.batch_size,
             "🧠 Embedding chunks (vector batch)",
         );
+        let chunk_store_pb = self.create_batch_progress_bar(
+            total_chunks,
+            self.config.batch_size,
+            "🧩 Persisting chunk embeddings",
+        );
         let batch = self.config.batch_size.max(1);
         #[allow(unused_mut)]
         let mut processed: u64 = 0;
@@ -990,6 +995,10 @@ impl ProjectIndexer {
                 }
                 self.enqueue_chunk_embeddings(records).await?;
 
+                chunk_store_pb.set_position(
+                    (chunk_store_pb.position() + meta_batch.len() as u64).min(total_chunks),
+                );
+
                 processed += meta_batch.len() as u64;
                 embed_pb.set_position(processed.min(total_chunks));
             }
@@ -1011,6 +1020,11 @@ impl ProjectIndexer {
             self.config.batch_size
         );
         embed_pb.finish_with_message(embed_completion_msg);
+        chunk_store_pb.finish_with_message(format!(
+            "🧩 Chunk embeddings queued for persistence: {}/{} batches",
+            total_chunks,
+            total_chunks
+        ));
 
         #[cfg(feature = "embeddings")]
         {
