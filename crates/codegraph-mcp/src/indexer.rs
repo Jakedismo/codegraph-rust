@@ -236,9 +236,12 @@ impl SurrealWriterHandle {
                     }
                     SurrealWriteJob::ChunkEmbeddings(records) => {
                         if records.is_empty() { continue; }
+                        let batch_size = records.len();
                         if let Err(err) = { let guard = storage.lock().await; guard.upsert_chunk_embeddings_batch(&records).await } {
                             error!("Surreal chunk embedding batch failed: {}", err);
                             last_error = Some(anyhow!(err.to_string()));
+                        } else {
+                            info!("🧩 Surreal chunk batch persisted: {} records", batch_size);
                         }
                     }
                     SurrealWriteJob::FileMetadata(records) => {
@@ -807,8 +810,25 @@ impl ProjectIndexer {
         // Build chunk plan early so we can annotate nodes with chunk counts before persistence
         #[cfg(feature = "embeddings")]
         let chunk_plan: ChunkPlan = self.embedder.chunk_nodes(&nodes);
+        #[cfg(feature = "embeddings")]
+        {
+            let total_chunks = chunk_plan.stats.total_chunks;
+            info!(
+                "🧩 Chunking enabled: {} nodes → {} chunks",
+                chunk_plan.stats.total_nodes,
+                total_chunks
+            );
+            if total_chunks == 0 && !nodes.is_empty() {
+                warn!(
+                    "Chunking produced zero chunks. Check CODEGRAPH_EMBEDDING_SKIP_CHUNKING, embedding provider availability, and model max_tokens settings."
+                );
+            }
+        }
         #[cfg(not(feature = "embeddings"))]
-        let _chunk_plan: Option<()> = None;
+        {
+            info!("⚠️ Embeddings feature disabled at compile time; chunking skipped");
+            let _chunk_plan: Option<()> = None;
+        }
 
         #[cfg(feature = "embeddings")]
         {
@@ -991,6 +1011,13 @@ impl ProjectIndexer {
             self.config.batch_size
         );
         embed_pb.finish_with_message(embed_completion_msg);
+
+        #[cfg(feature = "embeddings")]
+        {
+            // Ensure all chunk embeddings are flushed to SurrealDB before continuing
+            self.flush_surreal_writer().await?;
+            self.log_surreal_chunk_count(total_chunks as usize).await;
+        }
 
         // Node embedding: keep pooled embedding as average of its chunks
         #[cfg(feature = "embeddings")]
@@ -2291,8 +2318,9 @@ impl ProjectIndexer {
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to query project_metadata")?;
-        let count: Option<i64> = response.take(0)?;
-        Ok(count.unwrap_or(0) > 0)
+        let counts: Vec<i64> = response.take(0)?;
+        let count = counts.get(0).cloned().unwrap_or(0);
+        Ok(count > 0)
     }
 
     async fn has_file_metadata(&self) -> Result<bool> {
@@ -2306,8 +2334,9 @@ impl ProjectIndexer {
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to query file_metadata count")?;
-        let count: Option<i64> = response.take(0)?;
-        Ok(count.unwrap_or(0) > 0)
+        let counts: Vec<i64> = response.take(0)?;
+        let count = counts.get(0).cloned().unwrap_or(0);
+        Ok(count > 0)
     }
 
     /// Calculate SHA-256 hash of file content
@@ -2603,6 +2632,36 @@ impl ProjectIndexer {
         }
     }
 
+    #[cfg(feature = "embeddings")]
+    async fn log_surreal_chunk_count(&self, expected: usize) {
+        let db = {
+            let storage = self.surreal.lock().await;
+            storage.db()
+        };
+
+        match db
+            .query("SELECT VALUE count() FROM chunks WHERE project_id = $project_id")
+            .bind(("project_id", self.project_id.clone()))
+            .await
+        {
+            Ok(mut resp) => match resp.take::<Vec<i64>>(0) {
+                Ok(counts) => {
+                    let count = counts.get(0).cloned().unwrap_or(0);
+                    info!(
+                        "🧩 SurrealDB chunks persisted: {} (expected ≈ {})",
+                        count, expected
+                    );
+                }
+                Err(e) => {
+                    warn!("⚠️ Failed to read SurrealDB chunk count: {}", e);
+                }
+            },
+            Err(e) => {
+                warn!("⚠️ SurrealDB chunk count query failed: {}", e);
+            }
+        }
+    }
+
     async fn log_surreal_edge_count(&self, expected: usize) {
         let db = {
             let storage = self.surreal.lock().await;
@@ -2645,8 +2704,8 @@ impl ProjectIndexer {
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to verify file_metadata count")?;
-        let count: Option<i64> = resp.take(0)?;
-        let count = count.unwrap_or(0);
+        let counts: Vec<i64> = resp.take(0)?;
+        let count = counts.get(0).cloned().unwrap_or(0);
 
         if count < expected_files as i64 {
             Err(anyhow!(
@@ -2671,8 +2730,9 @@ impl ProjectIndexer {
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to verify project_metadata count")?;
-        let count: Option<i64> = resp.take(0)?;
-        if count.unwrap_or(0) < 1 {
+        let counts: Vec<i64> = resp.take(0)?;
+        let count = counts.get(0).cloned().unwrap_or(0);
+        if count < 1 {
             Err(anyhow!(
                 "project_metadata missing for project {}; ensure schema applied and permissions allow writes",
                 self.project_id
@@ -2755,6 +2815,7 @@ impl ProjectIndexer {
         if records.is_empty() {
             return Ok(());
         }
+        info!("🧩 Queueing {} chunk embeddings for SurrealDB", records.len());
         let batch_size = self.config.batch_size.max(1);
         let handle = self.surreal_writer_handle()?;
         for chunk in records.chunks(batch_size) {

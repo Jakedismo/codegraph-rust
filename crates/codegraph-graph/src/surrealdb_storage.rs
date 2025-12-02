@@ -875,7 +875,7 @@ impl SurrealDbStorage {
         // SurrealDB FOR loops can silently skip operations if schema/table missing
         // Use the first record's project_id to count records for that project
         let project_id = &records[0].project_id;
-        let verify_query = "SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id";
+        let verify_query = "SELECT count() AS total FROM file_metadata WHERE project_id = $project_id GROUP ALL";
         let mut verify_resp = self
             .db
             .query(verify_query)
@@ -888,10 +888,10 @@ impl SurrealDbStorage {
                 ))
             })?;
 
-        let written_count: Option<i64> = verify_resp.take(0).map_err(|e| {
+        let result: Option<HashMap<String, i64>> = verify_resp.take(0).map_err(|e| {
             CodeGraphError::Database(format!("Failed to extract verification count: {}", e))
         })?;
-        let written = written_count.unwrap_or(0) as usize;
+        let written = result.and_then(|r| r.get("total").copied()).unwrap_or(0) as usize;
 
         if written < records.len() {
             return Err(CodeGraphError::Database(format!(
