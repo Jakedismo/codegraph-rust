@@ -1,7 +1,7 @@
 use crate::llm_provider::*;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use reqwest::{Client, StatusCode};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
@@ -208,7 +208,7 @@ impl LLMProvider for OpenAIProvider {
         messages: &[Message],
         config: &GenerationConfig,
     ) -> LLMResult<LLMResponse> {
-        let start = Instant::now();
+        let _start = Instant::now();
         let response = self.send_request(messages, config).await?;
 
         // Extract text from output array
@@ -371,6 +371,7 @@ struct OpenAIRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OpenAIResponse {
     id: String,
     object: String,

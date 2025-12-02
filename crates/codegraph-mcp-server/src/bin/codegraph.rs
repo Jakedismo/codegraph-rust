@@ -71,6 +71,14 @@ enum Commands {
         pid_file: Option<PathBuf>,
     },
 
+    #[command(about = "Run SurrealDB connectivity/schema canary (debug)")]
+    DbCheck {
+        #[arg(long, help = "Namespace to use (overrides env)")]
+        namespace: Option<String>,
+        #[arg(long, help = "Database to use (overrides env)")]
+        database: Option<String>,
+    },
+
     #[command(about = "Stop running MCP server")]
     Stop {
         #[arg(long, help = "PID file location")]
@@ -1995,6 +2003,9 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
         ConfigAction::Validate => {
             println!("✓ Configuration is valid");
         }
+        ConfigAction::DbCheck { namespace, database } => {
+            handle_db_check(namespace, database).await?;
+        }
         ConfigAction::AgentStatus { json } => {
             handle_agent_status(json).await?;
         }
@@ -2220,6 +2231,22 @@ async fn handle_agent_status(json: bool) -> Result<()> {
         println!("   Current tier: {}", format!("{:?}", tier).green().bold());
     }
 
+    Ok(())
+}
+
+async fn handle_db_check(namespace: Option<String>, database: Option<String>) -> Result<()> {
+    use codegraph_graph::{SurrealDbConfig, SurrealDbStorage};
+
+    let mut config = SurrealDbConfig::default();
+    if let Some(ns) = namespace {
+        config.namespace = ns;
+    }
+    if let Some(db) = database {
+        config.database = db;
+    }
+
+    let _storage = SurrealDbStorage::new(config).await?;
+    println!("✓ SurrealDB connectivity verified");
     Ok(())
 }
 

@@ -6,7 +6,6 @@ use crate::estimation::{
     extend_symbol_index, parse_files_with_unified_extraction as shared_unified_parse,
 };
 use anyhow::{anyhow, Context, Result};
-use biome_js_parser::{parse_script, JsParserOptions};
 use codegraph_core::{CodeNode, EdgeRelationship, NodeId, NodeType};
 use codegraph_graph::{
     edge::CodeEdge, FileMetadataRecord, NodeEmbeddingRecord, ProjectMetadataRecord,
@@ -20,11 +19,9 @@ use codegraph_parser::TreeSitterParser;
 use futures::{stream, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use num_cpus;
-use python_parser::ast::{Expr, ExprKind};
 use rayon::prelude::*;
 use regex::Regex;
 use rustc_demangle::try_demangle;
-use sha2::{Digest, Sha256};
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -33,10 +30,9 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use symbolic_demangle::{demangle, DemangleOptions, Language};
-use symbolic_demangle::{demangle, DemangleOptions, Language};
+use std::time::Duration;
 use syn::{parse_str as parse_syn_path, Path as SynPath, PathArguments};
-use syn::{parse_str as parse_syn_path, Path as SynPath, PathArguments};
+use symbolic_demangle::demangle;
 use tokio::fs as tokio_fs;
 use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex};
 use tokio::task::JoinHandle;
@@ -44,7 +40,7 @@ use tracing::{debug, error, info, warn};
 use url::Url;
 use walkdir::WalkDir;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use std::collections::HashMap;
 
@@ -279,7 +275,7 @@ impl SurrealWriterHandle {
                             continue;
                         }
 
-                        let mut guard = storage.lock().await;
+                        let guard = storage.lock().await;
                         let delete_nodes_query = "DELETE nodes WHERE project_id = $project_id AND file_path IN $file_paths RETURN BEFORE";
                         let mut result = match guard
                             .db()
@@ -592,7 +588,7 @@ impl ProjectIndexer {
                         target: "codegraph_mcp::indexer",
                         "CODEGRAPH_EMBEDDING_PROVIDER=local requested but the 'embeddings-local' feature is not enabled; using auto provider"
                     );
-                    let mut g = EmbeddingGenerator::with_auto_from_env().await;
+        let g = EmbeddingGenerator::with_auto_from_env().await;
                     // Set batch_size and max_concurrent for Jina provider if applicable
                     #[cfg(feature = "embeddings-jina")]
                     {
@@ -602,7 +598,7 @@ impl ProjectIndexer {
                     g
                 }
             } else {
-                let mut g = EmbeddingGenerator::with_config(global_config).await;
+        let g = EmbeddingGenerator::with_config(global_config).await;
                 // Set batch_size and max_concurrent for Jina provider if applicable
                 #[cfg(feature = "embeddings-jina")]
                 {
@@ -1141,12 +1137,13 @@ impl ProjectIndexer {
             let total_resolved = AtomicUsize::new(0);
 
             // Process all chunks in parallel using M4 Max cores
-            let mut unresolved_samples: Vec<String> = Vec::new();
+            let unresolved_samples: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
             let chunk_results: Vec<_> = chunks
                 .par_iter()
                 .enumerate()
                 .map(|(chunk_idx, chunk)| {
+                    let unresolved_samples = unresolved_samples.clone();
                     let mut chunk_resolved = Vec::new();
                     let mut chunk_stats = (0, 0, 0, 0); // (exact, pattern, ai, unresolved)
 
@@ -1154,10 +1151,8 @@ impl ProjectIndexer {
                         let mut target_id = None;
                         let mut resolution_type = "unresolved";
 
-                        let mut tried = false;
                         // Rust-first normalization
                         for variant in Self::normalize_rust_symbol(&edge_rel.to) {
-                            tried = true;
                             if let Some(&id) = symbol_map.get(&variant) {
                                 target_id = Some(id);
                                 resolution_type = "normalized";
@@ -1165,22 +1160,9 @@ impl ProjectIndexer {
                             }
                         }
 
-                        // JS/TS normalization
-                        if target_id.is_none() {
-                            for variant in Self::normalize_js_symbol(&edge_rel.to) {
-                                tried = true;
-                                if let Some(&id) = symbol_map.get(&variant) {
-                                    target_id = Some(id);
-                                    resolution_type = "normalized";
-                                    break;
-                                }
-                            }
-                        }
-
-                        // Python normalization
+                        // Python normalization (fallback to string-based)
                         if target_id.is_none() {
                             for variant in Self::normalize_python_symbol(&edge_rel.to) {
-                                tried = true;
                                 if let Some(&id) = symbol_map.get(&variant) {
                                     target_id = Some(id);
                                     resolution_type = "normalized";
@@ -1190,21 +1172,12 @@ impl ProjectIndexer {
                         }
 
                         if target_id.is_none() {
-                            for variant in normalize_symbol_target(&edge_rel.to) {
-                                tried = true;
+                            for variant in Self::normalize_symbol_target(&edge_rel.to) {
                                 if let Some(&id) = symbol_map.get(&variant) {
                                     target_id = Some(id);
                                     resolution_type = "normalized";
                                     break;
                                 }
-                            }
-                        }
-
-                        if target_id.is_none() && !tried {
-                            if let Some(&id) = symbol_map.get(&variant) {
-                                target_id = Some(id);
-                                resolution_type = "normalized";
-                                break;
                             }
                         }
 
@@ -1251,9 +1224,6 @@ impl ProjectIndexer {
                                     ));
                                 } else {
                                     chunk_stats.3 += 1; // Unresolved count
-                                    if unresolved_samples.len() < 10 {
-                                        unresolved_samples.push(edge_rel.to.clone());
-                                    }
                                 }
                             }
                             #[cfg(not(feature = "ai-enhanced"))]
@@ -1304,6 +1274,9 @@ impl ProjectIndexer {
                 all_resolved_edges.extend(chunk_edges);
             }
 
+            let mut stored_edges_local = 0usize;
+            let mut resolution_rate_local = 0.0;
+
             // Store resolved edges via writer
             if !all_resolved_edges.is_empty() {
                 let serializable_edges: Vec<_> = all_resolved_edges
@@ -1320,13 +1293,13 @@ impl ProjectIndexer {
                     )
                     .collect();
 
-                let stored_edges_local = serializable_edges.len();
+                stored_edges_local = serializable_edges.len();
                 if let Err(err) = self.enqueue_edges(serializable_edges).await {
                     warn!("⚠️ Failed to store resolved edges: {}", err);
                 }
 
                 let resolution_time = resolution_start.elapsed();
-                let resolution_rate_local = (stored_edges_local as f64 / edge_count as f64) * 100.0;
+                resolution_rate_local = (stored_edges_local as f64 / edge_count as f64) * 100.0;
 
                 let edge_msg = format!(
                     "🔗 Dependencies resolved: {}/{} relationships ({:.1}% success) | ⚡ {:.1}s",
@@ -1359,8 +1332,10 @@ impl ProjectIndexer {
                     "   ❌ Unresolved: {} (external dependencies/dynamic calls)",
                     unresolved_edges
                 );
-                if !unresolved_samples.is_empty() && std::env::var("CODEGRAPH_DEBUG").is_ok() {
-                    info!("   🔍 Sample unresolved targets: {:?}", unresolved_samples);
+                if let Ok(samples) = unresolved_samples.lock() {
+                    if !samples.is_empty() && std::env::var("CODEGRAPH_DEBUG").is_ok() {
+                        info!("   🔍 Sample unresolved targets: {:?}", *samples);
+                    }
                 }
                 info!(
                     "   ⚡ M4 Max performance: {:.0} edges/s ({} cores utilized)",
@@ -1391,68 +1366,6 @@ impl ProjectIndexer {
                 }
             } else {
                 edge_pb.finish_with_message("No resolved edges to store");
-            }
-
-            let resolution_time = resolution_start.elapsed();
-            let resolution_rate_local = (stored_edges_local as f64 / edge_count as f64) * 100.0;
-            let edge_msg = format!(
-                "🔗 Dependencies resolved: {}/{} relationships ({:.1}% success) | ⚡ {:.1}s",
-                stored_edges_local,
-                edge_count,
-                resolution_rate_local,
-                resolution_time.as_secs_f64()
-            );
-            edge_pb.finish_with_message(edge_msg);
-
-            // Comprehensive M4 Max optimized performance statistics
-            info!("🔗 M4 MAX PARALLEL PROCESSING RESULTS:");
-            info!(
-                "   ✅ Successfully stored: {} edges ({:.1}% of extracted relationships)",
-                stored_edges_local, resolution_rate_local
-            );
-            info!(
-                "   🎯 Exact matches: {} (direct symbol found)",
-                exact_matches
-            );
-            info!(
-                "   🔄 Pattern matches: {} (simplified/cleaned symbols)",
-                pattern_matches
-            );
-            #[cfg(feature = "ai-enhanced")]
-            info!(
-                "   🧠 AI semantic matches: {} (similarity-based resolution)",
-                ai_matches
-            );
-            info!(
-                "   ❌ Unresolved: {} (external dependencies/dynamic calls)",
-                unresolved_edges
-            );
-            info!(
-                "   ⚡ M4 Max performance: {:.0} edges/s ({} cores utilized)",
-                edge_count as f64 / resolution_time.as_secs_f64(),
-                num_cpus::get()
-            );
-            info!(
-                "   🚀 Parallel efficiency: {} chunks processed across {} cores",
-                total_chunks,
-                num_cpus::get()
-            );
-
-            if resolution_rate_local >= 80.0 {
-                info!(
-                    "🎉 EXCELLENT: {:.1}% resolution rate achieved!",
-                    resolution_rate_local
-                );
-            } else if resolution_rate_local >= 60.0 {
-                info!(
-                    "✅ GOOD: {:.1}% resolution rate - strong dependency coverage",
-                    resolution_rate_local
-                );
-            } else {
-                warn!(
-                    "⚠️ LIMITED: {:.1}% resolution rate - consider improving symbol extraction",
-                    resolution_rate_local
-                );
             }
 
             // Assign values for use outside the block
@@ -2943,7 +2856,7 @@ impl ProjectIndexer {
     }
 
     fn normalize_symbol_target(target: &str) -> Vec<String> {
-        // Apply simple, pure string normalizations; return a set of candidate variants
+        // Normalize edge targets to match codegraph-parser emitted symbol keys.
         let mut variants = Vec::new();
 
         let mut base = target.trim();
@@ -2984,8 +2897,8 @@ impl ProjectIndexer {
             }
         }
 
-        // Strip leading self:: / super:: / crate::
-        let prefixes = ["self::", "super::", "crate::"];
+        // Align with parser naming: drop self./this./super./crate:: prefixes
+        let prefixes = ["self::", "self.", "this.", "super::", "super.", "crate::"];
         for p in prefixes {
             if let Some(stripped) = cleaned.strip_prefix(p) {
                 cleaned = stripped.to_string();
@@ -2993,15 +2906,27 @@ impl ProjectIndexer {
             }
         }
 
-        let lower = cleaned.to_lowercase();
+        // Generate both module separators used by emitters (Rust uses ::, Python/JS often .)
+        let dotted = cleaned.replace("::", ".");
+        let coloned = cleaned.replace('.', "::");
+
+        let lower_clean = cleaned.to_lowercase();
+        let lower_dotted = dotted.to_lowercase();
+        let lower_coloned = coloned.to_lowercase();
 
         variants.push(cleaned.clone());
-        variants.push(lower.clone());
+        variants.push(lower_clean.clone());
+        variants.push(dotted.clone());
+        variants.push(lower_dotted.clone());
+        variants.push(coloned.clone());
+        variants.push(lower_coloned.clone());
 
         // Push last path segment variants
-        if let Some(last) = cleaned.rsplit("::").next() {
-            variants.push(last.to_string());
-            variants.push(last.to_lowercase());
+        for candidate in [&cleaned, &dotted, &coloned] {
+            if let Some(last) = candidate.rsplit(['.', ':']).next() {
+                variants.push(last.to_string());
+                variants.push(last.to_lowercase());
+            }
         }
 
         variants.sort();
@@ -3009,17 +2934,18 @@ impl ProjectIndexer {
         variants
     }
 
+    #[cfg(test)]
+    pub(crate) fn normalize_symbol_target_for_tests(target: &str) -> Vec<String> {
+        Self::normalize_symbol_target(target)
+    }
+
     fn normalize_rust_symbol(target: &str) -> Vec<String> {
-        // Demangle if possible
+        // Demangle if possible (rustc, then Symbolic as fallback to strip hashes)
         let demangled = try_demangle(target)
             .map(|d| d.to_string())
             .unwrap_or_else(|_| target.to_string());
 
-        let symbolic = demangle(
-            &demangled,
-            DemangleOptions::default().language(Language::Rust),
-        )
-        .unwrap_or_else(|_| demangled.clone());
+        let symbolic = demangle(&demangled).into_owned();
 
         let mut out = Vec::new();
 
@@ -3027,12 +2953,7 @@ impl ProjectIndexer {
         if let Ok(path) = parse_syn_path::<SynPath>(&symbolic) {
             let mut simple = Vec::new();
             for seg in path.segments {
-                let mut name = seg.ident.to_string();
-                // Drop any generic arguments (PathArguments)
-                match seg.arguments {
-                    PathArguments::None => {}
-                    _ => {}
-                }
+                let name = seg.ident.to_string();
                 simple.push(name);
             }
             if !simple.is_empty() {
@@ -3046,47 +2967,23 @@ impl ProjectIndexer {
             }
         }
 
+        // Fallback: return demangled text plus lowered forms
+        if out.is_empty() {
+            out.push(symbolic.clone());
+            out.push(symbolic.to_lowercase());
+        }
+
         out
     }
 
     fn normalize_js_symbol(target: &str) -> Vec<String> {
-        let mut out = Vec::new();
-        let opts = JsParserOptions::default();
-        if let Ok(parsed) = parse_script(target, opts) {
-            // Extract last identifier token from the syntax text as a fallback
-            let text = parsed.syntax().text().to_string();
-            if let Some(last) = text
-                .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
-                .filter(|s| !s.is_empty())
-                .last()
-            {
-                out.push(last.to_string());
-                out.push(last.to_lowercase());
-            }
-            out.push(text);
-        }
-        out
+        // Lightweight heuristic until JS parser dependency is restored
+        Self::normalize_symbol_target(target)
     }
 
     fn normalize_python_symbol(target: &str) -> Vec<String> {
-        let mut out = Vec::new();
-        if let Ok(expr) = python_parser::parse_expression(target) {
-            match expr.node {
-                ExprKind::Name { id, .. } => {
-                    out.push(id.clone());
-                    out.push(id.to_lowercase());
-                }
-                ExprKind::Attribute { value, attr, .. } => {
-                    // Recursively flatten attribute chain if possible
-                    let base = format!("{:?}.{}", value, attr);
-                    out.push(base.clone());
-                    out.push(attr.clone());
-                    out.push(attr.to_lowercase());
-                }
-                _ => {}
-            }
-        }
-        out
+        // Fallback: simple split heuristics for Python until AST parser is re-enabled
+        Self::normalize_symbol_target(target)
     }
 
     fn create_progress_bar(&self, total: u64, message: &str) -> ProgressBar {
