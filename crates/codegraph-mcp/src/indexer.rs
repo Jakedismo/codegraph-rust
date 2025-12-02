@@ -3351,7 +3351,9 @@ impl ProjectIndexer {
                             if now.duration_since(*entry).as_millis() as u64 >= debounce_ms {
                                 *entry = now;
                                 info!("File changed: {:?}, reindexing (debounced)...", path);
-                                // TODO: trigger incremental index of single file
+                                if let Err(e) = self.index_single_file(&path).await {
+                                    warn!("Incremental reindex failed for {:?}: {}", path, e);
+                                }
                             } else {
                                 debug!("Debounced change for {:?}", path);
                             }
