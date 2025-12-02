@@ -481,7 +481,7 @@ impl ProjectIndexer {
         let config_batch = self
             .config
             .symbol_batch_size
-            .unwrap_or_else(|| self.config.batch_size.max(256));
+            .unwrap_or(self.config.batch_size);
         let config_concurrent = self
             .config
             .symbol_max_concurrent
@@ -503,10 +503,17 @@ impl ProjectIndexer {
     }
 
     pub async fn new(
-        config: IndexerConfig,
+        mut config: IndexerConfig,
         global_config: &codegraph_core::config_manager::CodeGraphConfig,
         multi_progress: MultiProgress,
     ) -> Result<Self> {
+        // Allow runtime override for embedding batch size
+        if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
+            if let Ok(parsed) = val.parse::<usize>() {
+                config.batch_size = parsed.clamp(1, 2048);
+            }
+        }
+
         let parser = TreeSitterParser::new();
         let project_root = config.project_root.clone();
         let surreal = Self::connect_surreal_from_env().await?;

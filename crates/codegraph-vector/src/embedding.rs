@@ -140,6 +140,11 @@ impl EmbeddingGenerator {
                     LocalEmbeddingConfigCompat, LocalPoolingCompat,
                 };
                 let mut cfg = EmbeddingEngineConfig::default();
+                if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
+                    if let Ok(parsed) = val.parse::<usize>() {
+                        cfg.batch_size = parsed.clamp(1, 2048);
+                    }
+                }
                 cfg.prefer_local_first = true;
                 // Optional model override via env
                 if let Ok(model_name) = std::env::var("CODEGRAPH_LOCAL_MODEL") {
@@ -312,7 +317,13 @@ impl EmbeddingGenerator {
     /// Construct an EmbeddingGenerator from a CodeGraphConfig
     /// This enables TOML configuration file support in addition to environment variables
     pub async fn with_config(config: &codegraph_core::CodeGraphConfig) -> Self {
-        let embedding_config = &config.embedding;
+        // Allow env override for batch size (applies across providers)
+        let mut embedding_config = config.embedding.clone();
+        if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
+            if let Ok(parsed) = val.parse::<usize>() {
+                embedding_config.batch_size = parsed.clamp(1, 2048);
+            }
+        }
         #[allow(unused_mut)]
         let mut base = Self::new(ModelConfig {
             dimension: embedding_config.dimension,

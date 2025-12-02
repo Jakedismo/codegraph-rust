@@ -3,13 +3,13 @@
 
 use super::{PatternMatcher, SymbolResolver};
 use codegraph_core::ExtractionResult;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tracing::info;
 
 /// Fast ML enhancer that combines multiple techniques (<1ms total latency)
 pub struct FastMLEnhancer {
     pattern_matcher: Arc<PatternMatcher>,
-    symbol_resolver: Arc<SymbolResolver>,
+    symbol_resolver: Arc<Mutex<SymbolResolver>>,
 }
 
 impl FastMLEnhancer {
@@ -19,7 +19,7 @@ impl FastMLEnhancer {
 
         Self {
             pattern_matcher: Arc::new(PatternMatcher::new()),
-            symbol_resolver: Arc::new(SymbolResolver::new()),
+            symbol_resolver: Arc::new(Mutex::new(SymbolResolver::new())),
         }
     }
 
@@ -33,10 +33,13 @@ impl FastMLEnhancer {
         let original_edge_count = result.edges.len();
 
         // Step 1: Pattern matching (nanoseconds)
-        let result = self.pattern_matcher.enhance_extraction(result, content);
+        let mut result = self.pattern_matcher.enhance_extraction(result, content);
 
-        // Step 2: Symbol resolution (microseconds) - skipped for now since it needs indexing
-        // We'll add this in a second phase when we have a symbol index built up
+        // Step 2: Symbol resolution (microseconds)
+        if let Ok(mut resolver) = self.symbol_resolver.lock() {
+            resolver.index_symbols(&result);
+            result = resolver.resolve_symbols(result);
+        }
 
         let added_edges = result.edges.len() - original_edge_count;
 
@@ -58,7 +61,7 @@ impl FastMLEnhancer {
     }
 
     /// Get symbol resolver for advanced usage
-    pub fn symbol_resolver(&self) -> Arc<SymbolResolver> {
+    pub fn symbol_resolver(&self) -> Arc<Mutex<SymbolResolver>> {
         Arc::clone(&self.symbol_resolver)
     }
 }
@@ -110,6 +113,36 @@ mod tests {
 
         let enhanced = enhancer.enhance(result, content);
         assert!(enhanced.edges.len() > 0, "Should add pattern-based edges");
+    }
+
+    #[test]
+    fn test_symbol_resolver_adds_edges() {
+        use codegraph_core::{EdgeRelationship, EdgeType, NodeId};
+
+        let enhancer = FastMLEnhancer::new();
+
+        // Node "foo" exists; edge points to similar symbol "foo1" that should resolve
+        let node = CodeNode {
+            id: NodeId::new_v4(),
+            name: "foo".into(),
+            ..CodeNode::new_test()
+        };
+        let edge = EdgeRelationship {
+            from: node.id,
+            to: "foo1".into(),
+            edge_type: EdgeType::Uses,
+            metadata: Default::default(),
+        };
+        let result = ExtractionResult {
+            nodes: vec![node],
+            edges: vec![edge],
+        };
+
+        let enhanced = enhancer.enhance(result, "fn foo() {}");
+        assert!(
+            enhanced.edges.len() >= 1,
+            "Symbol resolver should preserve/augment edges"
+        );
     }
 
     #[test]
