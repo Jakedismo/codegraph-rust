@@ -123,11 +123,35 @@ impl PatternMatcher {
             }
         }
 
-        // Generate edges based on pattern frequency
-        for (pattern_idx, count) in pattern_counts {
-            if let Some((pattern_name, edge_type)) = self.patterns.get(pattern_idx) {
-                // Create edge for this pattern
-                if let Some(first_node) = result.nodes.first() {
+        // Pick a representative node (file/module node, else longest node content)
+        let representative_node = result
+            .nodes
+            .iter()
+            .find(|n| matches!(n.node_type, Some(codegraph_core::NodeType::Module)) || n.node_type.is_none())
+            .or_else(|| {
+                result
+                    .nodes
+                    .iter()
+                    .max_by_key(|n| n.content.as_ref().map(|c| c.len()).unwrap_or(0))
+            })
+            .cloned();
+
+        // Generate edges based on pattern frequency (top-k per file, capped per pattern)
+        if let Some(rep) = representative_node {
+            // Sort patterns by count desc
+            let mut freq: Vec<(usize, usize)> = pattern_counts.into_iter().collect();
+            freq.sort_by(|a, b| b.1.cmp(&a.1));
+            let top_k = 5usize;
+            let max_edges_per_file = 25usize;
+            let max_per_pattern = 5usize;
+            let mut edges_added = 0usize;
+
+            for (pattern_idx, count) in freq.into_iter().take(top_k) {
+                if edges_added >= max_edges_per_file {
+                    break;
+                }
+                if let Some((pattern_name, edge_type)) = self.patterns.get(pattern_idx) {
+                    let edge_reps = count.min(max_per_pattern);
                     let mut metadata = HashMap::new();
                     metadata.insert("pattern".to_string(), pattern_name.clone());
                     metadata.insert("pattern_count".to_string(), count.to_string());
@@ -136,12 +160,18 @@ impl PatternMatcher {
                         "pattern_match".to_string(),
                     );
 
-                    new_edges.push(EdgeRelationship {
-                        from: first_node.id,
-                        to: pattern_name.clone(),
-                        edge_type: edge_type.clone(),
-                        metadata,
-                    });
+                    for _ in 0..edge_reps {
+                        if edges_added >= max_edges_per_file {
+                            break;
+                        }
+                        new_edges.push(EdgeRelationship {
+                            from: rep.id,
+                            to: pattern_name.clone(),
+                            edge_type: edge_type.clone(),
+                            metadata: metadata.clone(),
+                        });
+                        edges_added += 1;
+                    }
                 }
             }
         }

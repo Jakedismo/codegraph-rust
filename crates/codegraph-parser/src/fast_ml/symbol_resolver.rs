@@ -27,7 +27,7 @@ impl SymbolResolver {
             lsh: None,
             symbols: Vec::new(),
             symbol_vectors: HashMap::new(),
-            min_similarity_threshold: 0.8,
+            min_similarity_threshold: 0.7,
             dim: 64, // Character-based hash dimension (lighter/faster)
         }
     }
@@ -84,6 +84,8 @@ impl SymbolResolver {
             return result;
         }
         let mut new_edges = Vec::new();
+        let max_edges_per_file = 10usize;
+        let mut added = 0usize;
 
         // Find edges pointing to symbols that don't exist in nodes
         let existing_symbols: HashMap<String, _> = result
@@ -112,6 +114,10 @@ impl SymbolResolver {
                         edge_type: EdgeType::Uses,
                         metadata,
                     });
+                    added += 1;
+                    if added >= max_edges_per_file {
+                        break;
+                    }
                 }
             }
         }

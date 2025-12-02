@@ -2,6 +2,14 @@
 
 **Use your entire codebase as semantically searchable context for you coding agents, indexes your whole project to a graph intelligently with ML-enhanced Node,Edge and Symbol discovery integrated with regular AST-parsing and exposes intelligent context through mcp-server and agentic context gathering tools.**
 
+## How Indexing Works (Compact)
+- **Single pass extraction:** Unified TreeSitter + FastML walk produces nodes, edges, symbols in one pass, then lightweight pattern+symbol resolution enriches results.
+- **Node annotations:** Project/organization/repo IDs, language, type, complexity, chunk_count recorded for retrieval and filtering.
+- **Chunk → embed → persist:** Nodes are chunked using a model-aware tokenizer unless `CODEGRAPH_EMBEDDING_SKIP_CHUNKING=1`. Each chunk gets an embedding; writes go to SurrealDB tables `nodes`, `edges`, `symbol_embeddings`, `chunks`.
+- **Hybrid search functions:** Surreal functions combine HNSW vector search + lexical + graph context. MCP chooses chunk or node search based on the env flag, preserving relevance and context.
+- **Incremental tracking:** File/project metadata stored to support `--watch` incremental re-indexing and dedup by project_id + file_path.
+- **Batched + resilient:** Embedding calls and Surreal upserts are batched; sizes tunable via `CODEGRAPH_EMBEDDINGS_BATCH_SIZE` and provider-specific env vars.
+
 CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed context to AI agents, eliminating the need for agents to burn tokens gathering project information. Instead of async agents like Claude Code executing searches and building dependency graphs, CodeGraph's MCP server handles these operations efficiently and exposes them through standardized tools.
 
 ## Agentic MCP Tools (What, When, How)
