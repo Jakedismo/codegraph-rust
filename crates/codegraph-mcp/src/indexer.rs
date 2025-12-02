@@ -863,8 +863,10 @@ impl ProjectIndexer {
         }
 
         // STAGE 4: Persist nodes before embedding so SurrealDB reflects progress
-        let store_nodes_pb =
-            self.create_progress_bar(nodes.len() as u64, "📈 Storing nodes & symbols");
+        let store_nodes_pb = self.create_progress_bar(
+            nodes.len() as u64,
+            "📈 Storing nodes (symbol map build)",
+        );
         let mut stats = IndexStats {
             files: pstats.parsed_files,
             skipped: pstats.total_files - pstats.parsed_files,
@@ -893,12 +895,16 @@ impl ProjectIndexer {
             store_nodes_pb.inc(chunk.len() as u64);
         }
         self.flush_surreal_writer().await?;
-        store_nodes_pb.finish_with_message("📈 Stored nodes & symbols");
+        store_nodes_pb.finish_with_message("📈 Stored nodes (symbol map ready)");
         self.log_surreal_node_count(total_nodes_extracted).await;
 
         // Generate semantic embeddings for vector search capabilities
         let total = nodes.len() as u64;
-        let embed_pb = self.create_batch_progress_bar(total, self.config.batch_size);
+        let embed_pb = self.create_batch_progress_bar(
+            total,
+            self.config.batch_size,
+            "🧠 Embedding nodes (vector batch)",
+        );
         let batch = self.config.batch_size.max(1);
         let mut processed = 0u64;
 
@@ -924,7 +930,7 @@ impl ProjectIndexer {
             #[cfg(feature = "embeddings")]
             {
                 let embs = self.embedder.generate_embeddings(&chunk).await?;
-                info!(
+                debug!(
                     "🔍 EMBEDDING DEBUG: Generated {} embeddings for {} nodes",
                     embs.len(),
                     chunk.len()
@@ -933,7 +939,7 @@ impl ProjectIndexer {
                     n.embedding = Some(e);
                 }
                 let attached_count = chunk.iter().filter(|n| n.embedding.is_some()).count();
-                info!(
+                debug!(
                     "🔍 EMBEDDING DEBUG: {}/{} nodes now have embeddings attached",
                     attached_count,
                     chunk.len()
@@ -1566,7 +1572,11 @@ impl ProjectIndexer {
         );
 
         // Create progress bar for symbol embedding generation
-        let symbol_pb = self.create_batch_progress_bar(top_symbols.len() as u64, batch_size);
+        let symbol_pb = self.create_batch_progress_bar(
+            top_symbols.len() as u64,
+            batch_size,
+            "🧩 Symbol embeddings",
+        );
 
         let batches: Vec<Vec<String>> = top_symbols
             .chunks(batch_size)
@@ -1718,7 +1728,11 @@ impl ProjectIndexer {
         );
 
         // Create progress bar for unresolved symbol embedding generation
-        let unresolved_pb = self.create_batch_progress_bar(symbols_vec.len() as u64, batch_size);
+        let unresolved_pb = self.create_batch_progress_bar(
+            symbols_vec.len() as u64,
+            batch_size,
+            "🧩 Unresolved symbol embeddings",
+        );
 
         let batches: Vec<Vec<String>> = symbols_vec
             .chunks(batch_size)
@@ -3029,7 +3043,12 @@ impl ProjectIndexer {
     }
 
     /// Create high-performance progress bar for batch processing
-    fn create_batch_progress_bar(&self, total: u64, batch_size: usize) -> ProgressBar {
+    fn create_batch_progress_bar(
+        &self,
+        total: u64,
+        batch_size: usize,
+        label: &str,
+    ) -> ProgressBar {
         let pb = self.progress.add(ProgressBar::new(total));
         let batch_info = if batch_size >= 10000 {
             format!("🚀 Ultra-High Performance ({}K batch)", batch_size / 1000)
@@ -3044,13 +3063,12 @@ impl ProjectIndexer {
         pb.set_style(
             ProgressStyle::default_bar()
                 .template(
-                    "{spinner:.green} [{elapsed_precise}] [{bar:45.cyan/blue}] {pos}/{len} embeddings
-                💾 {msg} | {percent}% | {per_sec} | Memory: Optimized | ETA: {eta}",
+                    "{spinner:.green} [{elapsed_precise}] [{bar:45.cyan/blue}] {pos}/{len} items\n                💾 {msg} | {percent}% | {per_sec} | ETA: {eta}",
                 )
                 .unwrap()
                 .progress_chars("█▉▊▋▌▍▎▏ "),
         );
-        pb.set_message(batch_info);
+        pb.set_message(format!("{} | {}", label, batch_info));
         pb
     }
 

@@ -71,6 +71,7 @@ DEFINE FIELD IF NOT EXISTS updated_at  ON TABLE nodes TYPE datetime VALUE time::
 DEFINE FIELD IF NOT EXISTS project_id       ON TABLE nodes TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS organization_id  ON TABLE nodes TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS repository_url   ON TABLE nodes TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS chunk_count      ON TABLE nodes TYPE option<int>;
 
 -- Indexes
 DEFINE INDEX IF NOT EXISTS idx_nodes_name       ON TABLE nodes COLUMNS name;
@@ -105,6 +106,54 @@ DEFINE INDEX IF NOT EXISTS idx_nodes_project_type
     ON TABLE nodes COLUMNS project_id, node_type;
 DEFINE INDEX IF NOT EXISTS idx_nodes_file_type
     ON TABLE nodes COLUMNS file_path, node_type;
+
+-- -----------------------------------------------------------------------------
+-- TABLE: chunks (chunked embeddings)
+-- -----------------------------------------------------------------------------
+DEFINE TABLE IF NOT EXISTS chunks SCHEMAFULL
+  COMMENT 'Chunked embeddings for long nodes (tokenizer-aware chunking)';
+
+DEFINE FIELD IF NOT EXISTS parent_node   ON TABLE chunks TYPE record<nodes>;
+DEFINE FIELD IF NOT EXISTS chunk_index   ON TABLE chunks TYPE int;
+DEFINE FIELD IF NOT EXISTS text          ON TABLE chunks TYPE string;
+DEFINE FIELD IF NOT EXISTS embedding_384   ON TABLE chunks TYPE option<array<float>>
+  ASSERT $value = NONE OR array::len($value) = 384;
+DEFINE FIELD IF NOT EXISTS embedding_768   ON TABLE chunks TYPE option<array<float>>
+  ASSERT $value = NONE OR array::len($value) = 768;
+DEFINE FIELD IF NOT EXISTS embedding_1024  ON TABLE chunks TYPE option<array<float>>
+  ASSERT $value = NONE OR array::len($value) = 1024;
+DEFINE FIELD IF NOT EXISTS embedding_1536  ON TABLE chunks TYPE option<array<float>>
+  ASSERT $value = NONE OR array::len($value) = 1536;
+DEFINE FIELD IF NOT EXISTS embedding_2048  ON TABLE chunks TYPE option<array<float>>
+  ASSERT $value = NONE OR array::len($value) = 2048;
+DEFINE FIELD IF NOT EXISTS embedding_2560  ON TABLE chunks TYPE option<array<float>>
+  ASSERT $value = NONE OR array::len($value) = 2560;
+DEFINE FIELD IF NOT EXISTS embedding_3072  ON TABLE chunks TYPE option<array<float>>
+  ASSERT $value = NONE OR array::len($value) = 3072;
+DEFINE FIELD IF NOT EXISTS embedding_4096  ON TABLE chunks TYPE option<array<float>>
+  ASSERT $value = NONE OR array::len($value) = 4096;
+DEFINE FIELD IF NOT EXISTS embedding_model ON TABLE chunks TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS created_at    ON TABLE chunks TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD IF NOT EXISTS updated_at    ON TABLE chunks TYPE datetime VALUE time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_chunks_parent   ON TABLE chunks COLUMNS parent_node;
+DEFINE INDEX IF NOT EXISTS idx_chunks_order    ON TABLE chunks COLUMNS parent_node, chunk_index;
+DEFINE INDEX IF NOT EXISTS idx_chunks_embedding_384
+    ON TABLE chunks FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_chunks_embedding_768
+    ON TABLE chunks FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_chunks_embedding_1024
+    ON TABLE chunks FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_chunks_embedding_1536
+    ON TABLE chunks FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_chunks_embedding_2048
+    ON TABLE chunks FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_chunks_embedding_2560
+    ON TABLE chunks FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_chunks_embedding_3072
+    ON TABLE chunks FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE EFC 200 M 16;
+DEFINE INDEX IF NOT EXISTS idx_chunks_embedding_4096
+    ON TABLE chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 200 M 16;
 
 -- -----------------------------------------------------------------------------
 -- TABLE: edges

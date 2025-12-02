@@ -95,9 +95,20 @@ impl EmbeddingGenerator {
     }
 
     fn chunker_config(&self) -> ChunkerConfig {
-        ChunkerConfig::new(self.model_config.max_tokens)
-            .sanitize_mode(SanitizeMode::AsciiFastPath)
-            .cache_capacity(2048)
+        // Allow skipping chunking for speed with env flag
+        let skip_chunking = std::env::var("CODEGRAPH_EMBEDDING_SKIP_CHUNKING")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
+        if skip_chunking {
+            ChunkerConfig::new(u32::MAX as usize)
+                .sanitize_mode(SanitizeMode::AsciiFastPath)
+                .cache_capacity(2048)
+        } else {
+            ChunkerConfig::new(self.model_config.max_tokens)
+                .sanitize_mode(SanitizeMode::AsciiFastPath)
+                .cache_capacity(2048)
+        }
     }
 
     fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
