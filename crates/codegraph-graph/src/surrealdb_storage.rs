@@ -596,7 +596,8 @@ impl SurrealDbStorage {
         // Serialize to owned values to satisfy static requirement of Surreal bindings
         let owned: Vec<ChunkEmbeddingRecord> = records.to_vec();
 
-        self.db
+        let mut resp = self
+            .db
             .query(UPSERT_CHUNK_EMBEDDINGS_QUERY)
             .bind(("data", owned))
             .await
@@ -607,6 +608,15 @@ impl SurrealDbStorage {
                     truncate_surreal_error(&e)
                 ))
             })?;
+
+        // Ensure Surreal didn’t return per-statement errors that would otherwise be hidden
+        resp.check().map_err(|e| {
+            CodeGraphError::Database(format!(
+                "Surreal chunk batch returned error ({} items): {}",
+                records.len(),
+                truncate_surreal_error(&e)
+            ))
+        })?;
 
         Ok(())
     }
@@ -1788,7 +1798,7 @@ FOR $doc IN $batch {
         embedding_3072 = $doc.embedding_3072,
         embedding_4096 = $doc.embedding_4096,
         embedding_model = $doc.embedding_model,
-        created_at = $doc.created_at,
+        created_at = time::now(),
         updated_at = time::now();
 }
 "#;

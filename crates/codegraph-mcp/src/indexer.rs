@@ -238,8 +238,14 @@ impl SurrealWriterHandle {
                         if records.is_empty() { continue; }
                         let batch_size = records.len();
                         if let Err(err) = { let guard = storage.lock().await; guard.upsert_chunk_embeddings_batch(&records).await } {
-                            error!("Surreal chunk embedding batch failed: {}", err);
-                            last_error = Some(anyhow!(err.to_string()));
+                            error!(
+                                "🧩 Surreal chunk embedding batch failed ({} records): {}",
+                                batch_size,
+                                err
+                            );
+                            if last_error.is_none() {
+                                last_error = Some(anyhow!(err.to_string()));
+                            }
                         } else {
                             info!("🧩 Surreal chunk batch persisted: {} records", batch_size);
                         }
@@ -664,6 +670,21 @@ impl ProjectIndexer {
                 vector_dim
             )
         })?;
+
+        if let Some(v) = env_vector_dim {
+            info!(
+                "🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION={} → Surreal column {}",
+                v,
+                embedding_column.column_name()
+            );
+        } else {
+            info!(
+                "🧭 Embedding dimension resolved from provider ({}): {} → Surreal column {}",
+                global_config.embedding.provider,
+                vector_dim,
+                embedding_column.column_name()
+            );
+        }
 
         Ok(Self {
             config,
