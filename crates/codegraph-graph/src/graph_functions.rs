@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::json;
 use std::sync::Arc;
-use surrealdb::{engine::any::Any, sql::Value as SurrealValue, Surreal};
+use surrealdb::{engine::any::Any, Surreal, Value as SurrealValue};
 use tracing::{debug, error, warn};
 
 /// Wrapper for SurrealDB graph analysis functions
@@ -372,7 +372,7 @@ impl GraphFunctions {
                 CodeGraphError::Database(format!("Failed to serialize embedding: {}", e))
             })?;
 
-        let result: Vec<serde_json::Value> = self
+        let mut response = self
             .db
             .query("RETURN fn::semantic_search_with_context($project_id, $query_embedding, $query_text, $dimension, $limit, $threshold, $include_graph_context)")
             .bind(("project_id", self.project_id.clone()))
@@ -386,12 +386,28 @@ impl GraphFunctions {
             .map_err(|e| {
                 error!("Failed to call semantic_search_with_context: {}", e);
                 CodeGraphError::Database(format!("semantic_search_with_context failed: {}", e))
-            })?
-            .take(0)
-            .map_err(|e| {
-                error!("Failed to deserialize semantic_search_with_context results: {}", e);
-                CodeGraphError::Database(format!("Deserialization failed: {}", e))
             })?;
+
+        // Workaround for SurrealDB 2.x SDK bug (GitHub #4921):
+        // Direct deserialization to serde_json::Value fails with "invalid type: enum"
+        // Instead, get raw SurrealDB Value and serialize via serde_json::to_value
+        let raw_value: SurrealValue = response.take(0).map_err(|e| {
+            error!("Failed to get raw value from semantic_search_with_context: {}", e);
+            CodeGraphError::Database(format!("Failed to get raw value: {}", e))
+        })?;
+
+        // Convert SurrealDB Value to serde_json::Value via Serialize trait
+        let json_value = serde_json::to_value(&raw_value).map_err(|e| {
+            error!("Failed to serialize semantic_search_with_context result: {}", e);
+            CodeGraphError::Database(format!("Serialization failed: {}", e))
+        })?;
+
+        // Extract Vec from the JSON value
+        let result: Vec<serde_json::Value> = match json_value {
+            serde_json::Value::Array(arr) => arr,
+            serde_json::Value::Null => Vec::new(),
+            other => vec![other],
+        };
 
         Ok(result)
     }
@@ -415,7 +431,7 @@ impl GraphFunctions {
                 CodeGraphError::Database(format!("Failed to serialize embedding: {}", e))
             })?;
 
-        let result: Vec<serde_json::Value> = self
+        let mut response = self
             .db
             .query("RETURN fn::semantic_search_chunks_with_context($project_id, $query_embedding, $query_text, $dimension, $limit, $threshold, $include_graph_context)")
             .bind(("project_id", self.project_id.clone()))
@@ -437,15 +453,34 @@ impl GraphFunctions {
                     error!("Failed to call semantic_search_chunks_with_context: {}", msg);
                     CodeGraphError::Database(format!("semantic_search_chunks_with_context failed: {}", msg))
                 }
-            })?
-            .take(0)
-            .map_err(|e| {
-                error!(
-                    "Failed to deserialize semantic_search_chunks_with_context results: {}",
-                    e
-                );
-                CodeGraphError::Database(format!("Deserialization failed: {}", e))
             })?;
+
+        // Workaround for SurrealDB 2.x SDK bug (GitHub #4921):
+        // Direct deserialization to serde_json::Value fails with "invalid type: enum"
+        // Instead, get raw SurrealDB Value and serialize via serde_json::to_value
+        let raw_value: SurrealValue = response.take(0).map_err(|e| {
+            error!(
+                "Failed to get raw value from semantic_search_chunks_with_context: {}",
+                e
+            );
+            CodeGraphError::Database(format!("Failed to get raw value: {}", e))
+        })?;
+
+        // Convert SurrealDB Value to serde_json::Value via Serialize trait
+        let json_value = serde_json::to_value(&raw_value).map_err(|e| {
+            error!(
+                "Failed to serialize semantic_search_chunks_with_context result: {}",
+                e
+            );
+            CodeGraphError::Database(format!("Serialization failed: {}", e))
+        })?;
+
+        // Extract Vec from the JSON value
+        let result: Vec<serde_json::Value> = match json_value {
+            serde_json::Value::Array(arr) => arr,
+            serde_json::Value::Null => Vec::new(),
+            other => vec![other],
+        };
 
         Ok(result)
     }
