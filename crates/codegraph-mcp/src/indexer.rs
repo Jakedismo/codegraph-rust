@@ -200,11 +200,16 @@ struct SurrealWriterHandle {
 }
 
 impl SurrealWriterHandle {
-    fn new(storage: Arc<TokioMutex<SurrealDbStorage>>) -> Self {
+    fn new(pool: Vec<Arc<TokioMutex<SurrealDbStorage>>>) -> Self {
         let (tx, mut rx) = mpsc::channel(8);
+        let pool_arc = Arc::new(pool);
         let join = tokio::spawn(async move {
             let mut last_error: Option<anyhow::Error> = None;
+            let mut rr: usize = 0;
             while let Some(job) = rx.recv().await {
+                let pool_len = pool_arc.len().max(1);
+                let storage = pool_arc[rr % pool_len].clone();
+                rr = rr.wrapping_add(1);
                 match job {
                     SurrealWriteJob::Nodes(nodes) => {
                         if nodes.is_empty() { continue; }
@@ -237,7 +242,7 @@ impl SurrealWriterHandle {
                     SurrealWriteJob::ChunkEmbeddings(records) => {
                         if records.is_empty() { continue; }
                         let batch_size = records.len();
-                        if let Err(err) = { let guard = storage.lock().await; guard.upsert_chunk_embeddings_batch(&records).await } {
+                        if let Err(err) = { let guard = storage.lock().await; guard.upsert_chunk_embeddings_resilient(&records).await } {
                             error!(
                                 "🧩 Surreal chunk embedding batch failed ({} records): {}",
                                 batch_size,
@@ -537,8 +542,8 @@ impl ProjectIndexer {
 
         let parser = TreeSitterParser::new();
         let project_root = config.project_root.clone();
-        let surreal = Self::connect_surreal_from_env().await?;
-        let surreal_writer = SurrealWriterHandle::new(surreal.clone());
+        let (surreal, surreal_pool) = Self::connect_surreal_from_env().await?;
+        let surreal_writer = SurrealWriterHandle::new(surreal_pool);
         let project_id = std::env::var("CODEGRAPH_PROJECT_ID")
             .unwrap_or_else(|_| project_root.display().to_string());
         let organization_id = std::env::var("CODEGRAPH_ORGANIZATION_ID").ok();
@@ -1037,10 +1042,15 @@ impl ProjectIndexer {
             use futures::stream::{self, StreamExt};
             use std::sync::atomic::{AtomicU64, Ordering};
 
+            // To avoid giant DB payloads, tie chunk grouping to the DB batch size (which may be lower
+            // than the embedding batch size). This keeps both embedding and DB writes in smaller slices.
+            // Also ensure we never exceed the embedding batch size, so the embedder isn’t overfed.
+            let chunk_batch_size = chunk_embedding_db_batch_size(batch).min(batch);
+
             let chunk_batches: Vec<(Vec<String>, Vec<ChunkMeta>)> = {
                 let mut batches = Vec::new();
-                let mut chunk_iter = chunk_plan.chunks.chunks(batch);
-                let mut meta_iter = chunk_plan.metas.chunks(batch);
+                let mut chunk_iter = chunk_plan.chunks.chunks(chunk_batch_size);
+                let mut meta_iter = chunk_plan.metas.chunks(chunk_batch_size);
                 while let (Some(chunk_batch), Some(meta_batch)) =
                     (chunk_iter.next(), meta_iter.next())
                 {
@@ -1237,16 +1247,18 @@ impl ProjectIndexer {
 
                 // Phase 2: Pre-compute embeddings for ALL unresolved edge targets
                 info!("🔧 Phase 2: Pre-computing embeddings for unresolved edge targets");
-                let unresolved_symbols: std::collections::HashSet<String> = edges
-                    .iter()
-                    .filter_map(|edge| {
-                        if symbol_map.contains_key(&edge.to) {
-                            None // Already resolved
-                        } else {
-                            Some(edge.to.clone()) // Unresolved - needs embedding
-                        }
-                    })
-                    .collect();
+                let mut unresolved_symbols: std::collections::HashSet<String> = std::collections::HashSet::new();
+                let mut unresolved_symbol_edge_ids: std::collections::HashMap<String, String> =
+                    std::collections::HashMap::new();
+
+                for edge in edges.iter() {
+                    if !symbol_map.contains_key(&edge.to) {
+                        unresolved_symbols.insert(edge.to.clone());
+                        unresolved_symbol_edge_ids
+                            .entry(edge.to.clone())
+                            .or_insert_with(|| edge.id.to_string());
+                    }
+                }
 
                 info!(
                     "📊 Discovered {} unique unresolved symbols for AI embedding",
@@ -1255,7 +1267,10 @@ impl ProjectIndexer {
                 let unresolved_embeddings = if !unresolved_symbols.is_empty() {
                     // PROFESSIONAL: Direct embedding generation for unresolved symbols (no fake NodeIds needed)
                     match self
-                        .precompute_unresolved_symbol_embeddings(&unresolved_symbols)
+                        .precompute_unresolved_symbol_embeddings(
+                            &unresolved_symbols,
+                            &unresolved_symbol_edge_ids,
+                        )
                         .await
                     {
                         embeddings if !embeddings.is_empty() => {
@@ -1863,6 +1878,7 @@ impl ProjectIndexer {
     async fn precompute_unresolved_symbol_embeddings(
         &self,
         unresolved_symbols: &std::collections::HashSet<String>,
+        symbol_edge_ids: &std::collections::HashMap<String, String>,
     ) -> std::collections::HashMap<String, Vec<f32>> {
         use codegraph_vector::EmbeddingGenerator;
 
@@ -1917,9 +1933,13 @@ impl ProjectIndexer {
                     for (symbol, embedding) in
                         batch.iter().cloned().zip(batch_embeddings.into_iter())
                     {
-                        records.push(
-                            self.build_symbol_embedding_record(&symbol, None, None, &embedding),
-                        );
+                        let edge_id_ref = symbol_edge_ids.get(&symbol).map(|s| s.as_str());
+                        records.push(self.build_symbol_embedding_record(
+                            &symbol,
+                            None,
+                            edge_id_ref,
+                            &embedding,
+                        ));
                         embeddings.insert(symbol, embedding);
                     }
                     if let Err(err) = self.persist_symbol_embedding_records(records).await {
@@ -1939,8 +1959,13 @@ impl ProjectIndexer {
                     for symbol in batch.into_iter() {
                         match embedder.generate_text_embedding(&symbol).await {
                             Ok(embedding) => {
-                                let record = self
-                                    .build_symbol_embedding_record(&symbol, None, None, &embedding);
+                                let edge_id_ref = symbol_edge_ids.get(&symbol).map(|s| s.as_str());
+                                let record = self.build_symbol_embedding_record(
+                                    &symbol,
+                                    None,
+                                    edge_id_ref,
+                                    &embedding,
+                                );
                                 if let Err(err) =
                                     self.persist_symbol_embedding_records(vec![record]).await
                                 {
@@ -2938,7 +2963,7 @@ impl ProjectIndexer {
             return Ok(());
         }
         info!("🧩 Queueing {} chunk embeddings for SurrealDB", records.len());
-        let batch_size = self.config.batch_size.max(1);
+        let batch_size = chunk_embedding_db_batch_size(self.config.batch_size.max(1));
         let handle = self.surreal_writer_handle()?;
         for chunk in records.chunks(batch_size) {
             handle.enqueue_chunk_embeddings(chunk.to_vec()).await?;
@@ -2989,15 +3014,25 @@ impl ProjectIndexer {
         }
     }
 
-    async fn connect_surreal_from_env() -> Result<Arc<TokioMutex<SurrealDbStorage>>> {
+    async fn connect_surreal_from_env() -> Result<(Arc<TokioMutex<SurrealDbStorage>>, Vec<Arc<TokioMutex<SurrealDbStorage>>>)> {
         let connection = Self::surreal_env_value("CODEGRAPH_SURREALDB_URL", "SURREALDB_URL")
             .context("CODEGRAPH_SURREALDB_URL or SURREALDB_URL must be set")?;
         let namespace =
             Self::surreal_env_value("CODEGRAPH_SURREALDB_NAMESPACE", "SURREALDB_NAMESPACE")
                 .unwrap_or_else(|| "codegraph".to_string());
-        let database =
+
+        let use_graph_db = Self::surreal_env_value("CODEGRAPH_USE_GRAPH_SCHEMA", "")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let graph_db = Self::surreal_env_value("CODEGRAPH_GRAPH_DB_DATABASE", "")
+            .unwrap_or_else(|| "codegraph_graph".to_string());
+
+        let database = if use_graph_db {
+            graph_db
+        } else {
             Self::surreal_env_value("CODEGRAPH_SURREALDB_DATABASE", "SURREALDB_DATABASE")
-                .unwrap_or_else(|| "main".to_string());
+                .unwrap_or_else(|| "main".to_string())
+        };
         let username =
             Self::surreal_env_value("CODEGRAPH_SURREALDB_USERNAME", "SURREALDB_USERNAME");
         let password =
@@ -3019,9 +3054,24 @@ impl ProjectIndexer {
             ..SurrealDbConfig::default()
         };
 
-        let storage = SurrealDbStorage::new(config)
-            .await
-            .with_context(|| format!("Failed to connect to SurrealDB at {}", connection))?;
+        let pool_size = std::env::var("CODEGRAPH_SURREAL_POOL_SIZE")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .map(|n| n.clamp(1, 4))
+            .unwrap_or(1);
+
+        let mut pool = Vec::with_capacity(pool_size);
+        for _ in 0..pool_size {
+            let storage = SurrealDbStorage::new(config.clone())
+                .await
+                .with_context(|| format!("Failed to connect to SurrealDB at {}", connection))?;
+            pool.push(Arc::new(TokioMutex::new(storage)));
+        }
+
+        let storage = pool
+            .first()
+            .cloned()
+            .ok_or_else(|| anyhow!("Surreal pool empty after initialization"))?;
 
         info!(
             "🗄️ SurrealDB connection established: {} namespace={} database={}",
@@ -3030,7 +3080,7 @@ impl ProjectIndexer {
             database
         );
 
-        Ok(Arc::new(TokioMutex::new(storage)))
+        Ok((storage, pool))
     }
 
     fn log_surrealdb_status(&self, phase: &str) {
@@ -3518,11 +3568,12 @@ fn symbol_embedding_db_batch_size() -> usize {
 
 fn chunk_embedding_db_batch_size(fallback: usize) -> usize {
     const MAX: usize = 512;
+    const DEFAULT_CAP: usize = 32; // Surreal query depth is limited; keep chunk writes modest by default
     std::env::var("CODEGRAPH_CHUNK_DB_BATCH_SIZE")
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
         .map(|parsed| parsed.clamp(1, MAX))
-        .unwrap_or(fallback.min(MAX))
+        .unwrap_or(fallback.min(DEFAULT_CAP).min(MAX))
 }
 
 fn resolve_surreal_embedding_column(dim: usize) -> Result<SurrealEmbeddingColumn> {

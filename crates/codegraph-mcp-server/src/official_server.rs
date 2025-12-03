@@ -508,9 +508,19 @@ impl CodeGraphMCPServer {
             let namespace = std::env::var("CODEGRAPH_SURREALDB_NAMESPACE")
                 .or_else(|_| std::env::var("SURREALDB_NAMESPACE"))
                 .unwrap_or_else(|_| "ouroboros".to_string());
-            let database = std::env::var("CODEGRAPH_SURREALDB_DATABASE")
-                .or_else(|_| std::env::var("SURREALDB_DATABASE"))
-                .unwrap_or_else(|_| "codegraph".to_string());
+            let use_graph_db = std::env::var("CODEGRAPH_USE_GRAPH_SCHEMA")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            let graph_db = std::env::var("CODEGRAPH_GRAPH_DB_DATABASE")
+                .unwrap_or_else(|_| "codegraph_graph".to_string());
+
+            let database = if use_graph_db {
+                graph_db
+            } else {
+                std::env::var("CODEGRAPH_SURREALDB_DATABASE")
+                    .or_else(|_| std::env::var("SURREALDB_DATABASE"))
+                    .unwrap_or_else(|_| "codegraph".to_string())
+            };
             let username = std::env::var("CODEGRAPH_SURREALDB_USERNAME")
                 .or_else(|_| std::env::var("SURREALDB_USERNAME"))
                 .ok();

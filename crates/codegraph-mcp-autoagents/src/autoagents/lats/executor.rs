@@ -586,18 +586,29 @@ impl LATSExecutor {
                     target: "lats::synthesis",
                     error = %e,
                     content = %response.content,
-                    "Failed to parse synthesis output, using default"
+                    "Failed to parse synthesis output, attempting loose wrap"
                 );
-                // Fallback: construct answer from path
-                let answer = format!(
-                    "Explored {} nodes in search tree with {} steps in best path",
-                    tree.node_count(),
+                // If the model returned plain text, wrap it into the expected schema
+                let wrapped = format!(
+                    "{{\"answer\": {}, \"findings\": \"\", \"steps_taken\": \"{}\"}}",
+                    serde_json::to_string(&response.content).unwrap_or_else(|_| "\"\"".to_string()),
                     best_path.len()
                 );
-                SynthesisOutput {
-                    answer,
-                    findings: "LATS search completed".to_string(),
-                    steps_taken: best_path.len().to_string(),
+                match serde_json::from_str(&wrapped) {
+                    Ok(syn) => syn,
+                    Err(_) => {
+                        // Fallback: construct answer from path
+                        let answer = format!(
+                            "Explored {} nodes in search tree with {} steps in best path",
+                            tree.node_count(),
+                            best_path.len()
+                        );
+                        SynthesisOutput {
+                            answer,
+                            findings: "LATS search completed".to_string(),
+                            steps_taken: best_path.len().to_string(),
+                        }
+                    }
                 }
             }
         };

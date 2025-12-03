@@ -152,8 +152,6 @@ impl OpenAIProvider {
             temperature: None,
             top_p: None,
             stop: config.stop.clone(),
-            // Use JSON output from Responses API so agents get a structured answer field
-            response_format: Some(crate::llm_provider::ResponseFormat::JsonObject),
         };
 
         // Only add sampling parameters for non-reasoning models
@@ -388,8 +386,6 @@ struct OpenAIRequest {
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stop: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    response_format: Option<crate::llm_provider::ResponseFormat>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -477,7 +473,6 @@ mod tests {
             temperature: None,
             top_p: None,
             stop: None,
-            response_format: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();

@@ -102,7 +102,18 @@ impl From<ReActAgentOutput> for CodeGraphAgentOutput {
 
         // Step 2: Try to parse as structured JSON (agent completed successfully)
         if output.done && !resp.trim().is_empty() {
-            match serde_json::from_str::<CodeGraphAgentOutput>(&resp) {
+            let mut resp_fixed = resp.clone();
+            // If the model omitted the `answer` field but provided a top-level string, wrap it
+            // into the expected schema to avoid parse failure.
+            if !resp.trim_start().starts_with('{') {
+                resp_fixed = format!(
+                    "{{\"answer\": {}, \"findings\": \"\", \"steps_taken\": \"{}\"}}",
+                    serde_json::to_string(&resp_fixed).unwrap_or_else(|_| "\"\"".to_string()),
+                    num_steps
+                );
+            }
+
+            match serde_json::from_str::<CodeGraphAgentOutput>(&resp_fixed) {
                 Ok(mut value) => {
                     // Override steps_taken with actual count from ReActAgentOutput
                     value.steps_taken = num_steps.to_string();

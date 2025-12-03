@@ -40,8 +40,18 @@ impl Default for SurrealDbConfig {
             .unwrap_or_else(|_| "ws://localhost:3004".to_string());
         let namespace =
             env::var("CODEGRAPH_SURREALDB_NAMESPACE").unwrap_or_else(|_| "ouroboros".to_string());
-        let database =
-            env::var("CODEGRAPH_SURREALDB_DATABASE").unwrap_or_else(|_| "codegraph".to_string());
+
+        // Optional toggle to point at experimental graph schema DB without changing table names.
+        let use_graph_db = env::var("CODEGRAPH_USE_GRAPH_SCHEMA")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let graph_db = env::var("CODEGRAPH_GRAPH_DB_DATABASE").unwrap_or_else(|_| "codegraph_graph".to_string());
+
+        let database = if use_graph_db {
+            graph_db
+        } else {
+            env::var("CODEGRAPH_SURREALDB_DATABASE").unwrap_or_else(|_| "codegraph".to_string())
+        };
         let username = env::var("CODEGRAPH_SURREALDB_USERNAME")
             .ok()
             .filter(|value| !value.trim().is_empty());
@@ -596,24 +606,145 @@ impl SurrealDbStorage {
         // Serialize to owned values to satisfy static requirement of Surreal bindings
         let owned: Vec<ChunkEmbeddingRecord> = records.to_vec();
 
-        let resp = self
-            .db
-            .query(UPSERT_CHUNK_EMBEDDINGS_QUERY)
-            .bind(("data", owned))
-            .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!(
-                    "Failed to upsert chunk embedding batch ({} items): {}",
-                    records.len(),
-                    truncate_surreal_error(&e)
-                ))
-            })?;
+        let resp = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            self.db
+                .query(UPSERT_CHUNK_EMBEDDINGS_QUERY)
+                .bind(("data", owned)),
+        )
+        .await
+        .map_err(|_| {
+            CodeGraphError::Database(format!(
+                "Chunk upsert timed out after 10s ({} items)",
+                records.len()
+            ))
+        })?
+        .map_err(|e| {
+            CodeGraphError::Database(format!(
+                "Failed to upsert chunk embedding batch ({} items): {}",
+                records.len(),
+                truncate_surreal_error(&e)
+            ))
+        })?;
 
         // Ensure Surreal didn’t return per-statement errors that would otherwise be hidden
         resp.check().map_err(|e| {
             CodeGraphError::Database(format!(
                 "Surreal chunk batch returned error ({} items): {}",
                 records.len(),
+                truncate_surreal_error(&e)
+            ))
+        })?;
+
+        Ok(())
+    }
+
+    /// Resilient chunk upsert: on Surreal computation depth or connection reset, split batch and retry.
+    pub async fn upsert_chunk_embeddings_resilient(
+        &self,
+        records: &[ChunkEmbeddingRecord],
+    ) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+
+        // First, try a bulk INSERT (shallow query, no FOR loop)
+        if let Err(err) = self.insert_chunk_embeddings_batch(records).await {
+            let msg = err.to_string();
+            let duplicate = msg.to_lowercase().contains("duplicate");
+            let depth_hit = msg.contains("excessive computation depth")
+                || msg.contains("ComputationDepth")
+                || msg.contains("connection reset");
+
+            // Only fall through to upsert/backoff on duplicate or depth issues; otherwise fail fast
+            if !duplicate && !depth_hit {
+                return Err(err);
+            }
+        } else {
+            return Ok(());
+        }
+
+        // Iterative backoff to avoid recursive async futures
+        let mut queue: Vec<(Vec<ChunkEmbeddingRecord>, u8)> = vec![(records.to_vec(), 3)];
+
+        while let Some((mut batch, remaining)) = queue.pop() {
+            if batch.is_empty() {
+                continue;
+            }
+
+            match self.upsert_chunk_embeddings_batch(&batch).await {
+                Ok(()) => {}
+                Err(err) => {
+                    let msg = err.to_string();
+                    let depth_hit = msg.contains("excessive computation depth")
+                        || msg.contains("ComputationDepth")
+                        || msg.contains("connection reset");
+
+                    if depth_hit && remaining > 0 && batch.len() > 1 {
+                        let mid = batch.len() / 2;
+                        let right = batch.split_off(mid);
+                        queue.push((right, remaining - 1));
+                        queue.push((batch, remaining - 1));
+                    } else if depth_hit {
+                        // Fall back to per-record upserts to keep queries shallow
+                        for rec in batch {
+                            self.upsert_chunk_embedding_single(&rec).await?;
+                        }
+                    } else {
+                        return Err(err);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn insert_chunk_embeddings_batch(
+        &self,
+        records: &[ChunkEmbeddingRecord],
+    ) -> Result<()> {
+        let owned: Vec<ChunkEmbeddingRecord> = records.to_vec();
+        let resp = self
+            .db
+            .query(INSERT_CHUNK_EMBEDDINGS_QUERY)
+            .bind(("batch", owned))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Failed to insert chunk embedding batch ({} items): {}",
+                    records.len(),
+                    truncate_surreal_error(&e)
+                ))
+            })?;
+
+        resp.check().map_err(|e| {
+            CodeGraphError::Database(format!(
+                "Surreal chunk insert returned error ({} items): {}",
+                records.len(),
+                truncate_surreal_error(&e)
+            ))
+        })?;
+        Ok(())
+    }
+
+    async fn upsert_chunk_embedding_single(&self, record: &ChunkEmbeddingRecord) -> Result<()> {
+        let owned = record.clone();
+        let resp = self
+            .db
+            .query(UPSERT_CHUNK_EMBEDDING_SINGLE_QUERY)
+            .bind(("doc", owned))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Failed to upsert chunk embedding: {}",
+                    truncate_surreal_error(&e)
+                ))
+            })?;
+
+        resp.check().map_err(|e| {
+            CodeGraphError::Database(format!(
+                "Surreal chunk upsert returned error: {}",
                 truncate_surreal_error(&e)
             ))
         })?;
@@ -1810,6 +1941,48 @@ FOR $doc IN $batch {
         created_at = time::now(),
         updated_at = time::now();
 }
+"#;
+
+const INSERT_CHUNK_EMBEDDINGS_QUERY: &str = r#"
+LET $batch = array::map($batch, |$doc| {
+    id: type::thing('chunks', $doc.id),
+    parent_node: type::thing('nodes', $doc.parent_node),
+    chunk_index: $doc.chunk_index,
+    text: $doc.text,
+    project_id: $doc.project_id,
+    embedding_384: $doc.embedding_384,
+    embedding_768: $doc.embedding_768,
+    embedding_1024: $doc.embedding_1024,
+    embedding_1536: $doc.embedding_1536,
+    embedding_2048: $doc.embedding_2048,
+    embedding_2560: $doc.embedding_2560,
+    embedding_3072: $doc.embedding_3072,
+    embedding_4096: $doc.embedding_4096,
+    embedding_model: $doc.embedding_model,
+    created_at: time::now(),
+    updated_at: time::now(),
+});
+INSERT INTO chunks $batch RETURN NONE;
+"#;
+
+const UPSERT_CHUNK_EMBEDDING_SINGLE_QUERY: &str = r#"
+LET $doc = $doc;
+UPSERT type::thing('chunks', $doc.id) SET
+    parent_node = type::thing('nodes', $doc.parent_node),
+    chunk_index = $doc.chunk_index,
+    text = $doc.text,
+    project_id = $doc.project_id,
+    embedding_384 = $doc.embedding_384,
+    embedding_768 = $doc.embedding_768,
+    embedding_1024 = $doc.embedding_1024,
+    embedding_1536 = $doc.embedding_1536,
+    embedding_2048 = $doc.embedding_2048,
+    embedding_2560 = $doc.embedding_2560,
+    embedding_3072 = $doc.embedding_3072,
+    embedding_4096 = $doc.embedding_4096,
+    embedding_model = $doc.embedding_model,
+    created_at = time::now(),
+    updated_at = time::now();
 "#;
 
 fn truncate_surreal_error(e: &SurrealError) -> String {
