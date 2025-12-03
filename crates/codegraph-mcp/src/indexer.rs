@@ -252,7 +252,7 @@ impl SurrealWriterHandle {
                                 last_error = Some(anyhow!(err.to_string()));
                             }
                         } else {
-                            info!("🧩 Surreal chunk batch persisted: {} records", batch_size);
+                            debug!("🧩 Surreal chunk batch persisted: {} records", batch_size);
                         }
                     }
                     SurrealWriteJob::FileMetadata(records) => {
@@ -1256,7 +1256,7 @@ impl ProjectIndexer {
                         unresolved_symbols.insert(edge.to.clone());
                         unresolved_symbol_edge_ids
                             .entry(edge.to.clone())
-                            .or_insert_with(|| edge.id.to_string());
+                            .or_insert_with(|| format!("{}->{}:{}", edge.from, edge.to, edge.edge_type));
                     }
                 }
 
@@ -2962,7 +2962,7 @@ impl ProjectIndexer {
         if records.is_empty() {
             return Ok(());
         }
-        info!("🧩 Queueing {} chunk embeddings for SurrealDB", records.len());
+        debug!("🧩 Queueing {} chunk embeddings for SurrealDB", records.len());
         let batch_size = chunk_embedding_db_batch_size(self.config.batch_size.max(1));
         let handle = self.surreal_writer_handle()?;
         for chunk in records.chunks(batch_size) {

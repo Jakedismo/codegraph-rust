@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
-use surrealdb::{engine::any::Any, opt::auth::Root, Error as SurrealError, Surreal};
+use surrealdb::{engine::any::Any, opt::auth::{Database, Root}, Error as SurrealError, Surreal};
 use tracing::{debug, info};
 
 /// SurrealDB storage implementation with flexible schema support
@@ -102,9 +102,22 @@ impl SurrealDbStorage {
 
         // Authenticate if credentials provided
         if let (Some(username), Some(password)) = (&config.username, &config.password) {
-            db.signin(Root { username, password })
+            let auth_result = if config.connection.starts_with("wss://") {
+                // Prefer database-scoped auth for hosted / cloud setups
+                db.signin(Database {
+                    namespace: &config.namespace,
+                    database: &config.database,
+                    username,
+                    password,
+                })
                 .await
-                .map_err(|e| CodeGraphError::Database(format!("Authentication failed: {}", e)))?;
+            } else {
+                db.signin(Root { username, password }).await
+            };
+
+            auth_result.map_err(|e| {
+                CodeGraphError::Database(format!("Authentication failed: {}", e))
+            })?;
         }
 
         // Select namespace and database
