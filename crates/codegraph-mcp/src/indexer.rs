@@ -713,6 +713,7 @@ impl ProjectIndexer {
 
     pub async fn index_project(&mut self, path: impl AsRef<Path>) -> Result<IndexStats> {
         let path = path.as_ref();
+        let start = std::time::Instant::now();
         info!("Starting project indexing: {:?}", path);
         self.log_surrealdb_status("pre-parse");
 
@@ -1604,60 +1605,37 @@ impl ProjectIndexer {
             0.0
         };
 
-        info!("🎉 INDEXING COMPLETE - REVOLUTIONARY AI DEVELOPMENT PLATFORM READY!");
-        info!("┌────────────────────────────────────────────────────────────────────────────┐");
-        info!("│ 📊 COMPREHENSIVE INDEXING STATISTICS                                      │");
-        info!("├────────────────────────────────────────────────────────────────────────────┤");
+        let total_elapsed = start.elapsed().as_secs_f64();
+
+        info!("🎉 INDEXING COMPLETE");
         info!(
-            "│ 📂 Files scanned: {:>5} total | {:>5} parsed | {:>5} skipped                │",
-            pstats.total_files, stats.files, stats.skipped
+            "📂 Files {} ({} skipped) | Lines {} | Time {:.1}s",
+            pstats.parsed_files,
+            stats.skipped,
+            stats.lines,
+            total_elapsed
         );
         info!(
-            "│ ✅ Parser success: {:>5.1}% ({} / {} files)                               │",
-            success_rate, pstats.parsed_files, pstats.total_files
+            "🌳 Graph coverage: nodes {} | edges {} | nodes/file {:.1} | edges/file {:.1} | resolved {:.1}%",
+            total_nodes_extracted,
+            stored_edges,
+            avg_nodes_per_file,
+            avg_edges_per_file,
+            resolution_rate
         );
         info!(
-            "│ 🗣️ Languages targeted: {:>3} | Batch (embed) {:>3} | Concurrency {:>3}        │",
-            file_config.languages.len(),
-            batch,
-            self.config.max_concurrent
+            "🧠 Embeddings: chunks {} | dim {} | provider {} | per-node {:.1}",
+            stats.embeddings,
+            self.vector_dim,
+            provider,
+            avg_embeddings_per_node
         );
         info!(
-            "│ 📝 Lines analyzed: {:>10} | Avg nodes/file {:>5.1} | Avg deps/file {:>5.1} │",
-            stats.lines, avg_nodes_per_file, avg_edges_per_file
+            "⚡ Throughput: {:.1} files/s | {:.1} nodes/s | {:.1} edges/s",
+            pstats.parsed_files as f64 / total_elapsed.max(1e-3),
+            total_nodes_extracted as f64 / total_elapsed.max(1e-3),
+            stored_edges as f64 / total_elapsed.max(1e-3)
         );
-        info!(
-            "│ 🌳 Semantic nodes: {:>8} | funcs {:>6} | structs {:>5} | traits {:>5} │",
-            total_nodes_extracted, stats.functions, stats.structs, stats.traits
-        );
-        info!(
-            "│ 🔗 Dependencies: {:>8} extracted | {:>8} stored (resolved {:.1}%)        │",
-            total_edges_extracted, stored_edges, resolution_rate
-        );
-        info!(
-            "│ 💾 Vector embeddings: {:>8} ({:>4}-dim {}, {:.1} per node)                 │",
-            stats.embeddings, self.vector_dim, provider, avg_embeddings_per_node
-        );
-        info!(
-            "│ 📦 Metadata persisted: {:>5} files | {:>5} edges | {:>5} nodes              │",
-            stats.files, stored_edges, total_nodes_extracted
-        );
-        info!("├────────────────────────────────────────────────────────────────────────────┤");
-        info!("│ 🚀 CAPABILITIES UNLOCKED                                                  │");
-        info!(
-            "│ ✅ Vector similarity search across {:>8} embedded entities                 │",
-            stats.embeddings
-        );
-        info!(
-            "│ ✅ Graph traversal with {:>8} real dependency relationships              │",
-            stored_edges
-        );
-        info!("│ ✅ AI-powered semantic analysis with Qwen2.5-Coder integration │");
-        info!("│ ✅ Revolutionary edge processing with single-pass extraction   │");
-        #[cfg(feature = "ai-enhanced")]
-        info!("│ ✅ Conversational AI: codebase_qa and code_documentation tools │");
-        info!("└─────────────────────────────────────────────────────────────────┘");
-        info!("🚀 CodeGraph Universal AI Development Platform: FULLY OPERATIONAL");
 
         self.shutdown_surreal_writer().await?;
 
@@ -1884,7 +1862,7 @@ impl ProjectIndexer {
     async fn precompute_unresolved_symbol_embeddings(
         &self,
         unresolved_symbols: &std::collections::HashSet<String>,
-        symbol_edge_ids: &std::collections::HashMap<String, String>,
+        symbol_edge_ids: &std::collections::HashMap<String, uuid::Uuid>,
     ) -> std::collections::HashMap<String, Vec<f32>> {
         use codegraph_vector::EmbeddingGenerator;
 

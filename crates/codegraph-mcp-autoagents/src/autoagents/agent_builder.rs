@@ -145,10 +145,10 @@ impl ChatProvider for CodeGraphChatAdapter {
             .collect();
 
         // Convert AutoAgents json_schema to CodeGraph ResponseFormat
-        let provider_name = self.provider.provider_name().to_lowercase();
-        let allow_response_format = provider_name != "openai" && provider_name != "azure-openai";
+        // All providers now support response_format (OpenAI added in v1.1.1)
+        let _provider_name = self.provider.provider_name().to_lowercase();
 
-        let response_format = if allow_response_format {
+        let response_format = {
             json_schema
                 .and_then(|schema| {
                     schema
@@ -162,8 +162,6 @@ impl ChatProvider for CodeGraphChatAdapter {
                         })
                 })
                 .or_else(|| Some(Self::codegraph_toolcall_schema()))
-        } else {
-            None
         };
 
         // Call CodeGraph LLM provider with structured output support

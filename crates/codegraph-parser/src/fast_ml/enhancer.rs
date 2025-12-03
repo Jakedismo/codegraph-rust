@@ -4,7 +4,7 @@
 use super::{PatternMatcher, SymbolResolver};
 use codegraph_core::ExtractionResult;
 use std::sync::{Arc, Mutex};
-use tracing::info;
+use tracing::debug;
 
 /// Fast ML enhancer that combines multiple techniques (<1ms total latency)
 pub struct FastMLEnhancer {
@@ -15,7 +15,7 @@ pub struct FastMLEnhancer {
 impl FastMLEnhancer {
     /// Create new enhancer with default configuration
     pub fn new() -> Self {
-        info!("🚀 Initializing FastMLEnhancer (sub-millisecond code analysis)");
+        debug!("🚀 Initializing FastMLEnhancer (sub-millisecond code analysis)");
 
         Self {
             pattern_matcher: Arc::new(PatternMatcher::new()),
@@ -44,7 +44,7 @@ impl FastMLEnhancer {
         let added_edges = result.edges.len() - original_edge_count;
 
         if added_edges > 0 {
-            info!(
+            debug!(
                 "✨ FastML: Enhanced {} nodes, added {} edges (total: {} edges)",
                 original_node_count,
                 added_edges,
@@ -78,7 +78,7 @@ static FAST_ML_ENHANCER: std::sync::OnceLock<FastMLEnhancer> = std::sync::OnceLo
 /// Get or initialize the global FastML enhancer
 pub fn get_fast_ml_enhancer() -> &'static FastMLEnhancer {
     FAST_ML_ENHANCER.get_or_init(|| {
-        info!("🔧 Initializing global FastMLEnhancer");
+        debug!("🔧 Initializing global FastMLEnhancer");
         FastMLEnhancer::new()
     })
 }

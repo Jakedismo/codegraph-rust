@@ -64,19 +64,16 @@ impl LLMProviderFactory {
         #[cfg(feature = "openai-compatible")]
         {
             let base_url = format!("{}/v1", config.ollama_url.trim_end_matches('/'));
-            let compat_config = OpenAICompatibleConfig {
-                base_url,
-                model: config
-                    .model
-                    .clone()
-                    .unwrap_or_else(|| "qwen2.5-coder:14b".to_string()),
-                context_window: config.context_window,
-                timeout_secs: config.timeout_secs,
-                max_retries: 3,
-                api_key: None,
-                provider_name: "ollama".to_string(),
-                use_responses_api: !config.use_completions_api, // Default to Responses API unless completions API requested
-            };
+            let model = config
+                .model
+                .clone()
+                .unwrap_or_else(|| "qwen2.5-coder:14b".to_string());
+
+            // Use Ollama defaults (use_responses_api: false) since Ollama doesn't support Responses API
+            let mut compat_config = OpenAICompatibleConfig::ollama(model);
+            compat_config.base_url = base_url;
+            compat_config.context_window = config.context_window;
+            compat_config.timeout_secs = config.timeout_secs;
 
             Ok(Arc::new(OpenAICompatibleProvider::new(compat_config)?))
         }
