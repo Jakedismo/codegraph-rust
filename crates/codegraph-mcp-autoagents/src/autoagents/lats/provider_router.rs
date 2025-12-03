@@ -178,6 +178,7 @@ mod tests {
         {
             Ok(codegraph_ai::llm_provider::LLMResponse {
                 content: "mock response".to_string(),
+                answer: String::new(),
                 total_tokens: Some(10),
                 prompt_tokens: Some(5),
                 completion_tokens: Some(5),

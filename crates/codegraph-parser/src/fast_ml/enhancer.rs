@@ -132,6 +132,7 @@ mod tests {
             to: "foo1".into(),
             edge_type: EdgeType::Uses,
             metadata: Default::default(),
+            span: None,
         };
         let result = ExtractionResult {
             nodes: vec![node],

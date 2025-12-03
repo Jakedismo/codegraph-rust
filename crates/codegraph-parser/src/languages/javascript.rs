@@ -1,5 +1,6 @@
 use codegraph_core::{
     CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
+    Span,
 };
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
@@ -43,6 +44,13 @@ impl<'a> TypeScriptCollector<'a> {
         }
     }
 
+    fn span_for(&self, node: &Node) -> Span {
+        Span {
+            start_byte: node.start_byte() as u32,
+            end_byte: node.end_byte() as u32,
+        }
+    }
+
     fn into_result(self) -> ExtractionResult {
         ExtractionResult {
             nodes: self.nodes,
@@ -58,13 +66,14 @@ impl<'a> TypeScriptCollector<'a> {
             "function_declaration" | "function_expression" | "arrow_function" => {
                 if let Some(name) = self.extract_function_name(&node) {
                     let loc = self.location(&node);
-                    let code = CodeNode::new(
+                    let mut code = CodeNode::new(
                         name,
                         Some(NodeType::Function),
                         Some(self.language.clone()),
                         loc,
                     )
                     .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
 
                     self.current_function_id = Some(code.id);
                     self.nodes.push(code);
@@ -75,13 +84,14 @@ impl<'a> TypeScriptCollector<'a> {
             "import_statement" => {
                 if let Some(name) = self.extract_import_source(&node) {
                     let loc = self.location(&node);
-                    let code = CodeNode::new(
+                    let mut code = CodeNode::new(
                         name.clone(),
                         Some(NodeType::Import),
                         Some(self.language.clone()),
                         loc,
                     )
                     .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
 
                     // Extract import edge
                     let edge = EdgeRelationship {
@@ -94,6 +104,7 @@ impl<'a> TypeScriptCollector<'a> {
                             meta.insert("source_file".to_string(), self.file_path.to_string());
                             meta
                         },
+                        span: Some(self.span_for(&node)),
                     };
                     self.edges.push(edge);
                     self.nodes.push(code);
@@ -114,6 +125,7 @@ impl<'a> TypeScriptCollector<'a> {
                                 meta.insert("source_file".to_string(), self.file_path.to_string());
                                 meta
                             },
+                            span: Some(self.span_for(&node)),
                         };
                         self.edges.push(edge);
                     }
@@ -126,13 +138,14 @@ impl<'a> TypeScriptCollector<'a> {
                     self.child_text_by_kinds(node, &["type_identifier", "identifier"])
                 {
                     let loc = self.location(&node);
-                    let code = CodeNode::new(
+                    let mut code = CodeNode::new(
                         name,
                         Some(NodeType::Class),
                         Some(self.language.clone()),
                         loc,
                     )
                     .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
 
                     self.nodes.push(code);
                 }

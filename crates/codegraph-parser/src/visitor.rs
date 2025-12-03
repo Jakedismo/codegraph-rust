@@ -1,5 +1,5 @@
 use crate::edge::CodeEdge;
-use codegraph_core::{CodeNode, EdgeType, Language, Location, NodeId, NodeType, SharedStr};
+use codegraph_core::{CodeNode, EdgeType, Language, Location, NodeId, NodeType, SharedStr, Span};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tree_sitter::{Node, TreeCursor};
@@ -107,13 +107,19 @@ impl AstToGraphConverter {
         let content = self.node_text(node);
         let qualified_name = self.build_qualified_name(&symbol_name);
 
-        let code_node = CodeNode::new(
+        let span = Span {
+            start_byte: node.start_byte() as u32,
+            end_byte: node.end_byte() as u32,
+        };
+
+        let mut code_node = CodeNode::new(
             symbol_name.clone(),
             Some(node_type.clone()),
             Some(self.language.clone()),
             location.clone(),
         )
         .with_content(content);
+        code_node.span = Some(span);
 
         let entity = CodeEntity {
             node: code_node.clone(),
@@ -613,12 +619,18 @@ impl AstVisitor {
             end_column: Some(node.end_position().column as u32),
         };
 
+        let span = Span {
+            start_byte: node.start_byte() as u32,
+            end_byte: node.end_byte() as u32,
+        };
+
         let content = node.utf8_text(self.source.as_bytes()).ok()?.to_string();
 
-        Some(
+        let mut cn =
             CodeNode::new(name, Some(node_type), Some(self.language.clone()), location)
-                .with_content(content),
-        )
+                .with_content(content);
+        cn.span = Some(span);
+        Some(cn)
     }
 
     fn map_node_type(&self, kind: &str) -> Option<NodeType> {

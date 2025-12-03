@@ -57,6 +57,7 @@ approx = { workspace = true }
 criterion = { workspace = true }
 fastrand = { workspace = true }
 tracing-subscriber = { workspace = true }
+dotenvy = "0.15"
 
 
 

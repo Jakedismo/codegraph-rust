@@ -640,7 +640,7 @@ DEFINE FUNCTION fn::trace_call_chain($project_id: string, $from_node: any, $max_
 -- FUNCTION: calculate_coupling_metrics (UNCHANGED)
 -- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: string) {
-    LET $edge_list = array::map(fn::edge_types(), |$v| string::lowercase(v));
+    LET $edge_list = array::map(fn::edge_types(), |$v| string::lowercase($v));
     LET $record = IF type::is::record($node_id) THEN $node_id ELSE (
         IF string::starts_with($node_id, "nodes:") THEN type::thing($node_id) ELSE type::thing('nodes', $node_id) END
     ) END;
@@ -704,7 +704,7 @@ DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: st
 -- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::get_hub_nodes($project_id: string, $min_degree: int) {
     LET $threshold = IF $min_degree != NONE AND $min_degree > 0 THEN $min_degree ELSE 5 END;
-    LET $edge_list = array::map(fn::edge_types(), |$v| string::lowercase(v));
+    LET $edge_list = array::map(fn::edge_types(), |$v| string::lowercase($v));
 
     LET $project_edges = (
         SELECT from, to, edge_type

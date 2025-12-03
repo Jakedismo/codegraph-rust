@@ -1,10 +1,11 @@
 use codegraph_core::{CodeNode, Language};
-use rayon::prelude::*;
+use semchunk_rs::Chunker as SemanticChunker;
 use std::{sync::Arc, time::Instant};
-use tokenizers::{Encoding, Tokenizer};
+use tokenizers::Tokenizer;
 use unicode_normalization::UnicodeNormalization;
 
 const DEFAULT_MAX_TEXTS_PER_REQUEST: usize = 256;
+const DEFAULT_OVERLAP_TOKENS: usize = 64;
 
 /// Configuration knobs for the fast chunker.
 #[derive(Clone)]
@@ -13,6 +14,8 @@ pub struct ChunkerConfig {
     pub sanitize_mode: SanitizeMode,
     pub cache_capacity: usize,
     pub max_texts_per_request: usize,
+    pub overlap_tokens: usize,
+    pub smart_split: bool,
 }
 
 impl ChunkerConfig {
@@ -22,6 +25,8 @@ impl ChunkerConfig {
             sanitize_mode: SanitizeMode::AsciiFastPath,
             cache_capacity: 2048,
             max_texts_per_request: DEFAULT_MAX_TEXTS_PER_REQUEST,
+            overlap_tokens: DEFAULT_OVERLAP_TOKENS,
+            smart_split: true,
         }
     }
 
@@ -42,6 +47,16 @@ impl ChunkerConfig {
 
     pub fn max_tokens(mut self, max_tokens: usize) -> Self {
         self.max_tokens_per_text = max_tokens;
+        self
+    }
+
+    pub fn overlap_tokens(mut self, overlap_tokens: usize) -> Self {
+        self.overlap_tokens = overlap_tokens;
+        self
+    }
+
+    pub fn smart_split(mut self, enabled: bool) -> Self {
+        self.smart_split = enabled;
         self
     }
 }
@@ -111,10 +126,9 @@ pub fn build_chunk_plan(
     config: ChunkerConfig,
 ) -> ChunkPlan {
     let start_total = Instant::now();
-    let token_counter = Arc::new(TokenCounter::new(tokenizer.clone(), config.cache_capacity));
+    let _ = config.max_texts_per_request;
+    let _ = config.cache_capacity;
 
-    // Batch tokenization to reduce per-node tokenizer overhead
-    let batch_size = config.max_texts_per_request;
     // Upper bound estimate: assume ~2 chunks per node as a guard
     let estimate = nodes.len().saturating_mul(2).max(16);
     let mut all_chunks = Vec::with_capacity(estimate);
@@ -122,51 +136,72 @@ pub fn build_chunk_plan(
     let mut stats = ChunkStats::empty();
     stats.total_nodes = nodes.len();
 
-    for (batch_idx, batch) in nodes.chunks(batch_size).enumerate() {
-        // Sanitize texts once
-        let sanitized: Vec<String> = batch
-            .par_iter()
-            .with_min_len(16)
-            .map(|node| sanitize(node, config.sanitize_mode))
-            .collect();
+    for (node_idx, node) in nodes.iter().enumerate() {
+        let sanitized = sanitize(node, config.sanitize_mode);
+        let segments: Vec<String> = if config.smart_split {
+            smart_split(&sanitized)
+        } else {
+            vec![sanitized.clone()]
+        };
+        let chunker = SemanticChunker::new(
+            config.max_tokens_per_text,
+            Box::new({
+                let tok = tokenizer.clone();
+                move |s: &str| count_tokens(&tok, s)
+            }),
+        );
 
-        // Tokenize batch
-        let encodings: Vec<Encoding> = tokenizer
-            .encode_batch(sanitized.iter().map(|s| s.as_str()).collect::<Vec<_>>(), false)
-            .expect("tokenizer batch encode");
+        let mut raw_chunks = Vec::new();
+        for segment in segments {
+            raw_chunks.extend(chunker.chunk(&segment));
+        }
+        let mut overlap_tail: Option<String> = None;
+        let mut chunk_idx = 0;
 
-        // Estimate capacity to preallocate
-        let estimated = encodings
-            .iter()
-            .map(|e| (e.get_ids().len() / config.max_tokens_per_text + 1).max(1))
-            .sum::<usize>();
-        let mut batch_chunks = Vec::with_capacity(estimated);
-        let mut batch_metas = Vec::with_capacity(estimated);
+        for chunk_text in raw_chunks {
+            let mut text = chunk_text;
 
-        for (local_idx, (node, encoding)) in batch.iter().zip(encodings.iter()).enumerate() {
-            let global_idx = batch_idx * batch_size + local_idx;
-            let (chunks, metas, node_stats) = chunkify_tokens(
-                global_idx,
-                node,
-                &sanitized[local_idx],
-                encoding,
-                &config,
-            );
-            stats.sanitize_ms += node_stats.sanitize_ms;
-            stats.chunk_ms += node_stats.chunk_ms;
-            batch_chunks.extend(chunks);
-            batch_metas.extend(metas);
+            if let Some(tail) = &overlap_tail {
+                if config.overlap_tokens > 0 {
+                    // Prepend overlap tail if within budget
+                    let candidate = format!("{}{}", tail, text);
+                    if count_tokens(&tokenizer, &candidate) <= config.max_tokens_per_text {
+                        text = candidate;
+                    }
+                }
+            }
+
+            let tokens = count_tokens(&tokenizer, &text);
+            all_chunks.push(TextChunk {
+                text: text.clone(),
+                tokens,
+            });
+            all_metas.push(ChunkMeta {
+                node_index: node_idx,
+                chunk_index: chunk_idx,
+                language: node.language.clone(),
+                file_path: node.location.file_path.clone(),
+                node_name: node.name.to_string(),
+            });
+
+            chunk_idx += 1;
+
+            // Capture tail for next chunk (approximate overlap using chars, fallback to tokens)
+            if config.overlap_tokens > 0 {
+                let approx_chars = config.overlap_tokens * 4;
+                let tail_str = if text.len() > approx_chars {
+                    text[text.len().saturating_sub(approx_chars)..].to_string()
+                } else {
+                    text.clone()
+                };
+                overlap_tail = Some(tail_str);
+            }
         }
 
-        all_chunks.extend(batch_chunks);
-        all_metas.extend(batch_metas);
+        stats.chunk_ms += 0; // semchunk internally does the work; keep zeroed to avoid misleading metrics
     }
 
     stats.total_chunks = all_chunks.len();
-
-    let (hits, misses) = token_counter.stats();
-    stats.cache_hits = hits;
-    stats.cache_misses = misses;
 
     tracing::debug!(
         "Chunk plan built in {:?}: {} nodes -> {} chunks (sanitize {}ms, chunk {}ms, cache hit {} / miss {})",
@@ -216,73 +251,43 @@ fn is_emoji(c: char) -> bool {
         || (0x2600..=0x26FF).contains(&code)
 }
 
-fn chunkify_tokens(
-    node_idx: usize,
-    node: &CodeNode,
-    sanitized: &str,
-    encoding: &Encoding,
-    config: &ChunkerConfig,
-) -> (Vec<TextChunk>, Vec<ChunkMeta>, NodeStats) {
-    let start = Instant::now();
-
-    let tokens = encoding.get_ids();
-    let offsets = encoding.get_offsets();
-    let max_tokens = config.max_tokens_per_text;
-
-    let mut chunks = Vec::new();
-    let mut metas = Vec::new();
-
-    let mut start_idx = 0;
-    let mut chunk_idx = 0;
-    while start_idx < tokens.len() {
-        let end_idx = (start_idx + max_tokens).min(tokens.len());
-        let (start_byte, _) = offsets[start_idx];
-        let (_, end_byte) = offsets[end_idx - 1];
-        let end_byte = end_byte.min(sanitized.len());
-        let slice = &sanitized[start_byte..end_byte];
-
-        chunks.push(TextChunk {
-            text: slice.to_string(),
-            tokens: end_idx - start_idx,
-        });
-        metas.push(ChunkMeta {
-            node_index: node_idx,
-            chunk_index: chunk_idx,
-            language: node.language.clone(),
-            file_path: node.location.file_path.clone(),
-            node_name: node.name.to_string(),
-        });
-
-        chunk_idx += 1;
-        start_idx = end_idx;
-    }
-
-    let elapsed = start.elapsed().as_millis();
-    (
-        chunks,
-        metas,
-        NodeStats {
-            sanitize_ms: 0,
-            chunk_ms: elapsed,
-        },
-    )
+fn count_tokens(tokenizer: &Tokenizer, text: &str) -> usize {
+    tokenizer
+        .encode(text, false)
+        .map(|e| e.get_ids().len())
+        .unwrap_or_else(|_| (text.len() + 3) / 4)
 }
 
-struct NodeStats {
-    sanitize_ms: u128,
-    chunk_ms: u128,
-}
+/// Lightweight structural split: keep blank-line and brace boundaries to align with AST structure.
+fn smart_split(text: &str) -> Vec<String> {
+    let mut segments = Vec::new();
+    let mut current = String::new();
 
-struct TokenCounter;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        let is_boundary = trimmed.is_empty() || trimmed == "}" || trimmed.ends_with("};");
 
-impl TokenCounter {
-    fn new(_tokenizer: Arc<Tokenizer>, _capacity: usize) -> Self {
-        Self
+        if is_boundary && !current.is_empty() {
+            segments.push(current.clone());
+            current.clear();
+        }
+        if !trimmed.is_empty() {
+            if !current.is_empty() {
+                current.push('\n');
+            }
+            current.push_str(line);
+        }
     }
 
-    fn stats(&self) -> (usize, usize) {
-        (0, 0)
+    if !current.is_empty() {
+        segments.push(current);
     }
+
+    if segments.is_empty() {
+        segments.push(text.to_string());
+    }
+
+    segments
 }
 
 /// Combine per-chunk embeddings back into per-node vectors by averaging.

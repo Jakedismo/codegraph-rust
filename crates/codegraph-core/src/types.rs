@@ -103,6 +103,12 @@ pub struct Location {
     pub end_column: Option<u32>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode, Default)]
+pub struct Span {
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     pub attributes: HashMap<String, String>,
@@ -124,6 +130,7 @@ pub struct EdgeRelationship {
     pub to: String, // Symbol name to be resolved to NodeId later
     pub edge_type: EdgeType,
     pub metadata: HashMap<String, String>,
+    pub span: Option<Span>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

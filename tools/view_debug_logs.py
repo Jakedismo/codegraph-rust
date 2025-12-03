@@ -102,13 +102,34 @@ def print_tool_finish(entry):
             keys = summary.get('keys', [])
             print(f"  📊 Object with keys: {', '.join(keys)}")
 
-    # Optionally show full result
+    # Show actual result data for verification
     if isinstance(result, dict) and result.get('result'):
         actual_result = result['result']
         if isinstance(actual_result, list) and len(actual_result) == 0:
             print(f"  ⚠️  WARNING: Empty result array!")
         elif isinstance(actual_result, list):
-            print(f"  ℹ️  First result has keys: {list(actual_result[0].keys()) if actual_result else 'N/A'}")
+            print(f"  ℹ️  Result count: {len(actual_result)} items")
+            # Show first 3 results with key fields
+            for i, item in enumerate(actual_result[:3]):
+                print(f"  📄 Result [{i}]:")
+                if isinstance(item, dict):
+                    # Show key fields for code search results
+                    for key in ['node_id', 'name', 'file_path', 'kind', 'vector_score', 'text']:
+                        if key in item:
+                            value = item[key]
+                            # Truncate long text
+                            if key == 'text' and isinstance(value, str) and len(value) > 200:
+                                value = value[:200] + '...'
+                            print(f"       {key}: {value}")
+            if len(actual_result) > 3:
+                print(f"  ... and {len(actual_result) - 3} more results")
+        elif isinstance(actual_result, dict):
+            print(f"  📄 Result object:")
+            result_str = json.dumps(actual_result, indent=2)
+            for line in result_str.split('\n')[:20]:
+                print(f"     {line}")
+            if result_str.count('\n') > 20:
+                print(f"     ... ({result_str.count(chr(10)) - 20} more lines)")
 
 def print_reasoning_step(entry):
     """Print reasoning step event"""

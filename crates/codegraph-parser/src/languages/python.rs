@@ -1,5 +1,6 @@
 use codegraph_core::{
     CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
+    Span,
 };
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
@@ -38,6 +39,13 @@ impl<'a> PythonCollector<'a> {
         }
     }
 
+    fn span_for(&self, node: &Node) -> Span {
+        Span {
+            start_byte: node.start_byte() as u32,
+            end_byte: node.end_byte() as u32,
+        }
+    }
+
     fn into_result(self) -> ExtractionResult {
         ExtractionResult {
             nodes: self.nodes,
@@ -53,9 +61,10 @@ impl<'a> PythonCollector<'a> {
             "function_definition" => {
                 if let Some(name) = self.child_text_by_kinds(node, &["identifier"]) {
                     let loc = self.location(&node);
-                    let code =
+                    let mut code =
                         CodeNode::new(name, Some(NodeType::Function), Some(Language::Python), loc)
                             .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
 
                     self.current_function_id = Some(code.id);
                     self.nodes.push(code);
@@ -66,9 +75,10 @@ impl<'a> PythonCollector<'a> {
             "class_definition" => {
                 if let Some(name) = self.child_text_by_kinds(node, &["identifier"]) {
                     let loc = self.location(&node);
-                    let code =
+                    let mut code =
                         CodeNode::new(name, Some(NodeType::Class), Some(Language::Python), loc)
                             .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
 
                     self.current_class_id = Some(code.id);
                     self.nodes.push(code);
@@ -79,13 +89,14 @@ impl<'a> PythonCollector<'a> {
             "import_statement" | "import_from_statement" => {
                 if let Some(name) = self.extract_import_name(&node) {
                     let loc = self.location(&node);
-                    let code = CodeNode::new(
+                    let mut code = CodeNode::new(
                         name.clone(),
                         Some(NodeType::Import),
                         Some(Language::Python),
                         loc,
                     )
                     .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
 
                     // Extract import edge
                     let edge = EdgeRelationship {
@@ -98,6 +109,7 @@ impl<'a> PythonCollector<'a> {
                             meta.insert("source_file".to_string(), self.file_path.to_string());
                             meta
                         },
+                        span: Some(self.span_for(&node)),
                     };
                     self.edges.push(edge);
                     self.nodes.push(code);
@@ -118,6 +130,7 @@ impl<'a> PythonCollector<'a> {
                                 meta.insert("source_file".to_string(), self.file_path.to_string());
                                 meta
                             },
+                            span: Some(self.span_for(&node)),
                         };
                         self.edges.push(edge);
                     }

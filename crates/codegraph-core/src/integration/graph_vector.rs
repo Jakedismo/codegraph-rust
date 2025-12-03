@@ -373,6 +373,7 @@ impl GraphVectorIntegrator {
                 end_line: None,
                 end_column: None,
             },
+            span: None,
             content: Some(query.into()),
             metadata: crate::Metadata {
                 attributes: Default::default(),
@@ -525,6 +526,7 @@ mod tests {
                 end_line: None,
                 end_column: None,
             },
+            span: None,
             content: Some(content.into()),
             metadata: Metadata {
                 attributes: HashMap::new(),

@@ -1611,6 +1611,7 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "dashmap 6.1.0",
+ "dotenvy",
  "fastrand",
  "flate2",
  "futures",

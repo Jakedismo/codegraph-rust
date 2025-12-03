@@ -167,9 +167,20 @@ impl LocalEmbeddingProvider {
     }
 
     fn chunker_config(&self) -> ChunkerConfig {
+        let overlap_tokens = std::env::var("CODEGRAPH_CHUNK_OVERLAP_TOKENS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(64);
+        let smart_split = std::env::var("CODEGRAPH_CHUNK_SMART_SPLIT")
+            .ok()
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(true);
+
         ChunkerConfig::new(self.config.max_sequence_length)
             .sanitize_mode(SanitizeMode::Strict)
             .cache_capacity(2048)
+            .overlap_tokens(overlap_tokens)
+            .smart_split(smart_split)
     }
 
     fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {

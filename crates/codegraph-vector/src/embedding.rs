@@ -104,15 +104,27 @@ impl EmbeddingGenerator {
             .ok()
             .and_then(|v| v.parse::<usize>().ok());
         let max_tokens = max_tokens_env.unwrap_or(self.model_config.max_tokens);
+        let overlap_tokens = std::env::var("CODEGRAPH_CHUNK_OVERLAP_TOKENS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(64);
+        let smart_split = std::env::var("CODEGRAPH_CHUNK_SMART_SPLIT")
+            .ok()
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(true);
 
         if skip_chunking {
             ChunkerConfig::new(u32::MAX as usize)
                 .sanitize_mode(SanitizeMode::AsciiFastPath)
                 .cache_capacity(2048)
+                .overlap_tokens(0)
+                .smart_split(false)
         } else {
             ChunkerConfig::new(max_tokens)
                 .sanitize_mode(SanitizeMode::AsciiFastPath)
                 .cache_capacity(2048)
+                .overlap_tokens(overlap_tokens)
+                .smart_split(smart_split)
         }
     }
 

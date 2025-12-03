@@ -1,5 +1,6 @@
 use codegraph_core::{
     CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
+    Span,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -56,6 +57,13 @@ impl<'a> Collector<'a> {
             nodes: Vec::new(),
             edges: Vec::new(),
             current_node_id: None,
+        }
+    }
+
+    fn span_for(&self, node: &Node) -> Span {
+        Span {
+            start_byte: node.start_byte() as u32,
+            end_byte: node.end_byte() as u32,
         }
     }
 
@@ -125,6 +133,7 @@ impl<'a> Collector<'a> {
                 let mut code =
                     CodeNode::new(name, Some(NodeType::Import), Some(Language::Rust), loc)
                         .with_content(self.node_text(&node));
+                code.span = Some(self.span_for(&node));
                 // Store full parsed import list and graph-friendly edges as metadata
                 code.metadata
                     .attributes
@@ -147,6 +156,7 @@ impl<'a> Collector<'a> {
                             meta.insert("source_file".to_string(), self.file_path.to_string());
                             meta
                         },
+                        span: None,
                     };
                     self.edges.push(edge);
                 }
@@ -165,6 +175,7 @@ impl<'a> Collector<'a> {
                         loc,
                     )
                     .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
                     let (generics, lifetimes) = self.collect_generics_and_lifetimes(node);
                     code.metadata
                         .attributes
@@ -190,6 +201,7 @@ impl<'a> Collector<'a> {
                         loc,
                     )
                     .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
                     let (generics, lifetimes) = self.collect_generics_and_lifetimes(node);
                     code.metadata
                         .attributes
@@ -215,6 +227,7 @@ impl<'a> Collector<'a> {
                         loc,
                     )
                     .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
                     let (generics, lifetimes) = self.collect_generics_and_lifetimes(node);
                     code.metadata
                         .attributes
@@ -243,6 +256,7 @@ impl<'a> Collector<'a> {
                     loc,
                 )
                 .with_content(text.clone());
+                code.span = Some(self.span_for(&node));
                 if let Some(for_type) = &impl_info.for_type {
                     code.metadata
                         .attributes
@@ -297,6 +311,7 @@ impl<'a> Collector<'a> {
                         loc,
                     )
                     .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
                     let (generics, lifetimes) = self.collect_generics_and_lifetimes(node);
                     code.metadata
                         .attributes
@@ -358,6 +373,7 @@ impl<'a> Collector<'a> {
                     loc,
                 )
                 .with_content(self.node_text(&node));
+                code.span = Some(self.span_for(&node));
                 code.metadata.attributes.insert(
                     "qualified_name".into(),
                     self.qname(&ctx.module_path, code.name.as_str()),
@@ -379,6 +395,7 @@ impl<'a> Collector<'a> {
                                 meta.insert("source_file".to_string(), self.file_path.to_string());
                                 meta
                             },
+                            span: None,
                         };
                         self.edges.push(edge);
                     }
@@ -400,6 +417,7 @@ impl<'a> Collector<'a> {
                                 meta.insert("source_file".to_string(), self.file_path.to_string());
                                 meta
                             },
+                            span: None,
                         };
                         self.edges.push(edge);
                     }

@@ -1,11 +1,12 @@
 // ABOUTME: Ollama chat-based reranking using models like Qwen3-Reranker
-// ABOUTME: Uses chat completions with prompting to score document relevance
+// ABOUTME: Batches all documents into single prompt for efficient scoring
 use super::{RerankDocument, RerankResult, Reranker};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use codegraph_core::RerankConfig;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
@@ -73,22 +74,93 @@ impl OllamaReranker {
         })
     }
 
-    /// Score a single document using chat completion
-    async fn score_document(&self, query: &str, document: &str) -> Result<f32> {
-        let prompt = format!(
-            r#"You are an expert relevance grader. Your task is to evaluate if the following document is relevant to the user's query.
-Please respond with ONLY a number between 0 and 1, where:
-- 0.0 means completely irrelevant
-- 0.5 means somewhat relevant
-- 1.0 means highly relevant
+    /// Build batched prompt with all documents
+    fn build_batch_prompt(query: &str, documents: &[RerankDocument]) -> String {
+        let mut prompt = format!(
+            r#"You are an expert relevance grader. Score each document's relevance to the query.
 
 Query: {}
 
-Document: {}
-
-Relevance score:"#,
-            query, document
+Documents:
+"#,
+            query
         );
+
+        for (i, doc) in documents.iter().enumerate() {
+            // Truncate very long documents to avoid context overflow
+            let text = if doc.text.len() > 2000 {
+                format!("{}...", &doc.text[..2000])
+            } else {
+                doc.text.clone()
+            };
+            prompt.push_str(&format!("\n[DOC{}] {}\n", i, text));
+        }
+
+        prompt.push_str(
+            r#"
+Return ONLY a JSON object mapping document numbers to relevance scores (0.0 to 1.0).
+Example format: {"0": 0.95, "1": 0.2, "2": 0.8}
+
+Scores:"#,
+        );
+
+        prompt
+    }
+
+    /// Parse batched scores from model response
+    fn parse_batch_scores(content: &str, doc_count: usize) -> HashMap<usize, f32> {
+        let mut scores = HashMap::new();
+
+        // Try to find JSON object in response
+        let json_start = content.find('{');
+        let json_end = content.rfind('}');
+
+        if let (Some(start), Some(end)) = (json_start, json_end) {
+            let json_str = &content[start..=end];
+            if let Ok(parsed) = serde_json::from_str::<HashMap<String, serde_json::Value>>(json_str)
+            {
+                for (key, value) in parsed {
+                    if let Ok(idx) = key.parse::<usize>() {
+                        let score = match value {
+                            serde_json::Value::Number(n) => n.as_f64().unwrap_or(0.5) as f32,
+                            serde_json::Value::String(s) => s.parse().unwrap_or(0.5),
+                            _ => 0.5,
+                        };
+                        scores.insert(idx, score.clamp(0.0, 1.0));
+                    }
+                }
+            }
+        }
+
+        // Fallback: try to parse line-by-line scores like "0: 0.95"
+        if scores.is_empty() {
+            for line in content.lines() {
+                let parts: Vec<&str> = line.split(':').collect();
+                if parts.len() == 2 {
+                    if let Ok(idx) = parts[0].trim().trim_matches(|c| c == '"' || c == '[' || c == ']' || c == 'D' || c == 'O' || c == 'C').parse::<usize>() {
+                        if let Ok(score) = parts[1].trim().trim_matches(|c| c == ',' || c == '"').parse::<f32>() {
+                            scores.insert(idx, score.clamp(0.0, 1.0));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fill missing scores with default
+        for i in 0..doc_count {
+            scores.entry(i).or_insert(0.5);
+        }
+
+        scores
+    }
+
+    /// Score all documents in a single batched request
+    async fn score_documents_batch(
+        &self,
+        query: &str,
+        documents: &[RerankDocument],
+    ) -> Result<HashMap<usize, f32>> {
+        let prompt = Self::build_batch_prompt(query, documents);
 
         let request = OllamaChatRequest {
             model: self.model.clone(),
@@ -125,47 +197,10 @@ Relevance score:"#,
                         match response.json::<OllamaChatResponse>().await {
                             Ok(chat_response) => {
                                 let content = chat_response.message.content.trim();
+                                debug!("Ollama batch rerank response: {}", content);
 
-                                // Try to parse the score from the response
-                                // Handle various formats: "0.95", "Score: 0.95", etc.
-                                let score_str = content
-                                    .split_whitespace()
-                                    .find_map(|s| s.parse::<f32>().ok())
-                                    .or_else(|| content.parse::<f32>().ok());
-
-                                if let Some(score) = score_str {
-                                    // Clamp score to 0.0-1.0 range
-                                    let clamped_score = score.clamp(0.0, 1.0);
-                                    debug!(
-                                        "Ollama rerank score: {:.3} (raw: {})",
-                                        clamped_score, content
-                                    );
-                                    return Ok(clamped_score);
-                                } else {
-                                    // Fallback: Try to detect Yes/No/Maybe
-                                    let content_lower = content.to_lowercase();
-                                    let score = if content_lower.contains("yes")
-                                        || content_lower.contains("relevant")
-                                    {
-                                        1.0
-                                    } else if content_lower.contains("no")
-                                        || content_lower.contains("irrelevant")
-                                    {
-                                        0.0
-                                    } else if content_lower.contains("maybe")
-                                        || content_lower.contains("somewhat")
-                                    {
-                                        0.5
-                                    } else {
-                                        warn!(
-                                            "Could not parse Ollama response as score: {}",
-                                            content
-                                        );
-                                        0.5 // Default to neutral
-                                    };
-
-                                    return Ok(score);
-                                }
+                                let scores = Self::parse_batch_scores(content, documents.len());
+                                return Ok(scores);
                             }
                             Err(e) => {
                                 last_error =
@@ -192,7 +227,7 @@ Relevance score:"#,
 
             if attempt < self.max_retries {
                 warn!(
-                    "Ollama rerank call failed (attempt {}/{}), retrying...",
+                    "Ollama batch rerank failed (attempt {}/{}), retrying...",
                     attempt + 1,
                     self.max_retries + 1
                 );
@@ -217,35 +252,28 @@ impl Reranker for OllamaReranker {
         }
 
         info!(
-            "Ollama reranking {} documents with model: {}",
+            "Ollama batch reranking {} documents with model: {}",
             documents.len(),
             self.model
         );
 
-        // Score each document
-        let mut scored_docs = Vec::new();
-        for (index, doc) in documents.iter().enumerate() {
-            match self.score_document(query, &doc.text).await {
-                Ok(score) => {
-                    scored_docs.push(RerankResult {
-                        id: doc.id.clone(),
-                        score,
-                        index,
-                        metadata: doc.metadata.clone(),
-                    });
+        // Score all documents in single batch request
+        let scores = self.score_documents_batch(query, &documents).await?;
+
+        // Build results with scores
+        let mut scored_docs: Vec<RerankResult> = documents
+            .iter()
+            .enumerate()
+            .map(|(index, doc)| {
+                let score = scores.get(&index).copied().unwrap_or(0.5);
+                RerankResult {
+                    id: doc.id.clone(),
+                    score,
+                    index,
+                    metadata: doc.metadata.clone(),
                 }
-                Err(e) => {
-                    warn!("Failed to score document {}: {}", doc.id, e);
-                    // Include with low score rather than failing entirely
-                    scored_docs.push(RerankResult {
-                        id: doc.id.clone(),
-                        score: 0.0,
-                        index,
-                        metadata: doc.metadata.clone(),
-                    });
-                }
-            }
-        }
+            })
+            .collect();
 
         // Sort by score descending
         scored_docs.sort_by(|a, b| {
@@ -258,7 +286,7 @@ impl Reranker for OllamaReranker {
         scored_docs.truncate(top_n);
 
         info!(
-            "Ollama reranking complete: {} results (top score: {:.3})",
+            "Ollama batch reranking complete: {} results (top score: {:.3})",
             scored_docs.len(),
             scored_docs.first().map(|r| r.score).unwrap_or(0.0)
         );
@@ -294,9 +322,62 @@ mod tests {
     }
 
     #[test]
+    fn test_build_batch_prompt() {
+        let docs = vec![
+            RerankDocument {
+                id: "1".to_string(),
+                text: "Rust error handling".to_string(),
+                metadata: None,
+            },
+            RerankDocument {
+                id: "2".to_string(),
+                text: "Python exceptions".to_string(),
+                metadata: None,
+            },
+        ];
+
+        let prompt = OllamaReranker::build_batch_prompt("error handling", &docs);
+        assert!(prompt.contains("[DOC0]"));
+        assert!(prompt.contains("[DOC1]"));
+        assert!(prompt.contains("Rust error handling"));
+        assert!(prompt.contains("Python exceptions"));
+    }
+
+    #[test]
+    fn test_parse_batch_scores_json() {
+        let response = r#"{"0": 0.95, "1": 0.2, "2": 0.8}"#;
+        let scores = OllamaReranker::parse_batch_scores(response, 3);
+
+        assert!((scores[&0] - 0.95).abs() < 0.01);
+        assert!((scores[&1] - 0.2).abs() < 0.01);
+        assert!((scores[&2] - 0.8).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_batch_scores_with_text() {
+        let response = r#"Based on relevance analysis:
+{"0": 0.9, "1": 0.1}
+The first document is highly relevant."#;
+        let scores = OllamaReranker::parse_batch_scores(response, 2);
+
+        assert!((scores[&0] - 0.9).abs() < 0.01);
+        assert!((scores[&1] - 0.1).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_batch_scores_fills_missing() {
+        let response = r#"{"0": 0.9}"#;
+        let scores = OllamaReranker::parse_batch_scores(response, 3);
+
+        assert!((scores[&0] - 0.9).abs() < 0.01);
+        assert!((scores[&1] - 0.5).abs() < 0.01); // Default
+        assert!((scores[&2] - 0.5).abs() < 0.01); // Default
+    }
+
+    #[test]
     fn test_chat_request_serialization() {
         let request = OllamaChatRequest {
-            model: "dengcao/Qwen3-Reranker-4B:Q5_K_M".to_string(),
+            model: "dengcao/Qwen3-Reranker-8B:Q3_K_M".to_string(),
             messages: vec![ChatMessage {
                 role: "user".to_string(),
                 content: "test".to_string(),

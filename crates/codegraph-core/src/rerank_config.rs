@@ -76,9 +76,12 @@ impl Default for JinaRerankConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct OllamaRerankConfig {
-    /// Ollama reranking model (e.g., "dengcao/Qwen3-Reranker-4B:Q5_K_M")
+    /// Ollama reranking model (e.g., "dengcao/Qwen3-Reranker-8B:Q3_K_M")
+    /// Defaults to CODEGRAPH_OLLAMA_RERANK_MODEL or OLLAMA_RERANK_MODEL env var
+    #[serde(default = "OllamaRerankConfig::default_model")]
     pub model: String,
     /// Ollama API base URL
+    /// Defaults to CODEGRAPH_OLLAMA_URL or OLLAMA_URL env var
     #[serde(default = "OllamaRerankConfig::default_api_base")]
     pub api_base: String,
     /// Maximum number of retries for API requests
@@ -93,8 +96,16 @@ pub struct OllamaRerankConfig {
 }
 
 impl OllamaRerankConfig {
+    fn default_model() -> String {
+        std::env::var("CODEGRAPH_OLLAMA_RERANK_MODEL")
+            .or_else(|_| std::env::var("OLLAMA_RERANK_MODEL"))
+            .unwrap_or_else(|_| "dengcao/Qwen3-Reranker-8B:Q3_K_M".to_string())
+    }
+
     fn default_api_base() -> String {
-        "http://localhost:11434".to_string()
+        std::env::var("CODEGRAPH_OLLAMA_URL")
+            .or_else(|_| std::env::var("OLLAMA_URL"))
+            .unwrap_or_else(|_| "http://localhost:11434".to_string())
     }
 
     fn default_max_retries() -> u32 {
@@ -113,7 +124,7 @@ impl OllamaRerankConfig {
 impl Default for OllamaRerankConfig {
     fn default() -> Self {
         Self {
-            model: "dengcao/Qwen3-Reranker-4B:Q5_K_M".to_string(),
+            model: Self::default_model(),
             api_base: Self::default_api_base(),
             max_retries: Self::default_max_retries(),
             timeout_secs: Self::default_timeout_secs(),
@@ -243,7 +254,7 @@ mod tests {
 
     #[test]
     fn test_ollama_config_creation() {
-        let config = RerankConfig::for_ollama("dengcao/Qwen3-Reranker-4B:Q5_K_M");
+        let config = RerankConfig::for_ollama("dengcao/Qwen3-Reranker-8B:Q3_K_M");
         assert_eq!(config.provider, RerankProvider::Ollama);
         assert!(config.ollama.is_some());
         assert!(config.validate().is_ok());

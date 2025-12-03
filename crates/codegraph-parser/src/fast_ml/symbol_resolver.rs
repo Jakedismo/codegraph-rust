@@ -108,12 +108,13 @@ impl SymbolResolver {
                         "lsh_resolution".to_string(),
                     );
 
-                    new_edges.push(EdgeRelationship {
-                        from: edge.from,
-                        to: similar,
-                        edge_type: EdgeType::Uses,
-                        metadata,
-                    });
+                new_edges.push(EdgeRelationship {
+                    from: edge.from,
+                    to: similar,
+                    edge_type: EdgeType::Uses,
+                    metadata,
+                    span: None,
+                });
                     added += 1;
                     if added >= max_edges_per_file {
                         break;

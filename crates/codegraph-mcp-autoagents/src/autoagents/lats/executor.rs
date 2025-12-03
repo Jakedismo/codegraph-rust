@@ -259,17 +259,19 @@ impl LATSExecutor {
         nodes: &[NodeId],
         query: &str,
     ) -> Result<Vec<ExpandedNode>, ExecutorError> {
-        use super::prompts::LATSPrompts;
         use super::provider_router::LATSPhase;
+        use super::tiered_prompts::build_expansion_prompt;
         use codegraph_ai::llm_provider::{GenerationConfig, Message, MessageRole, ResponseFormat};
 
         debug!(
             target: "lats::expansion",
             node_count = nodes.len(),
-            "Starting expansion phase"
+            tier = ?self.config.tier,
+            "Starting expansion phase with tier-aware prompts"
         );
 
         let available_tools = vec![
+            "semantic_code_search".to_string(), // REQUIRED FIRST - finds node IDs
             "get_transitive_dependencies".to_string(),
             "get_reverse_dependencies".to_string(),
             "trace_call_chain".to_string(),
@@ -286,7 +288,7 @@ impl LATSExecutor {
                 .map_err(|e| ExecutorError::ExecutionFailed(e.to_string()))?;
 
             let provider = self.provider_router.get_provider(LATSPhase::Expansion);
-            let prompt = LATSPrompts::expansion_prompt(node, query, &available_tools);
+            let prompt = build_expansion_prompt(self.config.tier, node, query, &available_tools);
 
             let messages = vec![Message {
                 role: MessageRole::User,
@@ -545,14 +547,15 @@ impl LATSExecutor {
         best_path: Vec<NodeId>,
         query: &str,
     ) -> Result<CodeGraphAgentOutput, ExecutorError> {
-        use super::prompts::LATSPrompts;
         use super::provider_router::LATSPhase;
+        use super::tiered_prompts::build_synthesis_prompt;
         use codegraph_ai::llm_provider::{GenerationConfig, Message, MessageRole, ResponseFormat};
 
         debug!(
             target: "lats::synthesis",
             path_length = best_path.len(),
-            "Starting synthesis phase"
+            tier = ?self.config.tier,
+            "Starting synthesis phase with tier-aware prompts"
         );
 
         // Collect nodes along best path
@@ -562,7 +565,7 @@ impl LATSExecutor {
             .collect();
 
         let provider = self.provider_router.get_provider(LATSPhase::Expansion);
-        let prompt = LATSPrompts::synthesis_prompt(&path_nodes, query);
+        let prompt = build_synthesis_prompt(self.config.tier, &path_nodes, query);
 
         let messages = vec![Message {
             role: MessageRole::User,

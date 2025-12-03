@@ -8,6 +8,7 @@ pub struct CodeNode {
     pub node_type: Option<NodeType>,
     pub language: Option<Language>,
     pub location: Location,
+    pub span: Option<crate::Span>,
     pub content: Option<SharedStr>,
     pub metadata: Metadata,
     pub embedding: Option<Vec<f32>>,
@@ -28,6 +29,7 @@ impl CodeNode {
             node_type,
             language,
             location,
+            span: None,
             content: None,
             metadata: Metadata {
                 attributes: std::collections::HashMap::new(),
@@ -52,5 +54,16 @@ impl CodeNode {
     pub fn with_complexity(mut self, complexity: f32) -> Self {
         self.complexity = Some(complexity);
         self
+    }
+
+    pub fn new_test() -> Self {
+        let location = crate::Location {
+            file_path: "test".to_string(),
+            line: 1,
+            column: 0,
+            end_line: Some(1),
+            end_column: Some(0),
+        };
+        CodeNode::new("test", None, None, location)
     }
 }

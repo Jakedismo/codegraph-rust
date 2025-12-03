@@ -169,6 +169,7 @@ impl PatternMatcher {
                             to: pattern_name.clone(),
                             edge_type: edge_type.clone(),
                             metadata: metadata.clone(),
+                            span: None,
                         });
                         edges_added += 1;
                     }
