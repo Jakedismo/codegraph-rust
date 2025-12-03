@@ -1093,6 +1093,16 @@ impl ProjectIndexer {
                 let mut records: Vec<ChunkEmbeddingRecord> = Vec::with_capacity(metas.len());
                 for ((meta, text), emb) in metas.iter().zip(texts.iter()).zip(embs.iter()) {
                     if let Some(node) = nodes.get(meta.node_index) {
+                        if emb.len() != self.vector_dim {
+                            warn!(
+                                "Skipping chunk embedding: dimension mismatch (got {}, expected {}) for node {} chunk {}",
+                                emb.len(),
+                                self.vector_dim,
+                                node.id,
+                                meta.chunk_index
+                            );
+                            continue;
+                        }
                         records.push(ChunkEmbeddingRecord::new(
                             &node.id.to_string(),
                             meta.chunk_index,
