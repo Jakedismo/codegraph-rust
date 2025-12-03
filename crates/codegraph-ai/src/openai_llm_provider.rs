@@ -143,6 +143,8 @@ impl OpenAIProvider {
         };
 
         // Build request based on model type
+        // OpenAI Responses API uses text.format instead of response_format
+        let text_config = config.response_format.clone().map(|rf| TextConfig { format: rf.into() });
         let mut request = OpenAIRequest {
             model: self.config.model.clone(),
             input,
@@ -152,7 +154,7 @@ impl OpenAIProvider {
             temperature: None,
             top_p: None,
             stop: config.stop.clone(),
-            response_format: config.response_format.clone(),
+            text: text_config,
         };
 
         // Only add sampling parameters for non-reasoning models
@@ -387,8 +389,44 @@ struct OpenAIRequest {
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stop: Option<Vec<String>>,
+    /// OpenAI Responses API uses text.format instead of response_format
     #[serde(skip_serializing_if = "Option::is_none")]
-    response_format: Option<crate::llm_provider::ResponseFormat>,
+    text: Option<TextConfig>,
+}
+
+/// OpenAI Responses API text format - flattened structure
+/// OpenAI expects: {"type": "json_schema", "name": "...", "schema": {...}, "strict": true}
+/// NOT: {"type": "json_schema", "json_schema": {...}}
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum OpenAITextFormat {
+    Text,
+    JsonObject,
+    JsonSchema {
+        name: String,
+        schema: serde_json::Value,
+        strict: bool,
+    },
+}
+
+impl From<crate::llm_provider::ResponseFormat> for OpenAITextFormat {
+    fn from(rf: crate::llm_provider::ResponseFormat) -> Self {
+        use crate::llm_provider::ResponseFormat;
+        match rf {
+            ResponseFormat::Text => OpenAITextFormat::Text,
+            ResponseFormat::JsonObject => OpenAITextFormat::JsonObject,
+            ResponseFormat::JsonSchema { json_schema } => OpenAITextFormat::JsonSchema {
+                name: json_schema.name,
+                schema: json_schema.schema,
+                strict: json_schema.strict,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct TextConfig {
+    format: OpenAITextFormat,
 }
 
 #[derive(Debug, Deserialize)]
@@ -476,11 +514,42 @@ mod tests {
             temperature: None,
             top_p: None,
             stop: None,
-            response_format: None,
+            text: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"max_output_tokens\""));
         assert!(!json.contains("\"max_completion_token\""));
+    }
+
+    #[test]
+    fn text_format_flattens_json_schema() {
+        use crate::llm_provider::{JsonSchema, ResponseFormat};
+
+        // Create a ResponseFormat with JSON schema
+        let response_format = ResponseFormat::JsonSchema {
+            json_schema: JsonSchema {
+                name: "test_schema".to_string(),
+                schema: serde_json::json!({"type": "object"}),
+                strict: true,
+            },
+        };
+
+        // Convert to OpenAI format
+        let text_config = TextConfig {
+            format: response_format.into(),
+        };
+
+        let json = serde_json::to_string(&text_config).unwrap();
+
+        // Should have flattened structure: {"format":{"type":"json_schema","name":"...","schema":...,"strict":...}}
+        // NOT nested: {"format":{"type":"json_schema","json_schema":{...}}}
+        assert!(json.contains("\"name\":\"test_schema\""));
+        assert!(json.contains("\"strict\":true"));
+        assert!(json.contains("\"type\":\"json_schema\""));
+        assert!(
+            !json.contains("\"json_schema\":{"),
+            "Should not have nested json_schema object"
+        );
     }
 }

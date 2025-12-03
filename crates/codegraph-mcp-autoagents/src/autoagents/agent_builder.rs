@@ -64,6 +64,8 @@ impl CodeGraphChatAdapter {
     }
 
     /// Schema that enforces CodeGraph tool-call envelope expected by AutoAgents
+    /// Uses strict=true with parameters as JSON string to satisfy OpenAI's
+    /// additionalProperties: false requirement while allowing dynamic tool args
     fn codegraph_toolcall_schema() -> ResponseFormat {
         use serde_json::json;
         ResponseFormat::JsonSchema {
@@ -74,17 +76,26 @@ impl CodeGraphChatAdapter {
                     "properties": {
                         "reasoning": {"type": "string"},
                         "tool_call": {
-                            "type": "object",
-                            "properties": {
-                                "tool_name": {"type": "string"},
-                                "parameters": {"type": "object"}
-                            },
-                            "required": ["tool_name", "parameters"]
+                            "anyOf": [
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "tool_name": {"type": "string"},
+                                        "parameters_json": {
+                                            "type": "string",
+                                            "description": "JSON-encoded parameters object"
+                                        }
+                                    },
+                                    "required": ["tool_name", "parameters_json"],
+                                    "additionalProperties": false
+                                },
+                                {"type": "null"}
+                            ]
                         },
                         "is_final": {"type": "boolean"}
                     },
-                    "required": ["reasoning", "is_final"],
-                    "additionalProperties": true
+                    "required": ["reasoning", "is_final", "tool_call"],
+                    "additionalProperties": false
                 }),
                 strict: true,
             },
@@ -283,8 +294,9 @@ struct CodeGraphLLMResponse {
 struct CodeGraphToolCall {
     #[serde(alias = "name", alias = "function", alias = "tool")]
     tool_name: String,
-    #[serde(alias = "arguments", alias = "args")]
-    parameters: serde_json::Value,
+    /// Parameters as JSON string (for OpenAI strict mode compatibility)
+    #[serde(alias = "parameters", alias = "arguments", alias = "args")]
+    parameters_json: String,
 }
 
 // Static counter for generating unique tool call IDs
@@ -339,14 +351,8 @@ impl ChatResponse for CodeGraphChatResponse {
                 // If there's a tool_call and is_final is false, convert to AutoAgents format
                 if let Some(tool_call) = parsed.tool_call {
                     if !parsed.is_final {
-                        // Convert parameters to JSON string
-                        let arguments = match serde_json::to_string(&tool_call.parameters) {
-                            Ok(json) => json,
-                            Err(e) => {
-                                tracing::error!("Failed to serialize tool call parameters: {}", e);
-                                return None;
-                            }
-                        };
+                        // Parameters already a JSON string from structured output
+                        let arguments = tool_call.parameters_json.clone();
 
                         // Generate unique ID using atomic counter
                         let call_id = TOOL_CALL_COUNTER.fetch_add(1, Ordering::SeqCst);

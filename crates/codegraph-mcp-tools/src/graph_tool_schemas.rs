@@ -221,7 +221,10 @@ impl GraphToolSchemas {
     pub fn semantic_code_search() -> ToolSchema {
         ToolSchema {
             name: "semantic_code_search".to_string(),
-            description: "Primary code discovery tool using embeddings, full-text analysis, and graph enrichment for agentic workflows.".to_string(),
+            description: "Primary code discovery tool using advanced hybrid search with graph-traversal. \
+                   Accepts natural language queries ((e.g., How is authentication handled?, database models, error handling code etc.) be robust in your queries). \
+                   Works for both conceptual searches and specific identifiers. \
+                   Returns relevant code snippets, definitions, and related nodes ranked by relevance.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {

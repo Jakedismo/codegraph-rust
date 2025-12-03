@@ -20,6 +20,7 @@ ai-enhanced = [
 server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
 autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental", "codegraph-mcp/autoagents-experimental"]
 autoagents-lats = ["codegraph-mcp-autoagents/autoagents-lats", "codegraph-mcp/autoagents-lats"]
+all-agents = ["autoagents-experimental", "autoagents-lats"]
 embeddings = ["codegraph-mcp-tools/embeddings", "codegraph-mcp/embeddings"]
 embeddings-ollama = ["embeddings", "codegraph-mcp/embeddings-ollama"]
 embeddings-openai = ["embeddings", "codegraph-mcp/embeddings-openai"]
@@ -34,6 +35,14 @@ all-embeddings = [
     "embeddings-local"
 ]
 daemon = ["dep:codegraph-mcp-daemon"]
+# Full features for cargo install --features full
+full = [
+    "daemon",
+    "ai-enhanced",
+    "server-http",
+    "all-agents",
+    "all-embeddings"
+]
 
 [dependencies]
 codegraph-mcp-core = { path = "../codegraph-mcp-core" }
