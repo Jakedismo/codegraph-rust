@@ -10,6 +10,13 @@
 - **Incremental tracking:** File/project metadata stored to support `--watch` incremental re-indexing and dedup by project_id + file_path.
 - **Batched + resilient:** Embedding calls and Surreal upserts are batched; sizes tunable via `CODEGRAPH_EMBEDDINGS_BATCH_SIZE` and provider-specific env vars.
 
+### Semantic Chunking (Quality-first)
+- **Span-aware boundaries:** Parser spans (Tree-Sitter + FastML) are honored as hard cut points; chunker slices exact byte ranges from source before packing, avoiding cross-function contamination.
+- **Semantic packing:** semchunk-rs splitter with model-token budget and optional overlap (`CODEGRAPH_CHUNK_OVERLAP_TOKENS`, default 64) keeps chunks coherent and recall-friendly.
+- **Model-aware sizing:** `CODEGRAPH_CHUNK_MAX_TOKENS` defaults to the provider’s window; recommended defaults: 1024 tokens (most models), 2048 for long-context embeddings; set `CODEGRAPH_EMBEDDING_SKIP_CHUNKING=1` to turn off.
+- **UTF-8 safe overlap:** Overlap tails are taken on char boundaries to prevent panics on multibyte codepoints.
+- **Config at a glance:** `CODEGRAPH_CHUNK_MAX_TOKENS`, `CODEGRAPH_CHUNK_OVERLAP_TOKENS`, `CODEGRAPH_CHUNK_SMART_SPLIT` (default true), `CODEGRAPH_EMBEDDING_SKIP_CHUNKING` (speed mode).
+
 CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed context to AI agents, eliminating the need for agents to burn tokens gathering project information. Instead of async agents like Claude Code executing searches and building dependency graphs, CodeGraph's MCP server handles these operations efficiently and exposes them through standardized tools.
 
 ## Agentic MCP Tools (What, When, How)
@@ -22,7 +29,7 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
   - Need quick semantic answers with citations → use `agentic_semantic_question` or `agentic_code_search`.
   - Need to understand repository API design, public surfaces → use`agentic_api_surface_analysis`
   - Need pre-chewn semantically rich context for a feature development → `agentic_context_builder`  
-- All these tools internally execute a reasoning agent (ReACT or LATS) with built-in graph analysis- and semantic search tools. The agent does multi-step graph analysis on your indexed codebase and semantic similarity hybrid searches (0.7 vector similarity, 0.3 lexical search) so that it gains a comprehensive understanding of your codebaset before answering clients query.
+- All these tools internally execute a reasoning agent (ReACT or LATS) with built-in graph analysis- and semantic search tools. The agent does multi-step graph analysis on your indexed codebase and semantic similarity hybrid searches (0.7 vector similarity, 0.3 lexical search) so that it gains a comprehensive understanding of your codebase before answering clients query.
 - The Depth and quality of provided answers is governed by a 4-tier prompt mechanism, less detailed faster analyses for models with smaller ctx windows more broader comprehensive analyses for models with larger ctx windows.
 - This enables running local models in systems with limited resources and the agent chaining tool uses for comprehensive context while using models like grok-4-1-fast-reasoning give you the full monty in one go.
 - **Prerequisites:** Index your codebase first (`codegraph index . -r -l language`) so graph and embeddings exist. For live edits, run the mcp server with `codegraph start stdio --watch` (daemon) to keep results current.
@@ -51,26 +58,6 @@ CodeGraph follows Anthropic's MCP best practices by providing rich, pre-computed
 - xAI Grok (Grok-4.1-fast-reasoning for true codebase understanding 2M ctx!)
 - Any OpenAI-compatible provider (OpenRouter Kimi-K2 Thinking)
 
-### Responses API vs Chat Completions API
-
-CodeGraph uses the modern **Responses API** by default for LM Studio and OpenAI-compatible providers. This API provides:
-- Better support for reasoning models
-- Improved token management
-- Clearer request/response structure
-
-**Backward Compatibility**: If your provider doesn't support Responses API, enable the legacy Chat Completions API:
-```bash
-export CODEGRAPH_USE_COMPLETIONS_API=true
-```
-
-Or in `~/.codegraph/config.toml`:
-```toml
-[llm]
-use_completions_api = true
-```
-
-**Note**: Ollama is NOT affected by this setting - it uses its native API.
-
 **Embedding Providers:**
 - **Any model** with supported dimensions: 384, 768, 1024, 1536, 2048, 2560, 3072, 4096
 - Ollama (local models: qwen, jina, nomic, bge, e5, minilm, etc.)
@@ -83,7 +70,6 @@ use_completions_api = true
 
 **Reranking Providers:**
 - Jina AI (cloud API with jina-reranker-v3)
-- Ollama (local chat models: Qwen3-Reranker family, etc.)
 
 **Vector & Graph Database:**
 - SurrealDB HNSW index (2-5ms query latency)
@@ -152,37 +138,6 @@ top_n = 10  # Number of results after reranking
 model = "jina-reranker-v3"
 api_key_env = "JINA_API_KEY"
 ```
-
-**Option 2: Ollama Reranking** (Local, Free)
-- Uses chat models for relevance scoring (e.g., Qwen3-Reranker)
-- Runs locally via Ollama
-- No API key required
-
-```bash
-# Pull the model first
-ollama pull dengcao/Qwen3-Reranker-4B:Q5_K_M
-
-# Configure CodeGraph
-export CODEGRAPH_RERANK_PROVIDER=ollama
-export CODEGRAPH_OLLAMA_RERANK_MODEL="dengcao/Qwen3-Reranker-4B:Q5_K_M"
-```
-
-Or in `~/.codegraph/config.toml`:
-```toml
-[rerank]
-provider = "ollama"
-top_n = 10
-
-[rerank.ollama]
-model = "dengcao/Qwen3-Reranker-4B:Q5_K_M"
-api_base = "http://localhost:11434"
-```
-
-**Performance Notes:**
-- Jina reranking: 80-200ms per query (cloud API)
-- Ollama reranking: Varies by model (local inference)
-- Both significantly improve result precision over vector search alone
-
 ---
 
 ## SurrealDB Setup for Agentic Tools
@@ -233,11 +188,11 @@ LATS supports using different LLM providers for different phases of the tree sea
 ```bash
 # Use different models for different LATS phases
 export CODEGRAPH_LATS_SELECTION_PROVIDER=openai
-export CODEGRAPH_LATS_SELECTION_MODEL=gpt-4o-mini
+export CODEGRAPH_LATS_SELECTION_MODEL=gpt-5.1-codex-mini
 export CODEGRAPH_LATS_EXPANSION_PROVIDER=anthropic
-export CODEGRAPH_LATS_EXPANSION_MODEL=claude-3-5-sonnet-20241022
+export CODEGRAPH_LATS_EXPANSION_MODEL=claude-4.5
 export CODEGRAPH_LATS_EVALUATION_PROVIDER=openai
-export CODEGRAPH_LATS_EVALUATION_MODEL=o1-preview
+export CODEGRAPH_LATS_EVALUATION_MODEL=gpt-5.1
 
 # Algorithm tuning
 export CODEGRAPH_LATS_BEAM_WIDTH=3      # Number of best paths to keep (default: 3)
