@@ -34,7 +34,7 @@ impl Default for OllamaEmbeddingConfig {
         Self {
             model_name: "nomic-embed-code".to_string(),
             base_url: "http://localhost:11434".to_string(),
-            timeout: Duration::from_secs(60),
+            timeout: Duration::from_secs(120),
             batch_size: 32,
             max_retries: 3,
             max_tokens_per_text: 512,
@@ -62,7 +62,12 @@ impl From<&codegraph_core::EmbeddingConfig> for OllamaEmbeddingConfig {
         Self {
             model_name,
             base_url: config.ollama_url.clone(),
-            timeout: Duration::from_secs(60),
+            timeout: Duration::from_secs(
+                std::env::var("CODEGRAPH_OLLAMA_TIMEOUT_SECS")
+                    .ok()
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(120),
+            ),
             batch_size,
             max_retries: 3,
             max_tokens_per_text,

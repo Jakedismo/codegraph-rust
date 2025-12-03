@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::json;
 use std::sync::Arc;
-use surrealdb::{engine::any::Any, Surreal};
+use surrealdb::{engine::any::Any, sql::Value as SurrealValue, Surreal};
 use tracing::{debug, error, warn};
 
 /// Wrapper for SurrealDB graph analysis functions
