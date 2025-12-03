@@ -319,7 +319,21 @@ impl OllamaEmbeddingProvider {
             request_start.elapsed().as_millis()
         );
 
-        Ok(response_data.embeddings)
+        // Sanitize: replace non-finite values to avoid JSON encoding failures downstream
+        let sanitized: Vec<Vec<f32>> = response_data
+            .embeddings
+            .into_iter()
+            .map(|mut emb| {
+                for v in emb.iter_mut() {
+                    if !v.is_finite() {
+                        *v = 0.0;
+                    }
+                }
+                emb
+            })
+            .collect();
+
+        Ok(sanitized)
     }
 
     pub async fn generate_embeddings_for_texts(
