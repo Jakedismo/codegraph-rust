@@ -842,18 +842,24 @@ impl ProjectIndexer {
             self.delete_data_for_files(&modified_paths).await?;
         }
 
-        info!(
-            "🌳 Starting AST parsing (TreeSitter + fast_ml semantics) for {} files across {} languages",
-            total_files,
-            file_config.languages.len()
+        // Single progress bar for unified AST + fast_ml extraction
+        let ast_pb = self.create_progress_bar(
+            total_files as u64,
+            "🌳 Parsing & extracting (TreeSitter + FastML)",
         );
-        info!("🔗 Unified extraction: Nodes + Edges + Relationships in single fast_ml+AST pass");
 
         // REVOLUTIONARY: Use unified extraction for nodes + edges in single pass (FASTEST approach)
         // Clone files for parsing (we need them again for metadata persistence)
         let (mut nodes, edges, pstats) = self
             .parse_files_with_unified_extraction(files.clone(), total_files as u64)
             .await?;
+
+        ast_pb.finish_with_message(format!(
+            "🌳 Parsed {} files | nodes: {} | edges: {}",
+            pstats.parsed_files,
+            nodes.len(),
+            edges.len()
+        ));
 
         for node in nodes.iter_mut() {
             self.annotate_node(node);
@@ -958,7 +964,7 @@ impl ProjectIndexer {
         // STAGE 4: Persist nodes before embedding so SurrealDB reflects progress
         let store_nodes_pb = self.create_progress_bar(
             nodes.len() as u64,
-            "📈 Storing nodes (symbol map build)",
+            "📈 Storing nodes",
         );
         let mut stats = IndexStats {
             files: pstats.parsed_files,
@@ -988,7 +994,7 @@ impl ProjectIndexer {
             store_nodes_pb.inc(chunk.len() as u64);
         }
         self.flush_surreal_writer().await?;
-        store_nodes_pb.finish_with_message("📈 Stored nodes (symbol map ready)");
+        store_nodes_pb.finish_with_message("📈 Nodes stored");
         self.log_surreal_node_count(total_nodes_extracted).await;
 
         #[cfg(feature = "embeddings")]
@@ -1248,7 +1254,7 @@ impl ProjectIndexer {
                 // Phase 2: Pre-compute embeddings for ALL unresolved edge targets
                 info!("🔧 Phase 2: Pre-computing embeddings for unresolved edge targets");
                 let mut unresolved_symbols: std::collections::HashSet<String> = std::collections::HashSet::new();
-                let mut unresolved_symbol_edge_ids: std::collections::HashMap<String, String> =
+                let mut unresolved_symbol_edge_ids: std::collections::HashMap<String, uuid::Uuid> =
                     std::collections::HashMap::new();
 
                 for edge in edges.iter() {
@@ -1256,7 +1262,7 @@ impl ProjectIndexer {
                         unresolved_symbols.insert(edge.to.clone());
                         unresolved_symbol_edge_ids
                             .entry(edge.to.clone())
-                            .or_insert_with(|| format!("{}->{}:{}", edge.from, edge.to, edge.edge_type));
+                            .or_insert_with(uuid::Uuid::new_v4);
                     }
                 }
 
@@ -1465,20 +1471,20 @@ impl ProjectIndexer {
             }
 
             let mut stored_edges_local = 0usize;
-            let mut resolution_rate_local = 0.0;
+        let mut resolution_rate_local = 0.0;
 
-            // Store resolved edges via writer
-            if !all_resolved_edges.is_empty() {
-                let serializable_edges: Vec<_> = all_resolved_edges
-                    .iter()
-                    .map(
-                        |(from, to, edge_type, metadata)| codegraph_graph::edge::CodeEdge {
-                            id: uuid::Uuid::new_v4(),
-                            from: *from,
-                            to: *to,
-                            edge_type: edge_type.clone(),
-                            weight: 1.0,
-                            metadata: metadata.clone(),
+        // Store resolved edges via writer
+        if !all_resolved_edges.is_empty() {
+            let serializable_edges: Vec<_> = all_resolved_edges
+                .iter()
+                .map(
+                    |(from, to, edge_type, metadata)| codegraph_graph::edge::CodeEdge {
+                        id: uuid::Uuid::new_v4(),
+                        from: *from,
+                        to: *to,
+                        edge_type: edge_type.clone(),
+                        weight: 1.0,
+                        metadata: metadata.clone(),
                         },
                     )
                     .collect();
@@ -1933,7 +1939,8 @@ impl ProjectIndexer {
                     for (symbol, embedding) in
                         batch.iter().cloned().zip(batch_embeddings.into_iter())
                     {
-                        let edge_id_ref = symbol_edge_ids.get(&symbol).map(|s| s.as_str());
+                        let edge_id_ref = symbol_edge_ids.get(&symbol).map(|id| id.to_string());
+                        let edge_id_ref = edge_id_ref.as_deref();
                         records.push(self.build_symbol_embedding_record(
                             &symbol,
                             None,
@@ -1959,7 +1966,8 @@ impl ProjectIndexer {
                     for symbol in batch.into_iter() {
                         match embedder.generate_text_embedding(&symbol).await {
                             Ok(embedding) => {
-                                let edge_id_ref = symbol_edge_ids.get(&symbol).map(|s| s.as_str());
+                                let edge_id_ref = symbol_edge_ids.get(&symbol).map(|id| id.to_string());
+                                let edge_id_ref = edge_id_ref.as_deref();
                                 let record = self.build_symbol_embedding_record(
                                     &symbol,
                                     None,
