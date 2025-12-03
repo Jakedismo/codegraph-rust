@@ -1,7 +1,8 @@
 #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
 use crate::embeddings::generator::TextEmbeddingEngine;
 use crate::prep::chunker::{
-    aggregate_chunk_embeddings, build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode,
+    aggregate_chunk_embeddings, build_chunk_plan, build_chunk_plan_with_sources, ChunkPlan,
+    ChunkerConfig, SanitizeMode,
 };
 #[cfg(feature = "ollama")]
 use crate::providers::EmbeddingProvider;
@@ -135,6 +136,14 @@ impl EmbeddingGenerator {
     /// Expose chunking so callers can persist chunk-level embeddings.
     pub fn chunk_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
         self.build_plan_for_nodes(nodes)
+    }
+
+    pub fn chunk_nodes_with_sources(
+        &self,
+        nodes: &[CodeNode],
+        file_sources: &std::collections::HashMap<String, String>,
+    ) -> ChunkPlan {
+        build_chunk_plan_with_sources(nodes, file_sources, Arc::clone(&self.tokenizer), self.chunker_config())
     }
 
     pub fn dimension(&self) -> usize {

@@ -874,7 +874,8 @@ impl ProjectIndexer {
         #[cfg(feature = "embeddings")]
         let chunk_plan: ChunkPlan = {
             let start = std::time::Instant::now();
-            let chunker = || self.embedder.chunk_nodes(&nodes);
+            let file_sources = self.load_file_sources(&files);
+            let chunker = || self.embedder.chunk_nodes_with_sources(&nodes, &file_sources);
             let plan = {
                 let threads = std::env::var("RAYON_NUM_THREADS")
                     .ok()
@@ -3273,6 +3274,20 @@ impl ProjectIndexer {
         );
         pb.set_message(message.to_string());
         pb
+    }
+
+    #[cfg(feature = "embeddings")]
+    fn load_file_sources(
+        &self,
+        files: &Vec<(PathBuf, u64)>,
+    ) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        for (p, _) in files {
+            if let Ok(content) = std::fs::read_to_string(p) {
+                map.insert(p.to_string_lossy().to_string(), content);
+            }
+        }
+        map
     }
 
     /// Create enhanced progress bar with dual metrics for files and success rates

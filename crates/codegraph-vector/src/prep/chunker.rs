@@ -125,6 +125,16 @@ pub fn build_chunk_plan(
     tokenizer: Arc<Tokenizer>,
     config: ChunkerConfig,
 ) -> ChunkPlan {
+    build_chunk_plan_with_sources(nodes, &std::collections::HashMap::new(), tokenizer, config)
+}
+
+/// Span-aware variant: uses file_sources to slice exact spans when available.
+pub fn build_chunk_plan_with_sources(
+    nodes: &[CodeNode],
+    file_sources: &std::collections::HashMap<String, String>,
+    tokenizer: Arc<Tokenizer>,
+    config: ChunkerConfig,
+) -> ChunkPlan {
     let start_total = Instant::now();
     let _ = config.max_texts_per_request;
     let _ = config.cache_capacity;
@@ -137,7 +147,27 @@ pub fn build_chunk_plan(
     stats.total_nodes = nodes.len();
 
     for (node_idx, node) in nodes.iter().enumerate() {
-        let sanitized = sanitize(node, config.sanitize_mode);
+        let base_text = if let (Some(span), Some(source)) = (
+            node.span.as_ref(),
+            file_sources.get(&node.location.file_path),
+        ) {
+            let start = span.start_byte as usize;
+            let end = span.end_byte as usize;
+            if start < end && end <= source.len() {
+                source[start..end].to_string()
+            } else {
+                sanitize(node, config.sanitize_mode)
+            }
+        } else if let Some(content) = node.content.as_ref() {
+            content.to_string()
+        } else {
+            sanitize(node, config.sanitize_mode)
+        };
+
+        let sanitized = match config.smart_split {
+            true => super_sanitize(&base_text),
+            false => sanitize(node, config.sanitize_mode),
+        };
         let segments: Vec<String> = if config.smart_split {
             smart_split(&sanitized)
         } else {
