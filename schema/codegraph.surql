@@ -1148,9 +1148,10 @@ DEFINE FUNCTION fn::semantic_search_with_context(
     --------------------------------------------------------------------------
     -- STAGE 4: OPTIONAL GRAPH ENRICHMENT (using $parent, no FOR / AS)
     --------------------------------------------------------------------------
+    -- Cast Thing IDs to strings for JSON serialization (handle NONE values)
     LET $final_results = IF $include_graph_context THEN (
         SELECT
-            $parent.id        AS id,
+            IF $parent.id IS NOT NONE THEN <string>$parent.id ELSE NONE END AS id,
             $parent.name      AS name,
             $parent.kind      AS kind,
             $parent.language  AS language,
@@ -1167,7 +1168,7 @@ DEFINE FUNCTION fn::semantic_search_with_context(
 
             -- Direct dependencies (what this node calls / uses)
             (
-                SELECT VALUE fn::node_reference(<string>out)
+                SELECT VALUE fn::node_reference(IF out IS NOT NONE THEN <string>out ELSE NONE END)
                 FROM ($parent.id)->calls, ($parent.id)->imports, ($parent.id)->uses
                 WHERE out.project_id = $project_id
                 LIMIT 5
@@ -1175,7 +1176,7 @@ DEFINE FUNCTION fn::semantic_search_with_context(
 
             -- Direct dependents (what calls / uses this node)
             (
-                SELECT VALUE fn::node_reference(<string>in)
+                SELECT VALUE fn::node_reference(IF in IS NOT NONE THEN <string>in ELSE NONE END)
                 FROM ($parent.id)<-calls, ($parent.id)<-imports, ($parent.id)<-uses
                 WHERE in.project_id = $project_id
                 LIMIT 5
@@ -1184,7 +1185,7 @@ DEFINE FUNCTION fn::semantic_search_with_context(
             -- File siblings (other nodes in the same file)
             (
                 SELECT
-                    id,
+                    IF id IS NOT NONE THEN <string>id ELSE NONE END AS id,
                     name,
                     node_type,
                     start_line
@@ -1200,7 +1201,7 @@ DEFINE FUNCTION fn::semantic_search_with_context(
         )
     ) ELSE (
         SELECT
-            id,
+            IF id IS NOT NONE THEN <string>id ELSE NONE END AS id,
             name,
             kind,
             language,
@@ -1347,16 +1348,16 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
 
     LET $vector_results = array::flatten([$vector_candidates]);
 
-    -- Attach node context
+    -- Attach node context (cast Thing IDs to strings for JSON serialization, handle NONE)
     LET $results = (
         SELECT
-            id,
+            IF id IS NOT NONE THEN <string>id ELSE NONE END AS id,
             chunk_index,
             text,
             vector_score,
 
-            -- Node context (resolved per row)
-            (SELECT VALUE id        FROM nodes WHERE id = parent_node LIMIT 1)[0] AS node_id,
+            -- Node context (resolved per row, cast IDs to strings if not NONE)
+            (SELECT VALUE IF id IS NOT NONE THEN <string>id ELSE NONE END FROM nodes WHERE id = parent_node LIMIT 1)[0] AS node_id,
             (SELECT VALUE name      FROM nodes WHERE id = parent_node LIMIT 1)[0] AS name,
             (SELECT VALUE node_type FROM nodes WHERE id = parent_node LIMIT 1)[0] AS kind,
             (SELECT VALUE language  FROM nodes WHERE id = parent_node LIMIT 1)[0] AS language,
