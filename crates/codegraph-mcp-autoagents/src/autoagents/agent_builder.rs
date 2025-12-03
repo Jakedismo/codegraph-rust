@@ -6,7 +6,7 @@ use async_trait::async_trait;
 #[cfg(test)]
 use autoagents::llm::chat::ChatMessageBuilder;
 use autoagents::llm::chat::ChatProvider;
-use autoagents::llm::chat::{ChatMessage, ChatResponse, ChatRole, Tool};
+use autoagents::llm::chat::{ChatMessage, ChatResponse, ChatRole, MessageType, Tool};
 use autoagents::llm::completion::{CompletionProvider, CompletionRequest, CompletionResponse};
 use autoagents::llm::embedding::EmbeddingProvider;
 use autoagents::llm::error::LLMError;
@@ -141,17 +141,66 @@ impl ChatProvider for CodeGraphChatAdapter {
             );
         }
 
+        // Debug: Log message count and roles to diagnose memory issues
+        tracing::info!(
+            "📨 chat() called with {} messages: {:?}",
+            messages.len(),
+            messages.iter().map(|m| format!("{:?}:{:?}", m.role, m.message_type)).collect::<Vec<_>>()
+        );
+        // Log first 200 chars of each message for debugging
+        for (i, msg) in messages.iter().enumerate() {
+            tracing::debug!(
+                "  Message {}: role={:?}, type={:?}, content_len={}, preview={}...",
+                i,
+                msg.role,
+                msg.message_type,
+                msg.content.len(),
+                msg.content.chars().take(200).collect::<String>()
+            );
+        }
+
         // Convert AutoAgents messages to CodeGraph messages
+        // CRITICAL: Must include tool call information from message_type, not just content!
         let cg_messages: Vec<Message> = messages
             .iter()
-            .map(|msg| Message {
-                role: match msg.role {
-                    ChatRole::System => MessageRole::System,
-                    ChatRole::User => MessageRole::User,
-                    ChatRole::Assistant => MessageRole::Assistant,
-                    ChatRole::Tool => MessageRole::User, // Fallback: treat tool as user
-                },
-                content: msg.content.clone(),
+            .map(|msg| {
+                // Build content that includes tool information when present
+                let content = match &msg.message_type {
+                    MessageType::ToolUse(tool_calls) => {
+                        // Assistant made tool calls - include them in content so LLM sees what was called
+                        let tool_calls_json = serde_json::to_string_pretty(tool_calls)
+                            .unwrap_or_else(|_| "[]".to_string());
+                        if msg.content.is_empty() {
+                            format!("[Tool calls made]\n{}", tool_calls_json)
+                        } else {
+                            format!("{}\n\n[Tool calls made]\n{}", msg.content, tool_calls_json)
+                        }
+                    }
+                    MessageType::ToolResult(tool_results) => {
+                        // Tool results - include the actual results so LLM sees what came back
+                        let results_json = serde_json::to_string_pretty(tool_results)
+                            .unwrap_or_else(|_| "[]".to_string());
+                        if msg.content.is_empty() {
+                            format!("[Tool results]\n{}", results_json)
+                        } else {
+                            format!("{}\n\n[Tool results]\n{}", msg.content, results_json)
+                        }
+                    }
+                    MessageType::Text | MessageType::Image(_) | MessageType::Pdf(_) | MessageType::ImageURL(_) => {
+                        // For text and other types, use content as-is
+                        msg.content.clone()
+                    }
+                };
+
+                Message {
+                    role: match msg.role {
+                        ChatRole::System => MessageRole::System,
+                        ChatRole::User => MessageRole::User,
+                        ChatRole::Assistant => MessageRole::Assistant,
+                        ChatRole::Tool => MessageRole::User, // Tool results sent as user messages
+                    },
+                    content,
+                }
             })
             .collect();
 
@@ -290,12 +339,66 @@ struct CodeGraphLLMResponse {
     is_final: bool,
 }
 
+/// Custom deserializer that accepts parameters as either:
+/// - String (OpenAI strict mode): "{ \"query\": \"...\" }"
+/// - Object (Ollama/Anthropic): { "query": "..." }
+/// Returns a JSON string in both cases for uniform downstream handling
+fn deserialize_parameters<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    struct ParametersVisitor;
+
+    impl<'de> Visitor<'de> for ParametersVisitor {
+        type Value = String;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a JSON string or object for tool parameters")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            // Already a string (OpenAI strict mode)
+            Ok(value.to_string())
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(value)
+        }
+
+        fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+        where
+            A: de::MapAccess<'de>,
+        {
+            // Object - serialize to JSON string (Ollama/Anthropic)
+            let value = serde_json::Value::deserialize(de::value::MapAccessDeserializer::new(map))
+                .map_err(de::Error::custom)?;
+            serde_json::to_string(&value).map_err(de::Error::custom)
+        }
+    }
+
+    deserializer.deserialize_any(ParametersVisitor)
+}
+
 #[derive(Debug, Deserialize)]
 struct CodeGraphToolCall {
     #[serde(alias = "name", alias = "function", alias = "tool")]
     tool_name: String,
-    /// Parameters as JSON string (for OpenAI strict mode compatibility)
-    #[serde(alias = "parameters", alias = "arguments", alias = "args")]
+    /// Parameters as JSON string - accepts both string (OpenAI strict) and object (Ollama/Anthropic)
+    #[serde(
+        alias = "parameters",
+        alias = "arguments",
+        alias = "args",
+        deserialize_with = "deserialize_parameters"
+    )]
     parameters_json: String,
 }
 
@@ -819,8 +922,10 @@ mod tests {
             _config: &codegraph_ai::llm_provider::GenerationConfig,
         ) -> codegraph_ai::llm_provider::LLMResult<codegraph_ai::llm_provider::LLMResponse>
         {
+            let content = format!("Echo: {}", messages.last().unwrap().content);
             Ok(codegraph_ai::llm_provider::LLMResponse {
-                content: format!("Echo: {}", messages.last().unwrap().content),
+                content: content.clone(),
+                answer: content,
                 total_tokens: Some(10),
                 prompt_tokens: None,
                 completion_tokens: None,
@@ -952,5 +1057,58 @@ mod tests {
     #[test]
     fn test_default_memory_window_constant() {
         assert_eq!(DEFAULT_MEMORY_WINDOW, 40, "Default should be 40 messages");
+    }
+
+    #[test]
+    fn test_tool_calls_accepts_parameters_json_string() {
+        // OpenAI strict mode outputs parameters_json as a JSON string
+        let response = CodeGraphChatResponse {
+            content: r#"{
+                "reasoning": "Search for authentication code",
+                "tool_call": {
+                    "tool_name": "semantic_code_search",
+                    "parameters_json": "{\"query\": \"authentication logic\", \"limit\": 10}"
+                },
+                "is_final": false
+            }"#
+            .to_string(),
+            _total_tokens: 0,
+            step_counter: Arc::new(AtomicU64::new(1)),
+        };
+
+        let tool_calls = response.tool_calls().expect("tool call not parsed");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].function.name, "semantic_code_search");
+        // String format passes through unchanged
+        assert_eq!(
+            tool_calls[0].function.arguments,
+            "{\"query\": \"authentication logic\", \"limit\": 10}"
+        );
+    }
+
+    #[test]
+    fn test_tool_calls_normalizes_object_to_string() {
+        // Ollama/Anthropic may output parameters as an object
+        let response = CodeGraphChatResponse {
+            content: r#"{
+                "reasoning": "Find hub nodes",
+                "tool_call": {
+                    "tool_name": "get_hub_nodes",
+                    "parameters": {
+                        "min_degree": 5
+                    }
+                },
+                "is_final": false
+            }"#
+            .to_string(),
+            _total_tokens: 0,
+            step_counter: Arc::new(AtomicU64::new(1)),
+        };
+
+        let tool_calls = response.tool_calls().expect("tool call not parsed");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].function.name, "get_hub_nodes");
+        // Object format gets serialized to JSON string
+        assert_eq!(tool_calls[0].function.arguments, "{\"min_degree\":5}");
     }
 }
