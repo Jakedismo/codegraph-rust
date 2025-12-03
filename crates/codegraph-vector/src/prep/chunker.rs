@@ -216,15 +216,10 @@ pub fn build_chunk_plan_with_sources(
 
             chunk_idx += 1;
 
-            // Capture tail for next chunk (approximate overlap using chars, fallback to tokens)
+            // Capture tail for next chunk (approximate overlap using chars, UTF-8 safe)
             if config.overlap_tokens > 0 {
                 let approx_chars = config.overlap_tokens * 4;
-                let tail_str = if text.len() > approx_chars {
-                    text[text.len().saturating_sub(approx_chars)..].to_string()
-                } else {
-                    text.clone()
-                };
-                overlap_tail = Some(tail_str);
+                overlap_tail = Some(take_tail_utf8(&text, approx_chars));
             }
         }
 
@@ -318,6 +313,22 @@ fn smart_split(text: &str) -> Vec<String> {
     }
 
     segments
+}
+
+fn take_tail_utf8(text: &str, approx_chars: usize) -> String {
+    if approx_chars == 0 {
+        return String::new();
+    }
+    let mut count = 0;
+    let mut start_idx = 0;
+    for (idx, _) in text.char_indices().rev() {
+        count += 1;
+        start_idx = idx;
+        if count >= approx_chars {
+            break;
+        }
+    }
+    text[start_idx..].to_string()
 }
 
 /// Combine per-chunk embeddings back into per-node vectors by averaging.

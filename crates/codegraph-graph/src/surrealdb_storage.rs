@@ -890,6 +890,7 @@ impl SurrealDbStorage {
                 },
                 end_column: None,
             },
+            span: None,
             content,
             metadata,
             embedding,
