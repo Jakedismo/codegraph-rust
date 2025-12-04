@@ -54,17 +54,21 @@ Each tool runs a **reasoning agent** (ReAct or LATS) that plans, searches, analy
 
 ### 3. Tier-Aware Intelligence
 
-Here's something clever: CodeGraph automatically adjusts its behavior based on your LLM's context window.
+Here's something clever: CodeGraph automatically adjusts its behavior based on the LLM's context window that you configured for the codegraph agent.
 
 Running a small local model? Get focused, efficient queries.
-Using GPT-5 or Claude with 200K context? Get comprehensive, exploratory analysis.
+Using GPT-5.1 or Claude with 200K context? Get comprehensive, exploratory analysis.
+Using grok-4-1-fast-reasoning with 2M context? Get incredibly comprehensive up-to 40 turns spanning in-depth analyses.
+The Agent only uses the amount of steps that it requires to produce the answer so tool execution times vary based on the query and amount of data indexed in the database.
+During development the agent used 3-10 steps on average to produce answers for test scenarios.
+The Agent is stateless it only has conversational memory for the span of tool execution it does not accumulate context/memory over multiple chained tool calls this is already handled by your client of choice, it accumulates that context so codegraph needs to just provide answers.
 
 | Your Model | CodeGraph's Behavior |
 |------------|---------------------|
-| < 50K tokens | Terse prompts, 5 reasoning steps |
-| 50K-150K | Balanced analysis, 10 steps |
-| 150K-500K | Detailed exploration, 15 steps |
-| > 500K (Grok, etc.) | Full monty, 20 steps |
+| < 50K tokens | Terse prompts, max 40 reasoning steps |
+| 50K-150K | Balanced analysis, max 40 steps |
+| 150K-500K | Detailed exploration, max 40 steps |
+| > 500K (Grok, etc.) | Full monty, max 40 steps |
 
 **Same tool, automatically optimized for your setup.**
 
