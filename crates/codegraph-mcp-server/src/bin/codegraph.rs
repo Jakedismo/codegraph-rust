@@ -1357,46 +1357,55 @@ async fn handle_index(
     println!("{}", "🎉 INDEXING COMPLETE!".green().bold());
     println!();
 
-    // Performance summary with dual metrics
+    // Performance summary with comprehensive metrics
     println!("{}", "📊 Performance Summary".cyan().bold());
-    println!("┌─────────────────────────────────────────────────┐");
+    println!("┌───────────────────────────────────────────────────────┐");
     println!(
-        "│ ⏱️  Total time: {:<33} │",
+        "│ ⏱️  Total time: {:<39} │",
         format!("{:.2?}", elapsed).green()
     );
+    let files_per_sec = stats.files as f64 / elapsed.as_secs_f64();
+    let nodes_per_sec = stats.nodes as f64 / elapsed.as_secs_f64();
     println!(
-        "│ ⚡ Throughput: {:<33} │",
-        format!(
-            "{:.2} files/sec",
-            stats.files as f64 / elapsed.as_secs_f64()
-        )
-        .yellow()
+        "│ ⚡ Throughput: {:<39} │",
+        format!("{:.1} files/s, {:.0} nodes/s", files_per_sec, nodes_per_sec).yellow()
     );
-    println!("├─────────────────────────────────────────────────┤");
+    println!("├───────────────────────────────────────────────────────┤");
     println!(
-        "│ 📄 Files: {} indexed, {} skipped {:<13} │",
-        format!("{:>6}", stats.files).yellow(),
-        format!("{:>4}", stats.skipped).yellow(),
-        ""
+        "│ 📄 Files:      {:>6} indexed, {:>4} skipped           │",
+        stats.files, stats.skipped
     );
     println!(
-        "│ 📝 Lines: {} processed {:<24} │",
-        format!("{:>6}", stats.lines).yellow(),
-        ""
+        "│ 📝 Lines:      {:>6} processed                        │",
+        stats.lines
     );
     println!(
-        "│ 💾 Embeddings: {} generated {:<20} │",
-        format!("{:>6}", stats.embeddings).cyan(),
-        ""
+        "│ 🌳 Nodes:      {:>6} extracted                        │",
+        stats.nodes
+    );
+    println!(
+        "│ 🔗 Edges:      {:>6} relationships                    │",
+        stats.edges
+    );
+    println!(
+        "│ 💾 Embeddings: {:>6} chunks ({}-dim)               │",
+        stats.embeddings,
+        stats.embedding_dimension
     );
     if stats.errors > 0 {
         println!(
-            "│ ❌ Errors: {} encountered {:<24} │",
-            format!("{:>6}", stats.errors).red(),
-            ""
+            "│ ❌ Errors:     {:>6} encountered                      │",
+            stats.errors
         );
     }
-    println!("└─────────────────────────────────────────────────┘");
+    println!("├───────────────────────────────────────────────────────┤");
+    let avg_nodes = if stats.files > 0 { stats.nodes as f64 / stats.files as f64 } else { 0.0 };
+    let avg_edges = if stats.files > 0 { stats.edges as f64 / stats.files as f64 } else { 0.0 };
+    println!(
+        "│ 📈 Averages: {:.1} nodes/file, {:.1} edges/file        │",
+        avg_nodes, avg_edges
+    );
+    println!("└───────────────────────────────────────────────────────┘");
 
     // Configuration summary
     println!();
@@ -1407,63 +1416,12 @@ async fn handle_index(
         optimized_batch_size,
         languages_list.join(", ")
     );
-
-    let provider =
-        std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or_else(|_| "default".to_string());
-    if provider == "ollama" {
+    if !stats.embedding_provider.is_empty() {
         println!(
-            "{}\n   • {}\n   • {}\n   • {}\n   • {}\n   • {}",
-            "🧠 Using Local Embeddings".green(),
-            "384-dim all-minilm:latest".green(),
-            "768-dim embeddingsgemma:latest".green(),
-            "1024-dim qwen3-embedding:0.6b".green(),
-            "2056-dim qwen3-embedding:4b".green(),
-            "4096-dim qwen3-embedding:8b".green()
+            "Embeddings: {} ({}-dim)",
+            stats.embedding_provider,
+            stats.embedding_dimension
         );
-    } else if provider == "jina" {
-        println!(
-            "{}\n   • {}",
-            "🧠 Using SOTA Embeddings".green(),
-            "2048-dim jina-embeddings-v4".green()
-        );
-    } else if provider == "onnx" {
-        println!("{}", "⚡ Using Speed-Optimized Embeddings (ONNX)".yellow());
-    }
-
-    if available_memory_gb >= 128 {
-        println!(
-            "{}",
-            format!(
-                "🚀 Ultra-High Memory System ({}GB) - Maximum Performance!",
-                available_memory_gb
-            )
-            .green()
-            .bold()
-        );
-    } else if available_memory_gb >= 64 {
-        println!(
-            "{}",
-            format!(
-                "💪 High Memory System ({}GB) - Optimized Performance!",
-                available_memory_gb
-            )
-            .green()
-        );
-    }
-
-    // Success rate and recommendations
-    if stats.embeddings > 0 && stats.files > 0 {
-        let embedding_success_rate = (stats.embeddings as f64 / stats.files as f64) * 100.0;
-        if embedding_success_rate >= 90.0 {
-            println!("{}", "✅ Excellent embedding success rate (>90%)".green());
-        } else if embedding_success_rate >= 75.0 {
-            println!("{}", "⚠️  Good embedding success rate (75-90%)".yellow());
-        } else {
-            println!(
-                "{}",
-                "❌ Low embedding success rate (<75%) - check language support".red()
-            );
-        }
     }
 
     println!();

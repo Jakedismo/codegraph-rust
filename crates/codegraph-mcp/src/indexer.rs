@@ -1674,6 +1674,13 @@ impl ProjectIndexer {
             stored_edges as f64 / total_elapsed.max(1e-3)
         );
 
+        // Populate extended stats for CLI reporting
+        stats.nodes = total_nodes_extracted;
+        stats.edges = stored_edges;
+        stats.chunks = stats.embeddings; // chunks == embeddings in current impl
+        stats.embedding_dimension = self.vector_dim;
+        stats.embedding_provider = provider.clone();
+
         self.shutdown_surreal_writer().await?;
 
         Ok(stats)
@@ -3793,6 +3800,12 @@ pub struct IndexStats {
     pub traits: usize,
     pub embeddings: usize,
     pub errors: usize,
+    // Extended stats for detailed reporting
+    pub nodes: usize,
+    pub edges: usize,
+    pub chunks: usize,
+    pub embedding_dimension: usize,
+    pub embedding_provider: String,
 }
 
 impl IndexStats {
