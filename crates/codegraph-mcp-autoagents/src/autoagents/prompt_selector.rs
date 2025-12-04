@@ -114,13 +114,16 @@ impl PromptSelector {
     }
 
     /// Get recommended max_steps for a given tier and analysis type
+    ///
+    /// Hard cap at 10 steps to prevent endless semantic search loops.
+    /// Agents should produce answers quickly, not exhaustively search.
     pub fn recommended_max_steps(&self, tier: ContextTier, analysis_type: AnalysisType) -> usize {
-        // Base max_steps from tier
+        // Base max_steps from tier (reduced to encourage faster answers)
         let base_steps = match tier {
-            ContextTier::Small => 5,
-            ContextTier::Medium => 10,
-            ContextTier::Large => 15,
-            ContextTier::Massive => 20,
+            ContextTier::Small => 3,
+            ContextTier::Medium => 5,
+            ContextTier::Large => 7,
+            ContextTier::Massive => 10,
         };
 
         // Some analysis types may benefit from more or fewer steps
@@ -128,13 +131,15 @@ impl PromptSelector {
             AnalysisType::CodeSearch => 0.8,         // Typically quick searches
             AnalysisType::DependencyAnalysis => 1.2, // May need more exploration
             AnalysisType::CallChainAnalysis => 1.0,  // Standard depth
-            AnalysisType::ArchitectureAnalysis => 1.5, // Deep architectural analysis
+            AnalysisType::ArchitectureAnalysis => 1.3, // Deep architectural analysis
             AnalysisType::ApiSurfaceAnalysis => 1.0, // Standard depth
-            AnalysisType::ContextBuilder => 1.3,     // Building comprehensive context
+            AnalysisType::ContextBuilder => 1.2,     // Building comprehensive context
             AnalysisType::SemanticQuestion => 1.0,   // Standard depth
         };
 
-        ((base_steps as f32) * multiplier).ceil() as usize
+        // Hard cap at 10 steps to prevent endless loops
+        let calculated = ((base_steps as f32) * multiplier).ceil() as usize;
+        std::cmp::min(calculated, 10)
     }
 
     /// Load default placeholder prompts for all analysis types and verbosity levels
@@ -420,26 +425,26 @@ mod tests {
     fn test_recommended_max_steps() {
         let selector = PromptSelector::new();
 
-        // Small tier base is 5
+        // Small tier base is 3
         assert_eq!(
             selector.recommended_max_steps(ContextTier::Small, AnalysisType::CodeSearch),
-            4
-        ); // 5 * 0.8 = 4
+            3
+        ); // 3 * 0.8 = 2.4 -> 3 (ceil)
         assert_eq!(
             selector.recommended_max_steps(ContextTier::Small, AnalysisType::ArchitectureAnalysis),
-            8
-        ); // 5 * 1.5 = 7.5 -> 8
+            4
+        ); // 3 * 1.3 = 3.9 -> 4 (ceil)
 
-        // Massive tier base is 20
+        // Massive tier base is 10, but hard cap at 10
         assert_eq!(
             selector.recommended_max_steps(ContextTier::Massive, AnalysisType::CodeSearch),
-            16
-        ); // 20 * 0.8 = 16
+            8
+        ); // 10 * 0.8 = 8
         assert_eq!(
             selector
                 .recommended_max_steps(ContextTier::Massive, AnalysisType::ArchitectureAnalysis),
-            30
-        ); // 20 * 1.5 = 30
+            10
+        ); // 10 * 1.3 = 13 -> capped at 10
     }
 
     #[test]
