@@ -59,8 +59,36 @@ metrics_interval_secs = 60
 require_auth = false
 rate_limit_per_minute = 1200
 
+[daemon]
+# Daemon mode for automatic file watching and re-indexing
+auto_start_with_mcp = true           # Auto-start daemon when MCP server starts with --watch
+debounce_ms = 30                     # Debounce file change events
+batch_timeout_ms = 200               # Wait for batch before processing
+exclude_patterns = ["**/node_modules/**", "**/target/**", "**/.git/**", "**/dist/**"]
+
+[agent]
+# Agentic tool configuration
+architecture = "react"               # react | lats (Language Agent Tree Search)
+timeout_secs = 300                   # Total agent execution timeout
+max_steps = 15                       # Maximum reasoning steps (tier-adjusted)
+memory_window = 40                   # Conversation memory window
+
+# LATS-specific settings (only apply when architecture = "lats")
+[agent.lats]
+beam_width = 3                       # Number of best paths to keep
+max_depth = 5                        # Maximum search depth
+iteration_timeout_secs = 60          # Timeout per iteration
+# Multi-provider LATS (optional - uses main LLM provider if not set)
+# selection_provider = "openai"
+# selection_model = "gpt-5.1-codex-mini"
+# expansion_provider = "anthropic"
+# expansion_model = "claude-4.5"
+# evaluation_provider = "openai"
+# evaluation_model = "gpt-5.1"
+
 # Secrets are provided via environment variables; do not commit secrets to this file.
 # Examples:
 #   OPENAI_API_KEY=sk-...
 #   ANTHROPIC_API_KEY=...
 #   JINA_API_KEY=...
+#   XAI_API_KEY=xai-...
