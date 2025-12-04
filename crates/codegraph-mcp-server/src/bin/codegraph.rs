@@ -1388,7 +1388,7 @@ async fn handle_index(
         stats.edges
     );
     println!(
-        "│ 💾 Embeddings: {:>6} chunks ({}-dim)               │",
+        "│ 💾 Embeddings: {:>6} chunks ({}-dim)                  │",
         stats.embeddings,
         stats.embedding_dimension
     );
@@ -1398,11 +1398,11 @@ async fn handle_index(
             stats.errors
         );
     }
-    println!("├───────────────────────────────────────────────────────┤");
+    println!("├──────────────────────────────────────────────────────┤");
     let avg_nodes = if stats.files > 0 { stats.nodes as f64 / stats.files as f64 } else { 0.0 };
     let avg_edges = if stats.files > 0 { stats.edges as f64 / stats.files as f64 } else { 0.0 };
     println!(
-        "│ 📈 Averages: {:.1} nodes/file, {:.1} edges/file        │",
+        "│ 📈 Averages: {:.1} nodes/file, {:.1} edges/file          │",
         avg_nodes, avg_edges
     );
     println!("└───────────────────────────────────────────────────────┘");

@@ -18,8 +18,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
-/// Default per-iteration timeout in seconds
-const DEFAULT_ITERATION_TIMEOUT_SECS: u64 = 60;
+/// Default per-iteration timeout in seconds (5 minutes)
+const DEFAULT_ITERATION_TIMEOUT_SECS: u64 = 300;
 
 /// High score threshold for early termination
 const HIGH_SCORE_THRESHOLD: f32 = 0.9;
