@@ -9,6 +9,49 @@ use std::sync::Arc;
 use surrealdb::{engine::any::Any, Surreal, Value as SurrealValue};
 use tracing::{debug, error, warn};
 
+/// Convert SurrealDB Value to clean serde_json::Value using accessor methods
+/// Avoids externally-tagged enum serialization that produces {"None": ...}, {"Number": {"Int": ...}}
+fn surreal_to_json(value: SurrealValue) -> serde_json::Value {
+    // Use into_inner() to get the internal sql::Value, then serialize properly
+    let inner = value.into_inner();
+    sql_value_to_json(inner)
+}
+
+fn sql_value_to_json(value: surrealdb::sql::Value) -> serde_json::Value {
+    use surrealdb::sql::Value as SqlValue;
+    match value {
+        SqlValue::None | SqlValue::Null => serde_json::Value::Null,
+        SqlValue::Bool(b) => serde_json::Value::Bool(b),
+        SqlValue::Number(n) => {
+            // Try to get as float first (handles both int and float)
+            let f = n.as_float();
+            if f.fract() == 0.0 && f.abs() < i64::MAX as f64 {
+                // It's effectively an integer
+                serde_json::json!(f as i64)
+            } else {
+                serde_json::json!(f)
+            }
+        }
+        SqlValue::Strand(s) => serde_json::Value::String(s.to_string()),
+        SqlValue::Duration(d) => serde_json::Value::String(d.to_string()),
+        SqlValue::Datetime(dt) => serde_json::Value::String(dt.to_string()),
+        SqlValue::Uuid(u) => serde_json::Value::String(u.to_string()),
+        SqlValue::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(sql_value_to_json).collect())
+        }
+        SqlValue::Object(obj) => {
+            let map: serde_json::Map<String, serde_json::Value> = obj
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), sql_value_to_json(v)))
+                .collect();
+            serde_json::Value::Object(map)
+        }
+        SqlValue::Thing(thing) => serde_json::Value::String(thing.to_string()),
+        SqlValue::Bytes(b) => serde_json::Value::String(format!("bytes:{}", b.len())),
+        other => serde_json::Value::String(format!("{}", other)),
+    }
+}
+
 /// Wrapper for SurrealDB graph analysis functions
 /// Provides type-safe Rust interfaces for calling SurrealDB functions
 #[derive(Clone)]
@@ -396,11 +439,8 @@ impl GraphFunctions {
             CodeGraphError::Database(format!("Failed to get raw value: {}", e))
         })?;
 
-        // Convert SurrealDB Value to serde_json::Value via Serialize trait
-        let json_value = serde_json::to_value(&raw_value).map_err(|e| {
-            error!("Failed to serialize semantic_search_with_context result: {}", e);
-            CodeGraphError::Database(format!("Serialization failed: {}", e))
-        })?;
+        // Convert SurrealDB Value to clean JSON (avoids enum variant tags)
+        let json_value = surreal_to_json(raw_value);
 
         // Extract Vec from the JSON value
         let result: Vec<serde_json::Value> = match json_value {
@@ -466,14 +506,8 @@ impl GraphFunctions {
             CodeGraphError::Database(format!("Failed to get raw value: {}", e))
         })?;
 
-        // Convert SurrealDB Value to serde_json::Value via Serialize trait
-        let json_value = serde_json::to_value(&raw_value).map_err(|e| {
-            error!(
-                "Failed to serialize semantic_search_chunks_with_context result: {}",
-                e
-            );
-            CodeGraphError::Database(format!("Serialization failed: {}", e))
-        })?;
+        // Convert SurrealDB Value to clean JSON (avoids enum variant tags)
+        let json_value = surreal_to_json(raw_value);
 
         // Extract Vec from the JSON value
         let result: Vec<serde_json::Value> = match json_value {

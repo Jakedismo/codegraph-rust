@@ -1241,7 +1241,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
         ELSE 0.7
         END;
 
-    -- Dimension-dependent vector search
+    -- Dimension-dependent vector search with FETCH to resolve parent_node record links
     LET $vector_candidates = IF $dimension = 384 THEN (
         SELECT
             id,
@@ -1255,6 +1255,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             AND vector::similarity::cosine(embedding_384, $query_embedding) >= $safe_threshold
         ORDER BY vector_score DESC
         LIMIT $safe_limit
+        FETCH parent_node
     ) ELSE IF $dimension = 768 THEN (
         SELECT
             id,
@@ -1268,6 +1269,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             AND vector::similarity::cosine(embedding_768, $query_embedding) >= $safe_threshold
         ORDER BY vector_score DESC
         LIMIT $safe_limit
+        FETCH parent_node
     ) ELSE IF $dimension = 1024 THEN (
         SELECT
             id,
@@ -1281,6 +1283,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             AND vector::similarity::cosine(embedding_1024, $query_embedding) >= $safe_threshold
         ORDER BY vector_score DESC
         LIMIT $safe_limit
+        FETCH parent_node
     ) ELSE IF $dimension = 1536 THEN (
         SELECT
             id,
@@ -1294,6 +1297,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             AND vector::similarity::cosine(embedding_1536, $query_embedding) >= $safe_threshold
         ORDER BY vector_score DESC
         LIMIT $safe_limit
+        FETCH parent_node
     ) ELSE IF $dimension = 2048 THEN (
         SELECT
             id,
@@ -1307,6 +1311,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             AND vector::similarity::cosine(embedding_2048, $query_embedding) >= $safe_threshold
         ORDER BY vector_score DESC
         LIMIT $safe_limit
+        FETCH parent_node
     ) ELSE IF $dimension = 2560 THEN (
         SELECT
             id,
@@ -1320,6 +1325,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             AND vector::similarity::cosine(embedding_2560, $query_embedding) >= $safe_threshold
         ORDER BY vector_score DESC
         LIMIT $safe_limit
+        FETCH parent_node
     ) ELSE IF $dimension = 3072 THEN (
         SELECT
             id,
@@ -1333,6 +1339,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             AND vector::similarity::cosine(embedding_3072, $query_embedding) >= $safe_threshold
         ORDER BY vector_score DESC
         LIMIT $safe_limit
+        FETCH parent_node
     ) ELSE (
         SELECT
             id,
@@ -1346,11 +1353,12 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             AND vector::similarity::cosine(embedding_4096, $query_embedding) >= $safe_threshold
         ORDER BY vector_score DESC
         LIMIT $safe_limit
+        FETCH parent_node
     ) END;
 
     LET $vector_results = array::flatten([$vector_candidates]);
 
-    -- Attach node context using record link traversal (more efficient than subqueries)
+    -- Extract node context from fetched parent_node objects
     LET $results = (
         SELECT
             IF id IS NOT NONE THEN <string>id ELSE NONE END AS id,
@@ -1358,7 +1366,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             text,
             vector_score,
 
-            -- Node context via record link traversal (parent_node is a Thing reference)
+            -- Node context from fetched parent_node (resolved by FETCH in vector search)
             IF parent_node IS NOT NONE THEN <string>parent_node.id ELSE NONE END AS node_id,
             parent_node.name AS name,
             parent_node.node_type AS kind,
