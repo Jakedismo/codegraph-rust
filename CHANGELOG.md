@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### **GraphRAG Semantic Search Function**
+- **`fn::semantic_search_nodes_via_chunks`**: Context-engineering optimized search returning full node records
+  - Searches chunks for semantic similarity, deduplicates by parent node
+  - Returns full node content (not just chunk snippets) for complete function/class bodies
+  - **Full graph context**: Includes all outgoing and incoming edges with relationship types
+  - Edge types: `calls`, `imports`, `uses`, `extends`, `implements`, `references`
+  - Uses `$parent.node_id` for correct record reference comparison in edge subqueries
+
+#### **Incremental Indexing Improvements**
+- **Better `--force` flag behavior**: Now performs clean delete-then-insert instead of upsert
+  - Deletes all existing nodes, chunks, and edges for the project first
+  - Then inserts fresh data ensuring no stale duplicates remain
+  - Eliminates orphaned chunks and edges from previous indexing runs
+- **Improved deduplication**: Project-scoped deletion prevents cross-project contamination
+
+#### **LLM Provider Function Calling Standardization**
+- **Responses API migration**: All providers now use correct Responses API function call format
+  - OpenAI-compatible providers: Proper `tool_calls` response handling
+  - Anthropic provider: Aligned function calling with Claude's tool use format
+  - Ollama provider: Native function calling support
+- **Structured output enforcement**: All providers now enforce JSON schema validation
+  - Consistent response parsing across providers
+  - Better error handling for malformed tool responses
+
+#### **Agent Internal Graph Tools Enhancement**
+- **Improved tool executor**: Better error handling and result formatting
+- **Consistent JSON serialization**: Fixed `surreal_to_json` converter for nested values
+- **Enhanced edge queries**: Correct `$parent` reference for record type comparisons
+
 #### **Agent Reliability Improvements**
 - **Execution Timeout Handling** (R1):
   - Configurable global timeout for all agentic tool executions (default: 300 seconds)
