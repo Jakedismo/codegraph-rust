@@ -27,7 +27,7 @@ AI coding assistants are powerful, but they're flying blind. They see files one 
 Most semantic search tools create embeddings and call it a day. CodeGraph builds a **real knowledge graph**:
 
 ```
-Your Code → AST Parsing → Graph Construction → Vector Embeddings
+Your Code → AST Parsing + FastML enhancements → Graph Construction → Vector Embeddings
                 ↓                  ↓                    ↓
            Functions          Dependencies        Semantic Search
            Classes            Call chains         Similarity
