@@ -209,7 +209,7 @@ Add to your MCP config:
 
 ## Supported Languages
 
-CodeGraph uses tree-sitter for parsing and supports:
+CodeGraph uses tree-sitter for initial parsing and enhances results with FastML algorithms and supports:
 
 Rust • Python • TypeScript • JavaScript • Go • Java • C++ • C • Swift • Kotlin • C# • Ruby • PHP • Dart
 
