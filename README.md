@@ -152,16 +152,16 @@ Add to your MCP config:
 ┌─────────────────────────────────────────────────────────────────┐
 │                        CodeGraph MCP Server                     │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │                    Agentic Tools Layer                     │  │
+│  │                    Agentic Tools Layer                    │  │
 │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────────────┐  │  │
 │  │  │ ReAct   │ │  LATS   │ │  Tier   │ │ Tool Execution  │  │  │
 │  │  │ Agent   │ │  Agent  │ │ Selector│ │    Pipeline     │  │  │
 │  │  └────┬────┘ └────┬────┘ └────┬────┘ └────────┬────────┘  │  │
 │  └───────┼───────────┼───────────┼───────────────┼───────────┘  │
 │          └───────────┴───────────┴───────────────┘              │
-│                              │                                   │
+│                              │                                  │
 │  ┌───────────────────────────┼───────────────────────────────┐  │
-│  │                  Inner Graph Tools                         │  │
+│  │                  Inner Graph Tools                        │  │
 │  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐   │  │
 │  │  │ Transitive   │ │    Call      │ │     Coupling     │   │  │
 │  │  │ Dependencies │ │   Chains     │ │     Metrics      │   │  │
@@ -174,21 +174,21 @@ Add to your MCP config:
 └──────────────────────────────┼──────────────────────────────────┘
                                │
 ┌──────────────────────────────┼──────────────────────────────────┐
-│                         SurrealDB                                │
+│                         SurrealDB                               │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
 │  │   Nodes     │  │    Edges    │  │   Chunks + Embeddings   │  │
 │  │  (AST +     │  │  (calls,    │  │   (HNSW vector index)   │  │
 │  │   FastML)   │  │   imports)  │  │                         │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-│                                                                  │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │              SurrealQL Graph Functions                     │  │
-│  │   fn::semantic_search_chunks_with_context                  │  │
-│  │   fn::get_transitive_dependencies                          │  │
-│  │   fn::trace_call_chain                                     │  │
-│  │   fn::calculate_coupling_metrics                           │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
+│                                                                 │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │              SurrealQL Graph Functions                     │ │
+│  │   fn::semantic_search_chunks_with_context                  │ │
+│  │   fn::get_transitive_dependencies                          │ │
+│  │   fn::trace_call_chain                                     │ │
+│  │   fn::calculate_coupling_metrics                           │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 **Key insight:** The agentic tools don't just call one function. They *reason* about which graph operations to perform, chain them together, and synthesize results. A single `agentic_dependency_analysis` call might:
