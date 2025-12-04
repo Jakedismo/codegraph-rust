@@ -265,7 +265,7 @@ impl CodeGraphMCPServer {
 
     /// Agentic code search with multi-step graph exploration
     #[tool(
-        description = "Multi-step code search using agentic graph exploration. The tool produces detailed list of relevant code snippets and analysis based on query. Use for: finding code patterns, exploring unfamiliar codebases, discovering relationships. Required: query."
+        description = "Find code by semantic meaning. Returns: code snippets with file paths, line numbers, and explanations of relevance. Use the results to navigate to implementations or understand how features work. Required: query."
     )]
     async fn agentic_code_search(
         &self,
@@ -280,7 +280,7 @@ impl CodeGraphMCPServer {
 
     /// Agentic dependency analysis with multi-step exploration
     #[tool(
-        description = "Multi-step dependency analysis using agentic graph exploration. The tool explores dependency chains and impact. Use for: understanding dependency relationships, impact analysis. Required: query."
+        description = "Understand what code depends on what. Returns: dependency chains showing which components use which others, with impact analysis if components change. Use the results to plan refactoring, assess risk of changes, or understand coupling. Required: query."
     )]
     async fn agentic_dependency_analysis(
         &self,
@@ -295,7 +295,7 @@ impl CodeGraphMCPServer {
 
     /// Agentic call chain analysis with multi-step tracing
     #[tool(
-        description = "Multi-step call chain analysis using agentic graph exploration. The tool traces execution paths and call sequences. Use for: understanding execution flow, debugging call chains. Required: query."
+        description = "Trace how code executes from start to finish. Returns: execution paths showing which functions call which others, with file paths and line numbers. Use the results to debug issues, understand data flow, or trace request handling. Required: query."
     )]
     async fn agentic_call_chain_analysis(
         &self,
@@ -310,7 +310,7 @@ impl CodeGraphMCPServer {
 
     /// Agentic architecture analysis with multi-step system exploration
     #[tool(
-        description = "Multi-step architecture analysis using agentic graph exploration. The tool analyzes architectural patterns and system design. Use for: understanding system architecture, design patterns. Required: query."
+        description = "Understand system structure and design patterns. Returns: module organization, architectural layers, design patterns used, and component relationships. Use the results to onboard to a codebase, plan architectural changes, or evaluate design decisions. Required: query."
     )]
     async fn agentic_architecture_analysis(
         &self,
@@ -330,7 +330,7 @@ impl CodeGraphMCPServer {
 
     /// Agentic API surface analysis with multi-step exploration
     #[tool(
-        description = "Multi-step API surface analysis using agentic graph exploration. The tool analyzes public interfaces and contracts. Use for: understanding API design, public interfaces. Required: query."
+        description = "Discover public interfaces and contracts. Returns: public functions, types, and interfaces with their signatures and usage patterns. Use the results to understand integration points, plan API changes, or document interfaces. Required: query."
     )]
     async fn agentic_api_surface_analysis(
         &self,
@@ -345,7 +345,7 @@ impl CodeGraphMCPServer {
 
     /// Agentic context builder with multi-step comprehensive context gathering
     #[tool(
-        description = "Multi-step context building using agentic graph exploration. The tool gathers comprehensive context for code generation. Use for: preparing context for code generation, understanding code context. Required: query."
+        description = "Gather comprehensive context for implementing changes. Returns: relevant code snippets, dependencies, patterns, and related implementations needed to understand a feature area. Use the results to prepare for coding tasks or understand how to extend functionality. Required: query."
     )]
     async fn agentic_context_builder(
         &self,
@@ -360,7 +360,7 @@ impl CodeGraphMCPServer {
 
     /// Agentic semantic question answering with multi-step exploration
     #[tool(
-        description = "Multi-step semantic question answering using agentic graph exploration. The tool explores the codebase to answer complex questions. Use for: answering complex codebase questions, semantic analysis. Required: query."
+        description = "Answer complex questions about the codebase. Returns: detailed explanations with supporting code evidence and reasoning. Use for questions that span multiple files or require understanding across the system. Required: query."
     )]
     async fn agentic_semantic_question(
         &self,
