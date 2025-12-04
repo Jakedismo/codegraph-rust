@@ -30,7 +30,6 @@ MANDATORY WORKFLOW:
 **Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "answer", "evidence": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "related_components": [], "confidence": 0.95}
 
 TERSE TIER GUIDANCE:
@@ -101,7 +100,6 @@ MANDATORY WORKFLOW:
 **Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "comprehensive answer", "evidence": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "related_components": [], "confidence": 0.85}
 
 BALANCED TIER GUIDANCE:
@@ -208,7 +206,6 @@ MANDATORY WORKFLOW:
 **Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 FORMAT:
-- Intermediate: {"reasoning": "detailed investigation plan", "tool_call": {...}, "is_final": false}
 - Final:
 {
   "analysis": "COMPREHENSIVE ANSWER with structure:
@@ -398,7 +395,6 @@ MANDATORY WORKFLOW:
 **Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 FORMAT:
-- Intermediate: {"reasoning": "comprehensive multi-phase explanation", "tool_call": {...}, "is_final": false}
 - Final:
 {
   "analysis": "EXHAUSTIVE MULTI-DIMENSIONAL ANSWER:

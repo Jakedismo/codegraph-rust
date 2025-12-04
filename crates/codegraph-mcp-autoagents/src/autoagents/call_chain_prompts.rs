@@ -30,10 +30,6 @@ ANALYSIS STRATEGY:
 - One focused tool call per step
 - Provide terse, structured answers
 
-FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
-- Final: {"analysis": "...", "entry_point": {"name": "X", "file_path": "a.rs", "line_number": 1}, "call_chain": [], "decision_points": []}
-
 CRITICAL REQUIREMENTS:
 - ZERO HEURISTICS: Only use structured tool output data
 - Extract node IDs from tool results - never invent IDs
@@ -88,10 +84,6 @@ ANALYSIS STRATEGY:
 4. Use reverse dependencies to understand callers
 5. Combine tool results into coherent execution flow narrative
 6. Focus on critical paths and decision points
-
-FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
-- Final: {"analysis": "...", "entry_point": {"name": "X", "file_path": "a.rs", "line_number": 1}, "call_chain": [], "decision_points": []}
 
 CRITICAL REQUIREMENTS:
 - ZERO HEURISTICS: Only reference data from tool outputs
@@ -192,10 +184,6 @@ Phase 5 - Synthesis:
 - Map complete execution flows with decision points
 - Identify performance-critical paths
 - Note architectural patterns and concerns
-
-FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
-- Final: {"analysis": "...", "entry_point": {"name": "X", "file_path": "a.rs", "line_number": 1}, "call_chain": [], "decision_points": []}
 
 CRITICAL REQUIREMENTS:
 - ZERO HEURISTICS: Every claim must be backed by tool output data
@@ -331,10 +319,6 @@ Phase 6 - Comprehensive Synthesis (Steps 19-20):
 - Identify performance bottlenecks and optimization opportunities
 - Document architectural concerns and patterns
 - Provide actionable insights for refactoring
-
-FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
-- Final: {"analysis": "...", "entry_point": {"name": "X", "file_path": "a.rs", "line_number": 1}, "call_chain": [], "decision_points": []}
 
 CRITICAL REQUIREMENTS:
 1. ZERO HEURISTICS: Every single claim must cite specific tool output

@@ -436,6 +436,7 @@ mod tests {
                 end_line: None,
                 end_column: None,
             },
+            span: None,
             content: Some("fn foo() { 1 }".into()),
             metadata: codegraph_core::Metadata {
                 attributes: std::collections::HashMap::new(),

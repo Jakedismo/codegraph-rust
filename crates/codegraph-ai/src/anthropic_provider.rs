@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 const ANTHROPIC_API_BASE: &str = "https://api.anthropic.com/v1";
 const DEFAULT_MODEL: &str = "claude-3-5-sonnet-20241022";
 const API_VERSION: &str = "2023-06-01";
+const STRUCTURED_OUTPUTS_BETA: &str = "structured-outputs-2025-11-13";
 
 /// Configuration for Anthropic Claude provider
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +104,54 @@ impl AnthropicProvider {
         messages: &[Message],
         config: &GenerationConfig,
     ) -> Result<AnthropicResponse> {
+        self.try_request_with_tools(messages, None, config).await
+    }
+
+    /// Try a single request to Anthropic API with optional tools
+    async fn try_request_with_tools(
+        &self,
+        messages: &[Message],
+        tools: Option<&[ToolDefinition]>,
+        config: &GenerationConfig,
+    ) -> Result<AnthropicResponse> {
+        // Convert CodeGraph ToolDefinition to Anthropic format
+        let anthropic_tools = tools.map(|t| {
+            t.iter()
+                .map(|tool| AnthropicTool {
+                    name: tool.function.name.clone(),
+                    description: tool.function.description.clone(),
+                    input_schema: tool.function.parameters.clone(),
+                })
+                .collect()
+        });
+
+        // Extract system message
+        let system = messages
+            .iter()
+            .find(|m| matches!(m.role, MessageRole::System))
+            .map(|m| m.content.clone());
+
+        // Convert response_format to Anthropic's native output_format
+        let output_format = match &config.response_format {
+            Some(ResponseFormat::JsonSchema { json_schema }) => {
+                Some(AnthropicOutputFormat {
+                    format_type: "json_schema".to_string(),
+                    schema: Some(json_schema.schema.clone()),
+                })
+            }
+            Some(ResponseFormat::JsonObject) => Some(AnthropicOutputFormat {
+                format_type: "json_schema".to_string(),
+                schema: Some(serde_json::json!({
+                    "type": "object",
+                    "additionalProperties": true
+                })),
+            }),
+            _ => None,
+        };
+
+        // Check if we need the structured outputs beta header
+        let needs_beta = output_format.is_some();
+
         let request = AnthropicRequest {
             model: self.config.model.clone(),
             messages: messages
@@ -117,22 +166,28 @@ impl AnthropicProvider {
                     content: m.content.clone(),
                 })
                 .collect(),
-            system: messages
-                .iter()
-                .find(|m| matches!(m.role, MessageRole::System))
-                .map(|m| m.content.clone()),
+            system,
             max_tokens: config.max_tokens.unwrap_or(4096),
             temperature: Some(config.temperature),
             top_p: config.top_p,
             stop_sequences: config.stop.clone(),
+            tools: anthropic_tools,
+            output_format,
         };
 
-        let response = self
+        let mut request_builder = self
             .client
             .post(format!("{}/messages", ANTHROPIC_API_BASE))
             .header("x-api-key", &self.config.api_key)
             .header("anthropic-version", API_VERSION)
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+
+        // Add beta header for structured outputs
+        if needs_beta {
+            request_builder = request_builder.header("anthropic-beta", STRUCTURED_OUTPUTS_BETA);
+        }
+
+        let response = request_builder
             .json(&request)
             .send()
             .await
@@ -189,6 +244,85 @@ impl LLMProvider for AnthropicProvider {
             completion_tokens: Some(response.usage.output_tokens),
             finish_reason: Some(response.stop_reason),
             model: response.model,
+            tool_calls: None,
+        })
+    }
+
+    async fn generate_chat_with_tools(
+        &self,
+        messages: &[Message],
+        tools: Option<&[ToolDefinition]>,
+        config: &GenerationConfig,
+    ) -> LLMResult<LLMResponse> {
+        let _start = Instant::now();
+        let response = self
+            .try_request_with_tools(messages, tools, config)
+            .await?;
+
+        // Extract text content
+        let content = response
+            .content
+            .iter()
+            .filter_map(|c| {
+                if c.content_type == "text" {
+                    c.text.as_deref().map(String::from)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("");
+
+        // Extract tool_use blocks as tool calls
+        let tool_calls: Option<Vec<ToolCall>> = {
+            let calls: Vec<ToolCall> = response
+                .content
+                .iter()
+                .filter(|c| c.content_type == "tool_use")
+                .filter_map(|c| {
+                    let id = c.id.as_ref()?;
+                    let name = c.name.as_ref()?;
+                    let input = c.input.as_ref()?;
+                    Some(ToolCall {
+                        id: id.clone(),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: name.clone(),
+                            arguments: serde_json::to_string(input).unwrap_or_default(),
+                        },
+                    })
+                })
+                .collect();
+
+            if calls.is_empty() {
+                None
+            } else {
+                Some(calls)
+            }
+        };
+
+        // Determine finish_reason - "tool_use" in Anthropic means tool calls
+        let finish_reason = if tool_calls.is_some() {
+            Some("tool_calls".to_string())
+        } else {
+            Some(response.stop_reason.clone())
+        };
+
+        tracing::info!(
+            "Anthropic generate_chat_with_tools: tool_calls={}, finish_reason={:?}",
+            tool_calls.as_ref().map_or(0, |tc| tc.len()),
+            finish_reason
+        );
+
+        Ok(LLMResponse {
+            content: content.clone(),
+            answer: content,
+            total_tokens: Some(response.usage.input_tokens + response.usage.output_tokens),
+            prompt_tokens: Some(response.usage.input_tokens),
+            completion_tokens: Some(response.usage.output_tokens),
+            finish_reason,
+            model: response.model,
+            tool_calls,
         })
     }
 
@@ -228,7 +362,7 @@ impl LLMProvider for AnthropicProvider {
             rpm_limit,
             tpm_limit,
             supports_streaming: true,
-            supports_functions: false,
+            supports_functions: true, // Claude supports native tool calling
         }
     }
 }
@@ -282,6 +416,29 @@ struct AnthropicRequest {
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stop_sequences: Option<Vec<String>>,
+    /// Tools for function calling (Anthropic native format)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<AnthropicTool>>,
+    /// Structured output format (beta feature)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_format: Option<AnthropicOutputFormat>,
+}
+
+/// Anthropic structured output format (beta)
+#[derive(Debug, Serialize)]
+struct AnthropicOutputFormat {
+    #[serde(rename = "type")]
+    format_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schema: Option<serde_json::Value>,
+}
+
+/// Anthropic tool definition format
+#[derive(Debug, Serialize)]
+struct AnthropicTool {
+    name: String,
+    description: String,
+    input_schema: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -307,8 +464,18 @@ struct AnthropicResponse {
 struct ContentBlock {
     #[serde(rename = "type")]
     content_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Text content (for type: "text")
+    #[serde(default)]
     text: Option<String>,
+    /// Tool call ID (for type: "tool_use")
+    #[serde(default)]
+    id: Option<String>,
+    /// Tool name (for type: "tool_use")
+    #[serde(default)]
+    name: Option<String>,
+    /// Tool input/arguments (for type: "tool_use")
+    #[serde(default)]
+    input: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]

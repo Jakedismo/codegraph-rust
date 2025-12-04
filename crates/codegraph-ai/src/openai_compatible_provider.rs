@@ -158,6 +158,18 @@ impl OpenAICompatibleProvider {
         messages: &[Message],
         config: &GenerationConfig,
     ) -> Result<ResponseAPIResponse> {
+        self.try_responses_api_request_with_tools(messages, None, config)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    /// Try request using Responses API with optional tool calling support
+    async fn try_responses_api_request_with_tools(
+        &self,
+        messages: &[Message],
+        tools: Option<&[crate::llm_provider::ToolDefinition]>,
+        config: &GenerationConfig,
+    ) -> Result<(ResponseAPIResponse, Option<Vec<crate::llm_provider::ToolCall>>)> {
         // Extract system instructions and user input
         let instructions = messages
             .iter()
@@ -171,6 +183,18 @@ impl OpenAICompatibleProvider {
             .collect::<Vec<_>>()
             .join("\n\n");
 
+        // Convert CodeGraph ToolDefinition to Responses API format
+        let responses_tools = tools.map(|t| {
+            t.iter()
+                .map(|tool| ResponsesAPITool {
+                    tool_type: "function".to_string(),
+                    name: tool.function.name.clone(),
+                    description: tool.function.description.clone(),
+                    parameters: tool.function.parameters.clone(),
+                })
+                .collect()
+        });
+
         let request = ResponsesAPIRequest {
             model: self.config.model.clone(),
             input,
@@ -180,6 +204,7 @@ impl OpenAICompatibleProvider {
             top_p: config.top_p,
             stop: config.stop.clone(),
             response_format: config.response_format.clone(),
+            tools: responses_tools,
         };
 
         let mut request_builder = self
@@ -231,12 +256,43 @@ impl OpenAICompatibleProvider {
         );
 
         // Parse the response
-        serde_json::from_str::<ResponseAPIResponse>(&response_text).context(format!(
-            "Failed to parse {} Responses API response. Raw response: {}. \
-             If your provider doesn't support Responses API, \
-             set CODEGRAPH_USE_COMPLETIONS_API=true to use Chat Completions API instead.",
-            self.config.provider_name, response_text
-        ))
+        let parsed: ResponseAPIResponse =
+            serde_json::from_str::<ResponseAPIResponse>(&response_text).context(format!(
+                "Failed to parse {} Responses API response. Raw response: {}. \
+                 If your provider doesn't support Responses API, \
+                 set CODEGRAPH_USE_COMPLETIONS_API=true to use Chat Completions API instead.",
+                self.config.provider_name, response_text
+            ))?;
+
+        // Extract tool calls from function_call output items
+        let tool_calls: Option<Vec<crate::llm_provider::ToolCall>> = {
+            let calls: Vec<crate::llm_provider::ToolCall> = parsed
+                .output
+                .iter()
+                .filter(|item| item.output_type == "function_call")
+                .filter_map(|item| {
+                    let call_id = item.call_id.as_ref()?;
+                    let name = item.name.as_ref()?;
+                    let arguments = item.arguments.as_ref()?;
+                    Some(crate::llm_provider::ToolCall {
+                        id: call_id.clone(),
+                        call_type: "function".to_string(),
+                        function: crate::llm_provider::FunctionCall {
+                            name: name.clone(),
+                            arguments: arguments.clone(),
+                        },
+                    })
+                })
+                .collect();
+
+            if calls.is_empty() {
+                None
+            } else {
+                Some(calls)
+            }
+        };
+
+        Ok((parsed, tool_calls))
     }
 
     /// Try request using Chat Completions API (fallback for older systems)
@@ -245,6 +301,18 @@ impl OpenAICompatibleProvider {
         messages: &[Message],
         config: &GenerationConfig,
     ) -> Result<ResponseAPIResponse> {
+        self.try_chat_completions_request_with_tools(messages, None, config)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    /// Try request using Chat Completions API with optional tool calling support
+    async fn try_chat_completions_request_with_tools(
+        &self,
+        messages: &[Message],
+        tools: Option<&[crate::llm_provider::ToolDefinition]>,
+        config: &GenerationConfig,
+    ) -> Result<(ResponseAPIResponse, Option<Vec<crate::llm_provider::ToolCall>>)> {
         // Extract Ollama-native format from response_format for compatibility
         let ollama_format = config.response_format.as_ref().and_then(|rf| {
             match rf {
@@ -264,7 +332,7 @@ impl OpenAICompatibleProvider {
             model: self.config.model.clone(),
             messages: messages
                 .iter()
-                .map(|m| ChatMessage {
+                .map(|m| ChatMessageRequest {
                     role: m.role.to_string(),
                     content: m.content.clone(),
                 })
@@ -276,6 +344,7 @@ impl OpenAICompatibleProvider {
             stop: config.stop.clone(),
             response_format: config.response_format.clone(),
             format: ollama_format,
+            tools: tools.map(|t| t.to_vec()),
         };
 
         let mut request_builder = self
@@ -322,26 +391,48 @@ impl OpenAICompatibleProvider {
             .first()
             .ok_or_else(|| anyhow!("No choices in response"))?;
 
+        // Extract tool calls if present
+        let tool_calls: Option<Vec<crate::llm_provider::ToolCall>> =
+            choice.message.tool_calls.as_ref().map(|api_calls| {
+                api_calls
+                    .iter()
+                    .map(|tc| crate::llm_provider::ToolCall {
+                        id: tc.id.clone(),
+                        call_type: tc.call_type.clone(),
+                        function: crate::llm_provider::FunctionCall {
+                            name: tc.function.name.clone(),
+                            arguments: tc.function.arguments.clone(),
+                        },
+                    })
+                    .collect()
+            });
+
         // Create output array structure matching GPT-5.1 format
         let output = vec![ResponseOutputItem {
             output_type: "message".to_string(),
             content: vec![ResponseOutputContent {
                 content_type: "output_text".to_string(),
-                text: choice.message.content.clone(),
+                text: choice.message.content.clone().unwrap_or_default(),
             }],
+            call_id: None,
+            name: None,
+            arguments: None,
         }];
 
-        Ok(ResponseAPIResponse {
-            id: chat_response.id,
-            object: "response".to_string(),
-            status: choice.finish_reason.clone(),
-            output,
-            usage: chat_response.usage.map(|u| ResponseUsage {
-                input_tokens: u.prompt_tokens,
-                output_tokens: u.completion_tokens,
-                total_tokens: u.total_tokens,
-            }),
-        })
+        Ok((
+            ResponseAPIResponse {
+                id: chat_response.id,
+                object: "response".to_string(),
+                status: choice.finish_reason.clone(),
+                output,
+                usage: chat_response.usage.map(|u| ResponseUsage {
+                    input_tokens: u.prompt_tokens,
+                    output_tokens: u.completion_tokens,
+                    total_tokens: u.total_tokens,
+                }),
+            },
+            tool_calls,
+        ))
     }
 }
 
@@ -380,6 +471,66 @@ impl LLMProvider for OpenAICompatibleProvider {
             completion_tokens: response.usage.as_ref().map(|u| u.output_tokens),
             finish_reason: response.status.clone(),
             model: self.config.model.clone(),
+            tool_calls: None,
+        })
+    }
+
+    async fn generate_chat_with_tools(
+        &self,
+        messages: &[Message],
+        tools: Option<&[ToolDefinition]>,
+        config: &GenerationConfig,
+    ) -> LLMResult<LLMResponse> {
+        // Use appropriate API based on configuration
+        let (response, tool_calls) = if self.config.use_responses_api {
+            // Use Responses API with native tool calling
+            self.try_responses_api_request_with_tools(messages, tools, config)
+                .await?
+        } else {
+            // Use Chat Completions API with native tool calling
+            self.try_chat_completions_request_with_tools(messages, tools, config)
+                .await?
+        };
+
+        // Extract text from output array
+        let content = response
+            .output
+            .iter()
+            .filter(|item| item.output_type == "message")
+            .flat_map(|item| &item.content)
+            .filter(|c| c.content_type == "output_text")
+            .map(|c| c.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let content = if content.is_empty() {
+            serde_json::to_string(&response.output).unwrap_or_default()
+        } else {
+            content
+        };
+
+        // Determine finish_reason - if we have tool calls, it should be "tool_calls"
+        let finish_reason = if tool_calls.is_some() {
+            Some("tool_calls".to_string())
+        } else {
+            response.status.clone()
+        };
+
+        tracing::info!(
+            "generate_chat_with_tools: tool_calls={}, finish_reason={:?}",
+            tool_calls.as_ref().map_or(0, |tc| tc.len()),
+            finish_reason
+        );
+
+        Ok(LLMResponse {
+            answer: content.clone(),
+            content,
+            total_tokens: response.usage.as_ref().map(|u| u.total_tokens),
+            prompt_tokens: response.usage.as_ref().map(|u| u.input_tokens),
+            completion_tokens: response.usage.as_ref().map(|u| u.output_tokens),
+            finish_reason,
+            model: self.config.model.clone(),
+            tool_calls,
         })
     }
 
@@ -409,7 +560,7 @@ impl LLMProvider for OpenAICompatibleProvider {
             rpm_limit: None,      // No rate limits for local providers
             tpm_limit: None,
             supports_streaming: true,
-            supports_functions: false, // Most local providers don't support function calling
+            supports_functions: true, // Most modern providers support function calling
         }
     }
 }
@@ -501,6 +652,19 @@ struct ResponsesAPIRequest {
     stop: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     response_format: Option<crate::llm_provider::ResponseFormat>,
+    /// Tools for function calling (Responses API format)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<ResponsesAPITool>>,
+}
+
+/// Tool definition for Responses API (different from Chat Completions API format)
+#[derive(Debug, Serialize)]
+struct ResponsesAPITool {
+    #[serde(rename = "type")]
+    tool_type: String,
+    name: String,
+    description: String,
+    parameters: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -523,6 +687,15 @@ struct ResponseOutputItem {
     output_type: String,
     #[serde(default)]
     content: Vec<ResponseOutputContent>,
+    /// Function call ID (for type: "function_call")
+    #[serde(default)]
+    call_id: Option<String>,
+    /// Function name (for type: "function_call")
+    #[serde(default)]
+    name: Option<String>,
+    /// Function arguments as JSON string (for type: "function_call")
+    #[serde(default)]
+    arguments: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -545,7 +718,7 @@ struct ResponseUsage {
 #[derive(Debug, Serialize)]
 struct ChatCompletionsRequest {
     model: String,
-    messages: Vec<ChatMessage>,
+    messages: Vec<ChatMessageRequest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -561,12 +734,42 @@ struct ChatCompletionsRequest {
     /// Ollama-native format field (extracted from response_format for Ollama compatibility)
     #[serde(skip_serializing_if = "Option::is_none")]
     format: Option<serde_json::Value>,
+    /// Tools for function calling (OpenAI Chat Completions API)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<crate::llm_provider::ToolDefinition>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct ChatMessage {
+#[derive(Debug, Serialize)]
+struct ChatMessageRequest {
     role: String,
     content: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct ChatMessageResponse {
+    role: String,
+    #[serde(default)]
+    content: Option<String>,
+    /// Tool calls from the LLM (OpenAI native tool calling)
+    #[serde(default)]
+    tool_calls: Option<Vec<ApiToolCall>>,
+}
+
+/// OpenAI API tool call structure
+#[derive(Debug, Deserialize)]
+struct ApiToolCall {
+    id: String,
+    #[serde(rename = "type")]
+    call_type: String,
+    function: ApiFunctionCall,
+}
+
+/// OpenAI API function call structure
+#[derive(Debug, Deserialize)]
+struct ApiFunctionCall {
+    name: String,
+    arguments: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -580,7 +783,7 @@ struct ChatCompletionsResponse {
 
 #[derive(Debug, Deserialize)]
 struct ChatChoice {
-    message: ChatMessage,
+    message: ChatMessageResponse,
     finish_reason: Option<String>,
 }
 

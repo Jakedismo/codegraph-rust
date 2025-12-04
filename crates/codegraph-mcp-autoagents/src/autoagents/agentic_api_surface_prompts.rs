@@ -45,7 +45,6 @@ API SURFACE ANALYSIS WORKFLOW:
    - Report breaking change impact radius
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "endpoints": [{"name": "X", "file_path": "a.rs", "line_number": 1, "api_type": "HTTP", "description": "...", "dependencies": []}], "usage_patterns": [], "integration_points": []}
 
 CRITICAL RULES:
@@ -53,7 +52,8 @@ CRITICAL RULES:
 - Report metrics without interpretation (e.g., "afferent coupling = 15" NOT "high coupling")
 - Focus on: API boundaries, contracts, impact radius, stability metrics
 - Stay within 5 tool calls maximum
-- When you have sufficient data for API overview, provide final analysis"#;
+- ALWAYS call at least one tool before providing final analysis
+- Your FIRST response MUST include a tool_call - you have no data without calling tools"#;
 
 /// BALANCED tier prompt for API surface analysis (Medium context window)
 /// Focus: Standard API contract analysis with coupling and impact assessment
@@ -110,12 +110,13 @@ API SURFACE ANALYSIS WORKFLOW:
    - Map what each public API calls transitively
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "endpoints": [{"name": "X", "file_path": "a.rs", "line_number": 1, "api_type": "HTTP", "description": "...", "dependencies": []}], "usage_patterns": [], "integration_points": []}
 
 CRITICAL RULES:
 - Extract node IDs from previous tool results - never invent them
 - Report exact metric values without adding qualitative assessments
+- ALWAYS call at least one tool before providing final analysis
+- Your FIRST response MUST include a tool_call - you have no data without calling tools
 - Build on previous tool results to avoid redundant calls
 - Focus on measurable API characteristics: coupling, dependencies, impact radius
 - Stay within 10 tool calls maximum
@@ -194,7 +195,6 @@ API SURFACE ANALYSIS WORKFLOW:
    - Map interface dependency chains
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "endpoints": [{"name": "X", "file_path": "a.rs", "line_number": 1, "api_type": "HTTP", "description": "...", "dependencies": []}], "usage_patterns": [], "integration_points": []}
 
 CRITICAL RULES:
@@ -318,7 +318,6 @@ API SURFACE ANALYSIS WORKFLOW:
    - Calculate boundary crossing metrics
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "endpoints": [{"name": "X", "file_path": "a.rs", "line_number": 1, "api_type": "HTTP", "description": "...", "dependencies": []}], "usage_patterns": [], "integration_points": []}
 
 CRITICAL RULES:

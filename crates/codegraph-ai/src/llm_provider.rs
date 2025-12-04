@@ -118,6 +118,85 @@ impl fmt::Display for MessageRole {
     }
 }
 
+// ============================================================================
+// Native Tool Calling Types
+// ============================================================================
+
+/// Definition of a tool that can be called by the LLM
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    /// Tool type - always "function" for now
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    /// Function definition
+    pub function: FunctionDefinition,
+}
+
+impl ToolDefinition {
+    /// Create a new function tool definition
+    pub fn function(name: impl Into<String>, description: impl Into<String>, parameters: serde_json::Value) -> Self {
+        Self {
+            tool_type: "function".to_string(),
+            function: FunctionDefinition {
+                name: name.into(),
+                description: description.into(),
+                parameters,
+            },
+        }
+    }
+}
+
+/// Function definition for tool calling
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionDefinition {
+    /// Name of the function
+    pub name: String,
+    /// Description of what the function does
+    pub description: String,
+    /// JSON Schema for the function parameters
+    pub parameters: serde_json::Value,
+}
+
+/// A tool call made by the LLM
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    /// Unique identifier for this tool call
+    pub id: String,
+    /// Type of tool call - always "function" for now
+    #[serde(rename = "type")]
+    pub call_type: String,
+    /// The function being called
+    pub function: FunctionCall,
+}
+
+/// A function call within a tool call
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionCall {
+    /// Name of the function to call
+    pub name: String,
+    /// JSON-encoded arguments for the function
+    pub arguments: String,
+}
+
+impl ToolCall {
+    /// Parse the arguments as a specific type
+    pub fn parse_arguments<T: for<'de> Deserialize<'de>>(&self) -> Result<T, serde_json::Error> {
+        serde_json::from_str(&self.function.arguments)
+    }
+}
+
+/// Result of a tool execution to be sent back to the LLM
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolResult {
+    /// ID of the tool call this result corresponds to
+    pub tool_call_id: String,
+    /// Result content (typically JSON)
+    pub content: String,
+    /// Whether the tool execution was successful
+    #[serde(default)]
+    pub is_error: bool,
+}
+
 /// Response from the LLM
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LLMResponse {
@@ -131,10 +210,25 @@ pub struct LLMResponse {
     pub prompt_tokens: Option<usize>,
     /// Tokens generated in the completion
     pub completion_tokens: Option<usize>,
-    /// Finish reason (e.g., "stop", "length", "function_call")
+    /// Finish reason (e.g., "stop", "length", "tool_calls")
     pub finish_reason: Option<String>,
     /// Model used for generation
     pub model: String,
+    /// Tool calls requested by the LLM (for native tool calling)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+}
+
+impl LLMResponse {
+    /// Check if the LLM wants to make tool calls
+    pub fn has_tool_calls(&self) -> bool {
+        self.tool_calls.as_ref().map_or(false, |tc| !tc.is_empty())
+    }
+
+    /// Check if this is a final response (no more tool calls needed)
+    pub fn is_final(&self) -> bool {
+        !self.has_tool_calls() && self.finish_reason.as_deref() != Some("tool_calls")
+    }
 }
 
 /// Metrics for LLM operations
@@ -182,6 +276,37 @@ pub trait LLMProvider: Send + Sync {
         messages: &[Message],
         config: &GenerationConfig,
     ) -> LLMResult<LLMResponse>;
+
+    /// Generate a chat completion with native tool calling support
+    ///
+    /// This method enables the LLM to make structured tool calls that are
+    /// returned in the response. The LLM will set `finish_reason: "tool_calls"`
+    /// when it wants to call tools, and the caller should execute those tools
+    /// and continue the conversation.
+    ///
+    /// Default implementation falls back to `generate_chat` (no tool support).
+    /// Providers that support native tool calling should override this.
+    async fn generate_chat_with_tools(
+        &self,
+        messages: &[Message],
+        tools: Option<&[ToolDefinition]>,
+        config: &GenerationConfig,
+    ) -> LLMResult<LLMResponse> {
+        // Default implementation: ignore tools, fall back to regular chat
+        // Providers should override this to enable native tool calling
+        if tools.is_some() {
+            tracing::warn!(
+                provider = self.provider_name(),
+                "Provider does not support native tool calling, falling back to regular chat"
+            );
+        }
+        self.generate_chat(messages, config).await
+    }
+
+    /// Check if this provider supports native tool calling
+    fn supports_tool_calling(&self) -> bool {
+        self.characteristics().supports_functions
+    }
 
     /// Check if the provider is available and ready
     async fn is_available(&self) -> bool;

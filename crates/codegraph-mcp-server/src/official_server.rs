@@ -26,7 +26,9 @@ use uuid::Uuid;
 
 use crate::prompt_selector::AnalysisType;
 use crate::prompts::INITIAL_INSTRUCTIONS;
+#[cfg(feature = "ai-enhanced")]
 use codegraph_ai::agentic_schemas::AgenticOutput;
+#[cfg(feature = "ai-enhanced")]
 use codegraph_mcp_autoagents::{CodeGraphAgentOutput, CodeGraphExecutor, CodeGraphExecutorBuilder};
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_core::debug_logger::DebugLogger;

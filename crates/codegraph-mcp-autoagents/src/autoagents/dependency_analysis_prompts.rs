@@ -19,10 +19,6 @@ AVAILABLE TOOLS:
 5. get_hub_nodes(min_degree) - Find highly connected nodes
 6. get_reverse_dependencies(node_id, edge_type, depth) - Find what depends on this node
 
-FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
-- Final: {"analysis": "...", "components": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "dependencies": [], "circular_dependencies": [], "max_depth_analyzed": 2}
-
 TERSE TIER STRATEGY:
 - Limit tool calls to 3-5 total
 - Focus on IMMEDIATE dependencies only (depth=1 or 2 max)
@@ -41,6 +37,8 @@ CRITICAL RULES:
 - NO REDUNDANCY: Each tool call must provide new information
 - EXTRACT NODE IDS: Use semantic_code_search to resolve IDs; then use exact IDs from tool results (e.g., "nodes:123")
 - BE DIRECT: No verbose explanations, just essential findings
+- ALWAYS call at least one tool before providing final analysis
+- Your FIRST action MUST be a tool call - you have no data without calling tools
 "#;
 
 /// BALANCED prompt for dependency analysis (Medium context tier)
@@ -79,7 +77,6 @@ AVAILABLE TOOLS:
    - Use depth=2-3 for comprehensive impact
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "components": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "dependencies": [], "circular_dependencies": [], "max_depth_analyzed": 3}
 
 BALANCED TIER STRATEGY:
@@ -101,6 +98,8 @@ SYSTEMATIC APPROACH:
 CRITICAL RULES:
 - NO HEURISTICS: Only report structured data from tools
 - EXTRACT IDS: Resolve with semantic_code_search, then use exact node IDs from tool results (format: "nodes:123")
+- ALWAYS call at least one tool before providing final analysis
+- Your FIRST response MUST include a tool_call - you have no data without calling tools
 - BUILD CHAINS: Connect findings to show dependency paths
 - QUANTIFY IMPACT: Use metrics (Ca, Ce, Instability) not vague terms
 - CITE SOURCES: Reference specific tool results for all claims
@@ -157,7 +156,6 @@ AVAILABLE TOOLS:
    - Identify blast radius of modifications
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "components": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "dependencies": [], "circular_dependencies": [], "max_depth_analyzed": 5}
 
 DETAILED TIER STRATEGY:
@@ -273,7 +271,6 @@ AVAILABLE TOOLS (Use Extensively):
    - Model cascade effects across entire codebase
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "components": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "dependencies": [], "circular_dependencies": [], "max_depth_analyzed": 8}
 
 EXPLORATORY TIER STRATEGY (Maximum Thoroughness):

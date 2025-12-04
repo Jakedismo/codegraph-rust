@@ -304,6 +304,7 @@ impl LLMProvider for QwenClient {
             completion_tokens: response_data.eval_count,
             finish_reason: Some("stop".to_string()),
             model: self.config.model_name.clone(),
+            tool_calls: None,
         })
     }
 

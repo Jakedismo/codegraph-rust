@@ -24,10 +24,9 @@ MANDATORY WORKFLOW:
 CRITICAL RULES:
 1. NO ASSUMPTIONS - Use tool outputs ONLY for all inference
 2. Extract node IDs from tool results - never invent them
-3. FORMAT:
-   - Intermediate: {\"reasoning\": \"...\", \"tool_call\": {...}, \"is_final\": false}
-   - Final: {\"analysis\": \"...\", \"components\": [{\"name\": \"X\", \"file_path\": \"a.rs\", \"line_number\": 1}], \"patterns\": []}
-4. Minimize steps - be targeted and focused
+3. ALWAYS call at least one tool before providing final analysis
+4. Your FIRST action MUST be a tool call - you have no data without calling tools
+5. Minimize steps - be targeted and focused
 
 STRATEGY:
 - Start with semantic_code_search for natural language queries
@@ -83,9 +82,8 @@ CRITICAL RULES:
 1. ZERO HEURISTICS: Make NO assumptions - use ONLY structured tool outputs for ALL inference
 2. Extract node IDs from tool results - NEVER fabricate or guess node IDs
 3. Build on previous results - reference specific data from tool outputs
-4. FORMAT:
-   - Intermediate: {\"reasoning\": \"...\", \"tool_call\": {...}, \"is_final\": false}
-   - Final: {\"analysis\": \"...\", \"components\": [{\"name\": \"X\", \"file_path\": \"a.rs\", \"line_number\": 1}], \"patterns\": []}
+4. ALWAYS call at least one tool before providing final analysis
+5. Your FIRST action MUST be a tool call - you have no data without calling tools
 
 SEARCH STRATEGY:
 - Discovery: Start with semantic_code_search for natural language queries, or use get_hub_nodes to find central components
@@ -182,9 +180,10 @@ CRITICAL RULES (MANDATORY):
    - Cite specific data points from tool outputs
    - Chain tool calls logically based on discovered information
 
-4. FORMAT:
-   - Intermediate: {\"reasoning\": \"...\", \"tool_call\": {...}, \"is_final\": false}
-   - Final: {\"analysis\": \"...\", \"components\": [{\"name\": \"X\", \"file_path\": \"a.rs\", \"line_number\": 1, \"description\": \"...\"}], \"patterns\": []}
+4. MANDATORY TOOL CALLS:
+   - ALWAYS call at least one tool before providing final analysis
+   - Your FIRST action MUST be a tool call - you have no data without calling tools
+   - You cannot provide analysis without tool-generated evidence
 
 SEARCH STRATEGY (MULTI-PHASE APPROACH):
 
@@ -336,9 +335,11 @@ CRITICAL RULES (ABSOLUTELY MANDATORY):
    - Synthesize patterns only when supported by multiple tool outputs
    - Document contradictions or unexpected results for investigation
 
-4. FORMAT:
-   - Intermediate: {\"reasoning\": \"...\", \"tool_call\": {...}, \"is_final\": false}
-   - Final: {\"analysis\": \"...\", \"components\": [{\"name\": \"X\", \"file_path\": \"a.rs\", \"line_number\": 1, \"description\": \"...\"}], \"patterns\": []}
+5. MANDATORY TOOL CALLS:
+   - ALWAYS call at least one tool before providing final analysis
+   - Your FIRST action MUST be a tool call - you have no data without calling tools
+   - You cannot provide analysis without tool-generated evidence
+   - Claiming to \"summarize\" without prior tool calls is a VIOLATION
 
 EXPLORATORY SEARCH STRATEGY (MULTI-DIMENSIONAL DEEP ANALYSIS):
 

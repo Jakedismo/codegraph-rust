@@ -26,16 +26,14 @@ ANALYSIS FOCUS (report WHAT IS, not what SHOULD BE):
 - Architectural Patterns: Identify hub patterns, dependency structures
 - Code Smells: Detect circular dependencies, god objects (nodes with extreme hub degree)
 
-FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
-- Final: {"analysis": "...", "layers": [], "hub_nodes": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "coupling_metrics": [], "patterns": [], "issues": []}
-
 CONSTRAINTS:
 - MAX 5 STEPS - prioritize key architectural indicators
 - Report metrics objectively - let interpreter decide if values are problematic
 - Focus on: 1) circular deps, 2) hub nodes (god objects), 3) coupling metrics for highest-degree nodes
 - Extract node IDs from tool results for subsequent calls
 - NO assumptions about "good" architecture - report structured data only
+- ALWAYS call at least one tool before providing final analysis
+- Your FIRST action MUST be a tool call - you have no data without calling tools
 
 START by identifying hub nodes to find architectural hotspots."#;
 
@@ -64,10 +62,6 @@ ANALYSIS DIMENSIONS (report WHAT IS, not what SHOULD BE):
 - Architectural Patterns: Identify hub structures, layering patterns
 - Code Smells: Detect circular dependencies, god objects, coupling hotspots
 - Change Impact: Assess blast radius using reverse dependencies
-
-FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
-- Final: {"analysis": "...", "layers": [], "hub_nodes": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "coupling_metrics": [], "patterns": [], "issues": []}
 
 CONSTRAINTS:
 - MAX 10 STEPS - cover key architectural dimensions systematically
@@ -104,10 +98,6 @@ MANDATORY WORKFLOW:
 **Step 2**: Extract node IDs from results (format: "nodes:⟨uuid⟩")
 **Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
-FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
-- Final: {"analysis": "...", "layers": [], "hub_nodes": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "coupling_metrics": [], "patterns": [], "issues": []}
-
 CONSTRAINTS:
 - MAX 15 STEPS - thorough multi-dimensional analysis
 - Statistical rigor: distributions, means, outliers
@@ -140,12 +130,13 @@ MANDATORY WORKFLOW:
 **Step 3**: Use those exact IDs with other graph tools (NEVER use descriptions as node_id)
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "layers": [], "hub_nodes": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "coupling_metrics": [], "patterns": [], "issues": []}
 
 CRITICAL RULES:
 1. ZERO HEURISTICS: Every claim must be based on tool output data
 2. EXHAUSTIVE NODE ID TRACKING: Extract and reference all node IDs from tool results
+3. ALWAYS call at least one tool before providing final analysis
+4. Your FIRST response MUST include a tool_call - you have no data without calling tools
 3. FILE LOCATIONS REQUIRED:
    - For EVERY node/function/class/component mentioned, ALWAYS include its file location from tool results
    - Format: `ComponentName in path/to/file.rs:line_number` or `ComponentName (path/to/file.rs:line_number)`

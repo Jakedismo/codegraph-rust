@@ -117,6 +117,18 @@ impl OpenAIProvider {
         messages: &[Message],
         config: &GenerationConfig,
     ) -> Result<OpenAIResponse> {
+        self.try_request_with_tools(messages, None, config)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    /// Try a single request to OpenAI Responses API with optional tool calling support
+    async fn try_request_with_tools(
+        &self,
+        messages: &[Message],
+        tools: Option<&[crate::llm_provider::ToolDefinition]>,
+        config: &GenerationConfig,
+    ) -> Result<(OpenAIResponse, Option<Vec<crate::llm_provider::ToolCall>>)> {
         let is_reasoning = self.is_reasoning_model();
 
         // Extract system instructions and user input
@@ -133,7 +145,6 @@ impl OpenAIProvider {
             .join("\n\n");
 
         let model_lower = self.config.model.to_lowercase();
-        let _is_reasoning = self.is_reasoning_model();
 
         // Default reasoning effort for GPT-5.1 family when not provided
         let reasoning_effort = if is_reasoning && model_lower.starts_with("gpt-5.1") {
@@ -141,6 +152,18 @@ impl OpenAIProvider {
         } else {
             config.reasoning_effort.clone()
         };
+
+        // Convert CodeGraph ToolDefinition to Responses API format
+        let responses_tools = tools.map(|t| {
+            t.iter()
+                .map(|tool| ResponsesAPITool {
+                    tool_type: "function".to_string(),
+                    name: tool.function.name.clone(),
+                    description: tool.function.description.clone(),
+                    parameters: tool.function.parameters.clone(),
+                })
+                .collect()
+        });
 
         // Build request based on model type
         // OpenAI Responses API uses text.format instead of response_format
@@ -155,6 +178,7 @@ impl OpenAIProvider {
             top_p: None,
             stop: config.stop.clone(),
             text: text_config,
+            tools: responses_tools,
         };
 
         // Only add sampling parameters for non-reasoning models
@@ -209,10 +233,41 @@ impl OpenAIProvider {
         );
 
         // Parse the response
-        serde_json::from_str::<OpenAIResponse>(&response_text).context(format!(
-            "Failed to parse OpenAI Responses API response. Raw response: {}",
-            response_text
-        ))
+        let parsed: OpenAIResponse =
+            serde_json::from_str::<OpenAIResponse>(&response_text).context(format!(
+                "Failed to parse OpenAI Responses API response. Raw response: {}",
+                response_text
+            ))?;
+
+        // Extract tool calls from function_call output items
+        let tool_calls: Option<Vec<crate::llm_provider::ToolCall>> = {
+            let calls: Vec<crate::llm_provider::ToolCall> = parsed
+                .output
+                .iter()
+                .filter(|item| item.output_type == "function_call")
+                .filter_map(|item| {
+                    let call_id = item.call_id.as_ref()?;
+                    let name = item.name.as_ref()?;
+                    let arguments = item.arguments.as_ref()?;
+                    Some(crate::llm_provider::ToolCall {
+                        id: call_id.clone(),
+                        call_type: "function".to_string(),
+                        function: crate::llm_provider::FunctionCall {
+                            name: name.clone(),
+                            arguments: arguments.clone(),
+                        },
+                    })
+                })
+                .collect();
+
+            if calls.is_empty() {
+                None
+            } else {
+                Some(calls)
+            }
+        };
+
+        Ok((parsed, tool_calls))
     }
 }
 
@@ -253,6 +308,60 @@ impl LLMProvider for OpenAIProvider {
             completion_tokens: response.usage.as_ref().map(|u| u.output_tokens),
             finish_reason: response.status.clone(),
             model: self.config.model.clone(),
+            tool_calls: None,
+        })
+    }
+
+    async fn generate_chat_with_tools(
+        &self,
+        messages: &[Message],
+        tools: Option<&[ToolDefinition]>,
+        config: &GenerationConfig,
+    ) -> LLMResult<LLMResponse> {
+        let _start = Instant::now();
+        let (response, tool_calls) = self
+            .try_request_with_tools(messages, tools, config)
+            .await?;
+
+        // Extract text from output array
+        let content = response
+            .output
+            .iter()
+            .filter(|item| item.output_type == "message")
+            .flat_map(|item| &item.content)
+            .filter(|c| c.content_type == "output_text")
+            .map(|c| c.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let content = if content.is_empty() {
+            serde_json::to_string(&response.output).unwrap_or_default()
+        } else {
+            content
+        };
+
+        // Determine finish_reason - if we have tool calls, it should be "tool_calls"
+        let finish_reason = if tool_calls.is_some() {
+            Some("tool_calls".to_string())
+        } else {
+            response.status.clone()
+        };
+
+        tracing::info!(
+            "OpenAI generate_chat_with_tools: tool_calls={}, finish_reason={:?}",
+            tool_calls.as_ref().map_or(0, |tc| tc.len()),
+            finish_reason
+        );
+
+        Ok(LLMResponse {
+            answer: content.clone(),
+            content,
+            total_tokens: response.usage.as_ref().map(|u| u.total_tokens),
+            prompt_tokens: response.usage.as_ref().map(|u| u.input_tokens),
+            completion_tokens: response.usage.as_ref().map(|u| u.output_tokens),
+            finish_reason,
+            model: self.config.model.clone(),
+            tool_calls,
         })
     }
 
@@ -392,6 +501,19 @@ struct OpenAIRequest {
     /// OpenAI Responses API uses text.format instead of response_format
     #[serde(skip_serializing_if = "Option::is_none")]
     text: Option<TextConfig>,
+    /// Tools for function calling (Responses API format)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<ResponsesAPITool>>,
+}
+
+/// Tool definition for OpenAI Responses API
+#[derive(Debug, Serialize)]
+struct ResponsesAPITool {
+    #[serde(rename = "type")]
+    tool_type: String,
+    name: String,
+    description: String,
+    parameters: serde_json::Value,
 }
 
 /// OpenAI Responses API text format - flattened structure
@@ -448,6 +570,15 @@ struct OutputItem {
     output_type: String,
     #[serde(default)]
     content: Vec<OutputContent>,
+    /// Function call ID (for type: "function_call")
+    #[serde(default)]
+    call_id: Option<String>,
+    /// Function name (for type: "function_call")
+    #[serde(default)]
+    name: Option<String>,
+    /// Function arguments as JSON string (for type: "function_call")
+    #[serde(default)]
+    arguments: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

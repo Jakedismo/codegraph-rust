@@ -2070,7 +2070,21 @@ LET $batch = array::map($batch, |$doc| {
     created_at: time::now(),
     updated_at: time::now(),
 });
-INSERT INTO chunks $batch RETURN NONE;
+INSERT INTO chunks $batch ON DUPLICATE KEY UPDATE
+    parent_node = $input.parent_node,
+    chunk_index = $input.chunk_index,
+    text = $input.text,
+    embedding_384 = $input.embedding_384,
+    embedding_768 = $input.embedding_768,
+    embedding_1024 = $input.embedding_1024,
+    embedding_1536 = $input.embedding_1536,
+    embedding_2048 = $input.embedding_2048,
+    embedding_2560 = $input.embedding_2560,
+    embedding_3072 = $input.embedding_3072,
+    embedding_4096 = $input.embedding_4096,
+    embedding_model = $input.embedding_model,
+    updated_at = time::now()
+RETURN NONE;
 "#;
 
 const UPSERT_CHUNK_EMBEDDING_SINGLE_QUERY: &str = r#"

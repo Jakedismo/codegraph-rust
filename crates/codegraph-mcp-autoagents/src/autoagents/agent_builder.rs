@@ -12,9 +12,7 @@ use autoagents::llm::embedding::EmbeddingProvider;
 use autoagents::llm::error::LLMError;
 use autoagents::llm::models::{ModelListRequest, ModelListResponse, ModelsProvider};
 use autoagents::llm::{FunctionCall, ToolCall};
-use codegraph_ai::llm_provider::{
-    LLMProvider as CodeGraphLLM, Message, MessageRole, ResponseFormat,
-};
+use codegraph_ai::llm_provider::{LLMProvider as CodeGraphLLM, Message, MessageRole};
 use codegraph_mcp_core::debug_logger::DebugLogger;
 use serde::Deserialize;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -63,43 +61,18 @@ impl CodeGraphChatAdapter {
         Self { provider, tier }
     }
 
-    /// Schema that enforces CodeGraph tool-call envelope expected by AutoAgents
-    /// Uses strict=true with parameters as JSON string to satisfy OpenAI's
-    /// additionalProperties: false requirement while allowing dynamic tool args
-    fn codegraph_toolcall_schema() -> ResponseFormat {
-        use serde_json::json;
-        ResponseFormat::JsonSchema {
-            json_schema: codegraph_ai::llm_provider::JsonSchema {
-                name: "codegraph_tool_call".to_string(),
-                schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "reasoning": {"type": "string"},
-                        "tool_call": {
-                            "anyOf": [
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "tool_name": {"type": "string"},
-                                        "parameters_json": {
-                                            "type": "string",
-                                            "description": "JSON-encoded parameters object"
-                                        }
-                                    },
-                                    "required": ["tool_name", "parameters_json"],
-                                    "additionalProperties": false
-                                },
-                                {"type": "null"}
-                            ]
-                        },
-                        "is_final": {"type": "boolean"}
-                    },
-                    "required": ["reasoning", "is_final", "tool_call"],
-                    "additionalProperties": false
-                }),
-                strict: true,
-            },
-        }
+    /// Convert AutoAgents Tool to CodeGraph ToolDefinition
+    fn convert_tools(tools: &[Tool]) -> Vec<codegraph_ai::llm_provider::ToolDefinition> {
+        tools
+            .iter()
+            .map(|tool| {
+                codegraph_ai::llm_provider::ToolDefinition::function(
+                    &tool.function.name,
+                    &tool.function.description,
+                    tool.function.parameters.clone(),
+                )
+            })
+            .collect()
     }
 
     /// Get tier-aware max_tokens, respecting environment variable override
@@ -129,45 +102,34 @@ impl ChatProvider for CodeGraphChatAdapter {
     async fn chat(
         &self,
         messages: &[ChatMessage],
-        _tools: Option<&[Tool]>,
+        tools: Option<&[Tool]>,
         json_schema: Option<autoagents::llm::chat::StructuredOutputFormat>,
     ) -> Result<Box<dyn ChatResponse>, LLMError> {
-        // Log whether schema is being passed by AutoAgents
-        if json_schema.is_some() {
-            tracing::info!("✅ AutoAgents passed json_schema to chat()");
-        } else {
-            tracing::warn!(
-                "⚠️  AutoAgents did NOT pass json_schema - schema enforcement may be prompt-only!"
-            );
-        }
-
-        // Debug: Log message count and roles to diagnose memory issues
+        // Log tool and message info
+        let tool_count = tools.map_or(0, |t| t.len());
         tracing::info!(
-            "📨 chat() called with {} messages: {:?}",
+            "📨 chat() called with {} messages, {} tools",
             messages.len(),
-            messages.iter().map(|m| format!("{:?}:{:?}", m.role, m.message_type)).collect::<Vec<_>>()
+            tool_count
         );
-        // Log first 200 chars of each message for debugging
+
+        // Debug: Log message roles
         for (i, msg) in messages.iter().enumerate() {
             tracing::debug!(
-                "  Message {}: role={:?}, type={:?}, content_len={}, preview={}...",
+                "  Message {}: role={:?}, type={:?}, content_len={}",
                 i,
                 msg.role,
                 msg.message_type,
-                msg.content.len(),
-                msg.content.chars().take(200).collect::<String>()
+                msg.content.len()
             );
         }
 
         // Convert AutoAgents messages to CodeGraph messages
-        // CRITICAL: Must include tool call information from message_type, not just content!
         let cg_messages: Vec<Message> = messages
             .iter()
             .map(|msg| {
-                // Build content that includes tool information when present
                 let content = match &msg.message_type {
                     MessageType::ToolUse(tool_calls) => {
-                        // Assistant made tool calls - include them in content so LLM sees what was called
                         let tool_calls_json = serde_json::to_string_pretty(tool_calls)
                             .unwrap_or_else(|_| "[]".to_string());
                         if msg.content.is_empty() {
@@ -177,7 +139,6 @@ impl ChatProvider for CodeGraphChatAdapter {
                         }
                     }
                     MessageType::ToolResult(tool_results) => {
-                        // Tool results - include the actual results so LLM sees what came back
                         let results_json = serde_json::to_string_pretty(tool_results)
                             .unwrap_or_else(|_| "[]".to_string());
                         if msg.content.is_empty() {
@@ -187,7 +148,6 @@ impl ChatProvider for CodeGraphChatAdapter {
                         }
                     }
                     MessageType::Text | MessageType::Image(_) | MessageType::Pdf(_) | MessageType::ImageURL(_) => {
-                        // For text and other types, use content as-is
                         msg.content.clone()
                     }
                 };
@@ -197,34 +157,28 @@ impl ChatProvider for CodeGraphChatAdapter {
                         ChatRole::System => MessageRole::System,
                         ChatRole::User => MessageRole::User,
                         ChatRole::Assistant => MessageRole::Assistant,
-                        ChatRole::Tool => MessageRole::User, // Tool results sent as user messages
+                        ChatRole::Tool => MessageRole::User,
                     },
                     content,
                 }
             })
             .collect();
 
-        // Convert AutoAgents json_schema to CodeGraph ResponseFormat
-        // All providers now support response_format (OpenAI added in v1.1.1)
-        let _provider_name = self.provider.provider_name().to_lowercase();
+        // Convert AutoAgents tools to CodeGraph ToolDefinitions
+        let cg_tools = tools.map(Self::convert_tools);
 
-        let response_format = {
-            json_schema
-                .and_then(|schema| {
-                    schema
-                        .schema
-                        .map(|schema_value| ResponseFormat::JsonSchema {
-                            json_schema: codegraph_ai::llm_provider::JsonSchema {
-                                name: schema.name,
-                                schema: schema_value,
-                                strict: schema.strict.unwrap_or(true),
-                            },
-                        })
-                })
-                .or_else(|| Some(Self::codegraph_toolcall_schema()))
-        };
+        // Convert AutoAgents StructuredOutputFormat to CodeGraph ResponseFormat
+        let response_format = json_schema.map(|schema| {
+            codegraph_ai::llm_provider::ResponseFormat::JsonSchema {
+                json_schema: codegraph_ai::llm_provider::JsonSchema {
+                    name: schema.name,
+                    schema: schema.schema.unwrap_or_default(),
+                    strict: schema.strict.unwrap_or(true),
+                },
+            }
+        });
 
-        // Call CodeGraph LLM provider with structured output support
+        // Call CodeGraph LLM provider with native tool calling and structured output
         let config = codegraph_ai::llm_provider::GenerationConfig {
             temperature: 0.1,
             max_tokens: self.get_max_tokens(),
@@ -234,13 +188,21 @@ impl ChatProvider for CodeGraphChatAdapter {
 
         let response = self
             .provider
-            .generate_chat(&cg_messages, &config)
+            .generate_chat_with_tools(&cg_messages, cg_tools.as_deref(), &config)
             .await
             .map_err(|e| LLMError::Generic(e.to_string()))?;
 
-        // Wrap response in AutoAgents ChatResponse
+        tracing::info!(
+            "📬 LLM response: content_len={}, tool_calls={}, finish_reason={:?}",
+            response.content.len(),
+            response.tool_calls.as_ref().map_or(0, |tc| tc.len()),
+            response.finish_reason
+        );
+
+        // Wrap response in AutoAgents ChatResponse with native tool calls
         Ok(Box::new(CodeGraphChatResponse {
             content: response.content,
+            tool_calls: response.tool_calls,
             _total_tokens: response.total_tokens.unwrap_or(0),
             step_counter: Arc::new(AtomicU64::new(1)),
         }))
@@ -317,6 +279,8 @@ impl autoagents::llm::LLMProvider for CodeGraphChatAdapter {}
 #[derive(Debug)]
 struct CodeGraphChatResponse {
     content: String,
+    /// Native tool calls from the LLM provider (OpenAI/Anthropic tool calling)
+    tool_calls: Option<Vec<codegraph_ai::llm_provider::ToolCall>>,
     _total_tokens: usize,
     step_counter: Arc<AtomicU64>,
 }
@@ -412,19 +376,59 @@ impl ChatResponse for CodeGraphChatResponse {
 
     fn tool_calls(&self) -> Option<Vec<ToolCall>> {
         tracing::info!(
-            "tool_calls() called with content length: {}",
-            self.content.len()
+            "tool_calls() called with content length: {}, has native tool_calls: {}",
+            self.content.len(),
+            self.tool_calls.is_some()
         );
+
+        // First, check for native tool calls from provider (OpenAI/Anthropic tool calling API)
+        if let Some(ref native_calls) = self.tool_calls {
+            if !native_calls.is_empty() {
+                tracing::info!(
+                    "Using {} native tool calls from provider",
+                    native_calls.len()
+                );
+
+                let step_number = self.step_counter.fetch_add(1, Ordering::SeqCst) as usize;
+                let tool_names: Vec<&str> = native_calls.iter().map(|t| t.function.name.as_str()).collect();
+                DebugLogger::log_reasoning_step(step_number, "Native tool calling", Some(&tool_names.join(", ")));
+
+                // Convert CodeGraph ToolCall to AutoAgents ToolCall
+                let autoagents_calls: Vec<ToolCall> = native_calls
+                    .iter()
+                    .map(|tc| ToolCall {
+                        id: tc.id.clone(),
+                        call_type: tc.call_type.clone(),
+                        function: FunctionCall {
+                            name: tc.function.name.clone(),
+                            arguments: tc.function.arguments.clone(),
+                        },
+                    })
+                    .collect();
+
+                for call in &autoagents_calls {
+                    tracing::info!(
+                        "Returning native tool call: name='{}', args='{}', id='{}'",
+                        call.function.name,
+                        call.function.arguments,
+                        call.id
+                    );
+                }
+
+                return Some(autoagents_calls);
+            }
+        }
+
+        // Fallback: Try to parse JSON response (legacy prompt-based tool calling)
         tracing::debug!(
-            "Content preview: {}",
+            "No native tool calls, trying JSON parsing. Content preview: {}",
             &self.content.chars().take(200).collect::<String>()
         );
 
-        // Try to parse the response as CodeGraph's JSON format
         match serde_json::from_str::<CodeGraphLLMResponse>(&self.content) {
             Ok(parsed) => {
                 tracing::info!(
-                    "Successfully parsed CodeGraphLLMResponse. has_tool_call={}, is_final={}",
+                    "Parsed legacy JSON format. has_tool_call={}, is_final={}",
                     parsed.tool_call.is_some(),
                     parsed.is_final
                 );
@@ -454,10 +458,7 @@ impl ChatResponse for CodeGraphChatResponse {
                 // If there's a tool_call and is_final is false, convert to AutoAgents format
                 if let Some(tool_call) = parsed.tool_call {
                     if !parsed.is_final {
-                        // Parameters already a JSON string from structured output
                         let arguments = tool_call.parameters_json.clone();
-
-                        // Generate unique ID using atomic counter
                         let call_id = TOOL_CALL_COUNTER.fetch_add(1, Ordering::SeqCst);
 
                         let autoagents_tool_call = ToolCall {
@@ -470,7 +471,7 @@ impl ChatResponse for CodeGraphChatResponse {
                         };
 
                         tracing::info!(
-                            "Returning tool call: name='{}', args='{}', id='{}'",
+                            "Returning legacy tool call: name='{}', args='{}', id='{}'",
                             tool_call.tool_name,
                             arguments,
                             autoagents_tool_call.id
@@ -485,16 +486,15 @@ impl ChatResponse for CodeGraphChatResponse {
                 }
             }
             Err(e) => {
-                // Not a JSON response or doesn't match our format - that's fine
-                tracing::warn!(
-                    "Response is not CodeGraph JSON format: {}. Content: {}",
-                    e,
-                    &self.content.chars().take(500).collect::<String>()
+                // Not a JSON response - that's expected with native tool calling
+                tracing::debug!(
+                    "Response is not JSON format (expected with native tool calling): {}",
+                    e
                 );
             }
         }
 
-        tracing::info!("tool_calls() returning None");
+        tracing::info!("tool_calls() returning None - agent should complete");
         None
     }
 }
@@ -827,6 +827,7 @@ mod tests {
                 "is_final": false
             }"#
             .to_string(),
+            tool_calls: None,
             _total_tokens: 0,
             step_counter: Arc::new(AtomicU64::new(1)),
         };
@@ -852,6 +853,7 @@ mod tests {
                 "is_final": false
             }"#
             .to_string(),
+            tool_calls: None,
             _total_tokens: 0,
             step_counter: Arc::new(AtomicU64::new(1)),
         };
@@ -878,6 +880,7 @@ mod tests {
                 "is_final": false
             }"#
             .to_string(),
+            tool_calls: None,
             _total_tokens: 0,
             step_counter: Arc::new(AtomicU64::new(1)),
         };
@@ -903,6 +906,7 @@ mod tests {
                 "is_final": false
             }"#
             .to_string(),
+            tool_calls: None,
             _total_tokens: 0,
             step_counter: Arc::new(AtomicU64::new(1)),
         };
@@ -931,6 +935,7 @@ mod tests {
                 completion_tokens: None,
                 finish_reason: Some("stop".to_string()),
                 model: "mock".to_string(),
+                tool_calls: None,
             })
         }
 
@@ -1072,6 +1077,7 @@ mod tests {
                 "is_final": false
             }"#
             .to_string(),
+            tool_calls: None,
             _total_tokens: 0,
             step_counter: Arc::new(AtomicU64::new(1)),
         };
@@ -1101,6 +1107,7 @@ mod tests {
                 "is_final": false
             }"#
             .to_string(),
+            tool_calls: None,
             _total_tokens: 0,
             step_counter: Arc::new(AtomicU64::new(1)),
         };

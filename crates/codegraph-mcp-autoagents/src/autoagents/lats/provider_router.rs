@@ -184,6 +184,7 @@ mod tests {
                 completion_tokens: Some(5),
                 finish_reason: Some("stop".to_string()),
                 model: "mock-model".to_string(),
+                tool_calls: None,
             })
         }
     }

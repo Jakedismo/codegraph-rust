@@ -105,17 +105,18 @@ mod tests {
     }
 
     #[test]
-    fn test_json_format_enforcement() {
+    fn test_tool_call_requirement() {
         for prompt in [
             DEPENDENCY_ANALYSIS_TERSE,
             DEPENDENCY_ANALYSIS_BALANCED,
             DEPENDENCY_ANALYSIS_DETAILED,
             DEPENDENCY_ANALYSIS_EXPLORATORY,
         ] {
-            // All prompts should enforce JSON format
-            assert!(prompt.contains("\"reasoning\""));
-            assert!(prompt.contains("\"tool_call\""));
-            assert!(prompt.contains("\"is_final\""));
+            // All prompts should require tool calls before final analysis
+            assert!(
+                prompt.contains("tool call") || prompt.contains("tool_call"),
+                "Prompt should mention tool calls"
+            );
         }
     }
 

@@ -35,7 +35,6 @@ CRITICAL CONSTRAINTS:
 - Omit architectural patterns and quality metrics
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "core_components": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "dependency_tree": {}, "execution_flows": [], "architecture": {}, "documentation_references": []}
 
 DELIVERABLE:
@@ -81,7 +80,6 @@ CRITICAL CONSTRAINTS:
 - Focus on relationships and integration points
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "core_components": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "dependency_tree": {}, "execution_flows": [], "architecture": {}, "documentation_references": []}
 
 DELIVERABLE:
@@ -132,7 +130,6 @@ CRITICAL CONSTRAINTS:
 - Build narrative connecting different context dimensions
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "core_components": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "dependency_tree": {}, "execution_flows": [], "architecture": {}, "documentation_references": []}
 
 DELIVERABLE:
@@ -196,7 +193,6 @@ CRITICAL CONSTRAINTS:
 8. Connect findings across different analysis dimensions
 
 FORMAT:
-- Intermediate: {"reasoning": "...", "tool_call": {...}, "is_final": false}
 - Final: {"analysis": "...", "core_components": [{"name": "X", "file_path": "a.rs", "line_number": 1}], "dependency_tree": {}, "execution_flows": [], "architecture": {}, "documentation_references": []}
 
 DELIVERABLE:
