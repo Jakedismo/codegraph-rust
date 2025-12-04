@@ -52,6 +52,8 @@ CodeGraph doesn't return a list of files and wish you luck. It ships **7 agentic
 
 Each tool runs a **reasoning agent** (ReAct or LATS) that plans, searches, analyzes graph relationships, and synthesizes an answer. Not a search result—an *answer*.
 
+> **[View Agent Context Gathering Flow](docs/architecture/agent-context-gathering-flow.html)** - Interactive diagram showing how ReAct and LATS agents use graph tools to gather context.
+
 ### 3. Tier-Aware Intelligence
 
 Here's something clever: CodeGraph automatically adjusts its behavior based on the LLM's context window that you configured for the codegraph agent.

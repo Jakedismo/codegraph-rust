@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeGraph Agent Context Gathering Flow</title>
+    <style>
+        :root {
+            /* Color scheme based on spec */
+            --mcp-layer: #3B82F6;
+            --react-color: #10B981;
+            --lats-color: #8B5CF6;
+            --graph-tools: #F59E0B;
+            --data-layer: #6B7280;
+            --llm-layer: #EC4899;
+
+            /* Dark theme (default) */
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --bg-glass: rgba(30, 41, 59, 0.7);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border-color: rgba(148, 163, 184, 0.2);
+            --border-glass: rgba(148, 163, 184, 0.1);
+            --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.3);
+            --backdrop-blur: blur(12px);
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f1f5f9;
+            --bg-glass: rgba(255, 255, 255, 0.7);
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #64748b;
+            --border-color: rgba(71, 85, 105, 0.2);
+            --border-glass: rgba(71, 85, 105, 0.1);
+            --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* Breadcrumb Navigation */
+        .breadcrumb {
+            padding: 1rem 2rem;
+            background: var(--bg-glass);
+            backdrop-filter: var(--backdrop-blur);
+            border-bottom: 1px solid var(--border-glass);
+            font-size: 0.875rem;
+        }
+
+        .breadcrumb a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .breadcrumb a:hover {
+            color: var(--mcp-layer);
+        }
+
+        .breadcrumb span {
+            color: var(--text-muted);
+            margin: 0 0.5rem;
+        }
+
+        .breadcrumb .current {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            padding: 2rem;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            border-bottom: 1px solid var(--border-glass);
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--mcp-layer), var(--lats-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            padding: 1.5rem;
+            flex-wrap: wrap;
+            background: var(--bg-glass);
+            backdrop-filter: var(--backdrop-blur);
+            border-bottom: 1px solid var(--border-glass);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-glass);
+            backdrop-filter: var(--backdrop-blur);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            border-color: var(--mcp-layer);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.2);
+        }
+
+        .btn.active {
+            background: var(--mcp-layer);
+            border-color: var(--mcp-layer);
+            color: white;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 0.25rem;
+            padding: 0.25rem;
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+        }
+
+        .btn-group .btn {
+            border: none;
+            border-radius: 6px;
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: flex;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .diagram-area {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .sidebar {
+            width: 320px;
+            flex-shrink: 0;
+        }
+
+        /* Glassmorphism Panels */
+        .glass-panel {
+            background: var(--bg-glass);
+            backdrop-filter: var(--backdrop-blur);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            padding: 1.25rem;
+            box-shadow: var(--shadow-glass);
+            margin-bottom: 1rem;
+        }
+
+        .glass-panel h3 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .glass-panel h3::before {
+            content: '';
+            width: 3px;
+            height: 16px;
+            background: linear-gradient(to bottom, var(--mcp-layer), var(--lats-color));
+            border-radius: 2px;
+        }
+
+        /* Legend */
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0;
+            font-size: 0.8rem;
+            border-bottom: 1px solid var(--border-glass);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .legend-item:last-child {
+            border-bottom: none;
+        }
+
+        .legend-item:hover {
+            padding-left: 0.5rem;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+
+        .legend-item.mcp .legend-color { background: var(--mcp-layer); }
+        .legend-item.react .legend-color { background: var(--react-color); }
+        .legend-item.lats .legend-color { background: var(--lats-color); }
+        .legend-item.tools .legend-color { background: var(--graph-tools); }
+        .legend-item.data .legend-color { background: var(--data-layer); }
+        .legend-item.llm .legend-color { background: var(--llm-layer); }
+
+        /* Comparison Table */
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 0.5rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-glass);
+        }
+
+        .comparison-table th {
+            color: var(--text-muted);
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 0.65rem;
+            letter-spacing: 0.05em;
+        }
+
+        .comparison-table .react-col {
+            color: var(--react-color);
+        }
+
+        .comparison-table .lats-col {
+            color: var(--lats-color);
+        }
+
+        /* Tool Details */
+        .tool-detail {
+            padding: 0.75rem;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .tool-detail h4 {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--graph-tools);
+            margin-bottom: 0.25rem;
+        }
+
+        .tool-detail p {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        /* SVG Diagram */
+        .diagram-svg {
+            width: 100%;
+            height: auto;
+            border-radius: 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-glass);
+            overflow: visible;
+        }
+
+        /* Layer styles */
+        .layer-group {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .layer-group.dimmed {
+            opacity: 0.2;
+        }
+
+        .layer-group.highlighted {
+            filter: brightness(1.1);
+        }
+
+        /* Node styles */
+        .node-box {
+            rx: 12;
+            ry: 12;
+            transition: all 0.3s ease;
+        }
+
+        .node-box:hover {
+            filter: brightness(1.15);
+            cursor: pointer;
+        }
+
+        .node-box.selected {
+            stroke-width: 3;
+            filter: drop-shadow(0 0 12px currentColor);
+        }
+
+        .node-text {
+            font-family: inherit;
+            font-size: 11px;
+            fill: var(--text-primary);
+            font-weight: 600;
+            pointer-events: none;
+        }
+
+        .node-subtext {
+            font-family: inherit;
+            font-size: 9px;
+            fill: var(--text-secondary);
+            pointer-events: none;
+        }
+
+        /* Animated arrows */
+        .flow-arrow {
+            stroke-width: 2;
+            fill: none;
+            stroke-dasharray: 8, 4;
+            animation: flowAnimation 1.5s linear infinite;
+        }
+
+        .flow-arrow.react {
+            stroke: var(--react-color);
+        }
+
+        .flow-arrow.lats {
+            stroke: var(--lats-color);
+        }
+
+        .flow-arrow.shared {
+            stroke: var(--graph-tools);
+        }
+
+        @keyframes flowAnimation {
+            to {
+                stroke-dashoffset: -24;
+            }
+        }
+
+        .flow-arrow.paused {
+            animation-play-state: paused;
+        }
+
+        /* Tool tooltip */
+        .tool-tooltip {
+            position: fixed;
+            background: var(--bg-glass);
+            backdrop-filter: var(--backdrop-blur);
+            border: 1px solid var(--border-glass);
+            border-radius: 12px;
+            padding: 1rem;
+            max-width: 280px;
+            box-shadow: var(--shadow-glass);
+            z-index: 1000;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.2s ease;
+        }
+
+        .tool-tooltip.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .tool-tooltip h4 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--graph-tools);
+            margin-bottom: 0.5rem;
+        }
+
+        .tool-tooltip p {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .tool-tooltip .params {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            font-family: monospace;
+            background: var(--bg-tertiary);
+            padding: 0.5rem;
+            border-radius: 6px;
+        }
+
+        /* Theme toggle */
+        .theme-toggle {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 200;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            box-shadow: var(--shadow-glass);
+        }
+
+        /* Print styles */
+        @media print {
+            .controls, .theme-toggle, .breadcrumb {
+                display: none;
+            }
+
+            .main-container {
+                display: block;
+            }
+
+            .sidebar {
+                width: 100%;
+                display: flex;
+                gap: 1rem;
+                flex-wrap: wrap;
+            }
+
+            .glass-panel {
+                page-break-inside: avoid;
+                background: white;
+                border: 1px solid #ddd;
+            }
+
+            body {
+                background: white;
+                color: black;
+            }
+
+            .diagram-svg {
+                max-height: 60vh;
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .main-container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 1rem;
+            }
+
+            .glass-panel {
+                margin-bottom: 0;
+            }
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .controls {
+                gap: 0.5rem;
+            }
+
+            .btn {
+                font-size: 0.7rem;
+                padding: 0.4rem 0.75rem;
+            }
+        }
+
+        /* Agent Flow Sections */
+        .section-label {
+            font-size: 13px;
+            font-weight: 700;
+            fill: var(--text-primary);
+            text-anchor: middle;
+        }
+
+        .phase-label {
+            font-size: 9px;
+            font-weight: 500;
+            fill: var(--text-muted);
+        }
+
+        /* Glassmorphism effect for SVG */
+        .glass-rect {
+            fill: var(--bg-glass);
+            stroke: var(--border-glass);
+            stroke-width: 1;
+            rx: 16;
+            ry: 16;
+        }
+    </style>
+</head>
+<body>
+    <button class="btn theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+        <span id="themeIcon">&#9790;</span>
+    </button>
+
+    <nav class="breadcrumb">
+        <a href="./codegraph-architecture.html">Architecture</a>
+        <span>/</span>
+        <span class="current">Agent Context Gathering Flow</span>
+    </nav>
+
+    <header>
+        <h1>Agent Context Gathering Flow</h1>
+        <p class="subtitle">How CodeGraph ReAct and LATS agents use graph tools to answer queries</p>
+    </header>
+
+    <div class="controls">
+        <div class="btn-group">
+            <button class="btn active" data-filter="all" onclick="filterLayer('all')">All Layers</button>
+            <button class="btn" data-filter="mcp" onclick="filterLayer('mcp')">MCP Entry</button>
+            <button class="btn" data-filter="react" onclick="filterLayer('react')">ReAct Flow</button>
+            <button class="btn" data-filter="lats" onclick="filterLayer('lats')">LATS Flow</button>
+            <button class="btn" data-filter="tools" onclick="filterLayer('tools')">Graph Tools</button>
+            <button class="btn" data-filter="data" onclick="filterLayer('data')">Data Layer</button>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn active" data-view="flow" onclick="setView('flow')">Flow View</button>
+            <button class="btn" data-view="comparison" onclick="setView('comparison')">Comparison</button>
+        </div>
+
+        <button class="btn" onclick="toggleAnimation()">
+            <span id="animToggle">Pause Animation</span>
+        </button>
+    </div>
+
+    <div class="main-container">
+        <div class="diagram-area">
+            <svg class="diagram-svg" viewBox="0 0 1400 1100" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <!-- Gradients -->
+                    <linearGradient id="mcpGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:0.2"/>
+                        <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:0.05"/>
+                    </linearGradient>
+                    <linearGradient id="reactGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#10B981;stop-opacity:0.2"/>
+                        <stop offset="100%" style="stop-color:#10B981;stop-opacity:0.05"/>
+                    </linearGradient>
+                    <linearGradient id="latsGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#8B5CF6;stop-opacity:0.2"/>
+                        <stop offset="100%" style="stop-color:#8B5CF6;stop-opacity:0.05"/>
+                    </linearGradient>
+                    <linearGradient id="toolsGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#F59E0B;stop-opacity:0.2"/>
+                        <stop offset="100%" style="stop-color:#F59E0B;stop-opacity:0.05"/>
+                    </linearGradient>
+                    <linearGradient id="dataGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#6B7280;stop-opacity:0.2"/>
+                        <stop offset="100%" style="stop-color:#6B7280;stop-opacity:0.05"/>
+                    </linearGradient>
+                    <linearGradient id="llmGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#EC4899;stop-opacity:0.2"/>
+                        <stop offset="100%" style="stop-color:#EC4899;stop-opacity:0.05"/>
+                    </linearGradient>
+
+                    <!-- Arrow markers -->
+                    <marker id="arrowReact" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <path d="M0,0 L0,6 L9,3 z" fill="#10B981"/>
+                    </marker>
+                    <marker id="arrowLats" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <path d="M0,0 L0,6 L9,3 z" fill="#8B5CF6"/>
+                    </marker>
+                    <marker id="arrowShared" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <path d="M0,0 L0,6 L9,3 z" fill="#F59E0B"/>
+                    </marker>
+                    <marker id="arrowMcp" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <path d="M0,0 L0,6 L9,3 z" fill="#3B82F6"/>
+                    </marker>
+                </defs>
+
+                <!-- ============================================ -->
+                <!-- LAYER 1: MCP Entry Layer -->
+                <!-- ============================================ -->
+                <g class="layer-group" data-layer="mcp">
+                    <rect x="30" y="30" width="1340" height="140" fill="url(#mcpGrad)" stroke="#3B82F6" stroke-width="1" rx="16" ry="16"/>
+                    <text class="section-label" x="700" y="55" fill="#3B82F6">MCP Entry Layer</text>
+
+                    <!-- MCP Client -->
+                    <g class="node" data-node="mcp-client" onclick="selectNode('mcp-client')">
+                        <rect class="node-box" x="50" y="75" width="120" height="70" fill="#1e293b" stroke="#3B82F6" stroke-width="2"/>
+                        <text class="node-text" x="110" y="105" text-anchor="middle">MCP Client</text>
+                        <text class="node-subtext" x="110" y="125" text-anchor="middle">Claude Desktop</text>
+                        <text class="node-subtext" x="110" y="137" text-anchor="middle">Cursor, etc.</text>
+                    </g>
+
+                    <!-- 7 Agentic MCP Tools -->
+                    <g class="node" data-node="agentic-tools" onclick="selectNode('agentic-tools')">
+                        <rect class="node-box" x="220" y="65" width="700" height="85" fill="#1e293b" stroke="#3B82F6" stroke-width="2"/>
+                        <text class="node-text" x="570" y="90" text-anchor="middle">7 Agentic MCP Tools</text>
+                        <text class="node-subtext" x="280" y="115" text-anchor="start">agentic_code_search</text>
+                        <text class="node-subtext" x="420" y="115" text-anchor="start">agentic_dependency_analysis</text>
+                        <text class="node-subtext" x="600" y="115" text-anchor="start">agentic_call_chain_analysis</text>
+                        <text class="node-subtext" x="785" y="115" text-anchor="start">agentic_architecture_analysis</text>
+                        <text class="node-subtext" x="280" y="135" text-anchor="start">agentic_api_surface_analysis</text>
+                        <text class="node-subtext" x="470" y="135" text-anchor="start">agentic_context_builder</text>
+                        <text class="node-subtext" x="650" y="135" text-anchor="start">agentic_semantic_question</text>
+                    </g>
+
+                    <!-- CodeGraphExecutor -->
+                    <g class="node" data-node="executor" onclick="selectNode('executor')">
+                        <rect class="node-box" x="970" y="75" width="180" height="70" fill="#1e293b" stroke="#3B82F6" stroke-width="2"/>
+                        <text class="node-text" x="1060" y="100" text-anchor="middle">CodeGraphExecutor</text>
+                        <text class="node-subtext" x="1060" y="118" text-anchor="middle">Detects architecture</text>
+                        <text class="node-subtext" x="1060" y="132" text-anchor="middle">Manages timeout</text>
+                    </g>
+
+                    <!-- Arrows -->
+                    <path class="flow-arrow shared" d="M170,110 L215,110" marker-end="url(#arrowMcp)"/>
+                    <path class="flow-arrow shared" d="M920,107 L965,107" marker-end="url(#arrowMcp)"/>
+                </g>
+
+                <!-- ============================================ -->
+                <!-- LAYER 2: Architecture Selection -->
+                <!-- ============================================ -->
+                <g class="layer-group" data-layer="selection">
+                    <rect x="400" y="185" width="600" height="75" fill="url(#mcpGrad)" stroke="#3B82F6" stroke-width="1" rx="12" ry="12"/>
+
+                    <g class="node" data-node="factory" onclick="selectNode('factory')">
+                        <rect class="node-box" x="420" y="195" width="260" height="55" fill="#1e293b" stroke="#3B82F6" stroke-width="2"/>
+                        <text class="node-text" x="550" y="218" text-anchor="middle">AgentExecutorFactory</text>
+                        <text class="node-subtext" x="550" y="238" text-anchor="middle">CODEGRAPH_AGENT_ARCHITECTURE env var</text>
+                    </g>
+
+                    <!-- Branch arrows -->
+                    <g class="node" data-node="react-select" onclick="highlightPath('react')">
+                        <rect class="node-box" x="720" y="195" width="120" height="55" fill="#1e293b" stroke="#10B981" stroke-width="2"/>
+                        <text class="node-text" x="780" y="218" text-anchor="middle" fill="#10B981">ReAct</text>
+                        <text class="node-subtext" x="780" y="236" text-anchor="middle">(default)</text>
+                    </g>
+
+                    <g class="node" data-node="lats-select" onclick="highlightPath('lats')">
+                        <rect class="node-box" x="860" y="195" width="120" height="55" fill="#1e293b" stroke="#8B5CF6" stroke-width="2"/>
+                        <text class="node-text" x="920" y="218" text-anchor="middle" fill="#8B5CF6">LATS</text>
+                        <text class="node-subtext" x="920" y="236" text-anchor="middle">(experimental)</text>
+                    </g>
+
+                    <path class="flow-arrow shared" d="M1060,145 L700,185" marker-end="url(#arrowMcp)"/>
+                    <path class="flow-arrow react" d="M680,222 L715,222" marker-end="url(#arrowReact)"/>
+                    <path class="flow-arrow lats" d="M840,222 L855,222" marker-end="url(#arrowLats)"/>
+                </g>
+
+                <!-- ============================================ -->
+                <!-- LAYER 3A: ReAct Agent Flow (Left) -->
+                <!-- ============================================ -->
+                <g class="layer-group" data-layer="react">
+                    <rect x="30" y="280" width="640" height="400" fill="url(#reactGrad)" stroke="#10B981" stroke-width="1" rx="16" ry="16"/>
+                    <text class="section-label" x="350" y="305" fill="#10B981">ReAct Agent Flow (Linear Iterative)</text>
+
+                    <!-- CodeGraphAgentBuilder -->
+                    <g class="node" data-node="agent-builder" onclick="selectNode('agent-builder')">
+                        <rect class="node-box" x="50" y="325" width="180" height="90" fill="#1e293b" stroke="#10B981" stroke-width="2"/>
+                        <text class="node-text" x="140" y="350" text-anchor="middle">CodeGraphAgentBuilder</text>
+                        <text class="node-subtext" x="140" y="370" text-anchor="middle">CodeGraphChatAdapter</text>
+                        <text class="node-subtext" x="140" y="385" text-anchor="middle">TierAwarePromptPlugin</text>
+                        <text class="node-subtext" x="140" y="400" text-anchor="middle">SlidingWindowMemory (40)</text>
+                    </g>
+
+                    <!-- TierAwareReActAgent -->
+                    <g class="node" data-node="tier-react" onclick="selectNode('tier-react')">
+                        <rect class="node-box" x="270" y="325" width="180" height="90" fill="#1e293b" stroke="#10B981" stroke-width="2"/>
+                        <text class="node-text" x="360" y="350" text-anchor="middle">TierAwareReActAgent</text>
+                        <text class="node-subtext" x="360" y="370" text-anchor="middle">max_turns by tier:</text>
+                        <text class="node-subtext" x="360" y="385" text-anchor="middle">Small:5 Med:10</text>
+                        <text class="node-subtext" x="360" y="400" text-anchor="middle">Large:15 Massive:20</text>
+                    </g>
+
+                    <!-- AutoAgents Framework -->
+                    <g class="node" data-node="autoagents" onclick="selectNode('autoagents')">
+                        <rect class="node-box" x="490" y="325" width="160" height="90" fill="#1e293b" stroke="#10B981" stroke-width="2"/>
+                        <text class="node-text" x="570" y="350" text-anchor="middle">AutoAgents</text>
+                        <text class="node-subtext" x="570" y="370" text-anchor="middle">ReActAgent</text>
+                        <text class="node-subtext" x="570" y="385" text-anchor="middle">Thought-Action-Obs</text>
+                        <text class="node-subtext" x="570" y="400" text-anchor="middle">ToolT trait</text>
+                    </g>
+
+                    <!-- React cycle visualization -->
+                    <g class="node" data-node="react-cycle" onclick="selectNode('react-cycle')">
+                        <rect class="node-box" x="100" y="440" width="500" height="85" fill="#1e293b" stroke="#10B981" stroke-width="2"/>
+                        <text class="node-text" x="350" y="465" text-anchor="middle">Iterative Thought-Action-Observation Cycle</text>
+
+                        <!-- Cycle boxes -->
+                        <rect x="120" y="480" width="90" height="35" rx="6" fill="#10B981" opacity="0.2" stroke="#10B981"/>
+                        <text class="node-subtext" x="165" y="502" text-anchor="middle" fill="#10B981">1. Thought</text>
+
+                        <rect x="230" y="480" width="90" height="35" rx="6" fill="#10B981" opacity="0.3" stroke="#10B981"/>
+                        <text class="node-subtext" x="275" y="502" text-anchor="middle" fill="#10B981">2. Action</text>
+
+                        <rect x="340" y="480" width="100" height="35" rx="6" fill="#10B981" opacity="0.4" stroke="#10B981"/>
+                        <text class="node-subtext" x="390" y="502" text-anchor="middle" fill="#10B981">3. Observation</text>
+
+                        <rect x="460" y="480" width="120" height="35" rx="6" fill="#10B981" opacity="0.5" stroke="#10B981"/>
+                        <text class="node-subtext" x="520" y="502" text-anchor="middle" fill="#10B981">4. Repeat/End</text>
+                    </g>
+
+                    <!-- Tool Execution Path -->
+                    <g class="node" data-node="react-tool-path" onclick="selectNode('react-tool-path')">
+                        <rect class="node-box" x="100" y="545" width="500" height="60" fill="#1e293b" stroke="#10B981" stroke-width="2"/>
+                        <text class="node-text" x="350" y="570" text-anchor="middle">Tool Execution: AutoAgents ToolT</text>
+                        <text class="node-subtext" x="350" y="590" text-anchor="middle">Serde deserializes params (APPLIES DEFAULTS) -> GraphToolExecutorAdapter -> GraphToolExecutor</text>
+                    </g>
+
+                    <!-- Arrows -->
+                    <path class="flow-arrow react" d="M780,250 L350,280" marker-end="url(#arrowReact)"/>
+                    <path class="flow-arrow react" d="M230,370 L265,370" marker-end="url(#arrowReact)"/>
+                    <path class="flow-arrow react" d="M450,370 L485,370" marker-end="url(#arrowReact)"/>
+                    <path class="flow-arrow react" d="M570,415 L570,435" marker-end="url(#arrowReact)"/>
+                    <path class="flow-arrow react" d="M350,525 L350,540" marker-end="url(#arrowReact)"/>
+                </g>
+
+                <!-- ============================================ -->
+                <!-- LAYER 3B: LATS Agent Flow (Right) -->
+                <!-- ============================================ -->
+                <g class="layer-group" data-layer="lats">
+                    <rect x="690" y="280" width="680" height="400" fill="url(#latsGrad)" stroke="#8B5CF6" stroke-width="1" rx="16" ry="16"/>
+                    <text class="section-label" x="1030" y="305" fill="#8B5CF6">LATS Agent Flow (Tree Search)</text>
+
+                    <!-- LATSExecutor -->
+                    <g class="node" data-node="lats-executor" onclick="selectNode('lats-executor')">
+                        <rect class="node-box" x="710" y="325" width="180" height="90" fill="#1e293b" stroke="#8B5CF6" stroke-width="2"/>
+                        <text class="node-text" x="800" y="350" text-anchor="middle">LATSExecutor</text>
+                        <text class="node-subtext" x="800" y="370" text-anchor="middle">Manages search tree</text>
+                        <text class="node-subtext" x="800" y="385" text-anchor="middle">4-phase algorithm</text>
+                        <text class="node-subtext" x="800" y="400" text-anchor="middle">UCT exploration</text>
+                    </g>
+
+                    <!-- 4 Phases -->
+                    <g class="node" data-node="lats-phases" onclick="selectNode('lats-phases')">
+                        <rect class="node-box" x="920" y="325" width="420" height="170" fill="#1e293b" stroke="#8B5CF6" stroke-width="2"/>
+                        <text class="node-text" x="1130" y="350" text-anchor="middle">4-Phase Algorithm</text>
+
+                        <!-- Phase 1: Selection -->
+                        <rect x="940" y="365" width="180" height="50" rx="8" fill="#8B5CF6" opacity="0.15" stroke="#8B5CF6"/>
+                        <text class="node-subtext" x="945" y="382" fill="#8B5CF6" font-weight="600">Phase 1: Selection</text>
+                        <text class="node-subtext" x="945" y="398">UCT algorithm selects leaves</text>
+                        <text class="node-subtext" x="945" y="410">exploration_weight = sqrt(2)</text>
+
+                        <!-- Phase 2: Expansion -->
+                        <rect x="1140" y="365" width="180" height="50" rx="8" fill="#8B5CF6" opacity="0.25" stroke="#8B5CF6"/>
+                        <text class="node-subtext" x="1145" y="382" fill="#8B5CF6" font-weight="600">Phase 2: Expansion</text>
+                        <text class="node-subtext" x="1145" y="398">LLM generates actions</text>
+                        <text class="node-subtext" x="1145" y="410">Direct executor call</text>
+
+                        <!-- Phase 3: Evaluation -->
+                        <rect x="940" y="425" width="180" height="50" rx="8" fill="#8B5CF6" opacity="0.35" stroke="#8B5CF6"/>
+                        <text class="node-subtext" x="945" y="442" fill="#8B5CF6" font-weight="600">Phase 3: Evaluation</text>
+                        <text class="node-subtext" x="945" y="458">LLM scores quality</text>
+                        <text class="node-subtext" x="945" y="470">is_solution detection</text>
+
+                        <!-- Phase 4: Backpropagation -->
+                        <rect x="1140" y="425" width="180" height="50" rx="8" fill="#8B5CF6" opacity="0.45" stroke="#8B5CF6"/>
+                        <text class="node-subtext" x="1145" y="442" fill="#8B5CF6" font-weight="600">Phase 4: Backprop</text>
+                        <text class="node-subtext" x="1145" y="458">Updates ancestor scores</text>
+                        <text class="node-subtext" x="1145" y="470">0.7*max + 0.3*avg</text>
+                    </g>
+
+                    <!-- Termination Conditions -->
+                    <g class="node" data-node="lats-termination" onclick="selectNode('lats-termination')">
+                        <rect class="node-box" x="710" y="520" width="200" height="75" fill="#1e293b" stroke="#8B5CF6" stroke-width="2"/>
+                        <text class="node-text" x="810" y="545" text-anchor="middle">Termination</text>
+                        <text class="node-subtext" x="810" y="563" text-anchor="middle">Solution found</text>
+                        <text class="node-subtext" x="810" y="577" text-anchor="middle">High score (>0.9)</text>
+                        <text class="node-subtext" x="810" y="591" text-anchor="middle">Tree size / Timeout</text>
+                    </g>
+
+                    <!-- Synthesis -->
+                    <g class="node" data-node="lats-synthesis" onclick="selectNode('lats-synthesis')">
+                        <rect class="node-box" x="940" y="520" width="200" height="75" fill="#1e293b" stroke="#8B5CF6" stroke-width="2"/>
+                        <text class="node-text" x="1040" y="545" text-anchor="middle">Synthesis</text>
+                        <text class="node-subtext" x="1040" y="563" text-anchor="middle">Extract best path</text>
+                        <text class="node-subtext" x="1040" y="577" text-anchor="middle">LLM synthesizes answer</text>
+                    </g>
+
+                    <!-- Tool Execution Path -->
+                    <g class="node" data-node="lats-tool-path" onclick="selectNode('lats-tool-path')">
+                        <rect class="node-box" x="1160" y="520" width="190" height="75" fill="#1e293b" stroke="#8B5CF6" stroke-width="2"/>
+                        <text class="node-text" x="1255" y="545" text-anchor="middle">Tool Execution</text>
+                        <text class="node-subtext" x="1255" y="563" text-anchor="middle">Direct tool_executor</text>
+                        <text class="node-subtext" x="1255" y="577" text-anchor="middle">NO serde defaults</text>
+                        <text class="node-subtext" x="1255" y="591" text-anchor="middle">(manual defaults)</text>
+                    </g>
+
+                    <!-- Arrows -->
+                    <path class="flow-arrow lats" d="M920,250 L1030,280" marker-end="url(#arrowLats)"/>
+                    <path class="flow-arrow lats" d="M890,370 L915,370" marker-end="url(#arrowLats)"/>
+                    <path class="flow-arrow lats" d="M800,415 L800,515" marker-end="url(#arrowLats)"/>
+                    <path class="flow-arrow lats" d="M910,560 L935,560" marker-end="url(#arrowLats)"/>
+                </g>
+
+                <!-- ============================================ -->
+                <!-- LAYER 4: Graph Tools (Shared) -->
+                <!-- ============================================ -->
+                <g class="layer-group" data-layer="tools">
+                    <rect x="30" y="700" width="1340" height="170" fill="url(#toolsGrad)" stroke="#F59E0B" stroke-width="1" rx="16" ry="16"/>
+                    <text class="section-label" x="700" y="725" fill="#F59E0B">Graph Tools Layer (7 Tools - Shared by Both Agents)</text>
+
+                    <!-- semantic_code_search (Primary) -->
+                    <g class="node tool-node" data-node="semantic_code_search" data-tool="semantic_code_search" onclick="selectNode('semantic_code_search')">
+                        <rect class="node-box" x="50" y="745" width="180" height="110" fill="#1e293b" stroke="#F59E0B" stroke-width="2"/>
+                        <text class="node-text" x="140" y="770" text-anchor="middle" fill="#F59E0B">semantic_code_search</text>
+                        <text class="node-subtext" x="140" y="790" text-anchor="middle">PRIMARY DISCOVERY</text>
+                        <text class="node-subtext" x="140" y="808" text-anchor="middle">query: String</text>
+                        <text class="node-subtext" x="140" y="823" text-anchor="middle">limit: 10 (default)</text>
+                        <text class="node-subtext" x="140" y="838" text-anchor="middle">threshold: 0.6</text>
+                    </g>
+
+                    <!-- get_transitive_dependencies -->
+                    <g class="node tool-node" data-node="get_transitive_dependencies" data-tool="get_transitive_dependencies" onclick="selectNode('get_transitive_dependencies')">
+                        <rect class="node-box" x="250" y="745" width="170" height="110" fill="#1e293b" stroke="#F59E0B" stroke-width="2"/>
+                        <text class="node-text" x="335" y="770" text-anchor="middle">get_transitive_deps</text>
+                        <text class="node-subtext" x="335" y="790" text-anchor="middle">Forward dependencies</text>
+                        <text class="node-subtext" x="335" y="808" text-anchor="middle">node_id: String</text>
+                        <text class="node-subtext" x="335" y="823" text-anchor="middle">edge_type: Calls</text>
+                        <text class="node-subtext" x="335" y="838" text-anchor="middle">depth: 3 (default)</text>
+                    </g>
+
+                    <!-- get_reverse_dependencies -->
+                    <g class="node tool-node" data-node="get_reverse_dependencies" data-tool="get_reverse_dependencies" onclick="selectNode('get_reverse_dependencies')">
+                        <rect class="node-box" x="440" y="745" width="170" height="110" fill="#1e293b" stroke="#F59E0B" stroke-width="2"/>
+                        <text class="node-text" x="525" y="770" text-anchor="middle">get_reverse_deps</text>
+                        <text class="node-subtext" x="525" y="790" text-anchor="middle">What depends on this</text>
+                        <text class="node-subtext" x="525" y="808" text-anchor="middle">node_id: String</text>
+                        <text class="node-subtext" x="525" y="823" text-anchor="middle">edge_type: Calls</text>
+                        <text class="node-subtext" x="525" y="838" text-anchor="middle">depth: 3 (default)</text>
+                    </g>
+
+                    <!-- trace_call_chain -->
+                    <g class="node tool-node" data-node="trace_call_chain" data-tool="trace_call_chain" onclick="selectNode('trace_call_chain')">
+                        <rect class="node-box" x="630" y="745" width="160" height="110" fill="#1e293b" stroke="#F59E0B" stroke-width="2"/>
+                        <text class="node-text" x="710" y="770" text-anchor="middle">trace_call_chain</text>
+                        <text class="node-subtext" x="710" y="790" text-anchor="middle">Execution flow</text>
+                        <text class="node-subtext" x="710" y="808" text-anchor="middle">node_id: String</text>
+                        <text class="node-subtext" x="710" y="823" text-anchor="middle">max_depth: 5</text>
+                    </g>
+
+                    <!-- detect_cycles -->
+                    <g class="node tool-node" data-node="detect_cycles" data-tool="detect_cycles" onclick="selectNode('detect_cycles')">
+                        <rect class="node-box" x="810" y="745" width="150" height="110" fill="#1e293b" stroke="#F59E0B" stroke-width="2"/>
+                        <text class="node-text" x="885" y="770" text-anchor="middle">detect_cycles</text>
+                        <text class="node-subtext" x="885" y="790" text-anchor="middle">Circular deps</text>
+                        <text class="node-subtext" x="885" y="808" text-anchor="middle">edge_type: Calls</text>
+                    </g>
+
+                    <!-- calculate_coupling -->
+                    <g class="node tool-node" data-node="calculate_coupling" data-tool="calculate_coupling" onclick="selectNode('calculate_coupling')">
+                        <rect class="node-box" x="980" y="745" width="160" height="110" fill="#1e293b" stroke="#F59E0B" stroke-width="2"/>
+                        <text class="node-text" x="1060" y="770" text-anchor="middle">calculate_coupling</text>
+                        <text class="node-subtext" x="1060" y="790" text-anchor="middle">Coupling metrics</text>
+                        <text class="node-subtext" x="1060" y="808" text-anchor="middle">node_id: String</text>
+                        <text class="node-subtext" x="1060" y="823" text-anchor="middle">Ca, Ce, Instability</text>
+                    </g>
+
+                    <!-- get_hub_nodes -->
+                    <g class="node tool-node" data-node="get_hub_nodes" data-tool="get_hub_nodes" onclick="selectNode('get_hub_nodes')">
+                        <rect class="node-box" x="1160" y="745" width="150" height="110" fill="#1e293b" stroke="#F59E0B" stroke-width="2"/>
+                        <text class="node-text" x="1235" y="770" text-anchor="middle">get_hub_nodes</text>
+                        <text class="node-subtext" x="1235" y="790" text-anchor="middle">Highly connected</text>
+                        <text class="node-subtext" x="1235" y="808" text-anchor="middle">min_degree: 5</text>
+                    </g>
+
+                    <!-- Arrows from both agents to tools -->
+                    <path class="flow-arrow react" d="M350,610 L350,695" marker-end="url(#arrowShared)"/>
+                    <path class="flow-arrow lats" d="M1255,595 L1255,695" marker-end="url(#arrowShared)"/>
+                </g>
+
+                <!-- ============================================ -->
+                <!-- LAYER 5: Data Layer -->
+                <!-- ============================================ -->
+                <g class="layer-group" data-layer="data">
+                    <rect x="300" y="890" width="800" height="90" fill="url(#dataGrad)" stroke="#6B7280" stroke-width="1" rx="16" ry="16"/>
+                    <text class="section-label" x="700" y="915" fill="#6B7280">Data Layer</text>
+
+                    <!-- GraphToolExecutor -->
+                    <g class="node" data-node="graph-executor" onclick="selectNode('graph-executor')">
+                        <rect class="node-box" x="320" y="925" width="180" height="45" fill="#1e293b" stroke="#6B7280" stroke-width="2"/>
+                        <text class="node-text" x="410" y="952" text-anchor="middle">GraphToolExecutor</text>
+                    </g>
+
+                    <!-- SurrealDB -->
+                    <g class="node" data-node="surrealdb" onclick="selectNode('surrealdb')">
+                        <rect class="node-box" x="550" y="925" width="250" height="45" fill="#1e293b" stroke="#EC4899" stroke-width="2"/>
+                        <text class="node-text" x="675" y="945" text-anchor="middle" fill="#EC4899">SurrealDB</text>
+                        <text class="node-subtext" x="675" y="962" text-anchor="middle">HNSW Vector Index + Graph Traversal</text>
+                    </g>
+
+                    <!-- LLM Providers -->
+                    <g class="node" data-node="llm-providers" onclick="selectNode('llm-providers')">
+                        <rect class="node-box" x="850" y="925" width="230" height="45" fill="#1e293b" stroke="#EC4899" stroke-width="2"/>
+                        <text class="node-text" x="965" y="945" text-anchor="middle" fill="#EC4899">LLM Providers</text>
+                        <text class="node-subtext" x="965" y="962" text-anchor="middle">Anthropic | OpenAI | Ollama | xAI</text>
+                    </g>
+
+                    <!-- Arrows -->
+                    <path class="flow-arrow shared" d="M700,855 L700,885" marker-end="url(#arrowShared)"/>
+                    <path class="flow-arrow shared" d="M500,947 L545,947" marker-end="url(#arrowShared)"/>
+                </g>
+
+                <!-- ============================================ -->
+                <!-- LLM Connection Lines -->
+                <!-- ============================================ -->
+                <g class="layer-group" data-layer="llm">
+                    <!-- ReAct to LLM -->
+                    <path class="flow-arrow react" d="M570,325 C570,310 965,310 965,920" stroke-dasharray="4,4" opacity="0.5"/>
+                    <!-- LATS to LLM -->
+                    <path class="flow-arrow lats" d="M1130,495 C1200,600 1000,800 965,920" stroke-dasharray="4,4" opacity="0.5"/>
+                </g>
+
+            </svg>
+        </div>
+
+        <div class="sidebar">
+            <div class="glass-panel">
+                <h3>Layer Legend</h3>
+                <div class="legend-item mcp" onclick="filterLayer('mcp')">
+                    <div class="legend-color"></div>
+                    <span>MCP Entry Layer</span>
+                </div>
+                <div class="legend-item react" onclick="filterLayer('react')">
+                    <div class="legend-color"></div>
+                    <span>ReAct Flow (Green)</span>
+                </div>
+                <div class="legend-item lats" onclick="filterLayer('lats')">
+                    <div class="legend-color"></div>
+                    <span>LATS Flow (Purple)</span>
+                </div>
+                <div class="legend-item tools" onclick="filterLayer('tools')">
+                    <div class="legend-color"></div>
+                    <span>Graph Tools (Orange)</span>
+                </div>
+                <div class="legend-item data" onclick="filterLayer('data')">
+                    <div class="legend-color"></div>
+                    <span>Data Layer (Gray)</span>
+                </div>
+                <div class="legend-item llm" onclick="filterLayer('llm')">
+                    <div class="legend-color"></div>
+                    <span>LLM Layer (Pink)</span>
+                </div>
+            </div>
+
+            <div class="glass-panel" id="comparisonPanel">
+                <h3>Architecture Comparison</h3>
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Aspect</th>
+                            <th class="react-col">ReAct</th>
+                            <th class="lats-col">LATS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Architecture</td>
+                            <td class="react-col">Linear iterative</td>
+                            <td class="lats-col">Tree search</td>
+                        </tr>
+                        <tr>
+                            <td>Tool Execution</td>
+                            <td class="react-col">Via ToolT (serde)</td>
+                            <td class="lats-col">Direct executor</td>
+                        </tr>
+                        <tr>
+                            <td>Memory</td>
+                            <td class="react-col">Sliding (40 msg)</td>
+                            <td class="lats-col">Search tree</td>
+                        </tr>
+                        <tr>
+                            <td>Termination</td>
+                            <td class="react-col">max_turns</td>
+                            <td class="lats-col">Score/Solution</td>
+                        </tr>
+                        <tr>
+                            <td>Use Case</td>
+                            <td class="react-col">Fast, reliable</td>
+                            <td class="lats-col">Deep exploration</td>
+                        </tr>
+                        <tr>
+                            <td>Status</td>
+                            <td class="react-col">Production</td>
+                            <td class="lats-col">Experimental</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="glass-panel" id="detailPanel">
+                <h3>Component Details</h3>
+                <div id="detailContent">
+                    <p style="color: var(--text-secondary); font-size: 0.85rem;">
+                        Click on any component to see details about its role in the context gathering flow.
+                    </p>
+                </div>
+            </div>
+
+            <div class="glass-panel">
+                <h3>Tier Configuration</h3>
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Tier</th>
+                            <th>Context</th>
+                            <th>Steps</th>
+                            <th>Tokens</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Small</td>
+                            <td>&lt;50K</td>
+                            <td>5</td>
+                            <td>2,048</td>
+                        </tr>
+                        <tr>
+                            <td>Medium</td>
+                            <td>50K-150K</td>
+                            <td>10</td>
+                            <td>4,096</td>
+                        </tr>
+                        <tr>
+                            <td>Large</td>
+                            <td>150K-500K</td>
+                            <td>15</td>
+                            <td>8,192</td>
+                        </tr>
+                        <tr>
+                            <td>Massive</td>
+                            <td>&gt;500K</td>
+                            <td>20</td>
+                            <td>16,384</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div class="tool-tooltip" id="tooltip"></div>
+
+    <script>
+        // Component data
+        const componentData = {
+            'mcp-client': {
+                title: 'MCP Client',
+                description: 'External MCP clients like Claude Desktop or Cursor that invoke agentic tools via the MCP protocol.',
+                details: ['Sends tool requests', 'Receives structured responses', 'Handles progress notifications']
+            },
+            'agentic-tools': {
+                title: '7 Agentic MCP Tools',
+                description: 'High-level tools exposed via MCP that trigger multi-step agent workflows.',
+                details: [
+                    'agentic_code_search - Autonomous graph exploration',
+                    'agentic_dependency_analysis - Dependency chain analysis',
+                    'agentic_call_chain_analysis - Execution flow tracing',
+                    'agentic_architecture_analysis - Architectural assessment',
+                    'agentic_api_surface_analysis - Public interface analysis',
+                    'agentic_context_builder - Comprehensive context gathering',
+                    'agentic_semantic_question - Complex Q&A'
+                ]
+            },
+            'executor': {
+                title: 'CodeGraphExecutor',
+                description: 'Main orchestrator that detects agent architecture and manages execution with timeout enforcement.',
+                details: [
+                    'Detects architecture via CODEGRAPH_AGENT_ARCHITECTURE env',
+                    'Creates executor via AgentExecutorFactory',
+                    'Default timeout: 300 seconds',
+                    'Handles context overflow errors'
+                ]
+            },
+            'factory': {
+                title: 'AgentExecutorFactory',
+                description: 'Factory for creating architecture-specific executors based on configuration.',
+                details: [
+                    'Creates ReActExecutor (default)',
+                    'Creates LATSExecutor (if feature enabled)',
+                    'Detects tier from LLM config'
+                ]
+            },
+            'agent-builder': {
+                title: 'CodeGraphAgentBuilder',
+                description: 'Builder for tier-aware CodeGraph agents with graph analysis tools.',
+                details: [
+                    'Creates CodeGraphChatAdapter for LLM bridging',
+                    'Configures TierAwarePromptPlugin',
+                    'Sets up SlidingWindowMemory (40 messages)',
+                    'Registers 7 Arc-wrapped graph tools'
+                ]
+            },
+            'tier-react': {
+                title: 'TierAwareReActAgent',
+                description: 'Wrapper that overrides max_turns based on context tier.',
+                details: [
+                    'Small (<50K): 5 max turns',
+                    'Medium (50K-150K): 10 max turns',
+                    'Large (150K-500K): 15 max turns',
+                    'Massive (>500K): 20 max turns'
+                ]
+            },
+            'autoagents': {
+                title: 'AutoAgents Framework',
+                description: 'External ReActAgent implementation from AutoAgents crate.',
+                details: [
+                    'Implements Thought-Action-Observation cycle',
+                    'Calls tools via ToolT trait',
+                    'Serde deserializes params (applies defaults!)',
+                    'Manages agent memory and context'
+                ]
+            },
+            'react-cycle': {
+                title: 'ReAct Cycle',
+                description: 'Iterative reasoning cycle: Thought -> Action -> Observation -> Repeat/End',
+                details: [
+                    '1. Thought: LLM reasons about next step',
+                    '2. Action: Select and call a graph tool',
+                    '3. Observation: Receive tool result',
+                    '4. Repeat until max_turns or answer found'
+                ]
+            },
+            'react-tool-path': {
+                title: 'ReAct Tool Execution Path',
+                description: 'How ReAct executes graph tools through AutoAgents ToolT trait.',
+                details: [
+                    'AutoAgents ToolT trait invoked',
+                    'Serde deserializes params (applies #[serde(default)])',
+                    'GraphToolExecutorAdapter (sync wrapper)',
+                    'GraphToolExecutor.execute() async call',
+                    'SurrealDB function execution'
+                ]
+            },
+            'lats-executor': {
+                title: 'LATSExecutor',
+                description: 'Language Agent Tree Search executor implementing 4-phase algorithm.',
+                details: [
+                    'Manages SearchTree data structure',
+                    'UCT exploration with sqrt(2) weight',
+                    'Beam width: 3, Max depth: 5',
+                    'Per-iteration timeout: 60 seconds'
+                ]
+            },
+            'lats-phases': {
+                title: 'LATS 4-Phase Algorithm',
+                description: 'Four phases executed iteratively to explore solution space.',
+                details: [
+                    'Selection: UCT algorithm picks promising leaves',
+                    'Expansion: LLM generates thought-action pairs',
+                    'Evaluation: LLM scores node quality (0.0-1.0)',
+                    'Backpropagation: Update ancestors (0.7*max + 0.3*avg)'
+                ]
+            },
+            'lats-termination': {
+                title: 'LATS Termination',
+                description: 'Conditions that end the LATS search.',
+                details: [
+                    'is_solution flag set by evaluation',
+                    'High score threshold (>0.9)',
+                    'Tree size limit (beam_width * max_depth * 2)',
+                    'Per-iteration timeout'
+                ]
+            },
+            'lats-synthesis': {
+                title: 'LATS Synthesis',
+                description: 'Final answer generation from best search path.',
+                details: [
+                    'Extract best path from tree',
+                    'Collect nodes along path',
+                    'LLM synthesizes final answer',
+                    'Returns CodeGraphAgentOutput'
+                ]
+            },
+            'lats-tool-path': {
+                title: 'LATS Tool Execution',
+                description: 'How LATS executes graph tools directly without AutoAgents wrapper.',
+                details: [
+                    'Direct tool_executor.execute() call',
+                    'NO serde deserialization',
+                    'Must handle defaults manually in executor',
+                    'This is why defaults were added to GraphToolExecutor'
+                ]
+            },
+            'semantic_code_search': {
+                title: 'semantic_code_search',
+                description: 'Primary code discovery tool using hybrid search with graph-traversal.',
+                details: [
+                    'query: String - Natural language search query',
+                    'limit: i32 - Max results (default: 10)',
+                    'threshold: f64 - Similarity (default: 0.6)',
+                    'Returns relevant code with node IDs for further analysis'
+                ]
+            },
+            'get_transitive_dependencies': {
+                title: 'get_transitive_dependencies',
+                description: 'Get all transitive dependencies of a code node up to specified depth.',
+                details: [
+                    'node_id: String - Node to analyze (e.g., "nodes:123")',
+                    'edge_type: String - Calls, Imports, Uses, etc. (default: Calls)',
+                    'depth: i32 - Max traversal depth (default: 3)',
+                    'Follows dependency edges recursively'
+                ]
+            },
+            'get_reverse_dependencies': {
+                title: 'get_reverse_dependencies',
+                description: 'Get all nodes that depend on the specified node.',
+                details: [
+                    'node_id: String - Node to analyze',
+                    'edge_type: String - Dependency type (default: Calls)',
+                    'depth: i32 - Max depth (default: 3)',
+                    'Useful for impact analysis'
+                ]
+            },
+            'trace_call_chain': {
+                title: 'trace_call_chain',
+                description: 'Trace execution flow from a starting function through all called functions.',
+                details: [
+                    'node_id: String - Starting node',
+                    'max_depth: i32 - Max trace depth (default: 5)',
+                    'Returns call sequence with file paths and line numbers'
+                ]
+            },
+            'detect_cycles': {
+                title: 'detect_cycles',
+                description: 'Detect circular dependencies and cycles in the codebase graph.',
+                details: [
+                    'edge_type: String - Type to check (default: Calls)',
+                    'Returns all detected cycles',
+                    'Important for architectural health'
+                ]
+            },
+            'calculate_coupling': {
+                title: 'calculate_coupling',
+                description: 'Calculate afferent/efferent coupling and instability metrics.',
+                details: [
+                    'node_id: String - Node to analyze',
+                    'Returns Ca (afferent), Ce (efferent), Instability',
+                    'Instability = Ce / (Ca + Ce)'
+                ]
+            },
+            'get_hub_nodes': {
+                title: 'get_hub_nodes',
+                description: 'Find highly connected hub nodes in the dependency graph.',
+                details: [
+                    'min_degree: i32 - Minimum connections (default: 5)',
+                    'Returns nodes with high connectivity',
+                    'Important for identifying central components'
+                ]
+            },
+            'graph-executor': {
+                title: 'GraphToolExecutor',
+                description: 'Routes tool calls to SurrealDB graph functions.',
+                details: [
+                    'Matches tool name to SurrealDB function',
+                    'Handles parameter validation and defaults',
+                    'Executes async queries',
+                    'Formats and returns results'
+                ]
+            },
+            'surrealdb': {
+                title: 'SurrealDB',
+                description: 'Graph database with HNSW vector index for semantic search.',
+                details: [
+                    'HNSW index: 2-5ms query latency',
+                    'Native graph traversal functions',
+                    'Full-text search capabilities',
+                    'Transactional operations'
+                ]
+            },
+            'llm-providers': {
+                title: 'LLM Providers',
+                description: 'Multiple LLM providers for agent reasoning.',
+                details: [
+                    'Anthropic Claude',
+                    'OpenAI GPT',
+                    'Ollama (local)',
+                    'xAI Grok',
+                    'LM Studio (local)'
+                ]
+            }
+        };
+
+        let selectedNode = null;
+        let animationPaused = false;
+        let currentFilter = 'all';
+
+        // Filter layers
+        function filterLayer(layer) {
+            currentFilter = layer;
+            const layers = document.querySelectorAll('.layer-group');
+
+            // Update buttons
+            document.querySelectorAll('[data-filter]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.filter === layer);
+            });
+
+            if (layer === 'all') {
+                layers.forEach(l => l.classList.remove('dimmed'));
+            } else {
+                layers.forEach(l => {
+                    const layerName = l.dataset.layer;
+                    const shouldShow = layerName === layer ||
+                                      (layer === 'react' && (layerName === 'selection' || layerName === 'tools' || layerName === 'data')) ||
+                                      (layer === 'lats' && (layerName === 'selection' || layerName === 'tools' || layerName === 'data'));
+                    l.classList.toggle('dimmed', !shouldShow);
+                });
+            }
+        }
+
+        // Highlight path
+        function highlightPath(agent) {
+            filterLayer(agent);
+        }
+
+        // Select node
+        function selectNode(nodeId) {
+            // Remove previous selection
+            document.querySelectorAll('.node-box.selected').forEach(n => n.classList.remove('selected'));
+
+            // Add selection
+            const node = document.querySelector(`[data-node="${nodeId}"] .node-box`);
+            if (node) {
+                node.classList.add('selected');
+            }
+
+            selectedNode = nodeId;
+            updateDetailPanel(nodeId);
+        }
+
+        // Update detail panel
+        function updateDetailPanel(nodeId) {
+            const data = componentData[nodeId];
+            if (!data) return;
+
+            const detailContent = document.getElementById('detailContent');
+            detailContent.innerHTML = `
+                <h4 style="color: var(--graph-tools); margin-bottom: 0.5rem;">${data.title}</h4>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.75rem;">${data.description}</p>
+                <ul style="list-style: none; padding: 0;">
+                    ${data.details.map(d => `
+                        <li style="font-size: 0.75rem; color: var(--text-muted); padding: 0.25rem 0; border-bottom: 1px solid var(--border-glass);">
+                            ${d}
+                        </li>
+                    `).join('')}
+                </ul>
+            `;
+        }
+
+        // Toggle animation
+        function toggleAnimation() {
+            animationPaused = !animationPaused;
+            document.querySelectorAll('.flow-arrow').forEach(arrow => {
+                arrow.classList.toggle('paused', animationPaused);
+            });
+            document.getElementById('animToggle').textContent = animationPaused ? 'Resume Animation' : 'Pause Animation';
+        }
+
+        // Set view
+        function setView(view) {
+            document.querySelectorAll('[data-view]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.view === view);
+            });
+
+            // For comparison view, we could show a side-by-side layout
+            // For now, just toggle visibility
+            const comparison = document.getElementById('comparisonPanel');
+            if (view === 'comparison') {
+                comparison.style.display = 'block';
+                filterLayer('all');
+            }
+        }
+
+        // Theme toggle
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? '' : 'light';
+            body.setAttribute('data-theme', newTheme);
+            document.getElementById('themeIcon').textContent = newTheme === 'light' ? '&#9728;' : '&#9790;';
+        }
+
+        // Initialize theme from system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            document.body.setAttribute('data-theme', 'light');
+            document.getElementById('themeIcon').textContent = '&#9728;';
+        }
+
+        // Tool tooltips
+        const toolNodes = document.querySelectorAll('.tool-node');
+        const tooltip = document.getElementById('tooltip');
+
+        toolNodes.forEach(node => {
+            node.addEventListener('mouseenter', (e) => {
+                const toolName = node.dataset.tool;
+                const data = componentData[toolName];
+                if (!data) return;
+
+                tooltip.innerHTML = `
+                    <h4>${data.title}</h4>
+                    <p>${data.description}</p>
+                    <div class="params">${data.details.slice(0, 3).join('<br>')}</div>
+                `;
+
+                const rect = node.getBoundingClientRect();
+                tooltip.style.left = `${rect.right + 10}px`;
+                tooltip.style.top = `${rect.top}px`;
+                tooltip.classList.add('visible');
+            });
+
+            node.addEventListener('mouseleave', () => {
+                tooltip.classList.remove('visible');
+            });
+        });
+    </script>
+</body>
+</html>

@@ -10,7 +10,13 @@ OPTION IMPORT;
 
 DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: string) {
 LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references'];
-LET $record = IF type::is::record($node_id) THEN $node_id ELSE (IF string::starts_with($node_id, 'nodes:') THEN type::thing('nodes', string::slice($node_id, 6)) ELSE type::thing('nodes', $node_id) END) END;
+-- Resolve chunk IDs to their parent nodes (chunks have parent_node field)
+LET $resolved_id = IF string::starts_with($node_id, 'chunks:') THEN (
+  SELECT VALUE parent_node FROM type::thing('chunks', string::slice($node_id, 7)) LIMIT 1
+)[0] ELSE $node_id END;
+-- Handle NONE case when chunk doesn't exist
+IF $resolved_id = NONE { RETURN NONE; };
+LET $record = IF type::is::record($resolved_id) THEN $resolved_id ELSE (IF string::starts_with(<string>$resolved_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$resolved_id, 6)) ELSE type::thing('nodes', <string>$resolved_id) END) END;
 LET $node_check = (SELECT project_id FROM $record);
 IF array::len($node_check) = 0 { RETURN NONE; };
 LET $rec_proj = $node_check[0].project_id;
@@ -55,7 +61,12 @@ RETURN (SELECT candidate_id AS node_id, node, afferent_degree, efferent_degree, 
 DEFINE FUNCTION fn::get_reverse_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
 LET $safe_depth = IF $depth > 0 AND $depth <= 5 THEN $depth ELSE 3 END;
 LET $edge_name = string::lowercase($edge_type ?? 'calls');
-LET $record = IF type::is::record($node_id) THEN $node_id ELSE (IF string::starts_with(<string>$node_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$node_id, 6)) ELSE type::thing('nodes', <string>$node_id) END) END;
+-- Resolve chunk IDs to their parent nodes
+LET $resolved_id = IF string::starts_with(<string>$node_id, 'chunks:') THEN (
+  SELECT VALUE parent_node FROM type::thing('chunks', string::slice(<string>$node_id, 7)) LIMIT 1
+)[0] ELSE $node_id END;
+IF $resolved_id = NONE { RETURN []; };
+LET $record = IF type::is::record($resolved_id) THEN $resolved_id ELSE (IF string::starts_with(<string>$resolved_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$resolved_id, 6)) ELSE type::thing('nodes', <string>$resolved_id) END) END;
 LET $node_check = SELECT project_id FROM $record;
 IF array::len($node_check) = 0 { RETURN []; };
 LET $rec_proj = $node_check[0].project_id;
@@ -73,7 +84,12 @@ RETURN (SELECT node.id AS id, node.name AS name, node.kind AS kind, node.locatio
 DEFINE FUNCTION fn::get_transitive_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
 LET $safe_depth = IF $depth > 0 AND $depth <= 5 THEN $depth ELSE 3 END;
 LET $edge_name = string::lowercase($edge_type ?? 'calls');
-LET $record = IF type::is::record($node_id) THEN $node_id ELSE (IF string::starts_with(<string>$node_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$node_id, 6)) ELSE type::thing('nodes', <string>$node_id) END) END;
+-- Resolve chunk IDs to their parent nodes
+LET $resolved_id = IF string::starts_with(<string>$node_id, 'chunks:') THEN (
+  SELECT VALUE parent_node FROM type::thing('chunks', string::slice(<string>$node_id, 7)) LIMIT 1
+)[0] ELSE $node_id END;
+IF $resolved_id = NONE { RETURN []; };
+LET $record = IF type::is::record($resolved_id) THEN $resolved_id ELSE (IF string::starts_with(<string>$resolved_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$resolved_id, 6)) ELSE type::thing('nodes', <string>$resolved_id) END) END;
 LET $node_check = SELECT project_id FROM $record;
 IF array::len($node_check) = 0 { RETURN []; };
 LET $rec_proj = $node_check[0].project_id;
@@ -115,7 +131,12 @@ RETURN $final_results;
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::trace_call_chain($project_id: string, $from_node: any, $max_depth: int) {
 LET $safe_depth = IF $max_depth > 0 AND $max_depth <= 10 THEN $max_depth ELSE 5 END;
-LET $record = IF type::is::record($from_node) THEN $from_node ELSE (IF string::starts_with($from_node, 'nodes:') THEN type::thing($from_node) ELSE type::thing('nodes', $from_node) END) END;
+-- Resolve chunk IDs to their parent nodes
+LET $resolved_id = IF string::starts_with(<string>$from_node, 'chunks:') THEN (
+  SELECT VALUE parent_node FROM type::thing('chunks', string::slice(<string>$from_node, 7)) LIMIT 1
+)[0] ELSE $from_node END;
+IF $resolved_id = NONE { RETURN []; };
+LET $record = IF type::is::record($resolved_id) THEN $resolved_id ELSE (IF string::starts_with(<string>$resolved_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$resolved_id, 6)) ELSE type::thing('nodes', <string>$resolved_id) END) END;
 LET $rec_proj = (SELECT VALUE project_id FROM ONLY $record);
 IF $rec_proj != NONE AND $rec_proj != $project_id { RETURN []; };
 LET $raw = (SELECT fn::node_info(id) AS node, array::distinct((SELECT fn::node_reference(from) AS caller FROM edges WHERE to = id AND edge_type = 'Calls' AND (SELECT VALUE project_id FROM from) = $project_id AND (SELECT VALUE project_id FROM to) = $project_id).caller) AS called_by FROM (SELECT ->edges[WHERE edge_type = 'Calls' AND (to.project_id ?? $project_id) = $project_id] FROM ONLY $record)->to);
