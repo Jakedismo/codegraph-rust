@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
@@ -6,6 +7,31 @@ use uuid::Uuid;
 
 pub type NodeId = Uuid;
 pub type EdgeId = Uuid;
+
+/// Generate a deterministic node ID from stable attributes.
+/// Same code entity = same ID across indexing runs, enabling proper UPSERT behavior.
+pub fn generate_node_id(
+    project_id: &str,
+    file_path: &str,
+    name: &str,
+    node_type: &str,
+    start_line: u32,
+) -> NodeId {
+    let mut hasher = Sha256::new();
+    hasher.update(project_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(file_path.as_bytes());
+    hasher.update(b"|");
+    hasher.update(name.as_bytes());
+    hasher.update(b"|");
+    hasher.update(node_type.as_bytes());
+    hasher.update(b"|");
+    hasher.update(start_line.to_le_bytes());
+
+    let hash = hasher.finalize();
+    // Convert first 16 bytes to UUID format for compatibility with existing storage
+    Uuid::from_slice(&hash[..16]).expect("SHA256 hash should always produce at least 16 bytes")
+}
 
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode,

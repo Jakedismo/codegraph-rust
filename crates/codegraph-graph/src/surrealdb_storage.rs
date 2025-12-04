@@ -80,6 +80,14 @@ struct SchemaVersion {
     description: String,
 }
 
+/// Statistics from orphan cleanup operation
+#[derive(Debug, Clone, Default)]
+pub struct OrphanCleanupStats {
+    pub chunks_deleted: usize,
+    pub edges_deleted: usize,
+    pub symbols_deleted: usize,
+}
+
 impl SurrealDbStorage {
     /// Get the underlying SurrealDB connection
     /// This is useful for advanced operations like graph functions
@@ -1236,7 +1244,24 @@ impl SurrealDbStorage {
         Ok(count)
     }
 
-    /// Clean slate: Delete ALL data for a project (nodes, edges, embeddings, file metadata)
+    /// Delete all chunks for a project
+    pub async fn delete_chunks_for_project(&self, project_id: &str) -> Result<usize> {
+        let query = "DELETE chunks WHERE project_id = $project_id RETURN BEFORE";
+        let mut result = self
+            .db
+            .query(query)
+            .bind(("project_id", project_id.to_string()))
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("Failed to delete chunks: {}", e)))?;
+
+        let deleted: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
+        let count = deleted.len();
+
+        info!("Deleted {} chunks for project {}", count, project_id);
+        Ok(count)
+    }
+
+    /// Clean slate: Delete ALL data for a project (nodes, edges, chunks, embeddings, file metadata)
     /// Used when --force flag is set
     pub async fn clean_project_data(&self, project_id: &str) -> Result<()> {
         info!(
@@ -1244,8 +1269,9 @@ impl SurrealDbStorage {
             project_id
         );
 
-        // Delete in order: edges first (referential integrity), then nodes, then metadata
+        // Delete in order: edges first, then chunks (both reference nodes), then nodes, then metadata
         let edges_deleted = self.delete_edges_for_project(project_id).await?;
+        let chunks_deleted = self.delete_chunks_for_project(project_id).await?;
         let nodes_deleted = self.delete_nodes_for_project(project_id).await?;
         let symbols_deleted = self
             .delete_symbol_embeddings_for_project(project_id)
@@ -1253,11 +1279,79 @@ impl SurrealDbStorage {
         let files_deleted = self.delete_file_metadata_for_project(project_id).await?;
 
         info!(
-            "🧹 Clean slate complete: {} edges, {} nodes, {} symbols, {} files deleted",
-            edges_deleted, nodes_deleted, symbols_deleted, files_deleted
+            "🧹 Clean slate complete: {} edges, {} chunks, {} nodes, {} symbols, {} files deleted",
+            edges_deleted, chunks_deleted, nodes_deleted, symbols_deleted, files_deleted
         );
 
         Ok(())
+    }
+
+    /// Clean up orphaned records (chunks without parent nodes, edges with missing endpoints)
+    /// Returns counts of deleted orphans
+    pub async fn cleanup_orphans(&self) -> Result<OrphanCleanupStats> {
+        info!("🧹 Starting orphan cleanup");
+
+        // Delete chunks where parent_node doesn't exist in nodes table
+        let orphan_chunks_query =
+            "DELETE chunks WHERE parent_node NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
+        let mut result = self
+            .db
+            .query(orphan_chunks_query)
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("Failed to delete orphan chunks: {}", e)))?;
+        let orphan_chunks: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
+        let chunks_deleted = orphan_chunks.len();
+
+        // Delete edges where from node doesn't exist
+        let orphan_edges_from_query =
+            "DELETE edges WHERE from NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
+        let mut result = self
+            .db
+            .query(orphan_edges_from_query)
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to delete orphan edges (from): {}", e))
+            })?;
+        let orphan_edges_from: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
+
+        // Delete edges where to node doesn't exist
+        let orphan_edges_to_query =
+            "DELETE edges WHERE to NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
+        let mut result = self
+            .db
+            .query(orphan_edges_to_query)
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to delete orphan edges (to): {}", e))
+            })?;
+        let orphan_edges_to: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
+        let edges_deleted = orphan_edges_from.len() + orphan_edges_to.len();
+
+        // Delete symbol_embeddings where node doesn't exist
+        let orphan_symbols_query =
+            "DELETE symbol_embeddings WHERE node_id NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
+        let mut result = self
+            .db
+            .query(orphan_symbols_query)
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to delete orphan symbol embeddings: {}", e))
+            })?;
+        let orphan_symbols: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
+        let symbols_deleted = orphan_symbols.len();
+
+        let stats = OrphanCleanupStats {
+            chunks_deleted,
+            edges_deleted,
+            symbols_deleted,
+        };
+
+        info!(
+            "🧹 Orphan cleanup complete: {} chunks, {} edges, {} symbols deleted",
+            stats.chunks_deleted, stats.edges_deleted, stats.symbols_deleted
+        );
+
+        Ok(stats)
     }
 
     pub async fn update_node_embedding(&self, node_id: NodeId, embedding: &[f32]) -> Result<()> {

@@ -318,9 +318,22 @@ impl SurrealWriterHandle {
                             string::split(string::trim(to), ':')[1] IN $node_ids
                     "#;
                             if let Err(e) =
-                                guard.db().query(edge_query).bind(("ids", node_ids)).await
+                                guard.db().query(edge_query).bind(("ids", node_ids.clone())).await
                             {
                                 error!("Failed to delete edges for files {:?}: {}", file_paths, e);
+                                last_error = Some(anyhow!(e.to_string()));
+                            }
+
+                            // Delete chunks that reference the deleted nodes
+                            let chunks_query = r#"
+                        LET $node_ids = $ids;
+                        DELETE chunks WHERE
+                            string::split(string::trim(<string>parent_node), ':')[1] IN $node_ids
+                    "#;
+                            if let Err(e) =
+                                guard.db().query(chunks_query).bind(("ids", node_ids)).await
+                            {
+                                error!("Failed to delete chunks for files {:?}: {}", file_paths, e);
                                 last_error = Some(anyhow!(e.to_string()));
                             }
                         }
@@ -851,7 +864,7 @@ impl ProjectIndexer {
 
         // REVOLUTIONARY: Use unified extraction for nodes + edges in single pass (FASTEST approach)
         // Clone files for parsing (we need them again for metadata persistence)
-        let (mut nodes, edges, pstats) = self
+        let (mut nodes, mut edges, pstats) = self
             .parse_files_with_unified_extraction(files.clone(), total_files as u64)
             .await?;
 
@@ -862,8 +875,21 @@ impl ProjectIndexer {
             edges.len()
         ));
 
+        // Generate deterministic IDs and build old_id -> new_id mapping to update edge references
+        let mut id_mapping: std::collections::HashMap<NodeId, NodeId> =
+            std::collections::HashMap::with_capacity(nodes.len());
         for node in nodes.iter_mut() {
+            let old_id = node.id;
+            node.set_deterministic_id(&self.project_id);
+            id_mapping.insert(old_id, node.id);
             self.annotate_node(node);
+        }
+
+        // Update edge.from references to use new deterministic IDs
+        for edge in edges.iter_mut() {
+            if let Some(new_id) = id_mapping.get(&edge.from) {
+                edge.from = *new_id;
+            }
         }
 
         // Store counts for final summary (before consumption)
@@ -3378,7 +3404,7 @@ impl ProjectIndexer {
             .with_context(|| format!("Failed to parse file: {}", file_path_str))?;
 
         let mut nodes = extraction_result.nodes;
-        let edges = extraction_result.edges;
+        let mut edges = extraction_result.edges;
 
         if nodes.is_empty() {
             debug!("No nodes extracted from file: {}", file_path_str);
@@ -3392,9 +3418,22 @@ impl ProjectIndexer {
             file_path_str
         );
 
-        // Step 2: Annotate nodes with project metadata
+        // Step 2: Generate deterministic IDs and annotate nodes with project metadata
+        // Build old_id -> new_id mapping to update edge references
+        let mut id_mapping: std::collections::HashMap<NodeId, NodeId> =
+            std::collections::HashMap::new();
         for node in &mut nodes {
+            let old_id = node.id;
+            node.set_deterministic_id(&self.project_id);
+            id_mapping.insert(old_id, node.id);
             self.annotate_node(node);
+        }
+
+        // Update edge.from references to use new deterministic IDs
+        for edge in &mut edges {
+            if let Some(new_id) = id_mapping.get(&edge.from) {
+                edge.from = *new_id;
+            }
         }
 
         // Step 3: Generate embeddings for nodes (if embeddings feature enabled)

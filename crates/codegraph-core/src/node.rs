@@ -1,4 +1,4 @@
-use crate::{Language, Location, Metadata, NodeId, NodeType, SharedStr};
+use crate::{generate_node_id, Language, Location, Metadata, NodeId, NodeType, SharedStr};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +54,29 @@ impl CodeNode {
     pub fn with_complexity(mut self, complexity: f32) -> Self {
         self.complexity = Some(complexity);
         self
+    }
+
+    /// Regenerate the node ID deterministically based on project context.
+    /// This enables proper UPSERT behavior - same code entity = same ID across indexing runs.
+    pub fn with_deterministic_id(mut self, project_id: &str) -> Self {
+        self.set_deterministic_id(project_id);
+        self
+    }
+
+    /// Regenerate the node ID deterministically in place.
+    /// This enables proper UPSERT behavior - same code entity = same ID across indexing runs.
+    pub fn set_deterministic_id(&mut self, project_id: &str) {
+        let node_type_str = match &self.node_type {
+            Some(nt) => format!("{:?}", nt),
+            None => "Unknown".to_string(),
+        };
+        self.id = generate_node_id(
+            project_id,
+            &self.location.file_path,
+            &self.name,
+            &node_type_str,
+            self.location.line,
+        );
     }
 
     pub fn new_test() -> Self {
