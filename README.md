@@ -1,3 +1,5 @@
+![CodeGraph](docs/assets/banner.png)
+
 # CodeGraph
 
 **Your codebase, understood.**
