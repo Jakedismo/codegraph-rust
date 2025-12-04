@@ -34,7 +34,7 @@ impl Default for OllamaEmbeddingConfig {
         Self {
             model_name: "nomic-embed-code".to_string(),
             base_url: "http://localhost:11434".to_string(),
-            timeout: Duration::from_secs(120),
+            timeout: Duration::from_secs(300),
             batch_size: 32,
             max_retries: 3,
             max_tokens_per_text: 512,
@@ -66,13 +66,20 @@ impl From<&codegraph_core::EmbeddingConfig> for OllamaEmbeddingConfig {
                 std::env::var("CODEGRAPH_OLLAMA_TIMEOUT_SECS")
                     .ok()
                     .and_then(|v| v.parse::<u64>().ok())
-                    .unwrap_or(120),
+                    .unwrap_or(300),
             ),
             batch_size,
             max_retries: 3,
             max_tokens_per_text,
         }
     }
+}
+
+/// Ollama API options for embedding requests
+#[derive(Debug, Serialize)]
+struct OllamaOptions {
+    /// Context window size - set to batch size for optimal slot efficiency
+    num_ctx: usize,
 }
 
 /// Ollama API request for embeddings
@@ -82,6 +89,8 @@ struct OllamaEmbeddingRequest<'a> {
     input: &'a [String],
     #[serde(skip_serializing_if = "Option::is_none")]
     truncate: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options: Option<OllamaOptions>,
 }
 
 /// Ollama API response for embeddings
@@ -272,6 +281,9 @@ impl OllamaEmbeddingProvider {
             model: &self.config.model_name,
             input: texts,
             truncate: Some(true),
+            options: Some(OllamaOptions {
+                num_ctx: self.config.batch_size,
+            }),
         };
 
         let request_start = Instant::now();
