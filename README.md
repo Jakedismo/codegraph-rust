@@ -224,7 +224,7 @@ Use any model with dimensions 384-4096:
 
 ### LLM (for agentic reasoning)
 - **Local:** Ollama, LM Studio
-- **Cloud:** Anthropic Claude, OpenAI, xAI Grok
+- **Cloud:** Anthropic Claude, OpenAI, xAI Grok, OpenAI Compliant
 
 ### Database
 - **SurrealDB** with HNSW vector index (2-5ms queries)
