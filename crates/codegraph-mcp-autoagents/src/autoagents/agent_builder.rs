@@ -167,6 +167,17 @@ impl ChatProvider for CodeGraphChatAdapter {
         // Convert AutoAgents tools to CodeGraph ToolDefinitions
         let cg_tools = tools.map(Self::convert_tools);
 
+        // Debug log tools being passed to provider
+        if let Some(ref tools) = cg_tools {
+            tracing::info!(
+                "🛠️ Converting {} tools to CodeGraph format: {:?}",
+                tools.len(),
+                tools.iter().map(|t| &t.function.name).collect::<Vec<_>>()
+            );
+        } else {
+            tracing::info!("🛠️ No tools passed to CodeGraph provider");
+        }
+
         // Convert AutoAgents StructuredOutputFormat to CodeGraph ResponseFormat
         let response_format = json_schema.map(|schema| {
             codegraph_ai::llm_provider::ResponseFormat::JsonSchema {
@@ -299,8 +310,6 @@ struct CodeGraphLLMResponse {
     reasoning: Option<String>,
     #[serde(default)]
     tool_call: Option<CodeGraphToolCall>,
-    #[serde(default)]
-    is_final: bool,
 }
 
 /// Custom deserializer that accepts parameters as either:
@@ -428,9 +437,8 @@ impl ChatResponse for CodeGraphChatResponse {
         match serde_json::from_str::<CodeGraphLLMResponse>(&self.content) {
             Ok(parsed) => {
                 tracing::info!(
-                    "Parsed legacy JSON format. has_tool_call={}, is_final={}",
-                    parsed.tool_call.is_some(),
-                    parsed.is_final
+                    "Parsed legacy JSON format. has_tool_call={}",
+                    parsed.tool_call.is_some()
                 );
 
                 let step_number = self.step_counter.fetch_add(1, Ordering::SeqCst) as usize;
@@ -438,49 +446,31 @@ impl ChatResponse for CodeGraphChatResponse {
                 let action = parsed
                     .tool_call
                     .as_ref()
-                    .map(|t| t.tool_name.as_str())
-                    .or_else(|| {
-                        if parsed.is_final {
-                            Some("final_answer")
-                        } else {
-                            None
-                        }
-                    });
+                    .map(|t| t.tool_name.as_str());
                 DebugLogger::log_reasoning_step(step_number, thought, action);
 
-                if parsed.tool_call.is_none() && !parsed.is_final {
-                    tracing::warn!(
-                        "Parsed response without tool_call while is_final=false; content preview: {}",
-                        &self.content.chars().take(200).collect::<String>()
-                    );
-                }
-
-                // If there's a tool_call and is_final is false, convert to AutoAgents format
+                // If there's a tool_call, execute it
                 if let Some(tool_call) = parsed.tool_call {
-                    if !parsed.is_final {
-                        let arguments = tool_call.parameters_json.clone();
-                        let call_id = TOOL_CALL_COUNTER.fetch_add(1, Ordering::SeqCst);
+                    let arguments = tool_call.parameters_json.clone();
+                    let call_id = TOOL_CALL_COUNTER.fetch_add(1, Ordering::SeqCst);
 
-                        let autoagents_tool_call = ToolCall {
-                            id: format!("call_{}", call_id),
-                            call_type: "function".to_string(),
-                            function: FunctionCall {
-                                name: tool_call.tool_name.clone(),
-                                arguments: arguments.clone(),
-                            },
-                        };
+                    let autoagents_tool_call = ToolCall {
+                        id: format!("call_{}", call_id),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: tool_call.tool_name.clone(),
+                            arguments: arguments.clone(),
+                        },
+                    };
 
-                        tracing::info!(
-                            "Returning legacy tool call: name='{}', args='{}', id='{}'",
-                            tool_call.tool_name,
-                            arguments,
-                            autoagents_tool_call.id
-                        );
+                    tracing::info!(
+                        "Returning legacy tool call: name='{}', args='{}', id='{}'",
+                        tool_call.tool_name,
+                        arguments,
+                        autoagents_tool_call.id
+                    );
 
-                        return Some(vec![autoagents_tool_call]);
-                    } else {
-                        tracing::info!("is_final is true, not returning tool calls");
-                    }
+                    return Some(vec![autoagents_tool_call]);
                 } else {
                     tracing::info!("No tool_call field in parsed response");
                 }
@@ -823,8 +813,7 @@ mod tests {
                     "arguments": {
                         "min_degree": 4
                     }
-                },
-                "is_final": false
+                }
             }"#
             .to_string(),
             tool_calls: None,
@@ -849,8 +838,7 @@ mod tests {
                         "from_node": "GraphToolExecutor",
                         "max_depth": 4
                     }
-                },
-                "is_final": false
+                }
             }"#
             .to_string(),
             tool_calls: None,
@@ -876,8 +864,7 @@ mod tests {
                     "arguments": {
                         "min_degree": 6
                     }
-                },
-                "is_final": false
+                }
             }"#
             .to_string(),
             tool_calls: None,
@@ -902,8 +889,7 @@ mod tests {
                         "edge_type": "Imports",
                         "depth": 2
                     }
-                },
-                "is_final": false
+                }
             }"#
             .to_string(),
             tool_calls: None,
@@ -1073,8 +1059,7 @@ mod tests {
                 "tool_call": {
                     "tool_name": "semantic_code_search",
                     "parameters_json": "{\"query\": \"authentication logic\", \"limit\": 10}"
-                },
-                "is_final": false
+                }
             }"#
             .to_string(),
             tool_calls: None,
@@ -1103,8 +1088,7 @@ mod tests {
                     "parameters": {
                         "min_degree": 5
                     }
-                },
-                "is_final": false
+                }
             }"#
             .to_string(),
             tool_calls: None,

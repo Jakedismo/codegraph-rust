@@ -704,7 +704,9 @@ DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: st
 -- -----------------------------------------------------------------------------
 DEFINE FUNCTION fn::get_hub_nodes($project_id: string, $min_degree: int) {
     LET $threshold = IF $min_degree != NONE AND $min_degree > 0 THEN $min_degree ELSE 5 END;
-    LET $edge_list = array::map(fn::edge_types(), |$v| string::lowercase($v));
+    -- Filter out NONE values and safely lowercase edge types
+    LET $raw_types = fn::edge_types();
+    LET $edge_list = array::map(array::filter($raw_types, |$v| $v != NONE), |$v| string::lowercase($v));
 
     LET $project_edges = (
         SELECT from, to, edge_type

@@ -115,7 +115,7 @@ impl AnthropicProvider {
         config: &GenerationConfig,
     ) -> Result<AnthropicResponse> {
         // Convert CodeGraph ToolDefinition to Anthropic format
-        let anthropic_tools = tools.map(|t| {
+        let anthropic_tools: Option<Vec<AnthropicTool>> = tools.map(|t| {
             t.iter()
                 .map(|tool| AnthropicTool {
                     name: tool.function.name.clone(),
@@ -124,6 +124,17 @@ impl AnthropicProvider {
                 })
                 .collect()
         });
+
+        // Debug log tools being sent
+        if let Some(ref tools) = anthropic_tools {
+            tracing::info!(
+                "🔧 Anthropic request with {} tools: {:?}",
+                tools.len(),
+                tools.iter().map(|t| &t.name).collect::<Vec<_>>()
+            );
+        } else {
+            tracing::info!("🔧 Anthropic request with NO tools");
+        }
 
         // Extract system message
         let system = messages
