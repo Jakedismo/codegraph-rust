@@ -10,7 +10,7 @@ OPTION IMPORT;
 
 DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: string) {
 LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references'];
-LET $record = IF type::is::record($node_id) THEN $node_id ELSE (IF string::starts_with($node_id, 'nodes:') THEN type::thing($node_id) ELSE type::thing('nodes', $node_id) END) END;
+LET $record = IF type::is::record($node_id) THEN $node_id ELSE (IF string::starts_with($node_id, 'nodes:') THEN type::thing('nodes', string::slice($node_id, 6)) ELSE type::thing('nodes', $node_id) END) END;
 LET $node_check = (SELECT project_id FROM $record);
 IF array::len($node_check) = 0 { RETURN NONE; };
 LET $rec_proj = $node_check[0].project_id;
@@ -55,8 +55,10 @@ RETURN (SELECT candidate_id AS node_id, node, afferent_degree, efferent_degree, 
 DEFINE FUNCTION fn::get_reverse_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
 LET $safe_depth = IF $depth > 0 AND $depth <= 5 THEN $depth ELSE 3 END;
 LET $edge_name = string::lowercase($edge_type ?? 'calls');
-LET $record = IF type::is::record($node_id) THEN $node_id ELSE (IF string::starts_with(<string> $node_id, 'nodes:') THEN type::thing(<string> $node_id) ELSE type::thing('nodes', <string> $node_id) END) END;
-LET $rec_proj = (SELECT VALUE project_id FROM ONLY $record);
+LET $record = IF type::is::record($node_id) THEN $node_id ELSE (IF string::starts_with(<string>$node_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$node_id, 6)) ELSE type::thing('nodes', <string>$node_id) END) END;
+LET $node_check = SELECT project_id FROM $record;
+IF array::len($node_check) = 0 { RETURN []; };
+LET $rec_proj = $node_check[0].project_id;
 IF $rec_proj != NONE AND $rec_proj != $project_id { RETURN []; };
 LET $lvl1 = (SELECT VALUE from FROM edges WHERE to = $record AND edge_type = $edge_name AND (from.project_id = $project_id OR from.project_id = NONE));
 LET $lvl2 = IF $safe_depth >= 2 AND array::len($lvl1) > 0 THEN (SELECT VALUE from FROM edges WHERE to INSIDE $lvl1 AND edge_type = $edge_name AND (from.project_id = $project_id OR from.project_id = NONE) AND from NOTINSIDE $lvl1 AND from != $record) ELSE [] END;
@@ -71,8 +73,10 @@ RETURN (SELECT node.id AS id, node.name AS name, node.kind AS kind, node.locatio
 DEFINE FUNCTION fn::get_transitive_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
 LET $safe_depth = IF $depth > 0 AND $depth <= 5 THEN $depth ELSE 3 END;
 LET $edge_name = string::lowercase($edge_type ?? 'calls');
-LET $record = IF type::is::record($node_id) THEN $node_id ELSE (IF string::starts_with(<string> $node_id, 'nodes:') THEN type::thing(<string> $node_id) ELSE type::thing('nodes', <string> $node_id) END) END;
-LET $rec_proj = (SELECT VALUE project_id FROM ONLY $record);
+LET $record = IF type::is::record($node_id) THEN $node_id ELSE (IF string::starts_with(<string>$node_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$node_id, 6)) ELSE type::thing('nodes', <string>$node_id) END) END;
+LET $node_check = SELECT project_id FROM $record;
+IF array::len($node_check) = 0 { RETURN []; };
+LET $rec_proj = $node_check[0].project_id;
 IF $rec_proj != NONE AND $rec_proj != $project_id { RETURN []; };
 LET $lvl1 = (SELECT VALUE to FROM edges WHERE from = $record AND edge_type = $edge_name AND (to.project_id = $project_id OR to.project_id = NONE));
 LET $lvl2 = IF $safe_depth >= 2 AND array::len($lvl1) > 0 THEN (SELECT VALUE to FROM edges WHERE from INSIDE $lvl1 AND edge_type = $edge_name AND (to.project_id = $project_id OR to.project_id = NONE) AND to NOTINSIDE $lvl1 AND to != $record) ELSE [] END;
