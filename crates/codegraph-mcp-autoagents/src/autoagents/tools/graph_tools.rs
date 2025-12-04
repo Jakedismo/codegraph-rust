@@ -131,7 +131,7 @@ impl ToolRuntime for GetReverseDependencies {
 #[derive(Serialize, Deserialize, ToolInput, Debug)]
 pub struct TraceCallChainArgs {
     #[input(description = "Starting node ID for call chain tracing")]
-    from_node: String,
+    node_id: String,
     #[input(description = "Maximum depth to trace (default: 5)")]
     #[serde(default = "default_call_chain_depth")]
     max_depth: i32,
@@ -167,7 +167,7 @@ impl ToolRuntime for TraceCallChain {
             .execute_sync(
                 "trace_call_chain",
                 serde_json::json!({
-                    "from_node": typed_args.from_node,
+                    "node_id": typed_args.node_id,
                     "max_depth": typed_args.max_depth
                 }),
             )

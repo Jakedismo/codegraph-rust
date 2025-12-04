@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeGraph Architecture - Semantic Code Intelligence Platform</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --border-color: #30363d;
+            --accent-blue: #58a6ff;
+            --accent-purple: #a371f7;
+            --accent-green: #3fb950;
+            --accent-orange: #d29922;
+            --accent-red: #f85149;
+            --accent-cyan: #79c0ff;
+
+            /* Layer colors */
+            --layer1-bg: #1a2332;
+            --layer1-border: #3b82f6;
+            --layer2-bg: #1a2a23;
+            --layer2-border: #22c55e;
+            --layer3-bg: #2a1a2a;
+            --layer3-border: #a855f7;
+            --layer4-bg: #2a2a1a;
+            --layer4-border: #eab308;
+            --layer5-bg: #2a1a1a;
+            --layer5-border: #ef4444;
+            --infra-bg: #1a2626;
+            --infra-border: #06b6d4;
+            --external-bg: #262626;
+            --external-border: #71717a;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f6f8fa;
+            --bg-tertiary: #eaeef2;
+            --text-primary: #1f2328;
+            --text-secondary: #57606a;
+            --text-muted: #8b949e;
+            --border-color: #d1d5da;
+
+            --layer1-bg: #dbeafe;
+            --layer1-border: #3b82f6;
+            --layer2-bg: #dcfce7;
+            --layer2-border: #22c55e;
+            --layer3-bg: #f3e8ff;
+            --layer3-border: #a855f7;
+            --layer4-bg: #fef3c7;
+            --layer4-border: #eab308;
+            --layer5-bg: #fee2e2;
+            --layer5-border: #ef4444;
+            --infra-bg: #cffafe;
+            --infra-border: #06b6d4;
+            --external-bg: #f4f4f5;
+            --external-border: #71717a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--accent-blue);
+        }
+
+        .btn.active {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: white;
+        }
+
+        .architecture-container {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .diagram-wrapper {
+            flex: 1;
+            min-width: 800px;
+        }
+
+        .sidebar {
+            width: 350px;
+            flex-shrink: 0;
+        }
+
+        .legend {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .legend h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+            font-size: 0.875rem;
+        }
+
+        .legend-color {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            border: 2px solid;
+            flex-shrink: 0;
+        }
+
+        .detail-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: sticky;
+            top: 1rem;
+        }
+
+        .detail-panel h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--accent-blue);
+        }
+
+        .detail-panel .crate-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .detail-panel .crate-layer {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .detail-panel .crate-description {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+        }
+
+        .detail-panel .dependencies {
+            margin-top: 1rem;
+        }
+
+        .detail-panel .dep-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .detail-panel .dep-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .dep-tag {
+            padding: 0.25rem 0.5rem;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .features-list {
+            margin-top: 1rem;
+        }
+
+        .feature-item {
+            padding: 0.25rem 0;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .feature-item::before {
+            content: ">";
+            color: var(--accent-green);
+            margin-right: 0.5rem;
+        }
+
+        /* Diagram SVG Styles */
+        .diagram-svg {
+            width: 100%;
+            height: auto;
+            border-radius: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        .layer-group {
+            transition: opacity 0.3s ease;
+        }
+
+        .layer-bg {
+            rx: 12;
+            ry: 12;
+        }
+
+        .layer-label {
+            font-size: 14px;
+            font-weight: 600;
+            fill: var(--text-secondary);
+        }
+
+        .crate-node {
+            cursor: pointer;
+            transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .crate-node:hover {
+            filter: brightness(1.1);
+        }
+
+        .crate-node.selected .crate-bg {
+            stroke-width: 3;
+            filter: drop-shadow(0 0 8px currentColor);
+        }
+
+        .crate-bg {
+            rx: 8;
+            ry: 8;
+            stroke-width: 2;
+            transition: all 0.2s ease;
+        }
+
+        .crate-title {
+            font-size: 11px;
+            font-weight: 600;
+            fill: var(--text-primary);
+        }
+
+        .crate-subtitle {
+            font-size: 9px;
+            fill: var(--text-secondary);
+        }
+
+        /* External Services */
+        .external-service {
+            cursor: pointer;
+        }
+
+        .external-bg {
+            rx: 8;
+            ry: 8;
+            stroke-dasharray: 5, 3;
+        }
+
+        /* Features Section */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+
+        .feature-card h4 {
+            font-size: 0.875rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .feature-card .icon {
+            width: 20px;
+            height: 20px;
+        }
+
+        .feature-card ul {
+            list-style: none;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .feature-card li {
+            padding: 0.25rem 0;
+        }
+
+        .feature-card li::before {
+            content: "- ";
+            color: var(--accent-blue);
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .architecture-container {
+                flex-direction: column;
+            }
+
+            .diagram-wrapper {
+                min-width: 100%;
+            }
+
+            .sidebar {
+                width: 100%;
+                display: flex;
+                gap: 1rem;
+            }
+
+            .legend, .detail-panel {
+                flex: 1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 1.75rem;
+            }
+
+            .sidebar {
+                flex-direction: column;
+            }
+
+            .diagram-svg {
+                overflow-x: auto;
+            }
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <button class="btn theme-toggle" onclick="toggleTheme()">Toggle Theme</button>
+
+    <div class="container">
+        <header>
+            <h1>CodeGraph Architecture</h1>
+            <p class="subtitle">Semantic Code Intelligence Platform - Workspace Structure</p>
+        </header>
+
+        <div class="controls">
+            <button class="btn active" onclick="showAllLayers()" data-view="all">All Layers</button>
+            <button class="btn" onclick="highlightLayer(1)" data-view="layer1">Core Foundation</button>
+            <button class="btn" onclick="highlightLayer(2)" data-view="layer2">Data & Processing</button>
+            <button class="btn" onclick="highlightLayer(3)" data-view="layer3">Intelligence</button>
+            <button class="btn" onclick="highlightLayer(4)" data-view="layer4">Integration</button>
+            <button class="btn" onclick="highlightLayer(5)" data-view="layer5">User Interfaces</button>
+        </div>
+
+        <div class="architecture-container">
+            <div class="diagram-wrapper">
+                <svg class="diagram-svg" viewBox="0 0 1100 900" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Background -->
+                    <rect width="100%" height="100%" fill="var(--bg-secondary)" rx="12"/>
+
+                    <!-- Layer 5: User Interfaces -->
+                    <g class="layer-group" data-layer="5">
+                        <rect class="layer-bg" x="30" y="30" width="740" height="100" fill="var(--layer5-bg)" stroke="var(--layer5-border)" stroke-width="1"/>
+                        <text class="layer-label" x="50" y="55">Layer 5: User Interfaces</text>
+
+                        <g class="crate-node" data-crate="mcp-server" onclick="selectCrate('mcp-server')">
+                            <rect class="crate-bg" x="50" y="65" width="140" height="50" fill="var(--layer5-bg)" stroke="var(--layer5-border)"/>
+                            <text class="crate-title" x="120" y="87" text-anchor="middle">mcp-server</text>
+                            <text class="crate-subtitle" x="120" y="102" text-anchor="middle">stdio + HTTP binary</text>
+                        </g>
+
+                        <g class="crate-node" data-crate="mcp-daemon" onclick="selectCrate('mcp-daemon')">
+                            <rect class="crate-bg" x="210" y="65" width="140" height="50" fill="var(--layer5-bg)" stroke="var(--layer5-border)"/>
+                            <text class="crate-title" x="280" y="87" text-anchor="middle">mcp-daemon</text>
+                            <text class="crate-subtitle" x="280" y="102" text-anchor="middle">file watcher</text>
+                        </g>
+                    </g>
+
+                    <!-- Layer 4: Integration (MCP Runtime) -->
+                    <g class="layer-group" data-layer="4">
+                        <rect class="layer-bg" x="30" y="150" width="740" height="140" fill="var(--layer4-bg)" stroke="var(--layer4-border)" stroke-width="1"/>
+                        <text class="layer-label" x="50" y="175">Layer 4: Integration (MCP Runtime)</text>
+
+                        <g class="crate-node" data-crate="mcp" onclick="selectCrate('mcp')">
+                            <rect class="crate-bg" x="50" y="190" width="180" height="80" fill="var(--layer4-bg)" stroke="var(--layer4-border)"/>
+                            <text class="crate-title" x="140" y="220" text-anchor="middle">codegraph-mcp</text>
+                            <text class="crate-subtitle" x="140" y="237" text-anchor="middle">main MCP integration</text>
+                            <text class="crate-subtitle" x="140" y="252" text-anchor="middle">7 agentic tools</text>
+                        </g>
+
+                        <g class="crate-node" data-crate="mcp-autoagents" onclick="selectCrate('mcp-autoagents')">
+                            <rect class="crate-bg" x="250" y="190" width="160" height="80" fill="var(--layer4-bg)" stroke="var(--layer4-border)"/>
+                            <text class="crate-title" x="330" y="220" text-anchor="middle">mcp-autoagents</text>
+                            <text class="crate-subtitle" x="330" y="237" text-anchor="middle">ReAct agent</text>
+                            <text class="crate-subtitle" x="330" y="252" text-anchor="middle">tier-aware prompts</text>
+                        </g>
+
+                        <g class="crate-node" data-crate="mcp-tools" onclick="selectCrate('mcp-tools')">
+                            <rect class="crate-bg" x="430" y="190" width="140" height="80" fill="var(--layer4-bg)" stroke="var(--layer4-border)"/>
+                            <text class="crate-title" x="500" y="220" text-anchor="middle">mcp-tools</text>
+                            <text class="crate-subtitle" x="500" y="237" text-anchor="middle">graph executor</text>
+                            <text class="crate-subtitle" x="500" y="252" text-anchor="middle">6 inner tools</text>
+                        </g>
+
+                        <g class="crate-node" data-crate="mcp-core" onclick="selectCrate('mcp-core')">
+                            <rect class="crate-bg" x="590" y="190" width="140" height="80" fill="var(--layer4-bg)" stroke="var(--layer4-border)"/>
+                            <text class="crate-title" x="660" y="220" text-anchor="middle">mcp-core</text>
+                            <text class="crate-subtitle" x="660" y="237" text-anchor="middle">protocol types</text>
+                            <text class="crate-subtitle" x="660" y="252" text-anchor="middle">MCP logging</text>
+                        </g>
+                    </g>
+
+                    <!-- Layer 3: Intelligence -->
+                    <g class="layer-group" data-layer="3">
+                        <rect class="layer-bg" x="30" y="310" width="740" height="100" fill="var(--layer3-bg)" stroke="var(--layer3-border)" stroke-width="1"/>
+                        <text class="layer-label" x="50" y="335">Layer 3: Intelligence</text>
+
+                        <g class="crate-node" data-crate="ai" onclick="selectCrate('ai')">
+                            <rect class="crate-bg" x="250" y="350" width="300" height="50" fill="var(--layer3-bg)" stroke="var(--layer3-border)"/>
+                            <text class="crate-title" x="400" y="372" text-anchor="middle">codegraph-ai</text>
+                            <text class="crate-subtitle" x="400" y="387" text-anchor="middle">LLM integration | agentic orchestration | tier-aware prompting</text>
+                        </g>
+                    </g>
+
+                    <!-- Layer 2: Data Storage & Processing -->
+                    <g class="layer-group" data-layer="2">
+                        <rect class="layer-bg" x="30" y="430" width="740" height="120" fill="var(--layer2-bg)" stroke="var(--layer2-border)" stroke-width="1"/>
+                        <text class="layer-label" x="50" y="455">Layer 2: Data Storage & Processing</text>
+
+                        <g class="crate-node" data-crate="vector" onclick="selectCrate('vector')">
+                            <rect class="crate-bg" x="50" y="470" width="160" height="65" fill="var(--layer2-bg)" stroke="var(--layer2-border)"/>
+                            <text class="crate-title" x="130" y="495" text-anchor="middle">codegraph-vector</text>
+                            <text class="crate-subtitle" x="130" y="510" text-anchor="middle">embeddings | HNSW</text>
+                            <text class="crate-subtitle" x="130" y="522" text-anchor="middle">5 providers</text>
+                        </g>
+
+                        <g class="crate-node" data-crate="graph" onclick="selectCrate('graph')">
+                            <rect class="crate-bg" x="230" y="470" width="160" height="65" fill="var(--layer2-bg)" stroke="var(--layer2-border)"/>
+                            <text class="crate-title" x="310" y="495" text-anchor="middle">codegraph-graph</text>
+                            <text class="crate-subtitle" x="310" y="510" text-anchor="middle">graph DB ops</text>
+                            <text class="crate-subtitle" x="310" y="522" text-anchor="middle">6 analysis functions</text>
+                        </g>
+
+                        <g class="crate-node" data-crate="parser" onclick="selectCrate('parser')">
+                            <rect class="crate-bg" x="410" y="470" width="160" height="65" fill="var(--layer2-bg)" stroke="var(--layer2-border)"/>
+                            <text class="crate-title" x="490" y="495" text-anchor="middle">codegraph-parser</text>
+                            <text class="crate-subtitle" x="490" y="510" text-anchor="middle">tree-sitter</text>
+                            <text class="crate-subtitle" x="490" y="522" text-anchor="middle">12+ languages</text>
+                        </g>
+
+                        <g class="crate-node" data-crate="cache" onclick="selectCrate('cache')">
+                            <rect class="crate-bg" x="590" y="470" width="160" height="65" fill="var(--layer2-bg)" stroke="var(--layer2-border)"/>
+                            <text class="crate-title" x="670" y="495" text-anchor="middle">codegraph-cache</text>
+                            <text class="crate-subtitle" x="670" y="510" text-anchor="middle">memory | disk</text>
+                            <text class="crate-subtitle" x="670" y="522" text-anchor="middle">LRU caching</text>
+                        </g>
+                    </g>
+
+                    <!-- Layer 1: Core Foundation -->
+                    <g class="layer-group" data-layer="1">
+                        <rect class="layer-bg" x="30" y="570" width="740" height="100" fill="var(--layer1-bg)" stroke="var(--layer1-border)" stroke-width="1"/>
+                        <text class="layer-label" x="50" y="595">Layer 1: Core Foundation</text>
+
+                        <g class="crate-node" data-crate="core" onclick="selectCrate('core')">
+                            <rect class="crate-bg" x="230" y="610" width="340" height="50" fill="var(--layer1-bg)" stroke="var(--layer1-border)"/>
+                            <text class="crate-title" x="400" y="632" text-anchor="middle">codegraph-core</text>
+                            <text class="crate-subtitle" x="400" y="647" text-anchor="middle">config | shared types | logging | provider abstractions</text>
+                        </g>
+                    </g>
+
+                    <!-- Supporting Infrastructure -->
+                    <g class="layer-group" data-layer="infra">
+                        <rect class="layer-bg" x="30" y="690" width="740" height="90" fill="var(--infra-bg)" stroke="var(--infra-border)" stroke-width="1"/>
+                        <text class="layer-label" x="50" y="715">Supporting Infrastructure</text>
+
+                        <g class="crate-node" data-crate="concurrent" onclick="selectCrate('concurrent')">
+                            <rect class="crate-bg" x="50" y="730" width="140" height="40" fill="var(--infra-bg)" stroke="var(--infra-border)"/>
+                            <text class="crate-title" x="120" y="755" text-anchor="middle">concurrent</text>
+                        </g>
+
+                        <g class="crate-node" data-crate="zerocopy" onclick="selectCrate('zerocopy')">
+                            <rect class="crate-bg" x="210" y="730" width="140" height="40" fill="var(--infra-bg)" stroke="var(--infra-border)"/>
+                            <text class="crate-title" x="280" y="755" text-anchor="middle">zerocopy</text>
+                        </g>
+                    </g>
+
+                    <!-- External Services -->
+                    <g class="layer-group" data-layer="external">
+                        <rect class="layer-bg" x="800" y="30" width="270" height="750" fill="var(--external-bg)" stroke="var(--external-border)" stroke-width="1" stroke-dasharray="5,3"/>
+                        <text class="layer-label" x="820" y="55">External Services</text>
+
+                        <g class="external-service" data-service="surrealdb">
+                            <rect class="external-bg" x="820" y="80" width="230" height="120" fill="var(--external-bg)" stroke="#f472b6" stroke-width="2"/>
+                            <text class="crate-title" x="935" y="105" text-anchor="middle" fill="#f472b6">SurrealDB</text>
+                            <text class="crate-subtitle" x="935" y="125" text-anchor="middle">Graph Database</text>
+                            <text class="crate-subtitle" x="935" y="142" text-anchor="middle">HNSW Vector Index</text>
+                            <text class="crate-subtitle" x="935" y="159" text-anchor="middle">Full-text Search</text>
+                            <text class="crate-subtitle" x="935" y="176" text-anchor="middle">Transactions</text>
+                        </g>
+
+                        <g class="external-service" data-service="llm-providers">
+                            <rect class="external-bg" x="820" y="220" width="230" height="140" fill="var(--external-bg)" stroke="#a855f7" stroke-width="2"/>
+                            <text class="crate-title" x="935" y="245" text-anchor="middle" fill="#a855f7">LLM Providers</text>
+                            <text class="crate-subtitle" x="935" y="270" text-anchor="middle">Ollama (local)</text>
+                            <text class="crate-subtitle" x="935" y="287" text-anchor="middle">Anthropic Claude</text>
+                            <text class="crate-subtitle" x="935" y="304" text-anchor="middle">OpenAI GPT</text>
+                            <text class="crate-subtitle" x="935" y="321" text-anchor="middle">LM Studio</text>
+                            <text class="crate-subtitle" x="935" y="338" text-anchor="middle">xAI Grok</text>
+                        </g>
+
+                        <g class="external-service" data-service="embedding-providers">
+                            <rect class="external-bg" x="820" y="380" width="230" height="130" fill="var(--external-bg)" stroke="#22c55e" stroke-width="2"/>
+                            <text class="crate-title" x="935" y="405" text-anchor="middle" fill="#22c55e">Embedding Providers</text>
+                            <text class="crate-subtitle" x="935" y="430" text-anchor="middle">ONNX Runtime (local)</text>
+                            <text class="crate-subtitle" x="935" y="447" text-anchor="middle">Ollama (local)</text>
+                            <text class="crate-subtitle" x="935" y="464" text-anchor="middle">LM Studio (local)</text>
+                            <text class="crate-subtitle" x="935" y="481" text-anchor="middle">OpenAI</text>
+                            <text class="crate-subtitle" x="935" y="498" text-anchor="middle">Jina AI</text>
+                        </g>
+
+                        <g class="external-service" data-service="clients">
+                            <rect class="external-bg" x="820" y="530" width="230" height="100" fill="var(--external-bg)" stroke="#3b82f6" stroke-width="2"/>
+                            <text class="crate-title" x="935" y="555" text-anchor="middle" fill="#3b82f6">MCP Clients</text>
+                            <text class="crate-subtitle" x="935" y="580" text-anchor="middle">Claude Desktop</text>
+                            <text class="crate-subtitle" x="935" y="597" text-anchor="middle">Claude Code</text>
+                            <text class="crate-subtitle" x="935" y="614" text-anchor="middle">Custom Integrations</text>
+                        </g>
+
+                        <g class="external-service" data-service="filesystem">
+                            <rect class="external-bg" x="820" y="650" width="230" height="70" fill="var(--external-bg)" stroke="#eab308" stroke-width="2"/>
+                            <text class="crate-title" x="935" y="675" text-anchor="middle" fill="#eab308">Filesystem</text>
+                            <text class="crate-subtitle" x="935" y="700" text-anchor="middle">Source Code Files</text>
+                        </g>
+                    </g>
+
+                </svg>
+            </div>
+
+            <div class="sidebar">
+                <div class="legend">
+                    <h3>Architecture Layers</h3>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: var(--layer5-bg); border-color: var(--layer5-border);"></div>
+                        <span>Layer 5: User Interfaces</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: var(--layer4-bg); border-color: var(--layer4-border);"></div>
+                        <span>Layer 4: Integration (MCP)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: var(--layer3-bg); border-color: var(--layer3-border);"></div>
+                        <span>Layer 3: Intelligence</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: var(--layer2-bg); border-color: var(--layer2-border);"></div>
+                        <span>Layer 2: Data & Processing</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: var(--layer1-bg); border-color: var(--layer1-border);"></div>
+                        <span>Layer 1: Core Foundation</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: var(--infra-bg); border-color: var(--infra-border);"></div>
+                        <span>Supporting Infrastructure</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: var(--external-bg); border-color: var(--external-border);"></div>
+                        <span>External Services</span>
+                    </div>
+                </div>
+
+                <div class="detail-panel" id="detailPanel">
+                    <h3>Component Details</h3>
+                    <div id="detailContent">
+                        <p class="crate-description">Click on any component to see its details, dependencies, and features.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <h4>
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 6v6l4 2"/>
+                    </svg>
+                    7 Agentic MCP Tools
+                </h4>
+                <ul>
+                    <li>agentic_code_search</li>
+                    <li>agentic_dependency_analysis</li>
+                    <li>agentic_call_chain_analysis</li>
+                    <li>agentic_architecture_analysis</li>
+                    <li>agentic_api_surface_analysis</li>
+                    <li>agentic_context_builder</li>
+                    <li>agentic_semantic_question</li>
+                </ul>
+            </div>
+
+            <div class="feature-card">
+                <h4>
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                        <polyline points="22,6 12,13 2,6"/>
+                    </svg>
+                    Tier-Aware Prompting
+                </h4>
+                <ul>
+                    <li>Small (&lt;50K): TERSE, 5 steps</li>
+                    <li>Medium (50K-150K): BALANCED, 10 steps</li>
+                    <li>Large (150K-500K): DETAILED, 15 steps</li>
+                    <li>Massive (&gt;500K): EXPLORATORY, 20 steps</li>
+                </ul>
+            </div>
+
+            <div class="feature-card">
+                <h4>
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                        <line x1="12" y1="22.08" x2="12" y2="12"/>
+                    </svg>
+                    6 Graph Analysis Functions
+                </h4>
+                <ul>
+                    <li>GetTransitiveDependencies</li>
+                    <li>GetReverseDependencies</li>
+                    <li>TraceCallChain</li>
+                    <li>DetectCycles</li>
+                    <li>CalculateCoupling</li>
+                    <li>GetHubNodes</li>
+                </ul>
+            </div>
+
+            <div class="feature-card">
+                <h4>
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="3" y1="9" x2="21" y2="9"/>
+                        <line x1="9" y1="21" x2="9" y2="9"/>
+                    </svg>
+                    12+ Languages Supported
+                </h4>
+                <ul>
+                    <li>Rust, Python, TypeScript</li>
+                    <li>Go, Java, C++</li>
+                    <li>Swift, Kotlin, C#</li>
+                    <li>Ruby, PHP, Dart</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Crate data for detail panel
+        const crateData = {
+            'core': {
+                name: 'codegraph-core',
+                layer: 'Layer 1: Core Foundation',
+                description: 'Configuration management, shared types, logging, and provider abstractions. This is the foundation crate with NO dependencies on other codegraph crates.',
+                dependencies: [],
+                features: ['Hierarchical config system', 'Provider abstractions', 'Error types', 'Logging infrastructure']
+            },
+            'cache': {
+                name: 'codegraph-cache',
+                layer: 'Layer 2: Data & Processing',
+                description: 'Multi-tier caching system supporting memory, disk, and LRU strategies for optimal performance.',
+                dependencies: ['core'],
+                features: ['Memory cache', 'Disk cache', 'LRU eviction', '~90MB embedding cache']
+            },
+            'graph': {
+                name: 'codegraph-graph',
+                layer: 'Layer 2: Data & Processing',
+                description: 'Graph database operations with SurrealDB integration. Provides 6 graph analysis functions for code intelligence.',
+                dependencies: ['core'],
+                features: ['Transactional graph', 'Branch support', 'SurrealDB queries', '6 analysis functions']
+            },
+            'parser': {
+                name: 'codegraph-parser',
+                layer: 'Layer 2: Data & Processing',
+                description: 'Source code parsing using tree-sitter for 12+ programming languages.',
+                dependencies: ['core'],
+                features: ['Tree-sitter integration', '12+ languages', 'AST extraction', 'Symbol extraction']
+            },
+            'vector': {
+                name: 'codegraph-vector',
+                layer: 'Layer 2: Data & Processing',
+                description: 'Vector embeddings and semantic search using SurrealDB HNSW index. Supports 5 embedding providers.',
+                dependencies: ['core', 'graph', 'cache (optional)'],
+                features: ['ONNX Runtime', 'Ollama', 'LM Studio', 'OpenAI', 'Jina AI', '2-5ms query latency']
+            },
+            'ai': {
+                name: 'codegraph-ai',
+                layer: 'Layer 3: Intelligence',
+                description: 'LLM integration and agentic orchestration with tier-aware prompting that adapts to model context window size.',
+                dependencies: ['core', 'graph', 'vector'],
+                features: ['Ollama', 'Anthropic', 'OpenAI', 'LM Studio', 'xAI Grok', 'Tier-aware prompting', 'LRU caching']
+            },
+            'mcp-core': {
+                name: 'codegraph-mcp-core',
+                layer: 'Layer 4: Integration',
+                description: 'MCP protocol types and logging infrastructure. Provides the foundation for MCP server implementation.',
+                dependencies: ['core'],
+                features: ['Protocol types', 'MCP logging', 'Progress notifications']
+            },
+            'mcp-tools': {
+                name: 'codegraph-mcp-tools',
+                layer: 'Layer 4: Integration',
+                description: 'Graph executor for MCP tools. Provides 6 inner graph analysis tools used by the ReAct agent.',
+                dependencies: ['core', 'graph', 'vector', 'mcp-core'],
+                features: ['GraphToolExecutor', '6 inner tools', 'Query execution', 'Result formatting']
+            },
+            'mcp-autoagents': {
+                name: 'codegraph-mcp-autoagents',
+                layer: 'Layer 4: Integration',
+                description: 'Agentic prompts and workflows using the ReAct framework. Replaces the custom orchestrator with AutoAgents.',
+                dependencies: ['mcp-core', 'mcp-tools', 'ai'],
+                features: ['ReAct agent', 'Tier-aware prompts', 'Prompt selector', 'Multi-step reasoning']
+            },
+            'mcp': {
+                name: 'codegraph-mcp',
+                layer: 'Layer 4: Integration',
+                description: 'Main MCP integration crate providing 7 agentic tools for AI-powered code intelligence.',
+                dependencies: ['core', 'parser', 'graph', 'vector', 'ai', 'mcp-autoagents', 'mcp-core', 'mcp-tools'],
+                features: ['7 agentic MCP tools', 'rmcp SDK v0.7.0', 'Progress notifications', 'Tool routing']
+            },
+            'mcp-server': {
+                name: 'codegraph-mcp-server',
+                layer: 'Layer 5: User Interfaces',
+                description: 'MCP server binary supporting both stdio and HTTP transports for integration with AI assistants.',
+                dependencies: ['mcp', 'mcp-autoagents', 'mcp-tools', 'mcp-daemon', 'ai'],
+                features: ['stdio transport', 'HTTP/SSE transport', 'Health checks', 'Session management']
+            },
+            'mcp-daemon': {
+                name: 'codegraph-mcp-daemon',
+                layer: 'Layer 5: User Interfaces',
+                description: 'File watcher daemon for automatic reindexing when source files change.',
+                dependencies: ['mcp-core', 'core', 'mcp', 'parser'],
+                features: ['File watching', 'Auto-reindex', 'Incremental updates']
+            },
+            'concurrent': {
+                name: 'codegraph-concurrent',
+                layer: 'Supporting Infrastructure',
+                description: 'Parallel processing utilities using Rayon and Tokio for CPU and I/O bound work.',
+                dependencies: ['core'],
+                features: ['Rayon integration', 'Tokio runtime', 'Crossbeam channels']
+            },
+            'zerocopy': {
+                name: 'codegraph-zerocopy',
+                layer: 'Supporting Infrastructure',
+                description: 'Zero-copy serialization using rkyv for high-performance data exchange.',
+                dependencies: [],
+                features: ['rkyv serialization', 'Zero-copy reads', 'Memory efficiency']
+            }
+        };
+
+        let selectedCrate = null;
+
+        function selectCrate(crateId) {
+            // Remove previous selection
+            document.querySelectorAll('.crate-node.selected').forEach(el => el.classList.remove('selected'));
+
+            // Add selection to clicked node
+            const node = document.querySelector(`[data-crate="${crateId}"]`);
+            if (node) {
+                node.classList.add('selected');
+            }
+
+            selectedCrate = crateId;
+            updateDetailPanel(crateId);
+        }
+
+        function updateDetailPanel(crateId) {
+            const data = crateData[crateId];
+            if (!data) return;
+
+            const detailContent = document.getElementById('detailContent');
+            detailContent.innerHTML = `
+                <div class="crate-name">${data.name}</div>
+                <div class="crate-layer">${data.layer}</div>
+                <div class="crate-description">${data.description}</div>
+                ${data.dependencies.length > 0 ? `
+                <div class="dependencies">
+                    <div class="dep-title">Dependencies</div>
+                    <div class="dep-list">
+                        ${data.dependencies.map(dep => `<span class="dep-tag">${dep}</span>`).join('')}
+                    </div>
+                </div>
+                ` : ''}
+                <div class="features-list">
+                    <div class="dep-title">Features</div>
+                    ${data.features.map(f => `<div class="feature-item">${f}</div>`).join('')}
+                </div>
+            `;
+        }
+
+        function showAllLayers() {
+            document.querySelectorAll('.layer-group').forEach(layer => {
+                layer.style.opacity = '1';
+            });
+            updateActiveButton('all');
+        }
+
+        function highlightLayer(layerNum) {
+            document.querySelectorAll('.layer-group').forEach(layer => {
+                const dataLayer = layer.getAttribute('data-layer');
+                if (dataLayer === String(layerNum)) {
+                    layer.style.opacity = '1';
+                } else {
+                    layer.style.opacity = '0.3';
+                }
+            });
+            updateActiveButton(`layer${layerNum}`);
+        }
+
+        function updateActiveButton(view) {
+            document.querySelectorAll('.controls .btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-view') === view);
+            });
+        }
+
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            body.setAttribute('data-theme', currentTheme === 'light' ? 'dark' : 'light');
+        }
+
+        // Initialize with system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            document.body.setAttribute('data-theme', 'light');
+        }
+    </script>
+</body>
+</html>

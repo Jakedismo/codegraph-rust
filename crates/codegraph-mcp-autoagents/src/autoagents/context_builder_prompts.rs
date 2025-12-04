@@ -11,7 +11,7 @@ AVAILABLE TOOLS:
 0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Map what this code needs
 2. detect_circular_dependencies(edge_type) - Find dependency cycles
-3. trace_call_chain(from_node, max_depth) - Understand execution flow
+3. trace_call_chain(node_id, max_depth) - Understand execution flow
 4. calculate_coupling_metrics(node_id) - Assess integration complexity
 5. get_hub_nodes(min_degree) - Find central components
 6. get_reverse_dependencies(node_id, edge_type, depth) - Map what uses this code
@@ -55,7 +55,7 @@ AVAILABLE TOOLS:
 0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Map what this code needs
 2. detect_circular_dependencies(edge_type) - Find dependency cycles
-3. trace_call_chain(from_node, max_depth) - Understand execution flow
+3. trace_call_chain(node_id, max_depth) - Understand execution flow
 4. calculate_coupling_metrics(node_id) - Assess integration complexity
 5. get_hub_nodes(min_degree) - Find central components
 6. get_reverse_dependencies(node_id, edge_type, depth) - Map what uses this code
@@ -103,7 +103,7 @@ AVAILABLE TOOLS:
 0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Map what this code needs
 2. detect_circular_dependencies(edge_type) - Find dependency cycles
-3. trace_call_chain(from_node, max_depth) - Understand execution flow
+3. trace_call_chain(node_id, max_depth) - Understand execution flow
 4. calculate_coupling_metrics(node_id) - Assess integration complexity
 5. get_hub_nodes(min_degree) - Find central components
 6. get_reverse_dependencies(node_id, edge_type, depth) - Map what uses this code
@@ -157,7 +157,7 @@ AVAILABLE TOOLS:
 0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Map what this code needs
 2. detect_circular_dependencies(edge_type) - Find dependency cycles
-3. trace_call_chain(from_node, max_depth) - Understand execution flow
+3. trace_call_chain(node_id, max_depth) - Understand execution flow
 4. calculate_coupling_metrics(node_id) - Assess integration complexity
 5. get_hub_nodes(min_degree) - Find central components
 6. get_reverse_dependencies(node_id, edge_type, depth) - Map what uses this code

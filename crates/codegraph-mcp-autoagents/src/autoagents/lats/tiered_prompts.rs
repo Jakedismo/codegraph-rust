@@ -101,7 +101,7 @@ TOOL USAGE HIERARCHY:
    - NEVER use placeholders like "<NODE_ID>" - use the actual value
    - get_transitive_dependencies(node_id, edge_type, depth)
    - get_reverse_dependencies(node_id, edge_type, depth)
-   - trace_call_chain(from_node, to_node, max_depth)
+   - trace_call_chain(node_id, to_node, max_depth)
    - detect_circular_dependencies(node_id)
    - calculate_coupling_metrics(node_id)
    - get_hub_nodes(min_degree)
@@ -155,7 +155,7 @@ CRITICAL TOOL USAGE RULES:
    - Copy the exact node_id string from search result's "node_id" field
    - get_transitive_dependencies(node_id, edge_type, depth) - forward deps
    - get_reverse_dependencies(node_id, edge_type, depth) - what depends on this
-   - trace_call_chain(from_node, to_node, max_depth) - execution flow
+   - trace_call_chain(node_id, to_node, max_depth) - execution flow
    - detect_circular_dependencies(node_id) - cycle detection
    - calculate_coupling_metrics(node_id) - Ca, Ce, instability
    - get_hub_nodes(min_degree) - find architectural hotspots

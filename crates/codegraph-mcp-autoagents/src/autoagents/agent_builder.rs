@@ -835,7 +835,7 @@ mod tests {
                 "tool_call": {
                     "tool_name": "trace_call_chain",
                     "args": {
-                        "from_node": "GraphToolExecutor",
+                        "node_id": "GraphToolExecutor",
                         "max_depth": 4
                     }
                 }
@@ -850,7 +850,7 @@ mod tests {
         assert_eq!(tool_calls[0].function.name, "trace_call_chain");
         assert_eq!(
             tool_calls[0].function.arguments,
-            "{\"from_node\":\"GraphToolExecutor\",\"max_depth\":4}"
+            "{\"node_id\":\"GraphToolExecutor\",\"max_depth\":4}"
         );
     }
 

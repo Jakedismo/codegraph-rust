@@ -2,11 +2,13 @@
 // ABOUTME: Orchestrates architecture detection, factory-based executor creation, and delegation
 
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
+use crate::autoagents::startup_context::{build_startup_context, StartupContextRender};
 use codegraph_ai::llm_provider::LLMProvider;
 use codegraph_mcp_core::analysis::AnalysisType;
 use codegraph_mcp_tools::GraphToolExecutor;
 use std::sync::Arc;
 use std::time::Duration;
+use std::path::PathBuf;
 use thiserror::Error;
 
 /// Default execution timeout in seconds (5 minutes)
@@ -148,12 +150,21 @@ impl CodeGraphExecutor {
         // Create architecture-specific executor via factory
         let executor = self.factory.create(self.architecture)?;
 
+        let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let enriched_query = match build_startup_context(&project_root) {
+            Ok(ctx) => ctx.render_with_query(&query),
+            Err(e) => {
+                tracing::warn!(project = %project_root.display(), error = %e, "startup context unavailable");
+                query.clone()
+            }
+        };
+
         let start_time = Instant::now();
 
         // Wrap execution in timeout
         let result = tokio::time::timeout(
             self.timeout,
-            executor.execute(query.clone(), analysis_type),
+            executor.execute(enriched_query, analysis_type),
         )
         .await;
 

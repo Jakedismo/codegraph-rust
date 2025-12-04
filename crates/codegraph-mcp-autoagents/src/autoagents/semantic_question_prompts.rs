@@ -19,7 +19,7 @@ AVAILABLE GRAPH TOOLS:
 0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Find what a node depends on
 2. detect_circular_dependencies(edge_type) - Find circular dependency cycles
-3. trace_call_chain(from_node, max_depth) - Trace execution flow through calls
+3. trace_call_chain(node_id, max_depth) - Trace execution flow through calls
 4. calculate_coupling_metrics(node_id) - Get coupling metrics (Ca, Ce, I)
 5. get_hub_nodes(min_degree) - Find highly connected nodes
 6. get_reverse_dependencies(node_id, edge_type, depth) - Find what depends on a node
@@ -78,7 +78,7 @@ AVAILABLE GRAPH TOOLS:
    - Find bidirectional dependency cycles
    - Critical for architectural health assessment
 
-3. trace_call_chain(from_node, max_depth)
+3. trace_call_chain(node_id, max_depth)
    - Follow execution flow through function calls
    - Essential for understanding "how does X work"
 
@@ -174,9 +174,9 @@ AVAILABLE GRAPH TOOLS:
    - edge_type: Which relationship type to analyze
    Returns: Bidirectional dependency pairs (architectural red flags)
 
-3. trace_call_chain(from_node, max_depth)
+3. trace_call_chain(node_id, max_depth)
    Parameters:
-   - from_node: Starting function/method node
+   - node_id: Starting function/method node
    - max_depth: 1-10 (suggest 5-7 for detailed traces)
    Returns: Execution flow graph from starting point
 
@@ -361,9 +361,9 @@ AVAILABLE GRAPH TOOLS:
    Returns: All bidirectional dependency pairs (A→B and B→A)
    Use: Run for multiple edge types to build comprehensive cycle map
 
-3. trace_call_chain(from_node, max_depth)
+3. trace_call_chain(node_id, max_depth)
    Purpose: Execution flow reconstruction
-   - from_node: Entry point function/method
+   - node_id: Entry point function/method
    - max_depth: 1-10 (exploratory tier: use 7-10 for deep execution traces)
    Returns: Complete call graph showing invocation paths
 

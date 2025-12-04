@@ -36,7 +36,7 @@ TOOLS (6 graph analysis functions):
 1. semantic_code_search(query, limit, threshold) - Find nodes by description (DISCOVERY ONLY)
 2. get_transitive_dependencies(node_id, edge_type, depth) - What a node depends on
 3. get_reverse_dependencies(node_id, edge_type, depth) - What depends on a node
-4. trace_call_chain(from_node, max_depth) - Execution flow paths
+4. trace_call_chain(node_id, max_depth) - Execution flow paths
 5. calculate_coupling_metrics(node_id) - Coupling analysis (Ca, Ce, instability)
 6. get_hub_nodes(min_degree) - Find highly connected nodes
 
@@ -83,7 +83,7 @@ TOOLS (6 graph analysis functions):
 1. semantic_code_search(query, limit, threshold) - Find nodes by description (DISCOVERY ONLY, max 2 calls)
 2. get_transitive_dependencies(node_id, edge_type, depth) - What a node depends on
 3. get_reverse_dependencies(node_id, edge_type, depth) - What depends on a node (impact analysis)
-4. trace_call_chain(from_node, max_depth) - Execution flow paths
+4. trace_call_chain(node_id, max_depth) - Execution flow paths
 5. calculate_coupling_metrics(node_id) - Coupling: Ca (in), Ce (out), I (instability)
 6. get_hub_nodes(min_degree) - Find central/highly connected nodes
 7. detect_circular_dependencies(edge_type) - Find cyclic dependencies
@@ -176,10 +176,10 @@ AVAILABLE TOOLS (7 COMPREHENSIVE GRAPH ANALYSIS FUNCTIONS):
    Strategic use: Identify architectural anti-patterns, find cyclic import problems, detect design issues
    Note: Run for multiple edge_types to get comprehensive circular dependency analysis
 
-3. trace_call_chain(from_node, max_depth)
+3. trace_call_chain(node_id, max_depth)
    Purpose: Trace complete execution call chains from a starting function/method
    Parameters:
-   - from_node: String ID of starting function/method node (extracted from prior results)
+   - node_id: String ID of starting function/method node (extracted from prior results)
    - max_depth: Integer maximum call chain depth 1-10 (default: 5, recommend 7-10 for deep traces)
    Returns: Complete call chain tree showing all execution paths
    Strategic use: Map execution flows, understand control flow complexity, identify call bottlenecks
@@ -320,7 +320,7 @@ UNACCEPTABLE:
 (VIOLATES ZERO HEURISTICS - no tool output cited, assumption-based)
 
 EXCELLENT:
-\"The trace_call_chain(from_node='nodes:handler_101', max_depth=8) result shows 12 distinct call paths with maximum depth of 7:
+\"The trace_call_chain(node_id='nodes:handler_101', max_depth=8) result shows 12 distinct call paths with maximum depth of 7:
 - Path 1: handler_101 → validator_55 → schema_check_77 → db_query_88
 - Path 2: handler_101 → auth_99 → token_verify_111 → cache_lookup_122 → db_query_88
 [...10 more paths...]

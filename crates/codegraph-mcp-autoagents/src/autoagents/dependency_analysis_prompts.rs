@@ -14,7 +14,7 @@ AVAILABLE TOOLS:
 0. semantic_code_search(query, limit, threshold) - Semantic search to resolve components to exact node IDs (must run first if ID unknown)
 1. get_transitive_dependencies(node_id, edge_type, depth) - Get dependencies of a node
 2. detect_circular_dependencies(edge_type) - Find circular dependency cycles
-3. trace_call_chain(from_node, max_depth) - Trace function call sequences
+3. trace_call_chain(node_id, max_depth) - Trace function call sequences
 4. calculate_coupling_metrics(node_id) - Get coupling scores (Ca, Ce, Instability)
 5. get_hub_nodes(min_degree) - Find highly connected nodes
 6. get_reverse_dependencies(node_id, edge_type, depth) - Find what depends on this node
@@ -60,7 +60,7 @@ AVAILABLE TOOLS:
    - Critical for architectural health assessment
    - Check Imports and Calls edge types
 
-3. trace_call_chain(from_node, max_depth) - Trace execution call sequences
+3. trace_call_chain(node_id, max_depth) - Trace execution call sequences
    - Use depth=3-5 for call chain analysis
    - Shows runtime dependency paths
 
@@ -134,7 +134,7 @@ AVAILABLE TOOLS:
    - Identify all bidirectional dependency pairs
    - Critical for architectural integrity assessment
 
-3. trace_call_chain(from_node, max_depth) - Deep call graph analysis
+3. trace_call_chain(node_id, max_depth) - Deep call graph analysis
    - Use depth=5-7 for comprehensive execution path tracing
    - Map complete control flow through codebase
    - Identify execution bottlenecks and critical paths
@@ -250,7 +250,7 @@ AVAILABLE TOOLS (Use Extensively):
    - Map all circular dependency clusters
    - Analyze cycle complexity and nesting
 
-3. trace_call_chain(from_node, max_depth) - Complete execution path mapping
+3. trace_call_chain(node_id, max_depth) - Complete execution path mapping
    - Use depth=7-10 for deep call graph analysis
    - Map all execution paths through system
    - Identify performance-critical paths and bottlenecks

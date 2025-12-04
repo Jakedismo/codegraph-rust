@@ -96,7 +96,7 @@ impl GraphToolSchemas {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "from_node": {
+                    "node_id": {
                         "type": "string",
                         "description": "The ID of the starting function/method node (extracted from search results)"
                     },
@@ -108,7 +108,7 @@ impl GraphToolSchemas {
                         "default": 5
                     }
                 },
-                "required": ["from_node"]
+                "required": ["node_id"]
             }),
         }
     }

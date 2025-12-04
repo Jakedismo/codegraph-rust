@@ -147,6 +147,8 @@ Add to your MCP config:
 
 ## The Architecture
 
+> **[View Interactive Architecture Diagram](docs/architecture/codegraph-architecture.html)** - Explore the full workspace structure with clickable components and layer filtering.
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Claude Code / MCP Client                │

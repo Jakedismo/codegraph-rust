@@ -248,9 +248,8 @@ impl GraphToolExecutor {
             .as_str()
             .ok_or_else(|| McpError::Protocol("Missing node_id".to_string()))?;
 
-        let edge_type = params["edge_type"]
-            .as_str()
-            .ok_or_else(|| McpError::Protocol("Missing edge_type".to_string()))?;
+        // Default to "Calls" if edge_type not provided (for LATS compatibility)
+        let edge_type = params["edge_type"].as_str().unwrap_or("Calls");
 
         let depth = params["depth"].as_i64().unwrap_or(3) as i32;
 
@@ -298,9 +297,11 @@ impl GraphToolExecutor {
 
     /// Execute trace_call_chain
     async fn execute_trace_call_chain(&self, params: JsonValue) -> Result<JsonValue> {
+        // Accept both "from_node" (canonical) and "node_id" (common pattern) for compatibility
         let from_node = params["from_node"]
             .as_str()
-            .ok_or_else(|| McpError::Protocol("Missing from_node".to_string()))?;
+            .or_else(|| params["node_id"].as_str())
+            .ok_or_else(|| McpError::Protocol("Missing from_node or node_id".to_string()))?;
 
         let max_depth = params["max_depth"].as_i64().unwrap_or(5) as i32;
 
@@ -366,9 +367,8 @@ impl GraphToolExecutor {
             .as_str()
             .ok_or_else(|| McpError::Protocol("Missing node_id".to_string()))?;
 
-        let edge_type = params["edge_type"]
-            .as_str()
-            .ok_or_else(|| McpError::Protocol("Missing edge_type".to_string()))?;
+        // Default to "Calls" if edge_type not provided (for LATS compatibility)
+        let edge_type = params["edge_type"].as_str().unwrap_or("Calls");
 
         let depth = params["depth"].as_i64().unwrap_or(3) as i32;
 

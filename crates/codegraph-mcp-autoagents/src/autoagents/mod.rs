@@ -38,6 +38,8 @@ pub mod react_executor;
 #[cfg(feature = "autoagents-experimental")]
 pub mod semantic_question_prompts;
 #[cfg(feature = "autoagents-experimental")]
+pub mod startup_context;
+#[cfg(feature = "autoagents-experimental")]
 pub mod tier_plugin;
 #[cfg(feature = "autoagents-experimental")]
 pub mod tools;
@@ -67,5 +69,7 @@ pub use progress_notifier::{ProgressCallback, ProgressNotifier, ProgressStage};
 pub use prompt_selector::{PromptSelector, PromptSelectorStats, PromptVerbosity};
 #[cfg(feature = "autoagents-experimental")]
 pub use react_executor::ReActExecutor;
+#[cfg(feature = "autoagents-experimental")]
+pub use startup_context::{build_startup_context, StartupContext, StartupContextRender};
 #[cfg(feature = "autoagents-experimental")]
 pub use tier_plugin::TierAwarePromptPlugin;

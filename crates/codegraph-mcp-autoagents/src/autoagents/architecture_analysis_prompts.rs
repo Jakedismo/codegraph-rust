@@ -14,7 +14,7 @@ AVAILABLE TOOLS:
 3. get_hub_nodes(min_degree) - Identifies highly connected nodes (potential god objects)
 4. get_transitive_dependencies(node_id, edge_type, depth) - Maps dependency chains
 5. get_reverse_dependencies(node_id, edge_type, depth) - Maps dependents (change impact)
-6. trace_call_chain(from_node, max_depth) - Maps execution paths
+6. trace_call_chain(node_id, max_depth) - Maps execution paths
 
 MANDATORY WORKFLOW:
 **Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes
@@ -50,7 +50,7 @@ AVAILABLE TOOLS:
 3. get_hub_nodes(min_degree) - Identifies highly connected nodes (potential god objects)
 4. get_transitive_dependencies(node_id, edge_type, depth) - Maps dependency chains
 5. get_reverse_dependencies(node_id, edge_type, depth) - Maps dependents (change impact)
-6. trace_call_chain(from_node, max_depth) - Maps execution paths
+6. trace_call_chain(node_id, max_depth) - Maps execution paths
 
 MANDATORY WORKFLOW:
 **Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes
@@ -91,7 +91,7 @@ AVAILABLE TOOLS:
 3. get_hub_nodes(min_degree) - Identifies highly connected nodes
 4. get_transitive_dependencies(node_id, edge_type, depth) - Maps dependency chains (depth 3-5)
 5. get_reverse_dependencies(node_id, edge_type, depth) - Maps dependents (depth 3-5)
-6. trace_call_chain(from_node, max_depth) - Maps execution paths (depth 4-6)
+6. trace_call_chain(node_id, max_depth) - Maps execution paths (depth 4-6)
 
 MANDATORY WORKFLOW:
 **Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes
@@ -122,7 +122,7 @@ AVAILABLE TOOLS (use extensively):
 3. get_hub_nodes(min_degree) - Multi-threshold analysis (3, 5, 10, 15, 20)
 4. get_transitive_dependencies(node_id, edge_type, depth) - Deep analysis (depth 5-8)
 5. get_reverse_dependencies(node_id, edge_type, depth) - Complete impact (depth 5-8)
-6. trace_call_chain(from_node, max_depth) - Exhaustive execution (depth 7-10)
+6. trace_call_chain(node_id, max_depth) - Exhaustive execution (depth 7-10)
 
 MANDATORY WORKFLOW:
 **Step 1**: ALWAYS start with semantic_code_search(query="<description>") to find nodes

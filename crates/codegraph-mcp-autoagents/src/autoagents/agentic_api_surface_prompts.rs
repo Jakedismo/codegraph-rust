@@ -13,7 +13,7 @@ AVAILABLE TOOLS:
 0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Follow dependency edges recursively
 2. detect_circular_dependencies(edge_type) - Find bidirectional dependency cycles
-3. trace_call_chain(from_node, max_depth) - Trace function call sequences
+3. trace_call_chain(node_id, max_depth) - Trace function call sequences
 4. calculate_coupling_metrics(node_id) - Returns afferent/efferent coupling, instability (0=stable, 1=unstable)
 5. get_hub_nodes(min_degree) - Find highly connected nodes (widely-used API points)
 6. get_reverse_dependencies(node_id, edge_type, depth) - Find what depends ON this node (critical for impact analysis)
@@ -67,7 +67,7 @@ AVAILABLE TOOLS:
 0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Follow dependency edges recursively
 2. detect_circular_dependencies(edge_type) - Find bidirectional dependency cycles
-3. trace_call_chain(from_node, max_depth) - Trace function call sequences
+3. trace_call_chain(node_id, max_depth) - Trace function call sequences
 4. calculate_coupling_metrics(node_id) - Returns afferent coupling (incoming deps), efferent coupling (outgoing deps), instability metric I=Ce/(Ce+Ca)
 5. get_hub_nodes(min_degree) - Find highly connected nodes by total degree (in + out connections)
 6. get_reverse_dependencies(node_id, edge_type, depth) - Find what depends ON this node (critical for impact analysis)
@@ -106,7 +106,7 @@ API SURFACE ANALYSIS WORKFLOW:
    - Report any cycles involving hub nodes
 
 5. TRACE KEY API FLOWS (if specific entry points identified)
-   - trace_call_chain(from_node, max_depth=3) for top API nodes
+   - trace_call_chain(node_id, max_depth=3) for top API nodes
    - Map what each public API calls transitively
 
 FORMAT:
@@ -134,7 +134,7 @@ AVAILABLE TOOLS:
 0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Follow dependency edges recursively (max depth 10)
 2. detect_circular_dependencies(edge_type) - Find bidirectional dependency cycles
-3. trace_call_chain(from_node, max_depth) - Trace function call sequences (max depth 10)
+3. trace_call_chain(node_id, max_depth) - Trace function call sequences (max depth 10)
 4. calculate_coupling_metrics(node_id) - Returns:
    - Ca (afferent coupling): number of nodes that depend ON this node
    - Ce (efferent coupling): number of nodes this node depends on
@@ -185,7 +185,7 @@ API SURFACE ANALYSIS WORKFLOW:
    - Cross-reference cycles with hub nodes to find problematic API patterns
 
 6. API CALL FLOW ANALYSIS
-   - For critical APIs (highest Ca): trace_call_chain(from_node, max_depth=5)
+   - For critical APIs (highest Ca): trace_call_chain(node_id, max_depth=5)
    - Map complete execution paths from public APIs
    - Identify shared call destinations across multiple APIs
 
@@ -220,7 +220,7 @@ AVAILABLE TOOLS:
 0. semantic_code_search(query, limit, threshold) - **REQUIRED FIRST** to find nodes matching descriptions/names
 1. get_transitive_dependencies(node_id, edge_type, depth) - Follow dependency edges recursively (max depth 10)
 2. detect_circular_dependencies(edge_type) - Find bidirectional dependency cycles across entire codebase
-3. trace_call_chain(from_node, max_depth) - Trace function call sequences (max depth 10)
+3. trace_call_chain(node_id, max_depth) - Trace function call sequences (max depth 10)
 4. calculate_coupling_metrics(node_id) - Returns:
    - Ca (afferent coupling): number of nodes that depend ON this node
    - Ce (efferent coupling): number of nodes this node depends on
@@ -293,7 +293,7 @@ API SURFACE ANALYSIS WORKFLOW:
      * Map cycle interconnections
 
 6. DEEP API CALL FLOW TRACING
-   - For top 10 APIs by Ca: trace_call_chain(from_node, max_depth=8)
+   - For top 10 APIs by Ca: trace_call_chain(node_id, max_depth=8)
    - Map complete execution graphs from each API entry point
    - Identify:
      * Shared execution bottlenecks (nodes called by multiple APIs)
