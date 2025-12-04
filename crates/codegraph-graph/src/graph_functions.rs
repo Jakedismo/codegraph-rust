@@ -518,6 +518,63 @@ impl GraphFunctions {
 
         Ok(result)
     }
+
+    /// Semantic search that returns full node records with content, deduplicated from chunk matches.
+    /// Uses chunk-level semantic search for precision, then deduplicates by parent node.
+    /// Returns complete code units (functions, classes, etc.) with full content for context-engineering.
+    pub async fn semantic_search_nodes_via_chunks(
+        &self,
+        query_text: &str,
+        query_embedding: &[f32],
+        dimension: usize,
+        limit: usize,
+        threshold: f32,
+    ) -> Result<Vec<serde_json::Value>> {
+        debug!(
+            "Calling fn::semantic_search_nodes_via_chunks(project={}, query='{}', dim={}, limit={}, threshold={})",
+            self.project_id, query_text, dimension, limit, threshold
+        );
+
+        let embedding_value: serde_json::Value =
+            serde_json::to_value(query_embedding).map_err(|e| {
+                CodeGraphError::Database(format!("Failed to serialize embedding: {}", e))
+            })?;
+
+        let mut response = self
+            .db
+            .query("RETURN fn::semantic_search_nodes_via_chunks($project_id, $query_embedding, $query_text, $dimension, $limit, $threshold)")
+            .bind(("project_id", self.project_id.clone()))
+            .bind(("query_embedding", embedding_value))
+            .bind(("query_text", query_text.to_string()))
+            .bind(("dimension", dimension as i64))
+            .bind(("limit", limit as i64))
+            .bind(("threshold", threshold as f64))
+            .await
+            .map_err(|e| {
+                error!("Failed to call semantic_search_nodes_via_chunks: {}", e);
+                CodeGraphError::Database(format!("semantic_search_nodes_via_chunks failed: {}", e))
+            })?;
+
+        let raw_value: SurrealValue = response.take(0).map_err(|e| {
+            error!(
+                "Failed to get raw value from semantic_search_nodes_via_chunks: {}",
+                e
+            );
+            CodeGraphError::Database(format!("Failed to get raw value: {}", e))
+        })?;
+
+        // Convert SurrealDB Value to clean JSON (avoids enum variant tags)
+        let json_value = surreal_to_json(raw_value);
+
+        // Extract Vec from the JSON value
+        let result: Vec<serde_json::Value> = match json_value {
+            serde_json::Value::Array(arr) => arr,
+            serde_json::Value::Null => Vec::new(),
+            other => vec![other],
+        };
+
+        Ok(result)
+    }
 }
 
 // ============================================================================

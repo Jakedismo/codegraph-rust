@@ -1381,3 +1381,193 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
     RETURN $results;
 }
 PERMISSIONS FULL;
+
+-- =============================================================================
+-- fn::semantic_search_nodes_via_chunks
+-- =============================================================================
+-- Context-engineering optimized semantic search that returns full node records.
+-- Uses chunk-level semantic search for precision, then deduplicates by parent
+-- node and returns complete code units (functions, classes, etc.) with full content.
+--
+-- Returns: Array of node records with content, deduplicated by node_id
+-- =============================================================================
+DEFINE FUNCTION IF NOT EXISTS fn::semantic_search_nodes_via_chunks(
+    $project_id: string,
+    $query_embedding: array<float>,
+    $query_text: string,
+    $dimension: int,
+    $limit: int,
+    $threshold: float
+) {
+    -- Safety guards
+    LET $safe_limit = IF $limit > 0 AND $limit <= 100 THEN $limit ELSE 10 END;
+    LET $safe_threshold =
+        IF $threshold >= 0.0 AND $threshold <= 1.0
+        THEN $threshold
+        ELSE 0.7
+        END;
+
+    -- Search more chunks than limit to ensure enough unique nodes after deduplication
+    LET $chunk_limit = $safe_limit * 3;
+
+    -- Dimension-dependent vector search on chunks with FETCH parent_node
+    LET $chunk_results = IF $dimension = 384 THEN (
+        SELECT
+            parent_node,
+            vector::similarity::cosine(embedding_384, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_384 IS NOT NONE
+            AND vector::similarity::cosine(embedding_384, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $chunk_limit
+        FETCH parent_node
+    ) ELSE IF $dimension = 768 THEN (
+        SELECT
+            parent_node,
+            vector::similarity::cosine(embedding_768, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_768 IS NOT NONE
+            AND vector::similarity::cosine(embedding_768, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $chunk_limit
+        FETCH parent_node
+    ) ELSE IF $dimension = 1024 THEN (
+        SELECT
+            parent_node,
+            vector::similarity::cosine(embedding_1024, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_1024 IS NOT NONE
+            AND vector::similarity::cosine(embedding_1024, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $chunk_limit
+        FETCH parent_node
+    ) ELSE IF $dimension = 1536 THEN (
+        SELECT
+            parent_node,
+            vector::similarity::cosine(embedding_1536, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_1536 IS NOT NONE
+            AND vector::similarity::cosine(embedding_1536, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $chunk_limit
+        FETCH parent_node
+    ) ELSE IF $dimension = 2048 THEN (
+        SELECT
+            parent_node,
+            vector::similarity::cosine(embedding_2048, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_2048 IS NOT NONE
+            AND vector::similarity::cosine(embedding_2048, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $chunk_limit
+        FETCH parent_node
+    ) ELSE IF $dimension = 2560 THEN (
+        SELECT
+            parent_node,
+            vector::similarity::cosine(embedding_2560, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_2560 IS NOT NONE
+            AND vector::similarity::cosine(embedding_2560, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $chunk_limit
+        FETCH parent_node
+    ) ELSE IF $dimension = 3072 THEN (
+        SELECT
+            parent_node,
+            vector::similarity::cosine(embedding_3072, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_3072 IS NOT NONE
+            AND vector::similarity::cosine(embedding_3072, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $chunk_limit
+        FETCH parent_node
+    ) ELSE (
+        SELECT
+            parent_node,
+            vector::similarity::cosine(embedding_4096, $query_embedding) AS vector_score
+        FROM chunks
+        WHERE project_id = $project_id
+            AND embedding_4096 IS NOT NONE
+            AND vector::similarity::cosine(embedding_4096, $query_embedding) >= $safe_threshold
+        ORDER BY vector_score DESC
+        LIMIT $chunk_limit
+        FETCH parent_node
+    ) END;
+
+    LET $flattened = array::flatten([$chunk_results]);
+
+    -- Deduplicate by parent_node, keeping the highest score per node
+    LET $deduplicated = (
+        SELECT
+            math::max(vector_score) AS vector_score,
+            parent_node.id AS node_id,
+            parent_node.name AS name,
+            parent_node.node_type AS kind,
+            parent_node.language AS language,
+            parent_node.file_path AS file_path,
+            parent_node.start_line AS start_line,
+            parent_node.end_line AS end_line,
+            parent_node.content AS content,
+            parent_node.metadata AS metadata
+        FROM $flattened
+        WHERE parent_node IS NOT NONE
+        GROUP BY parent_node.id
+        ORDER BY vector_score DESC
+        LIMIT $safe_limit
+    );
+
+    -- Enrich each result with FULL graph context (ALL edge types)
+    -- NOTE: node_id here is still a record<nodes> Thing, convert to string only for output
+    LET $results = (
+        SELECT
+            IF node_id IS NOT NONE THEN <string>node_id ELSE NONE END AS node_id,
+            name,
+            kind,
+            language,
+            file_path,
+            start_line,
+            end_line,
+            content,
+            metadata,
+            vector_score,
+
+            -- GRAPH CONTEXT: ALL outgoing edges (what this node connects TO)
+            -- Use $parent.node_id to access the record reference before string conversion
+            (SELECT
+                <string>to.id AS node_id,
+                to.name AS name,
+                to.node_type AS kind,
+                to.file_path AS file_path,
+                edge_type AS relationship
+             FROM edges
+             WHERE from = $parent.node_id
+             LIMIT 20
+             FETCH to
+            ) AS outgoing_edges,
+
+            -- GRAPH CONTEXT: ALL incoming edges (what connects TO this node)
+            (SELECT
+                <string>from.id AS node_id,
+                from.name AS name,
+                from.node_type AS kind,
+                from.file_path AS file_path,
+                edge_type AS relationship
+             FROM edges
+             WHERE to = $parent.node_id
+             LIMIT 20
+             FETCH from
+            ) AS incoming_edges
+
+        FROM $deduplicated
+    );
+
+    RETURN $results;
+}
+PERMISSIONS FULL;

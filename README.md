@@ -303,3 +303,7 @@ MIT
 - [SurrealDB Cloud](https://surrealdb.com/cloud) (free tier)
 - [Jina AI](https://jina.ai) (free API tokens)
 - [Ollama](https://ollama.com) (local models)
+
+---
+
+![CodeGraph](docs/assets/footer.jpg)
