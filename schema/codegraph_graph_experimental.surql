@@ -800,7 +800,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             chunk_index,
             text,
             distance,
-            (SELECT VALUE name FROM nodes WHERE id = parent_node LIMIT 1)[0] AS parent_name
+            parent_node.name AS parent_name
         FROM $candidates
     );
 

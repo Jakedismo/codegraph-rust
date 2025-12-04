@@ -1348,7 +1348,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
 
     LET $vector_results = array::flatten([$vector_candidates]);
 
-    -- Attach node context (cast Thing IDs to strings for JSON serialization, handle NONE)
+    -- Attach node context using record link traversal (more efficient than subqueries)
     LET $results = (
         SELECT
             IF id IS NOT NONE THEN <string>id ELSE NONE END AS id,
@@ -1356,15 +1356,15 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             text,
             vector_score,
 
-            -- Node context (resolved per row, cast IDs to strings if not NONE)
-            (SELECT VALUE IF id IS NOT NONE THEN <string>id ELSE NONE END FROM nodes WHERE id = parent_node LIMIT 1)[0] AS node_id,
-            (SELECT VALUE name      FROM nodes WHERE id = parent_node LIMIT 1)[0] AS name,
-            (SELECT VALUE node_type FROM nodes WHERE id = parent_node LIMIT 1)[0] AS kind,
-            (SELECT VALUE language  FROM nodes WHERE id = parent_node LIMIT 1)[0] AS language,
-            (SELECT VALUE file_path FROM nodes WHERE id = parent_node LIMIT 1)[0] AS file_path,
-            (SELECT VALUE start_line FROM nodes WHERE id = parent_node LIMIT 1)[0] AS start_line,
-            (SELECT VALUE end_line   FROM nodes WHERE id = parent_node LIMIT 1)[0] AS end_line,
-            (SELECT VALUE metadata   FROM nodes WHERE id = parent_node LIMIT 1)[0] AS metadata
+            -- Node context via record link traversal (parent_node is a Thing reference)
+            IF parent_node IS NOT NONE THEN <string>parent_node.id ELSE NONE END AS node_id,
+            parent_node.name AS name,
+            parent_node.node_type AS kind,
+            parent_node.language AS language,
+            parent_node.file_path AS file_path,
+            parent_node.start_line AS start_line,
+            parent_node.end_line AS end_line,
+            parent_node.metadata AS metadata
         FROM $vector_results
     );
 
