@@ -9,7 +9,11 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
-use surrealdb::{engine::any::Any, opt::auth::{Database, Root}, Error as SurrealError, Surreal};
+use surrealdb::{
+    engine::any::Any,
+    opt::auth::{Database, Root},
+    Error as SurrealError, Surreal,
+};
 use tracing::{debug, info};
 
 /// SurrealDB storage implementation with flexible schema support
@@ -45,7 +49,8 @@ impl Default for SurrealDbConfig {
         let use_graph_db = env::var("CODEGRAPH_USE_GRAPH_SCHEMA")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
-        let graph_db = env::var("CODEGRAPH_GRAPH_DB_DATABASE").unwrap_or_else(|_| "codegraph_graph".to_string());
+        let graph_db = env::var("CODEGRAPH_GRAPH_DB_DATABASE")
+            .unwrap_or_else(|_| "codegraph_graph".to_string());
 
         let database = if use_graph_db {
             graph_db
@@ -123,9 +128,8 @@ impl SurrealDbStorage {
                 db.signin(Root { username, password }).await
             };
 
-            auth_result.map_err(|e| {
-                CodeGraphError::Database(format!("Authentication failed: {}", e))
-            })?;
+            auth_result
+                .map_err(|e| CodeGraphError::Database(format!("Authentication failed: {}", e)))?;
         }
 
         // Select namespace and database
@@ -721,10 +725,7 @@ impl SurrealDbStorage {
         Ok(())
     }
 
-    async fn insert_chunk_embeddings_batch(
-        &self,
-        records: &[ChunkEmbeddingRecord],
-    ) -> Result<()> {
+    async fn insert_chunk_embeddings_batch(&self, records: &[ChunkEmbeddingRecord]) -> Result<()> {
         let owned: Vec<ChunkEmbeddingRecord> = records.to_vec();
         let resp = self
             .db
@@ -929,7 +930,7 @@ impl SurrealDbStorage {
                  file_count = $files, node_count = $nodes, edge_count = $edges, \
                  avg_coverage_score = $cov, last_analyzed = time::now(), codegraph_version = $ver, \
                  organization_id = $org, domain = $dom, metadata = $meta, \
-                 created_at = time::now(), updated_at = time::now();"
+                 created_at = time::now(), updated_at = time::now();",
             )
             .bind(("id", record.project_id.clone()))
             .bind(("pid", record.project_id.clone()))
@@ -1045,7 +1046,8 @@ impl SurrealDbStorage {
         // SurrealDB FOR loops can silently skip operations if schema/table missing
         // Use the first record's project_id to count records for that project
         let project_id = &records[0].project_id;
-        let verify_query = "SELECT count() FROM file_metadata WHERE project_id = $project_id GROUP ALL";
+        let verify_query =
+            "SELECT count() FROM file_metadata WHERE project_id = $project_id GROUP ALL";
         let mut verify_resp = self
             .db
             .query(verify_query)
@@ -1294,49 +1296,35 @@ impl SurrealDbStorage {
         // Delete chunks where parent_node doesn't exist in nodes table
         let orphan_chunks_query =
             "DELETE chunks WHERE parent_node NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
-        let mut result = self
-            .db
-            .query(orphan_chunks_query)
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to delete orphan chunks: {}", e)))?;
+        let mut result = self.db.query(orphan_chunks_query).await.map_err(|e| {
+            CodeGraphError::Database(format!("Failed to delete orphan chunks: {}", e))
+        })?;
         let orphan_chunks: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
         let chunks_deleted = orphan_chunks.len();
 
         // Delete edges where from node doesn't exist
         let orphan_edges_from_query =
             "DELETE edges WHERE from NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
-        let mut result = self
-            .db
-            .query(orphan_edges_from_query)
-            .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to delete orphan edges (from): {}", e))
-            })?;
+        let mut result = self.db.query(orphan_edges_from_query).await.map_err(|e| {
+            CodeGraphError::Database(format!("Failed to delete orphan edges (from): {}", e))
+        })?;
         let orphan_edges_from: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
 
         // Delete edges where to node doesn't exist
         let orphan_edges_to_query =
             "DELETE edges WHERE to NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
-        let mut result = self
-            .db
-            .query(orphan_edges_to_query)
-            .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to delete orphan edges (to): {}", e))
-            })?;
+        let mut result = self.db.query(orphan_edges_to_query).await.map_err(|e| {
+            CodeGraphError::Database(format!("Failed to delete orphan edges (to): {}", e))
+        })?;
         let orphan_edges_to: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
         let edges_deleted = orphan_edges_from.len() + orphan_edges_to.len();
 
         // Delete symbol_embeddings where node doesn't exist
         let orphan_symbols_query =
             "DELETE symbol_embeddings WHERE node_id NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
-        let mut result = self
-            .db
-            .query(orphan_symbols_query)
-            .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to delete orphan symbol embeddings: {}", e))
-            })?;
+        let mut result = self.db.query(orphan_symbols_query).await.map_err(|e| {
+            CodeGraphError::Database(format!("Failed to delete orphan symbol embeddings: {}", e))
+        })?;
         let orphan_symbols: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
         let symbols_deleted = orphan_symbols.len();
 

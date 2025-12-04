@@ -65,7 +65,12 @@ impl StartupContextRender for StartupContext {
         }
 
         out.push_str("[Root File Inventory]\n");
-        let _ = writeln!(out, "showing {} of {} entries", self.inventory.entries.len(), self.inventory.total);
+        let _ = writeln!(
+            out,
+            "showing {} of {} entries",
+            self.inventory.entries.len(),
+            self.inventory.total
+        );
         for path in &self.inventory.entries {
             out.push_str(path.to_string_lossy().as_ref());
             out.push('\n');
@@ -79,7 +84,9 @@ impl StartupContextRender for StartupContext {
 }
 
 /// Build startup context from the current project root.
-pub fn build_startup_context(root: &Path) -> std::result::Result<StartupContext, StartupContextError> {
+pub fn build_startup_context(
+    root: &Path,
+) -> std::result::Result<StartupContext, StartupContextError> {
     let guides = collect_guides(root);
     let readme = read_file_if_exists(root.join("README.md"));
     let inventory = collect_inventory(root)?;

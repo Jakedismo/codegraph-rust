@@ -144,12 +144,10 @@ impl AnthropicProvider {
 
         // Convert response_format to Anthropic's native output_format
         let output_format = match &config.response_format {
-            Some(ResponseFormat::JsonSchema { json_schema }) => {
-                Some(AnthropicOutputFormat {
-                    format_type: "json_schema".to_string(),
-                    schema: Some(json_schema.schema.clone()),
-                })
-            }
+            Some(ResponseFormat::JsonSchema { json_schema }) => Some(AnthropicOutputFormat {
+                format_type: "json_schema".to_string(),
+                schema: Some(json_schema.schema.clone()),
+            }),
             Some(ResponseFormat::JsonObject) => Some(AnthropicOutputFormat {
                 format_type: "json_schema".to_string(),
                 schema: Some(serde_json::json!({
@@ -266,9 +264,7 @@ impl LLMProvider for AnthropicProvider {
         config: &GenerationConfig,
     ) -> LLMResult<LLMResponse> {
         let _start = Instant::now();
-        let response = self
-            .try_request_with_tools(messages, tools, config)
-            .await?;
+        let response = self.try_request_with_tools(messages, tools, config).await?;
 
         // Extract text content
         let content = response

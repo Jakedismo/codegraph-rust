@@ -169,7 +169,10 @@ impl OpenAICompatibleProvider {
         messages: &[Message],
         tools: Option<&[crate::llm_provider::ToolDefinition]>,
         config: &GenerationConfig,
-    ) -> Result<(ResponseAPIResponse, Option<Vec<crate::llm_provider::ToolCall>>)> {
+    ) -> Result<(
+        ResponseAPIResponse,
+        Option<Vec<crate::llm_provider::ToolCall>>,
+    )> {
         // Extract system instructions and user input
         let instructions = messages
             .iter()
@@ -312,7 +315,10 @@ impl OpenAICompatibleProvider {
         messages: &[Message],
         tools: Option<&[crate::llm_provider::ToolDefinition]>,
         config: &GenerationConfig,
-    ) -> Result<(ResponseAPIResponse, Option<Vec<crate::llm_provider::ToolCall>>)> {
+    ) -> Result<(
+        ResponseAPIResponse,
+        Option<Vec<crate::llm_provider::ToolCall>>,
+    )> {
         // Extract Ollama-native format from response_format for compatibility
         let ollama_format = config.response_format.as_ref().and_then(|rf| {
             match rf {

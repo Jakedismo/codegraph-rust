@@ -10,9 +10,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 #[cfg(feature = "cache")]
 use std::time::Duration;
-use tracing::{debug, instrument};
 #[cfg(feature = "cache")]
 use tracing::info;
+use tracing::{debug, instrument};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalResult {

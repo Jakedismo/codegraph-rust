@@ -143,7 +143,12 @@ impl EmbeddingGenerator {
         nodes: &[CodeNode],
         file_sources: &std::collections::HashMap<String, String>,
     ) -> ChunkPlan {
-        build_chunk_plan_with_sources(nodes, file_sources, Arc::clone(&self.tokenizer), self.chunker_config())
+        build_chunk_plan_with_sources(
+            nodes,
+            file_sources,
+            Arc::clone(&self.tokenizer),
+            self.chunker_config(),
+        )
     }
 
     pub fn dimension(&self) -> usize {
@@ -389,8 +394,9 @@ impl EmbeddingGenerator {
             #[cfg(feature = "ollama")]
             {
                 tracing::info!("✅ 'ollama' feature is ENABLED");
-                let ollama_config =
-                    crate::ollama_embedding_provider::OllamaEmbeddingConfig::from(&embedding_config);
+                let ollama_config = crate::ollama_embedding_provider::OllamaEmbeddingConfig::from(
+                    &embedding_config,
+                );
                 tracing::info!(
                     "🔧 Created OllamaEmbeddingConfig: model='{}', url='{}'",
                     ollama_config.model_name,

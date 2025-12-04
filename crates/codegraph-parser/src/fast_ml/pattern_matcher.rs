@@ -84,11 +84,7 @@ impl PatternMatcher {
     ) -> ExtractionResult {
         // Prefix content with language marker to gate matches (e.g., "rust:", "py:")
         let mut gated_content = String::with_capacity(content.len() + 4);
-        let lang_prefix = match result
-            .nodes
-            .first()
-            .and_then(|n| n.language.as_ref())
-        {
+        let lang_prefix = match result.nodes.first().and_then(|n| n.language.as_ref()) {
             Some(codegraph_core::Language::Rust) => "rust:",
             Some(codegraph_core::Language::TypeScript) => "ts:",
             Some(codegraph_core::Language::JavaScript) => "js:",
@@ -127,7 +123,10 @@ impl PatternMatcher {
         let representative_node = result
             .nodes
             .iter()
-            .find(|n| matches!(n.node_type, Some(codegraph_core::NodeType::Module)) || n.node_type.is_none())
+            .find(|n| {
+                matches!(n.node_type, Some(codegraph_core::NodeType::Module))
+                    || n.node_type.is_none()
+            })
             .or_else(|| {
                 result
                     .nodes

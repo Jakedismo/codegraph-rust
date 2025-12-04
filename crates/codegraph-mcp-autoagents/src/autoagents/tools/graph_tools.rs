@@ -12,7 +12,9 @@ use std::sync::Arc;
 pub struct GetTransitiveDependenciesArgs {
     #[input(description = "The ID of the code node to analyze (e.g., 'nodes:123')")]
     node_id: String,
-    #[input(description = "Type of dependency relationship to follow (edge-types: 'Calls, Imports, Uses, Extends, Implements, References', default: 'Calls')")]
+    #[input(
+        description = "Type of dependency relationship to follow (edge-types: 'Calls, Imports, Uses, Extends, Implements, References', default: 'Calls')"
+    )]
     #[serde(default = "default_edge_type")]
     edge_type: String,
     #[input(description = "Maximum traversal depth (1-10, default: 3)")]
@@ -77,7 +79,9 @@ impl ToolRuntime for GetTransitiveDependencies {
 pub struct GetReverseDependenciesArgs {
     #[input(description = "The ID of the code node to analyze")]
     node_id: String,
-    #[input(description = "Type of dependency relationship (edge-types: 'Calls, Imports, Uses, Extends, Implements, References', default: 'Calls')")]
+    #[input(
+        description = "Type of dependency relationship (edge-types: 'Calls, Imports, Uses, Extends, Implements, References', default: 'Calls')"
+    )]
     #[serde(default = "default_edge_type")]
     edge_type: String,
     #[input(description = "Maximum traversal depth (default: 3)")]
@@ -185,7 +189,9 @@ impl ToolRuntime for TraceCallChain {
 /// Parameters for detect_cycles
 #[derive(Serialize, Deserialize, ToolInput, Debug)]
 pub struct DetectCyclesArgs {
-    #[input(description = "Type of dependency edge to check ((edge-types: 'Calls, Imports, Uses, Extends, Implements, References', default: 'Calls')")]
+    #[input(
+        description = "Type of dependency edge to check ((edge-types: 'Calls, Imports, Uses, Extends, Implements, References', default: 'Calls')"
+    )]
     #[serde(default = "default_edge_type")]
     edge_type: String,
 }
@@ -339,7 +345,9 @@ pub struct SemanticCodeSearchArgs {
     #[input(description = "Maximum number of results (1-50, default: 50)")]
     #[serde(default = "default_search_limit")]
     limit: i32,
-    #[input(description = "Similarity threshold 0.0-1.0 (optional, default 0.6; lower to broaden matches)")]
+    #[input(
+        description = "Similarity threshold 0.0-1.0 (optional, default 0.6; lower to broaden matches)"
+    )]
     #[serde(default = "default_search_threshold")]
     threshold: f64,
 }

@@ -63,10 +63,7 @@ async fn smoke_graph_tools() {
 
     // 2) Transitive deps (edge type Calls) from a placeholder node
     let node_id = "nodes:1"; // replace with a real node id in your DB if desired
-    match graph
-        .get_transitive_dependencies(node_id, "Calls", 2)
-        .await
-    {
+    match graph.get_transitive_dependencies(node_id, "Calls", 2).await {
         Ok(res) => println!("get_transitive_dependencies: {} deps", res.len()),
         Err(e) => eprintln!("get_transitive_dependencies error: {e}"),
     }
@@ -95,7 +92,10 @@ async fn test_semantic_search_returns_node_ids() {
         println!("Using embedding model from env: {}", model);
         ollama_config.model_name = model;
     } else {
-        println!("Using default embedding model: {}", ollama_config.model_name);
+        println!(
+            "Using default embedding model: {}",
+            ollama_config.model_name
+        );
     }
     let ollama_provider = OllamaEmbeddingProvider::new(ollama_config);
 
@@ -117,17 +117,18 @@ async fn test_semantic_search_returns_node_ids() {
 
     // Generate REAL embedding from query text
     let query_text = "Where is pub fn read(&self) defined?";
-    let query_embedding: Vec<f32> = match ollama_provider.generate_single_embedding(query_text).await {
-        Ok(emb) => {
-            println!("Generated embedding with {} dimensions", emb.len());
-            println!("First 5 values: {:?}", &emb[..5.min(emb.len())]);
-            emb
-        }
-        Err(e) => {
-            eprintln!("[ERROR] Failed to generate embedding: {e}");
-            return;
-        }
-    };
+    let query_embedding: Vec<f32> =
+        match ollama_provider.generate_single_embedding(query_text).await {
+            Ok(emb) => {
+                println!("Generated embedding with {} dimensions", emb.len());
+                println!("First 5 values: {:?}", &emb[..5.min(emb.len())]);
+                emb
+            }
+            Err(e) => {
+                eprintln!("[ERROR] Failed to generate embedding: {e}");
+                return;
+            }
+        };
 
     let results: Vec<JsonValue> = match graph
         .semantic_search_with_context(
@@ -179,7 +180,11 @@ async fn test_semantic_search_returns_node_ids() {
         let has_id = result.get("id").is_some();
 
         if has_node_id {
-            println!("Result {}: node_id = {}", i + 1, result.get("node_id").unwrap());
+            println!(
+                "Result {}: node_id = {}",
+                i + 1,
+                result.get("node_id").unwrap()
+            );
         } else if has_id {
             println!("Result {}: id = {}", i + 1, result.get("id").unwrap());
         } else {
@@ -213,7 +218,10 @@ async fn test_semantic_search_nodes_via_chunks() {
         println!("Using embedding model from env: {}", model);
         ollama_config.model_name = model;
     } else {
-        println!("Using default embedding model: {}", ollama_config.model_name);
+        println!(
+            "Using default embedding model: {}",
+            ollama_config.model_name
+        );
     }
     let ollama_provider = OllamaEmbeddingProvider::new(ollama_config);
 
@@ -235,24 +243,25 @@ async fn test_semantic_search_nodes_via_chunks() {
 
     // Generate REAL embedding from query text
     let query_text = "index_project function implementation";
-    let query_embedding: Vec<f32> = match ollama_provider.generate_single_embedding(query_text).await {
-        Ok(emb) => {
-            println!("Generated embedding with {} dimensions", emb.len());
-            emb
-        }
-        Err(e) => {
-            eprintln!("[ERROR] Failed to generate embedding: {e}");
-            return;
-        }
-    };
+    let query_embedding: Vec<f32> =
+        match ollama_provider.generate_single_embedding(query_text).await {
+            Ok(emb) => {
+                println!("Generated embedding with {} dimensions", emb.len());
+                emb
+            }
+            Err(e) => {
+                eprintln!("[ERROR] Failed to generate embedding: {e}");
+                return;
+            }
+        };
 
     let results: Vec<JsonValue> = match graph
         .semantic_search_nodes_via_chunks(
             query_text,
             &query_embedding,
             dim,
-            10,   // limit
-            0.2,  // threshold
+            10,  // limit
+            0.2, // threshold
         )
         .await
     {
@@ -298,10 +307,16 @@ async fn test_semantic_search_nodes_via_chunks() {
         if let Some(outgoing) = result.get("outgoing_edges").and_then(|c| c.as_array()) {
             println!("  outgoing_edges ({}):", outgoing.len());
             for edge in outgoing.iter().take(5) {
-                println!("    --[{}]--> {} ({})",
-                    edge.get("relationship").and_then(|r| r.as_str()).unwrap_or("?"),
+                println!(
+                    "    --[{}]--> {} ({})",
+                    edge.get("relationship")
+                        .and_then(|r| r.as_str())
+                        .unwrap_or("?"),
                     edge.get("name").and_then(|n| n.as_str()).unwrap_or("?"),
-                    edge.get("file_path").and_then(|f| f.as_str()).unwrap_or("?"));
+                    edge.get("file_path")
+                        .and_then(|f| f.as_str())
+                        .unwrap_or("?")
+                );
             }
         } else {
             println!("  outgoing_edges: []");
@@ -310,10 +325,16 @@ async fn test_semantic_search_nodes_via_chunks() {
         if let Some(incoming) = result.get("incoming_edges").and_then(|c| c.as_array()) {
             println!("  incoming_edges ({}):", incoming.len());
             for edge in incoming.iter().take(5) {
-                println!("    <--[{}]-- {} ({})",
-                    edge.get("relationship").and_then(|r| r.as_str()).unwrap_or("?"),
+                println!(
+                    "    <--[{}]-- {} ({})",
+                    edge.get("relationship")
+                        .and_then(|r| r.as_str())
+                        .unwrap_or("?"),
                     edge.get("name").and_then(|n| n.as_str()).unwrap_or("?"),
-                    edge.get("file_path").and_then(|f| f.as_str()).unwrap_or("?"));
+                    edge.get("file_path")
+                        .and_then(|f| f.as_str())
+                        .unwrap_or("?")
+                );
             }
         } else {
             println!("  incoming_edges: []");

@@ -443,7 +443,9 @@ impl CodeGraphMCPServer {
     ) -> Result<CallToolResult, McpError> {
         use codegraph_ai::llm_factory::LLMProviderFactory;
         use codegraph_graph::GraphFunctions;
-        use codegraph_mcp_autoagents::{CodeGraphExecutor, CodeGraphExecutorBuilder, ProgressNotifier};
+        use codegraph_mcp_autoagents::{
+            CodeGraphExecutor, CodeGraphExecutorBuilder, ProgressNotifier,
+        };
         use std::sync::Arc;
 
         // Auto-detect context tier
@@ -455,7 +457,8 @@ impl CodeGraphMCPServer {
 
         // Create progress notifier for 3-stage notifications
         let progress_notifier = if let Some(progress_token) = meta.get_progress_token() {
-            let callback = Self::create_progress_callback_with_message(peer.clone(), progress_token);
+            let callback =
+                Self::create_progress_callback_with_message(peer.clone(), progress_token);
             ProgressNotifier::new(callback, analysis_type.as_str())
         } else {
             ProgressNotifier::noop()
@@ -465,8 +468,8 @@ impl CodeGraphMCPServer {
         progress_notifier.notify_started().await;
 
         // Load config for LLM provider
-        let config_manager = codegraph_core::config_manager::ConfigManager::load()
-            .map_err(|e| {
+        let config_manager =
+            codegraph_core::config_manager::ConfigManager::load().map_err(|e| {
                 let error_msg = format!("Failed to load config: {}", e);
                 let notifier = progress_notifier.clone();
                 let error_for_spawn = error_msg.clone();
@@ -483,21 +486,20 @@ impl CodeGraphMCPServer {
         let config = config_manager.config();
 
         // Create LLM provider
-        let llm_provider = LLMProviderFactory::create_from_config(&config.llm)
-            .map_err(|e| {
-                let error_msg = format!("Failed to create LLM provider: {}", e);
-                let notifier = progress_notifier.clone();
-                let error_for_spawn = error_msg.clone();
-                tokio::spawn(async move {
-                    notifier.notify_error(&error_for_spawn).await;
-                });
-                DebugLogger::log_agent_finish(false, None, Some(&error_msg));
-                McpError {
-                    code: rmcp::model::ErrorCode(-32603),
-                    message: error_msg.into(),
-                    data: None,
-                }
-            })?;
+        let llm_provider = LLMProviderFactory::create_from_config(&config.llm).map_err(|e| {
+            let error_msg = format!("Failed to create LLM provider: {}", e);
+            let notifier = progress_notifier.clone();
+            let error_for_spawn = error_msg.clone();
+            tokio::spawn(async move {
+                notifier.notify_error(&error_for_spawn).await;
+            });
+            DebugLogger::log_agent_finish(false, None, Some(&error_msg));
+            McpError {
+                code: rmcp::model::ErrorCode(-32603),
+                message: error_msg.into(),
+                data: None,
+            }
+        })?;
 
         // Create GraphFunctions with SurrealDB connection
         let graph_functions = {
@@ -619,23 +621,21 @@ impl CodeGraphMCPServer {
         progress_notifier.notify_analyzing().await;
 
         // Execute agentic workflow
-        let result: CodeGraphAgentOutput = match executor
-            .execute(query.to_string(), analysis_type)
-            .await
-        {
-            Ok(output) => output,
-            Err(e) => {
-                let error_msg = format!("AutoAgents workflow failed: {}", e);
-                // Stage 3: Error notification (progress: 1.0)
-                progress_notifier.notify_error(&error_msg).await;
-                DebugLogger::log_agent_finish(false, None, Some(&error_msg));
-                return Err(McpError {
-                    code: rmcp::model::ErrorCode(-32603),
-                    message: error_msg.into(),
-                    data: None,
-                });
-            }
-        };
+        let result: CodeGraphAgentOutput =
+            match executor.execute(query.to_string(), analysis_type).await {
+                Ok(output) => output,
+                Err(e) => {
+                    let error_msg = format!("AutoAgents workflow failed: {}", e);
+                    // Stage 3: Error notification (progress: 1.0)
+                    progress_notifier.notify_error(&error_msg).await;
+                    DebugLogger::log_agent_finish(false, None, Some(&error_msg));
+                    return Err(McpError {
+                        code: rmcp::model::ErrorCode(-32603),
+                        message: error_msg.into(),
+                        data: None,
+                    });
+                }
+            };
 
         // Parse structured output from answer field (contains JSON schema)
         use codegraph_ai::agentic_schemas::*;

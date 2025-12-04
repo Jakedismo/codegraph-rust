@@ -148,7 +148,12 @@ impl OpenAIProvider {
 
         // Default reasoning effort for GPT-5.1 family when not provided
         let reasoning_effort = if is_reasoning && model_lower.starts_with("gpt-5.1") {
-            Some(config.reasoning_effort.clone().unwrap_or_else(|| "medium".to_string()))
+            Some(
+                config
+                    .reasoning_effort
+                    .clone()
+                    .unwrap_or_else(|| "medium".to_string()),
+            )
         } else {
             config.reasoning_effort.clone()
         };
@@ -167,7 +172,10 @@ impl OpenAIProvider {
 
         // Build request based on model type
         // OpenAI Responses API uses text.format instead of response_format
-        let text_config = config.response_format.clone().map(|rf| TextConfig { format: rf.into() });
+        let text_config = config
+            .response_format
+            .clone()
+            .map(|rf| TextConfig { format: rf.into() });
         let mut request = OpenAIRequest {
             model: self.config.model.clone(),
             input,
@@ -233,8 +241,8 @@ impl OpenAIProvider {
         );
 
         // Parse the response
-        let parsed: OpenAIResponse =
-            serde_json::from_str::<OpenAIResponse>(&response_text).context(format!(
+        let parsed: OpenAIResponse = serde_json::from_str::<OpenAIResponse>(&response_text)
+            .context(format!(
                 "Failed to parse OpenAI Responses API response. Raw response: {}",
                 response_text
             ))?;
@@ -319,9 +327,7 @@ impl LLMProvider for OpenAIProvider {
         config: &GenerationConfig,
     ) -> LLMResult<LLMResponse> {
         let _start = Instant::now();
-        let (response, tool_calls) = self
-            .try_request_with_tools(messages, tools, config)
-            .await?;
+        let (response, tool_calls) = self.try_request_with_tools(messages, tools, config).await?;
 
         // Extract text from output array
         let content = response

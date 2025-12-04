@@ -4,10 +4,10 @@ use codegraph_core::{CodeGraphError, CodeNode, CodeParser, ExtractionResult, Lan
 use futures::stream::{self, StreamExt};
 use sha2::Digest;
 use std::collections::HashMap;
+use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::env;
 use tokio::fs;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};

@@ -137,8 +137,18 @@ Scores:"#,
             for line in content.lines() {
                 let parts: Vec<&str> = line.split(':').collect();
                 if parts.len() == 2 {
-                    if let Ok(idx) = parts[0].trim().trim_matches(|c| c == '"' || c == '[' || c == ']' || c == 'D' || c == 'O' || c == 'C').parse::<usize>() {
-                        if let Ok(score) = parts[1].trim().trim_matches(|c| c == ',' || c == '"').parse::<f32>() {
+                    if let Ok(idx) = parts[0]
+                        .trim()
+                        .trim_matches(|c| {
+                            c == '"' || c == '[' || c == ']' || c == 'D' || c == 'O' || c == 'C'
+                        })
+                        .parse::<usize>()
+                    {
+                        if let Ok(score) = parts[1]
+                            .trim()
+                            .trim_matches(|c| c == ',' || c == '"')
+                            .parse::<f32>()
+                        {
                             scores.insert(idx, score.clamp(0.0, 1.0));
                         }
                     }

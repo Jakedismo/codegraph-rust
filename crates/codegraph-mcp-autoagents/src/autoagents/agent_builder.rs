@@ -147,9 +147,10 @@ impl ChatProvider for CodeGraphChatAdapter {
                             format!("{}\n\n[Tool results]\n{}", msg.content, results_json)
                         }
                     }
-                    MessageType::Text | MessageType::Image(_) | MessageType::Pdf(_) | MessageType::ImageURL(_) => {
-                        msg.content.clone()
-                    }
+                    MessageType::Text
+                    | MessageType::Image(_)
+                    | MessageType::Pdf(_)
+                    | MessageType::ImageURL(_) => msg.content.clone(),
                 };
 
                 Message {
@@ -179,15 +180,16 @@ impl ChatProvider for CodeGraphChatAdapter {
         }
 
         // Convert AutoAgents StructuredOutputFormat to CodeGraph ResponseFormat
-        let response_format = json_schema.map(|schema| {
-            codegraph_ai::llm_provider::ResponseFormat::JsonSchema {
-                json_schema: codegraph_ai::llm_provider::JsonSchema {
-                    name: schema.name,
-                    schema: schema.schema.unwrap_or_default(),
-                    strict: schema.strict.unwrap_or(true),
+        let response_format =
+            json_schema.map(
+                |schema| codegraph_ai::llm_provider::ResponseFormat::JsonSchema {
+                    json_schema: codegraph_ai::llm_provider::JsonSchema {
+                        name: schema.name,
+                        schema: schema.schema.unwrap_or_default(),
+                        strict: schema.strict.unwrap_or(true),
+                    },
                 },
-            }
-        });
+            );
 
         // Call CodeGraph LLM provider with native tool calling and structured output
         let config = codegraph_ai::llm_provider::GenerationConfig {
@@ -399,8 +401,15 @@ impl ChatResponse for CodeGraphChatResponse {
                 );
 
                 let step_number = self.step_counter.fetch_add(1, Ordering::SeqCst) as usize;
-                let tool_names: Vec<&str> = native_calls.iter().map(|t| t.function.name.as_str()).collect();
-                DebugLogger::log_reasoning_step(step_number, "Native tool calling", Some(&tool_names.join(", ")));
+                let tool_names: Vec<&str> = native_calls
+                    .iter()
+                    .map(|t| t.function.name.as_str())
+                    .collect();
+                DebugLogger::log_reasoning_step(
+                    step_number,
+                    "Native tool calling",
+                    Some(&tool_names.join(", ")),
+                );
 
                 // Convert CodeGraph ToolCall to AutoAgents ToolCall
                 let autoagents_calls: Vec<ToolCall> = native_calls
@@ -443,10 +452,7 @@ impl ChatResponse for CodeGraphChatResponse {
 
                 let step_number = self.step_counter.fetch_add(1, Ordering::SeqCst) as usize;
                 let thought = parsed.reasoning.as_deref().unwrap_or("");
-                let action = parsed
-                    .tool_call
-                    .as_ref()
-                    .map(|t| t.tool_name.as_str());
+                let action = parsed.tool_call.as_ref().map(|t| t.tool_name.as_str());
                 DebugLogger::log_reasoning_step(step_number, thought, action);
 
                 // If there's a tool_call, execute it
@@ -1018,7 +1024,10 @@ mod tests {
         // Clear env var to test default
         std::env::remove_var("CODEGRAPH_AGENT_MEMORY_WINDOW");
         let memory_size = read_memory_window_config();
-        assert_eq!(memory_size, 40, "Default memory window should be 40 for all tiers");
+        assert_eq!(
+            memory_size, 40,
+            "Default memory window should be 40 for all tiers"
+        );
     }
 
     #[test]

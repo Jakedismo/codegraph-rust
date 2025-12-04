@@ -6,13 +6,13 @@ use crate::autoagents::startup_context::{build_startup_context, StartupContextRe
 use codegraph_ai::llm_provider::LLMProvider;
 use codegraph_mcp_core::analysis::AnalysisType;
 use codegraph_mcp_tools::GraphToolExecutor;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use std::path::PathBuf;
 use thiserror::Error;
 
-/// Default execution timeout in seconds (5 minutes)
-const DEFAULT_TIMEOUT_SECS: u64 = 300;
+/// Default execution timeout in seconds (10 minutes)
+const DEFAULT_TIMEOUT_SECS: u64 = 600;
 
 /// Patterns that indicate context window overflow from various LLM providers
 const CONTEXT_OVERFLOW_PATTERNS: &[&str] = &[
@@ -365,9 +365,8 @@ mod tests {
 
     #[test]
     fn test_transform_context_overflow_matches() {
-        let err = ExecutorError::ExecutionFailed(
-            "Request failed: context_length_exceeded".to_string(),
-        );
+        let err =
+            ExecutorError::ExecutionFailed("Request failed: context_length_exceeded".to_string());
         let transformed = transform_context_overflow(err);
         match transformed {
             ExecutorError::ContextOverflow(msg) => {

@@ -399,7 +399,12 @@ impl GraphToolExecutor {
         let limit = params["limit"].as_i64().unwrap_or(10) as usize;
         let threshold = params["threshold"]
             .as_f64()
-            .or_else(|| std::env::var("CODEGRAPH_SEMSEARCH_THRESHOLD").ok()?.parse::<f64>().ok())
+            .or_else(|| {
+                std::env::var("CODEGRAPH_SEMSEARCH_THRESHOLD")
+                    .ok()?
+                    .parse::<f64>()
+                    .ok()
+            })
             .map(|v| v.clamp(0.0, 1.0))
             .unwrap_or(0.6);
 
@@ -552,13 +557,13 @@ mod tests {
     #[test]
     fn test_tool_schemas_available() {
         let schemas = GraphToolExecutor::get_tool_schemas();
-        assert_eq!(schemas.len(), 6);
+        assert_eq!(schemas.len(), 7);
     }
 
     #[test]
     fn test_tool_names() {
         let names = GraphToolExecutor::get_tool_names();
-        assert_eq!(names.len(), 6);
+        assert_eq!(names.len(), 7);
         assert!(names.contains(&"get_transitive_dependencies".to_string()));
     }
 

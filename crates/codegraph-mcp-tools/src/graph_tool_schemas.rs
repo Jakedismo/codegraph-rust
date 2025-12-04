@@ -26,7 +26,6 @@ impl GraphToolSchemas {
             Self::get_hub_nodes(),
             Self::get_reverse_dependencies(),
             Self::semantic_code_search(),
-            Self::find_nodes_by_name(),
         ]
     }
 
@@ -48,16 +47,17 @@ impl GraphToolSchemas {
                     "edge_type": {
                         "type": "string",
                         "description": "Type of dependency relationship to follow",
-                        "enum": ["Calls", "Imports", "Uses", "Extends", "Implements", "References", "Contains", "Defines"]
+                    "enum": ["Calls", "Imports", "Uses", "Extends", "Implements", "References"]
                     },
                     "depth": {
                         "type": "integer",
                         "description": "Maximum traversal depth (1-10, defaults to 3 if not specified)",
                         "minimum": 1,
-                        "maximum": 10,
-                        "default": 3
-                    }
-                },
+                    "maximum": 5,
+                    "default": 3,
+                    "description": "Maximum traversal depth (1-5). Values above 5 are clamped server-side."
+                }
+            },
                 "required": ["node_id", "edge_type"]
             }),
         }
@@ -94,17 +94,17 @@ impl GraphToolSchemas {
                 Essential for understanding control flow and execution paths through the codebase."
                     .to_string(),
             parameters: json!({
-                "type": "object",
-                "properties": {
-                    "node_id": {
-                        "type": "string",
-                        "description": "The ID of the starting function/method node (extracted from search results)"
-                    },
-                    "max_depth": {
-                        "type": "integer",
-                        "description": "Maximum call chain depth to traverse (1-10, defaults to 5 for call chains)",
+                    "type": "object",
+                    "properties": {
+                        "node_id": {
+                            "type": "string",
+                            "description": "The ID of the starting function/method node (extracted from search results)"
+                        },
+                        "max_depth": {
+                            "type": "integer",
+                        "description": "Maximum call chain depth to traverse (1-5; values above 5 are clamped server-side)",
                         "minimum": 1,
-                        "maximum": 10,
+                        "maximum": 5,
                         "default": 5
                     }
                 },
@@ -177,44 +177,15 @@ impl GraphToolSchemas {
                     },
                     "depth": {
                         "type": "integer",
-                        "description": "Maximum traversal depth for reverse dependencies (1-10, defaults to 3)",
+                        "description": "Maximum traversal depth for reverse dependencies (1-5; values above 5 are clamped server-side)",
                         "minimum": 1,
-                        "maximum": 10,
+                        "maximum": 5,
                         "default": 3
                     }
                 },
-                "required": ["node_id", "edge_type"]
-            }),
-        }
+            "required": ["node_id", "edge_type"]
+        }),
     }
-
-    /// Schema for find_nodes_by_name function (now with comprehensive semantic search)
-    pub fn find_nodes_by_name() -> ToolSchema {
-        ToolSchema {
-            name: "find_nodes_by_name".to_string(),
-            description: "Comprehensive semantic code search combining HNSW vector similarity, full-text analysis, and graph enrichment. \
-                Automatically finds semantically similar code using embeddings, supplements with full-text matches, and enriches results with \
-                dependencies, dependents, and file context. Use for any code discovery - handles both semantic queries ('find authentication logic') \
-                and specific searches ('JWT token validation').".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "needle": {
-                        "type": "string",
-                        "description": "Natural language search query or specific code pattern. Examples: 'authentication logic', 'JWT validation', 'error handling'. \
-                            Supports both semantic similarity and exact/fuzzy text matching with automatic graph context enrichment."
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results (1-50, defaults to 10)",
-                        "minimum": 1,
-                        "maximum": 50,
-                        "default": 10
-                    }
-                },
-                "required": ["needle"]
-            }),
-        }
     }
 
     /// Schema for semantic_code_search function (agentic entrypoint)
@@ -269,7 +240,7 @@ mod tests {
     #[test]
     fn test_all_schemas_valid() {
         let schemas = GraphToolSchemas::all();
-        assert_eq!(schemas.len(), 8, "Should have exactly 8 tool schemas");
+        assert_eq!(schemas.len(), 7, "Should have exactly 7 tool schemas");
 
         for schema in schemas {
             assert!(!schema.name.is_empty(), "Schema name should not be empty");
@@ -297,7 +268,7 @@ mod tests {
     #[test]
     fn test_tool_names() {
         let names = GraphToolSchemas::tool_names();
-        assert_eq!(names.len(), 8);
+        assert_eq!(names.len(), 7);
         assert!(names.contains(&"get_transitive_dependencies".to_string()));
         assert!(names.contains(&"detect_circular_dependencies".to_string()));
         assert!(names.contains(&"trace_call_chain".to_string()));
@@ -305,7 +276,6 @@ mod tests {
         assert!(names.contains(&"get_hub_nodes".to_string()));
         assert!(names.contains(&"get_reverse_dependencies".to_string()));
         assert!(names.contains(&"semantic_code_search".to_string()));
-        assert!(names.contains(&"find_nodes_by_name".to_string()));
     }
 
     #[test]

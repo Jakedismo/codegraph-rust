@@ -869,7 +869,10 @@ mod tests {
         assert_eq!(config.beam_width, 3);
         assert_eq!(config.max_depth, 5);
         assert_eq!(config.exploration_weight, 1.414);
-        assert_eq!(config.iteration_timeout_secs, DEFAULT_ITERATION_TIMEOUT_SECS);
+        assert_eq!(
+            config.iteration_timeout_secs,
+            DEFAULT_ITERATION_TIMEOUT_SECS
+        );
         assert_eq!(config.max_tree_nodes, 0); // Auto-calculate
     }
 
@@ -951,10 +954,7 @@ mod tests {
 
     #[test]
     fn test_termination_reason_enum() {
-        assert_eq!(
-            format!("{:?}", TerminationReason::HighScore),
-            "HighScore"
-        );
+        assert_eq!(format!("{:?}", TerminationReason::HighScore), "HighScore");
         assert_eq!(
             format!("{:?}", TerminationReason::SolutionFound),
             "SolutionFound"

@@ -134,7 +134,11 @@ pub struct ToolDefinition {
 
 impl ToolDefinition {
     /// Create a new function tool definition
-    pub fn function(name: impl Into<String>, description: impl Into<String>, parameters: serde_json::Value) -> Self {
+    pub fn function(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+    ) -> Self {
         Self {
             tool_type: "function".to_string(),
             function: FunctionDefinition {

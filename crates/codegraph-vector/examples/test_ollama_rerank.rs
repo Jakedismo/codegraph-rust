@@ -38,7 +38,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Create reranker
     let reranker = OllamaReranker::new(&config)?;
-    println!("✓ Reranker created: {} ({})\n", reranker.model_name(), reranker.provider_name());
+    println!(
+        "✓ Reranker created: {} ({})\n",
+        reranker.model_name(),
+        reranker.provider_name()
+    );
 
     // Test query
     let query = "How do I handle errors in Rust?";
@@ -50,37 +54,43 @@ async fn main() -> anyhow::Result<()> {
             id: "doc1".to_string(),
             text: "The Result type in Rust is used for error handling. \
                    It has two variants: Ok(T) for success and Err(E) for errors. \
-                   You can use the ? operator to propagate errors.".to_string(),
+                   You can use the ? operator to propagate errors."
+                .to_string(),
             metadata: Some(serde_json::json!({"relevance": "high"})),
         },
         RerankDocument {
             id: "doc2".to_string(),
             text: "Python uses try/except blocks for exception handling. \
-                   You can catch specific exceptions or use a bare except clause.".to_string(),
+                   You can catch specific exceptions or use a bare except clause."
+                .to_string(),
             metadata: Some(serde_json::json!({"relevance": "low"})),
         },
         RerankDocument {
             id: "doc3".to_string(),
             text: "The anyhow crate provides ergonomic error handling in Rust. \
-                   It offers the anyhow::Error type and the bail! macro for early returns.".to_string(),
+                   It offers the anyhow::Error type and the bail! macro for early returns."
+                .to_string(),
             metadata: Some(serde_json::json!({"relevance": "high"})),
         },
         RerankDocument {
             id: "doc4".to_string(),
             text: "Chocolate chip cookies are delicious. Mix flour, sugar, butter, \
-                   and chocolate chips. Bake at 350°F for 12 minutes.".to_string(),
+                   and chocolate chips. Bake at 350°F for 12 minutes."
+                .to_string(),
             metadata: Some(serde_json::json!({"relevance": "none"})),
         },
         RerankDocument {
             id: "doc5".to_string(),
             text: "The thiserror crate helps define custom error types with derive macros. \
-                   Use #[derive(Error)] and #[error(\"message\")] attributes.".to_string(),
+                   Use #[derive(Error)] and #[error(\"message\")] attributes."
+                .to_string(),
             metadata: Some(serde_json::json!({"relevance": "high"})),
         },
         RerankDocument {
             id: "doc6".to_string(),
             text: "Java uses checked exceptions that must be declared in method signatures. \
-                   RuntimeException and its subclasses are unchecked.".to_string(),
+                   RuntimeException and its subclasses are unchecked."
+                .to_string(),
             metadata: Some(serde_json::json!({"relevance": "low"})),
         },
     ];
@@ -100,7 +110,8 @@ async fn main() -> anyhow::Result<()> {
     println!("=== Results (took {:.2}s) ===\n", elapsed.as_secs_f64());
 
     for (i, result) in results.iter().enumerate() {
-        let expected = result.metadata
+        let expected = result
+            .metadata
             .as_ref()
             .and_then(|m| m.get("relevance"))
             .and_then(|v| v.as_str())
@@ -130,14 +141,16 @@ async fn main() -> anyhow::Result<()> {
         r.metadata
             .as_ref()
             .and_then(|m| m.get("relevance"))
-            .and_then(|v| v.as_str()) == Some("high")
+            .and_then(|v| v.as_str())
+            == Some("high")
     });
 
     let irrelevant_not_top = results.iter().take(2).all(|r| {
         r.metadata
             .as_ref()
             .and_then(|m| m.get("relevance"))
-            .and_then(|v| v.as_str()) != Some("none")
+            .and_then(|v| v.as_str())
+            != Some("none")
     });
 
     if high_relevance_in_top3 {

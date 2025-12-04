@@ -435,7 +435,10 @@ impl GraphFunctions {
         // Direct deserialization to serde_json::Value fails with "invalid type: enum"
         // Instead, get raw SurrealDB Value and serialize via serde_json::to_value
         let raw_value: SurrealValue = response.take(0).map_err(|e| {
-            error!("Failed to get raw value from semantic_search_with_context: {}", e);
+            error!(
+                "Failed to get raw value from semantic_search_with_context: {}",
+                e
+            );
             CodeGraphError::Database(format!("Failed to get raw value: {}", e))
         })?;
 

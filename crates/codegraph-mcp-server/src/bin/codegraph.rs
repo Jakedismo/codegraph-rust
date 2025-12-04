@@ -1389,8 +1389,7 @@ async fn handle_index(
     );
     println!(
         "│ 💾 Embeddings: {:>6} chunks ({}-dim)                  │",
-        stats.embeddings,
-        stats.embedding_dimension
+        stats.embeddings, stats.embedding_dimension
     );
     if stats.errors > 0 {
         println!(
@@ -1399,8 +1398,16 @@ async fn handle_index(
         );
     }
     println!("├──────────────────────────────────────────────────────┤");
-    let avg_nodes = if stats.files > 0 { stats.nodes as f64 / stats.files as f64 } else { 0.0 };
-    let avg_edges = if stats.files > 0 { stats.edges as f64 / stats.files as f64 } else { 0.0 };
+    let avg_nodes = if stats.files > 0 {
+        stats.nodes as f64 / stats.files as f64
+    } else {
+        0.0
+    };
+    let avg_edges = if stats.files > 0 {
+        stats.edges as f64 / stats.files as f64
+    } else {
+        0.0
+    };
     println!(
         "│ 📈 Averages: {:.1} nodes/file, {:.1} edges/file          │",
         avg_nodes, avg_edges
@@ -1419,8 +1426,7 @@ async fn handle_index(
     if !stats.embedding_provider.is_empty() {
         println!(
             "Embeddings: {} ({}-dim)",
-            stats.embedding_provider,
-            stats.embedding_dimension
+            stats.embedding_provider, stats.embedding_dimension
         );
     }
 
@@ -1961,7 +1967,10 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
         ConfigAction::Validate => {
             println!("✓ Configuration is valid");
         }
-        ConfigAction::DbCheck { namespace, database } => {
+        ConfigAction::DbCheck {
+            namespace,
+            database,
+        } => {
             handle_db_check(namespace, database).await?;
         }
         ConfigAction::AgentStatus { json } => {

@@ -626,9 +626,8 @@ impl AstVisitor {
 
         let content = node.utf8_text(self.source.as_bytes()).ok()?.to_string();
 
-        let mut cn =
-            CodeNode::new(name, Some(node_type), Some(self.language.clone()), location)
-                .with_content(content);
+        let mut cn = CodeNode::new(name, Some(node_type), Some(self.language.clone()), location)
+            .with_content(content);
         cn.span = Some(span);
         Some(cn)
     }
