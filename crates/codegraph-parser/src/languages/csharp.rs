@@ -171,7 +171,11 @@ impl<'a> CSharpCollector<'a> {
                         Some(Language::CSharp),
                         loc,
                     )
-                    .with_content(content_text.clone());
+                    .with_content(content_text.clone())
+                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
+                        &node,
+                        self.content,
+                    ));
 
                     // Detect async methods
                     if content_text.contains("async ") {

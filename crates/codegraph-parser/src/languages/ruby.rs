@@ -145,7 +145,11 @@ impl<'a> RubyCollector<'a> {
                         Some(Language::Ruby),
                         loc,
                     )
-                    .with_content(content_text.clone());
+                    .with_content(content_text.clone())
+                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
+                        &node,
+                        self.content,
+                    ));
 
                     // Detect class vs instance methods
                     if content_text.starts_with("def self.") {

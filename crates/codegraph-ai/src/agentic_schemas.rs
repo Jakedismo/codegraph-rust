@@ -194,6 +194,21 @@ pub struct SemanticQuestionOutput {
     pub confidence: f64,
 }
 
+/// Structured output for agentic_complexity_analysis
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ComplexityAnalysisOutput {
+    /// Natural language analysis of complexity hotspots
+    pub analysis: String,
+    /// Top complexity hotspots with risk scores
+    pub hotspots: Vec<FileLocation>,
+    /// Refactoring recommendations prioritized by risk reduction
+    pub refactoring_roadmap: Vec<serde_json::Value>,
+    /// Pattern detection results (cycles, god objects, etc.)
+    pub patterns_detected: Vec<String>,
+    /// Risk statistics summary
+    pub risk_summary: serde_json::Value,
+}
+
 /// Unified output type for all agentic tools
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -205,6 +220,7 @@ pub enum AgenticOutput {
     APISurface(APISurfaceOutput),
     ContextBuilder(ContextBuilderOutput),
     SemanticQuestion(SemanticQuestionOutput),
+    ComplexityAnalysis(ComplexityAnalysisOutput),
 }
 
 impl AgenticOutput {
@@ -218,6 +234,7 @@ impl AgenticOutput {
             Self::APISurface(o) => &o.analysis,
             Self::ContextBuilder(o) => &o.analysis,
             Self::SemanticQuestion(o) => &o.answer,
+            Self::ComplexityAnalysis(o) => &o.analysis,
         }
     }
 
@@ -249,6 +266,10 @@ impl AgenticOutput {
                 let mut locs = o.evidence.iter().collect::<Vec<_>>();
                 locs.extend(o.related_components.iter());
                 locs
+            }
+            Self::ComplexityAnalysis(o) => {
+                // Extract hotspots which are FileLocations
+                o.hotspots.iter().collect()
             }
         }
     }

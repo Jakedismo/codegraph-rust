@@ -439,6 +439,77 @@ impl ToolRuntime for SemanticCodeSearch {
     }
 }
 
+/// Parameters for find_complexity_hotspots
+#[derive(Serialize, Deserialize, ToolInput, Debug)]
+pub struct FindComplexityHotspotsArgs {
+    #[input(
+        description = "Minimum cyclomatic complexity threshold (default: 5.0, lower=more results)"
+    )]
+    #[serde(default = "default_min_complexity")]
+    min_complexity: f64,
+    #[input(description = "Maximum number of results (default: 20, max: 100)")]
+    #[serde(default = "default_complexity_limit")]
+    limit: i32,
+}
+
+fn default_min_complexity() -> f64 {
+    5.0
+}
+
+fn default_complexity_limit() -> i32 {
+    20
+}
+
+/// Find functions/methods with high cyclomatic complexity and their coupling metrics
+#[tool(
+    name = "find_complexity_hotspots",
+    description = "ANSWERS: 'Where are the riskiest, most complex functions that need refactoring?' \
+                   Identifies code with high cyclomatic complexity combined with coupling analysis. \
+                   USE WHEN: Starting refactoring efforts, assessing technical debt, code review prioritization, \
+                   finding functions that are both complex AND highly connected (highest bug risk). \
+                   UNIQUE VALUE: Combines IMPLEMENTATION complexity (cyclomatic) with ARCHITECTURAL coupling - \
+                   high complexity alone isn't as risky if the code is isolated. Risk = Complexity × Coupling. \
+                   OUTPUT: Returns functions ranked by risk_score with file:line locations and coupling metrics. \
+                   WORKFLOW: find_complexity_hotspots → select high-risk node → get_reverse_dependencies (who depends on it?) \
+                   → calculate_coupling_metrics (stability assessment) → prioritize refactoring. \
+                   INTERPRETATION: risk_score >100 = critical, 50-100 = high, 20-50 = medium, <20 = low priority.",
+    input = FindComplexityHotspotsArgs,
+)]
+pub struct FindComplexityHotspots {
+    executor: Arc<GraphToolExecutorAdapter>,
+}
+
+impl FindComplexityHotspots {
+    pub fn new(executor: Arc<GraphToolExecutorAdapter>) -> Self {
+        Self { executor }
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolRuntime for FindComplexityHotspots {
+    async fn execute(&self, args: serde_json::Value) -> Result<serde_json::Value, ToolCallError> {
+        let typed_args: FindComplexityHotspotsArgs = serde_json::from_value(args)?;
+
+        let result = self
+            .executor
+            .execute_sync(
+                "find_complexity_hotspots",
+                serde_json::json!({
+                    "min_complexity": typed_args.min_complexity,
+                    "limit": typed_args.limit
+                }),
+            )
+            .map_err(|e| {
+                ToolCallError::RuntimeError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e,
+                )))
+            })?;
+
+        Ok(result)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

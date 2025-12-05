@@ -720,6 +720,7 @@ impl AgentExecutorTrait for LATSExecutor {
                 AnalysisType::ApiSurfaceAnalysis => "API surface analysis",
                 AnalysisType::ContextBuilder => "context building",
                 AnalysisType::SemanticQuestion => "semantic question answering",
+                AnalysisType::ComplexityAnalysis => "complexity analysis",
             },
             query
         );

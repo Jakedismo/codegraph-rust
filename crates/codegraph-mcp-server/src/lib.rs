@@ -5,6 +5,7 @@ pub mod agentic_api_surface_prompts;
 pub mod architecture_analysis_prompts;
 pub mod call_chain_prompts;
 pub mod code_search_prompts;
+pub mod complexity_analysis_prompts;
 pub mod context_builder_prompts;
 pub mod dependency_analysis_prompts;
 pub mod dependency_analysis_prompts_integration_example;

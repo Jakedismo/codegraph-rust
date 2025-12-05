@@ -14,6 +14,8 @@ pub mod code_search_prompts;
 #[cfg(feature = "autoagents-experimental")]
 pub mod codegraph_agent;
 #[cfg(feature = "autoagents-experimental")]
+pub mod complexity_analysis_prompts;
+#[cfg(feature = "autoagents-experimental")]
 pub mod context_builder_prompts;
 #[cfg(feature = "autoagents-experimental")]
 pub mod dependency_analysis_prompts;

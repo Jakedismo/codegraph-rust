@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### **Complexity Analysis Agentic Tool**
+- **`agentic_complexity_analysis`**: New MCP tool for identifying high-risk code hotspots
+  - Combines cyclomatic complexity with coupling metrics for risk assessment
+  - **Risk Score Formula**: `complexity × (afferent_coupling + 1)` - measures blast radius
+  - Tier-aware prompts: TERSE (3-5 steps), BALANCED (5-10), DETAILED (10-15), EXPLORATORY (15-20)
+  - Refactoring recommendations prioritized by risk reduction potential
+
+- **`fn::get_complexity_hotspots`**: SurrealDB function for complexity analysis
+  - Returns functions/methods ranked by `risk_score`
+  - Includes coupling metrics: afferent (Ca), efferent (Ce), instability (I = Ce/(Ca+Ce))
+  - Filters by `min_complexity` threshold and `limit` parameter
+  - Supports all edge types: calls, imports, uses, extends, implements, references
+
+- **`find_complexity_hotspots`**: Inner graph tool for agent reasoning
+  - Accessible to ReAct/LATS agents during multi-step analysis
+  - Registered in `agent_builder.rs` alongside other graph tools
+
+- **Cyclomatic Complexity Calculation**: Added to all language extractors
+  - Formula: `1 + count(decision_points)` where decision points are if, while, for, match, etc.
+  - Stored in node `complexity` field during indexing
+  - Supports: Rust, TypeScript, Python, Go, Java, C++, Swift, Kotlin, C#, Ruby, PHP, Dart
+
 #### **GraphRAG Semantic Search Function**
 - **`fn::semantic_search_nodes_via_chunks`**: Context-engineering optimized search returning full node records
   - Searches chunks for semantic similarity, deduplicates by parent node

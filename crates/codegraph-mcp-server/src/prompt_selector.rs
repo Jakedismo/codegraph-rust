@@ -19,6 +19,11 @@ use crate::code_search_prompts::{
     CODE_SEARCH_BALANCED, CODE_SEARCH_DETAILED, CODE_SEARCH_EXPLORATORY, CODE_SEARCH_TERSE,
 };
 #[cfg(feature = "ai-enhanced")]
+use crate::complexity_analysis_prompts::{
+    COMPLEXITY_ANALYSIS_BALANCED, COMPLEXITY_ANALYSIS_DETAILED, COMPLEXITY_ANALYSIS_EXPLORATORY,
+    COMPLEXITY_ANALYSIS_TERSE,
+};
+#[cfg(feature = "ai-enhanced")]
 use crate::context_builder_prompts::{
     CONTEXT_BUILDER_BALANCED, CONTEXT_BUILDER_DETAILED, CONTEXT_BUILDER_EXPLORATORY,
     CONTEXT_BUILDER_TERSE,
@@ -149,6 +154,7 @@ impl PromptSelector {
             AnalysisType::ApiSurfaceAnalysis => 1.0, // Standard depth
             AnalysisType::ContextBuilder => 1.3,     // Building comprehensive context
             AnalysisType::SemanticQuestion => 1.0,   // Standard depth
+            AnalysisType::ComplexityAnalysis => 1.2, // Multi-hotspot analysis
         };
 
         ((base_steps as f32) * multiplier).ceil() as usize
@@ -224,6 +230,12 @@ impl PromptSelector {
                 PromptVerbosity::Balanced => SEMANTIC_QUESTION_BALANCED.to_string(),
                 PromptVerbosity::Detailed => SEMANTIC_QUESTION_DETAILED.to_string(),
                 PromptVerbosity::Exploratory => SEMANTIC_QUESTION_EXPLORATORY.to_string(),
+            },
+            AnalysisType::ComplexityAnalysis => match verbosity {
+                PromptVerbosity::Terse => COMPLEXITY_ANALYSIS_TERSE.to_string(),
+                PromptVerbosity::Balanced => COMPLEXITY_ANALYSIS_BALANCED.to_string(),
+                PromptVerbosity::Detailed => COMPLEXITY_ANALYSIS_DETAILED.to_string(),
+                PromptVerbosity::Exploratory => COMPLEXITY_ANALYSIS_EXPLORATORY.to_string(),
             },
         }
     }

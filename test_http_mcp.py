@@ -34,6 +34,7 @@ AGENTIC_TESTS = [
     ("agentic_api_surface_analysis", "What is the public API surface of the GraphToolExecutor?", 300),
     ("agentic_context_builder", "Gather comprehensive context about the tier-aware prompt selection system", 300),
     ("agentic_semantic_question", "How does the LRU cache work in GraphToolExecutor? What gets cached and when?", 300),
+    ("agentic_complexity_analysis", "Find the highest complexity hotspots in the codebase. Which functions have the highest risk scores?", 300),
 ]
 
 async def run_tests():

@@ -374,6 +374,21 @@ impl CodeGraphMCPServer {
         self.execute_agentic_workflow(AnalysisType::SemanticQuestion, &request.query, peer, meta)
             .await
     }
+
+    /// Agentic complexity analysis with multi-step risk assessment
+    #[tool(
+        description = "Analyze code complexity hotspots and their architectural impact. Returns: functions ranked by risk (complexity × coupling), refactoring recommendations, and dependency analysis for high-risk components. Use for: technical debt assessment, code review prioritization, refactoring planning. Required: query."
+    )]
+    async fn agentic_complexity_analysis(
+        &self,
+        peer: Peer<RoleServer>,
+        meta: Meta,
+        params: Parameters<SearchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let request = params.0;
+        self.execute_agentic_workflow(AnalysisType::ComplexityAnalysis, &request.query, peer, meta)
+            .await
+    }
 }
 
 impl CodeGraphMCPServer {
@@ -732,6 +747,18 @@ impl CodeGraphMCPServer {
                     }
                     Err(e) => {
                         tracing::warn!("Failed to parse SemanticQuestionOutput: {}", e);
+                        None
+                    }
+                }
+            }
+            AnalysisType::ComplexityAnalysis => {
+                match serde_json::from_str::<ComplexityAnalysisOutput>(&result.answer) {
+                    Ok(o) => {
+                        tracing::info!("✅ Successfully parsed ComplexityAnalysisOutput");
+                        serde_json::to_value(AgenticOutput::ComplexityAnalysis(o)).ok()
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse ComplexityAnalysisOutput: {}", e);
                         None
                     }
                 }

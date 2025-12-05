@@ -63,7 +63,11 @@ impl<'a> PythonCollector<'a> {
                     let loc = self.location(&node);
                     let mut code =
                         CodeNode::new(name, Some(NodeType::Function), Some(Language::Python), loc)
-                            .with_content(self.node_text(&node));
+                            .with_content(self.node_text(&node))
+                            .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
+                                &node,
+                                self.content,
+                            ));
                     code.span = Some(self.span_for(&node));
 
                     self.current_function_id = Some(code.id);

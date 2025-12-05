@@ -204,6 +204,10 @@ impl GraphToolExecutor {
                     self.execute_semantic_code_search(parameters.clone())
                         .await?
                 }
+                "find_complexity_hotspots" => {
+                    self.execute_find_complexity_hotspots(parameters.clone())
+                        .await?
+                }
                 _ => {
                     return Err(
                         McpError::Protocol(format!("Tool not implemented: {}", tool_name)).into(),
@@ -451,6 +455,27 @@ impl GraphToolExecutor {
         }))
     }
 
+    /// Execute find_complexity_hotspots - find functions with high complexity and coupling
+    async fn execute_find_complexity_hotspots(&self, params: JsonValue) -> Result<JsonValue> {
+        let min_complexity = params["min_complexity"].as_f64().unwrap_or(5.0) as f32;
+        let limit = params["limit"].as_i64().unwrap_or(20) as i32;
+
+        let result = self
+            .graph_functions
+            .get_complexity_hotspots(min_complexity, limit)
+            .await
+            .map_err(|e| McpError::Protocol(format!("find_complexity_hotspots failed: {}", e)))?;
+
+        Ok(json!({
+            "tool": "find_complexity_hotspots",
+            "parameters": {
+                "min_complexity": min_complexity,
+                "limit": limit
+            },
+            "result": result
+        }))
+    }
+
     /// Apply reranking if configured using text-based reranking system
     async fn apply_reranking(
         &self,
@@ -557,14 +582,15 @@ mod tests {
     #[test]
     fn test_tool_schemas_available() {
         let schemas = GraphToolExecutor::get_tool_schemas();
-        assert_eq!(schemas.len(), 7);
+        assert_eq!(schemas.len(), 8);
     }
 
     #[test]
     fn test_tool_names() {
         let names = GraphToolExecutor::get_tool_names();
-        assert_eq!(names.len(), 7);
+        assert_eq!(names.len(), 8);
         assert!(names.contains(&"get_transitive_dependencies".to_string()));
+        assert!(names.contains(&"find_complexity_hotspots".to_string()));
     }
 
     #[test]

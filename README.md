@@ -38,7 +38,7 @@ When you search, you don't just get "similar code"—you get code with its **rel
 
 ### 2. Agentic Tools, Not Just Search
 
-CodeGraph doesn't return a list of files and wish you luck. It ships **7 agentic tools** that do the thinking:
+CodeGraph doesn't return a list of files and wish you luck. It ships **8 agentic tools** that do the thinking:
 
 | Tool | What It Actually Does |
 |------|----------------------|
@@ -49,6 +49,7 @@ CodeGraph doesn't return a list of files and wish you luck. It ships **7 agentic
 | `agentic_api_surface_analysis` | Understands your public interfaces |
 | `agentic_context_builder` | Gathers everything needed for a feature |
 | `agentic_semantic_question` | Answers complex questions about your code |
+| `agentic_complexity_analysis` | Identifies high-risk code hotspots for refactoring |
 
 Each tool runs a **reasoning agent** (ReAct or LATS) that plans, searches, analyzes graph relationships, and synthesizes an answer. Not a search result—an *answer*.
 

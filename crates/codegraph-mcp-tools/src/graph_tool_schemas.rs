@@ -26,6 +26,7 @@ impl GraphToolSchemas {
             Self::get_hub_nodes(),
             Self::get_reverse_dependencies(),
             Self::semantic_code_search(),
+            Self::find_complexity_hotspots(),
         ]
     }
 
@@ -222,6 +223,36 @@ impl GraphToolSchemas {
         }
     }
 
+    /// Schema for find_complexity_hotspots function
+    pub fn find_complexity_hotspots() -> ToolSchema {
+        ToolSchema {
+            name: "find_complexity_hotspots".to_string(),
+            description: "Find functions with high cyclomatic complexity combined with coupling metrics. \
+                Returns functions ranked by risk_score (complexity × afferent_coupling). \
+                Use for refactoring prioritization, technical debt assessment, and code review focus. \
+                High risk_score indicates code that is both complex AND widely depended upon.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "min_complexity": {
+                        "type": "number",
+                        "description": "Minimum cyclomatic complexity threshold (defaults to 5.0, lower for more results)",
+                        "minimum": 1.0,
+                        "default": 5.0
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results (1-100, defaults to 20)",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 20
+                    }
+                },
+                "required": []
+            }),
+        }
+    }
+
     /// Get schema by name
     pub fn get_by_name(name: &str) -> Option<ToolSchema> {
         Self::all().into_iter().find(|s| s.name == name)
@@ -240,7 +271,7 @@ mod tests {
     #[test]
     fn test_all_schemas_valid() {
         let schemas = GraphToolSchemas::all();
-        assert_eq!(schemas.len(), 7, "Should have exactly 7 tool schemas");
+        assert_eq!(schemas.len(), 8, "Should have exactly 8 tool schemas");
 
         for schema in schemas {
             assert!(!schema.name.is_empty(), "Schema name should not be empty");
@@ -268,7 +299,7 @@ mod tests {
     #[test]
     fn test_tool_names() {
         let names = GraphToolSchemas::tool_names();
-        assert_eq!(names.len(), 7);
+        assert_eq!(names.len(), 8);
         assert!(names.contains(&"get_transitive_dependencies".to_string()));
         assert!(names.contains(&"detect_circular_dependencies".to_string()));
         assert!(names.contains(&"trace_call_chain".to_string()));
@@ -276,6 +307,7 @@ mod tests {
         assert!(names.contains(&"get_hub_nodes".to_string()));
         assert!(names.contains(&"get_reverse_dependencies".to_string()));
         assert!(names.contains(&"semantic_code_search".to_string()));
+        assert!(names.contains(&"find_complexity_hotspots".to_string()));
     }
 
     #[test]

@@ -1,3 +1,4 @@
+pub mod complexity;
 #[cfg(feature = "experimental")]
 pub mod diff;
 pub mod edge;
@@ -19,6 +20,7 @@ pub mod integration_tests;
 #[cfg(test)]
 mod tests;
 
+pub use complexity::*;
 #[cfg(feature = "experimental")]
 pub use diff::*;
 pub use edge::*;

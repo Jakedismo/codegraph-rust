@@ -185,7 +185,11 @@ impl<'a> PhpCollector<'a> {
                         Some(Language::Php),
                         loc,
                     )
-                    .with_content(content_text.clone());
+                    .with_content(content_text.clone())
+                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
+                        &node,
+                        self.content,
+                    ));
 
                     // Detect visibility modifiers
                     if content_text.contains("private ") {

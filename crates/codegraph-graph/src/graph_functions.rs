@@ -315,6 +315,44 @@ impl GraphFunctions {
         Ok(result)
     }
 
+    /// Get complexity hotspots - functions with high cyclomatic complexity and coupling
+    ///
+    /// # Arguments
+    /// * `min_complexity` - Minimum cyclomatic complexity threshold (default: 5.0)
+    /// * `limit` - Maximum number of results (1-100, default: 20)
+    ///
+    /// # Returns
+    /// Vector of complexity hotspots sorted by risk_score (complexity × afferent_coupling)
+    pub async fn get_complexity_hotspots(
+        &self,
+        min_complexity: f32,
+        limit: i32,
+    ) -> Result<Vec<ComplexityHotspot>> {
+        debug!(
+            "Calling fn::get_complexity_hotspots(min={}, limit={}, project={})",
+            min_complexity, limit, self.project_id
+        );
+
+        let result: Vec<ComplexityHotspot> = self
+            .db
+            .query("RETURN fn::get_complexity_hotspots($project_id, $min_complexity, $limit)")
+            .bind(("project_id", self.project_id.clone()))
+            .bind(("min_complexity", min_complexity))
+            .bind(("limit", limit))
+            .await
+            .map_err(|e| {
+                error!("Failed to call get_complexity_hotspots: {}", e);
+                CodeGraphError::Database(format!("get_complexity_hotspots failed: {}", e))
+            })?
+            .take(0)
+            .map_err(|e| {
+                error!("Failed to deserialize complexity hotspots: {}", e);
+                CodeGraphError::Database(format!("Deserialization failed: {}", e))
+            })?;
+
+        Ok(result)
+    }
+
     /// Count nodes for the current project (used for health checks)
     pub async fn count_nodes_for_project(&self) -> Result<usize> {
         let mut response = self
@@ -698,6 +736,23 @@ pub struct NodeLocation {
     pub file_path: String,
     pub start_line: Option<i32>,
     pub end_line: Option<i32>,
+}
+
+/// Complexity hotspot with risk metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComplexityHotspot {
+    pub id: String,
+    pub name: String,
+    pub kind: Option<String>,
+    pub language: Option<String>,
+    pub file_path: Option<String>,
+    pub start_line: Option<i32>,
+    pub end_line: Option<i32>,
+    pub complexity: f32,
+    pub afferent_coupling: i32,
+    pub efferent_coupling: i32,
+    pub instability: f32,
+    pub risk_score: f32,
 }
 
 #[cfg(test)]

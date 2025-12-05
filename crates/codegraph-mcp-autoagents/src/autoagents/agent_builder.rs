@@ -639,6 +639,7 @@ impl AgentDeriveT for CodeGraphReActAgent {
             AnalysisType::ApiSurfaceAnalysis => schema_for!(APISurfaceOutput),
             AnalysisType::ContextBuilder => schema_for!(ContextBuilderOutput),
             AnalysisType::SemanticQuestion => schema_for!(SemanticQuestionOutput),
+            AnalysisType::ComplexityAnalysis => schema_for!(ComplexityAnalysisOutput),
         };
 
         serde_json::to_value(schema).ok()
@@ -703,6 +704,7 @@ impl CodeGraphAgentBuilder {
             Arc::new(DetectCycles::new(executor_adapter.clone())),
             Arc::new(CalculateCoupling::new(executor_adapter.clone())),
             Arc::new(GetHubNodes::new(executor_adapter.clone())),
+            Arc::new(FindComplexityHotspots::new(executor_adapter.clone())),
         ];
 
         // Get tier-aware max iterations

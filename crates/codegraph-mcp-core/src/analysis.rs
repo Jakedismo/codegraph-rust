@@ -10,6 +10,7 @@ pub enum AnalysisType {
     ApiSurfaceAnalysis,
     ContextBuilder,
     SemanticQuestion,
+    ComplexityAnalysis,
 }
 
 impl AnalysisType {
@@ -22,6 +23,7 @@ impl AnalysisType {
             AnalysisType::ApiSurfaceAnalysis => "api_surface_analysis",
             AnalysisType::ContextBuilder => "context_builder",
             AnalysisType::SemanticQuestion => "semantic_question",
+            AnalysisType::ComplexityAnalysis => "complexity_analysis",
         }
     }
 
@@ -34,6 +36,7 @@ impl AnalysisType {
             "api_surface_analysis" => Some(AnalysisType::ApiSurfaceAnalysis),
             "context_builder" => Some(AnalysisType::ContextBuilder),
             "semantic_question" => Some(AnalysisType::SemanticQuestion),
+            "complexity_analysis" => Some(AnalysisType::ComplexityAnalysis),
             _ => None,
         }
     }
@@ -47,6 +50,7 @@ impl AnalysisType {
             AnalysisType::ApiSurfaceAnalysis,
             AnalysisType::ContextBuilder,
             AnalysisType::SemanticQuestion,
+            AnalysisType::ComplexityAnalysis,
         ]
     }
 }

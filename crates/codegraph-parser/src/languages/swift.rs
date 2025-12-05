@@ -167,7 +167,11 @@ impl<'a> SwiftCollector<'a> {
                         Some(Language::Swift),
                         loc,
                     )
-                    .with_content(content_text.clone());
+                    .with_content(content_text.clone())
+                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
+                        &node,
+                        self.content,
+                    ));
 
                     // Detect async functions
                     if content_text.contains("async ") {

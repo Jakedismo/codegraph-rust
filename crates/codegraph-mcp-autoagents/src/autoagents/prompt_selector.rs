@@ -14,6 +14,10 @@ use crate::call_chain_prompts::{
 use crate::code_search_prompts::{
     CODE_SEARCH_BALANCED, CODE_SEARCH_DETAILED, CODE_SEARCH_EXPLORATORY, CODE_SEARCH_TERSE,
 };
+use crate::complexity_analysis_prompts::{
+    COMPLEXITY_ANALYSIS_BALANCED, COMPLEXITY_ANALYSIS_DETAILED, COMPLEXITY_ANALYSIS_EXPLORATORY,
+    COMPLEXITY_ANALYSIS_TERSE,
+};
 use crate::context_builder_prompts::{
     CONTEXT_BUILDER_BALANCED, CONTEXT_BUILDER_DETAILED, CONTEXT_BUILDER_EXPLORATORY,
     CONTEXT_BUILDER_TERSE,
@@ -135,6 +139,7 @@ impl PromptSelector {
             AnalysisType::ApiSurfaceAnalysis => 1.0, // Standard depth
             AnalysisType::ContextBuilder => 1.2,     // Building comprehensive context
             AnalysisType::SemanticQuestion => 1.0,   // Standard depth
+            AnalysisType::ComplexityAnalysis => 1.2, // Multi-hotspot analysis needs exploration
         };
 
         // Hard cap at 10 steps to prevent endless loops
@@ -211,6 +216,12 @@ impl PromptSelector {
                 PromptVerbosity::Detailed => SEMANTIC_QUESTION_DETAILED.to_string(),
                 PromptVerbosity::Exploratory => SEMANTIC_QUESTION_EXPLORATORY.to_string(),
             },
+            AnalysisType::ComplexityAnalysis => match verbosity {
+                PromptVerbosity::Terse => COMPLEXITY_ANALYSIS_TERSE.to_string(),
+                PromptVerbosity::Balanced => COMPLEXITY_ANALYSIS_BALANCED.to_string(),
+                PromptVerbosity::Detailed => COMPLEXITY_ANALYSIS_DETAILED.to_string(),
+                PromptVerbosity::Exploratory => COMPLEXITY_ANALYSIS_EXPLORATORY.to_string(),
+            },
         }
     }
 
@@ -238,7 +249,7 @@ impl Default for PromptSelector {
 pub struct PromptSelectorStats {
     /// Total number of prompts loaded
     pub total_prompts: usize,
-    /// Expected number of prompts (7 analysis types × 4 verbosity levels = 28)
+    /// Expected number of prompts (8 analysis types × 4 verbosity levels = 32)
     pub expected_prompts: usize,
     /// Coverage percentage
     pub coverage_percentage: f32,
@@ -282,8 +293,8 @@ mod tests {
         let selector = PromptSelector::new();
         let stats = selector.stats();
 
-        assert_eq!(stats.total_prompts, 28); // 7 analysis types × 4 verbosity levels
-        assert_eq!(stats.expected_prompts, 28);
+        assert_eq!(stats.total_prompts, 32); // 8 analysis types × 4 verbosity levels
+        assert_eq!(stats.expected_prompts, 32);
         assert_eq!(stats.coverage_percentage, 100.0);
     }
 
@@ -401,6 +412,7 @@ mod tests {
             (AnalysisType::ApiSurfaceAnalysis, "API", "surface"),
             (AnalysisType::ContextBuilder, "context", "build"),
             (AnalysisType::SemanticQuestion, "semantic", "question"),
+            (AnalysisType::ComplexityAnalysis, "complexity", "hotspot"),
         ];
 
         for (analysis_type, keyword1, keyword2) in test_cases {

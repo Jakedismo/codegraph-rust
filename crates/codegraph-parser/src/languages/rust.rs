@@ -310,7 +310,11 @@ impl<'a> Collector<'a> {
                         Some(Language::Rust),
                         loc,
                     )
-                    .with_content(self.node_text(&node));
+                    .with_content(self.node_text(&node))
+                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
+                        &node,
+                        self.content,
+                    ));
                     code.span = Some(self.span_for(&node));
                     let (generics, lifetimes) = self.collect_generics_and_lifetimes(node);
                     code.metadata
