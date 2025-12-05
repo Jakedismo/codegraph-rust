@@ -8,15 +8,26 @@ OPTION IMPORT;
 -- FUNCTIONS
 -- ------------------------------
 
+-- Helper function to parse record IDs from various formats
+-- Handles: record IDs, "nodes:⟨uuid⟩", "nodes:id", "⟨uuid⟩", "id"
+DEFINE FUNCTION fn::parse_record_id($table: string, $input: any) {
+IF type::is::record($input) { RETURN $input; };
+LET $str = <string>$input;
+-- Strip table prefix if present (e.g., "nodes:" or "chunks:")
+LET $after_prefix = IF string::starts_with($str, $table + ':') THEN string::slice($str, string::len($table) + 1) ELSE $str END;
+-- Strip angle brackets ⟨⟩ if present (SurrealDB's escaping for complex IDs)
+LET $clean_id = IF string::starts_with($after_prefix, '⟨') AND string::ends_with($after_prefix, '⟩') THEN string::slice($after_prefix, 1, string::len($after_prefix) - 1) ELSE $after_prefix END;
+RETURN type::thing($table, $clean_id);
+} PERMISSIONS FULL;
 DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: string) {
 LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references'];
 -- Resolve chunk IDs to their parent nodes (chunks have parent_node field)
 LET $resolved_id = IF string::starts_with($node_id, 'chunks:') THEN (
-  SELECT VALUE parent_node FROM type::thing('chunks', string::slice($node_id, 7)) LIMIT 1
+  SELECT VALUE parent_node FROM fn::parse_record_id('chunks', $node_id) LIMIT 1
 )[0] ELSE $node_id END;
 -- Handle NONE case when chunk doesn't exist
 IF $resolved_id = NONE { RETURN NONE; };
-LET $record = IF type::is::record($resolved_id) THEN $resolved_id ELSE (IF string::starts_with(<string>$resolved_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$resolved_id, 6)) ELSE type::thing('nodes', <string>$resolved_id) END) END;
+LET $record = fn::parse_record_id('nodes', $resolved_id);
 LET $node_check = (SELECT project_id FROM $record);
 IF array::len($node_check) = 0 { RETURN NONE; };
 LET $rec_proj = $node_check[0].project_id;
@@ -63,12 +74,12 @@ RETURN (SELECT candidate_id AS node_id, node, afferent_degree, efferent_degree, 
 DEFINE FUNCTION fn::get_reverse_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
 LET $safe_depth = IF $depth > 0 AND $depth <= 5 THEN $depth ELSE 3 END;
 LET $edge_name = string::lowercase($edge_type ?? 'calls');
--- Resolve chunk IDs to their parent nodes
+-- Resolve chunk IDs to their parent nodes using helper for proper ID parsing
 LET $resolved_id = IF string::starts_with(<string>$node_id, 'chunks:') THEN (
-  SELECT VALUE parent_node FROM type::thing('chunks', string::slice(<string>$node_id, 7)) LIMIT 1
+  SELECT VALUE parent_node FROM fn::parse_record_id('chunks', $node_id) LIMIT 1
 )[0] ELSE $node_id END;
 IF $resolved_id = NONE { RETURN []; };
-LET $record = IF type::is::record($resolved_id) THEN $resolved_id ELSE (IF string::starts_with(<string>$resolved_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$resolved_id, 6)) ELSE type::thing('nodes', <string>$resolved_id) END) END;
+LET $record = fn::parse_record_id('nodes', $resolved_id);
 LET $node_check = SELECT project_id FROM $record;
 IF array::len($node_check) = 0 { RETURN []; };
 LET $rec_proj = $node_check[0].project_id;
@@ -86,12 +97,12 @@ RETURN (SELECT node.id AS id, node.name AS name, node.kind AS kind, node.locatio
 DEFINE FUNCTION fn::get_transitive_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
 LET $safe_depth = IF $depth > 0 AND $depth <= 5 THEN $depth ELSE 3 END;
 LET $edge_name = string::lowercase($edge_type ?? 'calls');
--- Resolve chunk IDs to their parent nodes
+-- Resolve chunk IDs to their parent nodes using helper for proper ID parsing
 LET $resolved_id = IF string::starts_with(<string>$node_id, 'chunks:') THEN (
-  SELECT VALUE parent_node FROM type::thing('chunks', string::slice(<string>$node_id, 7)) LIMIT 1
+  SELECT VALUE parent_node FROM fn::parse_record_id('chunks', $node_id) LIMIT 1
 )[0] ELSE $node_id END;
 IF $resolved_id = NONE { RETURN []; };
-LET $record = IF type::is::record($resolved_id) THEN $resolved_id ELSE (IF string::starts_with(<string>$resolved_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$resolved_id, 6)) ELSE type::thing('nodes', <string>$resolved_id) END) END;
+LET $record = fn::parse_record_id('nodes', $resolved_id);
 LET $node_check = SELECT project_id FROM $record;
 IF array::len($node_check) = 0 { RETURN []; };
 LET $rec_proj = $node_check[0].project_id;
@@ -111,10 +122,8 @@ LET $res = (SELECT id, name, node_type AS kind, language, content, metadata, { e
 RETURN $res;
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::node_reference($node_id: any) {
--- Handle both record IDs (nodes:abc) and string IDs ("abc" or "nodes:abc")
-LET $record = IF type::is::record($node_id) THEN $node_id
-    ELSE IF string::starts_with(<string>$node_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$node_id, 6))
-    ELSE type::thing('nodes', <string>$node_id) END;
+-- Use helper to handle record IDs, "nodes:⟨uuid⟩", "nodes:id", etc.
+LET $record = fn::parse_record_id('nodes', $node_id);
 LET $info = fn::node_info($record);
 IF $info = NONE { RETURN NONE; };
 RETURN { id: $info.id, kind: $info.kind, location: $info.location, name: $info.name };
@@ -136,12 +145,12 @@ RETURN $final_results;
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::trace_call_chain($project_id: string, $from_node: any, $max_depth: int) {
 LET $safe_depth = IF $max_depth > 0 AND $max_depth <= 10 THEN $max_depth ELSE 5 END;
--- Resolve chunk IDs to their parent nodes
+-- Resolve chunk IDs to their parent nodes using helper for proper ID parsing
 LET $resolved_id = IF string::starts_with(<string>$from_node, 'chunks:') THEN (
-  SELECT VALUE parent_node FROM type::thing('chunks', string::slice(<string>$from_node, 7)) LIMIT 1
+  SELECT VALUE parent_node FROM fn::parse_record_id('chunks', $from_node) LIMIT 1
 )[0] ELSE $from_node END;
 IF $resolved_id = NONE { RETURN []; };
-LET $record = IF type::is::record($resolved_id) THEN $resolved_id ELSE (IF string::starts_with(<string>$resolved_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$resolved_id, 6)) ELSE type::thing('nodes', <string>$resolved_id) END) END;
+LET $record = fn::parse_record_id('nodes', $resolved_id);
 LET $rec_proj = (SELECT VALUE project_id FROM ONLY $record);
 IF $rec_proj != NONE AND $rec_proj != $project_id { RETURN []; };
 -- Use direct field access for project_id filtering
@@ -194,14 +203,14 @@ DEFINE FIELD project_id ON chunks TYPE string PERMISSIONS FULL;
 DEFINE FIELD text ON chunks TYPE string PERMISSIONS FULL;
 DEFINE FIELD updated_at ON chunks TYPE datetime VALUE time::now() PERMISSIONS FULL;
 
-DEFINE INDEX idx_chunks_embedding_1024 ON chunks FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_1536 ON chunks FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_2048 ON chunks FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_2560 ON chunks FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_3072 ON chunks FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_384 ON chunks FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_4096 ON chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_768 ON chunks FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_chunks_embedding_1024 ON chunks FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_chunks_embedding_1536 ON chunks FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_chunks_embedding_2048 ON chunks FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_chunks_embedding_2560 ON chunks FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_chunks_embedding_3072 ON chunks FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_chunks_embedding_384 ON chunks FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_chunks_embedding_4096 ON chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_chunks_embedding_768 ON chunks FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
 DEFINE INDEX idx_chunks_order ON chunks FIELDS parent_node, chunk_index;
 DEFINE INDEX idx_chunks_parent ON chunks FIELDS parent_node;
 
@@ -306,14 +315,14 @@ DEFINE FIELD start_line ON nodes TYPE option<int> PERMISSIONS FULL;
 DEFINE FIELD updated_at ON nodes TYPE datetime VALUE time::now() PERMISSIONS FULL;
 
 DEFINE INDEX idx_nodes_content_search ON nodes FIELDS content SEARCH ANALYZER code_analyzer BM25(1.2,0.75) DOC_IDS_ORDER 100 DOC_LENGTHS_ORDER 100 POSTINGS_ORDER 100 TERMS_ORDER 100 DOC_IDS_CACHE 100 DOC_LENGTHS_CACHE 100 POSTINGS_CACHE 100 TERMS_CACHE 100;
-DEFINE INDEX idx_nodes_embedding_1024 ON nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_1536 ON nodes FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_2048 ON nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_2560 ON nodes FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_3072 ON nodes FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_384 ON nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_4096 ON nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_768 ON nodes FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_nodes_embedding_1024 ON nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_nodes_embedding_1536 ON nodes FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_nodes_embedding_2048 ON nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_nodes_embedding_2560 ON nodes FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_nodes_embedding_3072 ON nodes FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_nodes_embedding_384 ON nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_nodes_embedding_4096 ON nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_nodes_embedding_768 ON nodes FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
 DEFINE INDEX idx_nodes_file_path ON nodes FIELDS file_path;
 DEFINE INDEX idx_nodes_file_type ON nodes FIELDS file_path, node_type;
 DEFINE INDEX idx_nodes_language ON nodes FIELDS language;
@@ -403,12 +412,12 @@ DEFINE INDEX idx_symbol_embeddings_edge ON symbol_embeddings FIELDS source_edge_
 DEFINE INDEX idx_symbol_embeddings_node ON symbol_embeddings FIELDS node_id;
 DEFINE INDEX idx_symbol_embeddings_project_symbol ON symbol_embeddings FIELDS project_id, normalized_symbol;
 DEFINE INDEX idx_symbol_embeddings_symbol ON symbol_embeddings FIELDS normalized_symbol;
-DEFINE INDEX idx_symbol_embeddings_vector_1024 ON symbol_embeddings FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_1536 ON symbol_embeddings FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_2048 ON symbol_embeddings FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_2560 ON symbol_embeddings FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_3072 ON symbol_embeddings FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_384 ON symbol_embeddings FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_4096 ON symbol_embeddings FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_768 ON symbol_embeddings FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 200 M 16 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_symbol_embeddings_vector_1024 ON symbol_embeddings FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_symbol_embeddings_vector_1536 ON symbol_embeddings FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_symbol_embeddings_vector_2048 ON symbol_embeddings FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_symbol_embeddings_vector_2560 ON symbol_embeddings FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_symbol_embeddings_vector_3072 ON symbol_embeddings FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_symbol_embeddings_vector_384 ON symbol_embeddings FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_symbol_embeddings_vector_4096 ON symbol_embeddings FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX idx_symbol_embeddings_vector_768 ON symbol_embeddings FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
 -- ------------------------------
