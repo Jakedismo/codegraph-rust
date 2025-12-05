@@ -43,3 +43,53 @@ pub use python::PythonExtractor;
 pub use ruby::RubyExtractor;
 pub use rust::RustExtractor;
 pub use swift::SwiftExtractor;
+
+/// Unified extraction dispatch for all supported languages
+///
+/// Routes to the appropriate language extractor based on the Language enum.
+/// Returns None for unsupported languages.
+pub fn extract_for_language(
+    language: &Language,
+    tree: &Tree,
+    content: &str,
+    file_path: &str,
+) -> Option<ExtractionResult> {
+    match language {
+        Language::Rust => Some(<RustExtractor as LanguageExtractor>::extract_with_edges(
+            tree, content, file_path,
+        )),
+        Language::TypeScript => Some(<TypeScriptExtractor as LanguageExtractor>::extract_with_edges(
+            tree, content, file_path,
+        )),
+        Language::JavaScript => {
+            // JavaScript uses TypeScript extractor with JS-specific handling
+            Some(TypeScriptExtractor::extract_with_edges(tree, content, file_path, Language::JavaScript))
+        }
+        Language::Python => Some(<PythonExtractor as LanguageExtractor>::extract_with_edges(
+            tree, content, file_path,
+        )),
+        Language::Go => Some(<GoExtractor as LanguageExtractor>::extract_with_edges(
+            tree, content, file_path,
+        )),
+        Language::Java => Some(<JavaExtractor as LanguageExtractor>::extract_with_edges(
+            tree, content, file_path,
+        )),
+        Language::Cpp => Some(<CppExtractor as LanguageExtractor>::extract_with_edges(
+            tree, content, file_path,
+        )),
+        Language::Swift => Some(<SwiftExtractor as LanguageExtractor>::extract_with_edges(
+            tree, content, file_path,
+        )),
+        Language::CSharp => Some(<CSharpExtractor as LanguageExtractor>::extract_with_edges(
+            tree, content, file_path,
+        )),
+        Language::Ruby => Some(<RubyExtractor as LanguageExtractor>::extract_with_edges(
+            tree, content, file_path,
+        )),
+        Language::Php => Some(<PhpExtractor as LanguageExtractor>::extract_with_edges(
+            tree, content, file_path,
+        )),
+        // Languages without dedicated extractors yet
+        _ => None,
+    }
+}

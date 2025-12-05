@@ -497,75 +497,25 @@ impl TreeSitterParser {
                         }
                     }
 
-                    if matches!(language, Language::Rust) {
-                        // REVOLUTIONARY: Use unified Rust extractor for nodes + edges in single pass
-                        use crate::languages::rust::RustExtractor;
-                        let result = RustExtractor::extract_with_edges(
-                            &tree_used,
-                            &used_content,
-                            &file_path,
-                        );
-                        Ok(result.nodes) // Return only nodes for backward compatibility
-                    } else if matches!(language, Language::Python) {
-                        // Use Python extractor (docstrings, type hints, call graph metadata)
-                        let extraction =
-                            crate::languages::python::extract_python(&file_path, &used_content);
-                        Ok(extraction.nodes)
-                    } else if matches!(language, Language::JavaScript) {
-                        // Use JavaScript-specific extraction (currently stub)
-                        let nodes = crate::languages::javascript::extract_js_ts_nodes(
-                            language.clone(),
-                            &file_path,
-                            &used_content,
-                            tree_used.root_node(),
-                        );
-                        Ok(nodes)
-                    } else if matches!(language, Language::TypeScript) {
-                        // Use generic AstVisitor for TypeScript (bypassing stub)
+                    // Use unified dispatch for all supported languages
+                    let nodes = crate::languages::extract_for_language(
+                        &language,
+                        &tree_used,
+                        &used_content,
+                        &file_path,
+                    )
+                    .map(|result| result.nodes)
+                    .unwrap_or_else(|| {
+                        // Fallback: use AstVisitor for languages without dedicated extractors
                         let mut visitor = AstVisitor::new(
                             language.clone(),
                             file_path.clone(),
                             used_content.clone(),
                         );
                         visitor.visit(tree_used.root_node());
-                        Ok(visitor.nodes)
-                    } else if matches!(language, Language::Swift) {
-                        // Use advanced Swift extractor for iOS/macOS development
-                        use crate::languages::swift::SwiftExtractor;
-                        Ok(SwiftExtractor::extract(
-                            &tree_used,
-                            &used_content,
-                            &file_path,
-                        ))
-                    } else if matches!(language, Language::CSharp) {
-                        // Use advanced C# extractor for .NET development
-                        use crate::languages::csharp::CSharpExtractor;
-                        Ok(CSharpExtractor::extract(
-                            &tree_used,
-                            &used_content,
-                            &file_path,
-                        ))
-                    } else if matches!(language, Language::Ruby) {
-                        // Use advanced Ruby extractor for Rails development
-                        use crate::languages::ruby::RubyExtractor;
-                        Ok(RubyExtractor::extract(
-                            &tree_used,
-                            &used_content,
-                            &file_path,
-                        ))
-                    } else if matches!(language, Language::Php) {
-                        // Use advanced PHP extractor for Laravel/web development
-                        use crate::languages::php::PhpExtractor;
-                        Ok(PhpExtractor::extract(&tree_used, &used_content, &file_path))
-                    } else {
-                        let mut visitor = AstVisitor::new(
-                            language.clone(),
-                            file_path.clone(),
-                            used_content.clone(),
-                        );
-                        visitor.visit(tree_used.root_node());
-                        Ok(visitor.nodes)
-                    }
+                        visitor.nodes
+                    });
+                    Ok(nodes)
                 }
                 None => {
                     // Fallback: try to parse line by line for basic recovery
@@ -580,61 +530,24 @@ impl TreeSitterParser {
                     for (line_num, line) in lines.iter().enumerate() {
                         if let Some(tree) = parser.parse(line, None) {
                             if !tree.root_node().has_error() {
-                                if matches!(language, Language::Rust) {
-                                    use crate::languages::rust::RustExtractor;
-                                    let nodes = RustExtractor::extract(
-                                        &tree,
-                                        line,
-                                        &format!("{}:{}", file_path, line_num + 1),
-                                    );
-                                    recovered_nodes.extend(nodes);
-                                } else if matches!(language, Language::Python) {
-                                    let extraction = crate::languages::python::extract_python(
-                                        &format!("{}:{}", file_path, line_num + 1),
-                                        line,
-                                    );
-                                    recovered_nodes.extend(extraction.nodes);
-                                } else if matches!(language, Language::Swift) {
-                                    use crate::languages::swift::SwiftExtractor;
-                                    let nodes = SwiftExtractor::extract(
-                                        &tree,
-                                        line,
-                                        &format!("{}:{}", file_path, line_num + 1),
-                                    );
-                                    recovered_nodes.extend(nodes);
-                                } else if matches!(language, Language::CSharp) {
-                                    use crate::languages::csharp::CSharpExtractor;
-                                    let nodes = CSharpExtractor::extract(
-                                        &tree,
-                                        line,
-                                        &format!("{}:{}", file_path, line_num + 1),
-                                    );
-                                    recovered_nodes.extend(nodes);
-                                } else if matches!(language, Language::Ruby) {
-                                    use crate::languages::ruby::RubyExtractor;
-                                    let nodes = RubyExtractor::extract(
-                                        &tree,
-                                        line,
-                                        &format!("{}:{}", file_path, line_num + 1),
-                                    );
-                                    recovered_nodes.extend(nodes);
-                                } else if matches!(language, Language::Php) {
-                                    use crate::languages::php::PhpExtractor;
-                                    let nodes = PhpExtractor::extract(
-                                        &tree,
-                                        line,
-                                        &format!("{}:{}", file_path, line_num + 1),
-                                    );
-                                    recovered_nodes.extend(nodes);
-                                } else {
+                                let line_path = format!("{}:{}", file_path, line_num + 1);
+                                let nodes = crate::languages::extract_for_language(
+                                    &language,
+                                    &tree,
+                                    line,
+                                    &line_path,
+                                )
+                                .map(|result| result.nodes)
+                                .unwrap_or_else(|| {
                                     let mut visitor = AstVisitor::new(
                                         language.clone(),
-                                        format!("{}:{}", file_path, line_num + 1),
+                                        line_path,
                                         line.to_string(),
                                     );
                                     visitor.visit(tree.root_node());
-                                    recovered_nodes.extend(visitor.nodes);
-                                }
+                                    visitor.nodes
+                                });
+                                recovered_nodes.extend(nodes);
                             }
                         }
                     }
@@ -948,31 +861,15 @@ impl TreeSitterParser {
                         }
                     }
 
-                    // REVOLUTIONARY: Use unified extractors for MAXIMUM SPEED
-                    let ast_result = if matches!(language, Language::Rust) {
-                        use crate::languages::rust::RustExtractor;
-                        RustExtractor::extract_with_edges(&tree_used, &used_content, &file_path)
-                    } else if matches!(language, Language::TypeScript) {
-                        use crate::languages::javascript::TypeScriptExtractor;
-                        TypeScriptExtractor::extract_with_edges(
-                            &tree_used,
-                            &used_content,
-                            &file_path,
-                            language.clone(),
-                        )
-                    } else if matches!(language, Language::JavaScript) {
-                        use crate::languages::javascript::TypeScriptExtractor;
-                        TypeScriptExtractor::extract_with_edges(
-                            &tree_used,
-                            &used_content,
-                            &file_path,
-                            language.clone(),
-                        )
-                    } else if matches!(language, Language::Python) {
-                        use crate::languages::python::PythonExtractor;
-                        PythonExtractor::extract_with_edges(&tree_used, &used_content, &file_path)
-                    } else {
-                        // Fallback: use AstVisitor for other languages (no edges yet)
+                    // Use unified dispatch for all supported languages
+                    let ast_result = crate::languages::extract_for_language(
+                        &language,
+                        &tree_used,
+                        &used_content,
+                        &file_path,
+                    )
+                    .unwrap_or_else(|| {
+                        // Fallback: use AstVisitor for languages without dedicated extractors
                         let mut visitor = crate::AstVisitor::new(
                             language.clone(),
                             file_path.clone(),
@@ -981,9 +878,9 @@ impl TreeSitterParser {
                         visitor.visit(tree_used.root_node());
                         ExtractionResult {
                             nodes: visitor.nodes,
-                            edges: Vec::new(), // No edges for unsupported languages yet
+                            edges: Vec::new(),
                         }
-                    };
+                    });
 
                     // Apply Fast ML enhancement for maximum graph completeness
                     // Adds pattern-based edges and resolves unmatched references (<1ms overhead)
