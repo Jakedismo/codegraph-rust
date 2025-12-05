@@ -118,7 +118,7 @@ LET $raw = (SELECT fn::node_info(id) AS node, dependency_depth FROM $min_depths)
 RETURN (SELECT node.id AS id, node.name AS name, node.kind AS kind, node.location AS location, node.language AS language, node.content AS content, node.metadata AS metadata, dependency_depth, $safe_depth AS requested_depth FROM $raw WHERE node != NONE);
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::node_info($node_id: record) {
-LET $res = (SELECT id, name, node_type AS kind, language, content, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM ONLY $node_id);
+LET $res = (SELECT <string>id AS id, name, node_type AS kind, language, content, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM ONLY $node_id);
 RETURN $res;
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::node_reference($node_id: any) {
