@@ -67,6 +67,9 @@ pub struct GenerationConfig {
     pub stop: Option<Vec<String>>,
     /// Response format for structured outputs (OpenAI, Ollama with JSON schema support)
     pub response_format: Option<ResponseFormat>,
+    /// Whether to allow parallel tool calls (default: None = provider default, typically true)
+    /// Set to false for structured outputs or o-series models
+    pub parallel_tool_calls: Option<bool>,
 }
 
 impl Default for GenerationConfig {
@@ -81,6 +84,7 @@ impl Default for GenerationConfig {
             presence_penalty: None,
             stop: None,
             response_format: None,
+            parallel_tool_calls: None, // Use provider default
         }
     }
 }

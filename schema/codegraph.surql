@@ -33,8 +33,9 @@ RETURN { dependencies: $dependencies_info, dependents: $dependents_info, metrics
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::detect_circular_dependencies($project_id: string, $edge_type: string) {
 LET $edge_name = string::lowercase($edge_type ?? 'Calls');
-LET $pairs = (SELECT from AS node1_id, to AS node2_id FROM edges WHERE edge_type = $edge_name AND from != to AND (SELECT VALUE project_id FROM from) = $project_id AND (SELECT VALUE project_id FROM to) = $project_id);
-LET $cycles = (SELECT node1_id, node2_id FROM $pairs WHERE node1_id < node2_id AND (SELECT VALUE count() FROM edges WHERE edge_type = $edge_name AND from = node2_id AND to = node1_id AND (SELECT VALUE project_id FROM from) = $project_id AND (SELECT VALUE project_id FROM to) = $project_id) > 0 GROUP BY node1_id, node2_id);
+-- Use direct field access for project_id filtering
+LET $pairs = (SELECT from AS node1_id, to AS node2_id FROM edges WHERE edge_type = $edge_name AND from != to AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE));
+LET $cycles = (SELECT node1_id, node2_id FROM $pairs WHERE node1_id < node2_id AND (SELECT VALUE count() FROM edges WHERE edge_type = $edge_name AND from = node2_id AND to = node1_id AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE)) > 0 GROUP BY node1_id, node2_id);
 LET $raw = (SELECT node1_id, node2_id, fn::node_info(node1_id) AS node1, fn::node_info(node2_id) AS node2 FROM $cycles);
 RETURN (SELECT node1_id, node2_id, $edge_name AS dependency_type, node1, node2 FROM $raw WHERE node1 != NONE AND node2 != NONE);
 } PERMISSIONS FULL;
@@ -48,7 +49,8 @@ DEFINE FUNCTION fn::get_hub_nodes($project_id: string, $min_degree: int) {
 LET $threshold = IF $min_degree != NONE AND $min_degree > 0 THEN $min_degree ELSE 5 END;
 LET $raw_types = fn::edge_types();
 LET $edge_list = array::map(array::filter($raw_types, |$v: any| $v != NONE), |$v: any| string::lowercase($v));
-LET $project_edges = (SELECT from, to, edge_type FROM edges WHERE edge_type INSIDE $edge_list AND (SELECT VALUE project_id FROM from) = $project_id AND (SELECT VALUE project_id FROM to) = $project_id);
+-- Use direct field access (from.project_id) instead of subqueries for proper filtering
+LET $project_edges = (SELECT from, to, edge_type FROM edges WHERE edge_type INSIDE $edge_list AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE));
 LET $incoming_by_type = (SELECT to AS node_id, edge_type, count() AS count FROM $project_edges GROUP BY to, edge_type);
 LET $outgoing_by_type = (SELECT from AS node_id, edge_type, count() AS count FROM $project_edges GROUP BY from, edge_type);
 LET $incoming_totals = (SELECT to AS node_id, count() AS total FROM $project_edges GROUP BY to);
@@ -108,8 +110,11 @@ DEFINE FUNCTION fn::node_info($node_id: record) {
 LET $res = (SELECT id, name, node_type AS kind, language, content, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM ONLY $node_id);
 RETURN $res;
 } PERMISSIONS FULL;
-DEFINE FUNCTION fn::node_reference($node_id: string) {
-LET $record = type::thing('nodes', $node_id);
+DEFINE FUNCTION fn::node_reference($node_id: any) {
+-- Handle both record IDs (nodes:abc) and string IDs ("abc" or "nodes:abc")
+LET $record = IF type::is::record($node_id) THEN $node_id
+    ELSE IF string::starts_with(<string>$node_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$node_id, 6))
+    ELSE type::thing('nodes', <string>$node_id) END;
 LET $info = fn::node_info($record);
 IF $info = NONE { RETURN NONE; };
 RETURN { id: $info.id, kind: $info.kind, location: $info.location, name: $info.name };
@@ -139,7 +144,8 @@ IF $resolved_id = NONE { RETURN []; };
 LET $record = IF type::is::record($resolved_id) THEN $resolved_id ELSE (IF string::starts_with(<string>$resolved_id, 'nodes:') THEN type::thing('nodes', string::slice(<string>$resolved_id, 6)) ELSE type::thing('nodes', <string>$resolved_id) END) END;
 LET $rec_proj = (SELECT VALUE project_id FROM ONLY $record);
 IF $rec_proj != NONE AND $rec_proj != $project_id { RETURN []; };
-LET $raw = (SELECT fn::node_info(id) AS node, array::distinct((SELECT fn::node_reference(from) AS caller FROM edges WHERE to = id AND edge_type = 'Calls' AND (SELECT VALUE project_id FROM from) = $project_id AND (SELECT VALUE project_id FROM to) = $project_id).caller) AS called_by FROM (SELECT ->edges[WHERE edge_type = 'Calls' AND (to.project_id ?? $project_id) = $project_id] FROM ONLY $record)->to);
+-- Use direct field access for project_id filtering
+LET $raw = (SELECT fn::node_info(id) AS node, array::distinct((SELECT fn::node_reference(from) AS caller FROM edges WHERE to = id AND edge_type = 'Calls' AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE)).caller) AS called_by FROM (SELECT ->edges[WHERE edge_type = 'Calls' AND (to.project_id ?? $project_id) = $project_id] FROM ONLY $record)->to);
 RETURN (SELECT node.id AS id, node.name AS name, node.kind AS kind, node.location AS location, node.language AS language, node.content AS content, node.metadata AS metadata, 1 AS call_depth, called_by, $safe_depth AS requested_depth FROM $raw WHERE node != NONE);
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::get_complexity_hotspots($project_id: string, $min_complexity: float, $limit: int) {

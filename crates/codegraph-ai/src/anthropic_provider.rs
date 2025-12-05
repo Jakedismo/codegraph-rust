@@ -181,6 +181,18 @@ impl AnthropicProvider {
             top_p: config.top_p,
             stop_sequences: config.stop.clone(),
             tools: anthropic_tools,
+            // Set tool_choice to control parallel tool use
+            // parallel_tool_calls: Some(false) -> disable parallel
+            // parallel_tool_calls: Some(true) or None -> use default (parallel enabled)
+            tool_choice: config.parallel_tool_calls.and_then(|parallel| {
+                if !parallel {
+                    Some(AnthropicToolChoice::Auto {
+                        disable_parallel_tool_use: Some(true),
+                    })
+                } else {
+                    None // Use default (parallel enabled)
+                }
+            }),
             output_format,
         };
 
@@ -410,6 +422,28 @@ impl CodeIntelligenceProvider for AnthropicProvider {
 
 // Anthropic API request/response types
 
+/// Tool choice configuration for Anthropic API
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum AnthropicToolChoice {
+    /// Let the model decide whether to use tools
+    Auto {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        disable_parallel_tool_use: Option<bool>,
+    },
+    /// Force the model to use a tool
+    Any {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        disable_parallel_tool_use: Option<bool>,
+    },
+    /// Force the model to use a specific tool
+    Tool {
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        disable_parallel_tool_use: Option<bool>,
+    },
+}
+
 #[derive(Debug, Serialize)]
 struct AnthropicRequest {
     model: String,
@@ -426,6 +460,9 @@ struct AnthropicRequest {
     /// Tools for function calling (Anthropic native format)
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<AnthropicTool>>,
+    /// Tool choice configuration (controls parallel tool use)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<AnthropicToolChoice>,
     /// Structured output format (beta feature)
     #[serde(skip_serializing_if = "Option::is_none")]
     output_format: Option<AnthropicOutputFormat>,

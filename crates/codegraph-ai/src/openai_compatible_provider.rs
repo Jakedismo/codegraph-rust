@@ -208,6 +208,7 @@ impl OpenAICompatibleProvider {
             stop: config.stop.clone(),
             response_format: config.response_format.clone(),
             tools: responses_tools,
+            parallel_tool_calls: config.parallel_tool_calls,
         };
 
         let mut request_builder = self
@@ -351,6 +352,7 @@ impl OpenAICompatibleProvider {
             response_format: config.response_format.clone(),
             format: ollama_format,
             tools: tools.map(|t| t.to_vec()),
+            parallel_tool_calls: config.parallel_tool_calls,
         };
 
         let mut request_builder = self
@@ -661,6 +663,9 @@ struct ResponsesAPIRequest {
     /// Tools for function calling (Responses API format)
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<ResponsesAPITool>>,
+    /// Whether to allow parallel tool calls (default: true for most models)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parallel_tool_calls: Option<bool>,
 }
 
 /// Tool definition for Responses API (different from Chat Completions API format)
@@ -743,6 +748,9 @@ struct ChatCompletionsRequest {
     /// Tools for function calling (OpenAI Chat Completions API)
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<crate::llm_provider::ToolDefinition>>,
+    /// Whether to allow parallel tool calls (default: true for most models)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parallel_tool_calls: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
