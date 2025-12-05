@@ -39,7 +39,7 @@ LET $dependencies_info = (SELECT VALUE fn::node_reference(`value`) FROM $depende
 LET $afferent = array::len($dependents_info);
 LET $efferent = array::len($dependencies_info);
 LET $total = $afferent + $efferent;
-LET $instability = IF $total > 0 THEN math::round($efferent / $total, 6) ELSE 0 END;
+LET $instability = IF $total > 0 THEN math::round(($efferent / $total) * 1000000f) / 1000000f ELSE 0 END;
 RETURN { dependencies: $dependencies_info, dependents: $dependents_info, metrics: { afferent_coupling: $afferent, coupling_category: IF $instability < 0.3f THEN 'stable' ELSE IF $instability > 0.7f THEN 'unstable' ELSE 'balanced' END, efferent_coupling: $efferent, instability: $instability, is_stable: $instability < 0.3f, is_unstable: $instability > 0.7f, stability: 1f - $instability, total_coupling: $total }, node: fn::node_info($record) };
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::detect_circular_dependencies($project_id: string, $edge_type: string) {
@@ -117,7 +117,8 @@ LET $min_depths = (SELECT id, math::min(depth) AS dependency_depth FROM $pairs G
 LET $raw = (SELECT fn::node_info(id) AS node, dependency_depth FROM $min_depths);
 RETURN (SELECT node.id AS id, node.name AS name, node.kind AS kind, node.location AS location, node.language AS language, node.content AS content, node.metadata AS metadata, dependency_depth, $safe_depth AS requested_depth FROM $raw WHERE node != NONE);
 } PERMISSIONS FULL;
-DEFINE FUNCTION fn::node_info($node_id: record) {
+DEFINE FUNCTION fn::node_info($node_id: any) {
+IF $node_id = NONE OR !type::is::record($node_id) { RETURN NONE; };
 LET $res = (SELECT <string>id AS id, name, node_type AS kind, language, content, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM ONLY $node_id);
 RETURN $res;
 } PERMISSIONS FULL;
@@ -163,7 +164,7 @@ LET $threshold = IF $min_complexity > 0f THEN $min_complexity ELSE 5f END;
 LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references'];
 LET $complex_nodes = (SELECT id, name, node_type AS kind, language, file_path, start_line, end_line, complexity FROM nodes WHERE project_id = $project_id AND complexity != NONE AND complexity >= $threshold AND node_type IN ['function', 'method', 'Function', 'Method'] ORDER BY complexity DESC LIMIT $safe_limit * 2);
 LET $with_coupling = (SELECT id, name, kind, language, file_path, start_line, end_line, complexity, (SELECT VALUE count() FROM edges WHERE to = $parent.id AND edge_type INSIDE $edge_list) AS afferent_coupling, (SELECT VALUE count() FROM edges WHERE from = $parent.id AND edge_type INSIDE $edge_list) AS efferent_coupling FROM $complex_nodes);
-LET $results = (SELECT id, name, kind, language, file_path, start_line, end_line, complexity, afferent_coupling[0] ?? 0 AS afferent_coupling, efferent_coupling[0] ?? 0 AS efferent_coupling, IF (afferent_coupling[0] ?? 0) + (efferent_coupling[0] ?? 0) > 0 THEN math::round((efferent_coupling[0] ?? 0) / ((afferent_coupling[0] ?? 0) + (efferent_coupling[0] ?? 0)), 4) ELSE 0f END AS instability, complexity * ((afferent_coupling[0] ?? 0) + 1) AS risk_score FROM $with_coupling ORDER BY risk_score DESC LIMIT $safe_limit);
+LET $results = (SELECT id, name, kind, language, file_path, start_line, end_line, complexity, afferent_coupling[0] ?? 0 AS afferent_coupling, efferent_coupling[0] ?? 0 AS efferent_coupling, IF (afferent_coupling[0] ?? 0) + (efferent_coupling[0] ?? 0) > 0 THEN math::round(((efferent_coupling[0] ?? 0) / ((afferent_coupling[0] ?? 0) + (efferent_coupling[0] ?? 0))) * 10000f) / 10000f ELSE 0f END AS instability, complexity * ((afferent_coupling[0] ?? 0) + 1) AS risk_score FROM $with_coupling ORDER BY risk_score DESC LIMIT $safe_limit);
 RETURN $results;
 } PERMISSIONS FULL;
 
@@ -203,16 +204,16 @@ DEFINE FIELD project_id ON chunks TYPE string PERMISSIONS FULL;
 DEFINE FIELD text ON chunks TYPE string PERMISSIONS FULL;
 DEFINE FIELD updated_at ON chunks TYPE datetime VALUE time::now() PERMISSIONS FULL;
 
-DEFINE INDEX idx_chunks_embedding_1024 ON chunks FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_1536 ON chunks FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_2048 ON chunks FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_2560 ON chunks FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_3072 ON chunks FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_384 ON chunks FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_4096 ON chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_embedding_768 ON chunks FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_chunks_order ON chunks FIELDS parent_node, chunk_index;
-DEFINE INDEX idx_chunks_parent ON chunks FIELDS parent_node;
+DEFINE INDEX CONCURRENTLY idx_chunks_embedding_1024 ON chunks FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_chunks_embedding_1536 ON chunks FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_chunks_embedding_2048 ON chunks FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_chunks_embedding_2560 ON chunks FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_chunks_embedding_3072 ON chunks FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_chunks_embedding_384 ON chunks FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_chunks_embedding_4096 ON chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_chunks_embedding_768 ON chunks FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_chunks_order ON chunks FIELDS parent_node, chunk_index;
+DEFINE INDEX CONCURRENTLY idx_chunks_parent ON chunks FIELDS parent_node;
 
 
 -- ------------------------------
@@ -228,11 +229,11 @@ DEFINE FIELD metadata ON edges FLEXIBLE TYPE option<object> PERMISSIONS FULL;
 DEFINE FIELD to ON edges TYPE record<nodes> PERMISSIONS FULL;
 DEFINE FIELD weight ON edges TYPE float DEFAULT 1f ASSERT $value > 0f PERMISSIONS FULL;
 
-DEFINE INDEX idx_edges_from ON edges FIELDS from;
-DEFINE INDEX idx_edges_from_to ON edges FIELDS from, to;
-DEFINE INDEX idx_edges_to ON edges FIELDS to;
-DEFINE INDEX idx_edges_type ON edges FIELDS edge_type;
-DEFINE INDEX idx_edges_type_from ON edges FIELDS edge_type, from;
+DEFINE INDEX CONCURRENTLY idx_edges_from ON edges FIELDS from;
+DEFINE INDEX CONCURRENTLY idx_edges_from_to ON edges FIELDS from, to;
+DEFINE INDEX CONCURRENTLY idx_edges_to ON edges FIELDS to;
+DEFINE INDEX CONCURRENTLY idx_edges_type ON edges FIELDS edge_type;
+DEFINE INDEX CONCURRENTLY idx_edges_type_from ON edges FIELDS edge_type, from;
 
 
 -- ------------------------------
@@ -255,10 +256,10 @@ DEFINE FIELD parse_errors[*] ON file_metadata TYPE string PERMISSIONS FULL;
 DEFINE FIELD project_id ON file_metadata TYPE string PERMISSIONS FULL;
 DEFINE FIELD updated_at ON file_metadata TYPE datetime VALUE time::now() PERMISSIONS FULL;
 
-DEFINE INDEX idx_file_metadata_composite ON file_metadata FIELDS project_id, file_path UNIQUE;
-DEFINE INDEX idx_file_metadata_hash ON file_metadata FIELDS content_hash;
-DEFINE INDEX idx_file_metadata_modified ON file_metadata FIELDS modified_at;
-DEFINE INDEX idx_file_metadata_project ON file_metadata FIELDS project_id;
+DEFINE INDEX CONCURRENTLY idx_file_metadata_composite ON file_metadata FIELDS project_id, file_path UNIQUE;
+DEFINE INDEX CONCURRENTLY idx_file_metadata_hash ON file_metadata FIELDS content_hash;
+DEFINE INDEX CONCURRENTLY idx_file_metadata_modified ON file_metadata FIELDS modified_at;
+DEFINE INDEX CONCURRENTLY idx_file_metadata_project ON file_metadata FIELDS project_id;
 
 
 -- ------------------------------
@@ -272,7 +273,7 @@ DEFINE FIELD `value`[*] ON metadata FLEXIBLE TYPE any PERMISSIONS FULL;
 DEFINE FIELD key ON metadata TYPE string PERMISSIONS FULL;
 DEFINE FIELD updated_at ON metadata TYPE datetime VALUE time::now() PERMISSIONS FULL;
 
-DEFINE INDEX idx_metadata_key ON metadata FIELDS key UNIQUE;
+DEFINE INDEX CONCURRENTLY idx_metadata_key ON metadata FIELDS key UNIQUE;
 
 
 -- ------------------------------
@@ -314,23 +315,23 @@ DEFINE FIELD repository_url ON nodes TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD start_line ON nodes TYPE option<int> PERMISSIONS FULL;
 DEFINE FIELD updated_at ON nodes TYPE datetime VALUE time::now() PERMISSIONS FULL;
 
-DEFINE INDEX idx_nodes_content_search ON nodes FIELDS content SEARCH ANALYZER code_analyzer BM25(1.2,0.75) DOC_IDS_ORDER 100 DOC_LENGTHS_ORDER 100 POSTINGS_ORDER 100 TERMS_ORDER 100 DOC_IDS_CACHE 100 DOC_LENGTHS_CACHE 100 POSTINGS_CACHE 100 TERMS_CACHE 100;
-DEFINE INDEX idx_nodes_embedding_1024 ON nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_1536 ON nodes FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_2048 ON nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_2560 ON nodes FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_3072 ON nodes FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_384 ON nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_4096 ON nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_embedding_768 ON nodes FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_nodes_file_path ON nodes FIELDS file_path;
-DEFINE INDEX idx_nodes_file_type ON nodes FIELDS file_path, node_type;
-DEFINE INDEX idx_nodes_language ON nodes FIELDS language;
-DEFINE INDEX idx_nodes_name ON nodes FIELDS name;
-DEFINE INDEX idx_nodes_name_search ON nodes FIELDS name SEARCH ANALYZER code_analyzer BM25(1.2,0.75) DOC_IDS_ORDER 100 DOC_LENGTHS_ORDER 100 POSTINGS_ORDER 100 TERMS_ORDER 100 DOC_IDS_CACHE 100 DOC_LENGTHS_CACHE 100 POSTINGS_CACHE 100 TERMS_CACHE 100;
-DEFINE INDEX idx_nodes_project ON nodes FIELDS project_id;
-DEFINE INDEX idx_nodes_project_type ON nodes FIELDS project_id, node_type;
-DEFINE INDEX idx_nodes_type ON nodes FIELDS node_type;
+DEFINE INDEX CONCURRENTLY idx_nodes_content_search ON nodes FIELDS content SEARCH ANALYZER code_analyzer BM25(1.2,0.75) DOC_IDS_ORDER 100 DOC_LENGTHS_ORDER 100 POSTINGS_ORDER 100 TERMS_ORDER 100 DOC_IDS_CACHE 100 DOC_LENGTHS_CACHE 100 POSTINGS_CACHE 100 TERMS_CACHE 100;
+DEFINE INDEX CONCURRENTLY idx_nodes_embedding_1024 ON nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_nodes_embedding_1536 ON nodes FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_nodes_embedding_2048 ON nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_nodes_embedding_2560 ON nodes FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_nodes_embedding_3072 ON nodes FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_nodes_embedding_384 ON nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_nodes_embedding_4096 ON nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_nodes_embedding_768 ON nodes FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_nodes_file_path ON nodes FIELDS file_path;
+DEFINE INDEX CONCURRENTLY idx_nodes_file_type ON nodes FIELDS file_path, node_type;
+DEFINE INDEX CONCURRENTLY idx_nodes_language ON nodes FIELDS language;
+DEFINE INDEX CONCURRENTLY idx_nodes_name ON nodes FIELDS name;
+DEFINE INDEX CONCURRENTLY idx_nodes_name_search ON nodes FIELDS name SEARCH ANALYZER code_analyzer BM25(1.2,0.75) DOC_IDS_ORDER 100 DOC_LENGTHS_ORDER 100 POSTINGS_ORDER 100 TERMS_ORDER 100 DOC_IDS_CACHE 100 DOC_LENGTHS_CACHE 100 POSTINGS_CACHE 100 TERMS_CACHE 100;
+DEFINE INDEX CONCURRENTLY idx_nodes_project ON nodes FIELDS project_id;
+DEFINE INDEX CONCURRENTLY idx_nodes_project_type ON nodes FIELDS project_id, node_type;
+DEFINE INDEX CONCURRENTLY idx_nodes_type ON nodes FIELDS node_type;
 
 
 -- ------------------------------
@@ -354,10 +355,10 @@ DEFINE FIELD project_id ON project_metadata TYPE string PERMISSIONS FULL;
 DEFINE FIELD root_path ON project_metadata TYPE string PERMISSIONS FULL;
 DEFINE FIELD updated_at ON project_metadata TYPE datetime VALUE time::now() PERMISSIONS FULL;
 
-DEFINE INDEX idx_project_domain ON project_metadata FIELDS domain;
-DEFINE INDEX idx_project_id ON project_metadata FIELDS project_id UNIQUE;
-DEFINE INDEX idx_project_name ON project_metadata FIELDS name;
-DEFINE INDEX idx_project_org ON project_metadata FIELDS organization_id;
+DEFINE INDEX CONCURRENTLY idx_project_domain ON project_metadata FIELDS domain;
+DEFINE INDEX CONCURRENTLY idx_project_id ON project_metadata FIELDS project_id UNIQUE;
+DEFINE INDEX CONCURRENTLY idx_project_name ON project_metadata FIELDS name;
+DEFINE INDEX CONCURRENTLY idx_project_org ON project_metadata FIELDS organization_id;
 
 
 -- ------------------------------
@@ -372,7 +373,7 @@ DEFINE FIELD description ON schema_versions TYPE option<string> PERMISSIONS FULL
 DEFINE FIELD name ON schema_versions TYPE string PERMISSIONS FULL;
 DEFINE FIELD version ON schema_versions TYPE int PERMISSIONS FULL;
 
-DEFINE INDEX idx_schema_version ON schema_versions FIELDS version UNIQUE;
+DEFINE INDEX CONCURRENTLY idx_schema_version ON schema_versions FIELDS version UNIQUE;
 
 
 -- ------------------------------
@@ -408,16 +409,16 @@ DEFINE FIELD project_id ON symbol_embeddings TYPE option<string> PERMISSIONS FUL
 DEFINE FIELD source_edge_id ON symbol_embeddings TYPE option<record<edges>> PERMISSIONS FULL;
 DEFINE FIELD symbol ON symbol_embeddings TYPE string PERMISSIONS FULL;
 
-DEFINE INDEX idx_symbol_embeddings_edge ON symbol_embeddings FIELDS source_edge_id;
-DEFINE INDEX idx_symbol_embeddings_node ON symbol_embeddings FIELDS node_id;
-DEFINE INDEX idx_symbol_embeddings_project_symbol ON symbol_embeddings FIELDS project_id, normalized_symbol;
-DEFINE INDEX idx_symbol_embeddings_symbol ON symbol_embeddings FIELDS normalized_symbol;
-DEFINE INDEX idx_symbol_embeddings_vector_1024 ON symbol_embeddings FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_1536 ON symbol_embeddings FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_2048 ON symbol_embeddings FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_2560 ON symbol_embeddings FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_3072 ON symbol_embeddings FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_384 ON symbol_embeddings FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_4096 ON symbol_embeddings FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
-DEFINE INDEX idx_symbol_embeddings_vector_768 ON symbol_embeddings FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_edge ON symbol_embeddings FIELDS source_edge_id;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_node ON symbol_embeddings FIELDS node_id;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_project_symbol ON symbol_embeddings FIELDS project_id, normalized_symbol;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_symbol ON symbol_embeddings FIELDS normalized_symbol;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_vector_1024 ON symbol_embeddings FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_vector_1536 ON symbol_embeddings FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_vector_2048 ON symbol_embeddings FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_vector_2560 ON symbol_embeddings FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_vector_3072 ON symbol_embeddings FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_vector_384 ON symbol_embeddings FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_vector_4096 ON symbol_embeddings FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
+DEFINE INDEX CONCURRENTLY idx_symbol_embeddings_vector_768 ON symbol_embeddings FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f;
 -- ------------------------------

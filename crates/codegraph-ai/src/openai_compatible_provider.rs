@@ -335,6 +335,14 @@ impl OpenAICompatibleProvider {
             }
         });
 
+        // Skip reasoning_effort for Ollama - it doesn't support this parameter
+        // and may interpret it incorrectly as "think"
+        let reasoning_effort = if self.config.provider_name == "ollama" {
+            None
+        } else {
+            config.reasoning_effort.clone()
+        };
+
         let request = ChatCompletionsRequest {
             model: self.config.model.clone(),
             messages: messages
@@ -346,7 +354,7 @@ impl OpenAICompatibleProvider {
                 .collect(),
             max_tokens: config.max_tokens,
             max_completion_tokens: config.max_completion_token.or(config.max_tokens),
-            reasoning_effort: config.reasoning_effort.clone(),
+            reasoning_effort,
             top_p: config.top_p,
             stop: config.stop.clone(),
             response_format: config.response_format.clone(),
