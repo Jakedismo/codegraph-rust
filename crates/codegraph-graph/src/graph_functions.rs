@@ -243,8 +243,9 @@ impl GraphFunctions {
             .flatten()
             .ok_or_else(|| {
                 CodeGraphError::Database(format!(
-                    "Node not found or not in project: {}",
-                    node_id
+                    "Node not found or project_id mismatch: node_id='{}', expected project_id='{}'. \
+                    Ensure the node exists and was indexed with the same project_id.",
+                    node_id, self.project_id
                 ))
             })
     }

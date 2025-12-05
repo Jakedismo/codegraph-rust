@@ -16,7 +16,7 @@ LET $str = <string>$input;
 -- Strip table prefix if present (e.g., "nodes:" or "chunks:")
 LET $after_prefix = IF string::starts_with($str, $table + ':') THEN string::slice($str, string::len($table) + 1) ELSE $str END;
 -- Strip angle brackets ⟨⟩ if present (SurrealDB's escaping for complex IDs)
-LET $clean_id = IF string::starts_with($after_prefix, '⟨') AND string::ends_with($after_prefix, '⟩') THEN string::slice($after_prefix, 1, string::len($after_prefix) - 1) ELSE $after_prefix END;
+LET $clean_id = IF string::starts_with($after_prefix, '⟨') AND string::ends_with($after_prefix, '⟩') THEN string::slice($after_prefix, 1, string::len($after_prefix) - 2) ELSE $after_prefix END;
 RETURN type::thing($table, $clean_id);
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: string) {
