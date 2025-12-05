@@ -33,8 +33,12 @@ fn default_depth() -> i32 {
 /// Get transitive dependencies of a code node
 #[tool(
     name = "get_transitive_dependencies",
-    description = "Get all transitive dependencies of a code node up to specified depth. \
-                   Follows dependency edges recursively to find all nodes this node depends on.",
+    description = "ANSWERS: 'What does this code NEED to work?' Maps the complete chain of forward dependencies to any depth. \
+                   USE WHEN: Planning changes and need to understand blast radius, identifying external library usage, \
+                   finding configuration/infrastructure this code requires. \
+                   UNIQUE VALUE: Shows the SUPPLY CHAIN - what breaks if a dependency disappears. \
+                   FOLLOW-UP: Use get_reverse_dependencies to understand impact in the other direction. \
+                   NOTE: Requires a node_id from semantic_code_search results.",
     input = GetTransitiveDependenciesArgs,
 )]
 pub struct GetTransitiveDependencies {
@@ -92,7 +96,12 @@ pub struct GetReverseDependenciesArgs {
 /// Get reverse dependencies (what depends on this node)
 #[tool(
     name = "get_reverse_dependencies",
-    description = "Get all nodes that depend on the specified node. Useful for impact analysis.",
+    description = "ANSWERS: 'What breaks if I change this code?' Reveals the complete IMPACT RADIUS - all callers, importers, and users. \
+                   USE WHEN: Before refactoring to understand risk, assessing how widely a component is used, \
+                   finding entry points that trigger this code. \
+                   UNIQUE VALUE: Essential for safe refactoring - shows who depends ON this code (opposite of transitive deps). \
+                   HIGH PRIORITY: Use IMMEDIATELY after semantic_code_search to understand code importance. \
+                   NOTE: Requires a node_id from semantic_code_search results.",
     input = GetReverseDependenciesArgs,
 )]
 pub struct GetReverseDependencies {
@@ -148,7 +157,12 @@ fn default_call_chain_depth() -> i32 {
 /// Trace call chain from a starting point
 #[tool(
     name = "trace_call_chain",
-    description = "Trace the execution flow from a starting function through all called functions.",
+    description = "ANSWERS: 'How does execution actually FLOW at runtime?' Traces the dynamic call path from an entry point through nested function calls. \
+                   USE WHEN: Debugging to understand how data flows, mapping request handling from entry to exit, \
+                   finding the sequence of operations a feature performs. \
+                   UNIQUE VALUE: Shows RUNTIME behavior, not just static structure - different from dependency tools which show import/definition relationships. \
+                   EXAMPLE: Entry point 'handleRequest' -> 'validateInput' -> 'queryDatabase' -> 'formatResponse'. \
+                   NOTE: Requires a node_id from semantic_code_search results.",
     input = TraceCallChainArgs,
 )]
 pub struct TraceCallChain {
@@ -199,7 +213,12 @@ pub struct DetectCyclesArgs {
 /// Detect circular dependencies
 #[tool(
     name = "detect_cycles",
-    description = "Detect circular dependencies and cycles in the codebase graph.",
+    description = "ANSWERS: 'Is there hidden coupling creating architectural fragility?' Detects circular dependency chains that indicate design problems. \
+                   USE WHEN: Assessing architectural health, investigating why changes have unexpected side effects, \
+                   finding tightly coupled module groups that should be refactored. \
+                   UNIQUE VALUE: Finds ARCHITECTURAL SMELLS that other tools miss - cycles often cause: build issues, testing difficulties, and change propagation. \
+                   EXAMPLE OUTPUT: A->B->C->A cycle in 'Imports' means these modules cannot be separated. \
+                   BEST PRACTICE: Run after get_transitive_dependencies at depth>=3 to check for hidden cycles.",
     input = DetectCyclesArgs,
 )]
 pub struct DetectCycles {
@@ -246,7 +265,13 @@ pub struct CalculateCouplingArgs {
 /// Calculate coupling metrics
 #[tool(
     name = "calculate_coupling",
-    description = "Calculate afferent/efferent coupling and instability metrics for a node.",
+    description = "ANSWERS: 'Is this component stable or volatile? High-impact or isolated?' Quantifies architectural quality with Ca/Ce/I metrics. \
+                   METRICS EXPLAINED: Ca (Afferent) = incoming dependencies (how many USE this), Ce (Efferent) = outgoing dependencies (how many this USES), \
+                   I (Instability) = Ce/(Ca+Ce), range 0-1: I=0 means stable/hard to change, I=1 means unstable/easy to change. \
+                   USE WHEN: Deciding if a component is safe to modify, identifying architectural hotspots, \
+                   validating that stable components (I near 0) don't depend on unstable ones (I near 1). \
+                   INTERPRETATION: High Ca + Low I = critical foundation component (change carefully). Low Ca + High I = leaf component (safe to modify). \
+                   NOTE: Requires a node_id from semantic_code_search results.",
     input = CalculateCouplingArgs,
 )]
 pub struct CalculateCoupling {
@@ -298,7 +323,13 @@ fn default_min_degree() -> i32 {
 /// Get highly connected hub nodes
 #[tool(
     name = "get_hub_nodes",
-    description = "Find highly connected hub nodes in the dependency graph.",
+    description = "ANSWERS: 'What are the critical architectural centers everything depends on?' Identifies highly-connected components that are potential god objects or architectural bottlenecks. \
+                   USE WHEN: Starting architecture analysis (use BEFORE semantic_code_search for architectural overview), \
+                   finding components where bugs have high blast radius, identifying refactoring candidates. \
+                   UNIQUE VALUE: Reveals the SKELETON of the codebase - the core components everything else builds upon. \
+                   INTERPRETATION: High-degree hub = either well-designed foundation OR problematic god object (use calculate_coupling to distinguish). \
+                   GREAT STARTING POINT: Returns node_ids you can pass to other tools for deeper analysis. \
+                   min_degree=5 finds moderately connected nodes, min_degree=10+ finds major architectural centers.",
     input = GetHubNodesArgs,
 )]
 pub struct GetHubNodes {
@@ -363,10 +394,13 @@ fn default_search_threshold() -> f64 {
 /// Semantic code search using AI embeddings, full-text analysis, and graph enrichment
 #[tool(
     name = "semantic_code_search",
-    description = "Primary code discovery tool using advanced hybrid search with graph-traversal. \
-                   Accepts natural language queries ((e.g., How is authentication handled?, database models, error handling code etc.) be robust in your queries). \
-                   Works for both conceptual searches and specific identifiers. \
-                   Returns relevant code snippets, definitions, and related nodes ranked by relevance.",
+    description = "DISCOVERY TOOL: Find code by natural language description. Returns node locations and IDs for deeper analysis. \
+                   USE FOR: Locating code by concept ('authentication', 'error handling'), finding specific identifiers, starting investigations. \
+                   OUTPUT: Provides node_ids (format: 'nodes:uuid') needed by other graph tools. \
+                   LIMITATIONS: Shows WHERE code is, NOT how it connects. Cannot answer: 'What uses this?', 'What does this depend on?', 'Is this stable?' \
+                   REQUIRED FOLLOW-UPS: After finding nodes, use get_reverse_dependencies (who uses this?), get_transitive_dependencies (what does it need?), \
+                   or calculate_coupling (is it stable?) to understand relationships. Search alone provides incomplete answers. \
+                   WORKFLOW: Search -> extract node_id -> analyze with graph tools -> synthesize complete picture.",
     input = SemanticCodeSearchArgs,
 )]
 pub struct SemanticCodeSearch {
