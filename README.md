@@ -130,6 +130,8 @@ cd schema && ./apply-schema.sh
 codegraph index /path/to/project -r -l rust,typescript,python
 ```
 
+> **🔒 Security Note:** Indexing automatically respects `.gitignore` and filters out common secrets patterns (`.env`, `credentials.json`, `*.pem`, API keys, etc.). Your secrets won't be embedded or exposed to the agent.
+
 ### 5. Connect to Claude Code
 
 Add to your MCP config:
