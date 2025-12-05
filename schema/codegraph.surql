@@ -50,7 +50,7 @@ LET $cycles = (SELECT node1_id, node2_id FROM $pairs WHERE node1_id < node2_id A
 LET $raw = (SELECT node1_id, node2_id, fn::node_info(node1_id) AS node1, fn::node_info(node2_id) AS node2 FROM $cycles);
 RETURN (SELECT node1_id, node2_id, $edge_name AS dependency_type, node1, node2 FROM $raw WHERE node1 != NONE AND node2 != NONE);
 } PERMISSIONS FULL;
-DEFINE FUNCTION fn::edge_types() { RETURN ['calls', 'imports', 'uses', 'extends', 'implements', 'references']; } PERMISSIONS FULL;
+DEFINE FUNCTION fn::edge_types() { RETURN ['calls', 'imports', 'uses', 'extends', 'implements', 'references', 'contains', 'belongs_to']; } PERMISSIONS FULL;
 DEFINE FUNCTION fn::find_nodes_by_name($project_id: string, $needle: string, $limit: int) {
 LET $max = IF $limit != NONE AND $limit > 0 THEN $limit ELSE 10 END;
 RETURN (SELECT id, name, node_type AS kind, language, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM nodes WHERE project_id = $project_id AND (string::lowercase(name) CONTAINS string::lowercase($needle) OR file_path CONTAINS $needle) ORDER BY name

@@ -79,6 +79,22 @@ pub struct PromptSelector {
 }
 
 impl PromptSelector {
+    fn max_steps_override() -> Option<usize> {
+        const MAX_SAFE_STEPS: usize = 50;
+
+        std::env::var("CODEGRAPH_AGENT_MAX_STEPS")
+            .ok()
+            .and_then(|v| v.parse::<isize>().ok())
+            .map(|raw| {
+                let clamped = if raw <= 0 {
+                    MAX_SAFE_STEPS as isize
+                } else {
+                    raw.min(MAX_SAFE_STEPS as isize)
+                };
+                clamped as usize
+            })
+    }
+
     /// Create a new prompt selector with default prompts
     pub fn new() -> Self {
         let mut selector = Self {
@@ -122,6 +138,10 @@ impl PromptSelector {
     /// Hard cap at 10 steps to prevent endless semantic search loops.
     /// Agents should produce answers quickly, not exhaustively search.
     pub fn recommended_max_steps(&self, tier: ContextTier, analysis_type: AnalysisType) -> usize {
+        if let Some(override_steps) = Self::max_steps_override() {
+            return override_steps.max(1);
+        }
+
         // Base max_steps from tier (reduced to encourage faster answers)
         let base_steps = match tier {
             ContextTier::Small => 3,
@@ -457,6 +477,40 @@ mod tests {
                 .recommended_max_steps(ContextTier::Massive, AnalysisType::ArchitectureAnalysis),
             10
         ); // 10 * 1.3 = 13 -> capped at 10
+    }
+
+    #[test]
+    fn test_max_steps_override_env_clamped() {
+        std::env::set_var("CODEGRAPH_AGENT_MAX_STEPS", "42");
+        let selector = PromptSelector::new();
+        assert_eq!(
+            selector.recommended_max_steps(ContextTier::Massive, AnalysisType::CodeSearch),
+            42
+        );
+        std::env::remove_var("CODEGRAPH_AGENT_MAX_STEPS");
+    }
+
+    #[test]
+    fn test_max_steps_override_zero_becomes_cap() {
+        std::env::set_var("CODEGRAPH_AGENT_MAX_STEPS", "0");
+        let selector = PromptSelector::new();
+        assert_eq!(
+            selector.recommended_max_steps(ContextTier::Massive, AnalysisType::CodeSearch),
+            50
+        );
+        std::env::remove_var("CODEGRAPH_AGENT_MAX_STEPS");
+    }
+
+    #[test]
+    fn test_max_steps_override_invalid_falls_back() {
+        std::env::set_var("CODEGRAPH_AGENT_MAX_STEPS", "not_a_number");
+        let selector = PromptSelector::new();
+        assert_eq!(
+            selector
+                .recommended_max_steps(ContextTier::Massive, AnalysisType::ArchitectureAnalysis),
+            10
+        );
+        std::env::remove_var("CODEGRAPH_AGENT_MAX_STEPS");
     }
 
     #[test]

@@ -119,6 +119,11 @@ impl GraphToolExecutor {
         self.cache_stats.lock().clone()
     }
 
+    /// Expose underlying graph functions for read-only summaries
+    pub fn graph_functions(&self) -> Arc<GraphFunctions> {
+        self.graph_functions.clone()
+    }
+
     /// Clear the cache and reset statistics
     pub fn clear_cache(&self) {
         let mut cache = self.cache.lock();

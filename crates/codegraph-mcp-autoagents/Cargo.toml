@@ -17,6 +17,7 @@ codegraph-mcp-core = { path = "../codegraph-mcp-core" }
 codegraph-mcp-tools = { path = "../codegraph-mcp-tools" }
 codegraph-parser = { path = "../codegraph-parser" }
 codegraph-ai = { path = "../codegraph-ai" }
+codegraph-graph = { path = "../codegraph-graph" }
 autoagents = { workspace = true }
 autoagents-derive = { workspace = true }
 serde = { workspace = true }

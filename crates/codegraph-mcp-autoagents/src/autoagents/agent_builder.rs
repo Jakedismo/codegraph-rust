@@ -707,7 +707,7 @@ impl CodeGraphAgentBuilder {
             Arc::new(FindComplexityHotspots::new(executor_adapter.clone())),
         ];
 
-        // Get tier-aware max iterations
+        // Get tier-aware (or env-overridden) max iterations
         let max_iterations = tier_plugin.get_max_iterations();
         tracing::info!(
             "Setting ReActAgent max_turns={} for tier={:?}",

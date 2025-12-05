@@ -4,8 +4,10 @@
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use crate::autoagents::startup_context::{build_startup_context, StartupContextRender};
 use codegraph_ai::llm_provider::LLMProvider;
+use codegraph_graph::{GraphFunctions, HubNode};
 use codegraph_mcp_core::analysis::AnalysisType;
 use codegraph_mcp_tools::GraphToolExecutor;
+use std::cmp::Reverse;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -150,9 +152,20 @@ impl CodeGraphExecutor {
         // Create architecture-specific executor via factory
         let executor = self.factory.create(self.architecture)?;
 
+        // Optional graph bootstrap for architecture/context-heavy analyses
+        let graph_bootstrap = if std::env::var("CODEGRAPH_ARCH_BOOTSTRAP")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            let gf = self.factory.tool_executor().graph_functions();
+            Some(Self::build_graph_bootstrap(gf).await)
+        } else {
+            None
+        };
+
         let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let enriched_query = match build_startup_context(&project_root) {
-            Ok(ctx) => ctx.render_with_query(&query),
+            Ok(ctx) => ctx.render_with_query_and_bootstrap(&query, graph_bootstrap.as_deref()),
             Err(e) => {
                 tracing::warn!(project = %project_root.display(), error = %e, "startup context unavailable");
                 query.clone()
@@ -208,6 +221,67 @@ impl CodeGraphExecutor {
                 })
             }
         }
+    }
+
+    async fn build_graph_bootstrap(graph_functions: Arc<GraphFunctions>) -> String {
+        const HUB_LIMIT: usize = 5;
+        const HOTSPOT_LIMIT: usize = 5;
+
+        let mut parts: Vec<String> = Vec::new();
+
+        if let Ok(count) = graph_functions.count_nodes_for_project().await {
+            parts.push(format!("nodes indexed: {}", count));
+        }
+
+        if let Ok(dirs) = graph_functions.get_top_directories(5).await {
+            if !dirs.is_empty() {
+                let list: Vec<String> = dirs
+                    .into_iter()
+                    .map(|d| format!("dir: {} (files={})", d.full_path, d.file_count))
+                    .collect();
+                parts.push(format!("top directories: {}", list.join("; ")));
+            }
+        }
+
+        if let Ok(mut hubs) = graph_functions.get_hub_nodes(5).await {
+            hubs.sort_by_key(|h: &HubNode| Reverse(h.total_degree));
+            let list: Vec<String> = hubs
+                .into_iter()
+                .take(HUB_LIMIT)
+                .map(|h| {
+                    let name = h.node.name;
+                    let kind = h.node.kind.unwrap_or_else(|| "unknown".into());
+                    format!(
+                        "hub: {} ({} deg={} in/out={}/{})",
+                        name, kind, h.total_degree, h.afferent_degree, h.efferent_degree
+                    )
+                })
+                .collect();
+            if !list.is_empty() {
+                parts.push(format!("top hubs: {}", list.join("; ")));
+            }
+        }
+
+        if let Ok(hotspots) = graph_functions
+            .get_complexity_hotspots(10.0, HOTSPOT_LIMIT as i32)
+            .await
+        {
+            let list: Vec<String> = hotspots
+                .into_iter()
+                .map(|c| {
+                    let path = c.file_path.unwrap_or_else(|| "(unknown)".into());
+                    format!(
+                        "hotspot: {} [{}] cc={:.1} risk={:.1}",
+                        c.name, path, c.complexity, c.risk_score
+                    )
+                })
+                .collect();
+            if !list.is_empty() {
+                parts.push(format!("complexity hotspots: {}", list.join("; ")));
+            }
+        }
+
+        parts.join("\n")
     }
 }
 

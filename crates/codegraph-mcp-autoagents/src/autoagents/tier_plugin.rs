@@ -24,9 +24,24 @@ impl TierAwarePromptPlugin {
 
     /// Get tier-appropriate system prompt
     pub fn get_system_prompt(&self) -> Result<String, McpError> {
-        self.prompt_selector
+        let mut prompt = self
+            .prompt_selector
             .select_prompt(self.analysis_type, self.tier)
-            .map(|s: &str| s.to_string())
+            .map(|s: &str| s.to_string())?;
+
+        if matches!(
+            self.analysis_type,
+            AnalysisType::ArchitectureAnalysis | AnalysisType::ContextBuilder
+        ) {
+            if let Ok(primer) = std::env::var("CODEGRAPH_ARCH_PRIMER") {
+                if !primer.trim().is_empty() {
+                    prompt.push_str("\n\n[Architecture Primer]\n");
+                    prompt.push_str(&primer);
+                }
+            }
+        }
+
+        Ok(prompt)
     }
 
     /// Get tier-appropriate max_iterations (max_steps in original plan)
@@ -64,6 +79,17 @@ mod tests {
         // Massive: 10 * 0.8 = 8
         assert_eq!(small.get_max_iterations(), 3);
         assert_eq!(massive.get_max_iterations(), 8);
+    }
+
+    #[test]
+    fn primer_appended_for_architecture() {
+        std::env::set_var("CODEGRAPH_ARCH_PRIMER", "layers: api -> core");
+        let plugin =
+            TierAwarePromptPlugin::new(AnalysisType::ArchitectureAnalysis, ContextTier::Massive);
+        let prompt = plugin.get_system_prompt().unwrap();
+        assert!(prompt.contains("[Architecture Primer]"));
+        assert!(prompt.contains("layers: api -> core"));
+        std::env::remove_var("CODEGRAPH_ARCH_PRIMER");
     }
 
     #[test]

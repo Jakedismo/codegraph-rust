@@ -1436,6 +1436,7 @@ dependencies = [
  "autoagents 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "autoagents-derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "codegraph-ai",
+ "codegraph-graph",
  "codegraph-mcp-core",
  "codegraph-mcp-tools",
  "codegraph-parser",

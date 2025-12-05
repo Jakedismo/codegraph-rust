@@ -71,6 +71,10 @@ impl AgentExecutorFactory {
         }
     }
 
+    pub fn tool_executor(&self) -> Arc<GraphToolExecutor> {
+        self.tool_executor.clone()
+    }
+
     /// Detect ContextTier from LLM provider configuration
     fn detect_tier(&self) -> ContextTier {
         // Get context window from config if available

@@ -63,6 +63,7 @@ pub enum NodeType {
     Enum,
     Trait,
     Module,
+    Directory,
     Variable,
     Import,
     Class,

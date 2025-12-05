@@ -1,6 +1,9 @@
 use crate::{AstVisitor, LanguageRegistry};
 use async_trait::async_trait;
-use codegraph_core::{CodeGraphError, CodeNode, CodeParser, ExtractionResult, Language, Result};
+use codegraph_core::{
+    CodeGraphError, CodeNode, CodeParser, EdgeRelationship, EdgeType, ExtractionResult, Language,
+    Location, NodeType, Result,
+};
 use futures::stream::{self, StreamExt};
 use sha2::Digest;
 use std::collections::HashMap;
@@ -883,7 +886,7 @@ impl TreeSitterParser {
                     // Adds pattern-based edges and resolves unmatched references (<1ms overhead)
                     let enhanced_result =
                         crate::fast_ml::enhance_extraction(ast_result, &used_content);
-                    Ok(enhanced_result)
+                    Ok(Self::add_directory_nodes(enhanced_result, &file_path))
                 }
                 None => {
                     // Fallback: return empty result
@@ -935,6 +938,75 @@ impl TreeSitterParser {
                 )))
             }
         }
+    }
+}
+
+impl TreeSitterParser {
+    fn add_directory_nodes(mut result: ExtractionResult, file_path: &str) -> ExtractionResult {
+        const MAX_DEPTH: usize = 4;
+        let path = Path::new(file_path);
+
+        let mut dirs: Vec<(String, String, usize)> = Vec::new();
+        let mut current = path.parent();
+        let mut depth = 0usize;
+
+        while let Some(dir) = current {
+            if dir.as_os_str().is_empty() || depth >= MAX_DEPTH {
+                break;
+            }
+            let full_path = dir.to_string_lossy().to_string();
+            let name = dir
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| full_path.clone());
+            dirs.push((full_path, name, depth));
+            depth += 1;
+            current = dir.parent();
+        }
+
+        if dirs.is_empty() {
+            return result;
+        }
+
+        dirs.reverse();
+
+        let mut dir_nodes = Vec::with_capacity(dirs.len());
+        let mut dir_name_to_id = std::collections::HashMap::new();
+
+        for (full_path, name, depth) in dirs {
+            let location = Location {
+                file_path: file_path.to_string(),
+                line: 0,
+                column: 0,
+                end_line: None,
+                end_column: None,
+            };
+            let mut node = CodeNode::new(name.clone(), Some(NodeType::Directory), None, location);
+            node.metadata
+                .attributes
+                .insert("full_path".into(), full_path.clone());
+            node.metadata
+                .attributes
+                .insert("depth".into(), depth.to_string());
+            dir_name_to_id.insert(name.clone(), node.id);
+            dir_nodes.push(node);
+        }
+
+        // Add contains edges between directories (child -> parent)
+        for window in dir_nodes.windows(2) {
+            if let [child, parent] = window {
+                result.edges.push(EdgeRelationship {
+                    from: child.id,
+                    to: parent.name.to_string(),
+                    edge_type: EdgeType::Contains,
+                    metadata: HashMap::new(),
+                    span: None,
+                });
+            }
+        }
+
+        result.nodes.extend(dir_nodes);
+        result
     }
 }
 

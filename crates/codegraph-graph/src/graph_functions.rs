@@ -620,6 +620,53 @@ impl GraphFunctions {
 
         Ok(result)
     }
+
+    /// Get top directories by file count (lightweight summary)
+    pub async fn get_top_directories(&self, limit: i32) -> Result<Vec<DirectorySummary>> {
+        let safe_limit = limit.clamp(1, 50);
+
+        let sql = r#"
+            LET $dirs = (
+              SELECT id, name, full_path, depth, metadata, project_id
+              FROM nodes
+              WHERE project_id = $project_id AND node_type = 'Directory'
+              ORDER BY depth ASC, name ASC
+              LIMIT 500
+            );
+
+            LET $counts = (
+              SELECT dir.id AS dir_id, count() AS file_count
+              FROM $dirs AS dir
+              INNER JOIN edges ON edges.from = dir.id AND edges.edge_type = 'contains'
+              INNER JOIN nodes AS n ON edges.to = n.id AND n.node_type != 'Directory'
+              GROUP BY dir.id
+              ORDER BY file_count DESC
+              LIMIT $limit
+            );
+
+            RETURN (
+              SELECT dir_id, file_count,
+                     (SELECT VALUE name FROM $dirs WHERE id = dir_id)[0] AS name,
+                     (SELECT VALUE full_path FROM $dirs WHERE id = dir_id)[0] AS full_path,
+                     (SELECT VALUE depth FROM $dirs WHERE id = dir_id)[0] AS depth
+              FROM $counts
+            );
+        "#;
+
+        let mut response = self
+            .db
+            .query(sql)
+            .bind(("project_id", self.project_id.clone()))
+            .bind(("limit", safe_limit))
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("get_top_directories failed: {}", e)))?;
+
+        let result: Vec<DirectorySummary> = response.take(0).map_err(|e| {
+            CodeGraphError::Database(format!("Failed to deserialize directories: {}", e))
+        })?;
+
+        Ok(result)
+    }
 }
 
 // ============================================================================
@@ -696,6 +743,16 @@ pub struct HubNode {
     pub total_degree: i32,
     pub incoming_by_type: Vec<EdgeTypeCount>,
     pub outgoing_by_type: Vec<EdgeTypeCount>,
+}
+
+/// Directory summary for bootstrap
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirectorySummary {
+    pub dir_id: String,
+    pub name: String,
+    pub full_path: String,
+    pub depth: Option<i32>,
+    pub file_count: i32,
 }
 
 /// Edge type count

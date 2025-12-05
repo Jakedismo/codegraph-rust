@@ -41,10 +41,15 @@ pub enum StartupContextError {
 
 pub trait StartupContextRender {
     fn render_with_query(&self, query: &str) -> String;
+    fn render_with_query_and_bootstrap(&self, query: &str, bootstrap: Option<&str>) -> String;
 }
 
 impl StartupContextRender for StartupContext {
     fn render_with_query(&self, query: &str) -> String {
+        self.render_with_query_and_bootstrap(query, None)
+    }
+
+    fn render_with_query_and_bootstrap(&self, query: &str, bootstrap: Option<&str>) -> String {
         let mut out = String::new();
 
         out.push_str("PROJECT STARTUP CONTEXT\n\n");
@@ -74,6 +79,14 @@ impl StartupContextRender for StartupContext {
         for path in &self.inventory.entries {
             out.push_str(path.to_string_lossy().as_ref());
             out.push('\n');
+        }
+
+        if let Some(bootstrap) = bootstrap {
+            if !bootstrap.trim().is_empty() {
+                out.push_str("\n[Graph Bootstrap]\n");
+                out.push_str(bootstrap);
+                out.push_str("\n");
+            }
         }
 
         out.push_str("\nUSER QUERY:\n");
