@@ -167,103 +167,102 @@ DEFINE FIELD updated_at         ON TABLE symbol_embeddings TYPE datetime VALUE t
 -- =====================================================================
 
 -- nodes: scalar indexes
-DEFINE INDEX idx_nodes_name       ON TABLE nodes COLUMNS name;
-DEFINE INDEX idx_nodes_type       ON TABLE nodes COLUMNS node_type;
-DEFINE INDEX idx_nodes_language   ON TABLE nodes COLUMNS language;
-DEFINE INDEX idx_nodes_file_path  ON TABLE nodes COLUMNS file_path;
-DEFINE INDEX idx_nodes_project    ON TABLE nodes COLUMNS project_id;
-
+DEFINE INDEX idx_nodes_name       ON TABLE nodes COLUMNS name CONCURRENTLY;
+DEFINE INDEX idx_nodes_type       ON TABLE nodes COLUMNS node_type CONCURRENTLY;
+DEFINE INDEX idx_nodes_language   ON TABLE nodes COLUMNS language CONCURRENTLY;
+DEFINE INDEX idx_nodes_file_path  ON TABLE nodes COLUMNS file_path CONCURRENTLY;
+DEFINE INDEX idx_nodes_project    ON TABLE nodes COLUMNS project_id CONCURRENTLY;
 -- nodes: full-text indexes for hybrid search
 DEFINE INDEX idx_nodes_name_search
   ON TABLE nodes FIELDS name
-  SEARCH ANALYZER code_analyzer BM25;
+  SEARCH ANALYZER code_analyzer BM25 CONCURRENTLY;
 
 DEFINE INDEX idx_nodes_content_search
   ON TABLE nodes FIELDS content
-  SEARCH ANALYZER code_analyzer BM25;
+  SEARCH ANALYZER code_analyzer BM25 CONCURRENTLY;
 
 -- nodes: HNSW vector indexes (COSINE metric)
 DEFINE INDEX idx_nodes_embedding_384
-  ON TABLE nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 200 M 16;
+  ON TABLE nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_768
-  ON TABLE nodes FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE EFC 200 M 16;
+  ON TABLE nodes FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_1024
-  ON TABLE nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 200 M 16;
+  ON TABLE nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_1536
-  ON TABLE nodes FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE EFC 200 M 16;
+  ON TABLE nodes FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_2048
-  ON TABLE nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+  ON TABLE nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_2560
-  ON TABLE nodes FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE EFC 200 M 16;
+  ON TABLE nodes FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_3072
-  ON TABLE nodes FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE EFC 200 M 16;
+  ON TABLE nodes FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_4096
-  ON TABLE nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 200 M 16;
+  ON TABLE nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 
 -- edges: scalar indexes (project-scoped)
-DEFINE INDEX idx_edges_project      ON TABLE edges COLUMNS project_id;
-DEFINE INDEX idx_edges_from         ON TABLE edges COLUMNS from;
-DEFINE INDEX idx_edges_to           ON TABLE edges COLUMNS to;
-DEFINE INDEX idx_edges_kind         ON TABLE edges COLUMNS kind;
-DEFINE INDEX idx_edges_from_to      ON TABLE edges COLUMNS from, to;
-DEFINE INDEX idx_edges_kind_from    ON TABLE edges COLUMNS kind, from;
+DEFINE INDEX idx_edges_project      ON TABLE edges COLUMNS project_id CONCURRENTLY;
+DEFINE INDEX idx_edges_from         ON TABLE edges COLUMNS from CONCURRENTLY;
+DEFINE INDEX idx_edges_to           ON TABLE edges COLUMNS to CONCURRENTLY;
+DEFINE INDEX idx_edges_kind         ON TABLE edges COLUMNS kind CONCURRENTLY;
+DEFINE INDEX idx_edges_from_to      ON TABLE edges COLUMNS from, to CONCURRENTLY;
+DEFINE INDEX idx_edges_kind_from    ON TABLE edges COLUMNS kind, from CONCURRENTLY;
 DEFINE INDEX idx_edges_project_kind_from
-  ON TABLE edges COLUMNS project_id, kind, from;
+  ON TABLE edges COLUMNS project_id, kind, from CONCURRENTLY;
 DEFINE INDEX idx_edges_project_kind_to
-  ON TABLE edges COLUMNS project_id, kind, to;
+  ON TABLE edges COLUMNS project_id, kind, to CONCURRENTLY;
 
 -- chunks: scalar + vector indexes
 DEFINE INDEX idx_chunks_parent
-  ON TABLE chunks COLUMNS parent_node;
+  ON TABLE chunks COLUMNS parent_node CONCURRENTLY;
 DEFINE INDEX idx_chunks_order
-  ON TABLE chunks COLUMNS parent_node, chunk_index;
+  ON TABLE chunks COLUMNS parent_node, chunk_index CONCURRENTLY;
 DEFINE INDEX idx_chunks_project
-  ON TABLE chunks COLUMNS project_id;
+  ON TABLE chunks COLUMNS project_id CONCURRENTLY;
 
 DEFINE INDEX idx_chunks_embedding_384
-  ON TABLE chunks FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 200 M 16;
+  ON TABLE chunks FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_768
-  ON TABLE chunks FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE EFC 200 M 16;
+  ON TABLE chunks FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_1024
-  ON TABLE chunks FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 200 M 16;
+  ON TABLE chunks FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_1536
-  ON TABLE chunks FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE EFC 200 M 16;
+  ON TABLE chunks FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_2048
-  ON TABLE chunks FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+  ON TABLE chunks FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_2560
-  ON TABLE chunks FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE EFC 200 M 16;
+  ON TABLE chunks FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_3072
-  ON TABLE chunks FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE EFC 200 M 16;
+  ON TABLE chunks FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_4096
-  ON TABLE chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 200 M 16;
+  ON TABLE chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 
 -- file_metadata indexes
 DEFINE INDEX idx_file_metadata_project_path
-  ON TABLE file_metadata COLUMNS project_id, file_path;
+  ON TABLE file_metadata COLUMNS project_id, file_path CONCURRENTLY;
 
 -- symbol_embeddings indexes
 DEFINE INDEX idx_symbol_embeddings_symbol
-  ON TABLE symbol_embeddings COLUMNS normalized_symbol;
+  ON TABLE symbol_embeddings COLUMNS normalized_symbol CONCURRENTLY;
 
 DEFINE INDEX idx_symbol_embeddings_project_symbol
-  ON TABLE symbol_embeddings COLUMNS project_id, normalized_symbol;
+  ON TABLE symbol_embeddings COLUMNS project_id, normalized_symbol CONCURRENTLY;
 
 DEFINE INDEX idx_symbol_embeddings_vector_384
-  ON TABLE symbol_embeddings FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 200 M 16;
+  ON TABLE symbol_embeddings FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_768
-  ON TABLE symbol_embeddings FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE EFC 200 M 16;
+  ON TABLE symbol_embeddings FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_1024
-  ON TABLE symbol_embeddings FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 200 M 16;
+  ON TABLE symbol_embeddings FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_1536
-  ON TABLE symbol_embeddings FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE EFC 200 M 16;
+  ON TABLE symbol_embeddings FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_2048
-  ON TABLE symbol_embeddings FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 200 M 16;
+  ON TABLE symbol_embeddings FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_2560
-  ON TABLE symbol_embeddings FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE EFC 200 M 16;
+  ON TABLE symbol_embeddings FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_3072
-  ON TABLE symbol_embeddings FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE EFC 200 M 16;
+  ON TABLE symbol_embeddings FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_4096
-  ON TABLE symbol_embeddings FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 200 M 16;
+  ON TABLE symbol_embeddings FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 150 M 12 CONCURRENTLY;
 
 -- =====================================================================
 -- FUNCTIONS
