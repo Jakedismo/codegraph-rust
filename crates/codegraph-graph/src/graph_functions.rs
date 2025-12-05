@@ -220,7 +220,8 @@ impl GraphFunctions {
             node_id, self.project_id
         );
 
-        let results: Vec<CouplingMetricsResult> = self
+        // Use Option to handle NONE returned by SurrealDB when node doesn't exist
+        let results: Vec<Option<CouplingMetricsResult>> = self
             .db
             .query("RETURN fn::calculate_coupling_metrics($project_id, $node_id)")
             .bind(("project_id", self.project_id.clone()))
@@ -239,7 +240,13 @@ impl GraphFunctions {
         results
             .into_iter()
             .next()
-            .ok_or_else(|| CodeGraphError::Database("No coupling metrics returned".to_string()))
+            .flatten()
+            .ok_or_else(|| {
+                CodeGraphError::Database(format!(
+                    "Node not found or not in project: {}",
+                    node_id
+                ))
+            })
     }
 
     /// Get hub nodes with degree >= min_degree
