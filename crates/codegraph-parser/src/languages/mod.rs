@@ -58,12 +58,19 @@ pub fn extract_for_language(
         Language::Rust => Some(<RustExtractor as LanguageExtractor>::extract_with_edges(
             tree, content, file_path,
         )),
-        Language::TypeScript => Some(<TypeScriptExtractor as LanguageExtractor>::extract_with_edges(
-            tree, content, file_path,
-        )),
+        Language::TypeScript => Some(
+            <TypeScriptExtractor as LanguageExtractor>::extract_with_edges(
+                tree, content, file_path,
+            ),
+        ),
         Language::JavaScript => {
             // JavaScript uses TypeScript extractor with JS-specific handling
-            Some(TypeScriptExtractor::extract_with_edges(tree, content, file_path, Language::JavaScript))
+            Some(TypeScriptExtractor::extract_with_edges(
+                tree,
+                content,
+                file_path,
+                Language::JavaScript,
+            ))
         }
         Language::Python => Some(<PythonExtractor as LanguageExtractor>::extract_with_edges(
             tree, content, file_path,

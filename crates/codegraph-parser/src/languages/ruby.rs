@@ -86,7 +86,7 @@ struct RubyCollector<'a> {
     nodes: Vec<CodeNode>,
     edges: Vec<EdgeRelationship>,
     current_function_id: Option<NodeId>,
-    current_class_id: Option<NodeId>,
+    _current_class_id: Option<NodeId>,
 }
 
 impl<'a> RubyCollector<'a> {
@@ -97,7 +97,7 @@ impl<'a> RubyCollector<'a> {
             nodes: Vec::new(),
             edges: Vec::new(),
             current_function_id: None,
-            current_class_id: None,
+            _current_class_id: None,
         }
     }
 
@@ -201,10 +201,9 @@ impl<'a> RubyCollector<'a> {
                         loc,
                     )
                     .with_content(content_text.clone())
-                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
-                        &node,
-                        self.content,
-                    ));
+                    .with_complexity(
+                        crate::complexity::calculate_cyclomatic_complexity(&node, self.content),
+                    );
                     code.span = Some(self.span_for(&node));
 
                     // Detect class vs instance methods
@@ -355,9 +354,7 @@ impl<'a> RubyCollector<'a> {
                     code.metadata
                         .attributes
                         .insert("kind".into(), "require".into());
-                    code.metadata
-                        .attributes
-                        .insert("path".into(), path);
+                    code.metadata.attributes.insert("path".into(), path);
                     self.nodes.push(code);
                 } else if let Some(current_fn) = self.current_function_id {
                     // Generic method call - create call edge

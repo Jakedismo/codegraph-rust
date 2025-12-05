@@ -101,7 +101,8 @@ mod tests {
         let enhancer = FastMLEnhancer::new();
 
         // Content patterns must start at line beginning (no leading whitespace)
-        let content = "use std::collections::HashMap;\npub fn test() {}\nimpl Display for MyStruct {}";
+        let content =
+            "use std::collections::HashMap;\npub fn test() {}\nimpl Display for MyStruct {}";
 
         let mut node = CodeNode::new_test();
         node.language = Some(Language::Rust);

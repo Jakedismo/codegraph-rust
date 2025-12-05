@@ -423,6 +423,7 @@ impl CodeIntelligenceProvider for AnthropicProvider {
 // Anthropic API request/response types
 
 /// Tool choice configuration for Anthropic API
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum AnthropicToolChoice {

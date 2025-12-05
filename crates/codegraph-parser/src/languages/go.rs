@@ -157,10 +157,9 @@ impl<'a> GoCollector<'a> {
                         loc,
                     )
                     .with_content(content_text.clone())
-                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
-                        &node,
-                        self.content,
-                    ));
+                    .with_complexity(
+                        crate::complexity::calculate_cyclomatic_complexity(&node, self.content),
+                    );
                     code.span = Some(self.span_for(&node));
 
                     // Detect main function
@@ -213,10 +212,9 @@ impl<'a> GoCollector<'a> {
                         loc,
                     )
                     .with_content(content_text.clone())
-                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
-                        &node,
-                        self.content,
-                    ));
+                    .with_complexity(
+                        crate::complexity::calculate_cyclomatic_complexity(&node, self.content),
+                    );
                     code.span = Some(self.span_for(&node));
 
                     if let Some(ref recv) = receiver {
@@ -321,9 +319,7 @@ impl<'a> GoCollector<'a> {
             // Detect alias if present
             if let Some(alias_node) = node.child_by_field_name("name") {
                 let alias = self.node_text(&alias_node);
-                code.metadata
-                    .attributes
-                    .insert("alias".into(), alias);
+                code.metadata.attributes.insert("alias".into(), alias);
             }
 
             // Detect standard library imports
@@ -369,21 +365,17 @@ impl<'a> GoCollector<'a> {
             let content_text = self.node_text(node);
 
             // Determine if struct or interface
-            let (node_type, kind) = if content_text.contains("interface {") || content_text.contains("interface{") {
-                (NodeType::Interface, "interface")
-            } else if content_text.contains("struct {") || content_text.contains("struct{") {
-                (NodeType::Struct, "struct")
-            } else {
-                (NodeType::Variable, "type_alias")
-            };
+            let (node_type, kind) =
+                if content_text.contains("interface {") || content_text.contains("interface{") {
+                    (NodeType::Interface, "interface")
+                } else if content_text.contains("struct {") || content_text.contains("struct{") {
+                    (NodeType::Struct, "struct")
+                } else {
+                    (NodeType::Variable, "type_alias")
+                };
 
-            let mut code = CodeNode::new(
-                name.clone(),
-                Some(node_type),
-                Some(Language::Go),
-                loc,
-            )
-            .with_content(content_text);
+            let mut code = CodeNode::new(name.clone(), Some(node_type), Some(Language::Go), loc)
+                .with_content(content_text);
             code.span = Some(self.span_for(node));
 
             // Detect exported types
@@ -393,9 +385,7 @@ impl<'a> GoCollector<'a> {
                     .insert("exported".into(), "true".into());
             }
 
-            code.metadata
-                .attributes
-                .insert("kind".into(), kind.into());
+            code.metadata.attributes.insert("kind".into(), kind.into());
 
             self.current_type_id = Some(code.id);
             ctx.current_type = Some(name);

@@ -75,7 +75,12 @@ impl super::LanguageExtractor for PhpExtractor {
     }
 
     fn supported_edge_types() -> &'static [EdgeType] {
-        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Implements, EdgeType::Extends]
+        &[
+            EdgeType::Imports,
+            EdgeType::Calls,
+            EdgeType::Implements,
+            EdgeType::Extends,
+        ]
     }
 
     fn language() -> Language {
@@ -89,7 +94,7 @@ struct PhpCollector<'a> {
     nodes: Vec<CodeNode>,
     edges: Vec<EdgeRelationship>,
     current_function_id: Option<NodeId>,
-    current_class_id: Option<NodeId>,
+    _current_class_id: Option<NodeId>,
 }
 
 impl<'a> PhpCollector<'a> {
@@ -100,7 +105,7 @@ impl<'a> PhpCollector<'a> {
             nodes: Vec::new(),
             edges: Vec::new(),
             current_function_id: None,
-            current_class_id: None,
+            _current_class_id: None,
         }
     }
 
@@ -242,10 +247,9 @@ impl<'a> PhpCollector<'a> {
                         loc,
                     )
                     .with_content(content_text.clone())
-                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
-                        &node,
-                        self.content,
-                    ));
+                    .with_complexity(
+                        crate::complexity::calculate_cyclomatic_complexity(&node, self.content),
+                    );
                     code.span = Some(self.span_for(&node));
 
                     // Detect visibility modifiers

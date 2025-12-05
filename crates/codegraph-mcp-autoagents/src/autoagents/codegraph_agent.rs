@@ -56,13 +56,16 @@ impl CodeGraphAgentOutput {
         let resp = &output.response;
         let tool_count = output.tool_calls.len();
 
-        // Case 1: Agent never completed
+        // Case 1: Agent never completed and provided no meaningful output
         if !output.done {
-            return Some(format!(
-                "agent did not complete (done=false, tools={}, response_len={})",
-                tool_count,
-                resp.len()
-            ));
+            if resp.trim().is_empty() {
+                return Some(format!(
+                    "agent did not complete (done=false, tools={}, response_len={})",
+                    tool_count,
+                    resp.len()
+                ));
+            }
+            // Allow partial answers if some response is present; warn later.
         }
 
         // Case 2: Empty or whitespace-only response
@@ -100,6 +103,15 @@ impl From<ReActAgentOutput> for CodeGraphAgentOutput {
             return CodeGraphAgentOutput::fallback(&reason, num_steps);
         }
 
+        let partial_warning = if !output.done {
+            Some(format!(
+                "WARNING: Agent stopped after {} step(s) without final confirmation.",
+                num_steps
+            ))
+        } else {
+            None
+        };
+
         // Step 2: Try to parse as structured JSON (agent completed successfully)
         if output.done && !resp.trim().is_empty() {
             let mut resp_fixed = resp.clone();
@@ -117,6 +129,13 @@ impl From<ReActAgentOutput> for CodeGraphAgentOutput {
                 Ok(mut value) => {
                     // Override steps_taken with actual count from ReActAgentOutput
                     value.steps_taken = num_steps.to_string();
+                    if let Some(warning) = partial_warning {
+                        if value.findings.is_empty() {
+                            value.findings = warning;
+                        } else {
+                            value.findings = format!("{}\n{}", warning, value.findings);
+                        }
+                    }
                     return value;
                 }
                 Err(parse_err) => {
@@ -148,11 +167,11 @@ impl From<ReActAgentOutput> for CodeGraphAgentOutput {
             }
         }
 
-        // If we reach here, agent completed with tool calls but non-JSON response
+        // If we reach here, agent completed with tool calls (or partial completion) but non-JSON response
         // Use the raw response - the agent did work but didn't format output correctly
         CodeGraphAgentOutput {
             answer: resp,
-            findings: String::new(),
+            findings: partial_warning.unwrap_or_default(),
             steps_taken: num_steps.to_string(),
         }
     }
@@ -179,8 +198,9 @@ mod tests {
             tool_calls: vec![],
         };
         let result: CodeGraphAgentOutput = output.into();
-        assert!(result.is_failure());
-        assert!(result.answer.contains("Tool failed"));
+        assert!(!result.is_failure());
+        assert!(result.findings.contains("WARNING"));
+        assert_eq!(result.steps_taken, "0");
     }
 
     #[test]
@@ -245,5 +265,18 @@ mod tests {
         // This should NOT be a fallback because the agent did use tools
         assert!(!result.is_failure());
         assert!(result.answer.contains("JWT"));
+    }
+
+    #[test]
+    fn test_partial_response_when_not_done_with_tools() {
+        let output = ReActAgentOutput {
+            done: false,
+            response: "Partial reasoning collected before cap".to_string(),
+            tool_calls: vec![mock_tool_call()],
+        };
+        let result: CodeGraphAgentOutput = output.into();
+        assert!(!result.is_failure());
+        assert!(result.findings.contains("WARNING"));
+        assert_eq!(result.steps_taken, "1");
     }
 }

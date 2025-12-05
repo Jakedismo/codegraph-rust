@@ -532,10 +532,7 @@ impl TreeSitterParser {
                             if !tree.root_node().has_error() {
                                 let line_path = format!("{}:{}", file_path, line_num + 1);
                                 let nodes = crate::languages::extract_for_language(
-                                    &language,
-                                    &tree,
-                                    line,
-                                    &line_path,
+                                    &language, &tree, line, &line_path,
                                 )
                                 .map(|result| result.nodes)
                                 .unwrap_or_else(|| {

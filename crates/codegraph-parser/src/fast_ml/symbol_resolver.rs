@@ -270,14 +270,21 @@ mod tests {
             })
             .collect();
 
-        let result = ExtractionResult { nodes, edges: vec![] };
+        let result = ExtractionResult {
+            nodes,
+            edges: vec![],
+        };
 
         // Test that indexing doesn't crash
         resolver.index_symbols(&result);
 
         // Verify symbols were indexed
         assert_eq!(resolver.symbols.len(), 5, "All 5 symbols should be indexed");
-        assert_eq!(resolver.symbol_vectors.len(), 5, "All 5 symbol vectors should be stored");
+        assert_eq!(
+            resolver.symbol_vectors.len(),
+            5,
+            "All 5 symbol vectors should be stored"
+        );
 
         // LSH lookup is probabilistic - just verify it doesn't crash
         let _ = resolver.find_similar_symbol("HashMap");

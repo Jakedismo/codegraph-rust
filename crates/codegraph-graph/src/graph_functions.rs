@@ -237,17 +237,13 @@ impl GraphFunctions {
                 CodeGraphError::Database(format!("Deserialization failed: {}", e))
             })?;
 
-        results
-            .into_iter()
-            .next()
-            .flatten()
-            .ok_or_else(|| {
-                CodeGraphError::Database(format!(
-                    "Node not found or project_id mismatch: node_id='{}', expected project_id='{}'. \
+        results.into_iter().next().flatten().ok_or_else(|| {
+            CodeGraphError::Database(format!(
+                "Node not found or project_id mismatch: node_id='{}', expected project_id='{}'. \
                     Ensure the node exists and was indexed with the same project_id.",
-                    node_id, self.project_id
-                ))
-            })
+                node_id, self.project_id
+            ))
+        })
     }
 
     /// Get hub nodes with degree >= min_degree

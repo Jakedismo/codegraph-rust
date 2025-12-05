@@ -157,7 +157,14 @@ impl<'a> CppCollector<'a> {
                 }
 
                 let mut code = CodeNode::new(
-                    format!("#include {}", if is_system { format!("<{}>", path) } else { format!("\"{}\"", path) }),
+                    format!(
+                        "#include {}",
+                        if is_system {
+                            format!("<{}>", path)
+                        } else {
+                            format!("\"{}\"", path)
+                        }
+                    ),
                     Some(NodeType::Import),
                     Some(Language::Cpp),
                     loc,
@@ -168,9 +175,7 @@ impl<'a> CppCollector<'a> {
                 code.metadata
                     .attributes
                     .insert("kind".into(), "include".into());
-                code.metadata
-                    .attributes
-                    .insert("path".into(), path.clone());
+                code.metadata.attributes.insert("path".into(), path.clone());
 
                 if is_system {
                     code.metadata
@@ -268,10 +273,9 @@ impl<'a> CppCollector<'a> {
                             loc,
                         )
                         .with_content(content_text.clone())
-                        .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
-                            &node,
-                            self.content,
-                        ));
+                        .with_complexity(
+                            crate::complexity::calculate_cyclomatic_complexity(&node, self.content),
+                        );
                         code.span = Some(self.span_for(&node));
 
                         // Detect virtual functions

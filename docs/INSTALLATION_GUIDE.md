@@ -482,7 +482,7 @@ codegraph daemon stop /path/to/project
 
 ## Using Agentic Tools
 
-CodeGraph provides 7 agentic MCP tools that use multi-step reasoning to analyze your codebase:
+CodeGraph provides 8 agentic MCP tools that use multi-step reasoning to analyze your codebase:
 
 ### Available Tools
 
@@ -495,6 +495,7 @@ CodeGraph provides 7 agentic MCP tools that use multi-step reasoning to analyze 
 | `agentic_api_surface_analysis` | Analyze public interfaces | API design reviews, breaking change detection |
 | `agentic_context_builder` | Gather comprehensive context | Before implementing new features |
 | `agentic_semantic_question` | Answer complex codebase questions | Deep understanding questions |
+| `agentic_complexity_analysis` | Identifies high-risk code hotspots for refactoring | architectural flaws and complexities |
 
 ### Example Queries
 
@@ -546,7 +547,7 @@ export CODEGRAPH_AGENT_ARCHITECTURE=lats
 
 ### Tier-Aware Prompting
 
-The agent automatically adjusts its behavior based on your LLM's context window:
+The agent automatically adjusts its behavior based on the context window of the LLM you configured for CodeGraph (set .env CODEGRAPH_CONTEXT_WINDOW=ctx):
 
 | Tier | Context Window | Behavior |
 |------|----------------|----------|

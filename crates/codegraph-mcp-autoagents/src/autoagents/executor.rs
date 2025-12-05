@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
-/// Default execution timeout in seconds (10 minutes)
-const DEFAULT_TIMEOUT_SECS: u64 = 600;
+/// Default execution timeout in seconds (targeting long-running analyses)
+const DEFAULT_TIMEOUT_SECS: u64 = 9000;
 
 /// Patterns that indicate context window overflow from various LLM providers
 const CONTEXT_OVERFLOW_PATTERNS: &[&str] = &[
@@ -196,10 +196,15 @@ impl CodeGraphExecutor {
                     "Agent execution terminated due to timeout"
                 );
 
+                let partial_result = Some(format!(
+                    "WARNING: Agent timed out after {} seconds. Output may be incomplete.",
+                    elapsed_secs
+                ));
+
                 Err(ExecutorError::Timeout {
                     elapsed_secs,
-                    partial_result: None, // TODO: capture partial results from executor
-                    steps_completed: 0,   // TODO: track steps in executor
+                    partial_result,
+                    steps_completed: 0, // Step tracking not yet available from executors
                 })
             }
         }

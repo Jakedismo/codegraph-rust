@@ -54,7 +54,12 @@ impl super::LanguageExtractor for JavaExtractor {
     }
 
     fn supported_edge_types() -> &'static [EdgeType] {
-        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Implements, EdgeType::Extends]
+        &[
+            EdgeType::Imports,
+            EdgeType::Calls,
+            EdgeType::Implements,
+            EdgeType::Extends,
+        ]
     }
 
     fn language() -> Language {
@@ -157,9 +162,7 @@ impl<'a> JavaCollector<'a> {
                             code.metadata
                                 .attributes
                                 .insert("kind".into(), "import".into());
-                            code.metadata
-                                .attributes
-                                .insert("path".into(), path.clone());
+                            code.metadata.attributes.insert("path".into(), path.clone());
 
                             if is_static {
                                 code.metadata
@@ -179,8 +182,14 @@ impl<'a> JavaCollector<'a> {
                                 edge_type: EdgeType::Imports,
                                 metadata: {
                                     let mut meta = HashMap::new();
-                                    meta.insert("import_type".to_string(), "java_import".to_string());
-                                    meta.insert("source_file".to_string(), self.file_path.to_string());
+                                    meta.insert(
+                                        "import_type".to_string(),
+                                        "java_import".to_string(),
+                                    );
+                                    meta.insert(
+                                        "source_file".to_string(),
+                                        self.file_path.to_string(),
+                                    );
                                     if is_static {
                                         meta.insert("static".to_string(), "true".to_string());
                                     }
@@ -242,7 +251,9 @@ impl<'a> JavaCollector<'a> {
                     }
 
                     // Detect Spring patterns
-                    if content_text.contains("@Controller") || content_text.contains("@RestController") {
+                    if content_text.contains("@Controller")
+                        || content_text.contains("@RestController")
+                    {
                         code.metadata
                             .attributes
                             .insert("spring_pattern".into(), "controller".into());
@@ -327,10 +338,9 @@ impl<'a> JavaCollector<'a> {
                         loc,
                     )
                     .with_content(content_text.clone())
-                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
-                        &node,
-                        self.content,
-                    ));
+                    .with_complexity(
+                        crate::complexity::calculate_cyclomatic_complexity(&node, self.content),
+                    );
                     code.span = Some(self.span_for(&node));
 
                     // Detect visibility
@@ -390,10 +400,9 @@ impl<'a> JavaCollector<'a> {
                         loc,
                     )
                     .with_content(content_text.clone())
-                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
-                        &node,
-                        self.content,
-                    ));
+                    .with_complexity(
+                        crate::complexity::calculate_cyclomatic_complexity(&node, self.content),
+                    );
                     code.span = Some(self.span_for(&node));
 
                     code.metadata
@@ -418,7 +427,10 @@ impl<'a> JavaCollector<'a> {
                                 edge_type: EdgeType::Calls,
                                 metadata: {
                                     let mut meta = HashMap::new();
-                                    meta.insert("call_type".to_string(), "java_invocation".to_string());
+                                    meta.insert(
+                                        "call_type".to_string(),
+                                        "java_invocation".to_string(),
+                                    );
                                     meta
                                 },
                                 span: Some(self.span_for(&node)),

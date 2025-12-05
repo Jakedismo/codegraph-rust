@@ -164,7 +164,10 @@ mod tests {
         let code = "fn with_while(mut x: i32) { while x > 0 { x -= 1; } }";
         let tree = parse_rust(code);
         let complexity = calculate_cyclomatic_complexity(&tree.root_node(), code);
-        assert_eq!(complexity, 2.0, "Single while loop should have complexity 2");
+        assert_eq!(
+            complexity, 2.0,
+            "Single while loop should have complexity 2"
+        );
     }
 
     #[test]
@@ -191,10 +194,7 @@ mod tests {
         let code = "fn with_loop() { loop { break; } }";
         let tree = parse_rust(code);
         let complexity = calculate_cyclomatic_complexity(&tree.root_node(), code);
-        assert_eq!(
-            complexity, 2.0,
-            "Loop expression should have complexity 2"
-        );
+        assert_eq!(complexity, 2.0, "Loop expression should have complexity 2");
     }
 
     #[test]
@@ -213,9 +213,6 @@ mod tests {
         "#;
         let tree = parse_rust(code);
         let complexity = calculate_cyclomatic_complexity(&tree.root_node(), code);
-        assert_eq!(
-            complexity, 4.0,
-            "Complex function: 1 + if + for + if = 4"
-        );
+        assert_eq!(complexity, 4.0, "Complex function: 1 + if + for + if = 4");
     }
 }

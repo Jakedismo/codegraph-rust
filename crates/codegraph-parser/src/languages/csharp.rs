@@ -54,7 +54,12 @@ impl super::LanguageExtractor for CSharpExtractor {
     }
 
     fn supported_edge_types() -> &'static [EdgeType] {
-        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Implements, EdgeType::Extends]
+        &[
+            EdgeType::Imports,
+            EdgeType::Calls,
+            EdgeType::Implements,
+            EdgeType::Extends,
+        ]
     }
 
     fn language() -> Language {
@@ -68,7 +73,7 @@ struct CSharpCollector<'a> {
     nodes: Vec<CodeNode>,
     edges: Vec<EdgeRelationship>,
     current_function_id: Option<NodeId>,
-    current_class_id: Option<NodeId>,
+    _current_class_id: Option<NodeId>,
 }
 
 impl<'a> CSharpCollector<'a> {
@@ -79,7 +84,7 @@ impl<'a> CSharpCollector<'a> {
             nodes: Vec::new(),
             edges: Vec::new(),
             current_function_id: None,
-            current_class_id: None,
+            _current_class_id: None,
         }
     }
 
@@ -218,10 +223,9 @@ impl<'a> CSharpCollector<'a> {
                         loc,
                     )
                     .with_content(content_text.clone())
-                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
-                        &node,
-                        self.content,
-                    ));
+                    .with_complexity(
+                        crate::complexity::calculate_cyclomatic_complexity(&node, self.content),
+                    );
                     code.span = Some(self.span_for(&node));
 
                     // Detect async methods
@@ -360,7 +364,10 @@ impl<'a> CSharpCollector<'a> {
                                 edge_type: EdgeType::Calls,
                                 metadata: {
                                     let mut meta = HashMap::new();
-                                    meta.insert("call_type".to_string(), "csharp_invocation".to_string());
+                                    meta.insert(
+                                        "call_type".to_string(),
+                                        "csharp_invocation".to_string(),
+                                    );
                                     meta
                                 },
                                 span: Some(self.span_for(&node)),

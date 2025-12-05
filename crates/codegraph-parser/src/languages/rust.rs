@@ -47,7 +47,12 @@ impl super::LanguageExtractor for RustExtractor {
     }
 
     fn supported_edge_types() -> &'static [EdgeType] {
-        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Implements, EdgeType::Uses]
+        &[
+            EdgeType::Imports,
+            EdgeType::Calls,
+            EdgeType::Implements,
+            EdgeType::Uses,
+        ]
     }
 
     fn language() -> Language {
@@ -325,10 +330,9 @@ impl<'a> Collector<'a> {
                         loc,
                     )
                     .with_content(self.node_text(&node))
-                    .with_complexity(crate::complexity::calculate_cyclomatic_complexity(
-                        &node,
-                        self.content,
-                    ));
+                    .with_complexity(
+                        crate::complexity::calculate_cyclomatic_complexity(&node, self.content),
+                    );
                     code.span = Some(self.span_for(&node));
                     let (generics, lifetimes) = self.collect_generics_and_lifetimes(node);
                     code.metadata

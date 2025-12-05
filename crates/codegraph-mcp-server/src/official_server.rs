@@ -29,7 +29,9 @@ use crate::prompts::INITIAL_INSTRUCTIONS;
 #[cfg(feature = "ai-enhanced")]
 use codegraph_ai::agentic_schemas::AgenticOutput;
 #[cfg(feature = "ai-enhanced")]
-use codegraph_mcp_autoagents::{CodeGraphAgentOutput, CodeGraphExecutor, CodeGraphExecutorBuilder};
+use codegraph_mcp_autoagents::{
+    CodeGraphAgentOutput, CodeGraphExecutor, CodeGraphExecutorBuilder, ExecutorError,
+};
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_core::debug_logger::DebugLogger;
 use codegraph_mcp_tools::GraphToolExecutor;
@@ -392,6 +394,31 @@ impl CodeGraphMCPServer {
 }
 
 impl CodeGraphMCPServer {
+    #[cfg(feature = "ai-enhanced")]
+    fn timeout_fallback_output(
+        elapsed_secs: u64,
+        partial_result: Option<String>,
+        steps_completed: usize,
+    ) -> CodeGraphAgentOutput {
+        let answer = partial_result.unwrap_or_else(|| {
+            format!(
+                "WARNING: Agent timed out after {} seconds. Output may be incomplete.",
+                elapsed_secs
+            )
+        });
+
+        let findings = format!(
+            "Timeout after {} seconds. Result may be partial.",
+            elapsed_secs
+        );
+
+        CodeGraphAgentOutput {
+            answer,
+            findings,
+            steps_taken: steps_completed.to_string(),
+        }
+    }
+
     /// Auto-detect context tier from environment or config
     #[cfg(feature = "ai-enhanced")]
     fn detect_context_tier() -> ContextTier {
@@ -639,6 +666,19 @@ impl CodeGraphMCPServer {
         let result: CodeGraphAgentOutput =
             match executor.execute(query.to_string(), analysis_type).await {
                 Ok(output) => output,
+                Err(ExecutorError::Timeout {
+                    elapsed_secs,
+                    partial_result,
+                    steps_completed,
+                }) => {
+                    let warning = format!(
+                        "Agent timed out after {} seconds; returning partial result",
+                        elapsed_secs
+                    );
+                    progress_notifier.notify_error(&warning).await;
+                    DebugLogger::log_agent_finish(false, None, Some(&warning));
+                    Self::timeout_fallback_output(elapsed_secs, partial_result, steps_completed)
+                }
                 Err(e) => {
                     let error_msg = format!("AutoAgents workflow failed: {}", e);
                     // Stage 3: Error notification (progress: 1.0)
@@ -886,5 +926,34 @@ impl ServerHandler for CodeGraphMCPServer {
                 )),
             }
         }
+    }
+}
+
+#[cfg(all(test, feature = "ai-enhanced"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timeout_fallback_uses_partial_when_present() {
+        let output = CodeGraphMCPServer::timeout_fallback_output(120, Some("partial".into()), 3);
+        assert_eq!(output.answer, "partial");
+        assert_eq!(
+            output.findings,
+            "Timeout after 120 seconds. Result may be partial."
+        );
+        assert_eq!(output.steps_taken, "3");
+    }
+
+    #[test]
+    fn timeout_fallback_builds_warning_when_missing_partial() {
+        let output = CodeGraphMCPServer::timeout_fallback_output(45, None, 0);
+        assert!(output
+            .answer
+            .contains("WARNING: Agent timed out after 45 seconds"));
+        assert_eq!(
+            output.findings,
+            "Timeout after 45 seconds. Result may be partial."
+        );
+        assert_eq!(output.steps_taken, "0");
     }
 }
