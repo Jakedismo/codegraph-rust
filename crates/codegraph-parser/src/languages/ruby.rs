@@ -1,4 +1,8 @@
-use codegraph_core::{CodeNode, Language, Location, NodeType};
+use codegraph_core::{
+    CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
+    Span,
+};
+use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
 
 /// Advanced Ruby AST extractor for dynamic programming intelligence.
@@ -43,12 +47,32 @@ impl RubyExtractor {
         collector.walk(&mut cursor, ctx);
         collector.into_nodes()
     }
+
+    /// Unified extraction of nodes AND edges in single AST traversal
+    pub fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        let mut collector = RubyCollector::new(content, file_path);
+        let mut cursor = tree.walk();
+
+        // Detect Rails patterns from file path
+        let is_rails = file_path.contains("/app/")
+            || file_path.contains("/config/")
+            || file_path.contains("/db/migrate");
+
+        let mut ctx = RubyContext::default();
+        ctx.is_rails_file = is_rails;
+
+        collector.walk(&mut cursor, ctx);
+        collector.into_result()
+    }
 }
 
 struct RubyCollector<'a> {
     content: &'a str,
     file_path: &'a str,
     nodes: Vec<CodeNode>,
+    edges: Vec<EdgeRelationship>,
+    current_function_id: Option<NodeId>,
+    current_class_id: Option<NodeId>,
 }
 
 impl<'a> RubyCollector<'a> {
@@ -57,11 +81,28 @@ impl<'a> RubyCollector<'a> {
             content,
             file_path,
             nodes: Vec::new(),
+            edges: Vec::new(),
+            current_function_id: None,
+            current_class_id: None,
         }
     }
 
     fn into_nodes(self) -> Vec<CodeNode> {
         self.nodes
+    }
+
+    fn into_result(self) -> ExtractionResult {
+        ExtractionResult {
+            nodes: self.nodes,
+            edges: self.edges,
+        }
+    }
+
+    fn span_for(&self, node: &Node) -> Span {
+        Span {
+            start_byte: node.start_byte() as u32,
+            end_byte: node.end_byte() as u32,
+        }
     }
 
     fn walk(&mut self, cursor: &mut TreeCursor, mut ctx: RubyContext) {
@@ -150,6 +191,7 @@ impl<'a> RubyCollector<'a> {
                         &node,
                         self.content,
                     ));
+                    code.span = Some(self.span_for(&node));
 
                     // Detect class vs instance methods
                     if content_text.starts_with("def self.") {
@@ -194,6 +236,9 @@ impl<'a> RubyCollector<'a> {
                             .attributes
                             .insert("parent_class".into(), current_class.clone());
                     }
+
+                    // Track current function for call edge attribution
+                    self.current_function_id = Some(code.id);
                     self.nodes.push(code);
                 }
             }
@@ -256,11 +301,69 @@ impl<'a> RubyCollector<'a> {
                         loc,
                     )
                     .with_content(call_text.clone());
+                    code.span = Some(self.span_for(&node));
+
+                    // Extract the required path from require 'path' or require_relative 'path'
+                    let is_relative = call_text.contains("require_relative");
+                    let import_type = if is_relative {
+                        "require_relative"
+                    } else {
+                        "require"
+                    };
+
+                    // Try to extract the path argument
+                    let path = if let Some(args) = node.child_by_field_name("arguments") {
+                        self.node_text(&args)
+                            .trim_matches(|c| c == '(' || c == ')' || c == '\'' || c == '"')
+                            .to_string()
+                    } else {
+                        call_text.clone()
+                    };
+
+                    // Create import edge
+                    let edge = EdgeRelationship {
+                        from: code.id,
+                        to: path.clone(),
+                        edge_type: EdgeType::Imports,
+                        metadata: {
+                            let mut meta = HashMap::new();
+                            meta.insert("import_type".to_string(), import_type.to_string());
+                            meta.insert("source_file".to_string(), self.file_path.to_string());
+                            if is_relative {
+                                meta.insert("relative".to_string(), "true".to_string());
+                            }
+                            meta
+                        },
+                        span: Some(self.span_for(&node)),
+                    };
+                    self.edges.push(edge);
 
                     code.metadata
                         .attributes
                         .insert("kind".into(), "require".into());
+                    code.metadata
+                        .attributes
+                        .insert("path".into(), path);
                     self.nodes.push(code);
+                } else if let Some(current_fn) = self.current_function_id {
+                    // Generic method call - create call edge
+                    if let Some(method) = node.child_by_field_name("method") {
+                        let method_name = self.node_text(&method);
+                        if !method_name.is_empty() {
+                            let edge = EdgeRelationship {
+                                from: current_fn,
+                                to: method_name,
+                                edge_type: EdgeType::Calls,
+                                metadata: {
+                                    let mut meta = HashMap::new();
+                                    meta.insert("call_type".to_string(), "ruby_call".to_string());
+                                    meta
+                                },
+                                span: Some(self.span_for(&node)),
+                            };
+                            self.edges.push(edge);
+                        }
+                    }
                 }
             }
 

@@ -52,6 +52,55 @@ impl PatternMatcher {
             ("go:func ", EdgeType::Defines),
             ("go:type ", EdgeType::Defines),
             ("go:interface ", EdgeType::Defines),
+            // Java
+            ("java:import ", EdgeType::Uses),
+            ("java:class ", EdgeType::Defines),
+            ("java:interface ", EdgeType::Defines),
+            ("java:extends ", EdgeType::Extends),
+            ("java:implements ", EdgeType::Implements),
+            ("java:@Override", EdgeType::Implements),
+            ("java:@Autowired", EdgeType::Uses),
+            // C++
+            ("cpp:#include ", EdgeType::Uses),
+            ("cpp:class ", EdgeType::Defines),
+            ("cpp:namespace ", EdgeType::Defines),
+            ("cpp:template<", EdgeType::Defines),
+            ("cpp:virtual ", EdgeType::Defines),
+            ("cpp:public:", EdgeType::Defines),
+            ("cpp::: ", EdgeType::Uses),
+            // Swift
+            ("swift:import ", EdgeType::Uses),
+            ("swift:class ", EdgeType::Defines),
+            ("swift:struct ", EdgeType::Defines),
+            ("swift:protocol ", EdgeType::Defines),
+            ("swift:extension ", EdgeType::Extends),
+            ("swift:func ", EdgeType::Defines),
+            ("swift:@objc", EdgeType::Uses),
+            // C#
+            ("csharp:using ", EdgeType::Uses),
+            ("csharp:class ", EdgeType::Defines),
+            ("csharp:interface ", EdgeType::Defines),
+            ("csharp:namespace ", EdgeType::Defines),
+            ("csharp:async ", EdgeType::Defines),
+            ("csharp:public ", EdgeType::Defines),
+            ("csharp:[", EdgeType::Uses), // Attributes like [Serializable]
+            // Ruby
+            ("ruby:require ", EdgeType::Uses),
+            ("ruby:require_relative ", EdgeType::Uses),
+            ("ruby:class ", EdgeType::Defines),
+            ("ruby:module ", EdgeType::Defines),
+            ("ruby:def ", EdgeType::Defines),
+            ("ruby:include ", EdgeType::Uses),
+            ("ruby:extend ", EdgeType::Extends),
+            // PHP
+            ("php:namespace ", EdgeType::Defines),
+            ("php:use ", EdgeType::Uses),
+            ("php:class ", EdgeType::Defines),
+            ("php:interface ", EdgeType::Defines),
+            ("php:trait ", EdgeType::Defines),
+            ("php:function ", EdgeType::Defines),
+            ("php:extends ", EdgeType::Extends),
+            ("php:implements ", EdgeType::Implements),
         ];
 
         let patterns: Vec<String> = pattern_configs.iter().map(|(p, _)| p.to_string()).collect();
@@ -83,13 +132,19 @@ impl PatternMatcher {
         content: &str,
     ) -> ExtractionResult {
         // Prefix content with language marker to gate matches (e.g., "rust:", "py:")
-        let mut gated_content = String::with_capacity(content.len() + 4);
+        let mut gated_content = String::with_capacity(content.len() + 8);
         let lang_prefix = match result.nodes.first().and_then(|n| n.language.as_ref()) {
             Some(codegraph_core::Language::Rust) => "rust:",
             Some(codegraph_core::Language::TypeScript) => "ts:",
             Some(codegraph_core::Language::JavaScript) => "js:",
             Some(codegraph_core::Language::Python) => "py:",
             Some(codegraph_core::Language::Go) => "go:",
+            Some(codegraph_core::Language::Java) => "java:",
+            Some(codegraph_core::Language::Cpp) => "cpp:",
+            Some(codegraph_core::Language::Swift) => "swift:",
+            Some(codegraph_core::Language::CSharp) => "csharp:",
+            Some(codegraph_core::Language::Ruby) => "ruby:",
+            Some(codegraph_core::Language::Php) => "php:",
             _ => "",
         };
         gated_content.push_str(lang_prefix);
@@ -226,23 +281,24 @@ impl Default for PatternMatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegraph_core::CodeNode;
+    use codegraph_core::{CodeNode, Language};
 
     #[test]
     fn test_pattern_matching_speed() {
         let matcher = PatternMatcher::new();
-        let content = r#"
-            use std::collections::HashMap;
-            pub fn test() {}
-            impl MyTrait for Foo {}
-        "#;
+        // Content must contain patterns without leading whitespace on the pattern keyword
+        let content = "use std::collections::HashMap;\npub fn test() {}\nimpl MyTrait for Foo {}";
+
+        let mut node = CodeNode::new_test();
+        node.language = Some(Language::Rust);
 
         let result = ExtractionResult {
-            nodes: vec![CodeNode::new_test()],
+            nodes: vec![node],
             edges: vec![],
         };
 
         let enhanced = matcher.enhance_extraction(result, content);
-        assert!(enhanced.edges.len() > 0);
+        println!("Edges: {:?}", enhanced.edges.len());
+        assert!(enhanced.edges.len() > 0, "Should have found Rust patterns in content");
     }
 }

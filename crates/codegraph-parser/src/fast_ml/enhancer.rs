@@ -94,20 +94,20 @@ pub fn enhance_extraction(result: ExtractionResult, content: &str) -> Extraction
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegraph_core::CodeNode;
+    use codegraph_core::{CodeNode, Language};
 
     #[test]
     fn test_fast_ml_enhancer() {
         let enhancer = FastMLEnhancer::new();
 
-        let content = r#"
-            use std::collections::HashMap;
-            pub fn test() {}
-            impl Display for MyStruct {}
-        "#;
+        // Content patterns must start at line beginning (no leading whitespace)
+        let content = "use std::collections::HashMap;\npub fn test() {}\nimpl Display for MyStruct {}";
+
+        let mut node = CodeNode::new_test();
+        node.language = Some(Language::Rust);
 
         let result = ExtractionResult {
-            nodes: vec![CodeNode::new_test()],
+            nodes: vec![node],
             edges: vec![],
         };
 

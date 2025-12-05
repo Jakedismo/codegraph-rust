@@ -1,4 +1,8 @@
-use codegraph_core::{CodeNode, Language, Location, NodeType};
+use codegraph_core::{
+    CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
+    Span,
+};
+use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
 
 /// Advanced PHP AST extractor for web development intelligence.
@@ -45,12 +49,33 @@ impl PhpExtractor {
         collector.walk(&mut cursor, ctx);
         collector.into_nodes()
     }
+
+    /// Unified extraction of nodes AND edges in single AST traversal
+    pub fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        let mut collector = PhpCollector::new(content, file_path);
+        let mut cursor = tree.walk();
+
+        // Detect framework patterns from file structure
+        let is_framework = file_path.contains("/app/")
+            || file_path.contains("/src/")
+            || file_path.contains("Controller.php")
+            || file_path.contains("Model.php");
+
+        let mut ctx = PhpContext::default();
+        ctx.is_framework_file = is_framework;
+
+        collector.walk(&mut cursor, ctx);
+        collector.into_result()
+    }
 }
 
 struct PhpCollector<'a> {
     content: &'a str,
     file_path: &'a str,
     nodes: Vec<CodeNode>,
+    edges: Vec<EdgeRelationship>,
+    current_function_id: Option<NodeId>,
+    current_class_id: Option<NodeId>,
 }
 
 impl<'a> PhpCollector<'a> {
@@ -59,11 +84,28 @@ impl<'a> PhpCollector<'a> {
             content,
             file_path,
             nodes: Vec::new(),
+            edges: Vec::new(),
+            current_function_id: None,
+            current_class_id: None,
         }
     }
 
     fn into_nodes(self) -> Vec<CodeNode> {
         self.nodes
+    }
+
+    fn into_result(self) -> ExtractionResult {
+        ExtractionResult {
+            nodes: self.nodes,
+            edges: self.edges,
+        }
+    }
+
+    fn span_for(&self, node: &Node) -> Span {
+        Span {
+            start_byte: node.start_byte() as u32,
+            end_byte: node.end_byte() as u32,
+        }
     }
 
     fn walk(&mut self, cursor: &mut TreeCursor, mut ctx: PhpContext) {
@@ -190,6 +232,7 @@ impl<'a> PhpCollector<'a> {
                         &node,
                         self.content,
                     ));
+                    code.span = Some(self.span_for(&node));
 
                     // Detect visibility modifiers
                     if content_text.contains("private ") {
@@ -235,6 +278,9 @@ impl<'a> PhpCollector<'a> {
                             .attributes
                             .insert("parent_class".into(), current_class.clone());
                     }
+
+                    // Track current function for call edge attribution
+                    self.current_function_id = Some(code.id);
                     self.nodes.push(code);
                 }
             }
@@ -292,13 +338,59 @@ impl<'a> PhpCollector<'a> {
                         loc,
                     )
                     .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
 
                     code.metadata.attributes.insert("kind".into(), "use".into());
                     code.metadata
                         .attributes
                         .insert("namespace".into(), name.clone());
+
+                    // Create import edge
+                    let edge = EdgeRelationship {
+                        from: code.id,
+                        to: name.clone(),
+                        edge_type: EdgeType::Imports,
+                        metadata: {
+                            let mut meta = HashMap::new();
+                            meta.insert("import_type".to_string(), "php_use".to_string());
+                            meta.insert("source_file".to_string(), self.file_path.to_string());
+                            meta
+                        },
+                        span: Some(self.span_for(&node)),
+                    };
+                    self.edges.push(edge);
+
                     ctx.use_statements.push(name);
                     self.nodes.push(code);
+                }
+            }
+
+            // PHP Function calls - extract call edges
+            "function_call_expression" | "member_call_expression" => {
+                if let Some(current_fn) = self.current_function_id {
+                    // Extract the function/method being called
+                    let callee = if let Some(name_node) = node.child_by_field_name("name") {
+                        self.node_text(&name_node)
+                    } else if let Some(func_node) = node.child_by_field_name("function") {
+                        self.node_text(&func_node)
+                    } else {
+                        String::new()
+                    };
+
+                    if !callee.is_empty() {
+                        let edge = EdgeRelationship {
+                            from: current_fn,
+                            to: callee,
+                            edge_type: EdgeType::Calls,
+                            metadata: {
+                                let mut meta = HashMap::new();
+                                meta.insert("call_type".to_string(), "php_call".to_string());
+                                meta
+                            },
+                            span: Some(self.span_for(&node)),
+                        };
+                        self.edges.push(edge);
+                    }
                 }
             }
 

@@ -1,4 +1,8 @@
-use codegraph_core::{CodeNode, Language, Location, NodeType};
+use codegraph_core::{
+    CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
+    Span,
+};
+use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
 
 /// Advanced Swift AST extractor for iOS/macOS development intelligence.
@@ -33,12 +37,23 @@ impl SwiftExtractor {
         collector.walk(&mut cursor, SwiftContext::default());
         collector.into_nodes()
     }
+
+    /// Unified extraction of nodes AND edges in single AST traversal
+    pub fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        let mut collector = SwiftCollector::new(content, file_path);
+        let mut cursor = tree.walk();
+        collector.walk(&mut cursor, SwiftContext::default());
+        collector.into_result()
+    }
 }
 
 struct SwiftCollector<'a> {
     content: &'a str,
     file_path: &'a str,
     nodes: Vec<CodeNode>,
+    edges: Vec<EdgeRelationship>,
+    current_function_id: Option<NodeId>,
+    current_class_id: Option<NodeId>,
 }
 
 impl<'a> SwiftCollector<'a> {
@@ -47,11 +62,28 @@ impl<'a> SwiftCollector<'a> {
             content,
             file_path,
             nodes: Vec::new(),
+            edges: Vec::new(),
+            current_function_id: None,
+            current_class_id: None,
         }
     }
 
     fn into_nodes(self) -> Vec<CodeNode> {
         self.nodes
+    }
+
+    fn into_result(self) -> ExtractionResult {
+        ExtractionResult {
+            nodes: self.nodes,
+            edges: self.edges,
+        }
+    }
+
+    fn span_for(&self, node: &Node) -> Span {
+        Span {
+            start_byte: node.start_byte() as u32,
+            end_byte: node.end_byte() as u32,
+        }
     }
 
     fn walk(&mut self, cursor: &mut TreeCursor, mut ctx: SwiftContext) {
@@ -172,6 +204,7 @@ impl<'a> SwiftCollector<'a> {
                         &node,
                         self.content,
                     ));
+                    code.span = Some(self.span_for(&node));
 
                     // Detect async functions
                     if content_text.contains("async ") {
@@ -204,6 +237,9 @@ impl<'a> SwiftCollector<'a> {
                             .attributes
                             .insert("parent_type".into(), current_type.clone());
                     }
+
+                    // Track current function for call edge attribution
+                    self.current_function_id = Some(code.id);
                     self.nodes.push(code);
                 }
             }
@@ -254,6 +290,7 @@ impl<'a> SwiftCollector<'a> {
                         loc,
                     )
                     .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
 
                     code.metadata
                         .attributes
@@ -263,11 +300,56 @@ impl<'a> SwiftCollector<'a> {
                         .insert("module".into(), module.clone());
 
                     // Detect framework imports
-                    if module == "SwiftUI" || module == "UIKit" || module == "Foundation" {
-                        code.metadata.attributes.insert("framework".into(), module);
+                    let is_framework =
+                        module == "SwiftUI" || module == "UIKit" || module == "Foundation";
+                    if is_framework {
+                        code.metadata
+                            .attributes
+                            .insert("framework".into(), module.clone());
                     }
 
+                    // Create import edge
+                    let edge = EdgeRelationship {
+                        from: code.id,
+                        to: module.clone(),
+                        edge_type: EdgeType::Imports,
+                        metadata: {
+                            let mut meta = HashMap::new();
+                            meta.insert("import_type".to_string(), "swift_import".to_string());
+                            meta.insert("source_file".to_string(), self.file_path.to_string());
+                            if is_framework {
+                                meta.insert("framework".to_string(), "true".to_string());
+                            }
+                            meta
+                        },
+                        span: Some(self.span_for(&node)),
+                    };
+                    self.edges.push(edge);
                     self.nodes.push(code);
+                }
+            }
+
+            // Swift Call Expressions - extract call edges
+            "call_expression" => {
+                if let Some(current_fn) = self.current_function_id {
+                    // Extract the function being called
+                    if let Some(callee) = node.child_by_field_name("function") {
+                        let callee_name = self.node_text(&callee);
+                        if !callee_name.is_empty() {
+                            let edge = EdgeRelationship {
+                                from: current_fn,
+                                to: callee_name,
+                                edge_type: EdgeType::Calls,
+                                metadata: {
+                                    let mut meta = HashMap::new();
+                                    meta.insert("call_type".to_string(), "swift_call".to_string());
+                                    meta
+                                },
+                                span: Some(self.span_for(&node)),
+                            };
+                            self.edges.push(edge);
+                        }
+                    }
                 }
             }
 

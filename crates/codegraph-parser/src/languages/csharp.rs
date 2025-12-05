@@ -1,4 +1,8 @@
-use codegraph_core::{CodeNode, Language, Location, NodeType};
+use codegraph_core::{
+    CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
+    Span,
+};
+use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
 
 /// Advanced C# AST extractor for .NET development intelligence.
@@ -34,12 +38,23 @@ impl CSharpExtractor {
         collector.walk(&mut cursor, CSharpContext::default());
         collector.into_nodes()
     }
+
+    /// Unified extraction of nodes AND edges in single AST traversal
+    pub fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        let mut collector = CSharpCollector::new(content, file_path);
+        let mut cursor = tree.walk();
+        collector.walk(&mut cursor, CSharpContext::default());
+        collector.into_result()
+    }
 }
 
 struct CSharpCollector<'a> {
     content: &'a str,
     file_path: &'a str,
     nodes: Vec<CodeNode>,
+    edges: Vec<EdgeRelationship>,
+    current_function_id: Option<NodeId>,
+    current_class_id: Option<NodeId>,
 }
 
 impl<'a> CSharpCollector<'a> {
@@ -48,11 +63,28 @@ impl<'a> CSharpCollector<'a> {
             content,
             file_path,
             nodes: Vec::new(),
+            edges: Vec::new(),
+            current_function_id: None,
+            current_class_id: None,
         }
     }
 
     fn into_nodes(self) -> Vec<CodeNode> {
         self.nodes
+    }
+
+    fn into_result(self) -> ExtractionResult {
+        ExtractionResult {
+            nodes: self.nodes,
+            edges: self.edges,
+        }
+    }
+
+    fn span_for(&self, node: &Node) -> Span {
+        Span {
+            start_byte: node.start_byte() as u32,
+            end_byte: node.end_byte() as u32,
+        }
     }
 
     fn walk(&mut self, cursor: &mut TreeCursor, mut ctx: CSharpContext) {
@@ -176,6 +208,7 @@ impl<'a> CSharpCollector<'a> {
                         &node,
                         self.content,
                     ));
+                    code.span = Some(self.span_for(&node));
 
                     // Detect async methods
                     if content_text.contains("async ") {
@@ -209,6 +242,9 @@ impl<'a> CSharpCollector<'a> {
                             .attributes
                             .insert("parent_class".into(), current_class.clone());
                     }
+
+                    // Track current function for call edge attribution
+                    self.current_function_id = Some(code.id);
                     self.nodes.push(code);
                 }
             }
@@ -258,6 +294,7 @@ impl<'a> CSharpCollector<'a> {
                         loc,
                     )
                     .with_content(self.node_text(&node));
+                    code.span = Some(self.span_for(&node));
 
                     code.metadata
                         .attributes
@@ -265,8 +302,58 @@ impl<'a> CSharpCollector<'a> {
                     code.metadata
                         .attributes
                         .insert("namespace".into(), namespace.clone());
+
+                    // Detect common .NET namespaces
+                    let is_system = namespace.starts_with("System");
+                    let is_microsoft = namespace.starts_with("Microsoft");
+
+                    // Create import edge
+                    let edge = EdgeRelationship {
+                        from: code.id,
+                        to: namespace.clone(),
+                        edge_type: EdgeType::Imports,
+                        metadata: {
+                            let mut meta = HashMap::new();
+                            meta.insert("import_type".to_string(), "csharp_using".to_string());
+                            meta.insert("source_file".to_string(), self.file_path.to_string());
+                            if is_system {
+                                meta.insert("framework".to_string(), "system".to_string());
+                            }
+                            if is_microsoft {
+                                meta.insert("framework".to_string(), "microsoft".to_string());
+                            }
+                            meta
+                        },
+                        span: Some(self.span_for(&node)),
+                    };
+                    self.edges.push(edge);
+
                     ctx.using_statements.push(namespace);
                     self.nodes.push(code);
+                }
+            }
+
+            // C# Method invocations - extract call edges
+            "invocation_expression" => {
+                if let Some(current_fn) = self.current_function_id {
+                    // Extract the method being called
+                    if let Some(callee) = node.child_by_field_name("function") {
+                        let callee_name = self.node_text(&callee);
+                        if !callee_name.is_empty() {
+                            let edge = EdgeRelationship {
+                                from: current_fn,
+                                to: callee_name,
+                                edge_type: EdgeType::Calls,
+                                metadata: {
+                                    let mut meta = HashMap::new();
+                                    meta.insert("call_type".to_string(), "csharp_invocation".to_string());
+                                    meta
+                                },
+                                span: Some(self.span_for(&node)),
+                            };
+                            self.edges.push(edge);
+                        }
+                    }
                 }
             }
 
