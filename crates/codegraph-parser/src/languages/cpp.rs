@@ -49,6 +49,20 @@ impl CppExtractor {
     }
 }
 
+impl super::LanguageExtractor for CppExtractor {
+    fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        CppExtractor::extract_with_edges(tree, content, file_path)
+    }
+
+    fn supported_edge_types() -> &'static [EdgeType] {
+        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Extends]
+    }
+
+    fn language() -> Language {
+        Language::Cpp
+    }
+}
+
 struct CppCollector<'a> {
     content: &'a str,
     file_path: &'a str,

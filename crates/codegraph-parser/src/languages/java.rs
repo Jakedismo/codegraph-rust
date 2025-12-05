@@ -48,6 +48,20 @@ impl JavaExtractor {
     }
 }
 
+impl super::LanguageExtractor for JavaExtractor {
+    fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        JavaExtractor::extract_with_edges(tree, content, file_path)
+    }
+
+    fn supported_edge_types() -> &'static [EdgeType] {
+        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Implements, EdgeType::Extends]
+    }
+
+    fn language() -> Language {
+        Language::Java
+    }
+}
+
 struct JavaCollector<'a> {
     content: &'a str,
     file_path: &'a str,

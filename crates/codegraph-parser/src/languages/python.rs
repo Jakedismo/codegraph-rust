@@ -18,6 +18,20 @@ impl PythonExtractor {
     }
 }
 
+impl super::LanguageExtractor for PythonExtractor {
+    fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        PythonExtractor::extract_with_edges(tree, content, file_path)
+    }
+
+    fn supported_edge_types() -> &'static [EdgeType] {
+        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Extends]
+    }
+
+    fn language() -> Language {
+        Language::Python
+    }
+}
+
 struct PythonCollector<'a> {
     content: &'a str,
     file_path: &'a str,

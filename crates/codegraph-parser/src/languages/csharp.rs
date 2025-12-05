@@ -48,6 +48,20 @@ impl CSharpExtractor {
     }
 }
 
+impl super::LanguageExtractor for CSharpExtractor {
+    fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        CSharpExtractor::extract_with_edges(tree, content, file_path)
+    }
+
+    fn supported_edge_types() -> &'static [EdgeType] {
+        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Implements, EdgeType::Extends]
+    }
+
+    fn language() -> Language {
+        Language::CSharp
+    }
+}
+
 struct CSharpCollector<'a> {
     content: &'a str,
     file_path: &'a str,

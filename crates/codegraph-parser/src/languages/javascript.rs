@@ -23,6 +23,20 @@ impl TypeScriptExtractor {
     }
 }
 
+impl super::LanguageExtractor for TypeScriptExtractor {
+    fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        TypeScriptExtractor::extract_with_edges(tree, content, file_path, Language::TypeScript)
+    }
+
+    fn supported_edge_types() -> &'static [EdgeType] {
+        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Extends, EdgeType::Implements]
+    }
+
+    fn language() -> Language {
+        Language::TypeScript
+    }
+}
+
 struct TypeScriptCollector<'a> {
     content: &'a str,
     file_path: &'a str,

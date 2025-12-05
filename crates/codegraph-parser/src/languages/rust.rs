@@ -41,6 +41,20 @@ impl RustExtractor {
     }
 }
 
+impl super::LanguageExtractor for RustExtractor {
+    fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        RustExtractor::extract_with_edges(tree, content, file_path)
+    }
+
+    fn supported_edge_types() -> &'static [EdgeType] {
+        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Implements, EdgeType::Uses]
+    }
+
+    fn language() -> Language {
+        Language::Rust
+    }
+}
+
 struct Collector<'a> {
     content: &'a str,
     file_path: &'a str,

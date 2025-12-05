@@ -47,6 +47,20 @@ impl SwiftExtractor {
     }
 }
 
+impl super::LanguageExtractor for SwiftExtractor {
+    fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        SwiftExtractor::extract_with_edges(tree, content, file_path)
+    }
+
+    fn supported_edge_types() -> &'static [EdgeType] {
+        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Implements, EdgeType::Extends]
+    }
+
+    fn language() -> Language {
+        Language::Swift
+    }
+}
+
 struct SwiftCollector<'a> {
     content: &'a str,
     file_path: &'a str,

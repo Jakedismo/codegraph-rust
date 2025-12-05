@@ -66,6 +66,20 @@ impl RubyExtractor {
     }
 }
 
+impl super::LanguageExtractor for RubyExtractor {
+    fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        RubyExtractor::extract_with_edges(tree, content, file_path)
+    }
+
+    fn supported_edge_types() -> &'static [EdgeType] {
+        &[EdgeType::Imports, EdgeType::Calls, EdgeType::Extends]
+    }
+
+    fn language() -> Language {
+        Language::Ruby
+    }
+}
+
 struct RubyCollector<'a> {
     content: &'a str,
     file_path: &'a str,

@@ -48,6 +48,20 @@ impl GoExtractor {
     }
 }
 
+impl super::LanguageExtractor for GoExtractor {
+    fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        GoExtractor::extract_with_edges(tree, content, file_path)
+    }
+
+    fn supported_edge_types() -> &'static [EdgeType] {
+        &[EdgeType::Imports, EdgeType::Calls]
+    }
+
+    fn language() -> Language {
+        Language::Go
+    }
+}
+
 struct GoCollector<'a> {
     content: &'a str,
     file_path: &'a str,

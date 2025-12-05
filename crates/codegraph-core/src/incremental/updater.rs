@@ -533,6 +533,7 @@ mod tests {
             },
             embedding: None,
             complexity: None,
+            span: None,
         }
     }
 
