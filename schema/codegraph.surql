@@ -423,7 +423,7 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
     -- Aggregate vector matches per node
     LET $vector_ranked = (
         SELECT
-            math::max(vector_score) AS vector_score,
+            math::max(array::group(vector_score)) AS vector_score,
             parent_node.id AS node_id,
             parent_node.name AS name,
             parent_node.node_type AS kind,
@@ -433,9 +433,9 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             parent_node.end_line AS end_line,
             parent_node.content AS content,
             parent_node.metadata AS metadata,
-            array::distinct(array::flatten([match_source])) AS match_sources,
+            array::distinct(array::group(match_source)) AS match_sources,
             array::distinct(
-                array::flatten([matched_symbol])[WHERE $this != NONE]
+                array::group(matched_symbol)[WHERE $this != NONE]
             ) AS matched_symbols
         FROM $all_nodes
         WHERE parent_node != NONE
@@ -474,20 +474,27 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
     LET $deduped = (
         SELECT
             node_id,
-            math::max(vector_score) AS vector_score,
-            math::max(text_score ?? 0) AS text_score,
-            array::first(name) AS name,
-            array::first(kind) AS kind,
-            array::first(language) AS language,
-            array::first(content) AS content,
-            array::first(file_path) AS file_path,
-            array::first(start_line) AS start_line,
-            array::first(end_line) AS end_line,
-            array::first(metadata) AS metadata,
-            array::distinct(array::flatten([match_sources])) AS match_sources,
-            array::distinct(array::flatten([matched_symbols])) AS matched_symbols,
-            -- Blend vector + text scores; tune weights as needed
-            (math::max(vector_score) * 0.7f) + (math::max(text_score ?? 0) * 0.3f) AS combined_score
+            math::max(array::group(vector_score)) AS vector_score,
+            math::max(array::group(text_score ?? 0f)) AS text_score,
+            array::first(array::group(name)) AS name,
+            array::first(array::group(kind)) AS kind,
+            array::first(array::group(language)) AS language,
+            array::first(array::group(content)) AS content,
+            array::first(array::group(file_path)) AS file_path,
+            array::first(array::group(start_line)) AS start_line,
+            array::first(array::group(end_line)) AS end_line,
+            array::first(array::group(metadata)) AS metadata,
+            array::distinct(
+                array::flatten(array::group(match_sources))
+            ) AS match_sources,
+            array::distinct(
+                array::flatten(array::group(matched_symbols))[WHERE $this != NONE]
+            ) AS matched_symbols,
+            (
+                math::max(array::group(vector_score)) * 0.7f
+            ) + (
+                math::max(array::group(text_score ?? 0f)) * 0.3f
+            ) AS combined_score
         FROM $combined
         WHERE node_id != NONE
         GROUP BY node_id
