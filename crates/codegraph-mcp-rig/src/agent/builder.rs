@@ -2,10 +2,8 @@
 // ABOUTME: Builds agents with graph tools and appropriate system prompts
 
 #[allow(unused_imports)]
-use crate::adapter::{
-    get_context_window, get_max_turns, get_model_name, RigLLMAdapter, RigProvider,
-};
-use crate::prompts::{get_tier_system_prompt, AnalysisType};
+use crate::adapter::{get_context_window, get_model_name, RigLLMAdapter, RigProvider};
+use crate::prompts::{get_max_turns, get_tier_system_prompt, AnalysisType};
 #[allow(unused_imports)] // Used when provider features are enabled
 use crate::tools::GraphToolFactory;
 use anyhow::{anyhow, Result};
@@ -28,10 +26,11 @@ pub struct RigAgentBuilder {
 
 impl RigAgentBuilder {
     /// Create a new agent builder
+    /// Uses tier-aware max_turns based on context window size
     pub fn new(executor: Arc<GraphToolExecutor>) -> Self {
         let context_window = get_context_window();
         let tier = ContextTier::from_context_window(context_window);
-        let max_turns = get_max_turns();
+        let max_turns = get_max_turns(tier);
 
         Self {
             executor,
