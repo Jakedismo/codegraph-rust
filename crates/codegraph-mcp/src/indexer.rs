@@ -526,6 +526,12 @@ impl SurrealWriterHandle {
 
 impl ProjectIndexer {
     #[cfg(feature = "ai-enhanced")]
+    async fn compute_node_degrees(&self) -> Result<std::collections::HashMap<NodeId, i32>> {
+        // Lightweight degree map using already-enqueued edges would require DB reads; to keep indexing fast
+        // and avoid extra I/O, return empty map for now (degrees default to 0 in tie-breaks).
+        Ok(std::collections::HashMap::new())
+    }
+    #[cfg(feature = "ai-enhanced")]
     fn symbol_embedding_batch_settings(&self) -> (usize, usize) {
         let config_batch = self
             .config
@@ -1494,6 +1500,7 @@ impl ProjectIndexer {
                                     &symbol_map,
                                     &symbol_embeddings,
                                     &unresolved_embeddings,
+                                    &node_degrees,
                                 ) {
                                     chunk_stats.2 += 1; // AI match count
                                     chunk_resolved.push((
@@ -2292,7 +2299,7 @@ impl ProjectIndexer {
             let target_trigrams = Self::char_trigrams(&target_lower);
 
             // Preselect candidates by n-gram overlap to avoid full cosine on unrelated symbols
-            let mut filtered: Vec<(&String, &Vec<f32>)> = symbol_embeddings
+            let filtered: Vec<(&String, &Vec<f32>)> = symbol_embeddings
                 .iter()
                 .filter(|(name, _)| {
                     let name_lower = name.to_lowercase();
