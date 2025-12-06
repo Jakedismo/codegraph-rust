@@ -141,7 +141,7 @@ impl RigLLMAdapter {
     }
 
     /// Create xAI client from environment (native rig xAI provider)
-    #[cfg(feature = "openai")]
+    #[cfg(feature = "xai")]
     pub fn xai_client() -> rig::providers::xai::Client {
         rig::providers::xai::Client::from_env()
     }

@@ -16,6 +16,7 @@ rig-experimental = []
 openai = []
 anthropic = []
 ollama = []
+xai = []
 
 [dependencies]
 # Rig framework (aliased as 'rig' for cleaner imports)

@@ -196,7 +196,7 @@ impl RigAgentBuilder {
             RigProvider::Anthropic => Ok(Box::new(self.build_anthropic()?)),
             #[cfg(feature = "ollama")]
             RigProvider::Ollama => Ok(Box::new(self.build_ollama()?)),
-            #[cfg(feature = "openai")]
+            #[cfg(feature = "xai")]
             RigProvider::XAI => Ok(Box::new(self.build_xai()?)),
             #[cfg(feature = "openai")]
             RigProvider::LMStudio => Ok(Box::new(self.build_lmstudio()?)),
@@ -210,7 +210,7 @@ impl RigAgentBuilder {
     }
 
     /// Build an xAI-based agent (native rig xAI provider)
-    #[cfg(feature = "openai")]
+    #[cfg(feature = "xai")]
     pub fn build_xai(self) -> Result<XAIAgent> {
         let client = RigLLMAdapter::xai_client();
         let model = get_model_name();
@@ -435,14 +435,14 @@ impl RigAgentTrait for OllamaAgent {
 }
 
 /// xAI-based Rig agent (native rig provider)
-#[cfg(feature = "openai")]
+#[cfg(feature = "xai")]
 pub struct XAIAgent {
     agent: rig::agent::Agent<rig::providers::xai::completion::CompletionModel>,
     max_turns: usize,
     tier: ContextTier,
 }
 
-#[cfg(feature = "openai")]
+#[cfg(feature = "xai")]
 #[async_trait::async_trait]
 impl RigAgentTrait for XAIAgent {
     async fn execute(&self, query: &str) -> Result<String> {
