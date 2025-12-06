@@ -4,12 +4,15 @@
 #[allow(unused_imports)]
 use crate::adapter::{get_context_window, get_max_turns, get_model_name, RigLLMAdapter, RigProvider};
 use crate::prompts::{get_tier_system_prompt, AnalysisType};
+#[allow(unused_imports)] // Used when provider features are enabled
 use crate::tools::GraphToolFactory;
 use anyhow::{anyhow, Result};
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
+#[allow(unused_imports)] // Used when provider features are enabled
 use rig::client::CompletionClient;
 use std::sync::Arc;
+#[allow(unused_imports)] // Used when provider features are enabled
 use tracing::info;
 
 /// Builder for creating Rig-based code analysis agents

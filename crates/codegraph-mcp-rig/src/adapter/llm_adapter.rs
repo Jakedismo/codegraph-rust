@@ -2,6 +2,7 @@
 // ABOUTME: Maps CODEGRAPH_LLM_PROVIDER to appropriate Rig provider clients
 
 use anyhow::{anyhow, Result};
+#[allow(unused_imports)] // Used when provider features are enabled
 use rig::client::ProviderClient;
 use std::env;
 
