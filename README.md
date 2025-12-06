@@ -59,21 +59,26 @@ Each tool runs a **reasoning agent** that plans, searches, analyzes graph relati
 
 CodeGraph supports **three agent backends** selectable at runtime via `CODEGRAPH_AGENT_ARCHITECTURE`:
 
-| Architecture | Description | Best For |
-|--------------|-------------|----------|
-| `react` (default) | ReAct-style single-pass reasoning | Fast, efficient queries |
-| `lats` | Language Agent Tree Search | Complex problems requiring exploration |
-| `rig` | Rig framework native orchestration | Alternative Rust-native agent |
+| Architecture | Description | Best For | Model Type |
+|--------------|-------------|----------|------------|
+| `rig` | Rig framework native orchestration | **Fastest performance**, deep analysis | Thinking/reasoning models (o1, o3, Grok reasoning, Claude thinking) |
+| `react` (default) | ReAct-style single-pass reasoning | Quick queries, simple lookups | Non-thinking models (GPT-4o, Claude Sonnet, Llama) |
+| `lats` | Language Agent Tree Search | Complex problems requiring exploration | Works well with both |
+
+**Performance notes:**
+- **Rig** delivers the best performance with modern thinking/reasoning models. These models excel at multi-step tool orchestration and produce superior results for complex code analysis.
+- **ReAct** remains the default for backward compatibility and works well with traditional instruction-following models.
+- **LATS** uses tree search exploration, making it suitable for complex problems regardless of model type.
 
 ```bash
-# Use default ReAct
+# Use Rig for best performance with thinking models (recommended)
+CODEGRAPH_AGENT_ARCHITECTURE=rig ./codegraph start stdio
+
+# Use default ReAct for traditional models
 ./codegraph start stdio
 
 # Use LATS for complex analysis
 CODEGRAPH_AGENT_ARCHITECTURE=lats ./codegraph start stdio
-
-# Use Rig framework
-CODEGRAPH_AGENT_ARCHITECTURE=rig ./codegraph start stdio
 ```
 
 All architectures use the same 8 graph analysis tools and tier-aware prompting—only the reasoning strategy differs.
