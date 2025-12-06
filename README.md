@@ -74,7 +74,7 @@ CodeGraph supports **three agent backends** selectable at runtime via `CODEGRAPH
 
 Agents can start with lightweight project context so their first tool calls are not blind. Enable via env:
 
-- `CODEGRAPH_ARCH_BOOTSTRAP=true` — includes a brief directory/structure bootstrap in the agent’s initial context.
+- `CODEGRAPH_ARCH_BOOTSTRAP=true` — includes a brief directory/structure bootstrap + contents of README.md and CLAUDE.md+AGENTS.md or GEMINI.md (if present) in the agent’s initial context.
 - `CODEGRAPH_ARCH_PRIMER="<primer text>"` — optional custom primer injected into startup instructions (e.g., areas to focus on).
 
 Why? Faster, more relevant early steps, fewer wasted graph/semantic queries, and better architecture answers on large repos.
