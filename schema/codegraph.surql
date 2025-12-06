@@ -68,9 +68,9 @@ LET $outgoing_by_type = (SELECT from AS node_id, edge_type, count() AS count FRO
 LET $incoming_totals = (SELECT to AS node_id, count() AS total FROM $project_edges GROUP BY to);
 LET $outgoing_totals = (SELECT from AS node_id, count() AS total FROM $project_edges GROUP BY from);
 LET $candidates = array::distinct(array::concat((SELECT VALUE node_id FROM $incoming_totals), (SELECT VALUE node_id FROM $outgoing_totals)));
-LET $raw = (SELECT candidate_id, fn::node_info(candidate_id) AS node, (array::first((SELECT VALUE total FROM $incoming_totals WHERE node_id = candidate_id LIMIT 1)) ?? 0) AS afferent_degree, (array::first((SELECT VALUE total FROM $outgoing_totals WHERE node_id = candidate_id LIMIT 1)) ?? 0) AS efferent_degree, (SELECT edge_type, count FROM $incoming_by_type WHERE node_id = candidate_id) AS incoming_by_type, (SELECT edge_type, count FROM $outgoing_by_type WHERE node_id = candidate_id) AS outgoing_by_type FROM (SELECT node_id AS candidate_id FROM $candidates));
-RETURN (SELECT candidate_id AS node_id, node, afferent_degree, efferent_degree, afferent_degree + efferent_degree AS total_degree, incoming_by_type, outgoing_by_type FROM $raw WHERE node != NONE AND (afferent_degree + efferent_degree) >= $threshold ORDER BY total_degree DESC
-);
+LET $candidates_filtered = (SELECT VALUE c FROM $candidates WHERE c != NONE);
+LET $raw = (SELECT candidate_id, fn::node_info(candidate_id) AS node, (array::first((SELECT VALUE total FROM $incoming_totals WHERE node_id = candidate_id LIMIT 1)) ?? 0) AS afferent_degree, (array::first((SELECT VALUE total FROM $outgoing_totals WHERE node_id = candidate_id LIMIT 1)) ?? 0) AS efferent_degree, (SELECT edge_type, count FROM $incoming_by_type WHERE node_id = candidate_id) AS incoming_by_type, (SELECT edge_type, count FROM $outgoing_by_type WHERE node_id = candidate_id) AS outgoing_by_type FROM (SELECT node_id AS candidate_id FROM $candidates_filtered));
+RETURN (SELECT candidate_id AS node_id, node, afferent_degree, efferent_degree, afferent_degree + efferent_degree AS total_degree, incoming_by_type, outgoing_by_type FROM $raw WHERE node != NONE AND (afferent_degree + efferent_degree) >= $threshold ORDER BY total_degree DESC);
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::get_reverse_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
 LET $safe_depth = IF $depth > 0 AND $depth <= 5 THEN $depth ELSE 3 END;
@@ -618,19 +618,19 @@ DEFINE FUNCTION fn::get_complexity_hotspots($project_id: string, $min_complexity
             start_line,
             end_line,
             complexity,
-            (afferent_coupling ?? 0) AS afferent_coupling,
-            (efferent_coupling ?? 0) AS efferent_coupling,
+            (IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END) AS afferent_coupling,
+            (IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) AS efferent_coupling,
             (
                 -- instability calculation, fully inline
                 math::floor(
                     (
-                        IF ((efferent_coupling ?? 0) + (afferent_coupling ?? 0)) > 0 {
-                            (efferent_coupling ?? 0) / ((efferent_coupling ?? 0) + (afferent_coupling ?? 0))
+                        IF ((IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) + (IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END)) > 0 {
+                            (IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) / ((IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) + (IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END))
                         } ELSE { 0f }
                     ) * 10000f
                 ) / 10000f
             ) AS instability,
-            complexity * ((afferent_coupling ?? 0) + 1) AS risk_score
+            complexity * ((IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END) + 1) AS risk_score
         FROM $with_coupling
         ORDER BY risk_score DESC
         LIMIT $safe_limit;
