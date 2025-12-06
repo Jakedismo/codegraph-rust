@@ -182,8 +182,8 @@ DEFINE FUNCTION fn::get_complexity_hotspots($project_id: string, $min_complexity
             start_line,
             end_line,
             complexity,
-            (SELECT VALUE count() FROM edges WHERE to = $parent.id AND edge_type INSIDE $edge_list) AS afferent_coupling,
-            (SELECT VALUE count() FROM edges WHERE from = $parent.id AND edge_type INSIDE $edge_list) AS efferent_coupling
+            (SELECT VALUE count() FROM edges WHERE to = id AND edge_type INSIDE $edge_list AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE)) AS afferent_coupling,
+            (SELECT VALUE count() FROM edges WHERE from = id AND edge_type INSIDE $edge_list AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE)) AS efferent_coupling
         FROM $complex_nodes;
 
     LET $results = SELECT
@@ -195,8 +195,8 @@ DEFINE FUNCTION fn::get_complexity_hotspots($project_id: string, $min_complexity
             start_line,
             end_line,
             complexity,
-            afferent_coupling ?? 0 AS afferent_coupling,
-            efferent_coupling ?? 0 AS efferent_coupling,
+            (afferent_coupling ?? 0) AS afferent_coupling,
+            (efferent_coupling ?? 0) AS efferent_coupling,
             (
                 -- instability calculation, fully inline
                 math::floor(
