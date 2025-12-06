@@ -163,7 +163,10 @@ impl CodeGraphExecutor {
             None
         };
 
-        let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let project_root = std::env::var("CODEGRAPH_PROJECT_ID")
+            .ok()
+            .and_then(|p| std::fs::canonicalize(&p).ok().or_else(|| Some(PathBuf::from(p))))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         let enriched_query = match build_startup_context(&project_root) {
             Ok(ctx) => ctx.render_with_query_and_bootstrap(&query, graph_bootstrap.as_deref()),
             Err(e) => {

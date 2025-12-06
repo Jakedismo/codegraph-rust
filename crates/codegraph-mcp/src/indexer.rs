@@ -949,6 +949,16 @@ impl ProjectIndexer {
         #[cfg(feature = "embeddings")]
         let chunk_plan: ChunkPlan = {
             let start = std::time::Instant::now();
+            // Spinner to show chunking progress (Rayon internal; no granular ticks available)
+            let chunk_pb = self.progress.add(ProgressBar::new_spinner());
+            chunk_pb.set_style(
+                ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
+                    .unwrap()
+                    .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ "),
+            );
+            chunk_pb.set_message("🧩 Building chunk plan (chunking nodes)");
+            chunk_pb.enable_steady_tick(std::time::Duration::from_millis(120));
+
             let file_sources = self.load_file_sources(&files);
             let chunker = || {
                 self.embedder
@@ -966,10 +976,10 @@ impl ProjectIndexer {
                 pool.install(chunker)
             };
             let elapsed = start.elapsed();
-            info!(
+            chunk_pb.finish_with_message(format!(
                 "🧩 Chunk plan built: {} nodes → {} chunks in {:.1?}",
                 plan.stats.total_nodes, plan.stats.total_chunks, elapsed
-            );
+            ));
             if plan.stats.total_chunks == 0 && !nodes.is_empty() {
                 warn!(
                     "Chunking produced zero chunks. Check CODEGRAPH_EMBEDDING_SKIP_CHUNKING, embedding provider availability, and model max_tokens settings."

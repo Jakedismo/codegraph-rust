@@ -196,7 +196,7 @@ impl GraphToolSchemas {
             description: "Primary code discovery tool using advanced hybrid search with graph-traversal. \
                    Accepts natural language queries ((e.g., How is authentication handled?, database models, error handling code etc.) be robust in your queries). \
                    Works for both conceptual searches and specific identifiers. \
-                   Returns relevant code snippets, definitions, and related nodes ranked by relevance.".to_string(),
+                   Returns relevant code snippets, definitions, and related nodes ranked by relevance. Best practice: start with a low threshold (e.g., 0.2–0.4) and raise it in follow-up queries to narrow scope.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {

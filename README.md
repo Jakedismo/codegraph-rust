@@ -70,11 +70,24 @@ CodeGraph supports **three agent backends** selectable at runtime via `CODEGRAPH
 - **ReAct** remains the default for backward compatibility and works well with traditional instruction-following models.
 - **LATS** uses tree search exploration, making it suitable for complex problems regardless of model type.
 
+### Agent Bootstrap Context
+
+Agents can start with lightweight project context so their first tool calls are not blind. Enable via env:
+
+- `CODEGRAPH_ARCH_BOOTSTRAP=true` — includes a brief directory/structure bootstrap in the agent’s initial context.
+- `CODEGRAPH_ARCH_PRIMER="<primer text>"` — optional custom primer injected into startup instructions (e.g., areas to focus on).
+
+Why? Faster, more relevant early steps, fewer wasted graph/semantic queries, and better architecture answers on large repos.
+
+Notes:
+- Bootstrap is small (top directories summary), not a replacement for graph queries.
+- Uses the same project selection as indexing (`CODEGRAPH_PROJECT_ID` or current working directory).
+
 ```bash
-# Use Rig for best performance with thinking models (recommended)
+# Use Rig for best performance with thinking and reasoning models (recommended)
 CODEGRAPH_AGENT_ARCHITECTURE=rig ./codegraph start stdio
 
-# Use default ReAct for traditional models
+# Use default ReAct for traditional instruction models
 ./codegraph start stdio
 
 # Use LATS for complex analysis

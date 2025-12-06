@@ -455,13 +455,14 @@ impl GraphFunctions {
         dimension: usize,
         limit: usize,
         threshold: f32,
-        include_graph_context: bool,
+        _include_graph_context: bool,
     ) -> Result<Vec<serde_json::Value>> {
         // Always use node-level search (via chunks) to return enriched node records
         self.semantic_search_nodes_via_chunks(query_text, query_embedding, dimension, limit, threshold)
             .await
     }
 
+    #[allow(dead_code)]
     async fn semantic_search_chunks_with_context(
         &self,
         query_text: &str,
