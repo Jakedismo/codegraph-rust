@@ -20,28 +20,79 @@ LET $clean_id = IF string::starts_with($after_prefix, '⟨') AND string::ends_wi
 RETURN type::thing($table, $clean_id);
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: string) {
-LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references'];
--- Resolve chunk IDs to their parent nodes (chunks have parent_node field)
-LET $resolved_id = IF string::starts_with($node_id, 'chunks:') THEN (
-  SELECT VALUE parent_node FROM fn::parse_record_id('chunks', $node_id) LIMIT 1
-)[0] ELSE $node_id END;
--- Handle NONE case when chunk doesn't exist
-IF $resolved_id = NONE { RETURN NONE; };
+LET $edge_list = [
+	'calls',
+	'imports',
+	'uses',
+	'extends',
+	'implements',
+	'references'
+];
+LET $resolved_id = IF string::starts_with($node_id, 'chunks:') THEN
+	(SELECT VALUE parent_node FROM fn::parse_record_id('chunks', $node_id) LIMIT 1)[0]
+ELSE
+	$node_id
+END;
+IF $resolved_id = NONE
+	{
+		RETURN NONE;
+	}
+;
 LET $record = fn::parse_record_id('nodes', $resolved_id);
 LET $node_check = (SELECT project_id FROM $record);
-IF array::len($node_check) = 0 { RETURN NONE; };
+IF array::len($node_check) = 0
+	{
+		RETURN NONE;
+	}
+;
 LET $rec_proj = $node_check[0].project_id;
--- Prefer the node's recorded project_id when available to avoid mismatches
-LET $effective_project = IF $rec_proj != NONE THEN $rec_proj ELSE $project_id END;
-LET $dependents = array::distinct((SELECT VALUE id FROM $record<-edges[WHERE edge_type INSIDE $edge_list AND (from.project_id ?? $effective_project) = $effective_project AND (to.project_id ?? $effective_project) = $effective_project]<-from));
-LET $dependencies = array::distinct((SELECT VALUE id FROM $record->edges[WHERE edge_type INSIDE $edge_list AND (to.project_id ?? $effective_project) = $effective_project]->to));
+LET $effective_project = IF $rec_proj != NONE THEN
+	$rec_proj
+ELSE
+	$project_id
+END;
+LET $dependents_info = (
+    SELECT VALUE fn::node_reference(value)
+    FROM $dependents
+    WHERE fn::node_reference(value) != NONE
+);
+
+LET $dependencies_info = (
+    SELECT VALUE fn::node_reference(value)
+    FROM $dependencies
+    WHERE fn::node_reference(value) != NONE
+);
 LET $dependents_info = (SELECT VALUE fn::node_reference(`value`) FROM $dependents WHERE fn::node_reference(`value`) != NONE);
 LET $dependencies_info = (SELECT VALUE fn::node_reference(`value`) FROM $dependencies WHERE fn::node_reference(`value`) != NONE);
 LET $afferent = array::len($dependents_info);
 LET $efferent = array::len($dependencies_info);
 LET $total = $afferent + $efferent;
-LET $instability = IF $total > 0 THEN math::round(($efferent / $total) * 1000000f) / 1000000f ELSE 0 END;
-RETURN { dependencies: $dependencies_info, dependents: $dependents_info, metrics: { afferent_coupling: $afferent, coupling_category: IF $instability < 0.3f THEN 'stable' ELSE IF $instability > 0.7f THEN 'unstable' ELSE 'balanced' END, efferent_coupling: $efferent, instability: $instability, is_stable: $instability < 0.3f, is_unstable: $instability > 0.7f, stability: 1f - $instability, total_coupling: $total }, node: fn::node_info($record) };
+LET $instability = IF $total > 0 THEN
+	math::round(($efferent / $total) * 1000000f) / 1000000f
+ELSE
+	0
+END;
+RETURN {
+	dependencies: $dependencies_info,
+	dependents: $dependents_info,
+	metrics: {
+		afferent_coupling: $afferent,
+		coupling_category: IF $instability < 0.3f THEN
+			'stable'
+		ELSE IF $instability > 0.7f THEN
+			'unstable'
+		ELSE
+			'balanced'
+		END,
+		efferent_coupling: $efferent,
+		instability: $instability,
+		is_stable: $instability < 0.3f,
+		is_unstable: $instability > 0.7f,
+		stability: 1f - $instability,
+		total_coupling: $total
+	},
+	node: fn::node_info($record)
+};
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::detect_circular_dependencies($project_id: string, $edge_type: string) {
 LET $edge_name = string::lowercase($edge_type ?? 'Calls');
@@ -49,7 +100,7 @@ LET $edge_name = string::lowercase($edge_type ?? 'Calls');
 LET $pairs = (SELECT from AS node1_id, to AS node2_id FROM edges WHERE edge_type = $edge_name AND from != to AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE));
 LET $cycles = (SELECT node1_id, node2_id FROM $pairs WHERE node1_id < node2_id AND (SELECT VALUE count() FROM edges WHERE edge_type = $edge_name AND from = node2_id AND to = node1_id AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE)) > 0 GROUP BY node1_id, node2_id);
 LET $raw = (SELECT node1_id, node2_id, fn::node_info(node1_id) AS node1, fn::node_info(node2_id) AS node2 FROM $cycles);
-RETURN (SELECT node1_id, node2_id, $edge_name AS dependency_type, node1, node2 FROM $raw WHERE node1 != NONE AND node2 != NONE);
+RETURN (SELECT <string>node1_id AS node1_id, <string>node2_id AS node2_id, $edge_name AS dependency_type, node1, node2 FROM $raw WHERE node1 != NONE AND node2 != NONE);
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::edge_types() { RETURN ['calls', 'imports', 'uses', 'extends', 'implements', 'references', 'contains', 'belongs_to']; } PERMISSIONS FULL;
 DEFINE FUNCTION fn::find_nodes_by_name($project_id: string, $needle: string, $limit: int) {
