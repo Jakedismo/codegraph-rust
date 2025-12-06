@@ -27,7 +27,8 @@ pub fn get_tier_system_prompt(analysis_type: AnalysisType, tier: ContextTier) ->
 
 fn get_tool_instructions(tier: ContextTier) -> &'static str {
     match tier {
-        ContextTier::Small => r#"AVAILABLE TOOLS:
+        ContextTier::Small => {
+            r#"AVAILABLE TOOLS:
 - semantic_code_search: Find code by natural language query
 - get_transitive_dependencies: Get dependencies of a node
 - get_reverse_dependencies: Find what depends on a node
@@ -37,9 +38,11 @@ fn get_tool_instructions(tier: ContextTier) -> &'static str {
 - detect_circular_dependencies: Find cycles
 - find_complexity_hotspots: Locate complex code
 
-Use semantic_code_search FIRST to find node IDs. Be direct and efficient."#,
+Use semantic_code_search FIRST to find node IDs. Be direct and efficient."#
+        }
 
-        ContextTier::Medium => r#"AVAILABLE TOOLS:
+        ContextTier::Medium => {
+            r#"AVAILABLE TOOLS:
 1. semantic_code_search(query, limit, threshold) - Search code semantically. ALWAYS START HERE to find node_id values.
 2. get_transitive_dependencies(node_id, edge_type, depth) - Get forward dependencies
 3. get_reverse_dependencies(node_id, edge_type, depth) - Get reverse dependencies
@@ -49,9 +52,11 @@ Use semantic_code_search FIRST to find node IDs. Be direct and efficient."#,
 7. detect_circular_dependencies(edge_type) - Detect cycles
 8. find_complexity_hotspots(min_complexity, limit) - Find complex code
 
-IMPORTANT: Use semantic_code_search first to get actual node_id values before using other tools."#,
+IMPORTANT: Use semantic_code_search first to get actual node_id values before using other tools."#
+        }
 
-        ContextTier::Large => r#"AVAILABLE TOOLS:
+        ContextTier::Large => {
+            r#"AVAILABLE TOOLS:
 1. semantic_code_search(query, limit, threshold)
    - Search code using natural language
    - Returns results with node_id field - extract and use these exact IDs
@@ -81,9 +86,11 @@ IMPORTANT: Use semantic_code_search first to get actual node_id values before us
 8. find_complexity_hotspots(min_complexity, limit)
    - Find functions with high complexity and coupling
 
-WORKFLOW: semantic_code_search → extract node_id → use other tools with exact IDs"#,
+WORKFLOW: semantic_code_search → extract node_id → use other tools with exact IDs"#
+        }
 
-        ContextTier::Massive => r#"AVAILABLE TOOLS (use comprehensively):
+        ContextTier::Massive => {
+            r#"AVAILABLE TOOLS (use comprehensively):
 
 1. SEMANTIC SEARCH (required first step):
    semantic_code_search(query, limit, threshold)
@@ -132,27 +139,42 @@ ANALYSIS STRATEGY:
 3. Analyze dependencies and call chains
 4. Calculate coupling for critical nodes
 5. Map architectural patterns
-6. Synthesize comprehensive findings"#,
+6. Synthesize comprehensive findings"#
+        }
     }
 }
 
 fn get_analysis_instructions(analysis_type: AnalysisType, tier: ContextTier) -> String {
     let base_instructions = match analysis_type {
         AnalysisType::CodeSearch => "Find and analyze code matching the query.",
-        AnalysisType::DependencyAnalysis => "Analyze dependencies: what does it depend on and what depends on it.",
-        AnalysisType::CallChainAnalysis => "Trace execution paths and call chains through the codebase.",
-        AnalysisType::ArchitectureAnalysis => "Analyze architectural patterns, component structure, and design.",
+        AnalysisType::DependencyAnalysis => {
+            "Analyze dependencies: what does it depend on and what depends on it."
+        }
+        AnalysisType::CallChainAnalysis => {
+            "Trace execution paths and call chains through the codebase."
+        }
+        AnalysisType::ArchitectureAnalysis => {
+            "Analyze architectural patterns, component structure, and design."
+        }
         AnalysisType::ApiSurfaceAnalysis => "Analyze public interfaces, APIs, and contracts.",
-        AnalysisType::ContextBuilder => "Build comprehensive context about a code area for understanding or modification.",
-        AnalysisType::SemanticQuestion => "Answer the question using code analysis and evidence from the codebase.",
-        AnalysisType::ComplexityAnalysis => "Identify complexity hotspots and assess technical debt risk.",
+        AnalysisType::ContextBuilder => {
+            "Build comprehensive context about a code area for understanding or modification."
+        }
+        AnalysisType::SemanticQuestion => {
+            "Answer the question using code analysis and evidence from the codebase."
+        }
+        AnalysisType::ComplexityAnalysis => {
+            "Identify complexity hotspots and assess technical debt risk."
+        }
     };
 
     let detail = match tier {
         ContextTier::Small => "Be concise. Focus on key findings only.",
         ContextTier::Medium => "Provide balanced analysis with supporting evidence.",
         ContextTier::Large => "Provide thorough analysis with detailed evidence and explanations.",
-        ContextTier::Massive => "Provide comprehensive analysis covering all aspects with full technical depth.",
+        ContextTier::Massive => {
+            "Provide comprehensive analysis covering all aspects with full technical depth."
+        }
     };
 
     format!("{}\n\n{}", base_instructions, detail)
@@ -160,20 +182,27 @@ fn get_analysis_instructions(analysis_type: AnalysisType, tier: ContextTier) -> 
 
 fn get_output_format(tier: ContextTier) -> &'static str {
     match tier {
-        ContextTier::Small => r#"OUTPUT: Provide a brief, direct answer focusing on the most important findings."#,
+        ContextTier::Small => {
+            r#"OUTPUT: Provide a brief, direct answer focusing on the most important findings."#
+        }
 
-        ContextTier::Medium => r#"OUTPUT FORMAT:
+        ContextTier::Medium => {
+            r#"OUTPUT FORMAT:
 - Summary: Direct answer to the query
 - Key Findings: Main discoveries with evidence
-- Recommendations: Any actionable insights"#,
+- Recommendations: Any actionable insights"#
+        }
 
-        ContextTier::Large => r#"OUTPUT FORMAT:
+        ContextTier::Large => {
+            r#"OUTPUT FORMAT:
 1. Executive Summary: Clear, direct answer (2-3 sentences)
 2. Detailed Findings: Organized by theme with code references
 3. Dependencies/Relationships: Relevant connections discovered
-4. Recommendations: Actionable insights based on analysis"#,
+4. Recommendations: Actionable insights based on analysis"#
+        }
 
-        ContextTier::Massive => r#"OUTPUT FORMAT:
+        ContextTier::Massive => {
+            r#"OUTPUT FORMAT:
 1. Executive Summary
    - Direct answer to the query
    - Key takeaways (bullet points)
@@ -196,7 +225,8 @@ fn get_output_format(tier: ContextTier) -> &'static str {
 5. Recommendations
    - Actionable improvements
    - Risk areas requiring attention
-   - Suggested follow-up analysis"#,
+   - Suggested follow-up analysis"#
+        }
     }
 }
 

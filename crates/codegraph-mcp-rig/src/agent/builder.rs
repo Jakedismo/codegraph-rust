@@ -2,7 +2,9 @@
 // ABOUTME: Builds agents with graph tools and appropriate system prompts
 
 #[allow(unused_imports)]
-use crate::adapter::{get_context_window, get_max_turns, get_model_name, RigLLMAdapter, RigProvider};
+use crate::adapter::{
+    get_context_window, get_max_turns, get_model_name, RigLLMAdapter, RigProvider,
+};
 use crate::prompts::{get_tier_system_prompt, AnalysisType};
 #[allow(unused_imports)] // Used when provider features are enabled
 use crate::tools::GraphToolFactory;
@@ -205,7 +207,10 @@ impl RigAgentBuilder {
                 Ok(Box::new(self.build_openai_compatible(base_url)?))
             }
             #[allow(unreachable_patterns)]
-            _ => Err(anyhow!("Provider {:?} not enabled in build features", provider)),
+            _ => Err(anyhow!(
+                "Provider {:?} not enabled in build features",
+                provider
+            )),
         }
     }
 

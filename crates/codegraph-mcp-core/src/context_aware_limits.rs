@@ -71,9 +71,9 @@ impl ContextTier {
     /// Get max output tokens for LLM generation based on tier
     pub fn max_output_tokens(&self) -> u64 {
         match self {
-            ContextTier::Small => 2_048,   // Conservative for small context
-            ContextTier::Medium => 4_096,  // Standard output
-            ContextTier::Large => 8_192,   // Generous output
+            ContextTier::Small => 2_048,    // Conservative for small context
+            ContextTier::Medium => 4_096,   // Standard output
+            ContextTier::Large => 8_192,    // Generous output
             ContextTier::Massive => 16_384, // Maximum output for massive context
         }
     }

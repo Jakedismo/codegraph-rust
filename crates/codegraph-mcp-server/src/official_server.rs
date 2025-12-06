@@ -32,10 +32,10 @@ use codegraph_ai::agentic_schemas::AgenticOutput;
 use codegraph_mcp_autoagents::{
     CodeGraphAgentOutput, CodeGraphExecutor, CodeGraphExecutorBuilder, ExecutorError,
 };
-#[cfg(feature = "ai-enhanced")]
-use codegraph_mcp_rig::{RigAgentOutput, RigExecutor};
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_core::debug_logger::DebugLogger;
+#[cfg(feature = "ai-enhanced")]
+use codegraph_mcp_rig::{RigAgentOutput, RigExecutor};
 use codegraph_mcp_tools::GraphToolExecutor;
 use codegraph_vector::EmbeddingGenerator;
 

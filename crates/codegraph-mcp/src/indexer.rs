@@ -1306,7 +1306,7 @@ impl ProjectIndexer {
 
             // REVOLUTIONARY: Pre-generate AI embeddings for BOTH known symbols AND unresolved edge targets
             #[cfg(feature = "ai-enhanced")]
-            let (symbol_embeddings, unresolved_embeddings) = {
+            let (symbol_embeddings, unresolved_embeddings, node_degrees) = {
                 info!("🚀 INITIALIZING REVOLUTIONARY 2-PHASE AI SEMANTIC MATCHING");
                 info!(
                     "🔧 Phase 1: Pre-computing embeddings for {} known symbols",
@@ -1376,21 +1376,25 @@ impl ProjectIndexer {
                 };
 
                 info!(
-                    "🤖 REVOLUTIONARY AI READY: {} known + {} unresolved = {} total embeddings",
+                    "symbol resolver: embeddings prepared (known={}, unresolved={}, total={})",
                     known_embeddings.len(),
                     unresolved_embeddings.len(),
                     known_embeddings.len() + unresolved_embeddings.len()
                 );
 
-                (known_embeddings, unresolved_embeddings)
+                let node_degrees = self.compute_node_degrees().await.unwrap_or_default();
+
+                (known_embeddings, unresolved_embeddings, node_degrees)
             };
             #[cfg(not(feature = "ai-enhanced"))]
-            let (symbol_embeddings, unresolved_embeddings): (
+            let (symbol_embeddings, unresolved_embeddings, node_degrees): (
                 std::collections::HashMap<String, Vec<f32>>,
                 std::collections::HashMap<String, Vec<f32>>,
+                std::collections::HashMap<NodeId, i32>,
             ) = {
                 info!("🚀 Pattern-only resolution: AI semantic matching disabled (ai-enhanced feature not enabled)");
                 (
+                    std::collections::HashMap::new(),
                     std::collections::HashMap::new(),
                     std::collections::HashMap::new(),
                 )
@@ -2160,15 +2164,46 @@ impl ProjectIndexer {
         symbol_map: &std::collections::HashMap<String, NodeId>,
         symbol_embeddings: &std::collections::HashMap<String, Vec<f32>>,
         unresolved_embeddings: &std::collections::HashMap<String, Vec<f32>>,
+        node_degrees: &std::collections::HashMap<NodeId, i32>,
     ) -> Option<NodeId> {
+        const STOP_SYMBOLS: &[&str] = &[
+            "into",
+            "unwrap",
+            "ok",
+            "err",
+            "some",
+            "none",
+            "new",
+            "from",
+            "default",
+            "clone",
+            "drop",
+            "len",
+            "push",
+            "pop",
+            "to_string",
+            "println",
+            "debug",
+            "info",
+            "warn",
+            "error",
+            "fmt",
+            "str",
+        ];
+
+        let target_lower = target_symbol.to_lowercase();
+        if STOP_SYMBOLS.contains(&target_lower.as_str()) {
+            return None;
+        }
+
         // DIAGNOSTIC: Track AI matching usage
         static AI_MATCH_COUNTER: std::sync::atomic::AtomicUsize =
             std::sync::atomic::AtomicUsize::new(0);
         let call_count = AI_MATCH_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         if call_count == 0 {
-            info!(
-                "🤖 AI SEMANTIC MATCHING ACTIVATED: First call with {} pre-computed embeddings",
+            debug!(
+                "symbol resolver: semantic matching enabled (embeddings={})",
                 symbol_embeddings.len()
             );
         }
@@ -2184,9 +2219,9 @@ impl ProjectIndexer {
             return None;
         }
 
-        if call_count < 5 {
-            info!(
-                "🔍 Attempting HYBRID AI resolution for unresolved symbol: '{}'",
+        if call_count < 3 {
+            debug!(
+                "symbol resolver: embedding+heuristic match attempt for '{}'",
                 target_symbol
             );
         }
@@ -2244,17 +2279,41 @@ impl ProjectIndexer {
         // PHASE 2: Real AI embedding semantic similarity using pre-computed unresolved embeddings
         let mut ai_best_match: Option<(NodeId, f32)> = None;
         if let Some(target_embedding) = unresolved_embeddings.get(target_symbol) {
-            if call_count < 5 {
-                info!(
-                    "🔍 Using pre-computed embedding for unresolved symbol: '{}'",
-                    target_symbol
+            if call_count < 3 {
+                debug!(
+                    "symbol resolver: embedding search for '{}' ({} candidates)",
+                    target_symbol,
+                    symbol_embeddings.len()
                 );
             }
 
             let ai_threshold = 0.75; // Higher threshold for real AI embeddings
 
-            // Compare target embedding with ALL known symbol embeddings
-            for (symbol_name, symbol_embedding) in symbol_embeddings.iter() {
+            let target_trigrams = Self::char_trigrams(&target_lower);
+
+            // Preselect candidates by n-gram overlap to avoid full cosine on unrelated symbols
+            let mut filtered: Vec<(&String, &Vec<f32>)> = symbol_embeddings
+                .iter()
+                .filter(|(name, _)| {
+                    let name_lower = name.to_lowercase();
+                    // quick length ratio guard
+                    let len_ok = {
+                        let a = target_lower.len() as f32;
+                        let b = name_lower.len() as f32;
+                        (a / b).min(b / a) >= 0.5
+                    };
+                    if !len_ok {
+                        return false;
+                    }
+
+                    let name_trigrams = Self::char_trigrams(&name_lower);
+                    let overlap = Self::jaccard(&target_trigrams, &name_trigrams);
+                    overlap >= 0.2
+                })
+                .collect();
+
+            // Compare target embedding with filtered symbol embeddings
+            for (symbol_name, symbol_embedding) in filtered.into_iter() {
                 if let Some(&node_id) = symbol_map.get(symbol_name) {
                     let similarity =
                         Self::cosine_similarity_static(target_embedding, symbol_embedding);
@@ -2275,8 +2334,14 @@ impl ProjectIndexer {
         // REVOLUTIONARY: Choose the best match between fuzzy and real AI embeddings
         let final_match = match (best_match, ai_best_match) {
             (Some((fuzzy_node, fuzzy_score)), Some((ai_node, ai_score))) => {
-                // AI embeddings are more accurate than fuzzy when both exist
-                if ai_score > 0.8 || (ai_score > fuzzy_score && ai_score > 0.7) {
+                // Prefer higher confidence; break ties with degree
+                let fuzzy_degree = *node_degrees.get(&fuzzy_node).unwrap_or(&0) as f32;
+                let ai_degree = *node_degrees.get(&ai_node).unwrap_or(&0) as f32;
+
+                if ai_score > 0.8
+                    || (ai_score > fuzzy_score && ai_score > 0.7)
+                    || (ai_score == fuzzy_score && ai_degree > fuzzy_degree)
+                {
                     Some((ai_node, ai_score, "AI EMBEDDING"))
                 } else {
                     Some((fuzzy_node, fuzzy_score, "FUZZY"))
@@ -2319,6 +2384,40 @@ impl ProjectIndexer {
         let distance = Self::levenshtein_distance(s1, s2);
 
         1.0 - (distance as f32 / max_len as f32)
+    }
+
+    #[cfg(feature = "ai-enhanced")]
+    fn char_trigrams(s: &str) -> std::collections::HashSet<String> {
+        let chars: Vec<char> = s.chars().collect();
+        let mut set = std::collections::HashSet::new();
+        if chars.len() < 3 {
+            if !s.is_empty() {
+                set.insert(s.to_string());
+            }
+            return set;
+        }
+        for w in chars.windows(3) {
+            let tri: String = w.iter().collect();
+            set.insert(tri);
+        }
+        set
+    }
+
+    #[cfg(feature = "ai-enhanced")]
+    fn jaccard(
+        a: &std::collections::HashSet<String>,
+        b: &std::collections::HashSet<String>,
+    ) -> f32 {
+        if a.is_empty() || b.is_empty() {
+            return 0.0;
+        }
+        let intersection = a.intersection(b).count() as f32;
+        let union = (a.len() + b.len()) as f32 - intersection;
+        if union == 0.0 {
+            0.0
+        } else {
+            intersection / union
+        }
     }
 
     /// Calculate Levenshtein distance between two strings

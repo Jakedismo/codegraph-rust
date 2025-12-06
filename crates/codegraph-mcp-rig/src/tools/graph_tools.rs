@@ -197,8 +197,10 @@ impl Tool for DetectCircularDependencies {
     async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
         rig::completion::ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Detect circular dependencies (cycles) in the graph for a given edge type".to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(DetectCyclesArgs)).unwrap_or_default(),
+            description: "Detect circular dependencies (cycles) in the graph for a given edge type"
+                .to_string(),
+            parameters: serde_json::to_value(schemars::schema_for!(DetectCyclesArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -236,8 +238,10 @@ impl Tool for TraceCallChain {
     async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
         rig::completion::ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Trace the call chain from a starting node to understand execution flow".to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(TraceCallChainArgs)).unwrap_or_default(),
+            description: "Trace the call chain from a starting node to understand execution flow"
+                .to_string(),
+            parameters: serde_json::to_value(schemars::schema_for!(TraceCallChainArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -315,8 +319,10 @@ impl Tool for GetHubNodes {
     async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
         rig::completion::ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Find hub nodes with high connectivity (many incoming or outgoing edges)".to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(HubNodesArgs)).unwrap_or_default(),
+            description: "Find hub nodes with high connectivity (many incoming or outgoing edges)"
+                .to_string(),
+            parameters: serde_json::to_value(schemars::schema_for!(HubNodesArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -354,8 +360,11 @@ impl Tool for GetReverseDependencies {
     async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
         rig::completion::ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Find all nodes that depend on the specified node (reverse dependency analysis)".to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(ReverseDepsArgs)).unwrap_or_default(),
+            description:
+                "Find all nodes that depend on the specified node (reverse dependency analysis)"
+                    .to_string(),
+            parameters: serde_json::to_value(schemars::schema_for!(ReverseDepsArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -395,8 +404,11 @@ impl Tool for SemanticCodeSearch {
     async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
         rig::completion::ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Search code semantically using natural language queries and vector embeddings".to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(SemanticSearchArgs)).unwrap_or_default(),
+            description:
+                "Search code semantically using natural language queries and vector embeddings"
+                    .to_string(),
+            parameters: serde_json::to_value(schemars::schema_for!(SemanticSearchArgs))
+                .unwrap_or_default(),
         }
     }
 
@@ -436,8 +448,11 @@ impl Tool for FindComplexityHotspots {
     async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
         rig::completion::ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Find functions with high complexity and coupling that may benefit from refactoring".to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(ComplexityHotspotsArgs)).unwrap_or_default(),
+            description:
+                "Find functions with high complexity and coupling that may benefit from refactoring"
+                    .to_string(),
+            parameters: serde_json::to_value(schemars::schema_for!(ComplexityHotspotsArgs))
+                .unwrap_or_default(),
         }
     }
 
