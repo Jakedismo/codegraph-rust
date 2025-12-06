@@ -195,7 +195,9 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
     LET $chunk_limit = $safe_limit * 3;
     LET $symbol_limit = $safe_limit * 2;
 
-    -- Choose an available embedding dimension for this project, fallback to $dimension
+    ------------------------------------------------------------------------
+    -- 1) Pick an embedding dimension to use for this project (fallback to $dimension)
+    ------------------------------------------------------------------------
     LET $dim =
         IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_1024 != NONE LIMIT 1)[0] > 0 {
             1024
@@ -217,7 +219,9 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             $dimension
         };
 
-    -- Chunk matches per resolved dimension
+    ------------------------------------------------------------------------
+    -- 2) Chunk matches per resolved dimension
+    ------------------------------------------------------------------------
     LET $chunk_results =
         IF $dim = 384 {
             SELECT parent_node,
@@ -309,7 +313,9 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             FETCH parent_node
         };
 
-    -- Symbol matches per resolved dimension
+    ------------------------------------------------------------------------
+    -- 3) Symbol matches per resolved dimension
+    ------------------------------------------------------------------------
     LET $symbol_matches =
         IF $dim = 384 {
             SELECT source_edge_id, symbol,
@@ -393,37 +399,36 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             FETCH source_edge_id
         };
 
-    -- Symbol-based nodes with EXISTS-like guard
+    ------------------------------------------------------------------------
+    -- 4) Turn chunk + symbol hits into node-level vector rows
+    ------------------------------------------------------------------------
     LET $symbol_nodes = (
         SELECT
             source_edge_id.from AS parent_node,
             symbol_score * 0.8f AS vector_score,
-            'symbol_reference' AS match_source,
-            symbol AS matched_symbol
+            ['symbol_reference'] AS match_sources,
+            [symbol] AS matched_symbols
         FROM $symbol_matches
         WHERE source_edge_id.from != NONE
           AND source_edge_id.from.project_id = $project_id
           AND (SELECT id FROM nodes WHERE id = source_edge_id.from LIMIT 1)
     );
 
-    -- Chunk-based nodes with EXISTS-like guard
     LET $chunk_nodes = (
         SELECT
             parent_node,
             vector_score,
-            'chunk' AS match_source,
-            NONE AS matched_symbol
+            ['chunk'] AS match_sources,
+            [] AS matched_symbols
         FROM array::flatten([$chunk_results])
         WHERE parent_node != NONE
           AND (SELECT id FROM nodes WHERE id = parent_node LIMIT 1)
     );
 
-    LET $all_nodes = array::concat($chunk_nodes, $symbol_nodes);
+    LET $all_vector_nodes = array::concat($chunk_nodes, $symbol_nodes);
 
-    -- Aggregate vector matches per node
-    LET $vector_ranked = (
+    LET $vector_flat = (
         SELECT
-            math::max(array::group(vector_score)) AS vector_score,
             parent_node.id AS node_id,
             parent_node.name AS name,
             parent_node.node_type AS kind,
@@ -433,18 +438,17 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             parent_node.end_line AS end_line,
             parent_node.content AS content,
             parent_node.metadata AS metadata,
-            array::distinct(array::group(match_source)) AS match_sources,
-            array::distinct(
-                array::group(matched_symbol)[WHERE $this != NONE]
-            ) AS matched_symbols
-        FROM $all_nodes
+            vector_score,
+            0f AS text_score,
+            match_sources,
+            matched_symbols
+        FROM $all_vector_nodes
         WHERE parent_node != NONE
-        GROUP BY parent_node.id
-        ORDER BY vector_score DESC
-        LIMIT $safe_limit
     );
 
-    -- BM25 / full-text candidates using analyzer-backed indexes
+    ------------------------------------------------------------------------
+    -- 5) BM25 / full-text candidates (using your analyzer-backed indexes)
+    ------------------------------------------------------------------------
     LET $text_candidates = (
         SELECT
             <string> id AS node_id,
@@ -457,8 +461,6 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             end_line,
             metadata,
             0f AS vector_score,
-            search::score(1) AS content_score,
-            search::score(2) AS name_score,
             (search::score(1) + search::score(2)) AS text_score,
             ['text'] AS match_sources,
             [] AS matched_symbols
@@ -469,35 +471,29 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
         LIMIT $safe_limit
     );
 
-    LET $combined = array::concat($vector_ranked, $text_candidates);
+    ------------------------------------------------------------------------
+    -- 6) Combine, score, sort, and just return the top rows
+    ------------------------------------------------------------------------
+    LET $combined = array::concat($vector_flat, $text_candidates);
 
-    LET $deduped = (
+    LET $sorted = (
         SELECT
             node_id,
-            math::max(array::group(vector_score)) AS vector_score,
-            math::max(array::group(text_score ?? 0f)) AS text_score,
-            array::first(array::group(name)) AS name,
-            array::first(array::group(kind)) AS kind,
-            array::first(array::group(language)) AS language,
-            array::first(array::group(content)) AS content,
-            array::first(array::group(file_path)) AS file_path,
-            array::first(array::group(start_line)) AS start_line,
-            array::first(array::group(end_line)) AS end_line,
-            array::first(array::group(metadata)) AS metadata,
-            array::distinct(
-                array::flatten(array::group(match_sources))
-            ) AS match_sources,
-            array::distinct(
-                array::flatten(array::group(matched_symbols))[WHERE $this != NONE]
-            ) AS matched_symbols,
-            (
-                math::max(array::group(vector_score)) * 0.7f
-            ) + (
-                math::max(array::group(text_score ?? 0f)) * 0.3f
-            ) AS combined_score
+            name,
+            kind,
+            language,
+            file_path,
+            start_line,
+            end_line,
+            content,
+            metadata,
+            vector_score,
+            text_score,
+            (vector_score * 0.7f) + ((text_score ?? 0f) * 0.3f) AS combined_score,
+            match_sources,
+            matched_symbols
         FROM $combined
         WHERE node_id != NONE
-        GROUP BY node_id
         ORDER BY combined_score DESC
         LIMIT $safe_limit
     );
@@ -542,7 +538,366 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
                 LIMIT 20
                 FETCH from
             ) AS incoming_edges
-        FROM $deduped
+        FROM $sorted
+    );
+}
+PERMISSIONS FULL;DEFINE FUNCTION fn::semantic_search_nodes_via_chunks_hybrid(
+    $project_id: string,
+    $query_embedding: array<float>,
+    $query_text: string,
+    $dimension: int,
+    $limit: int,
+    $threshold: float
+) {
+    LET $safe_limit = IF $limit > 0 AND $limit <= 100 THEN $limit ELSE 10 END;
+    LET $safe_threshold = IF $threshold >= 0f AND $threshold <= 1f THEN $threshold ELSE 0.7f END;
+    LET $chunk_limit = $safe_limit * 3;
+    LET $symbol_limit = $safe_limit * 2;
+
+    ------------------------------------------------------------------------
+    -- 1) Pick an embedding dimension to use for this project (fallback to $dimension)
+    ------------------------------------------------------------------------
+    LET $dim =
+        IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_1024 != NONE LIMIT 1)[0] > 0 {
+            1024
+        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_768 != NONE LIMIT 1)[0] > 0 {
+            768
+        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_384 != NONE LIMIT 1)[0] > 0 {
+            384
+        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_1536 != NONE LIMIT 1)[0] > 0 {
+            1536
+        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_2048 != NONE LIMIT 1)[0] > 0 {
+            2048
+        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_2560 != NONE LIMIT 1)[0] > 0 {
+            2560
+        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_3072 != NONE LIMIT 1)[0] > 0 {
+            3072
+        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_4096 != NONE LIMIT 1)[0] > 0 {
+            4096
+        } ELSE {
+            $dimension
+        };
+
+    ------------------------------------------------------------------------
+    -- 2) Chunk matches per resolved dimension
+    ------------------------------------------------------------------------
+    LET $chunk_results =
+        IF $dim = 384 {
+            SELECT parent_node,
+                   vector::similarity::cosine(embedding_384, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id
+              AND embedding_384 != NONE
+              AND parent_node != NONE
+              AND vector::similarity::cosine(embedding_384, $query_embedding) >= $safe_threshold
+            ORDER BY vector_score DESC
+            LIMIT $chunk_limit
+            FETCH parent_node
+        } ELSE IF $dim = 768 {
+            SELECT parent_node,
+                   vector::similarity::cosine(embedding_768, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id
+              AND embedding_768 != NONE
+              AND parent_node != NONE
+              AND vector::similarity::cosine(embedding_768, $query_embedding) >= $safe_threshold
+            ORDER BY vector_score DESC
+            LIMIT $chunk_limit
+            FETCH parent_node
+        } ELSE IF $dim = 1024 {
+            SELECT parent_node,
+                   vector::similarity::cosine(embedding_1024, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id
+              AND embedding_1024 != NONE
+              AND parent_node != NONE
+              AND vector::similarity::cosine(embedding_1024, $query_embedding) >= $safe_threshold
+            ORDER BY vector_score DESC
+            LIMIT $chunk_limit
+            FETCH parent_node
+        } ELSE IF $dim = 1536 {
+            SELECT parent_node,
+                   vector::similarity::cosine(embedding_1536, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id
+              AND embedding_1536 != NONE
+              AND parent_node != NONE
+              AND vector::similarity::cosine(embedding_1536, $query_embedding) >= $safe_threshold
+            ORDER BY vector_score DESC
+            LIMIT $chunk_limit
+            FETCH parent_node
+        } ELSE IF $dim = 2048 {
+            SELECT parent_node,
+                   vector::similarity::cosine(embedding_2048, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id
+              AND embedding_2048 != NONE
+              AND parent_node != NONE
+              AND vector::similarity::cosine(embedding_2048, $query_embedding) >= $safe_threshold
+            ORDER BY vector_score DESC
+            LIMIT $chunk_limit
+            FETCH parent_node
+        } ELSE IF $dim = 2560 {
+            SELECT parent_node,
+                   vector::similarity::cosine(embedding_2560, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id
+              AND embedding_2560 != NONE
+              AND parent_node != NONE
+              AND vector::similarity::cosine(embedding_2560, $query_embedding) >= $safe_threshold
+            ORDER BY vector_score DESC
+            LIMIT $chunk_limit
+            FETCH parent_node
+        } ELSE IF $dim = 3072 {
+            SELECT parent_node,
+                   vector::similarity::cosine(embedding_3072, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id
+              AND embedding_3072 != NONE
+              AND parent_node != NONE
+              AND vector::similarity::cosine(embedding_3072, $query_embedding) >= $safe_threshold
+            ORDER BY vector_score DESC
+            LIMIT $chunk_limit
+            FETCH parent_node
+        } ELSE {
+            SELECT parent_node,
+                   vector::similarity::cosine(embedding_4096, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id
+              AND embedding_4096 != NONE
+              AND parent_node != NONE
+              AND vector::similarity::cosine(embedding_4096, $query_embedding) >= $safe_threshold
+            ORDER BY vector_score DESC
+            LIMIT $chunk_limit
+            FETCH parent_node
+        };
+
+    ------------------------------------------------------------------------
+    -- 3) Symbol matches per resolved dimension
+    ------------------------------------------------------------------------
+    LET $symbol_matches =
+        IF $dim = 384 {
+            SELECT source_edge_id, symbol,
+                   vector::similarity::cosine(embedding_384, $query_embedding) AS symbol_score
+            FROM symbol_embeddings
+            WHERE project_id = $project_id
+              AND embedding_384 != NONE
+              AND vector::similarity::cosine(embedding_384, $query_embedding) >= $safe_threshold
+            ORDER BY symbol_score DESC
+            LIMIT $symbol_limit
+            FETCH source_edge_id
+        } ELSE IF $dim = 768 {
+            SELECT source_edge_id, symbol,
+                   vector::similarity::cosine(embedding_768, $query_embedding) AS symbol_score
+            FROM symbol_embeddings
+            WHERE project_id = $project_id
+              AND embedding_768 != NONE
+              AND vector::similarity::cosine(embedding_768, $query_embedding) >= $safe_threshold
+            ORDER BY symbol_score DESC
+            LIMIT $symbol_limit
+            FETCH source_edge_id
+        } ELSE IF $dim = 1024 {
+            SELECT source_edge_id, symbol,
+                   vector::similarity::cosine(embedding_1024, $query_embedding) AS symbol_score
+            FROM symbol_embeddings
+            WHERE project_id = $project_id
+              AND embedding_1024 != NONE
+              AND vector::similarity::cosine(embedding_1024, $query_embedding) >= $safe_threshold
+            ORDER BY symbol_score DESC
+            LIMIT $symbol_limit
+            FETCH source_edge_id
+        } ELSE IF $dim = 1536 {
+            SELECT source_edge_id, symbol,
+                   vector::similarity::cosine(embedding_1536, $query_embedding) AS symbol_score
+            FROM symbol_embeddings
+            WHERE project_id = $project_id
+              AND embedding_1536 != NONE
+              AND vector::similarity::cosine(embedding_1536, $query_embedding) >= $safe_threshold
+            ORDER BY symbol_score DESC
+            LIMIT $symbol_limit
+            FETCH source_edge_id
+        } ELSE IF $dim = 2048 {
+            SELECT source_edge_id, symbol,
+                   vector::similarity::cosine(embedding_2048, $query_embedding) AS symbol_score
+            FROM symbol_embeddings
+            WHERE project_id = $project_id
+              AND embedding_2048 != NONE
+              AND vector::similarity::cosine(embedding_2048, $query_embedding) >= $safe_threshold
+            ORDER BY symbol_score DESC
+            LIMIT $symbol_limit
+            FETCH source_edge_id
+        } ELSE IF $dim = 2560 {
+            SELECT source_edge_id, symbol,
+                   vector::similarity::cosine(embedding_2560, $query_embedding) AS symbol_score
+            FROM symbol_embeddings
+            WHERE project_id = $project_id
+              AND embedding_2560 != NONE
+              AND vector::similarity::cosine(embedding_2560, $query_embedding) >= $safe_threshold
+            ORDER BY symbol_score DESC
+            LIMIT $symbol_limit
+            FETCH source_edge_id
+        } ELSE IF $dim = 3072 {
+            SELECT source_edge_id, symbol,
+                   vector::similarity::cosine(embedding_3072, $query_embedding) AS symbol_score
+            FROM symbol_embeddings
+            WHERE project_id = $project_id
+              AND embedding_3072 != NONE
+              AND vector::similarity::cosine(embedding_3072, $query_embedding) >= $safe_threshold
+            ORDER BY symbol_score DESC
+            LIMIT $symbol_limit
+            FETCH source_edge_id
+        } ELSE {
+            SELECT source_edge_id, symbol,
+                   vector::similarity::cosine(embedding_4096, $query_embedding) AS symbol_score
+            FROM symbol_embeddings
+            WHERE project_id = $project_id
+              AND embedding_4096 != NONE
+              AND vector::similarity::cosine(embedding_4096, $query_embedding) >= $safe_threshold
+            ORDER BY symbol_score DESC
+            LIMIT $symbol_limit
+            FETCH source_edge_id
+        };
+
+    ------------------------------------------------------------------------
+    -- 4) Turn chunk + symbol hits into node-level vector rows
+    ------------------------------------------------------------------------
+    LET $symbol_nodes = (
+        SELECT
+            source_edge_id.from AS parent_node,
+            symbol_score * 0.8f AS vector_score,
+            ['symbol_reference'] AS match_sources,
+            [symbol] AS matched_symbols
+        FROM $symbol_matches
+        WHERE source_edge_id.from != NONE
+          AND source_edge_id.from.project_id = $project_id
+          AND (SELECT id FROM nodes WHERE id = source_edge_id.from LIMIT 1)
+    );
+
+    LET $chunk_nodes = (
+        SELECT
+            parent_node,
+            vector_score,
+            ['chunk'] AS match_sources,
+            [] AS matched_symbols
+        FROM array::flatten([$chunk_results])
+        WHERE parent_node != NONE
+          AND (SELECT id FROM nodes WHERE id = parent_node LIMIT 1)
+    );
+
+    LET $all_vector_nodes = array::concat($chunk_nodes, $symbol_nodes);
+
+    LET $vector_flat = (
+        SELECT
+            parent_node.id AS node_id,
+            parent_node.name AS name,
+            parent_node.node_type AS kind,
+            parent_node.language AS language,
+            parent_node.file_path AS file_path,
+            parent_node.start_line AS start_line,
+            parent_node.end_line AS end_line,
+            parent_node.content AS content,
+            parent_node.metadata AS metadata,
+            vector_score,
+            0f AS text_score,
+            match_sources,
+            matched_symbols
+        FROM $all_vector_nodes
+        WHERE parent_node != NONE
+    );
+
+    ------------------------------------------------------------------------
+    -- 5) BM25 / full-text candidates (using your analyzer-backed indexes)
+    ------------------------------------------------------------------------
+    LET $text_candidates = (
+        SELECT
+            <string> id AS node_id,
+            name,
+            node_type AS kind,
+            language,
+            content,
+            file_path,
+            start_line,
+            end_line,
+            metadata,
+            0f AS vector_score,
+            (search::score(1) + search::score(2)) AS text_score,
+            ['text'] AS match_sources,
+            [] AS matched_symbols
+        FROM nodes
+        WHERE project_id = $project_id
+          AND (content @1@ $query_text OR name @2@ $query_text)
+        ORDER BY text_score DESC
+        LIMIT $safe_limit
+    );
+
+    ------------------------------------------------------------------------
+    -- 6) Combine, score, sort, and just return the top rows
+    ------------------------------------------------------------------------
+    LET $combined = array::concat($vector_flat, $text_candidates);
+
+    LET $sorted = (
+        SELECT
+            node_id,
+            name,
+            kind,
+            language,
+            file_path,
+            start_line,
+            end_line,
+            content,
+            metadata,
+            vector_score,
+            text_score,
+            (vector_score * 0.7f) + ((text_score ?? 0f) * 0.3f) AS combined_score,
+            match_sources,
+            matched_symbols
+        FROM $combined
+        WHERE node_id != NONE
+        ORDER BY combined_score DESC
+        LIMIT $safe_limit
+    );
+
+    RETURN (
+        SELECT
+            node_id,
+            name,
+            kind,
+            language,
+            file_path,
+            start_line,
+            end_line,
+            content,
+            metadata,
+            vector_score,
+            text_score,
+            combined_score,
+            match_sources,
+            matched_symbols,
+            (
+                SELECT
+                    <string> to.id AS node_id,
+                    to.name AS name,
+                    to.node_type AS kind,
+                    to.file_path AS file_path,
+                    edge_type AS relationship
+                FROM edges
+                WHERE from = $parent.node_id
+                LIMIT 20
+                FETCH to
+            ) AS outgoing_edges,
+            (
+                SELECT
+                    <string> from.id AS node_id,
+                    from.name AS name,
+                    from.node_type AS kind,
+                    from.file_path AS file_path,
+                    edge_type AS relationship
+                FROM edges
+                WHERE to = $parent.node_id
+                LIMIT 20
+                FETCH from
+            ) AS incoming_edges
+        FROM $sorted
     );
 }
 PERMISSIONS FULL;
