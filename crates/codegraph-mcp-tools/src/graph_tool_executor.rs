@@ -336,8 +336,14 @@ impl GraphToolExecutor {
             .as_str()
             .ok_or_else(|| McpError::Protocol("Missing node_id".to_string()))?;
 
-        let result = self
-            .graph_functions
+        // Optional project_id override to reduce mismatches between indexing and runtime
+        let gf = if let Some(project_id) = params["project_id"].as_str() {
+            self.graph_functions.with_project_id(project_id)
+        } else {
+            (*self.graph_functions).clone()
+        };
+
+        let result = gf
             .calculate_coupling_metrics(node_id)
             .await
             .map_err(|e| McpError::Protocol(format!("calculate_coupling_metrics failed: {}", e)))?;

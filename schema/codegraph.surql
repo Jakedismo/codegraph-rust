@@ -160,13 +160,59 @@ LET $raw = (SELECT fn::node_info(id) AS node, array::distinct((SELECT fn::node_r
 RETURN (SELECT node.id AS id, node.name AS name, node.kind AS kind, node.location AS location, node.language AS language, node.content AS content, node.metadata AS metadata, 1 AS call_depth, called_by, $safe_depth AS requested_depth FROM $raw WHERE node != NONE);
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::get_complexity_hotspots($project_id: string, $min_complexity: float, $limit: int) {
-LET $safe_limit = IF $limit > 0 AND $limit <= 100 THEN $limit ELSE 20 END;
-LET $threshold = IF $min_complexity > 0f THEN $min_complexity ELSE 5f END;
-LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references'];
-LET $complex_nodes = (SELECT id, name, node_type AS kind, language, file_path, start_line, end_line, complexity FROM nodes WHERE project_id = $project_id AND complexity != NONE AND complexity >= $threshold AND node_type IN ['function', 'method', 'Function', 'Method'] ORDER BY complexity DESC LIMIT $safe_limit * 2);
-LET $with_coupling = (SELECT id, name, kind, language, file_path, start_line, end_line, complexity, (SELECT VALUE count() FROM edges WHERE to = $parent.id AND edge_type INSIDE $edge_list) AS afferent_coupling, (SELECT VALUE count() FROM edges WHERE from = $parent.id AND edge_type INSIDE $edge_list) AS efferent_coupling FROM $complex_nodes);
-LET $results = (SELECT id, name, kind, language, file_path, start_line, end_line, complexity, afferent_coupling[0] ?? 0 AS afferent_coupling, efferent_coupling[0] ?? 0 AS efferent_coupling, IF (afferent_coupling[0] ?? 0) + (efferent_coupling[0] ?? 0) > 0 THEN math::round(((efferent_coupling[0] ?? 0) / ((afferent_coupling[0] ?? 0) + (efferent_coupling[0] ?? 0))) * 10000f) / 10000f ELSE 0f END AS instability, complexity * ((afferent_coupling[0] ?? 0) + 1) AS risk_score FROM $with_coupling ORDER BY risk_score DESC LIMIT $safe_limit);
-RETURN $results;
+    LET $safe_limit = IF $limit > 0 AND $limit <= 100 { $limit } ELSE { 20 };
+    LET $threshold = IF $min_complexity > 0f { $min_complexity } ELSE { 5f };
+    LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references'];
+
+    LET $complex_nodes = SELECT id, name, node_type AS kind, language, file_path, start_line, end_line, complexity
+        FROM nodes
+        WHERE project_id = $project_id
+          AND complexity != NONE
+          AND complexity >= $threshold
+          AND node_type INSIDE ['function', 'method', 'Function', 'Method']
+        ORDER BY complexity DESC
+        LIMIT $safe_limit * 2;
+
+    LET $with_coupling = SELECT
+            id,
+            name,
+            kind,
+            language,
+            file_path,
+            start_line,
+            end_line,
+            complexity,
+            (SELECT VALUE count() FROM edges WHERE to = $parent.id AND edge_type INSIDE $edge_list) AS afferent_coupling,
+            (SELECT VALUE count() FROM edges WHERE from = $parent.id AND edge_type INSIDE $edge_list) AS efferent_coupling
+        FROM $complex_nodes;
+
+    LET $results = SELECT
+            id,
+            name,
+            kind,
+            language,
+            file_path,
+            start_line,
+            end_line,
+            complexity,
+            afferent_coupling ?? 0 AS afferent_coupling,
+            efferent_coupling ?? 0 AS efferent_coupling,
+            (
+                -- instability calculation, fully inline
+                math::floor(
+                    (
+                        IF ((efferent_coupling ?? 0) + (afferent_coupling ?? 0)) > 0 {
+                            (efferent_coupling ?? 0) / ((efferent_coupling ?? 0) + (afferent_coupling ?? 0))
+                        } ELSE { 0f }
+                    ) * 10000f
+                ) / 10000f
+            ) AS instability,
+            complexity * ((afferent_coupling ?? 0) + 1) AS risk_score
+        FROM $with_coupling
+        ORDER BY risk_score DESC
+        LIMIT $safe_limit;
+
+    RETURN $results;
 } PERMISSIONS FULL;
 
 -- ------------------------------

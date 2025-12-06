@@ -71,7 +71,7 @@ impl GraphFunctions {
     pub fn new_with_project_id(db: Arc<Surreal<Any>>, project_id: impl Into<String>) -> Self {
         Self {
             db,
-            project_id: project_id.into(),
+            project_id: Self::normalize_project_id(project_id.into()),
         }
     }
 
@@ -80,15 +80,41 @@ impl GraphFunctions {
     }
 
     fn default_project_id() -> String {
-        std::env::var("CODEGRAPH_PROJECT_ID")
+        let env_value = std::env::var("CODEGRAPH_PROJECT_ID")
             .ok()
-            .filter(|v| !v.trim().is_empty())
-            .or_else(|| {
-                std::env::current_dir()
-                    .ok()
-                    .map(|p| p.display().to_string())
-            })
-            .unwrap_or_else(|| "default-project".to_string())
+            .filter(|v| !v.trim().is_empty());
+
+        let inferred = env_value.or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .map(|p| p.display().to_string())
+        });
+
+        let raw = inferred.unwrap_or_else(|| "default-project".to_string());
+        Self::normalize_project_id(raw)
+    }
+
+    /// Normalize project_id to reduce mismatches (canonical path where possible, trimmed slashes)
+    fn normalize_project_id(raw: String) -> String {
+        use std::path::Path;
+        let trimmed = raw.trim().trim_end_matches('/').to_string();
+        if trimmed.is_empty() {
+            return "default-project".to_string();
+        }
+        if Path::new(&trimmed).exists() {
+            if let Ok(canon) = std::fs::canonicalize(&trimmed) {
+                return canon.display().to_string();
+            }
+        }
+        trimmed
+    }
+
+    /// Clone with an explicit project_id override
+    pub fn with_project_id(&self, project_id: impl Into<String>) -> Self {
+        Self {
+            db: self.db.clone(),
+            project_id: Self::normalize_project_id(project_id.into()),
+        }
     }
 
     /// Get transitive dependencies of a node up to specified depth
