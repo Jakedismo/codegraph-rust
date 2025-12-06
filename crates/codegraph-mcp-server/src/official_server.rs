@@ -632,7 +632,21 @@ impl CodeGraphMCPServer {
                     }
                 })?;
 
-            Arc::new(GraphFunctions::new(storage.db()))
+            // Derive project_id from env or current working directory for consistent DB selection
+            let inferred_project_id = std::env::var("CODEGRAPH_PROJECT_ID")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .or_else(|| {
+                    std::env::current_dir()
+                        .ok()
+                        .map(|p| p.display().to_string())
+                })
+                .unwrap_or_else(|| "default-project".to_string());
+
+            Arc::new(GraphFunctions::new_with_project_id(
+                storage.db(),
+                inferred_project_id,
+            ))
         };
 
         // Health check: ensure the active project has indexed nodes
