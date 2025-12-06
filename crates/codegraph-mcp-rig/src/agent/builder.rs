@@ -2,12 +2,15 @@
 // ABOUTME: Builds agents with graph tools and appropriate system prompts
 
 #[allow(unused_imports)]
-use crate::adapter::{get_context_window, get_max_turns, RigLLMAdapter, RigProvider};
+use crate::adapter::{get_context_window, get_max_turns, get_model_name, RigLLMAdapter, RigProvider};
 use crate::prompts::{get_tier_system_prompt, AnalysisType};
+use crate::tools::GraphToolFactory;
 use anyhow::{anyhow, Result};
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
+use rig::client::CompletionClient;
 use std::sync::Arc;
+use tracing::info;
 
 /// Builder for creating Rig-based code analysis agents
 pub struct RigAgentBuilder {
@@ -190,9 +193,132 @@ impl RigAgentBuilder {
             RigProvider::Anthropic => Ok(Box::new(self.build_anthropic()?)),
             #[cfg(feature = "ollama")]
             RigProvider::Ollama => Ok(Box::new(self.build_ollama()?)),
+            #[cfg(feature = "openai")]
+            RigProvider::XAI => Ok(Box::new(self.build_xai()?)),
+            #[cfg(feature = "openai")]
+            RigProvider::LMStudio => Ok(Box::new(self.build_lmstudio()?)),
+            #[cfg(feature = "openai")]
+            RigProvider::OpenAICompatible { ref base_url } => {
+                Ok(Box::new(self.build_openai_compatible(base_url)?))
+            }
             #[allow(unreachable_patterns)]
             _ => Err(anyhow!("Provider {:?} not enabled in build features", provider)),
         }
+    }
+
+    /// Build an xAI-based agent (native rig xAI provider)
+    #[cfg(feature = "openai")]
+    pub fn build_xai(self) -> Result<XAIAgent> {
+        let client = RigLLMAdapter::xai_client();
+        let model = get_model_name();
+        let system_prompt = self.system_prompt();
+        let factory = GraphToolFactory::new(self.executor);
+
+        info!(
+            provider = "xai",
+            model = %model,
+            tier = ?self.tier,
+            max_turns = self.max_turns,
+            analysis_type = ?self.analysis_type,
+            "Building Rig agent"
+        );
+
+        let agent = client
+            .agent(&model)
+            .preamble(&system_prompt)
+            .max_tokens(self.tier.max_output_tokens())
+            .tool(factory.transitive_dependencies())
+            .tool(factory.circular_dependencies())
+            .tool(factory.call_chain())
+            .tool(factory.coupling_metrics())
+            .tool(factory.hub_nodes())
+            .tool(factory.reverse_dependencies())
+            .tool(factory.semantic_search())
+            .tool(factory.complexity_hotspots())
+            .build();
+
+        Ok(XAIAgent {
+            agent,
+            max_turns: self.max_turns,
+            tier: self.tier,
+        })
+    }
+
+    /// Build an LM Studio-based agent (uses OpenAI-compatible API)
+    #[cfg(feature = "openai")]
+    pub fn build_lmstudio(self) -> Result<OpenAIAgent> {
+        let client = RigLLMAdapter::lmstudio_client();
+        let model = get_model_name();
+        let system_prompt = self.system_prompt();
+        let factory = GraphToolFactory::new(self.executor);
+
+        info!(
+            provider = "lmstudio",
+            model = %model,
+            tier = ?self.tier,
+            max_turns = self.max_turns,
+            analysis_type = ?self.analysis_type,
+            "Building Rig agent"
+        );
+
+        let agent = client
+            .agent(&model)
+            .preamble(&system_prompt)
+            .max_tokens(self.tier.max_output_tokens())
+            .tool(factory.transitive_dependencies())
+            .tool(factory.circular_dependencies())
+            .tool(factory.call_chain())
+            .tool(factory.coupling_metrics())
+            .tool(factory.hub_nodes())
+            .tool(factory.reverse_dependencies())
+            .tool(factory.semantic_search())
+            .tool(factory.complexity_hotspots())
+            .build();
+
+        Ok(OpenAIAgent {
+            agent,
+            max_turns: self.max_turns,
+            tier: self.tier,
+        })
+    }
+
+    /// Build an OpenAI-compatible agent with custom base URL
+    #[cfg(feature = "openai")]
+    pub fn build_openai_compatible(self, base_url: &str) -> Result<OpenAIAgent> {
+        let client = RigLLMAdapter::openai_compatible_client(base_url);
+        let model = get_model_name();
+        let system_prompt = self.system_prompt();
+        let factory = GraphToolFactory::new(self.executor);
+
+        info!(
+            provider = "openai-compatible",
+            base_url = %base_url,
+            model = %model,
+            tier = ?self.tier,
+            max_turns = self.max_turns,
+            analysis_type = ?self.analysis_type,
+            "Building Rig agent"
+        );
+
+        let agent = client
+            .agent(&model)
+            .preamble(&system_prompt)
+            .max_tokens(self.tier.max_output_tokens())
+            .tool(factory.transitive_dependencies())
+            .tool(factory.circular_dependencies())
+            .tool(factory.call_chain())
+            .tool(factory.coupling_metrics())
+            .tool(factory.hub_nodes())
+            .tool(factory.reverse_dependencies())
+            .tool(factory.semantic_search())
+            .tool(factory.complexity_hotspots())
+            .build();
+
+        Ok(OpenAIAgent {
+            agent,
+            max_turns: self.max_turns,
+            tier: self.tier,
+        })
     }
 }
 
@@ -212,7 +338,7 @@ pub trait RigAgentTrait: Send + Sync {
 /// OpenAI-based Rig agent
 #[cfg(feature = "openai")]
 pub struct OpenAIAgent {
-    agent: rig_core::agent::Agent<rig_core::providers::openai::CompletionModel>,
+    agent: rig::agent::Agent<rig::providers::openai::responses_api::ResponsesCompletionModel>,
     max_turns: usize,
     tier: ContextTier,
 }
@@ -221,7 +347,7 @@ pub struct OpenAIAgent {
 #[async_trait::async_trait]
 impl RigAgentTrait for OpenAIAgent {
     async fn execute(&self, query: &str) -> Result<String> {
-        use rig_core::completion::Chat;
+        use rig::completion::Chat;
 
         let response = self
             .agent
@@ -244,7 +370,7 @@ impl RigAgentTrait for OpenAIAgent {
 /// Anthropic-based Rig agent
 #[cfg(feature = "anthropic")]
 pub struct AnthropicAgent {
-    agent: rig_core::agent::Agent<rig_core::providers::anthropic::CompletionModel>,
+    agent: rig::agent::Agent<rig::providers::anthropic::completion::CompletionModel>,
     max_turns: usize,
     tier: ContextTier,
 }
@@ -253,7 +379,7 @@ pub struct AnthropicAgent {
 #[async_trait::async_trait]
 impl RigAgentTrait for AnthropicAgent {
     async fn execute(&self, query: &str) -> Result<String> {
-        use rig_core::completion::Chat;
+        use rig::completion::Chat;
 
         let response = self
             .agent
@@ -276,7 +402,7 @@ impl RigAgentTrait for AnthropicAgent {
 /// Ollama-based Rig agent
 #[cfg(feature = "ollama")]
 pub struct OllamaAgent {
-    agent: rig_core::agent::Agent<rig_core::providers::ollama::CompletionModel>,
+    agent: rig::agent::Agent<rig::providers::ollama::CompletionModel>,
     max_turns: usize,
     tier: ContextTier,
 }
@@ -285,7 +411,39 @@ pub struct OllamaAgent {
 #[async_trait::async_trait]
 impl RigAgentTrait for OllamaAgent {
     async fn execute(&self, query: &str) -> Result<String> {
-        use rig_core::completion::Chat;
+        use rig::completion::Chat;
+
+        let response = self
+            .agent
+            .chat(query, vec![])
+            .await
+            .map_err(|e| anyhow!("Agent execution failed: {}", e))?;
+
+        Ok(response)
+    }
+
+    fn tier(&self) -> ContextTier {
+        self.tier
+    }
+
+    fn max_turns(&self) -> usize {
+        self.max_turns
+    }
+}
+
+/// xAI-based Rig agent (native rig provider)
+#[cfg(feature = "openai")]
+pub struct XAIAgent {
+    agent: rig::agent::Agent<rig::providers::xai::completion::CompletionModel>,
+    max_turns: usize,
+    tier: ContextTier,
+}
+
+#[cfg(feature = "openai")]
+#[async_trait::async_trait]
+impl RigAgentTrait for XAIAgent {
+    async fn execute(&self, query: &str) -> Result<String> {
+        use rig::completion::Chat;
 
         let response = self
             .agent

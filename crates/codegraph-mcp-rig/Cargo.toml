@@ -18,8 +18,8 @@ anthropic = []
 ollama = []
 
 [dependencies]
-# Rig framework
-rig-core = "0.26"
+# Rig framework (aliased as 'rig' for cleaner imports)
+rig = { package = "rig-core", version = "0.26" }
 
 # Internal shared crates
 codegraph-core = { path = "../codegraph-core" }
