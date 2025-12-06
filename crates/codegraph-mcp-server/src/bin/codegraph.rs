@@ -1388,6 +1388,10 @@ async fn handle_index(
         stats.edges
     );
     println!(
+        "│ 🎯 Resolution: {:>6.1}% ({} resolved, {} unresolved)      │",
+        stats.resolution_rate, stats.resolved_edges, stats.unresolved_edges
+    );
+    println!(
         "│ 💾 Embeddings: {:>6} chunks ({}-dim)                  │",
         stats.embeddings, stats.embedding_dimension
     );

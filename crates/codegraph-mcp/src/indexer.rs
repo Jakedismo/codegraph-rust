@@ -1561,8 +1561,9 @@ impl ProjectIndexer {
                 all_resolved_edges.extend(chunk_edges);
             }
 
-            let mut stored_edges_local = 0usize;
-            let mut resolution_rate_local = 0.0;
+        let mut stored_edges_local = 0usize;
+        let mut resolution_rate_local = 0.0;
+        let mut degree_map: std::collections::HashMap<NodeId, i32> = std::collections::HashMap::new();
 
             // Store resolved edges via writer
             if !all_resolved_edges.is_empty() {
@@ -1579,6 +1580,12 @@ impl ProjectIndexer {
                         },
                     )
                     .collect();
+
+                // Accumulate degrees in-memory for tie-breaking
+                for (from, to, _, _) in all_resolved_edges.iter() {
+                    *degree_map.entry(*from).or_insert(0) += 1;
+                    *degree_map.entry(*to).or_insert(0) += 1;
+                }
 
                 stored_edges_local = serializable_edges.len();
                 if let Err(err) = self.enqueue_edges(serializable_edges).await {
@@ -1727,6 +1734,9 @@ impl ProjectIndexer {
         stats.chunks = stats.embeddings; // chunks == embeddings in current impl
         stats.embedding_dimension = self.vector_dim;
         stats.embedding_provider = provider.clone();
+        stats.resolved_edges = stored_edges;
+        stats.unresolved_edges = total_edges_extracted.saturating_sub(stored_edges);
+        stats.resolution_rate = resolution_rate;
 
         self.shutdown_surreal_writer().await?;
 
@@ -3950,6 +3960,9 @@ pub struct IndexStats {
     pub chunks: usize,
     pub embedding_dimension: usize,
     pub embedding_provider: String,
+    pub resolved_edges: usize,
+    pub unresolved_edges: usize,
+    pub resolution_rate: f64,
 }
 
 impl IndexStats {
