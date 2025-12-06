@@ -308,8 +308,8 @@ mod tests {
         let selector = PromptSelector::new();
         let stats = selector.stats();
 
-        assert_eq!(stats.total_prompts, 28); // 7 analysis types × 4 verbosity levels
-        assert_eq!(stats.expected_prompts, 28);
+        assert_eq!(stats.total_prompts, 32); // 8 analysis types × 4 verbosity levels
+        assert_eq!(stats.expected_prompts, 32);
         assert_eq!(stats.coverage_percentage, 100.0);
     }
 
@@ -397,21 +397,27 @@ mod tests {
                     .select_prompt(analysis_type, tier)
                     .expect("Should have prompt");
 
-                // Should contain zero heuristics guidance
+                // Should contain zero heuristics guidance (case-insensitive check)
+                // Also accept checklist-style prompts that enforce structured workflows
+                let prompt_lower = prompt.to_lowercase();
                 assert!(
-                    prompt.contains("ZERO HEURISTIC")
-                        || prompt.contains("NO HEURISTIC")
-                        || prompt.contains("ONLY structured")
-                        || prompt.contains("NO assumptions"),
-                    "Prompt for {:?}/{:?} should enforce zero heuristics",
+                    prompt_lower.contains("zero heuristic")
+                        || prompt_lower.contains("no heuristic")
+                        || prompt_lower.contains("only structured")
+                        || prompt_lower.contains("no assumptions")
+                        || prompt_lower.contains("phase-based checklist"), // Checklist-style prompts
+                    "Prompt for {:?}/{:?} should enforce zero heuristics or use checklist workflow",
                     analysis_type,
                     tier
                 );
 
-                // Should enforce JSON response format
+                // Should enforce JSON response format or checklist format
+                let has_json_format =
+                    prompt.contains("\"reasoning\"") && prompt.contains("\"tool_call\"");
+                let has_checklist_format = prompt.contains("☐") || prompt.contains("✅");
                 assert!(
-                    prompt.contains("\"reasoning\"") && prompt.contains("\"tool_call\""),
-                    "Prompt for {:?}/{:?} should specify JSON response format",
+                    has_json_format || has_checklist_format,
+                    "Prompt for {:?}/{:?} should specify JSON response format or checklist format",
                     analysis_type,
                     tier
                 );

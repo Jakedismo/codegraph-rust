@@ -12,6 +12,7 @@ path = "src/lib.rs"
 default = ["daemon"]
 ai-enhanced = [
     "codegraph-mcp-autoagents",
+    "codegraph-mcp-rig",
     "codegraph-ai",
     "codegraph-mcp-autoagents/autoagents-experimental",
     "codegraph-ai/all-cloud-providers",
@@ -48,6 +49,7 @@ full = [
 codegraph-mcp-core = { path = "../codegraph-mcp-core" }
 codegraph-mcp-tools = { path = "../codegraph-mcp-tools" }
 codegraph-mcp-autoagents = { path = "../codegraph-mcp-autoagents", optional = true }
+codegraph-mcp-rig = { path = "../codegraph-mcp-rig", optional = true }
 codegraph-mcp-daemon = { path = "../codegraph-mcp-daemon", optional = true }
 codegraph-core = { path = "../codegraph-core" }
 codegraph-graph = { path = "../codegraph-graph" }

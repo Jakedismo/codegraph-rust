@@ -129,14 +129,22 @@ timeout_secs = 120
 insights_mode = "context-only"
 
 # ============================================================================
-# Agent Architecture Configuration (AutoAgents Experimental)
+# Agent Architecture Configuration
 # ============================================================================
-# Note: Requires building with --features autoagents-experimental
+# Select agent backend at runtime via CODEGRAPH_AGENT_ARCHITECTURE env var
+# No recompilation needed - all architectures included in ai-enhanced builds
 
-# Agent architecture: "react" or "lats"
-# - "react": Fast single-pass reasoning (default)
-# - "lats": Language Agent Tree Search for higher quality (requires --features autoagents-lats)
-# agent_architecture = "react"
+# Agent architecture: "react", "lats", or "rig"
+# - "react": ReAct-style single-pass reasoning (default, fast and efficient)
+# - "lats": Language Agent Tree Search for complex problems (multi-path exploration)
+# - "rig": Rig framework native Rust orchestration (alternative agent backend)
+#
+# Set via environment variable:
+#   CODEGRAPH_AGENT_ARCHITECTURE=react  # default
+#   CODEGRAPH_AGENT_ARCHITECTURE=lats   # for complex analysis
+#   CODEGRAPH_AGENT_ARCHITECTURE=rig    # alternative backend
+#
+# All architectures use the same 8 graph tools and tier-aware prompting
 
 # LATS-specific configuration (only used when agent_architecture = "lats")
 # Note: All LATS features require --features autoagents-lats at build time

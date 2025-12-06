@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### **Runtime Agent Architecture Selection**
+- **`CODEGRAPH_AGENT_ARCHITECTURE`**: Environment variable for runtime selection of agent backend
+  - `react` (default): ReAct-style single-pass reasoning via AutoAgents
+  - `lats`: Language Agent Tree Search for higher quality multi-path exploration
+  - `rig`: Rig framework agent with native Rust LLM orchestration
+- **`codegraph-mcp-rig`**: New crate implementing Rig-based agent backend
+  - Alternative to AutoAgents using the [Rig framework](https://github.com/0xPlaygrounds/rig) (v0.26)
+  - Same 8 graph analysis tools: transitive deps, reverse deps, call chains, cycles, coupling, hubs, semantic search, complexity
+  - Tier-aware prompting (Small/Medium/Large/Massive) matching AutoAgents behavior
+  - Conversation memory for multi-turn analysis within a session
+  - Provider support: OpenAI, Anthropic, Ollama (via feature flags)
+- **Runtime dispatcher**: `execute_agentic_workflow` dispatches to selected architecture without recompilation
+- **Framework identification**: Response JSON includes `framework` field (`"Rig"`, `"AutoAgents-ReAct"`, `"AutoAgents-LATS"`)
+
 #### **Complexity Analysis Agentic Tool**
 - **`agentic_complexity_analysis`**: New MCP tool for identifying high-risk code hotspots
   - Combines cyclomatic complexity with coupling metrics for risk assessment

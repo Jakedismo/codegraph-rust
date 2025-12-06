@@ -51,9 +51,32 @@ CodeGraph doesn't return a list of files and wish you luck. It ships **8 agentic
 | `agentic_semantic_question` | Answers complex questions about your code |
 | `agentic_complexity_analysis` | Identifies high-risk code hotspots for refactoring |
 
-Each tool runs a **reasoning agent** (ReAct or LATS) that plans, searches, analyzes graph relationships, and synthesizes an answer. Not a search result—an *answer*.
+Each tool runs a **reasoning agent** that plans, searches, analyzes graph relationships, and synthesizes an answer. Not a search result—an *answer*.
 
-> **[View Agent Context Gathering Flow](docs/architecture/agent-context-gathering-flow.html)** - Interactive diagram showing how ReAct and LATS agents use graph tools to gather context.
+> **[View Agent Context Gathering Flow](docs/architecture/agent-context-gathering-flow.html)** - Interactive diagram showing how agents use graph tools to gather context.
+
+#### Agent Architectures
+
+CodeGraph supports **three agent backends** selectable at runtime via `CODEGRAPH_AGENT_ARCHITECTURE`:
+
+| Architecture | Description | Best For |
+|--------------|-------------|----------|
+| `react` (default) | ReAct-style single-pass reasoning | Fast, efficient queries |
+| `lats` | Language Agent Tree Search | Complex problems requiring exploration |
+| `rig` | Rig framework native orchestration | Alternative Rust-native agent |
+
+```bash
+# Use default ReAct
+./codegraph start stdio
+
+# Use LATS for complex analysis
+CODEGRAPH_AGENT_ARCHITECTURE=lats ./codegraph start stdio
+
+# Use Rig framework
+CODEGRAPH_AGENT_ARCHITECTURE=rig ./codegraph start stdio
+```
+
+All architectures use the same 8 graph analysis tools and tier-aware prompting—only the reasoning strategy differs.
 
 ### 3. Tier-Aware Intelligence
 

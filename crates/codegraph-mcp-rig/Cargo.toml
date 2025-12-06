@@ -1,0 +1,49 @@
+[package]
+name = "codegraph-mcp-rig"
+version = "0.1.0"
+edition = "2021"
+authors = ["Solita CodeGraph"]
+license = "Apache-2.0"
+description = "Rig-based agent backend for CodeGraph MCP server"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+rig-experimental = []
+# Provider features
+openai = []
+anthropic = []
+ollama = []
+
+[dependencies]
+# Rig framework
+rig-core = "0.26"
+
+# Internal shared crates
+codegraph-core = { path = "../codegraph-core" }
+codegraph-mcp-core = { path = "../codegraph-mcp-core" }
+codegraph-mcp-tools = { path = "../codegraph-mcp-tools" }
+codegraph-ai = { path = "../codegraph-ai" }
+codegraph-graph = { path = "../codegraph-graph" }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
