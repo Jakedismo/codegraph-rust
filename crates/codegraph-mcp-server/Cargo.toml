@@ -16,12 +16,19 @@ ai-enhanced = [
     "codegraph-ai",
     "codegraph-mcp-autoagents/autoagents-experimental",
     "codegraph-ai/all-cloud-providers",
-    "codegraph-mcp/ai-enhanced"
+    "codegraph-mcp/ai-enhanced",
+    "all-rig-providers"
 ]
 server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
 autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental", "codegraph-mcp/autoagents-experimental"]
 autoagents-lats = ["codegraph-mcp-autoagents/autoagents-lats", "codegraph-mcp/autoagents-lats"]
 all-agents = ["autoagents-experimental", "autoagents-lats"]
+# Rig agent provider features
+rig-openai = ["codegraph-mcp-rig/openai"]
+rig-anthropic = ["codegraph-mcp-rig/anthropic"]
+rig-ollama = ["codegraph-mcp-rig/ollama"]
+rig-xai = ["codegraph-mcp-rig/xai"]
+all-rig-providers = ["rig-openai", "rig-anthropic", "rig-ollama", "rig-xai"]
 embeddings = ["codegraph-mcp-tools/embeddings", "codegraph-mcp/embeddings"]
 embeddings-ollama = ["embeddings", "codegraph-mcp/embeddings-ollama"]
 embeddings-openai = ["embeddings", "codegraph-mcp/embeddings-openai"]

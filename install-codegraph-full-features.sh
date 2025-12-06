@@ -70,6 +70,9 @@ Enabled Features:
    - Ollama (local)
    - LM Studio (local)
    - OpenAI-compatible endpoints
+🔧 Rig agent framework (all providers):
+   - OpenAI, Anthropic, Ollama, xAI
+   - LM Studio, OpenAI-compatible
 🌐 HTTP server (SSE streaming support)
 🔬 AutoAgents framework (experimental)
 🗄️ SurrealDB backend with HNSW vector search
