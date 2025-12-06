@@ -355,11 +355,12 @@ pub struct OpenAIAgent {
 #[async_trait::async_trait]
 impl RigAgentTrait for OpenAIAgent {
     async fn execute(&self, query: &str) -> Result<String> {
-        use rig::completion::Chat;
+        use rig::agent::PromptRequest;
 
-        let response = self
-            .agent
-            .chat(query, vec![])
+        let mut chat_history = vec![];
+        let response = PromptRequest::new(&self.agent, query)
+            .multi_turn(self.max_turns)
+            .with_history(&mut chat_history)
             .await
             .map_err(|e| anyhow!("Agent execution failed: {}", e))?;
 
@@ -387,11 +388,12 @@ pub struct AnthropicAgent {
 #[async_trait::async_trait]
 impl RigAgentTrait for AnthropicAgent {
     async fn execute(&self, query: &str) -> Result<String> {
-        use rig::completion::Chat;
+        use rig::agent::PromptRequest;
 
-        let response = self
-            .agent
-            .chat(query, vec![])
+        let mut chat_history = vec![];
+        let response = PromptRequest::new(&self.agent, query)
+            .multi_turn(self.max_turns)
+            .with_history(&mut chat_history)
             .await
             .map_err(|e| anyhow!("Agent execution failed: {}", e))?;
 
@@ -419,11 +421,12 @@ pub struct OllamaAgent {
 #[async_trait::async_trait]
 impl RigAgentTrait for OllamaAgent {
     async fn execute(&self, query: &str) -> Result<String> {
-        use rig::completion::Chat;
+        use rig::agent::PromptRequest;
 
-        let response = self
-            .agent
-            .chat(query, vec![])
+        let mut chat_history = vec![];
+        let response = PromptRequest::new(&self.agent, query)
+            .multi_turn(self.max_turns)
+            .with_history(&mut chat_history)
             .await
             .map_err(|e| anyhow!("Agent execution failed: {}", e))?;
 
@@ -451,11 +454,12 @@ pub struct XAIAgent {
 #[async_trait::async_trait]
 impl RigAgentTrait for XAIAgent {
     async fn execute(&self, query: &str) -> Result<String> {
-        use rig::completion::Chat;
+        use rig::agent::PromptRequest;
 
-        let response = self
-            .agent
-            .chat(query, vec![])
+        let mut chat_history = vec![];
+        let response = PromptRequest::new(&self.agent, query)
+            .multi_turn(self.max_turns)
+            .with_history(&mut chat_history)
             .await
             .map_err(|e| anyhow!("Agent execution failed: {}", e))?;
 
