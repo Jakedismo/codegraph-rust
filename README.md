@@ -61,8 +61,8 @@ CodeGraph supports **three agent backends** selectable at runtime via `CODEGRAPH
 
 | Architecture | Description | Best For | Model Type |
 |--------------|-------------|----------|------------|
-| `rig` | Rig framework native orchestration | **Fastest performance**, deep analysis | Thinking/reasoning models (o1, o3, Grok reasoning, Claude thinking) |
-| `react` (default) | ReAct-style single-pass reasoning | Quick queries, simple lookups | Non-thinking models (GPT-4o, Claude Sonnet, Llama) |
+| `rig` | Rig framework native orchestration | **Fastest performance**, deep analysis | Thinking/reasoning models (gpt-5.1, Claude 4.5 family, Grok 4.1 Fast Reasoning) |
+| `react` (default) | ReAct-style single-pass reasoning | Quick queries, simple lookups | Basic Instruction following models |
 | `lats` | Language Agent Tree Search | Complex problems requiring exploration | Works well with both |
 
 **Performance notes:**
@@ -88,18 +88,23 @@ All architectures use the same 8 graph analysis tools and tier-aware promptingâ€
 Here's something clever: CodeGraph automatically adjusts its behavior based on the LLM's context window that you configured for the codegraph agent.
 
 Running a small local model? Get focused, efficient queries.
+
 Using GPT-5.1 or Claude with 200K context? Get comprehensive, exploratory analysis.
+
 Using grok-4-1-fast-reasoning with 2M context? Get incredibly comprehensive up-to 40 turns spanning in-depth analyses.
+
 The Agent only uses the amount of steps that it requires to produce the answer so tool execution times vary based on the query and amount of data indexed in the database.
+
 During development the agent used 3-10 steps on average to produce answers for test scenarios.
+
 The Agent is stateless it only has conversational memory for the span of tool execution it does not accumulate context/memory over multiple chained tool calls this is already handled by your client of choice, it accumulates that context so codegraph needs to just provide answers.
 
 | Your Model | CodeGraph's Behavior |
 |------------|---------------------|
-| < 50K tokens | Terse prompts, max 40 reasoning steps |
-| 50K-150K | Balanced analysis, max 40 steps |
-| 150K-500K | Detailed exploration, max 40 steps |
-| > 500K (Grok, etc.) | Full monty, max 40 steps |
+| < 50K tokens | Terse prompts, max 5 steps |
+| 50K-150K | Balanced analysis, max 10 steps |
+| 150K-500K | Detailed exploration, max 15 steps |
+| > 500K (Grok, etc.) | Full monty, max 20 steps |
 
 **Same tool, automatically optimized for your setup.**
 

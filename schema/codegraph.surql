@@ -31,9 +31,10 @@ LET $record = fn::parse_record_id('nodes', $resolved_id);
 LET $node_check = (SELECT project_id FROM $record);
 IF array::len($node_check) = 0 { RETURN NONE; };
 LET $rec_proj = $node_check[0].project_id;
-IF $rec_proj != NONE AND $rec_proj != $project_id { RETURN NONE; };
-LET $dependents = array::distinct((SELECT VALUE id FROM $record<-edges[WHERE edge_type INSIDE $edge_list AND (from.project_id ?? $project_id) = $project_id AND (to.project_id ?? $project_id) = $project_id]<-from));
-LET $dependencies = array::distinct((SELECT VALUE id FROM $record->edges[WHERE edge_type INSIDE $edge_list AND (to.project_id ?? $project_id) = $project_id]->to));
+-- Prefer the node's recorded project_id when available to avoid mismatches
+LET $effective_project = IF $rec_proj != NONE THEN $rec_proj ELSE $project_id END;
+LET $dependents = array::distinct((SELECT VALUE id FROM $record<-edges[WHERE edge_type INSIDE $edge_list AND (from.project_id ?? $effective_project) = $effective_project AND (to.project_id ?? $effective_project) = $effective_project]<-from));
+LET $dependencies = array::distinct((SELECT VALUE id FROM $record->edges[WHERE edge_type INSIDE $edge_list AND (to.project_id ?? $effective_project) = $effective_project]->to));
 LET $dependents_info = (SELECT VALUE fn::node_reference(`value`) FROM $dependents WHERE fn::node_reference(`value`) != NONE);
 LET $dependencies_info = (SELECT VALUE fn::node_reference(`value`) FROM $dependencies WHERE fn::node_reference(`value`) != NONE);
 LET $afferent = array::len($dependents_info);
