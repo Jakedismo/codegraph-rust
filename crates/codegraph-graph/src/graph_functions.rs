@@ -457,70 +457,9 @@ impl GraphFunctions {
         threshold: f32,
         include_graph_context: bool,
     ) -> Result<Vec<serde_json::Value>> {
-        let skip_chunking = std::env::var("CODEGRAPH_EMBEDDING_SKIP_CHUNKING")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-        if !skip_chunking {
-            return self
-                .semantic_search_chunks_with_context(
-                    query_text,
-                    query_embedding,
-                    dimension,
-                    limit,
-                    threshold,
-                    include_graph_context,
-                )
-                .await;
-        }
-        debug!(
-            "Calling fn::semantic_search_with_context(project={}, query='{}', dim={}, limit={}, threshold={})",
-            self.project_id, query_text, dimension, limit, threshold
-        );
-
-        // Convert embedding to Value
-        let embedding_value: serde_json::Value =
-            serde_json::to_value(query_embedding).map_err(|e| {
-                CodeGraphError::Database(format!("Failed to serialize embedding: {}", e))
-            })?;
-
-        let mut response = self
-            .db
-            .query("RETURN fn::semantic_search_with_context($project_id, $query_embedding, $query_text, $dimension, $limit, $threshold, $include_graph_context)")
-            .bind(("project_id", self.project_id.clone()))
-            .bind(("query_embedding", embedding_value))
-            .bind(("query_text", query_text.to_string()))
-            .bind(("dimension", dimension as i64))
-            .bind(("limit", limit as i64))
-            .bind(("threshold", threshold as f64))
-            .bind(("include_graph_context", include_graph_context))
+        // Always use node-level search (via chunks) to return enriched node records
+        self.semantic_search_nodes_via_chunks(query_text, query_embedding, dimension, limit, threshold)
             .await
-            .map_err(|e| {
-                error!("Failed to call semantic_search_with_context: {}", e);
-                CodeGraphError::Database(format!("semantic_search_with_context failed: {}", e))
-            })?;
-
-        // Workaround for SurrealDB 2.x SDK bug (GitHub #4921):
-        // Direct deserialization to serde_json::Value fails with "invalid type: enum"
-        // Instead, get raw SurrealDB Value and serialize via serde_json::to_value
-        let raw_value: SurrealValue = response.take(0).map_err(|e| {
-            error!(
-                "Failed to get raw value from semantic_search_with_context: {}",
-                e
-            );
-            CodeGraphError::Database(format!("Failed to get raw value: {}", e))
-        })?;
-
-        // Convert SurrealDB Value to clean JSON (avoids enum variant tags)
-        let json_value = surreal_to_json(raw_value);
-
-        // Extract Vec from the JSON value
-        let result: Vec<serde_json::Value> = match json_value {
-            serde_json::Value::Array(arr) => arr,
-            serde_json::Value::Null => Vec::new(),
-            other => vec![other],
-        };
-
-        Ok(result)
     }
 
     async fn semantic_search_chunks_with_context(
