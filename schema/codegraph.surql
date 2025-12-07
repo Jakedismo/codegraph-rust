@@ -430,7 +430,7 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
 
     LET $vector_flat = (
         SELECT
-            parent_node.id AS node_id,
+            <string> parent_node.id AS node_id,
             parent_node.name AS name,
             parent_node.node_type AS kind,
             parent_node.language AS language,

@@ -5,6 +5,7 @@ use codegraph_graph::{GraphFunctions, SurrealDbConfig, SurrealDbStorage};
 use codegraph_vector::ollama_embedding_provider::{OllamaEmbeddingConfig, OllamaEmbeddingProvider};
 use codegraph_vector::providers::EmbeddingProvider;
 use serde_json::Value as JsonValue;
+use serde_json::Value as SqlValue;
 
 fn env(name: &str, default: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| default.to_string())
@@ -261,7 +262,7 @@ async fn test_semantic_search_nodes_via_chunks() {
             &query_embedding,
             dim,
             10,  // limit
-            0.2, // threshold
+            0.3, // threshold
         )
         .await
     {
@@ -293,6 +294,8 @@ async fn test_semantic_search_nodes_via_chunks() {
         println!("  start_line: {:?}", result.get("start_line"));
         println!("  end_line: {:?}", result.get("end_line"));
         println!("  vector_score: {:?}", result.get("vector_score"));
+        println!("  match_sources: {:?}", result.get("match_sources"));
+        println!("  matched_symbols: {:?}", result.get("matched_symbols"));
 
         // Show content preview (first 200 chars)
         if let Some(content) = result.get("content").and_then(|c| c.as_str()) {
@@ -389,4 +392,187 @@ async fn test_semantic_search_nodes_via_chunks() {
     } else {
         panic!("[FAIL] Duplicate nodes found!");
     }
+
+    // Extra sanity: a low-threshold query that should return vector hits
+    let low_thresh_query = "GraphFunctions struct";
+    let low_thresh_results: Vec<JsonValue> = match graph
+        .semantic_search_nodes_via_chunks(
+            low_thresh_query,
+            &query_embedding,
+            dim,
+            5,    // limit
+            0.05, // very low threshold to guarantee vector scores surface
+        )
+        .await
+    {
+        Ok(res) => res,
+        Err(e) => {
+            eprintln!("low-threshold semantic_search_nodes_via_chunks error: {e}");
+            return;
+        }
+    };
+
+    println!("\n[LOW-THRESHOLD CHECK] query='{}' results={}", low_thresh_query, low_thresh_results.len());
+    for (i, r) in low_thresh_results.iter().enumerate() {
+        println!(
+            "  [{}] node_id={:?} vector_score={:?} match_sources={:?}",
+            i + 1,
+            r.get("node_id"),
+            r.get("vector_score"),
+            r.get("match_sources")
+        );
+    }
+}
+
+/// Diagnostics: verify embeddings exist and cosine similarities return rows (no threshold filter).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_embedding_diagnostics() {
+    // Reuse connection config
+    let url = env("CODEGRAPH_SURREALDB_URL", "");
+    if url.is_empty() {
+        eprintln!("[skip] CODEGRAPH_SURREALDB_URL not set");
+        return;
+    }
+    let config = SurrealDbConfig {
+        connection: url,
+        namespace: env("CODEGRAPH_SURREALDB_NAMESPACE", "ouroboros"),
+        database: env("CODEGRAPH_SURREALDB_DATABASE", "codegraph"),
+        username: std::env::var("CODEGRAPH_SURREALDB_USERNAME").ok(),
+        password: std::env::var("CODEGRAPH_SURREALDB_PASSWORD").ok(),
+        strict_mode: false,
+        auto_migrate: false,
+        cache_enabled: false,
+    };
+    let storage = match SurrealDbStorage::new(config).await {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[skip] failed to connect to SurrealDB: {e}");
+            return;
+        }
+    };
+    let graph = GraphFunctions::new(storage.db());
+    let project_id = graph.project_id().to_string();
+    println!("Project id: {}", project_id);
+
+    // Real query embedding
+    let mut ollama_config = OllamaEmbeddingConfig::default();
+    if let Ok(model) = std::env::var("CODEGRAPH_EMBEDDING_MODEL") {
+        ollama_config.model_name = model;
+    }
+    let ollama_provider = OllamaEmbeddingProvider::new(ollama_config);
+    if !matches!(ollama_provider.check_availability().await, Ok(true)) {
+        eprintln!("[skip] Ollama not available");
+        return;
+    }
+    let dim = ollama_provider.embedding_dimension();
+    let query_text = "index project function implementation";
+    let query_embedding = match ollama_provider.generate_single_embedding(query_text).await {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("[skip] failed to generate embedding: {e}");
+            return;
+        }
+    };
+    println!("Embedding dim: {}", dim);
+
+    // Counts per dimension columns
+    let count_sql = r#"
+        SELECT
+            count()                      AS total,
+            count(embedding_1024)        AS has_1024,
+            count(embedding_768)         AS has_768,
+            count(embedding_384)         AS has_384
+        FROM chunks
+        WHERE project_id = $project_id;
+    "#;
+    let mut resp = match storage
+        .db()
+        .query(count_sql)
+        .bind(("project_id", project_id.clone()))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[skip] count query failed: {e}");
+            return;
+        }
+    };
+    let counts: Vec<SqlValue> = resp.take::<Vec<SqlValue>>(0).unwrap_or_default();
+    println!("Chunk embedding counts (this project): {:?}", counts);
+
+    let global_sql = r#"
+        SELECT project_id, count() AS rows, count(embedding_1024) AS has_1024
+        FROM chunks
+        GROUP BY project_id
+        LIMIT 5;
+    "#;
+    let mut global_resp = match storage.db().query(global_sql).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[skip] global project listing failed: {e}");
+            return;
+        }
+    };
+    let global_rows: Vec<SqlValue> = global_resp.take::<Vec<SqlValue>>(0).unwrap_or_default();
+    println!("Chunk embedding counts (all projects): {:?}", global_rows);
+
+    // Sample a few chunk rows to inspect parent_node presence and embedding len
+    let sample_sql = r#"
+        SELECT <string>id AS id, <string>parent_node AS parent_node, array::len(embedding_1024) AS len
+        FROM chunks
+        WHERE project_id = $project_id AND embedding_1024 != NONE
+        LIMIT 3;
+    "#;
+    let mut sample_resp = match storage
+        .db()
+        .query(sample_sql)
+        .bind(("project_id", project_id.clone()))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[skip] sample query failed: {e}");
+            return;
+        }
+    };
+    let mut samples: Vec<SqlValue> = sample_resp.take::<Vec<SqlValue>>(0).unwrap_or_default();
+    if samples.is_empty() {
+        // Fallback: show a global sample so we can see if project_id is the issue
+        let global_sample_sql = r#"
+            SELECT <string>id AS id, <string>parent_node AS parent_node, array::len(embedding_1024) AS len, project_id
+            FROM chunks
+            WHERE embedding_1024 != NONE
+            LIMIT 3;
+        "#;
+        if let Ok(mut r) = storage.db().query(global_sample_sql).await {
+            samples = r.take::<Vec<SqlValue>>(0).unwrap_or_default();
+        }
+    }
+    println!("Sample chunks: {:?}", samples);
+
+    // Top cosine scores without threshold on the inferred column (try 1024 first)
+    let cosine_sql = r#"
+        SELECT <string>parent_node AS parent_node,
+               vector::similarity::cosine(embedding_1024, $query_embedding) AS score
+        FROM chunks
+        WHERE project_id = $project_id
+          AND embedding_1024 != NONE
+        ORDER BY score DESC
+        LIMIT 5;
+    "#;
+    let mut resp2 = match storage
+        .db()
+        .query(cosine_sql)
+        .bind(("project_id", project_id.clone()))
+        .bind(("query_embedding", query_embedding.clone()))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[skip] cosine query failed: {e}");
+            return;
+        }
+    };
+    let top: Vec<SqlValue> = resp2.take::<Vec<SqlValue>>(0).unwrap_or_default();
+    println!("Top cosine scores (1024 column): {:?}", top);
 }

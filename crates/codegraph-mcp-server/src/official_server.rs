@@ -20,6 +20,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::future::Future;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -632,20 +633,31 @@ impl CodeGraphMCPServer {
                     }
                 })?;
 
-            // Derive project_id from env or current working directory for consistent DB selection
-            let inferred_project_id = std::env::var("CODEGRAPH_PROJECT_ID")
+            // Derive project_id from env or canonical working directory for consistent DB selection
+            let env_project = std::env::var("CODEGRAPH_PROJECT_ID")
                 .ok()
-                .filter(|v| !v.trim().is_empty())
-                .or_else(|| {
-                    std::env::current_dir()
-                        .ok()
-                        .map(|p| p.display().to_string())
-                })
+                .filter(|v| !v.trim().is_empty());
+            let cwd_fallback = std::env::current_dir()
+                .ok()
+                .map(|p| p.display().to_string());
+            let raw_project = env_project
+                .clone()
+                .or(cwd_fallback)
                 .unwrap_or_else(|| "default-project".to_string());
+
+            let canonical_project = Path::new(&raw_project)
+                .canonicalize()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| raw_project.clone());
+
+            // If env was not set, persist it so downstream tools share the same project_id
+            if env_project.is_none() {
+                std::env::set_var("CODEGRAPH_PROJECT_ID", &canonical_project);
+            }
 
             Arc::new(GraphFunctions::new_with_project_id(
                 storage.db(),
-                inferred_project_id,
+                canonical_project,
             ))
         };
 
