@@ -309,7 +309,7 @@ jobs:
         cargo llvm-cov --workspace --lcov --output-path lcov.info --ignore-filename-regex "(tests?/|benches?/|examples?/)"
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
         files: lcov.info
         fail_ci_if_error: false # Don't fail CI on codecov issues
