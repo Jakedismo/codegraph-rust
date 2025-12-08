@@ -211,8 +211,8 @@ Add to your MCP config:
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │                    Agentic Tools Layer                    │  │
 │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────────────┐  │  │
-│  │  │ ReAct   │ │  LATS   │ │  Tier   │ │ Tool Execution  │  │  │
-│  │  │ Agent   │ │  Agent  │ │ Selector│ │    Pipeline     │  │  │
+│  │  │  Rig    │ │ ReAct   │ │  LATS   │ │ Tool Execution  │  │  │
+│  │  │ Agent   │ │ Agent   │ │  Agent  │ │    Pipeline     │  │  │
 │  │  └────┬────┘ └────┬────┘ └────┬────┘ └────────┬────────┘  │  │
 │  └───────┼───────────┼───────────┼───────────────┼───────────┘  │
 │          └───────────┴───────────┴───────────────┘              │
@@ -240,6 +240,7 @@ Add to your MCP config:
 │                                                                 │
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │              SurrealQL Graph Functions                     │ │
+│  │   fn::semantic_search_nodes_via_chunks                     │ │
 │  │   fn::semantic_search_chunks_with_context                  │ │
 │  │   fn::get_transitive_dependencies                          │ │
 │  │   fn::trace_call_chain                                     │ │
