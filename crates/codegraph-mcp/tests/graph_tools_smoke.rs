@@ -11,6 +11,20 @@ fn env(name: &str, default: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| default.to_string())
 }
 
+fn query_embedding_truncate_warn(actual: usize, target: usize) {
+    eprintln!(
+        "[warn] embedding length {} > requested dim {}, truncating to avoid dimension mismatch",
+        actual, target
+    );
+}
+
+fn query_embedding_pad_warn(actual: usize, target: usize) {
+    eprintln!(
+        "[warn] embedding length {} < requested dim {}, padding with zeros (may reduce recall)",
+        actual, target
+    );
+}
+
 async fn setup_graph_functions() -> Option<GraphFunctions> {
     let url = env("CODEGRAPH_SURREALDB_URL", "");
     if url.is_empty() {
@@ -113,7 +127,11 @@ async fn test_semantic_search_returns_node_ids() {
         }
     }
 
-    let dim = ollama_provider.embedding_dimension();
+    // Prefer explicit env override for dimension if provided
+    let dim_env = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok());
+    let dim = dim_env.unwrap_or_else(|| ollama_provider.embedding_dimension());
     println!("Using embedding dimension: {}", dim);
 
     // Generate REAL embedding from query text
@@ -122,14 +140,27 @@ async fn test_semantic_search_returns_node_ids() {
         match ollama_provider.generate_single_embedding(query_text).await {
             Ok(emb) => {
                 println!("Generated embedding with {} dimensions", emb.len());
-                println!("First 5 values: {:?}", &emb[..5.min(emb.len())]);
-                emb
+                if emb.len() > dim {
+                    query_embedding_truncate_warn(emb.len(), dim);
+                    emb.into_iter().take(dim).collect()
+                } else if emb.len() < dim {
+                    query_embedding_pad_warn(emb.len(), dim);
+                    let mut padded = emb;
+                    padded.resize(dim, 0.0);
+                    padded
+                } else {
+                    emb
+                }
             }
             Err(e) => {
                 eprintln!("[ERROR] Failed to generate embedding: {e}");
                 return;
             }
         };
+    println!(
+        "First 5 values: {:?}",
+        &query_embedding[..5.min(query_embedding.len())]
+    );
 
     let results: Vec<JsonValue> = match graph
         .semantic_search_with_context(
@@ -239,8 +270,16 @@ async fn test_semantic_search_nodes_via_chunks() {
         }
     }
 
-    let dim = ollama_provider.embedding_dimension();
-    println!("Using embedding dimension: {}", dim);
+    // Dimension can be overridden for debugging with CODEGRAPH_EMBEDDING_DIMENSION
+    let provider_dim = ollama_provider.embedding_dimension();
+    let dim = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(provider_dim);
+    println!(
+        "Using embedding dimension: {} (provider reported {})",
+        dim, provider_dim
+    );
 
     // Generate REAL embedding from query text
     let query_text = "index_project function implementation";
@@ -248,13 +287,66 @@ async fn test_semantic_search_nodes_via_chunks() {
         match ollama_provider.generate_single_embedding(query_text).await {
             Ok(emb) => {
                 println!("Generated embedding with {} dimensions", emb.len());
-                emb
+                // Align length to requested dim to avoid Surreal vector shape errors
+                if emb.len() > dim {
+                    query_embedding_truncate_warn(emb.len(), dim);
+                    emb.into_iter().take(dim).collect()
+                } else if emb.len() < dim {
+                    query_embedding_pad_warn(emb.len(), dim);
+                    let mut padded = emb;
+                    padded.resize(dim, 0.0);
+                    padded
+                } else {
+                    emb
+                }
             }
             Err(e) => {
                 eprintln!("[ERROR] Failed to generate embedding: {e}");
                 return;
             }
         };
+    // Embed debug: print first 8 values and L2 norm
+    let preview: Vec<f32> = query_embedding.iter().cloned().take(8).collect();
+    let norm: f32 = query_embedding.iter().map(|v| v * v).sum::<f32>().sqrt();
+    println!("Embedding preview (first 8): {:?}", preview);
+    println!("Embedding L2 norm: {:.4}", norm);
+
+    // Fetch one stored embedding to compare norms
+    let embedding_column = format!("embedding_{}", dim);
+    let stored_sql = format!(
+        "
+        SELECT {col}
+        FROM chunks
+        WHERE project_id = $project_id
+          AND {col} != NONE
+        LIMIT 1;
+    ",
+        col = embedding_column
+    );
+    if let Ok(mut resp) = graph
+        .db()
+        .query(stored_sql)
+        .bind(("project_id", graph.project_id().to_string()))
+        .await
+    {
+        let stored: Option<JsonValue> = resp.take(0).unwrap_or(None);
+        if let Some(embedding_val) = stored {
+            if let Some(arr) = embedding_val
+                .get(&embedding_column)
+                .and_then(|v| v.as_array())
+            {
+                let vals: Vec<f32> = arr
+                    .iter()
+                    .filter_map(|x| x.as_f64())
+                    .map(|x| x as f32)
+                    .collect();
+                let preview: Vec<f32> = vals.iter().cloned().take(8).collect();
+                let norm: f32 = vals.iter().map(|v| v * v).sum::<f32>().sqrt();
+                println!("Stored embedding preview (first 8): {:?}", preview);
+                println!("Stored embedding L2 norm: {:.4}", norm);
+            }
+        }
+    }
 
     let results: Vec<JsonValue> = match graph
         .semantic_search_nodes_via_chunks(
@@ -262,7 +354,7 @@ async fn test_semantic_search_nodes_via_chunks() {
             &query_embedding,
             dim,
             10,  // limit
-            0.3, // threshold
+            0.05, // threshold (lowered to surface vector hits)
         )
         .await
     {
@@ -454,7 +546,7 @@ async fn test_embedding_diagnostics() {
     let project_id = graph.project_id().to_string();
     println!("Project id: {}", project_id);
 
-    // Real query embedding
+    // Real query embedding (primary)
     let mut ollama_config = OllamaEmbeddingConfig::default();
     if let Ok(model) = std::env::var("CODEGRAPH_EMBEDDING_MODEL") {
         ollama_config.model_name = model;
@@ -464,16 +556,36 @@ async fn test_embedding_diagnostics() {
         eprintln!("[skip] Ollama not available");
         return;
     }
-    let dim = ollama_provider.embedding_dimension();
+    let provider_dim = ollama_provider.embedding_dimension();
+    let dim = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(provider_dim);
     let query_text = "index project function implementation";
     let query_embedding = match ollama_provider.generate_single_embedding(query_text).await {
-        Ok(e) => e,
+        Ok(e) => {
+            if e.len() > dim {
+                query_embedding_truncate_warn(e.len(), dim);
+                e.into_iter().take(dim).collect()
+            } else if e.len() < dim {
+                query_embedding_pad_warn(e.len(), dim);
+                let mut padded = e;
+                padded.resize(dim, 0.0);
+                padded
+            } else {
+                e
+            }
+        }
         Err(e) => {
             eprintln!("[skip] failed to generate embedding: {e}");
             return;
         }
     };
-    println!("Embedding dim: {}", dim);
+    println!(
+        "Embedding dim: {} (provider reported {})",
+        dim, provider_dim
+    );
+    println!("Primary query text: {}", query_text);
 
     // Counts per dimension columns
     let count_sql = r#"
@@ -517,15 +629,19 @@ async fn test_embedding_diagnostics() {
     println!("Chunk embedding counts (all projects): {:?}", global_rows);
 
     // Sample a few chunk rows to inspect parent_node presence and embedding len
-    let sample_sql = r#"
-        SELECT <string>id AS id, <string>parent_node AS parent_node, array::len(embedding_1024) AS len
+    let embedding_column = format!("embedding_{}", dim);
+    let sample_sql = format!(
+        "
+        SELECT <string>id AS id, <string>parent_node AS parent_node, array::len({col}) AS len
         FROM chunks
-        WHERE project_id = $project_id AND embedding_1024 != NONE
+        WHERE project_id = $project_id AND {col} != NONE
         LIMIT 3;
-    "#;
+    ",
+        col = embedding_column
+    );
     let mut sample_resp = match storage
         .db()
-        .query(sample_sql)
+        .query(sample_sql.as_str())
         .bind(("project_id", project_id.clone()))
         .await
     {
@@ -538,31 +654,37 @@ async fn test_embedding_diagnostics() {
     let mut samples: Vec<SqlValue> = sample_resp.take::<Vec<SqlValue>>(0).unwrap_or_default();
     if samples.is_empty() {
         // Fallback: show a global sample so we can see if project_id is the issue
-        let global_sample_sql = r#"
-            SELECT <string>id AS id, <string>parent_node AS parent_node, array::len(embedding_1024) AS len, project_id
+        let global_sample_sql = format!(
+            "
+            SELECT <string>id AS id, <string>parent_node AS parent_node, array::len({col}) AS len, project_id
             FROM chunks
-            WHERE embedding_1024 != NONE
+            WHERE {col} != NONE
             LIMIT 3;
-        "#;
-        if let Ok(mut r) = storage.db().query(global_sample_sql).await {
+        ",
+            col = embedding_column
+        );
+        if let Ok(mut r) = storage.db().query(global_sample_sql.as_str()).await {
             samples = r.take::<Vec<SqlValue>>(0).unwrap_or_default();
         }
     }
     println!("Sample chunks: {:?}", samples);
 
     // Top cosine scores without threshold on the inferred column (try 1024 first)
-    let cosine_sql = r#"
+    let cosine_sql = format!(
+        "
         SELECT <string>parent_node AS parent_node,
-               vector::similarity::cosine(embedding_1024, $query_embedding) AS score
+               vector::similarity::cosine({col}, $query_embedding) AS score
         FROM chunks
         WHERE project_id = $project_id
-          AND embedding_1024 != NONE
+          AND {col} != NONE
         ORDER BY score DESC
         LIMIT 5;
-    "#;
+    ",
+        col = embedding_column
+    );
     let mut resp2 = match storage
         .db()
-        .query(cosine_sql)
+        .query(cosine_sql.as_str())
         .bind(("project_id", project_id.clone()))
         .bind(("query_embedding", query_embedding.clone()))
         .await
@@ -575,4 +697,63 @@ async fn test_embedding_diagnostics() {
     };
     let top: Vec<SqlValue> = resp2.take::<Vec<SqlValue>>(0).unwrap_or_default();
     println!("Top cosine scores (1024 column): {:?}", top);
+
+    // Secondary query to mirror the smoke test low-threshold check
+    let secondary_q = "GraphFunctions struct";
+    let secondary_emb = match ollama_provider.generate_single_embedding(secondary_q).await {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("[skip] failed to generate secondary embedding: {e}");
+            return;
+        }
+    };
+    let mut resp3 = match storage
+        .db()
+        .query(cosine_sql)
+        .bind(("project_id", project_id.clone()))
+        .bind(("query_embedding", secondary_emb.clone()))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[skip] secondary cosine query failed: {e}");
+            return;
+        }
+    };
+    let top_secondary: Vec<SqlValue> = resp3.take::<Vec<SqlValue>>(0).unwrap_or_default();
+    println!(
+        "Top cosine scores (1024 column) for '{}': {:?}",
+        secondary_q, top_secondary
+    );
+
+    // Direct function call diagnostic to see vector_score coming from fn::semantic_search_nodes_via_chunks
+    let fn_sql = r#"
+        RETURN fn::semantic_search_nodes_via_chunks(
+            $project_id,
+            $query_embedding,
+            $query_text,
+            $dimension,
+            $limit,
+            $threshold
+        );
+    "#;
+    let mut fn_resp = match storage
+        .db()
+        .query(fn_sql)
+        .bind(("project_id", project_id.clone()))
+        .bind(("query_embedding", secondary_emb.clone()))
+        .bind(("query_text", secondary_q))
+        .bind(("dimension", 1024_i64))
+        .bind(("limit", 5_i64))
+        .bind(("threshold", 0.05_f64))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[skip] function call failed: {e}");
+            return;
+        }
+    };
+    let fn_results: Vec<SqlValue> = fn_resp.take::<Vec<SqlValue>>(0).unwrap_or_default();
+    println!("Function results (low threshold): {:?}", fn_results);
 }

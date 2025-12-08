@@ -61,6 +61,51 @@ pub struct GraphFunctions {
 }
 
 impl GraphFunctions {
+    /// Detect an available embedding dimension by probing chunk columns.
+    #[allow(dead_code)]
+    async fn detect_embedding_dimension(&self) -> Result<usize> {
+        let sql = r#"
+            RETURN {
+                has_1024: (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_1024 != NONE LIMIT 1)[0],
+                has_768:  (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_768  != NONE LIMIT 1)[0],
+                has_384:  (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_384  != NONE LIMIT 1)[0]
+            };
+        "#;
+        let mut resp = self
+            .db
+            .query(sql)
+            .bind(("project_id", self.project_id.clone()))
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("dimension probe failed: {e}")))?;
+        let val: Option<SurrealValue> = resp.take(0).ok();
+        let json = val
+            .map(surreal_to_json)
+            .unwrap_or_else(|| serde_json::Value::Null);
+        let has_1024 = json
+            .get("has_1024")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let has_768 = json
+            .get("has_768")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let has_384 = json
+            .get("has_384")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        if has_1024 > 0 {
+            Ok(1024)
+        } else if has_768 > 0 {
+            Ok(768)
+        } else if has_384 > 0 {
+            Ok(384)
+        } else {
+            Err(CodeGraphError::Database(
+                "No embeddings found for this project".to_string(),
+            ))
+        }
+    }
+
     pub fn new(db: Arc<Surreal<Any>>) -> Self {
         Self {
             db,
@@ -77,6 +122,17 @@ impl GraphFunctions {
 
     pub fn project_id(&self) -> &str {
         &self.project_id
+    }
+
+    /// Expose Surreal DB handle (for diagnostics/tests only)
+    pub fn db(&self) -> Arc<Surreal<Any>> {
+        self.db.clone()
+    }
+
+    /// Expose raw DB for diagnostics/tests (not for production use).
+    #[cfg(test)]
+    pub fn raw_db(&self) -> Arc<Surreal<Any>> {
+        self.db.clone()
     }
 
     fn default_project_id() -> String {
@@ -541,25 +597,17 @@ impl GraphFunctions {
         limit: usize,
         threshold: f32,
     ) -> Result<Vec<serde_json::Value>> {
-        debug!(
-            "Calling fn::semantic_search_nodes_via_chunks(project={}, query='{}', dim={}, limit={}, threshold={})",
-            self.project_id, query_text, dimension, limit, threshold
-        );
-
-        let embedding_value: serde_json::Value =
-            serde_json::to_value(query_embedding).map_err(|e| {
-                CodeGraphError::Database(format!("Failed to serialize embedding: {}", e))
-            })?;
-
+        // Call the SurrealDB function directly
+        let embedding_value = surrealdb::sql::Value::from(query_embedding.to_vec());
         let mut response = self
             .db
-            .query("RETURN fn::semantic_search_nodes_via_chunks($project_id, $query_embedding, $query_text, $dimension, $limit, $threshold)")
+            .query("RETURN fn::semantic_search_nodes_via_chunks($project_id, $query_text, $dimension, $limit, $threshold, $query_embedding)")
             .bind(("project_id", self.project_id.clone()))
-            .bind(("query_embedding", embedding_value))
             .bind(("query_text", query_text.to_string()))
             .bind(("dimension", dimension as i64))
             .bind(("limit", limit as i64))
             .bind(("threshold", threshold as f64))
+            .bind(("query_embedding", embedding_value))
             .await
             .map_err(|e| {
                 error!("Failed to call semantic_search_nodes_via_chunks: {}", e);
@@ -574,10 +622,7 @@ impl GraphFunctions {
             CodeGraphError::Database(format!("Failed to get raw value: {}", e))
         })?;
 
-        // Convert SurrealDB Value to clean JSON (avoids enum variant tags)
         let json_value = surreal_to_json(raw_value);
-
-        // Extract Vec from the JSON value
         let result: Vec<serde_json::Value> = match json_value {
             serde_json::Value::Array(arr) => arr,
             serde_json::Value::Null => Vec::new(),

@@ -20,7 +20,7 @@ use codegraph_parser::TreeSitterParser;
 use codegraph_vector::prep::chunker::ChunkPlan;
 #[cfg(feature = "ai-enhanced")]
 use futures::{stream, StreamExt};
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use num_cpus;
 use rayon::prelude::*;
 use regex::Regex;
@@ -917,12 +917,15 @@ impl ProjectIndexer {
             .parse_files_with_unified_extraction(files.clone(), total_files as u64)
             .await?;
 
-        ast_pb.finish_with_message(format!(
-            "🌳 Parsed {} files | nodes: {} | edges: {}",
-            pstats.parsed_files,
-            nodes.len(),
-            edges.len()
-        ));
+        self.finish_bar(
+            ast_pb,
+            format!(
+                "🌳 Parsed {} files | nodes: {} | edges: {}",
+                pstats.parsed_files,
+                nodes.len(),
+                edges.len()
+            ),
+        )?;
 
         // Generate deterministic IDs and build old_id -> new_id mapping to update edge references
         let mut id_mapping: std::collections::HashMap<NodeId, NodeId> =
@@ -976,10 +979,13 @@ impl ProjectIndexer {
                 pool.install(chunker)
             };
             let elapsed = start.elapsed();
-            chunk_pb.finish_with_message(format!(
-                "🧩 Chunk plan built: {} nodes → {} chunks in {:.1?}",
-                plan.stats.total_nodes, plan.stats.total_chunks, elapsed
-            ));
+            self.finish_bar(
+                chunk_pb,
+                format!(
+                    "🧩 Chunk plan built: {} nodes → {} chunks in {:.1?}",
+                    plan.stats.total_nodes, plan.stats.total_chunks, elapsed
+                ),
+            )?;
             if plan.stats.total_chunks == 0 && !nodes.is_empty() {
                 warn!(
                     "Chunking produced zero chunks. Check CODEGRAPH_EMBEDDING_SKIP_CHUNKING, embedding provider availability, and model max_tokens settings."
@@ -1079,7 +1085,7 @@ impl ProjectIndexer {
             store_nodes_pb.inc(chunk.len() as u64);
         }
         self.flush_surreal_writer().await?;
-        store_nodes_pb.finish_with_message("📈 Nodes stored");
+        self.finish_bar(store_nodes_pb, "📈 Nodes stored")?;
         self.log_surreal_node_count(total_nodes_extracted).await;
 
         #[cfg(feature = "embeddings")]
@@ -1229,11 +1235,14 @@ impl ProjectIndexer {
             self.vector_dim,
             self.config.batch_size
         );
-        embed_pb.finish_with_message(embed_completion_msg);
-        chunk_store_pb.finish_with_message(format!(
-            "🧩 Chunk embeddings queued for persistence: {}/{} batches",
-            total_chunks, total_chunks
-        ));
+        self.finish_bar(embed_pb, embed_completion_msg.clone())?;
+        self.finish_bar(
+            chunk_store_pb,
+            format!(
+                "🧩 Chunk embeddings queued for persistence: {}/{} batches",
+                total_chunks, total_chunks
+            ),
+        )?;
 
         #[cfg(feature = "embeddings")]
         {
@@ -1612,7 +1621,7 @@ impl ProjectIndexer {
                     resolution_rate_local,
                     resolution_time.as_secs_f64()
                 );
-                edge_pb.finish_with_message(edge_msg);
+                self.finish_bar(edge_pb, edge_msg)?;
 
                 info!("🔗 M4 MAX PARALLEL PROCESSING RESULTS:");
                 info!(
@@ -1669,7 +1678,7 @@ impl ProjectIndexer {
                     );
                 }
             } else {
-                edge_pb.finish_with_message("No resolved edges to store");
+                self.finish_bar(edge_pb, "No resolved edges to store")?;
             }
 
             // Assign values for use outside the block
@@ -1940,7 +1949,9 @@ impl ProjectIndexer {
             success_rate,
             provider
         );
-        symbol_pb.finish_with_message(completion_msg);
+        if let Err(err) = self.finish_bar(symbol_pb, completion_msg) {
+            warn!("Failed to print symbol embedding summary: {}", err);
+        }
 
         info!(
             "🧠 Pre-computed {} symbol embeddings for fast AI resolution",
@@ -2101,7 +2112,9 @@ impl ProjectIndexer {
             success_rate,
             provider
         );
-        unresolved_pb.finish_with_message(completion_msg);
+        if let Err(err) = self.finish_bar(unresolved_pb, completion_msg) {
+            warn!("Failed to print unresolved symbol embedding summary: {}", err);
+        }
 
         info!(
             "🧠 Pre-computed {} unresolved symbol embeddings for professional AI matching",
@@ -2863,10 +2876,10 @@ impl ProjectIndexer {
             .enqueue_file_metadata(file_metadata_records)
             .await?;
 
-        metadata_pb.finish_with_message(format!(
-            "💾 File metadata complete: {} files tracked",
-            files.len()
-        ));
+        self.finish_bar(
+            metadata_pb,
+            format!("💾 File metadata complete: {} files tracked", files.len()),
+        )?;
 
         info!("💾 Persisted metadata for {} files", files.len());
         Ok(())
@@ -2940,13 +2953,17 @@ impl ProjectIndexer {
         };
 
         match db
-            .query("SELECT VALUE count() FROM nodes WHERE project_id = $project_id")
+            .query("SELECT count() AS count FROM nodes WHERE project_id = $project_id GROUP ALL")
             .bind(("project_id", self.project_id.clone()))
             .await
         {
-            Ok(mut resp) => match resp.take::<Option<i64>>(0) {
-                Ok(count_opt) => {
-                    let count = count_opt.unwrap_or(0);
+            Ok(mut resp) => match resp.take::<Vec<serde_json::Value>>(0) {
+                Ok(rows) => {
+                    let count = rows
+                        .get(0)
+                        .and_then(|row| row.get("count"))
+                        .and_then(|c| c.as_i64())
+                        .unwrap_or(0);
                     info!(
                         "🗄️ SurrealDB nodes persisted: {} (expected ≈ {})",
                         count, expected
@@ -2974,9 +2991,13 @@ impl ProjectIndexer {
             .bind(("project_id", self.project_id.clone()))
             .await
         {
-            Ok(mut resp) => match resp.take::<Vec<i64>>(0) {
-                Ok(counts) => {
-                    let count = counts.get(0).cloned().unwrap_or(0);
+            Ok(mut resp) => match resp.take::<Vec<serde_json::Value>>(0) {
+                Ok(rows) => {
+                    let count = rows
+                        .get(0)
+                        .and_then(|v| v.get("count"))
+                        .and_then(|c| c.as_i64())
+                        .unwrap_or(0);
                     info!(
                         "🧩 SurrealDB chunks persisted: {} (expected ≈ {})",
                         count, expected
@@ -3476,13 +3497,12 @@ impl ProjectIndexer {
 
     fn create_progress_bar(&self, total: u64, message: &str) -> ProgressBar {
         let pb = self.progress.add(ProgressBar::new(total));
+        pb.set_draw_target(ProgressDrawTarget::stderr_with_hz(4));
         pb.set_style(
             ProgressStyle::default_bar()
-                .template(
-                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) {msg} | {per_sec} | ETA: {eta}",
-                )
+                .template("{spinner:.blue} [{elapsed_precise}] [{bar:34.cyan/blue}] {pos}/{len} ({percent}%) {msg} | {per_sec}/s | ETA:{eta}")
                 .unwrap()
-                .progress_chars("█▉▊▋▌▍▎▏ "), // Better visual progress
+                .progress_chars("█▉▊▋▌▍▎▏ "),
         );
         pb.set_message(message.to_string());
         pb
@@ -3510,12 +3530,10 @@ impl ProjectIndexer {
         secondary_msg: &str,
     ) -> ProgressBar {
         let pb = self.progress.add(ProgressBar::new(total));
+        pb.set_draw_target(ProgressDrawTarget::stderr_with_hz(4));
         pb.set_style(
             ProgressStyle::default_bar()
-                .template(
-                    "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len}
-                {msg.bold} | Success Rate: {percent}% | Speed: {per_sec} | ETA: {eta}",
-                )
+                .template("{spinner:.blue} [{elapsed_precise}] [{bar:34.cyan/blue}] {pos}/{len} {msg} | Success: {percent}% | {per_sec}/s | ETA:{eta}")
                 .unwrap()
                 .progress_chars("█▉▊▋▌▍▎▏ "),
         );
@@ -3526,6 +3544,7 @@ impl ProjectIndexer {
     /// Create high-performance progress bar for batch processing
     fn create_batch_progress_bar(&self, total: u64, batch_size: usize, label: &str) -> ProgressBar {
         let pb = self.progress.add(ProgressBar::new(total));
+        pb.set_draw_target(ProgressDrawTarget::stderr_with_hz(4));
         let batch_info = if batch_size >= 10000 {
             format!("🚀 Ultra-High Performance ({}K batch)", batch_size / 1000)
         } else if batch_size >= 5000 {
@@ -3538,14 +3557,18 @@ impl ProjectIndexer {
 
         pb.set_style(
             ProgressStyle::default_bar()
-                .template(
-                    "{spinner:.green} [{elapsed_precise}] [{bar:45.cyan/blue}] {pos}/{len} items\n                💾 {msg} | {percent}% | {per_sec} | ETA: {eta}",
-                )
+                .template("{spinner:.blue} [{elapsed_precise}] [{bar:34.cyan/blue}] {pos}/{len} items | {msg} | {percent}% | {per_sec}/s | ETA:{eta}")
                 .unwrap()
                 .progress_chars("█▉▊▋▌▍▎▏ "),
         );
         pb.set_message(format!("{} | {}", label, batch_info));
         pb
+    }
+
+    fn finish_bar(&self, pb: ProgressBar, message: impl Into<String>) -> Result<()> {
+        pb.finish_and_clear();
+        self.progress.println(message.into())?;
+        Ok(())
     }
 
     /// Index a single file (for daemon mode incremental updates)

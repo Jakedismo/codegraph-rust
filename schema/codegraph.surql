@@ -174,6 +174,29 @@ IF $node_id = NONE OR !type::is::record($node_id) { RETURN NONE; };
 LET $res = (SELECT <string>id AS id, name, node_type AS kind, language, content, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM ONLY $node_id);
 RETURN $res;
 } PERMISSIONS FULL;
+DEFINE FUNCTION fn::edge_context($node_ref: any) {
+IF $node_ref = NONE { RETURN { outgoing: [], incoming: [] }; };
+RETURN {
+    outgoing: (SELECT
+        <string> `to` AS node_id,
+        (SELECT VALUE name FROM nodes WHERE id = `to` LIMIT 1)[0] AS name,
+        (SELECT VALUE node_type FROM nodes WHERE id = `to` LIMIT 1)[0] AS kind,
+        (SELECT VALUE file_path FROM nodes WHERE id = `to` LIMIT 1)[0] AS file_path,
+        edge_type AS relationship
+    FROM edges
+    WHERE `from` = $node_ref
+    LIMIT 5),
+    incoming: (SELECT
+        <string> `from` AS node_id,
+        (SELECT VALUE name FROM nodes WHERE id = `from` LIMIT 1)[0] AS name,
+        (SELECT VALUE node_type FROM nodes WHERE id = `from` LIMIT 1)[0] AS kind,
+        (SELECT VALUE file_path FROM nodes WHERE id = `from` LIMIT 1)[0] AS file_path,
+        edge_type AS relationship
+    FROM edges
+    WHERE `to` = $node_ref
+    LIMIT 5)
+};
+} PERMISSIONS FULL;
 DEFINE FUNCTION fn::node_reference($node_id: any) {
 -- Use helper to handle record IDs, "nodes:⟨uuid⟩", "nodes:id", etc.
 LET $record = fn::parse_record_id('nodes', $node_id);
@@ -184,15 +207,15 @@ RETURN { id: $info.id, kind: $info.kind, location: $info.location, name: $info.n
 -- Hybrid semantic + BM25 search (nodes via chunks) with dim fallback and EXISTS guards
 DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
     $project_id: string,
-    $query_embedding: array<float>,
     $query_text: string,
     $dimension: int,
     $limit: int,
-    $threshold: float
+    $threshold: float,
+    $query_embedding: array<float>
 ) {
+    LET $embedding = $query_embedding;
     LET $safe_limit = IF $limit > 0 AND $limit <= 100 THEN $limit ELSE 10 END;
-    -- More forgiving default threshold (0.3f instead of 0.7f)
-    LET $safe_threshold = IF $threshold >= 0f AND $threshold <= 1f THEN $threshold ELSE 0.3f END;
+    LET $safe_threshold = IF $threshold >= 0f AND $threshold <= 1f THEN $threshold ELSE 0.2f END;
     LET $chunk_limit = $safe_limit * 3;
     LET $symbol_limit = $safe_limit * 2;
 
@@ -200,12 +223,12 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
     -- 1) Pick an embedding dimension to use for this project (fallback to $dimension)
     ------------------------------------------------------------------------
     LET $dim =
-        IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_1024 != NONE LIMIT 1)[0] > 0 {
-            1024
+        IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_384 != NONE LIMIT 1)[0] > 0 {
+            384
         } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_768 != NONE LIMIT 1)[0] > 0 {
             768
-        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_384 != NONE LIMIT 1)[0] > 0 {
-            384
+        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_1024 != NONE LIMIT 1)[0] > 0 {
+            1024
         } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_1536 != NONE LIMIT 1)[0] > 0 {
             1536
         } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_2048 != NONE LIMIT 1)[0] > 0 {
@@ -214,6 +237,8 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             2560
         } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_3072 != NONE LIMIT 1)[0] > 0 {
             3072
+        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_3584 != NONE LIMIT 1)[0] > 0 {
+            3584
         } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_4096 != NONE LIMIT 1)[0] > 0 {
             4096
         } ELSE {
@@ -221,216 +246,11 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
         };
 
     ------------------------------------------------------------------------
-    -- 2) Chunk matches per resolved dimension
-    ------------------------------------------------------------------------
-    LET $chunk_results =
-        IF $dim = 384 {
-            SELECT parent_node,
-                   vector::similarity::cosine(embedding_384, $query_embedding) AS vector_score
-            FROM chunks
-            WHERE project_id = $project_id
-              AND embedding_384 != NONE
-              AND parent_node != NONE
-              AND vector::similarity::cosine(embedding_384, $query_embedding) >= $safe_threshold
-            ORDER BY vector_score DESC
-            LIMIT $chunk_limit
-            FETCH parent_node
-        } ELSE IF $dim = 768 {
-            SELECT parent_node,
-                   vector::similarity::cosine(embedding_768, $query_embedding) AS vector_score
-            FROM chunks
-            WHERE project_id = $project_id
-              AND embedding_768 != NONE
-              AND parent_node != NONE
-              AND vector::similarity::cosine(embedding_768, $query_embedding) >= $safe_threshold
-            ORDER BY vector_score DESC
-            LIMIT $chunk_limit
-            FETCH parent_node
-        } ELSE IF $dim = 1024 {
-            SELECT parent_node,
-                   vector::similarity::cosine(embedding_1024, $query_embedding) AS vector_score
-            FROM chunks
-            WHERE project_id = $project_id
-              AND embedding_1024 != NONE
-              AND parent_node != NONE
-              AND vector::similarity::cosine(embedding_1024, $query_embedding) >= $safe_threshold
-            ORDER BY vector_score DESC
-            LIMIT $chunk_limit
-            FETCH parent_node
-        } ELSE IF $dim = 1536 {
-            SELECT parent_node,
-                   vector::similarity::cosine(embedding_1536, $query_embedding) AS vector_score
-            FROM chunks
-            WHERE project_id = $project_id
-              AND embedding_1536 != NONE
-              AND parent_node != NONE
-              AND vector::similarity::cosine(embedding_1536, $query_embedding) >= $safe_threshold
-            ORDER BY vector_score DESC
-            LIMIT $chunk_limit
-            FETCH parent_node
-        } ELSE IF $dim = 2048 {
-            SELECT parent_node,
-                   vector::similarity::cosine(embedding_2048, $query_embedding) AS vector_score
-            FROM chunks
-            WHERE project_id = $project_id
-              AND embedding_2048 != NONE
-              AND parent_node != NONE
-              AND vector::similarity::cosine(embedding_2048, $query_embedding) >= $safe_threshold
-            ORDER BY vector_score DESC
-            LIMIT $chunk_limit
-            FETCH parent_node
-        } ELSE IF $dim = 2560 {
-            SELECT parent_node,
-                   vector::similarity::cosine(embedding_2560, $query_embedding) AS vector_score
-            FROM chunks
-            WHERE project_id = $project_id
-              AND embedding_2560 != NONE
-              AND parent_node != NONE
-              AND vector::similarity::cosine(embedding_2560, $query_embedding) >= $safe_threshold
-            ORDER BY vector_score DESC
-            LIMIT $chunk_limit
-            FETCH parent_node
-        } ELSE IF $dim = 3072 {
-            SELECT parent_node,
-                   vector::similarity::cosine(embedding_3072, $query_embedding) AS vector_score
-            FROM chunks
-            WHERE project_id = $project_id
-              AND embedding_3072 != NONE
-              AND parent_node != NONE
-              AND vector::similarity::cosine(embedding_3072, $query_embedding) >= $safe_threshold
-            ORDER BY vector_score DESC
-            LIMIT $chunk_limit
-            FETCH parent_node
-        } ELSE {
-            SELECT parent_node,
-                   vector::similarity::cosine(embedding_4096, $query_embedding) AS vector_score
-            FROM chunks
-            WHERE project_id = $project_id
-              AND embedding_4096 != NONE
-              AND parent_node != NONE
-              AND vector::similarity::cosine(embedding_4096, $query_embedding) >= $safe_threshold
-            ORDER BY vector_score DESC
-            LIMIT $chunk_limit
-            FETCH parent_node
-        };
-
-    ------------------------------------------------------------------------
-    -- 3) Symbol matches per resolved dimension
-    ------------------------------------------------------------------------
-    LET $symbol_matches =
-        IF $dim = 384 {
-            SELECT source_edge_id, symbol,
-                   vector::similarity::cosine(embedding_384, $query_embedding) AS symbol_score
-            FROM symbol_embeddings
-            WHERE project_id = $project_id
-              AND embedding_384 != NONE
-              AND vector::similarity::cosine(embedding_384, $query_embedding) >= $safe_threshold
-            ORDER BY symbol_score DESC
-            LIMIT $symbol_limit
-            FETCH source_edge_id
-        } ELSE IF $dim = 768 {
-            SELECT source_edge_id, symbol,
-                   vector::similarity::cosine(embedding_768, $query_embedding) AS symbol_score
-            FROM symbol_embeddings
-            WHERE project_id = $project_id
-              AND embedding_768 != NONE
-              AND vector::similarity::cosine(embedding_768, $query_embedding) >= $safe_threshold
-            ORDER BY symbol_score DESC
-            LIMIT $symbol_limit
-            FETCH source_edge_id
-        } ELSE IF $dim = 1024 {
-            SELECT source_edge_id, symbol,
-                   vector::similarity::cosine(embedding_1024, $query_embedding) AS symbol_score
-            FROM symbol_embeddings
-            WHERE project_id = $project_id
-              AND embedding_1024 != NONE
-              AND vector::similarity::cosine(embedding_1024, $query_embedding) >= $safe_threshold
-            ORDER BY symbol_score DESC
-            LIMIT $symbol_limit
-            FETCH source_edge_id
-        } ELSE IF $dim = 1536 {
-            SELECT source_edge_id, symbol,
-                   vector::similarity::cosine(embedding_1536, $query_embedding) AS symbol_score
-            FROM symbol_embeddings
-            WHERE project_id = $project_id
-              AND embedding_1536 != NONE
-              AND vector::similarity::cosine(embedding_1536, $query_embedding) >= $safe_threshold
-            ORDER BY symbol_score DESC
-            LIMIT $symbol_limit
-            FETCH source_edge_id
-        } ELSE IF $dim = 2048 {
-            SELECT source_edge_id, symbol,
-                   vector::similarity::cosine(embedding_2048, $query_embedding) AS symbol_score
-            FROM symbol_embeddings
-            WHERE project_id = $project_id
-              AND embedding_2048 != NONE
-              AND vector::similarity::cosine(embedding_2048, $query_embedding) >= $safe_threshold
-            ORDER BY symbol_score DESC
-            LIMIT $symbol_limit
-            FETCH source_edge_id
-        } ELSE IF $dim = 2560 {
-            SELECT source_edge_id, symbol,
-                   vector::similarity::cosine(embedding_2560, $query_embedding) AS symbol_score
-            FROM symbol_embeddings
-            WHERE project_id = $project_id
-              AND embedding_2560 != NONE
-              AND vector::similarity::cosine(embedding_2560, $query_embedding) >= $safe_threshold
-            ORDER BY symbol_score DESC
-            LIMIT $symbol_limit
-            FETCH source_edge_id
-        } ELSE IF $dim = 3072 {
-            SELECT source_edge_id, symbol,
-                   vector::similarity::cosine(embedding_3072, $query_embedding) AS symbol_score
-            FROM symbol_embeddings
-            WHERE project_id = $project_id
-              AND embedding_3072 != NONE
-              AND vector::similarity::cosine(embedding_3072, $query_embedding) >= $safe_threshold
-            ORDER BY symbol_score DESC
-            LIMIT $symbol_limit
-            FETCH source_edge_id
-        } ELSE {
-            SELECT source_edge_id, symbol,
-                   vector::similarity::cosine(embedding_4096, $query_embedding) AS symbol_score
-            FROM symbol_embeddings
-            WHERE project_id = $project_id
-              AND embedding_4096 != NONE
-              AND vector::similarity::cosine(embedding_4096, $query_embedding) >= $safe_threshold
-            ORDER BY symbol_score DESC
-            LIMIT $symbol_limit
-            FETCH source_edge_id
-        };
-
-    ------------------------------------------------------------------------
-    -- 4) Turn chunk + symbol hits into node-level vector rows
-    ------------------------------------------------------------------------
-    LET $symbol_nodes = (
-        SELECT
-            source_edge_id.from AS parent_node,
-            symbol_score * 0.8f AS vector_score,
-            ['symbol_reference'] AS match_sources,
-            [symbol] AS matched_symbols
-        FROM $symbol_matches
-        WHERE source_edge_id.from != NONE
-          AND source_edge_id.from.project_id = $project_id
-          AND (SELECT id FROM nodes WHERE id = source_edge_id.from LIMIT 1)
-    );
-
+    -- 2) Chunk-level vector hits (include node fields directly)
     LET $chunk_nodes = (
         SELECT
-            parent_node,
-            vector_score,
-            ['chunk'] AS match_sources,
-            [] AS matched_symbols
-        FROM array::flatten([$chunk_results])
-        WHERE parent_node != NONE
-          AND (SELECT id FROM nodes WHERE id = parent_node LIMIT 1)
-    );
-
-    LET $all_vector_nodes = array::concat($chunk_nodes, $symbol_nodes);
-
-    LET $vector_flat = (
-        SELECT
-            <string> parent_node.id AS node_id,
+            parent_node AS node_ref,
+            <string> parent_node AS node_id,
             parent_node.name AS name,
             parent_node.node_type AS kind,
             parent_node.language AS language,
@@ -439,19 +259,35 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             parent_node.end_line AS end_line,
             parent_node.content AS content,
             parent_node.metadata AS metadata,
-            vector_score,
+            IF embedding_384 != NONE THEN vector::similarity::cosine(embedding_384, $embedding)
+            ELSE IF embedding_768 != NONE THEN vector::similarity::cosine(embedding_768, $embedding)
+            ELSE IF embedding_1024 != NONE THEN vector::similarity::cosine(embedding_1024, $embedding)
+            ELSE IF embedding_1536 != NONE THEN vector::similarity::cosine(embedding_1536, $embedding)
+            ELSE IF embedding_2048 != NONE THEN vector::similarity::cosine(embedding_2048, $embedding)
+            ELSE IF embedding_2560 != NONE THEN vector::similarity::cosine(embedding_2560, $embedding)
+            ELSE IF embedding_3072 != NONE THEN vector::similarity::cosine(embedding_3072, $embedding)
+            ELSE IF embedding_3584 != NONE THEN vector::similarity::cosine(embedding_3584, $embedding)
+            ELSE IF embedding_4096 != NONE THEN vector::similarity::cosine(embedding_4096, $embedding)
+            ELSE 0f END AS vector_score,
             0f AS text_score,
-            match_sources,
-            matched_symbols
-        FROM $all_vector_nodes
-        WHERE parent_node != NONE
+            ['chunk'] AS match_sources,
+            [] AS matched_symbols
+        FROM chunks
+        WHERE project_id = $project_id
+          AND parent_node != NONE
+        ORDER BY vector_score DESC
+        LIMIT $chunk_limit
+        FETCH parent_node
     );
 
     ------------------------------------------------------------------------
-    -- 5) BM25 / full-text candidates (using analyzer-backed indexes)
+    -- 3) BM25 / full-text candidates (using analyzer-backed indexes)
     ------------------------------------------------------------------------
+    LET $chunk_ids = (SELECT VALUE node_id FROM $chunk_nodes);
+
     LET $text_candidates = (
         SELECT
+            id AS node_ref,
             <string> id AS node_id,
             name,
             node_type AS kind,
@@ -468,36 +304,15 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
         FROM nodes
         WHERE project_id = $project_id
           AND (content @1@ $query_text OR name @2@ $query_text)
+          AND <string>id NOTINSIDE $chunk_ids
         ORDER BY text_score DESC
         LIMIT $safe_limit
     );
 
     ------------------------------------------------------------------------
-    -- 6) Combine, score, sort, and return
+    -- 4) Combine, score, sort, and return
     ------------------------------------------------------------------------
-    LET $combined = array::concat($vector_flat, $text_candidates);
-
-    LET $sorted = (
-        SELECT
-            node_id,
-            name,
-            kind,
-            language,
-            file_path,
-            start_line,
-            end_line,
-            content,
-            metadata,
-            vector_score,
-            text_score,
-            (vector_score * 0.7f) + ((text_score ?? 0f) * 0.3f) AS combined_score,
-            match_sources,
-            matched_symbols
-        FROM $combined
-        WHERE node_id != NONE
-        ORDER BY combined_score DESC
-        LIMIT $safe_limit
-    );
+    LET $combined = array::concat($chunk_nodes ?? [], $text_candidates ?? []);
 
     RETURN (
         SELECT
@@ -512,34 +327,15 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             metadata,
             vector_score,
             text_score,
-            combined_score,
+            (vector_score * 0.9f) + ((text_score ?? 0f) * 0.1f) AS combined_score,
             match_sources,
             matched_symbols,
-            (
-                SELECT
-                    <string> to.id AS node_id,
-                    to.name AS name,
-                    to.node_type AS kind,
-                    to.file_path AS file_path,
-                    edge_type AS relationship
-                FROM edges
-                WHERE from = $parent.node_id
-                LIMIT 20
-                FETCH to
-            ) AS outgoing_edges,
-            (
-                SELECT
-                    <string> from.id AS node_id,
-                    from.name AS name,
-                    from.node_type AS kind,
-                    from.file_path AS file_path,
-                    edge_type AS relationship
-                FROM edges
-                WHERE to = $parent.node_id
-                LIMIT 20
-                FETCH from
-            ) AS incoming_edges
-        FROM $sorted
+            fn::edge_context(node_ref).outgoing AS outgoing_edges,
+            fn::edge_context(node_ref).incoming AS incoming_edges
+        FROM $combined
+        WHERE node_id != NONE
+        ORDER BY combined_score DESC
+        LIMIT $safe_limit
     );
 }
 PERMISSIONS FULL;
@@ -626,6 +422,10 @@ DEFINE TABLE chunks TYPE NORMAL SCHEMAFULL COMMENT 'Chunked embeddings for long 
 
 DEFINE FIELD chunk_index ON chunks TYPE int PERMISSIONS FULL;
 DEFINE FIELD created_at ON chunks TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
+DEFINE FIELD embedding_384 ON chunks TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 384 PERMISSIONS FULL;
+DEFINE FIELD embedding_384[*] ON chunks TYPE float PERMISSIONS FULL;
+DEFINE FIELD embedding_768 ON chunks TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 768 PERMISSIONS FULL;
+DEFINE FIELD embedding_768[*] ON chunks TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_1024 ON chunks TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 1024 PERMISSIONS FULL;
 DEFINE FIELD embedding_1024[*] ON chunks TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_1536 ON chunks TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 1536 PERMISSIONS FULL;
@@ -636,26 +436,25 @@ DEFINE FIELD embedding_2560 ON chunks TYPE option<array<float>> ASSERT $value = 
 DEFINE FIELD embedding_2560[*] ON chunks TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_3072 ON chunks TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 3072 PERMISSIONS FULL;
 DEFINE FIELD embedding_3072[*] ON chunks TYPE float PERMISSIONS FULL;
-DEFINE FIELD embedding_384 ON chunks TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 384 PERMISSIONS FULL;
-DEFINE FIELD embedding_384[*] ON chunks TYPE float PERMISSIONS FULL;
+DEFINE FIELD embedding_3584 ON chunks TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 3584 PERMISSIONS FULL;
+DEFINE FIELD embedding_3584[*] ON chunks TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_4096 ON chunks TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 4096 PERMISSIONS FULL;
 DEFINE FIELD embedding_4096[*] ON chunks TYPE float PERMISSIONS FULL;
-DEFINE FIELD embedding_768 ON chunks TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 768 PERMISSIONS FULL;
-DEFINE FIELD embedding_768[*] ON chunks TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_model ON chunks TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD parent_node ON chunks TYPE record<nodes> PERMISSIONS FULL;
 DEFINE FIELD project_id ON chunks TYPE string PERMISSIONS FULL;
 DEFINE FIELD text ON chunks TYPE string PERMISSIONS FULL;
 DEFINE FIELD updated_at ON chunks TYPE datetime VALUE time::now() PERMISSIONS FULL;
 
-DEFINE INDEX idx_chunks_embedding_384 ON chunks FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_chunks_embedding_768 ON chunks FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_chunks_embedding_1024 ON chunks FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_chunks_embedding_1536 ON chunks FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_chunks_embedding_2048 ON chunks FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_chunks_embedding_2560 ON chunks FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_chunks_embedding_3072 ON chunks FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_chunks_embedding_4096 ON chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
+DEFINE INDEX idx_chunks_embedding_384 ON chunks FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_chunks_embedding_768 ON chunks FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_chunks_embedding_1024 ON chunks FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_chunks_embedding_1536 ON chunks FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_chunks_embedding_2048 ON chunks FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_chunks_embedding_2560 ON chunks FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_chunks_embedding_3072 ON chunks FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_chunks_embedding_3584 ON chunks FIELDS embedding_3584 HNSW DIMENSION 3584 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;    
+DEFINE INDEX idx_chunks_embedding_4096 ON chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_order ON chunks FIELDS parent_node, chunk_index CONCURRENTLY;
 DEFINE INDEX idx_chunks_parent ON chunks FIELDS parent_node CONCURRENTLY;
 
@@ -730,6 +529,10 @@ DEFINE FIELD chunk_count ON nodes TYPE option<int> PERMISSIONS FULL;
 DEFINE FIELD complexity ON nodes TYPE option<float> PERMISSIONS FULL;
 DEFINE FIELD content ON nodes TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD created_at ON nodes TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
+DEFINE FIELD embedding_384 ON nodes TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 384 PERMISSIONS FULL;
+DEFINE FIELD embedding_384[*] ON nodes TYPE float PERMISSIONS FULL;
+DEFINE FIELD embedding_768 ON nodes TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 768 PERMISSIONS FULL;
+DEFINE FIELD embedding_768[*] ON nodes TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_1024 ON nodes TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 1024 PERMISSIONS FULL;
 DEFINE FIELD embedding_1024[*] ON nodes TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_1536 ON nodes TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 1536 PERMISSIONS FULL;
@@ -740,12 +543,10 @@ DEFINE FIELD embedding_2560 ON nodes TYPE option<array<float>> ASSERT $value = N
 DEFINE FIELD embedding_2560[*] ON nodes TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_3072 ON nodes TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 3072 PERMISSIONS FULL;
 DEFINE FIELD embedding_3072[*] ON nodes TYPE float PERMISSIONS FULL;
-DEFINE FIELD embedding_384 ON nodes TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 384 PERMISSIONS FULL;
-DEFINE FIELD embedding_384[*] ON nodes TYPE float PERMISSIONS FULL;
+DEFINE FIELD embedding_3584 ON nodes TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 3584 PERMISSIONS FULL;
+DEFINE FIELD embedding_3584[*] ON nodes TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_4096 ON nodes TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 4096 PERMISSIONS FULL;
 DEFINE FIELD embedding_4096[*] ON nodes TYPE float PERMISSIONS FULL;
-DEFINE FIELD embedding_768 ON nodes TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 768 PERMISSIONS FULL;
-DEFINE FIELD embedding_768[*] ON nodes TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_model ON nodes TYPE option<string> DEFAULT 'jina-embeddings-v4' PERMISSIONS FULL;
 DEFINE FIELD end_line ON nodes TYPE option<int> PERMISSIONS FULL;
 DEFINE FIELD file_path ON nodes TYPE option<string> PERMISSIONS FULL;
@@ -760,14 +561,15 @@ DEFINE FIELD start_line ON nodes TYPE option<int> PERMISSIONS FULL;
 DEFINE FIELD updated_at ON nodes TYPE datetime VALUE time::now() PERMISSIONS FULL;
 
 DEFINE INDEX idx_nodes_content_search ON nodes FIELDS content SEARCH ANALYZER code_analyzer BM25(1.2,0.75) DOC_IDS_ORDER 100 DOC_LENGTHS_ORDER 100 POSTINGS_ORDER 100 TERMS_ORDER 100 DOC_IDS_CACHE 100 DOC_LENGTHS_CACHE 100 POSTINGS_CACHE 100 TERMS_CACHE 100 CONCURRENTLY;
-DEFINE INDEX idx_nodes_embedding_384 ON nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_nodes_embedding_768 ON nodes FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_nodes_embedding_1024 ON nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_nodes_embedding_1536 ON nodes FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_nodes_embedding_2048 ON nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_nodes_embedding_2560 ON nodes FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_nodes_embedding_3072 ON nodes FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_nodes_embedding_4096 ON nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
+DEFINE INDEX idx_nodes_embedding_384 ON nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_nodes_embedding_768 ON nodes FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_nodes_embedding_1024 ON nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_nodes_embedding_1536 ON nodes FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_nodes_embedding_2048 ON nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_nodes_embedding_2560 ON nodes FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_nodes_embedding_3072 ON nodes FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_nodes_embedding_3584 ON nodes FIELDS embedding_3584 HNSW DIMENSION 3584 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_nodes_embedding_4096 ON nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_file_path ON nodes FIELDS file_path CONCURRENTLY;
 DEFINE INDEX idx_nodes_file_type ON nodes FIELDS file_path, node_type CONCURRENTLY;
 DEFINE INDEX idx_nodes_language ON nodes FIELDS language CONCURRENTLY;
@@ -827,6 +629,10 @@ DEFINE INDEX idx_schema_version ON schema_versions FIELDS version UNIQUE CONCURR
 DEFINE TABLE symbol_embeddings TYPE NORMAL SCHEMAFULL COMMENT 'Cached embeddings for normalized symbols used during edge resolution' PERMISSIONS FULL;
 
 DEFINE FIELD access_count ON symbol_embeddings TYPE int DEFAULT 0 PERMISSIONS FULL;
+DEFINE FIELD embedding_384 ON symbol_embeddings TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 384 PERMISSIONS FULL;
+DEFINE FIELD embedding_384[*] ON symbol_embeddings TYPE float PERMISSIONS FULL;
+DEFINE FIELD embedding_768 ON symbol_embeddings TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 768 PERMISSIONS FULL;
+DEFINE FIELD embedding_768[*] ON symbol_embeddings TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_1024 ON symbol_embeddings TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 1024 PERMISSIONS FULL;
 DEFINE FIELD embedding_1024[*] ON symbol_embeddings TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_1536 ON symbol_embeddings TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 1536 PERMISSIONS FULL;
@@ -837,12 +643,10 @@ DEFINE FIELD embedding_2560 ON symbol_embeddings TYPE option<array<float>> ASSER
 DEFINE FIELD embedding_2560[*] ON symbol_embeddings TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_3072 ON symbol_embeddings TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 3072 PERMISSIONS FULL;
 DEFINE FIELD embedding_3072[*] ON symbol_embeddings TYPE float PERMISSIONS FULL;
-DEFINE FIELD embedding_384 ON symbol_embeddings TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 384 PERMISSIONS FULL;
-DEFINE FIELD embedding_384[*] ON symbol_embeddings TYPE float PERMISSIONS FULL;
+DEFINE FIELD embedding_3584 ON symbol_embeddings TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 3584 PERMISSIONS FULL;
+DEFINE FIELD embedding_3584[*] ON symbol_embeddings TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_4096 ON symbol_embeddings TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 4096 PERMISSIONS FULL;
 DEFINE FIELD embedding_4096[*] ON symbol_embeddings TYPE float PERMISSIONS FULL;
-DEFINE FIELD embedding_768 ON symbol_embeddings TYPE option<array<float>> ASSERT $value = NONE OR array::len($value) = 768 PERMISSIONS FULL;
-DEFINE FIELD embedding_768[*] ON symbol_embeddings TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_model ON symbol_embeddings TYPE string DEFAULT 'jina-embeddings-v4' PERMISSIONS FULL;
 DEFINE FIELD last_computed_at ON symbol_embeddings TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
 DEFINE FIELD metadata ON symbol_embeddings FLEXIBLE TYPE option<object> PERMISSIONS FULL;
@@ -857,12 +661,13 @@ DEFINE INDEX idx_symbol_embeddings_edge ON symbol_embeddings FIELDS source_edge_
 DEFINE INDEX idx_symbol_embeddings_node ON symbol_embeddings FIELDS node_id CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_project_symbol ON symbol_embeddings FIELDS project_id, normalized_symbol CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_symbol ON symbol_embeddings FIELDS normalized_symbol CONCURRENTLY;
-DEFINE INDEX idx_symbol_embeddings_vector_384 ON symbol_embeddings FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_symbol_embeddings_vector_768 ON symbol_embeddings FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_symbol_embeddings_vector_1024 ON symbol_embeddings FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_symbol_embeddings_vector_1536 ON symbol_embeddings FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_symbol_embeddings_vector_2048 ON symbol_embeddings FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_symbol_embeddings_vector_2560 ON symbol_embeddings FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_symbol_embeddings_vector_3072 ON symbol_embeddings FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
-DEFINE INDEX idx_symbol_embeddings_vector_4096 ON symbol_embeddings FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 M0 32 LM 0.36067376022224085f CONCURRENTLY;
--- ------------------------------
+DEFINE INDEX idx_symbol_embeddings_vector_384 ON symbol_embeddings FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_symbol_embeddings_vector_768 ON symbol_embeddings FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_symbol_embeddings_vector_1024 ON symbol_embeddings FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_symbol_embeddings_vector_1536 ON symbol_embeddings FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_symbol_embeddings_vector_2048 ON symbol_embeddings FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_symbol_embeddings_vector_2560 ON symbol_embeddings FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_symbol_embeddings_vector_3072 ON symbol_embeddings FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_symbol_embeddings_vector_3584 ON symbol_embeddings FIELDS embedding_3584 HNSW DIMENSION 3584 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_symbol_embeddings_vector_4096 ON symbol_embeddings FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+--------------------------------
