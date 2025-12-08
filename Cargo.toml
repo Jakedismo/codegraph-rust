@@ -121,7 +121,7 @@ anyhow = "1.0"
 # Utilities
 regex = "1.12"
 sha2 = "0.10"
-uuid = { version = "1.6", features = ["v4", "serde"] }
+uuid = { version = "1.19", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 # Parallel Processing
