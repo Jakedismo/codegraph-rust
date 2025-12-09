@@ -10,6 +10,7 @@ use rmcp::transport::streamable_http_server::{
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 /// Start HTTP server with CodeGraph MCP service
@@ -32,6 +33,7 @@ pub async fn start_http_server(
         StreamableHttpServerConfig {
             sse_keep_alive: Some(std::time::Duration::from_secs(config.keep_alive_seconds)),
             stateful_mode: true,
+            cancellation_token: CancellationToken::new(),
         },
     );
 

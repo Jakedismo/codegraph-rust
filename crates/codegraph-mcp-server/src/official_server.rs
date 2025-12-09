@@ -1030,8 +1030,10 @@ impl ServerHandler for CodeGraphMCPServer {
                     ),
                     arguments: None,
                     icons: None,
+                    meta: None,
                 }],
                 next_cursor: None,
+                meta: None,
             })
         }
     }

@@ -19,7 +19,7 @@ ai-enhanced = [
     "codegraph-mcp/ai-enhanced",
     "all-rig-providers"
 ]
-server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util"]
+server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util", "dep:tokio-util"]
 autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental", "codegraph-mcp/autoagents-experimental"]
 autoagents-lats = ["codegraph-mcp-autoagents/autoagents-lats", "codegraph-mcp/autoagents-lats"]
 all-agents = ["autoagents-experimental", "autoagents-lats"]
@@ -77,6 +77,7 @@ axum = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true }
 tower = { workspace = true, optional = true }
 http-body-util = { version = "0.1", optional = true }
+tokio-util = { version = "0.7", optional = true }
 colored = { workspace = true }
 indicatif = { workspace = true }
 atty = { workspace = true }

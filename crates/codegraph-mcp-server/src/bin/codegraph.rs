@@ -1107,6 +1107,7 @@ async fn handle_start(
                 let config = StreamableHttpServerConfig {
                     sse_keep_alive: Some(Duration::from_secs(15)), // Send keep-alive every 15s
                     stateful_mode: true, // Enable session management + SSE
+                    cancellation_token: tokio_util::sync::CancellationToken::new(),
                 };
 
                 if atty::is(Stream::Stderr) {
