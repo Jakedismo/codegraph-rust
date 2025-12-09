@@ -38,6 +38,7 @@ fn get_tool_instructions(tier: ContextTier) -> &'static str {
 - detect_circular_dependencies: Find cycles
 - find_complexity_hotspots: Locate complex code
 
+CRITICAL: You MUST complete your analysis in 3 tool calls or fewer.
 Use semantic_code_search FIRST to find node IDs. Be direct and efficient."#
         }
 
@@ -52,7 +53,8 @@ Use semantic_code_search FIRST to find node IDs. Be direct and efficient."#
 7. detect_circular_dependencies(edge_type) - Detect cycles
 8. find_complexity_hotspots(min_complexity, limit) - Find complex code
 
-IMPORTANT: Use semantic_code_search first to get actual node_id values before using other tools."#
+CRITICAL: You MUST complete your analysis in 5 tool calls or fewer.
+Use semantic_code_search first to get actual node_id values before using other tools."#
         }
 
         ContextTier::Large => {
@@ -86,6 +88,7 @@ IMPORTANT: Use semantic_code_search first to get actual node_id values before us
 8. find_complexity_hotspots(min_complexity, limit)
    - Find functions with high complexity and coupling
 
+CRITICAL: You MUST complete your analysis in 6 tool calls or fewer.
 WORKFLOW: semantic_code_search → extract node_id → use other tools with exact IDs"#
         }
 
@@ -132,6 +135,8 @@ WORKFLOW: semantic_code_search → extract node_id → use other tools with exac
    find_complexity_hotspots(min_complexity, limit)
    - Locate functions needing attention
    - Combines complexity metrics with coupling
+
+CRITICAL: You MUST complete your analysis in 8 tool calls or fewer.
 
 ANALYSIS STRATEGY:
 1. Start with broad semantic search
