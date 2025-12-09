@@ -344,6 +344,66 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
     ------------------------------------------------------------------------
     LET $combined = array::concat($chunk_nodes ?? [], $text_candidates ?? []);
 
+    ------------------------------------------------------------------------
+    -- 4a) Score and limit first (before expensive edge lookups)
+    ------------------------------------------------------------------------
+    LET $scored = (
+        SELECT
+            node_id,
+            node_ref,
+            name,
+            kind,
+            language,
+            file_path,
+            start_line,
+            end_line,
+            content,
+            metadata,
+            vector_score,
+            text_score,
+            (vector_score * 0.9f) + ((text_score ?? 0f) * 0.1f) AS combined_score,
+            match_sources,
+            matched_symbols
+        FROM $combined
+        WHERE node_id != NONE
+        ORDER BY combined_score DESC
+        LIMIT $safe_limit
+    );
+
+    ------------------------------------------------------------------------
+    -- 4b) Batch fetch edges for all result nodes in TWO queries (not 30+ per row)
+    ------------------------------------------------------------------------
+    LET $node_refs = (SELECT VALUE node_ref FROM $scored WHERE node_ref != NONE);
+
+    LET $all_outgoing = (
+        SELECT
+            `from` AS source_node,
+            <string>`to` AS node_id,
+            `to`.name AS name,
+            `to`.node_type AS kind,
+            `to`.file_path AS file_path,
+            edge_type AS relationship
+        FROM edges
+        WHERE `from` INSIDE $node_refs
+        LIMIT 50
+    );
+
+    LET $all_incoming = (
+        SELECT
+            `to` AS source_node,
+            <string>`from` AS node_id,
+            `from`.name AS name,
+            `from`.node_type AS kind,
+            `from`.file_path AS file_path,
+            edge_type AS relationship
+        FROM edges
+        WHERE `to` INSIDE $node_refs
+        LIMIT 50
+    );
+
+    ------------------------------------------------------------------------
+    -- 4c) Join edges back to results
+    ------------------------------------------------------------------------
     RETURN (
         SELECT
             node_id,
@@ -357,15 +417,14 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             metadata,
             vector_score,
             text_score,
-            (vector_score * 0.9f) + ((text_score ?? 0f) * 0.1f) AS combined_score,
+            combined_score,
             match_sources,
             matched_symbols,
-            fn::edge_context(node_ref).outgoing AS outgoing_edges,
-            fn::edge_context(node_ref).incoming AS incoming_edges
-        FROM $combined
-        WHERE node_id != NONE
-        ORDER BY combined_score DESC
-        LIMIT $safe_limit
+            (SELECT node_id, name, kind, file_path, relationship
+             FROM $all_outgoing WHERE source_node = node_ref LIMIT 5) AS outgoing_edges,
+            (SELECT node_id, name, kind, file_path, relationship
+             FROM $all_incoming WHERE source_node = node_ref LIMIT 5) AS incoming_edges
+        FROM $scored
     );
 }
 PERMISSIONS FULL;
