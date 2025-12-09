@@ -19,80 +19,90 @@ LET $after_prefix = IF string::starts_with($str, $table + ':') THEN string::slic
 LET $clean_id = IF string::starts_with($after_prefix, '⟨') AND string::ends_with($after_prefix, '⟩') THEN string::slice($after_prefix, 1, string::len($after_prefix) - 2) ELSE $after_prefix END;
 RETURN type::thing($table, $clean_id);
 } PERMISSIONS FULL;
+-- Calculate coupling metrics (afferent/efferent coupling, instability)
+-- FIXED: Added missing edge queries for dependents/dependencies
 DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: string) {
-LET $edge_list = [
-	'calls',
-	'imports',
-	'uses',
-	'extends',
-	'implements',
-	'references'
-];
-LET $resolved_id = IF string::starts_with($node_id, 'chunks:') THEN
-	(SELECT VALUE parent_node FROM fn::parse_record_id('chunks', $node_id) LIMIT 1)[0]
-ELSE
-	$node_id
-END;
-IF $resolved_id = NONE
-	{
-		RETURN NONE;
-	}
-;
-LET $record = fn::parse_record_id('nodes', $resolved_id);
-LET $node_check = (SELECT project_id FROM $record);
-IF array::len($node_check) = 0
-	{
-		RETURN NONE;
-	}
-;
-LET $rec_proj = $node_check[0].project_id;
-LET $effective_project = IF $rec_proj != NONE THEN
-	$rec_proj
-ELSE
-	$project_id
-END;
-LET $dependents_info = (
-    SELECT VALUE fn::node_reference(value)
-    FROM $dependents
-    WHERE fn::node_reference(value) != NONE
-);
+    LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references'];
 
-LET $dependencies_info = (
-    SELECT VALUE fn::node_reference(value)
-    FROM $dependencies
-    WHERE fn::node_reference(value) != NONE
-);
-LET $dependents_info = (SELECT VALUE fn::node_reference(`value`) FROM $dependents WHERE fn::node_reference(`value`) != NONE);
-LET $dependencies_info = (SELECT VALUE fn::node_reference(`value`) FROM $dependencies WHERE fn::node_reference(`value`) != NONE);
-LET $afferent = array::len($dependents_info);
-LET $efferent = array::len($dependencies_info);
-LET $total = $afferent + $efferent;
-LET $instability = IF $total > 0 THEN
-	math::round(($efferent / $total) * 1000000f) / 1000000f
-ELSE
-	0
-END;
-RETURN {
-	dependencies: $dependencies_info,
-	dependents: $dependents_info,
-	metrics: {
-		afferent_coupling: $afferent,
-		coupling_category: IF $instability < 0.3f THEN
-			'stable'
-		ELSE IF $instability > 0.7f THEN
-			'unstable'
-		ELSE
-			'balanced'
-		END,
-		efferent_coupling: $efferent,
-		instability: $instability,
-		is_stable: $instability < 0.3f,
-		is_unstable: $instability > 0.7f,
-		stability: 1f - $instability,
-		total_coupling: $total
-	},
-	node: fn::node_info($record)
-};
+    -- Resolve chunk IDs to parent nodes
+    LET $resolved_id = IF string::starts_with($node_id, 'chunks:') THEN
+        (SELECT VALUE parent_node FROM fn::parse_record_id('chunks', $node_id) LIMIT 1)[0]
+    ELSE
+        $node_id
+    END;
+
+    IF $resolved_id = NONE { RETURN NONE; };
+
+    LET $record = fn::parse_record_id('nodes', $resolved_id);
+    LET $node_check = (SELECT project_id FROM $record);
+    IF array::len($node_check) = 0 { RETURN NONE; };
+
+    LET $rec_proj = $node_check[0].project_id;
+    LET $effective_project = IF $rec_proj != NONE THEN $rec_proj ELSE $project_id END;
+
+    ------------------------------------------------------------------------
+    -- Query edges to find dependents (incoming) and dependencies (outgoing)
+    ------------------------------------------------------------------------
+    LET $dependents = (
+        SELECT VALUE `from`
+        FROM edges
+        WHERE `to` = $record
+          AND edge_type INSIDE $edge_list
+          AND (`from`.project_id = $effective_project OR `from`.project_id = NONE)
+    );
+
+    LET $dependencies = (
+        SELECT VALUE `to`
+        FROM edges
+        WHERE `from` = $record
+          AND edge_type INSIDE $edge_list
+          AND (`to`.project_id = $effective_project OR `to`.project_id = NONE)
+    );
+
+    ------------------------------------------------------------------------
+    -- Convert to node references
+    ------------------------------------------------------------------------
+    LET $dependents_info = (
+        SELECT VALUE fn::node_reference(d)
+        FROM $dependents AS d
+        WHERE fn::node_reference(d) != NONE
+    );
+
+    LET $dependencies_info = (
+        SELECT VALUE fn::node_reference(d)
+        FROM $dependencies AS d
+        WHERE fn::node_reference(d) != NONE
+    );
+
+    ------------------------------------------------------------------------
+    -- Calculate metrics
+    ------------------------------------------------------------------------
+    LET $afferent = array::len($dependents_info);
+    LET $efferent = array::len($dependencies_info);
+    LET $total = $afferent + $efferent;
+    LET $instability = IF $total > 0 THEN
+        math::round(($efferent / $total) * 1000000f) / 1000000f
+    ELSE
+        0f
+    END;
+
+    RETURN {
+        dependencies: $dependencies_info,
+        dependents: $dependents_info,
+        metrics: {
+            afferent_coupling: $afferent,
+            efferent_coupling: $efferent,
+            total_coupling: $total,
+            instability: $instability,
+            stability: 1f - $instability,
+            is_stable: $instability < 0.3f,
+            is_unstable: $instability > 0.7f,
+            coupling_category: IF $instability < 0.3f THEN 'stable'
+                              ELSE IF $instability > 0.7f THEN 'unstable'
+                              ELSE 'balanced' END
+        },
+        node: fn::node_info($record)
+    };
 } PERMISSIONS FULL;
 -- Detect circular dependencies (A→B and B→A both exist)
 -- OPTIMIZED: Uses edge key set for O(E) instead of O(E²) correlated subqueries
@@ -222,28 +232,30 @@ IF $node_id = NONE OR !type::is::record($node_id) { RETURN NONE; };
 LET $res = (SELECT <string>id AS id, name, node_type AS kind, language, content, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM ONLY $node_id);
 RETURN $res;
 } PERMISSIONS FULL;
+-- Get edge context (outgoing/incoming edges) for a node
+-- OPTIMIZED: Uses direct field access instead of nested subqueries
 DEFINE FUNCTION fn::edge_context($node_ref: any) {
-IF $node_ref = NONE { RETURN { outgoing: [], incoming: [] }; };
-RETURN {
-    outgoing: (SELECT
-        <string> `to` AS node_id,
-        (SELECT VALUE name FROM nodes WHERE id = `to` LIMIT 1)[0] AS name,
-        (SELECT VALUE node_type FROM nodes WHERE id = `to` LIMIT 1)[0] AS kind,
-        (SELECT VALUE file_path FROM nodes WHERE id = `to` LIMIT 1)[0] AS file_path,
-        edge_type AS relationship
-    FROM edges
-    WHERE `from` = $node_ref
-    LIMIT 5),
-    incoming: (SELECT
-        <string> `from` AS node_id,
-        (SELECT VALUE name FROM nodes WHERE id = `from` LIMIT 1)[0] AS name,
-        (SELECT VALUE node_type FROM nodes WHERE id = `from` LIMIT 1)[0] AS kind,
-        (SELECT VALUE file_path FROM nodes WHERE id = `from` LIMIT 1)[0] AS file_path,
-        edge_type AS relationship
-    FROM edges
-    WHERE `to` = $node_ref
-    LIMIT 5)
-};
+    IF $node_ref = NONE { RETURN { outgoing: [], incoming: [] }; };
+    RETURN {
+        outgoing: (SELECT
+            <string>`to` AS node_id,
+            `to`.name AS name,
+            `to`.node_type AS kind,
+            `to`.file_path AS file_path,
+            edge_type AS relationship
+        FROM edges
+        WHERE `from` = $node_ref
+        LIMIT 5),
+        incoming: (SELECT
+            <string>`from` AS node_id,
+            `from`.name AS name,
+            `from`.node_type AS kind,
+            `from`.file_path AS file_path,
+            edge_type AS relationship
+        FROM edges
+        WHERE `to` = $node_ref
+        LIMIT 5)
+    };
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::node_reference($node_id: any) {
 -- Use helper to handle record IDs, "nodes:⟨uuid⟩", "nodes:id", etc.
