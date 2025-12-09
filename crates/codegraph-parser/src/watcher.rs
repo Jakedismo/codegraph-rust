@@ -128,6 +128,9 @@ impl FileSystemWatcher {
             let include_globs = self.include_globs.clone();
             let ignore_matchers = self.ignore_matchers.clone();
 
+            // Capture the tokio runtime handle for spawning from notify's callback thread
+            let runtime_handle = tokio::runtime::Handle::current();
+
             let mut watcher = notify::recommended_watcher(move |result| match result {
                 Ok(event) => {
                     Self::handle_fs_event(
@@ -138,6 +141,7 @@ impl FileSystemWatcher {
                         file_filters.clone(),
                         include_globs.clone(),
                         ignore_matchers.clone(),
+                        runtime_handle.clone(),
                     );
                 }
                 Err(e) => error!("File watcher error: {:?}", e),
@@ -278,8 +282,12 @@ impl FileSystemWatcher {
         file_filters: Arc<RwLock<HashSet<String>>>,
         include_globs: Arc<RwLock<Option<GlobSet>>>,
         ignore_matchers: Arc<DashMap<PathBuf, Gitignore>>,
+        runtime_handle: tokio::runtime::Handle,
     ) {
-        tokio::spawn(async move {
+        // Use the captured runtime handle instead of tokio::spawn
+        // This is critical because notify's callback runs on its own thread,
+        // not a tokio thread, so tokio::spawn would fail without a handle
+        runtime_handle.spawn(async move {
             if let Err(e) = Self::process_fs_event(
                 event,
                 &event_sender,
