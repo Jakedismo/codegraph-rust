@@ -73,12 +73,28 @@ impl RigAgentBuilder {
         get_tier_system_prompt(self.analysis_type, self.tier)
     }
 
+    /// Get max output tokens, respecting MCP_CODE_AGENT_MAX_OUTPUT_TOKENS env var
+    /// This ensures the LLM produces answers within Claude Code's limits
+    fn get_max_output_tokens(&self) -> u64 {
+        // Check for environment variable override first
+        if let Ok(val) = std::env::var("MCP_CODE_AGENT_MAX_OUTPUT_TOKENS") {
+            if let Ok(tokens) = val.parse::<u64>() {
+                tracing::info!("Rig agent using MCP_CODE_AGENT_MAX_OUTPUT_TOKENS={}", tokens);
+                return tokens;
+            }
+        }
+
+        // Fall back to tier-based defaults
+        self.tier.max_output_tokens()
+    }
+
     /// Build an OpenAI-based agent
     #[cfg(feature = "openai")]
     pub fn build_openai(self) -> Result<OpenAIAgent> {
         let client = RigLLMAdapter::openai_client();
         let model = get_model_name();
         let system_prompt = self.system_prompt();
+        let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
         info!(
@@ -93,7 +109,7 @@ impl RigAgentBuilder {
         let agent = client
             .agent(&model)
             .preamble(&system_prompt)
-            .max_tokens(self.tier.max_output_tokens())
+            .max_tokens(max_output_tokens)
             .tool(factory.transitive_dependencies())
             .tool(factory.circular_dependencies())
             .tool(factory.call_chain())
@@ -117,6 +133,7 @@ impl RigAgentBuilder {
         let client = RigLLMAdapter::anthropic_client();
         let model = get_model_name();
         let system_prompt = self.system_prompt();
+        let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
         info!(
@@ -131,7 +148,7 @@ impl RigAgentBuilder {
         let agent = client
             .agent(&model)
             .preamble(&system_prompt)
-            .max_tokens(self.tier.max_output_tokens())
+            .max_tokens(max_output_tokens)
             .tool(factory.transitive_dependencies())
             .tool(factory.circular_dependencies())
             .tool(factory.call_chain())
@@ -219,6 +236,7 @@ impl RigAgentBuilder {
         let client = RigLLMAdapter::xai_client();
         let model = get_model_name();
         let system_prompt = self.system_prompt();
+        let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
         info!(
@@ -233,7 +251,7 @@ impl RigAgentBuilder {
         let agent = client
             .agent(&model)
             .preamble(&system_prompt)
-            .max_tokens(self.tier.max_output_tokens())
+            .max_tokens(max_output_tokens)
             .tool(factory.transitive_dependencies())
             .tool(factory.circular_dependencies())
             .tool(factory.call_chain())
@@ -257,6 +275,7 @@ impl RigAgentBuilder {
         let client = RigLLMAdapter::lmstudio_client();
         let model = get_model_name();
         let system_prompt = self.system_prompt();
+        let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
         info!(
@@ -271,7 +290,7 @@ impl RigAgentBuilder {
         let agent = client
             .agent(&model)
             .preamble(&system_prompt)
-            .max_tokens(self.tier.max_output_tokens())
+            .max_tokens(max_output_tokens)
             .tool(factory.transitive_dependencies())
             .tool(factory.circular_dependencies())
             .tool(factory.call_chain())
@@ -295,6 +314,7 @@ impl RigAgentBuilder {
         let client = RigLLMAdapter::openai_compatible_client(base_url);
         let model = get_model_name();
         let system_prompt = self.system_prompt();
+        let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
         info!(
@@ -310,7 +330,7 @@ impl RigAgentBuilder {
         let agent = client
             .agent(&model)
             .preamble(&system_prompt)
-            .max_tokens(self.tier.max_output_tokens())
+            .max_tokens(max_output_tokens)
             .tool(factory.transitive_dependencies())
             .tool(factory.circular_dependencies())
             .tool(factory.call_chain())
