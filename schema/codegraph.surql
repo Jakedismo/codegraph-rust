@@ -94,13 +94,61 @@ RETURN {
 	node: fn::node_info($record)
 };
 } PERMISSIONS FULL;
+-- Detect circular dependencies (A→B and B→A both exist)
+-- OPTIMIZED: Uses edge key set for O(E) instead of O(E²) correlated subqueries
 DEFINE FUNCTION fn::detect_circular_dependencies($project_id: string, $edge_type: string) {
-LET $edge_name = string::lowercase($edge_type ?? 'Calls');
--- Use direct field access for project_id filtering
-LET $pairs = (SELECT from AS node1_id, to AS node2_id FROM edges WHERE edge_type = $edge_name AND from != to AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE));
-LET $cycles = (SELECT node1_id, node2_id FROM $pairs WHERE node1_id < node2_id AND (SELECT VALUE count() FROM edges WHERE edge_type = $edge_name AND from = node2_id AND to = node1_id AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE)) > 0 GROUP BY node1_id, node2_id);
-LET $raw = (SELECT node1_id, node2_id, fn::node_info(node1_id) AS node1, fn::node_info(node2_id) AS node2 FROM $cycles);
-RETURN (SELECT <string>node1_id AS node1_id, <string>node2_id AS node2_id, $edge_name AS dependency_type, node1, node2 FROM $raw WHERE node1 != NONE AND node2 != NONE);
+    LET $edge_name = string::lowercase($edge_type ?? 'Calls');
+
+    ------------------------------------------------------------------------
+    -- 1) Get all edges for project in ONE query
+    ------------------------------------------------------------------------
+    LET $all_edges = (
+        SELECT `from`, `to`
+        FROM edges
+        WHERE edge_type = $edge_name
+          AND `from` != `to`
+          AND (`from`.project_id = $project_id OR `from`.project_id = NONE)
+          AND (`to`.project_id = $project_id OR `to`.project_id = NONE)
+    );
+
+    ------------------------------------------------------------------------
+    -- 2) Create set of edge keys as "from:to" strings for O(1) lookup
+    ------------------------------------------------------------------------
+    LET $edge_keys = (SELECT VALUE (<string>`from` + ":" + <string>`to`) FROM $all_edges);
+
+    ------------------------------------------------------------------------
+    -- 3) Find cycles: edges where reverse key exists in set
+    --    Use from < to to report each cycle only once
+    ------------------------------------------------------------------------
+    LET $cycles = (
+        SELECT `from` AS node1_id, `to` AS node2_id
+        FROM $all_edges
+        WHERE `from` < `to`
+          AND (<string>`to` + ":" + <string>`from`) INSIDE $edge_keys
+    );
+
+    ------------------------------------------------------------------------
+    -- 4) Enrich with node info
+    ------------------------------------------------------------------------
+    LET $raw = (
+        SELECT
+            node1_id,
+            node2_id,
+            fn::node_info(node1_id) AS node1,
+            fn::node_info(node2_id) AS node2
+        FROM $cycles
+    );
+
+    RETURN (
+        SELECT
+            <string>node1_id AS node1_id,
+            <string>node2_id AS node2_id,
+            $edge_name AS dependency_type,
+            node1,
+            node2
+        FROM $raw
+        WHERE node1 != NONE AND node2 != NONE
+    );
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::edge_types() { RETURN ['calls', 'imports', 'uses', 'extends', 'implements', 'references', 'contains', 'belongs_to']; } PERMISSIONS FULL;
 DEFINE FUNCTION fn::find_nodes_by_name($project_id: string, $needle: string, $limit: int) {
