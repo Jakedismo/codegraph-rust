@@ -44,6 +44,7 @@ use url::Url;
 use walkdir::WalkDir;
 
 use std::sync::{Arc, Mutex};
+use std::sync::OnceLock;
 
 use std::collections::HashMap;
 
@@ -63,6 +64,17 @@ pub struct FileChange {
     pub change_type: FileChangeType,
     pub current_hash: Option<String>,
     pub previous_hash: Option<String>,
+}
+
+static WATCH_TEST_NOTIFIER: OnceLock<Mutex<Option<tokio::sync::mpsc::UnboundedSender<PathBuf>>>> =
+    OnceLock::new();
+
+pub fn set_watch_test_notifier(sender: tokio::sync::mpsc::UnboundedSender<PathBuf>) {
+    let mut guard = WATCH_TEST_NOTIFIER
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap();
+    *guard = Some(sender);
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2979,6 +2991,10 @@ impl ProjectIndexer {
         }
     }
 
+    pub async fn surreal_storage(&self) -> Arc<TokioMutex<SurrealDbStorage>> {
+        Arc::clone(&self.surreal)
+    }
+
     #[cfg(feature = "embeddings")]
     async fn log_surreal_chunk_count(&self, expected: usize) {
         let db = {
@@ -3011,6 +3027,26 @@ impl ProjectIndexer {
                 warn!("⚠️ SurrealDB chunk count query failed: {}", e);
             }
         }
+    }
+
+    #[cfg(test)]
+    pub async fn test_fetch_file_metadata(
+        &self,
+        file_path: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let db = {
+            let storage = self.surreal.lock().await;
+            storage.db()
+        };
+
+        let mut resp = db
+            .query(
+                "SELECT file_path, last_indexed_at, node_count FROM file_metadata WHERE file_path = $file_path",
+            )
+            .bind(("file_path", file_path))
+            .await?;
+        let rows: Vec<serde_json::Value> = resp.take(0)?;
+        Ok(rows.into_iter().next())
     }
 
     async fn log_surreal_edge_count(&self, expected: usize) {
@@ -3771,33 +3807,82 @@ impl ProjectIndexer {
         watcher.watch(&path, RecursiveMode::Recursive)?;
         info!("Watching for changes in: {:?}", path);
 
-        use std::collections::HashMap;
-        use std::time::{Duration, Instant};
-        let mut last_events: HashMap<PathBuf, Instant> = HashMap::new();
+        let mut last_events: std::collections::HashMap<PathBuf, std::time::Instant> =
+            std::collections::HashMap::new();
 
         while let Some(event) = rx.recv().await {
-            match event.kind {
-                EventKind::Modify(ModifyKind::Data(_)) | EventKind::Create(_) => {
-                    for path in event.paths {
-                        if self.should_index(&path) {
-                            let now = Instant::now();
-                            let entry = last_events.entry(path.clone()).or_insert(now);
-                            if now.duration_since(*entry).as_millis() as u64 >= debounce_ms {
-                                *entry = now;
-                                info!("File changed: {:?}, reindexing (debounced)...", path);
+            self.handle_file_event(event, &mut last_events, debounce_ms).await;
+        }
+        Ok(())
+    }
+}
+
+impl ProjectIndexer {
+    async fn handle_file_event(
+        &self,
+        event: notify::Event,
+        last_events: &mut std::collections::HashMap<PathBuf, std::time::Instant>,
+        debounce_ms: u64,
+    ) {
+        use notify::event::{EventKind, ModifyKind};
+        use std::time::Instant;
+
+        match event.kind {
+            EventKind::Modify(ModifyKind::Data(_)) | EventKind::Create(_) => {
+                for path in event.paths {
+                    if self.should_index(&path) {
+                        let now = Instant::now();
+                        match last_events.entry(path.clone()) {
+                            std::collections::hash_map::Entry::Vacant(v) => {
+                                v.insert(now);
+                                info!("File changed: {:?}, reindexing...", path);
                                 if let Err(e) = self.index_single_file(&path).await {
                                     warn!("Incremental reindex failed for {:?}: {}", path, e);
                                 }
-                            } else {
-                                debug!("Debounced change for {:?}", path);
+                                if let Some(tx) = WATCH_TEST_NOTIFIER
+                                    .get_or_init(|| Mutex::new(None))
+                                    .lock()
+                                    .unwrap()
+                                    .as_ref()
+                                {
+                                    let _ = tx.send(path.clone());
+                                }
+                            }
+                            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                                if now.duration_since(*entry.get()).as_millis() as u64 >= debounce_ms
+                                {
+                                    *entry.get_mut() = now;
+                                    info!("File changed: {:?}, reindexing (debounced)...", path);
+                                    if let Err(e) = self.index_single_file(&path).await {
+                                        warn!("Incremental reindex failed for {:?}: {}", path, e);
+                                    }
+                                    if let Some(tx) = WATCH_TEST_NOTIFIER
+                                        .get_or_init(|| Mutex::new(None))
+                                        .lock()
+                                        .unwrap()
+                                        .as_ref()
+                                    {
+                                        let _ = tx.send(path.clone());
+                                    }
+                                } else {
+                                    debug!("Debounced change for {:?}", path);
+                                }
                             }
                         }
                     }
                 }
-                _ => {}
             }
+            _ => {}
         }
-        Ok(())
+    }
+
+    pub async fn simulate_file_event(
+        &self,
+        event: notify::Event,
+        last_events: &mut std::collections::HashMap<PathBuf, std::time::Instant>,
+        debounce_ms: u64,
+    ) {
+        self.handle_file_event(event, last_events, debounce_ms).await;
     }
 }
 
