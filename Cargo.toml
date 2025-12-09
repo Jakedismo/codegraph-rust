@@ -266,7 +266,7 @@ argon2 = "0.5"
 tempfile = "3.23"
 tokio-test = "0.4"
 approx = "0.5"
-criterion = { version = "0.7.0", features = ["html_reports", "async_tokio"] }
+criterion = { version = "0.8.1", features = ["html_reports", "async_tokio"] }
 
 # LRU cache utility
 lru = "0.16.1"
