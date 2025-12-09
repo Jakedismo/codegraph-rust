@@ -60,19 +60,15 @@ DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: st
     );
 
     ------------------------------------------------------------------------
-    -- Convert to node references
+    -- Convert to node references using map and filter
     ------------------------------------------------------------------------
-    LET $dependents_info = (
-        SELECT VALUE fn::node_reference(d)
-        FROM $dependents AS d
-        WHERE fn::node_reference(d) != NONE
-    );
+    LET $dependents_info = $dependents
+        .map(|$d| fn::node_reference(d))
+        .filter(|$r| r != NONE);
 
-    LET $dependencies_info = (
-        SELECT VALUE fn::node_reference(d)
-        FROM $dependencies AS d
-        WHERE fn::node_reference(d) != NONE
-    );
+    LET $dependencies_info = $dependencies
+        .map(|$d| fn::node_reference(d))
+        .filter(|$r| r != NONE);
 
     ------------------------------------------------------------------------
     -- Calculate metrics
