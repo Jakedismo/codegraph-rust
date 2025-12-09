@@ -138,7 +138,7 @@ num_cpus = "1.16"
 sysinfo = "0.37.2"
 
 # Scientific computing
-ndarray = "0.16.1"
+ndarray = "0.17.1"
 
 # OpenAI API client
 # Minimize reqwest features for smaller binaries; prefer system TLS
