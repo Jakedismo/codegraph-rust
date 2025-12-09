@@ -204,7 +204,8 @@ LET $info = fn::node_info($record);
 IF $info = NONE { RETURN NONE; };
 RETURN { id: $info.id, kind: $info.kind, location: $info.location, name: $info.name };
 } PERMISSIONS FULL;
--- Hybrid semantic + BM25 search (nodes via chunks) with dim fallback and EXISTS guards
+-- Hybrid semantic + BM25 search (nodes via chunks) using HNSW KNN index
+-- OPTIMIZED: Uses <|K,EF|> operator for O(log n) instead of O(n) vector search
 DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
     $project_id: string,
     $query_text: string,
@@ -213,40 +214,82 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
     $threshold: float,
     $query_embedding: array<float>
 ) {
-    LET $embedding = $query_embedding;
     LET $safe_limit = IF $limit > 0 AND $limit <= 100 THEN $limit ELSE 10 END;
-    LET $safe_threshold = IF $threshold >= 0f AND $threshold <= 1f THEN $threshold ELSE 0.2f END;
     LET $chunk_limit = $safe_limit * 3;
-    LET $symbol_limit = $safe_limit * 2;
 
     ------------------------------------------------------------------------
-    -- 1) Pick an embedding dimension to use for this project (fallback to $dimension)
+    -- 1) HNSW KNN vector search - uses index for O(log n) performance
+    -- NOTE: KNN operator requires literal integers, so we branch on $dimension
     ------------------------------------------------------------------------
-    LET $dim =
-        IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_384 != NONE LIMIT 1)[0] > 0 {
-            384
-        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_768 != NONE LIMIT 1)[0] > 0 {
-            768
-        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_1024 != NONE LIMIT 1)[0] > 0 {
-            1024
-        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_1536 != NONE LIMIT 1)[0] > 0 {
-            1536
-        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_2048 != NONE LIMIT 1)[0] > 0 {
-            2048
-        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_2560 != NONE LIMIT 1)[0] > 0 {
-            2560
-        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_3072 != NONE LIMIT 1)[0] > 0 {
-            3072
-        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_3584 != NONE LIMIT 1)[0] > 0 {
-            3584
-        } ELSE IF (SELECT VALUE count() FROM chunks WHERE project_id = $project_id AND embedding_4096 != NONE LIMIT 1)[0] > 0 {
-            4096
-        } ELSE {
-            $dimension
-        };
+    LET $chunk_hits =
+        IF $dimension = 384 THEN (
+            SELECT id, parent_node, vector::distance::knn() AS distance
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_384 <|100,200|> $query_embedding
+            LIMIT $chunk_limit
+        )
+        ELSE IF $dimension = 768 THEN (
+            SELECT id, parent_node, vector::distance::knn() AS distance
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_768 <|100,200|> $query_embedding
+            LIMIT $chunk_limit
+        )
+        ELSE IF $dimension = 1024 THEN (
+            SELECT id, parent_node, vector::distance::knn() AS distance
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_1024 <|100,200|> $query_embedding
+            LIMIT $chunk_limit
+        )
+        ELSE IF $dimension = 1536 THEN (
+            SELECT id, parent_node, vector::distance::knn() AS distance
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_1536 <|100,200|> $query_embedding
+            LIMIT $chunk_limit
+        )
+        ELSE IF $dimension = 2048 THEN (
+            SELECT id, parent_node, vector::distance::knn() AS distance
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_2048 <|100,200|> $query_embedding
+            LIMIT $chunk_limit
+        )
+        ELSE IF $dimension = 2560 THEN (
+            SELECT id, parent_node, vector::distance::knn() AS distance
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_2560 <|100,200|> $query_embedding
+            LIMIT $chunk_limit
+        )
+        ELSE IF $dimension = 3072 THEN (
+            SELECT id, parent_node, vector::distance::knn() AS distance
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_3072 <|100,200|> $query_embedding
+            LIMIT $chunk_limit
+        )
+        ELSE IF $dimension = 3584 THEN (
+            SELECT id, parent_node, vector::distance::knn() AS distance
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_3584 <|100,200|> $query_embedding
+            LIMIT $chunk_limit
+        )
+        ELSE IF $dimension = 4096 THEN (
+            SELECT id, parent_node, vector::distance::knn() AS distance
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_4096 <|100,200|> $query_embedding
+            LIMIT $chunk_limit
+        )
+        ELSE [] END;
 
     ------------------------------------------------------------------------
-    -- 2) Chunk-level vector hits (include node fields directly)
+    -- 2) Enrich chunk hits with parent node data
+    ------------------------------------------------------------------------
     LET $chunk_nodes = (
         SELECT
             parent_node AS node_ref,
@@ -259,24 +302,11 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             parent_node.end_line AS end_line,
             parent_node.content AS content,
             parent_node.metadata AS metadata,
-            IF embedding_384 != NONE THEN vector::similarity::cosine(embedding_384, $embedding)
-            ELSE IF embedding_768 != NONE THEN vector::similarity::cosine(embedding_768, $embedding)
-            ELSE IF embedding_1024 != NONE THEN vector::similarity::cosine(embedding_1024, $embedding)
-            ELSE IF embedding_1536 != NONE THEN vector::similarity::cosine(embedding_1536, $embedding)
-            ELSE IF embedding_2048 != NONE THEN vector::similarity::cosine(embedding_2048, $embedding)
-            ELSE IF embedding_2560 != NONE THEN vector::similarity::cosine(embedding_2560, $embedding)
-            ELSE IF embedding_3072 != NONE THEN vector::similarity::cosine(embedding_3072, $embedding)
-            ELSE IF embedding_3584 != NONE THEN vector::similarity::cosine(embedding_3584, $embedding)
-            ELSE IF embedding_4096 != NONE THEN vector::similarity::cosine(embedding_4096, $embedding)
-            ELSE 0f END AS vector_score,
+            1f - distance AS vector_score,
             0f AS text_score,
             ['chunk'] AS match_sources,
             [] AS matched_symbols
-        FROM chunks
-        WHERE project_id = $project_id
-          AND parent_node != NONE
-        ORDER BY vector_score DESC
-        LIMIT $chunk_limit
+        FROM $chunk_hits
         FETCH parent_node
     );
 
