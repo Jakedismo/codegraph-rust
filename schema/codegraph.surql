@@ -226,63 +226,63 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
             SELECT id, parent_node, vector::distance::knn() AS distance
             FROM chunks
             WHERE project_id = $project_id AND parent_node != NONE
-              AND embedding_384 <|100,200|> $query_embedding
+              AND embedding_384 <|100,150|> $query_embedding
             LIMIT $chunk_limit
         )
         ELSE IF $dimension = 768 THEN (
             SELECT id, parent_node, vector::distance::knn() AS distance
             FROM chunks
             WHERE project_id = $project_id AND parent_node != NONE
-              AND embedding_768 <|100,200|> $query_embedding
+              AND embedding_768 <|100,150|> $query_embedding
             LIMIT $chunk_limit
         )
         ELSE IF $dimension = 1024 THEN (
             SELECT id, parent_node, vector::distance::knn() AS distance
             FROM chunks
             WHERE project_id = $project_id AND parent_node != NONE
-              AND embedding_1024 <|100,200|> $query_embedding
+              AND embedding_1024 <|100,150|> $query_embedding
             LIMIT $chunk_limit
         )
         ELSE IF $dimension = 1536 THEN (
             SELECT id, parent_node, vector::distance::knn() AS distance
             FROM chunks
             WHERE project_id = $project_id AND parent_node != NONE
-              AND embedding_1536 <|100,200|> $query_embedding
+              AND embedding_1536 <|100,150|> $query_embedding
             LIMIT $chunk_limit
         )
         ELSE IF $dimension = 2048 THEN (
             SELECT id, parent_node, vector::distance::knn() AS distance
             FROM chunks
             WHERE project_id = $project_id AND parent_node != NONE
-              AND embedding_2048 <|100,200|> $query_embedding
+              AND embedding_2048 <|100,150|> $query_embedding
             LIMIT $chunk_limit
         )
         ELSE IF $dimension = 2560 THEN (
             SELECT id, parent_node, vector::distance::knn() AS distance
             FROM chunks
             WHERE project_id = $project_id AND parent_node != NONE
-              AND embedding_2560 <|100,200|> $query_embedding
+              AND embedding_2560 <|100,150|> $query_embedding
             LIMIT $chunk_limit
         )
         ELSE IF $dimension = 3072 THEN (
             SELECT id, parent_node, vector::distance::knn() AS distance
             FROM chunks
             WHERE project_id = $project_id AND parent_node != NONE
-              AND embedding_3072 <|100,200|> $query_embedding
+              AND embedding_3072 <|100,150|> $query_embedding
             LIMIT $chunk_limit
         )
         ELSE IF $dimension = 3584 THEN (
             SELECT id, parent_node, vector::distance::knn() AS distance
             FROM chunks
             WHERE project_id = $project_id AND parent_node != NONE
-              AND embedding_3584 <|100,200|> $query_embedding
+              AND embedding_3584 <|100,150|> $query_embedding
             LIMIT $chunk_limit
         )
         ELSE IF $dimension = 4096 THEN (
             SELECT id, parent_node, vector::distance::knn() AS distance
             FROM chunks
             WHERE project_id = $project_id AND parent_node != NONE
-              AND embedding_4096 <|100,200|> $query_embedding
+              AND embedding_4096 <|100,150|> $query_embedding
             LIMIT $chunk_limit
         )
         ELSE [] END;
