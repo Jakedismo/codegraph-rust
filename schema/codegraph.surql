@@ -162,20 +162,71 @@ LET $max = IF $limit != NONE AND $limit > 0 THEN $limit ELSE 10 END;
 RETURN (SELECT id, name, node_type AS kind, language, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM nodes WHERE project_id = $project_id AND (string::lowercase(name) CONTAINS string::lowercase($needle) OR file_path CONTAINS $needle) ORDER BY name
  LIMIT $max);
 } PERMISSIONS FULL;
+-- Find hub nodes (highly connected nodes in the graph)
+-- OPTIMIZED: Filter by threshold BEFORE enriching, use efficient lookups
 DEFINE FUNCTION fn::get_hub_nodes($project_id: string, $min_degree: int) {
-LET $threshold = IF $min_degree != NONE AND $min_degree > 0 THEN $min_degree ELSE 5 END;
-LET $raw_types = fn::edge_types();
-LET $edge_list = array::map(array::filter($raw_types, |$v: any| $v != NONE), |$v: any| string::lowercase($v));
--- Use direct field access (from.project_id) instead of subqueries for proper filtering
-LET $project_edges = (SELECT from, to, edge_type FROM edges WHERE edge_type INSIDE $edge_list AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE));
-LET $incoming_by_type = (SELECT to AS node_id, edge_type, count() AS count FROM $project_edges GROUP BY to, edge_type);
-LET $outgoing_by_type = (SELECT from AS node_id, edge_type, count() AS count FROM $project_edges GROUP BY from, edge_type);
-LET $incoming_totals = (SELECT to AS node_id, count() AS total FROM $project_edges GROUP BY to);
-LET $outgoing_totals = (SELECT from AS node_id, count() AS total FROM $project_edges GROUP BY from);
-LET $candidates = array::distinct(array::concat((SELECT VALUE node_id FROM $incoming_totals), (SELECT VALUE node_id FROM $outgoing_totals)));
-LET $candidates_filtered = (SELECT VALUE c FROM $candidates WHERE c != NONE);
-LET $raw = (SELECT candidate_id, fn::node_info(candidate_id) AS node, (array::first((SELECT VALUE total FROM $incoming_totals WHERE node_id = candidate_id LIMIT 1)) ?? 0) AS afferent_degree, (array::first((SELECT VALUE total FROM $outgoing_totals WHERE node_id = candidate_id LIMIT 1)) ?? 0) AS efferent_degree, (SELECT edge_type, count FROM $incoming_by_type WHERE node_id = candidate_id) AS incoming_by_type, (SELECT edge_type, count FROM $outgoing_by_type WHERE node_id = candidate_id) AS outgoing_by_type FROM (SELECT node_id AS candidate_id FROM $candidates_filtered));
-RETURN (SELECT candidate_id AS node_id, node, afferent_degree, efferent_degree, afferent_degree + efferent_degree AS total_degree, incoming_by_type, outgoing_by_type FROM $raw WHERE node != NONE AND (afferent_degree + efferent_degree) >= $threshold ORDER BY total_degree DESC);
+    LET $threshold = IF $min_degree != NONE AND $min_degree > 0 THEN $min_degree ELSE 5 END;
+    LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references', 'contains', 'belongs_to'];
+
+    ------------------------------------------------------------------------
+    -- 1) Get all project edges in ONE query
+    ------------------------------------------------------------------------
+    LET $project_edges = (
+        SELECT `from`, `to`, edge_type
+        FROM edges
+        WHERE edge_type INSIDE $edge_list
+          AND (`from`.project_id = $project_id OR `from`.project_id = NONE)
+          AND (`to`.project_id = $project_id OR `to`.project_id = NONE)
+    );
+
+    ------------------------------------------------------------------------
+    -- 2) Compute totals per node
+    ------------------------------------------------------------------------
+    LET $incoming_totals = (SELECT `to` AS node_id, count() AS total FROM $project_edges GROUP BY `to`);
+    LET $outgoing_totals = (SELECT `from` AS node_id, count() AS total FROM $project_edges GROUP BY `from`);
+
+    ------------------------------------------------------------------------
+    -- 3) Merge into single list with combined degree, FILTER BY THRESHOLD EARLY
+    ------------------------------------------------------------------------
+    LET $incoming_map = (SELECT node_id, total AS afferent, 0 AS efferent FROM $incoming_totals);
+    LET $outgoing_map = (SELECT node_id, 0 AS afferent, total AS efferent FROM $outgoing_totals);
+    LET $all_nodes = array::concat($incoming_map, $outgoing_map);
+
+    -- Group by node_id and sum degrees
+    LET $node_degrees = (
+        SELECT node_id, math::sum(afferent) AS afferent_degree, math::sum(efferent) AS efferent_degree
+        FROM $all_nodes
+        WHERE node_id != NONE
+        GROUP BY node_id
+    );
+
+    -- Filter by threshold BEFORE expensive node_info calls
+    LET $hub_candidates = (
+        SELECT node_id, afferent_degree, efferent_degree, afferent_degree + efferent_degree AS total_degree
+        FROM $node_degrees
+        WHERE (afferent_degree + efferent_degree) >= $threshold
+        ORDER BY total_degree DESC
+        LIMIT 50
+    );
+
+    ------------------------------------------------------------------------
+    -- 4) Only now enrich with node_info (for filtered set only)
+    ------------------------------------------------------------------------
+    LET $incoming_by_type = (SELECT `to` AS node_id, edge_type, count() AS count FROM $project_edges GROUP BY `to`, edge_type);
+    LET $outgoing_by_type = (SELECT `from` AS node_id, edge_type, count() AS count FROM $project_edges GROUP BY `from`, edge_type);
+
+    RETURN (
+        SELECT
+            node_id,
+            fn::node_info(node_id) AS node,
+            afferent_degree,
+            efferent_degree,
+            total_degree,
+            (SELECT edge_type, count FROM $incoming_by_type WHERE node_id = parent.node_id) AS incoming_by_type,
+            (SELECT edge_type, count FROM $outgoing_by_type WHERE node_id = parent.node_id) AS outgoing_by_type
+        FROM $hub_candidates
+        WHERE fn::node_info(node_id) != NONE
+    );
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::get_reverse_dependencies($project_id: string, $node_id: any, $edge_type: string, $depth: int) {
 LET $safe_depth = IF $depth > 0 AND $depth <= 5 THEN $depth ELSE 3 END;
