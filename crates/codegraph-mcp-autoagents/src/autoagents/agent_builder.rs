@@ -15,7 +15,7 @@ use autoagents::llm::{FunctionCall, ToolCall};
 use codegraph_ai::llm_provider::{LLMProvider as CodeGraphLLM, Message, MessageRole};
 use codegraph_mcp_core::debug_logger::DebugLogger;
 use serde::Deserialize;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 /// Convert CodeGraph Message to AutoAgents ChatMessage
@@ -50,15 +50,76 @@ pub(crate) fn read_memory_window_config() -> usize {
         .unwrap_or(DEFAULT_MEMORY_WINDOW)
 }
 
+use crate::autoagents::progress_notifier::ProgressCallback;
+
 /// Adapter that bridges codegraph_ai::LLMProvider to AutoAgents ChatProvider
 pub struct CodeGraphChatAdapter {
     provider: Arc<dyn CodeGraphLLM>,
     tier: ContextTier,
+    progress_callback: Option<ProgressCallback>,
+    step_counter: Arc<AtomicUsize>,
+    /// Maximum context size in bytes (derived from CODEGRAPH_CONTEXT_WINDOW)
+    /// Used as safety valve to prevent accumulated tool results from exceeding model limits
+    max_context_bytes: usize,
 }
 
 impl CodeGraphChatAdapter {
+    /// Calculate max context bytes from environment or tier
+    /// Uses ~80% of context window (reserves 20% for response) at ~4 bytes/token
+    fn calculate_max_context_bytes(tier: ContextTier) -> usize {
+        // Check env var first
+        if let Ok(context_window) = std::env::var("CODEGRAPH_CONTEXT_WINDOW")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .ok_or(())
+        {
+            // 80% of context window * 4 bytes/token
+            return context_window * 4 * 8 / 10;
+        }
+
+        // Fall back to tier-based defaults (tokens * 4 bytes * 80%)
+        match tier {
+            ContextTier::Small => 50_000 * 4 * 8 / 10,     // ~160KB
+            ContextTier::Medium => 128_000 * 4 * 8 / 10,   // ~410KB
+            ContextTier::Large => 200_000 * 4 * 8 / 10,    // ~640KB
+            ContextTier::Massive => 2_000_000 * 4 * 8 / 10, // ~6.4MB
+        }
+    }
+
     pub fn new(provider: Arc<dyn CodeGraphLLM>, tier: ContextTier) -> Self {
-        Self { provider, tier }
+        let max_context_bytes = Self::calculate_max_context_bytes(tier);
+        tracing::debug!(
+            "CodeGraphChatAdapter initialized with max_context_bytes: {} ({:.1}MB)",
+            max_context_bytes,
+            max_context_bytes as f64 / 1_000_000.0
+        );
+        Self {
+            provider,
+            tier,
+            progress_callback: None,
+            step_counter: Arc::new(AtomicUsize::new(1)),
+            max_context_bytes,
+        }
+    }
+
+    pub fn with_progress_callback(
+        provider: Arc<dyn CodeGraphLLM>,
+        tier: ContextTier,
+        callback: ProgressCallback,
+    ) -> Self {
+        let max_context_bytes = Self::calculate_max_context_bytes(tier);
+        tracing::debug!(
+            "CodeGraphChatAdapter initialized with max_context_bytes: {} ({:.1}MB)",
+            max_context_bytes,
+            max_context_bytes as f64 / 1_000_000.0
+        );
+        Self {
+            provider,
+            tier,
+            progress_callback: Some(callback),
+            step_counter: Arc::new(AtomicUsize::new(1)),
+            max_context_bytes,
+        }
     }
 
     /// Convert AutoAgents Tool to CodeGraph ToolDefinition
@@ -165,6 +226,46 @@ impl ChatProvider for CodeGraphChatAdapter {
             })
             .collect();
 
+        // Safety valve: Check accumulated context size before sending to LLM
+        let total_context_bytes: usize = cg_messages.iter().map(|m| m.content.len()).sum();
+        if total_context_bytes > self.max_context_bytes {
+            let overflow_ratio = total_context_bytes as f64 / self.max_context_bytes as f64;
+            tracing::error!(
+                total_bytes = total_context_bytes,
+                max_bytes = self.max_context_bytes,
+                overflow_ratio = format!("{:.1}x", overflow_ratio),
+                message_count = cg_messages.len(),
+                "CONTEXT OVERFLOW: Accumulated messages exceed max_context_bytes limit"
+            );
+
+            // Return error instead of letting the API reject with a cryptic message
+            return Err(LLMError::Generic(format!(
+                "Context overflow: {} bytes exceeds {} byte limit ({:.1}x). \
+                 Tool results accumulated too much data. Try reducing result limits or query scope.",
+                total_context_bytes,
+                self.max_context_bytes,
+                overflow_ratio
+            )));
+        }
+
+        // Log context usage for monitoring
+        let usage_percent = (total_context_bytes as f64 / self.max_context_bytes as f64) * 100.0;
+        if usage_percent > 70.0 {
+            tracing::warn!(
+                total_bytes = total_context_bytes,
+                max_bytes = self.max_context_bytes,
+                usage_percent = format!("{:.1}%", usage_percent),
+                "Context usage above 70% - approaching limit"
+            );
+        } else {
+            tracing::debug!(
+                total_bytes = total_context_bytes,
+                max_bytes = self.max_context_bytes,
+                usage_percent = format!("{:.1}%", usage_percent),
+                "Context size within limits"
+            );
+        }
+
         // Convert AutoAgents tools to CodeGraph ToolDefinitions
         let cg_tools = tools.map(Self::convert_tools);
 
@@ -211,6 +312,32 @@ impl ChatProvider for CodeGraphChatAdapter {
             response.tool_calls.as_ref().map_or(0, |tc| tc.len()),
             response.finish_reason
         );
+
+        // Emit step progress notification if callback is configured
+        if let Some(ref callback) = self.progress_callback {
+            let step = self.step_counter.fetch_add(1, Ordering::SeqCst);
+            let tool_names = response
+                .tool_calls
+                .as_ref()
+                .map(|tc| {
+                    tc.iter()
+                        .map(|t| t.function.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .filter(|s| !s.is_empty());
+
+            let message = match tool_names {
+                Some(names) => format!("Step {}: Calling {}", step, names),
+                None => format!("Step {}: Agent reasoning...", step),
+            };
+
+            // Fire-and-forget progress notification (non-blocking)
+            let cb = callback.clone();
+            tokio::spawn(async move {
+                cb(step as f64, Some(message)).await;
+            });
+        }
 
         // Wrap response in AutoAgents ChatResponse with native tool calls
         Ok(Box::new(CodeGraphChatResponse {
@@ -669,6 +796,26 @@ impl CodeGraphAgentBuilder {
     ) -> Self {
         Self {
             llm_adapter: Arc::new(CodeGraphChatAdapter::new(llm_provider, tier)),
+            tool_factory: GraphToolFactory::new(tool_executor),
+            tier,
+            analysis_type,
+        }
+    }
+
+    /// Create builder with progress callback for step-by-step notifications
+    pub fn with_progress_callback(
+        llm_provider: Arc<dyn codegraph_ai::llm_provider::LLMProvider>,
+        tool_executor: Arc<GraphToolExecutor>,
+        tier: ContextTier,
+        analysis_type: AnalysisType,
+        callback: ProgressCallback,
+    ) -> Self {
+        Self {
+            llm_adapter: Arc::new(CodeGraphChatAdapter::with_progress_callback(
+                llm_provider,
+                tier,
+                callback,
+            )),
             tool_factory: GraphToolFactory::new(tool_executor),
             tier,
             analysis_type,

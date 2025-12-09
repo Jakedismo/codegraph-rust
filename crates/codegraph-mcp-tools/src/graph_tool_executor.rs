@@ -62,25 +62,54 @@ pub struct GraphToolExecutor {
     cache_enabled: bool,
     /// Reranker for semantic search result refinement
     reranker: Option<Arc<dyn Reranker>>,
+    /// Maximum result size in bytes (derived from LLM context window)
+    /// Prevents sending oversized results that would exceed model limits
+    max_result_bytes: usize,
 }
+
+/// Default max result bytes when context window not specified (~200KB)
+const DEFAULT_MAX_RESULT_BYTES: usize = 200_000;
 
 impl GraphToolExecutor {
     /// Create a new tool executor with shared EmbeddingGenerator
+    /// Uses CODEGRAPH_CONTEXT_WINDOW env var to derive max result size
     pub fn new(
         graph_functions: Arc<GraphFunctions>,
         config: Arc<CodeGraphConfig>,
         embedding_generator: Arc<EmbeddingGenerator>,
     ) -> Self {
-        Self::with_cache(graph_functions, config, embedding_generator, true, 100)
+        // Read context window from environment to derive max result bytes
+        let context_window = std::env::var("CODEGRAPH_CONTEXT_WINDOW")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(128_000);
+
+        Self::with_context_window(graph_functions, config, embedding_generator, context_window)
     }
 
-    /// Create a new tool executor with custom cache configuration
-    pub fn with_cache(
+    /// Create a new tool executor with explicit context window for result size limiting
+    /// max_result_bytes = context_window * 2 (conservative estimate: ~50% of context for results at 4 bytes/token)
+    pub fn with_context_window(
+        graph_functions: Arc<GraphFunctions>,
+        config: Arc<CodeGraphConfig>,
+        embedding_generator: Arc<EmbeddingGenerator>,
+        context_window: usize,
+    ) -> Self {
+        // Calculate max result bytes: use ~50% of context window, assuming ~4 chars per token
+        // This leaves room for system prompt, conversation history, and response
+        let max_result_bytes = context_window.saturating_mul(2);
+
+        Self::with_limits(graph_functions, config, embedding_generator, true, 100, max_result_bytes)
+    }
+
+    /// Create a new tool executor with custom cache and result size configuration
+    pub fn with_limits(
         graph_functions: Arc<GraphFunctions>,
         config: Arc<CodeGraphConfig>,
         embedding_generator: Arc<EmbeddingGenerator>,
         cache_enabled: bool,
         cache_size: usize,
+        max_result_bytes: usize,
     ) -> Self {
         let capacity = NonZeroUsize::new(cache_size).unwrap_or(NonZeroUsize::new(100).unwrap());
         let cache = Arc::new(Mutex::new(LruCache::new(capacity)));
@@ -103,6 +132,12 @@ impl GraphToolExecutor {
             );
         }
 
+        info!(
+            "GraphToolExecutor initialized with max_result_bytes: {} ({:.1}MB)",
+            max_result_bytes,
+            max_result_bytes as f64 / 1_000_000.0
+        );
+
         Self {
             graph_functions,
             config,
@@ -111,7 +146,19 @@ impl GraphToolExecutor {
             cache_stats,
             cache_enabled,
             reranker,
+            max_result_bytes,
         }
+    }
+
+    /// Create a new tool executor with custom cache configuration (legacy compatibility)
+    pub fn with_cache(
+        graph_functions: Arc<GraphFunctions>,
+        config: Arc<CodeGraphConfig>,
+        embedding_generator: Arc<EmbeddingGenerator>,
+        cache_enabled: bool,
+        cache_size: usize,
+    ) -> Self {
+        Self::with_limits(graph_functions, config, embedding_generator, cache_enabled, cache_size, DEFAULT_MAX_RESULT_BYTES)
     }
 
     /// Get current cache statistics
@@ -133,6 +180,77 @@ impl GraphToolExecutor {
         stats.misses = 0;
         stats.evictions = 0;
         stats.current_size = 0;
+    }
+
+    /// Truncate result if it exceeds max_result_bytes to prevent context window overflow
+    /// Returns truncated result with warning metadata if truncation occurred
+    fn truncate_if_oversized(&self, tool_name: &str, result: JsonValue) -> JsonValue {
+        let serialized = result.to_string();
+        let result_bytes = serialized.len();
+
+        if result_bytes <= self.max_result_bytes {
+            return result;
+        }
+
+        // Result is oversized - need to truncate
+        let overflow_ratio = result_bytes as f64 / self.max_result_bytes as f64;
+        tracing::warn!(
+            tool = tool_name,
+            result_bytes = result_bytes,
+            max_bytes = self.max_result_bytes,
+            overflow_ratio = format!("{:.1}x", overflow_ratio),
+            "Tool result exceeds max_result_bytes limit, truncating"
+        );
+
+        // Strategy: Try to truncate the "result" field if it's an array
+        if let Some(result_array) = result.get("result").and_then(|r| r.as_array()) {
+            // Calculate how many items we can keep
+            let item_count = result_array.len();
+            if item_count == 0 {
+                return result;
+            }
+
+            // Estimate bytes per item (rough average)
+            let bytes_per_item = result_bytes / item_count;
+            let max_items = self.max_result_bytes / bytes_per_item.max(1);
+            let keep_items = max_items.min(item_count).max(1); // Keep at least 1
+
+            // Create truncated result
+            let truncated_array: Vec<JsonValue> = result_array.iter().take(keep_items).cloned().collect();
+            let truncated_count = item_count - keep_items;
+
+            tracing::info!(
+                tool = tool_name,
+                original_items = item_count,
+                kept_items = keep_items,
+                truncated_items = truncated_count,
+                "Truncated result array to fit context window"
+            );
+
+            // Reconstruct the result with truncation metadata
+            let mut truncated_result = result.clone();
+            if let Some(obj) = truncated_result.as_object_mut() {
+                obj.insert("result".to_string(), JsonValue::Array(truncated_array));
+                obj.insert("_truncated".to_string(), json!({
+                    "original_items": item_count,
+                    "kept_items": keep_items,
+                    "truncated_items": truncated_count,
+                    "reason": "Result exceeded context window limit",
+                    "max_bytes": self.max_result_bytes
+                }));
+            }
+
+            return truncated_result;
+        }
+
+        // Fallback: If we can't smart-truncate, just return with a warning
+        // This shouldn't happen often since most results are arrays
+        tracing::error!(
+            tool = tool_name,
+            result_bytes = result_bytes,
+            "Cannot truncate non-array result, returning as-is (may cause context overflow)"
+        );
+        result
     }
 
     /// Generate a cache key from project, tool name, and parameters
@@ -219,6 +337,9 @@ impl GraphToolExecutor {
                     );
                 }
             };
+
+            // Apply result size limiting to prevent context window overflow
+            let result = self.truncate_if_oversized(tool_name, result);
 
             // Cache the result if enabled
             if self.cache_enabled {

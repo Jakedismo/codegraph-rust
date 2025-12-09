@@ -231,13 +231,22 @@ fn get_output_format(tier: ContextTier) -> &'static str {
 }
 
 /// Get recommended max turns for the tool loop based on tier
+///
+/// Hard capped at 8 to prevent:
+/// - Context overflow from accumulated tool results
+/// - Runaway costs from excessive LLM calls
+/// - Infinite semantic search loops
+///
+/// Agents should produce answers efficiently, not exhaustively search.
 pub fn get_max_turns(tier: ContextTier) -> usize {
-    match tier {
-        ContextTier::Small => 5,
-        ContextTier::Medium => 10,
-        ContextTier::Large => 15,
-        ContextTier::Massive => 20,
-    }
+    let base = match tier {
+        ContextTier::Small => 3,
+        ContextTier::Medium => 5,
+        ContextTier::Large => 6,
+        ContextTier::Massive => 8,
+    };
+    // Hard cap at 8 - even Massive tier shouldn't need more than 8 tool calls
+    std::cmp::min(base, 8)
 }
 
 /// Detect context tier from context window size

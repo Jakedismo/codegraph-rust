@@ -3,6 +3,7 @@
 
 use crate::autoagents::executor::ExecutorError;
 use crate::autoagents::executor_trait::AgentExecutorTrait;
+use crate::autoagents::progress_notifier::ProgressCallback;
 use crate::autoagents::react_executor::ReActExecutor;
 use codegraph_ai::llm_provider::LLMProvider;
 use codegraph_mcp_core::agent_architecture::AgentArchitecture;
@@ -23,6 +24,7 @@ pub struct AgentExecutorFactory {
     // Reserved for Phase 2 LATS implementation
     #[allow(dead_code)]
     config: Arc<CodeGraphConfig>,
+    progress_callback: Option<ProgressCallback>,
 }
 
 impl AgentExecutorFactory {
@@ -35,6 +37,21 @@ impl AgentExecutorFactory {
             llm_provider,
             tool_executor,
             config,
+            progress_callback: None,
+        }
+    }
+
+    pub fn with_progress_callback(
+        llm_provider: Arc<dyn LLMProvider>,
+        tool_executor: Arc<GraphToolExecutor>,
+        config: Arc<CodeGraphConfig>,
+        callback: ProgressCallback,
+    ) -> Self {
+        Self {
+            llm_provider,
+            tool_executor,
+            config,
+            progress_callback: Some(callback),
         }
     }
 
@@ -47,11 +64,22 @@ impl AgentExecutorFactory {
         let tier = self.detect_tier();
 
         match architecture {
-            AgentArchitecture::ReAct => Ok(Box::new(ReActExecutor::new(
-                self.llm_provider.clone(),
-                self.tool_executor.clone(),
-                tier,
-            ))),
+            AgentArchitecture::ReAct => {
+                let executor = match &self.progress_callback {
+                    Some(callback) => ReActExecutor::with_progress_callback(
+                        self.llm_provider.clone(),
+                        self.tool_executor.clone(),
+                        tier,
+                        callback.clone(),
+                    ),
+                    None => ReActExecutor::new(
+                        self.llm_provider.clone(),
+                        self.tool_executor.clone(),
+                        tier,
+                    ),
+                };
+                Ok(Box::new(executor))
+            }
             #[cfg(feature = "autoagents-lats")]
             AgentArchitecture::LATS => {
                 use crate::autoagents::lats::executor::LATSExecutor;

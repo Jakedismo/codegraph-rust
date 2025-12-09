@@ -104,24 +104,52 @@ Running a small local model? Get focused, efficient queries.
 
 Using GPT-5.1 or Claude with 200K context? Get comprehensive, exploratory analysis.
 
-Using grok-4-1-fast-reasoning with 2M context? Get incredibly comprehensive up-to 40 turns spanning in-depth analyses.
+Using grok-4-1-fast-reasoning with 2M context? Get detailed analysis with intelligent result management.
 
 The Agent only uses the amount of steps that it requires to produce the answer so tool execution times vary based on the query and amount of data indexed in the database.
 
-During development the agent used 3-10 steps on average to produce answers for test scenarios.
+During development the agent used 3-6 steps on average to produce answers for test scenarios.
 
 The Agent is stateless it only has conversational memory for the span of tool execution it does not accumulate context/memory over multiple chained tool calls this is already handled by your client of choice, it accumulates that context so codegraph needs to just provide answers.
 
 | Your Model | CodeGraph's Behavior |
 |------------|---------------------|
-| < 50K tokens | Terse prompts, max 5 steps |
-| 50K-150K | Balanced analysis, max 10 steps |
-| 150K-500K | Detailed exploration, max 15 steps |
-| > 500K (Grok, etc.) | Full monty, max 20 steps |
+| < 50K tokens | Terse prompts, max 3 steps |
+| 50K-150K | Balanced analysis, max 5 steps |
+| 150K-500K | Detailed exploration, max 6 steps |
+| > 500K (Grok, etc.) | Comprehensive analysis, max 8 steps |
+
+**Hard cap:** Maximum 8 steps regardless of tier (10 with env override). This prevents runaway costs and context overflow while still allowing thorough analysis.
 
 **Same tool, automatically optimized for your setup.**
 
-### 4. Hybrid Search That Actually Works
+### 4. Context Overflow Protection
+
+CodeGraph includes multi-layer protection against context overflow—preventing expensive failures when tool results exceed your model's limits.
+
+**Per-Tool Result Truncation:**
+- Each tool result is limited based on your configured context window
+- Large results (e.g., dependency trees with 1000+ nodes) are intelligently truncated
+- Truncated results include `_truncated: true` metadata so the agent knows data was cut
+- Array results keep the most relevant items that fit within limits
+
+**Context Accumulation Guard:**
+- Monitors total accumulated context across multi-step reasoning
+- Fails fast with clear error message if accumulated tool results exceed safe threshold
+- Threshold: 80% of context window × 4 (conservative estimate for token overhead)
+
+**Configure via environment:**
+```bash
+# CRITICAL: Set this to match your agent's LLM context window
+CODEGRAPH_CONTEXT_WINDOW=128000  # Default: 128K
+
+# Per-tool result limit derived automatically: context_window × 2 bytes
+# Accumulation limit derived automatically: context_window × 4 × 0.8 bytes
+```
+
+**Why this matters:** Without these guards, a single `agentic_dependency_analysis` on a large codebase could return 6M+ tokens—far exceeding most models' limits and causing expensive failures.
+
+### 5. Hybrid Search That Actually Works
 
 We don't pick sides in the "embeddings vs keywords" debate. CodeGraph combines:
 

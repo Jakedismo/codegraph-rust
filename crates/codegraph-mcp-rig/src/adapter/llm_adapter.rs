@@ -96,16 +96,20 @@ fn default_model_for_provider() -> String {
 }
 
 /// Get maximum turns for tool loop from environment
+/// Default is 8 to prevent context overflow and runaway costs
 pub fn get_max_turns() -> usize {
     env::var("CODEGRAPH_AGENT_MAX_STEPS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(10)
+        .map(|v: usize| std::cmp::min(v, 10)) // Hard cap at 10 even with env override
+        .unwrap_or(8)
 }
 
 /// Get context window size from environment (for tier detection)
+/// Checks CODEGRAPH_CONTEXT_WINDOW first, then CODEGRAPH_LLM_CONTEXT_WINDOW for compatibility
 pub fn get_context_window() -> usize {
-    env::var("CODEGRAPH_LLM_CONTEXT_WINDOW")
+    env::var("CODEGRAPH_CONTEXT_WINDOW")
+        .or_else(|_| env::var("CODEGRAPH_LLM_CONTEXT_WINDOW"))
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(128_000) // Default to 128K
@@ -233,9 +237,9 @@ mod tests {
 
     #[test]
     fn test_default_max_turns() {
-        // Without env var, should return 10
+        // Without env var, should return 8 (conservative default)
         std::env::remove_var("CODEGRAPH_AGENT_MAX_STEPS");
-        assert_eq!(get_max_turns(), 10);
+        assert_eq!(get_max_turns(), 8);
     }
 
     #[test]

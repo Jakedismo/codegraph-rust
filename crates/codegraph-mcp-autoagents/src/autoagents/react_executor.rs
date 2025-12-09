@@ -5,6 +5,7 @@ use crate::autoagents::agent_builder::{AgentHandle, CodeGraphAgentBuilder};
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use crate::autoagents::executor::ExecutorError;
 use crate::autoagents::executor_trait::AgentExecutorTrait;
+use crate::autoagents::progress_notifier::ProgressCallback;
 use async_trait::async_trait;
 use codegraph_ai::llm_provider::LLMProvider;
 use codegraph_mcp_core::agent_architecture::AgentArchitecture;
@@ -22,6 +23,7 @@ pub struct ReActExecutor {
     llm_provider: Arc<dyn LLMProvider>,
     tool_executor: Arc<GraphToolExecutor>,
     tier: ContextTier,
+    progress_callback: Option<ProgressCallback>,
 }
 
 impl ReActExecutor {
@@ -34,17 +36,41 @@ impl ReActExecutor {
             llm_provider,
             tool_executor,
             tier,
+            progress_callback: None,
+        }
+    }
+
+    pub fn with_progress_callback(
+        llm_provider: Arc<dyn LLMProvider>,
+        tool_executor: Arc<GraphToolExecutor>,
+        tier: ContextTier,
+        callback: ProgressCallback,
+    ) -> Self {
+        Self {
+            llm_provider,
+            tool_executor,
+            tier,
+            progress_callback: Some(callback),
         }
     }
 
     /// Build CodeGraph agent with specified tier and analysis type
     async fn build_agent(&self, analysis_type: AnalysisType) -> Result<AgentHandle, ExecutorError> {
-        let builder = CodeGraphAgentBuilder::new(
-            self.llm_provider.clone(),
-            self.tool_executor.clone(),
-            self.tier,
-            analysis_type,
-        );
+        let builder = match &self.progress_callback {
+            Some(callback) => CodeGraphAgentBuilder::with_progress_callback(
+                self.llm_provider.clone(),
+                self.tool_executor.clone(),
+                self.tier,
+                analysis_type,
+                callback.clone(),
+            ),
+            None => CodeGraphAgentBuilder::new(
+                self.llm_provider.clone(),
+                self.tool_executor.clone(),
+                self.tier,
+                analysis_type,
+            ),
+        };
 
         builder
             .build()

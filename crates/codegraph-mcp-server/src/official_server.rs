@@ -505,6 +505,38 @@ impl CodeGraphMCPServer {
         })
     }
 
+    /// Creates a step progress callback for per-step notifications during agent execution.
+    /// Unlike 3-stage progress, this uses indeterminate progress (no total) and reports
+    /// each LLM turn with step number and tool name.
+    #[cfg(feature = "ai-enhanced")]
+    fn create_step_progress_callback(
+        peer: Peer<RoleServer>,
+        progress_token: ProgressToken,
+    ) -> codegraph_mcp_autoagents::ProgressCallback {
+        Arc::new(move |progress, message| {
+            let peer = peer.clone();
+            let progress_token = progress_token.clone();
+
+            Box::pin(async move {
+                let notification = ProgressNotification {
+                    method: Default::default(),
+                    params: ProgressNotificationParam {
+                        progress_token: progress_token.clone(),
+                        progress,
+                        total: None, // Indeterminate - we don't know total steps upfront
+                        message,
+                    },
+                    extensions: Default::default(),
+                };
+
+                // Ignore notification errors (non-blocking)
+                let _ = peer
+                    .send_notification(ServerNotification::ProgressNotification(notification))
+                    .await;
+            })
+        })
+    }
+
     /// Execute agentic workflow using AutoAgents framework
     #[cfg(feature = "ai-enhanced")]
     async fn execute_agentic_workflow(
@@ -517,7 +549,7 @@ impl CodeGraphMCPServer {
         use codegraph_ai::llm_factory::LLMProviderFactory;
         use codegraph_graph::GraphFunctions;
         use codegraph_mcp_autoagents::{
-            CodeGraphExecutor, CodeGraphExecutorBuilder, ProgressNotifier,
+            CodeGraphExecutor, CodeGraphExecutorBuilder, ProgressCallback, ProgressNotifier,
         };
         use std::sync::Arc;
 
@@ -734,11 +766,18 @@ impl CodeGraphMCPServer {
             }
             AgentArchitecture::React | AgentArchitecture::Lats => {
                 // Use AutoAgents framework (React or LATS)
-                let executor = CodeGraphExecutorBuilder::new()
+                // Create step progress callback if progress token is available
+                let mut builder = CodeGraphExecutorBuilder::new()
                     .llm_provider(llm_provider)
-                    .tool_executor(tool_executor)
-                    .build()
-                    .map_err(|e| {
+                    .tool_executor(tool_executor);
+
+                // Add step progress callback if progress token is available
+                if let Some(progress_token) = meta.get_progress_token() {
+                    let step_callback = Self::create_step_progress_callback(peer.clone(), progress_token);
+                    builder = builder.progress_callback(step_callback);
+                }
+
+                let executor = builder.build().map_err(|e| {
                         let error_msg = format!("Failed to build AutoAgents executor: {}", e);
                         let notifier = progress_notifier.clone();
                         let error_for_spawn = error_msg.clone();

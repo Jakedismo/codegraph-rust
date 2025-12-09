@@ -2,6 +2,7 @@
 // ABOUTME: Orchestrates architecture detection, factory-based executor creation, and delegation
 
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
+use crate::autoagents::progress_notifier::ProgressCallback;
 use crate::autoagents::startup_context::{build_startup_context, StartupContextRender};
 use codegraph_ai::llm_provider::LLMProvider;
 use codegraph_graph::{GraphFunctions, HubNode};
@@ -117,10 +118,36 @@ impl CodeGraphExecutor {
         tool_executor: Arc<GraphToolExecutor>,
         config: Arc<codegraph_mcp_core::config_manager::CodeGraphConfig>,
     ) -> Self {
+        Self::with_optional_progress_callback(llm_provider, tool_executor, config, None)
+    }
+
+    pub fn with_progress_callback(
+        llm_provider: Arc<dyn LLMProvider>,
+        tool_executor: Arc<GraphToolExecutor>,
+        config: Arc<codegraph_mcp_core::config_manager::CodeGraphConfig>,
+        callback: ProgressCallback,
+    ) -> Self {
+        Self::with_optional_progress_callback(llm_provider, tool_executor, config, Some(callback))
+    }
+
+    fn with_optional_progress_callback(
+        llm_provider: Arc<dyn LLMProvider>,
+        tool_executor: Arc<GraphToolExecutor>,
+        config: Arc<codegraph_mcp_core::config_manager::CodeGraphConfig>,
+        progress_callback: Option<ProgressCallback>,
+    ) -> Self {
         use crate::autoagents::executor_factory::AgentExecutorFactory;
 
         // Create factory for architecture-specific executors
-        let factory = AgentExecutorFactory::new(llm_provider, tool_executor, config.clone());
+        let factory = match progress_callback {
+            Some(callback) => AgentExecutorFactory::with_progress_callback(
+                llm_provider,
+                tool_executor,
+                config.clone(),
+                callback,
+            ),
+            None => AgentExecutorFactory::new(llm_provider, tool_executor, config.clone()),
+        };
 
         // Detect architecture from environment or config
         let architecture = AgentExecutorFactory::detect_architecture();
@@ -293,6 +320,7 @@ pub struct CodeGraphExecutorBuilder {
     llm_provider: Option<Arc<dyn LLMProvider>>,
     tool_executor: Option<Arc<GraphToolExecutor>>,
     config: Option<Arc<codegraph_mcp_core::config_manager::CodeGraphConfig>>,
+    progress_callback: Option<ProgressCallback>,
 }
 
 impl CodeGraphExecutorBuilder {
@@ -301,6 +329,7 @@ impl CodeGraphExecutorBuilder {
             llm_provider: None,
             tool_executor: None,
             config: None,
+            progress_callback: None,
         }
     }
 
@@ -322,6 +351,12 @@ impl CodeGraphExecutorBuilder {
         self
     }
 
+    /// Set progress callback for step-by-step notifications
+    pub fn progress_callback(mut self, callback: ProgressCallback) -> Self {
+        self.progress_callback = Some(callback);
+        self
+    }
+
     pub fn build(self) -> Result<CodeGraphExecutor, ExecutorError> {
         let llm_provider = self
             .llm_provider
@@ -337,7 +372,15 @@ impl CodeGraphExecutorBuilder {
             Arc::new(codegraph_mcp_core::config_manager::CodeGraphConfig::default())
         });
 
-        Ok(CodeGraphExecutor::new(llm_provider, tool_executor, config))
+        // Create executor with or without progress callback
+        let executor = match self.progress_callback {
+            Some(callback) => {
+                CodeGraphExecutor::with_progress_callback(llm_provider, tool_executor, config, callback)
+            }
+            None => CodeGraphExecutor::new(llm_provider, tool_executor, config),
+        };
+
+        Ok(executor)
     }
 }
 
