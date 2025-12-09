@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance
+
+#### **Sub-Second Graph Query Performance**
+- **`fn::semantic_search_nodes_via_chunks`**: Optimized from 30-60 seconds to sub-second
+  - Now uses HNSW KNN index via `<|K,EF|>` operator for O(log n) vector search
+  - Batched edge context queries: 2 queries instead of 300+ nested subqueries
+  - Edge enrichment moved after scoring/limiting to minimize expensive lookups
+
+- **`fn::detect_circular_dependencies`**: Optimized from O(E²) to O(E)
+  - Replaced correlated subquery per edge pair with edge key set membership check
+  - Single pass with `INSIDE` operator instead of nested `SELECT count()` per pair
+
+- **`fn::edge_context`**: Eliminated 30+ nested subqueries per call
+  - Now uses direct field access (`to.name`, `to.node_type`) instead of nested SELECTs
+
+- **`fn::get_hub_nodes`**: Early threshold filtering optimization
+  - Filters by degree threshold BEFORE expensive `fn::node_info` calls
+  - Reduces enrichment from 100s of candidates to max 50 filtered results
+
+- **`fn::calculate_coupling_metrics`**: Fixed broken function
+  - Was referencing undefined `$dependents`/`$dependencies` variables
+  - Now correctly queries edges for incoming (afferent) and outgoing (efferent) coupling
+
+#### **Rig Agent Tool Call Limits**
+- Added explicit tool call limits to Rig agent prompts to prevent runaway execution
+  - Small tier: 3 tool calls max
+  - Medium tier: 5 tool calls max
+  - Large tier: 6 tool calls max
+  - Massive tier: 8 tool calls max
+- Addresses issue where agents could make 10+ tool calls in a single query
+
 ### Added
 
 #### **Runtime Agent Architecture Selection**
