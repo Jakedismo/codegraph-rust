@@ -43,8 +43,8 @@ use tracing::{debug, error, info, warn};
 use url::Url;
 use walkdir::WalkDir;
 
-use std::sync::{Arc, Mutex};
 use std::sync::OnceLock;
+use std::sync::{Arc, Mutex};
 
 use std::collections::HashMap;
 
@@ -1592,9 +1592,10 @@ impl ProjectIndexer {
                 all_resolved_edges.extend(chunk_edges);
             }
 
-        let mut stored_edges_local = 0usize;
-        let mut resolution_rate_local = 0.0;
-        let mut degree_map: std::collections::HashMap<NodeId, i32> = std::collections::HashMap::new();
+            let mut stored_edges_local = 0usize;
+            let mut resolution_rate_local = 0.0;
+            let mut degree_map: std::collections::HashMap<NodeId, i32> =
+                std::collections::HashMap::new();
 
             // Store resolved edges via writer
             if !all_resolved_edges.is_empty() {
@@ -1608,6 +1609,7 @@ impl ProjectIndexer {
                             edge_type: edge_type.clone(),
                             weight: 1.0,
                             metadata: metadata.clone(),
+                            project_id: Some(self.project_id.clone()),
                         },
                     )
                     .collect();
@@ -2125,7 +2127,10 @@ impl ProjectIndexer {
             provider
         );
         if let Err(err) = self.finish_bar(unresolved_pb, completion_msg) {
-            warn!("Failed to print unresolved symbol embedding summary: {}", err);
+            warn!(
+                "Failed to print unresolved symbol embedding summary: {}",
+                err
+            );
         }
 
         info!(
@@ -3722,11 +3727,14 @@ impl ProjectIndexer {
                 // Try to resolve the target symbol to a node ID in this file
                 if let Some(target_id) = symbol_map.get(&edge_rel.to) {
                     // Both from and to are in this file - create CodeEdge
-                    Some(codegraph_graph::CodeEdge::new(
-                        edge_rel.from,
-                        target_id.clone(),
-                        edge_rel.edge_type,
-                    ))
+                    Some(
+                        codegraph_graph::CodeEdge::new(
+                            edge_rel.from,
+                            target_id.clone(),
+                            edge_rel.edge_type,
+                        )
+                        .with_project_id(self.project_id.clone()),
+                    )
                 } else {
                     // Cross-file edge - skip for now (will be resolved on next full index)
                     None
@@ -3811,7 +3819,8 @@ impl ProjectIndexer {
             std::collections::HashMap::new();
 
         while let Some(event) = rx.recv().await {
-            self.handle_file_event(event, &mut last_events, debounce_ms).await;
+            self.handle_file_event(event, &mut last_events, debounce_ms)
+                .await;
         }
         Ok(())
     }
@@ -3849,7 +3858,8 @@ impl ProjectIndexer {
                                 }
                             }
                             std::collections::hash_map::Entry::Occupied(mut entry) => {
-                                if now.duration_since(*entry.get()).as_millis() as u64 >= debounce_ms
+                                if now.duration_since(*entry.get()).as_millis() as u64
+                                    >= debounce_ms
                                 {
                                     *entry.get_mut() = now;
                                     info!("File changed: {:?}, reindexing (debounced)...", path);
@@ -3882,7 +3892,8 @@ impl ProjectIndexer {
         last_events: &mut std::collections::HashMap<PathBuf, std::time::Instant>,
         debounce_ms: u64,
     ) {
-        self.handle_file_event(event, last_events, debounce_ms).await;
+        self.handle_file_event(event, last_events, debounce_ms)
+            .await;
     }
 }
 

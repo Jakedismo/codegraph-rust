@@ -10,6 +10,7 @@ pub struct CodeEdge {
     pub edge_type: EdgeType,
     pub weight: f64,
     pub metadata: HashMap<String, String>,
+    pub project_id: Option<String>,
 }
 
 impl CodeEdge {
@@ -21,6 +22,7 @@ impl CodeEdge {
             edge_type,
             weight: 1.0,
             metadata: HashMap::new(),
+            project_id: None,
         }
     }
 
@@ -31,6 +33,11 @@ impl CodeEdge {
 
     pub fn with_metadata(mut self, key: String, value: String) -> Self {
         self.metadata.insert(key, value);
+        self
+    }
+
+    pub fn with_project_id(mut self, project_id: impl Into<String>) -> Self {
+        self.project_id = Some(project_id.into());
         self
     }
 }

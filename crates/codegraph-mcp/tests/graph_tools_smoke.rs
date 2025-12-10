@@ -353,7 +353,7 @@ async fn test_semantic_search_nodes_via_chunks() {
             query_text,
             &query_embedding,
             dim,
-            10,  // limit
+            10,   // limit
             0.05, // threshold (lowered to surface vector hits)
         )
         .await
@@ -504,7 +504,11 @@ async fn test_semantic_search_nodes_via_chunks() {
         }
     };
 
-    println!("\n[LOW-THRESHOLD CHECK] query='{}' results={}", low_thresh_query, low_thresh_results.len());
+    println!(
+        "\n[LOW-THRESHOLD CHECK] query='{}' results={}",
+        low_thresh_query,
+        low_thresh_results.len()
+    );
     for (i, r) in low_thresh_results.iter().enumerate() {
         println!(
             "  [{}] node_id={:?} vector_score={:?} match_sources={:?}",

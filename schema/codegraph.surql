@@ -653,6 +653,7 @@ DEFINE INDEX idx_chunks_embedding_3584 ON chunks FIELDS embedding_3584 HNSW DIME
 DEFINE INDEX idx_chunks_embedding_4096 ON chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_order ON chunks FIELDS parent_node, chunk_index CONCURRENTLY;
 DEFINE INDEX idx_chunks_parent ON chunks FIELDS parent_node CONCURRENTLY;
+DEFINE INDEX idx_chunks_project ON chunks FIELDS project_id CONCURRENTLY;
 
 
 -- ------------------------------
@@ -667,12 +668,15 @@ DEFINE FIELD from ON edges TYPE record<nodes> PERMISSIONS FULL;
 DEFINE FIELD metadata ON edges FLEXIBLE TYPE option<object> PERMISSIONS FULL;
 DEFINE FIELD to ON edges TYPE record<nodes> PERMISSIONS FULL;
 DEFINE FIELD weight ON edges TYPE float DEFAULT 1f ASSERT $value > 0f PERMISSIONS FULL;
+DEFINE FIELD project_id ON edges TYPE option<string> PERMISSIONS FULL;
 
 DEFINE INDEX idx_edges_from ON edges FIELDS from CONCURRENTLY;
 DEFINE INDEX idx_edges_from_to ON edges FIELDS from, to CONCURRENTLY;
 DEFINE INDEX idx_edges_to ON edges FIELDS to CONCURRENTLY;
 DEFINE INDEX idx_edges_type ON edges FIELDS edge_type CONCURRENTLY;
 DEFINE INDEX idx_edges_type_from ON edges FIELDS edge_type, from CONCURRENTLY;
+DEFINE INDEX idx_edges_project ON edges FIELDS project_id CONCURRENTLY;
+DEFINE INDEX idx_edges_project_type ON edges FIELDS project_id, edge_type CONCURRENTLY;
 
 
 -- ------------------------------
@@ -767,6 +771,7 @@ DEFINE INDEX idx_nodes_embedding_3072 ON nodes FIELDS embedding_3072 HNSW DIMENS
 DEFINE INDEX idx_nodes_embedding_3584 ON nodes FIELDS embedding_3584 HNSW DIMENSION 3584 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_4096 ON nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_file_path ON nodes FIELDS file_path CONCURRENTLY;
+DEFINE INDEX idx_nodes_project_file ON nodes FIELDS project_id, file_path CONCURRENTLY;
 DEFINE INDEX idx_nodes_file_type ON nodes FIELDS file_path, node_type CONCURRENTLY;
 DEFINE INDEX idx_nodes_language ON nodes FIELDS language CONCURRENTLY;
 DEFINE INDEX idx_nodes_name ON nodes FIELDS name CONCURRENTLY;
@@ -856,6 +861,7 @@ DEFINE FIELD symbol ON symbol_embeddings TYPE string PERMISSIONS FULL;
 DEFINE INDEX idx_symbol_embeddings_edge ON symbol_embeddings FIELDS source_edge_id CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_node ON symbol_embeddings FIELDS node_id CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_project_symbol ON symbol_embeddings FIELDS project_id, normalized_symbol CONCURRENTLY;
+DEFINE INDEX idx_symbol_embeddings_project ON symbol_embeddings FIELDS project_id CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_symbol ON symbol_embeddings FIELDS normalized_symbol CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_384 ON symbol_embeddings FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_768 ON symbol_embeddings FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;

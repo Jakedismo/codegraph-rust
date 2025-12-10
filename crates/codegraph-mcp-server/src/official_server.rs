@@ -773,24 +773,25 @@ impl CodeGraphMCPServer {
 
                 // Add step progress callback if progress token is available
                 if let Some(progress_token) = meta.get_progress_token() {
-                    let step_callback = Self::create_step_progress_callback(peer.clone(), progress_token);
+                    let step_callback =
+                        Self::create_step_progress_callback(peer.clone(), progress_token);
                     builder = builder.progress_callback(step_callback);
                 }
 
                 let executor = builder.build().map_err(|e| {
-                        let error_msg = format!("Failed to build AutoAgents executor: {}", e);
-                        let notifier = progress_notifier.clone();
-                        let error_for_spawn = error_msg.clone();
-                        tokio::spawn(async move {
-                            notifier.notify_error(&error_for_spawn).await;
-                        });
-                        DebugLogger::log_agent_finish(false, None, Some(&error_msg));
-                        McpError {
-                            code: rmcp::model::ErrorCode(-32603),
-                            message: error_msg.into(),
-                            data: None,
-                        }
-                    })?;
+                    let error_msg = format!("Failed to build AutoAgents executor: {}", e);
+                    let notifier = progress_notifier.clone();
+                    let error_for_spawn = error_msg.clone();
+                    tokio::spawn(async move {
+                        notifier.notify_error(&error_for_spawn).await;
+                    });
+                    DebugLogger::log_agent_finish(false, None, Some(&error_msg));
+                    McpError {
+                        code: rmcp::model::ErrorCode(-32603),
+                        message: error_msg.into(),
+                        data: None,
+                    }
+                })?;
 
                 let framework = match architecture {
                     AgentArchitecture::Lats => "AutoAgents-LATS",

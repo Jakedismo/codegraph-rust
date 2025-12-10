@@ -99,7 +99,14 @@ impl GraphToolExecutor {
         // This leaves room for system prompt, conversation history, and response
         let max_result_bytes = context_window.saturating_mul(2);
 
-        Self::with_limits(graph_functions, config, embedding_generator, true, 100, max_result_bytes)
+        Self::with_limits(
+            graph_functions,
+            config,
+            embedding_generator,
+            true,
+            100,
+            max_result_bytes,
+        )
     }
 
     /// Create a new tool executor with custom cache and result size configuration
@@ -158,7 +165,14 @@ impl GraphToolExecutor {
         cache_enabled: bool,
         cache_size: usize,
     ) -> Self {
-        Self::with_limits(graph_functions, config, embedding_generator, cache_enabled, cache_size, DEFAULT_MAX_RESULT_BYTES)
+        Self::with_limits(
+            graph_functions,
+            config,
+            embedding_generator,
+            cache_enabled,
+            cache_size,
+            DEFAULT_MAX_RESULT_BYTES,
+        )
     }
 
     /// Get current cache statistics
@@ -216,7 +230,8 @@ impl GraphToolExecutor {
             let keep_items = max_items.min(item_count).max(1); // Keep at least 1
 
             // Create truncated result
-            let truncated_array: Vec<JsonValue> = result_array.iter().take(keep_items).cloned().collect();
+            let truncated_array: Vec<JsonValue> =
+                result_array.iter().take(keep_items).cloned().collect();
             let truncated_count = item_count - keep_items;
 
             tracing::info!(
@@ -231,13 +246,16 @@ impl GraphToolExecutor {
             let mut truncated_result = result.clone();
             if let Some(obj) = truncated_result.as_object_mut() {
                 obj.insert("result".to_string(), JsonValue::Array(truncated_array));
-                obj.insert("_truncated".to_string(), json!({
-                    "original_items": item_count,
-                    "kept_items": keep_items,
-                    "truncated_items": truncated_count,
-                    "reason": "Result exceeded context window limit",
-                    "max_bytes": self.max_result_bytes
-                }));
+                obj.insert(
+                    "_truncated".to_string(),
+                    json!({
+                        "original_items": item_count,
+                        "kept_items": keep_items,
+                        "truncated_items": truncated_count,
+                        "reason": "Result exceeded context window limit",
+                        "max_bytes": self.max_result_bytes
+                    }),
+                );
             }
 
             return truncated_result;

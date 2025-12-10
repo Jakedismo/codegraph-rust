@@ -79,9 +79,9 @@ impl CodeGraphChatAdapter {
 
         // Fall back to tier-based defaults (tokens * 4 bytes * 80%)
         match tier {
-            ContextTier::Small => 50_000 * 4 * 8 / 10,     // ~160KB
-            ContextTier::Medium => 128_000 * 4 * 8 / 10,   // ~410KB
-            ContextTier::Large => 200_000 * 4 * 8 / 10,    // ~640KB
+            ContextTier::Small => 50_000 * 4 * 8 / 10,      // ~160KB
+            ContextTier::Medium => 128_000 * 4 * 8 / 10,    // ~410KB
+            ContextTier::Large => 200_000 * 4 * 8 / 10,     // ~640KB
             ContextTier::Massive => 2_000_000 * 4 * 8 / 10, // ~6.4MB
         }
     }

@@ -578,6 +578,7 @@ impl SurrealDbStorage {
                     "edge_type": record.edge_type.to_string(),
                     "weight": record.weight,
                     "metadata": metadata_value,
+                    "project_id": record.project_id.clone(),
                 })
             })
             .collect();
@@ -1989,6 +1990,7 @@ FOR $doc IN $batch {
         edge_type = $doc.edge_type,
         weight = $doc.weight,
         metadata = $doc.metadata,
+        project_id = $doc.project_id,
         created_at = time::now();
 }
 "#;

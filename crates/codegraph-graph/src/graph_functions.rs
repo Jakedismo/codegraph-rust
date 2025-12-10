@@ -81,18 +81,9 @@ impl GraphFunctions {
         let json = val
             .map(surreal_to_json)
             .unwrap_or_else(|| serde_json::Value::Null);
-        let has_1024 = json
-            .get("has_1024")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        let has_768 = json
-            .get("has_768")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        let has_384 = json
-            .get("has_384")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
+        let has_1024 = json.get("has_1024").and_then(|v| v.as_u64()).unwrap_or(0);
+        let has_768 = json.get("has_768").and_then(|v| v.as_u64()).unwrap_or(0);
+        let has_384 = json.get("has_384").and_then(|v| v.as_u64()).unwrap_or(0);
         if has_1024 > 0 {
             Ok(1024)
         } else if has_768 > 0 {
@@ -514,8 +505,14 @@ impl GraphFunctions {
         _include_graph_context: bool,
     ) -> Result<Vec<serde_json::Value>> {
         // Always use node-level search (via chunks) to return enriched node records
-        self.semantic_search_nodes_via_chunks(query_text, query_embedding, dimension, limit, threshold)
-            .await
+        self.semantic_search_nodes_via_chunks(
+            query_text,
+            query_embedding,
+            dimension,
+            limit,
+            threshold,
+        )
+        .await
     }
 
     #[allow(dead_code)]

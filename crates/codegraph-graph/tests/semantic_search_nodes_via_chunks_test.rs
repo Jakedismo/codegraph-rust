@@ -116,8 +116,8 @@ async fn vector_scores_surface_in_hybrid_search() -> Result<()> {
         .join("codegraph.surql");
     let schema = std::fs::read_to_string(&schema_path)
         .with_context(|| format!("failed to read {}", schema_path.display()))?;
-    let function_sql =
-        extract_function(&schema, "fn::semantic_search_nodes_via_chunks").context("missing function")?;
+    let function_sql = extract_function(&schema, "fn::semantic_search_nodes_via_chunks")
+        .context("missing function")?;
     db.query(function_sql).await?;
 
     let project_id = "proj";
@@ -177,17 +177,13 @@ async fn vector_scores_surface_in_hybrid_search() -> Result<()> {
         .bind(("query_embedding", embedding.clone()))
         .await?;
 
-    let results: Vec<Value> = response
-        .take(0)
-        .context("no result set returned")?;
+    let results: Vec<Value> = response.take(0).context("no result set returned")?;
     assert!(
         !results.is_empty(),
         "expected at least one result from semantic search"
     );
 
-    let first = results
-        .first()
-        .context("missing first result")?;
+    let first = results.first().context("missing first result")?;
     let vector_score = first
         .get("vector_score")
         .and_then(|v| v.as_f64())
@@ -215,10 +211,9 @@ async fn vector_scores_surface_in_hybrid_search() -> Result<()> {
         .cloned()
         .unwrap_or_default();
     assert!(
-        outgoing.iter().any(|e| e
-            .get("relationship")
-            .and_then(|r| r.as_str())
-            == Some("calls")),
+        outgoing
+            .iter()
+            .any(|e| e.get("relationship").and_then(|r| r.as_str()) == Some("calls")),
         "outgoing_edges should include a 'calls' relationship, got {:?}",
         outgoing
     );
@@ -229,10 +224,9 @@ async fn vector_scores_surface_in_hybrid_search() -> Result<()> {
         .cloned()
         .unwrap_or_default();
     assert!(
-        incoming.iter().any(|e| e
-            .get("relationship")
-            .and_then(|r| r.as_str())
-            == Some("returns")),
+        incoming
+            .iter()
+            .any(|e| e.get("relationship").and_then(|r| r.as_str()) == Some("returns")),
         "incoming_edges should include a 'returns' relationship, got {:?}",
         incoming
     );

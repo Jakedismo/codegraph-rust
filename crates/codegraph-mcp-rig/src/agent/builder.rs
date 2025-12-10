@@ -79,7 +79,10 @@ impl RigAgentBuilder {
         // Check for environment variable override first
         if let Ok(val) = std::env::var("MCP_CODE_AGENT_MAX_OUTPUT_TOKENS") {
             if let Ok(tokens) = val.parse::<u64>() {
-                tracing::info!("Rig agent using MCP_CODE_AGENT_MAX_OUTPUT_TOKENS={}", tokens);
+                tracing::info!(
+                    "Rig agent using MCP_CODE_AGENT_MAX_OUTPUT_TOKENS={}",
+                    tokens
+                );
                 return tokens;
             }
         }

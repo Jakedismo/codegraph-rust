@@ -192,7 +192,11 @@ impl CodeGraphExecutor {
 
         let project_root = std::env::var("CODEGRAPH_PROJECT_ID")
             .ok()
-            .and_then(|p| std::fs::canonicalize(&p).ok().or_else(|| Some(PathBuf::from(p))))
+            .and_then(|p| {
+                std::fs::canonicalize(&p)
+                    .ok()
+                    .or_else(|| Some(PathBuf::from(p)))
+            })
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         let enriched_query = match build_startup_context(&project_root) {
             Ok(ctx) => ctx.render_with_query_and_bootstrap(&query, graph_bootstrap.as_deref()),
@@ -374,9 +378,12 @@ impl CodeGraphExecutorBuilder {
 
         // Create executor with or without progress callback
         let executor = match self.progress_callback {
-            Some(callback) => {
-                CodeGraphExecutor::with_progress_callback(llm_provider, tool_executor, config, callback)
-            }
+            Some(callback) => CodeGraphExecutor::with_progress_callback(
+                llm_provider,
+                tool_executor,
+                config,
+                callback,
+            ),
             None => CodeGraphExecutor::new(llm_provider, tool_executor, config),
         };
 
