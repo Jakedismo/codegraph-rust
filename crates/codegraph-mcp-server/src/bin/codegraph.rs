@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use atty::Stream;
 use chrono::Utc;
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use codegraph_mcp::{
     EmbeddingThroughputConfig, IndexerConfig, ProcessManager, ProjectIndexer, RepositoryEstimate,
     RepositoryEstimator,

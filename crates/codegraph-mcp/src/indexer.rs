@@ -705,6 +705,7 @@ impl ProjectIndexer {
                     g
                 }
             } else {
+                #[allow(unused_mut)]
                 let mut g = EmbeddingGenerator::with_config(global_config).await;
                 // Set batch_size and max_concurrent for Jina provider if applicable
                 #[cfg(feature = "embeddings-jina")]
@@ -2690,7 +2691,7 @@ impl ProjectIndexer {
         };
 
         let mut response = db
-            .query("SELECT count() AS count FROM file_metadata WHERE project_id = $project_id GROUP ALL")
+            .query("SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id")
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to query file_metadata count")?;
@@ -2970,25 +2971,19 @@ impl ProjectIndexer {
         };
 
         match db
-            .query("SELECT count() AS count FROM nodes WHERE project_id = $project_id GROUP ALL")
+            .query("SELECT VALUE count() FROM nodes WHERE project_id = $project_id")
             .bind(("project_id", self.project_id.clone()))
             .await
         {
-            Ok(mut resp) => match resp.take::<Vec<serde_json::Value>>(0) {
+            Ok(mut resp) => match resp.take::<Vec<i64>>(0) {
                 Ok(rows) => {
-                    let count = rows
-                        .get(0)
-                        .and_then(|row| row.get("count"))
-                        .and_then(|c| c.as_i64())
-                        .unwrap_or(0);
+                    let count = rows.get(0).copied().unwrap_or(0);
                     info!(
                         "🗄️ SurrealDB nodes persisted: {} (expected ≈ {})",
                         count, expected
                     );
                 }
-                Err(e) => {
-                    warn!("⚠️ Failed to read SurrealDB node count: {}", e);
-                }
+                Err(e) => warn!("⚠️ Failed to read SurrealDB node count: {}", e),
             },
             Err(e) => {
                 warn!("⚠️ SurrealDB node count query failed: {}", e);
@@ -3008,25 +3003,19 @@ impl ProjectIndexer {
         };
 
         match db
-            .query("SELECT count() AS count FROM chunks WHERE project_id = $project_id GROUP ALL")
+            .query("SELECT VALUE count() FROM chunks WHERE project_id = $project_id")
             .bind(("project_id", self.project_id.clone()))
             .await
         {
-            Ok(mut resp) => match resp.take::<Vec<serde_json::Value>>(0) {
+            Ok(mut resp) => match resp.take::<Vec<i64>>(0) {
                 Ok(rows) => {
-                    let count = rows
-                        .get(0)
-                        .and_then(|v| v.get("count"))
-                        .and_then(|c| c.as_i64())
-                        .unwrap_or(0);
+                    let count = rows.get(0).copied().unwrap_or(0);
                     info!(
                         "🧩 SurrealDB chunks persisted: {} (expected ≈ {})",
                         count, expected
                     );
                 }
-                Err(e) => {
-                    warn!("⚠️ Failed to read SurrealDB chunk count: {}", e);
-                }
+                Err(e) => warn!("⚠️ Failed to read SurrealDB chunk count: {}", e),
             },
             Err(e) => {
                 warn!("⚠️ SurrealDB chunk count query failed: {}", e);
@@ -3092,18 +3081,12 @@ impl ProjectIndexer {
         };
 
         let mut resp = db
-            .query(
-                "SELECT count() AS count FROM file_metadata WHERE project_id = $project_id GROUP ALL",
-            )
+            .query("SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id")
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to verify file_metadata count")?;
-        let counts: Vec<serde_json::Value> = resp.take(0)?;
-        let count = counts
-            .get(0)
-            .and_then(|v| v.get("count"))
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+        let counts: Vec<i64> = resp.take(0)?;
+        let count = counts.get(0).copied().unwrap_or(0);
 
         if count < expected_files as i64 {
             Err(anyhow!(
@@ -3124,16 +3107,12 @@ impl ProjectIndexer {
         };
 
         let mut resp = db
-            .query("SELECT count() AS count FROM project_metadata WHERE project_id = $project_id GROUP ALL")
+            .query("SELECT VALUE count() FROM project_metadata WHERE project_id = $project_id")
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to verify project_metadata count")?;
-        let counts: Vec<serde_json::Value> = resp.take(0)?;
-        let count = counts
-            .get(0)
-            .and_then(|v| v.get("count"))
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+        let counts: Vec<i64> = resp.take(0)?;
+        let count = counts.get(0).copied().unwrap_or(0);
         if count < 1 {
             Err(anyhow!(
                 "project_metadata missing for project {}; ensure schema applied and permissions allow writes",

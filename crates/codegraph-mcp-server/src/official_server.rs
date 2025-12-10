@@ -21,7 +21,10 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::future::Future;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -512,12 +515,16 @@ impl CodeGraphMCPServer {
     fn create_step_progress_callback(
         peer: Peer<RoleServer>,
         progress_token: ProgressToken,
+        step_counter: Arc<AtomicUsize>,
     ) -> codegraph_mcp_autoagents::ProgressCallback {
         Arc::new(move |progress, message| {
             let peer = peer.clone();
             let progress_token = progress_token.clone();
+            let step_counter = step_counter.clone();
 
             Box::pin(async move {
+                step_counter.fetch_add(1, Ordering::SeqCst);
+
                 let notification = ProgressNotification {
                     method: Default::default(),
                     params: ProgressNotificationParam {
@@ -535,6 +542,11 @@ impl CodeGraphMCPServer {
                     .await;
             })
         })
+    }
+
+    #[cfg(feature = "ai-enhanced")]
+    fn reconcile_tool_use_counts(parsed_steps: usize, observed_steps: usize) -> usize {
+        parsed_steps.max(observed_steps)
     }
 
     /// Execute agentic workflow using AutoAgents framework
@@ -734,105 +746,120 @@ impl CodeGraphMCPServer {
         let architecture = AgentArchitecture::from_env();
         tracing::info!("Using agent architecture: {:?}", architecture);
 
+        let step_counter = Arc::new(AtomicUsize::new(0));
+
         // Execute using the selected architecture
-        let (result, framework_name): (CodeGraphAgentOutput, &str) = match architecture {
-            AgentArchitecture::Rig => {
-                // Use Rig framework
-                let mut rig_executor = RigExecutor::new(tool_executor.clone());
-                match rig_executor.execute(query, analysis_type).await {
-                    Ok(rig_output) => {
-                        // Convert RigAgentOutput to CodeGraphAgentOutput
-                        let result = CodeGraphAgentOutput {
-                            answer: rig_output.response,
-                            findings: format!(
-                                "Completed in {}ms with {} tool calls",
-                                rig_output.duration_ms, rig_output.tool_calls
-                            ),
-                            steps_taken: rig_output.tool_calls.to_string(),
-                        };
-                        (result, "Rig")
-                    }
-                    Err(e) => {
-                        let error_msg = format!("Rig workflow failed: {}", e);
-                        progress_notifier.notify_error(&error_msg).await;
-                        DebugLogger::log_agent_finish(false, None, Some(&error_msg));
-                        return Err(McpError {
-                            code: rmcp::model::ErrorCode(-32603),
-                            message: error_msg.into(),
-                            data: None,
-                        });
+        let (mut result, framework_name, observed_steps): (CodeGraphAgentOutput, &str, usize) =
+            match architecture {
+                AgentArchitecture::Rig => {
+                    // Use Rig framework
+                    let mut rig_executor = RigExecutor::new(tool_executor.clone());
+                    match rig_executor.execute(query, analysis_type).await {
+                        Ok(rig_output) => {
+                            // Convert RigAgentOutput to CodeGraphAgentOutput
+                            let result = CodeGraphAgentOutput {
+                                answer: rig_output.response,
+                                findings: format!(
+                                    "Completed in {}ms with {} tool calls",
+                                    rig_output.duration_ms, rig_output.tool_calls
+                                ),
+                                steps_taken: rig_output.tool_calls.to_string(),
+                            };
+                            (result, "Rig", rig_output.tool_calls as usize)
+                        }
+                        Err(e) => {
+                            let error_msg = format!("Rig workflow failed: {}", e);
+                            progress_notifier.notify_error(&error_msg).await;
+                            DebugLogger::log_agent_finish(false, None, Some(&error_msg));
+                            return Err(McpError {
+                                code: rmcp::model::ErrorCode(-32603),
+                                message: error_msg.into(),
+                                data: None,
+                            });
+                        }
                     }
                 }
-            }
-            AgentArchitecture::React | AgentArchitecture::Lats => {
-                // Use AutoAgents framework (React or LATS)
-                // Create step progress callback if progress token is available
-                let mut builder = CodeGraphExecutorBuilder::new()
-                    .llm_provider(llm_provider)
-                    .tool_executor(tool_executor);
+                AgentArchitecture::React | AgentArchitecture::Lats => {
+                    // Use AutoAgents framework (React or LATS)
+                    // Create step progress callback if progress token is available
+                    let mut builder = CodeGraphExecutorBuilder::new()
+                        .llm_provider(llm_provider)
+                        .tool_executor(tool_executor);
 
-                // Add step progress callback if progress token is available
-                if let Some(progress_token) = meta.get_progress_token() {
-                    let step_callback =
-                        Self::create_step_progress_callback(peer.clone(), progress_token);
-                    builder = builder.progress_callback(step_callback);
-                }
-
-                let executor = builder.build().map_err(|e| {
-                    let error_msg = format!("Failed to build AutoAgents executor: {}", e);
-                    let notifier = progress_notifier.clone();
-                    let error_for_spawn = error_msg.clone();
-                    tokio::spawn(async move {
-                        notifier.notify_error(&error_for_spawn).await;
-                    });
-                    DebugLogger::log_agent_finish(false, None, Some(&error_msg));
-                    McpError {
-                        code: rmcp::model::ErrorCode(-32603),
-                        message: error_msg.into(),
-                        data: None,
-                    }
-                })?;
-
-                let framework = match architecture {
-                    AgentArchitecture::Lats => "AutoAgents-LATS",
-                    _ => "AutoAgents-ReAct",
-                };
-
-                match executor.execute(query.to_string(), analysis_type).await {
-                    Ok(output) => (output, framework),
-                    Err(ExecutorError::Timeout {
-                        elapsed_secs,
-                        partial_result,
-                        steps_completed,
-                    }) => {
-                        let warning = format!(
-                            "Agent timed out after {} seconds; returning partial result",
-                            elapsed_secs
+                    // Add step progress callback if progress token is available
+                    if let Some(progress_token) = meta.get_progress_token() {
+                        let step_callback = Self::create_step_progress_callback(
+                            peer.clone(),
+                            progress_token,
+                            step_counter.clone(),
                         );
-                        progress_notifier.notify_error(&warning).await;
-                        DebugLogger::log_agent_finish(false, None, Some(&warning));
-                        (
-                            Self::timeout_fallback_output(
-                                elapsed_secs,
-                                partial_result,
-                                steps_completed,
-                            ),
-                            framework,
-                        )
+                        builder = builder.progress_callback(step_callback);
                     }
-                    Err(e) => {
-                        let error_msg = format!("AutoAgents workflow failed: {}", e);
-                        progress_notifier.notify_error(&error_msg).await;
+
+                    let executor = builder.build().map_err(|e| {
+                        let error_msg = format!("Failed to build AutoAgents executor: {}", e);
+                        let notifier = progress_notifier.clone();
+                        let error_for_spawn = error_msg.clone();
+                        tokio::spawn(async move {
+                            notifier.notify_error(&error_for_spawn).await;
+                        });
                         DebugLogger::log_agent_finish(false, None, Some(&error_msg));
-                        return Err(McpError {
+                        McpError {
                             code: rmcp::model::ErrorCode(-32603),
                             message: error_msg.into(),
                             data: None,
-                        });
+                        }
+                    })?;
+
+                    let framework = match architecture {
+                        AgentArchitecture::Lats => "AutoAgents-LATS",
+                        _ => "AutoAgents-ReAct",
+                    };
+
+                    match executor.execute(query.to_string(), analysis_type).await {
+                        Ok(output) => {
+                            let observed = step_counter.load(Ordering::SeqCst);
+                            (output, framework, observed)
+                        }
+                        Err(ExecutorError::Timeout {
+                            elapsed_secs,
+                            partial_result,
+                            steps_completed,
+                        }) => {
+                            let warning = format!(
+                                "Agent timed out after {} seconds; returning partial result",
+                                elapsed_secs
+                            );
+                            progress_notifier.notify_error(&warning).await;
+                            DebugLogger::log_agent_finish(false, None, Some(&warning));
+                            (
+                                Self::timeout_fallback_output(
+                                    elapsed_secs,
+                                    partial_result,
+                                    steps_completed,
+                                ),
+                                framework,
+                                steps_completed,
+                            )
+                        }
+                        Err(e) => {
+                            let error_msg = format!("AutoAgents workflow failed: {}", e);
+                            progress_notifier.notify_error(&error_msg).await;
+                            DebugLogger::log_agent_finish(false, None, Some(&error_msg));
+                            return Err(McpError {
+                                code: rmcp::model::ErrorCode(-32603),
+                                message: error_msg.into(),
+                                data: None,
+                            });
+                        }
                     }
                 }
-            }
-        };
+            };
+
+        // Reconcile tool use counts from agent output vs observed steps
+        let parsed_steps = result.steps_taken.parse::<usize>().unwrap_or(0);
+        let tool_use_count = Self::reconcile_tool_use_counts(parsed_steps, observed_steps);
+        result.steps_taken = tool_use_count.to_string();
 
         // Parse structured output from answer field (contains JSON schema)
         use codegraph_ai::agentic_schemas::*;
@@ -955,6 +982,7 @@ impl CodeGraphMCPServer {
                 "query": query,
                 "structured_output": structured,
                 "steps_taken": result.steps_taken,
+                "tool_use_count": tool_use_count,
                 "framework": framework_name,
             })
         } else {
@@ -966,6 +994,7 @@ impl CodeGraphMCPServer {
                 "answer": result.answer,
                 "findings": result.findings,
                 "steps_taken": result.steps_taken,
+                "tool_use_count": tool_use_count,
                 "framework": framework_name,
             })
         };
@@ -1099,5 +1128,15 @@ mod tests {
             "Timeout after 45 seconds. Result may be partial."
         );
         assert_eq!(output.steps_taken, "0");
+    }
+
+    #[test]
+    fn reconcile_prefers_observed_when_higher() {
+        assert_eq!(CodeGraphMCPServer::reconcile_tool_use_counts(2, 5), 5);
+    }
+
+    #[test]
+    fn reconcile_prefers_reported_when_higher() {
+        assert_eq!(CodeGraphMCPServer::reconcile_tool_use_counts(7, 3), 7);
     }
 }

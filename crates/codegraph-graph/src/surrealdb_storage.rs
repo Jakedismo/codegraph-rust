@@ -1047,8 +1047,7 @@ impl SurrealDbStorage {
         // SurrealDB FOR loops can silently skip operations if schema/table missing
         // Use the first record's project_id to count records for that project
         let project_id = &records[0].project_id;
-        let verify_query =
-            "SELECT count() FROM file_metadata WHERE project_id = $project_id GROUP ALL";
+        let verify_query = "SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id";
         let mut verify_resp = self
             .db
             .query(verify_query)
