@@ -50,7 +50,6 @@ Next steps
      CODEGRAPH_EMBEDDING_PROVIDER=ollama
      CODEGRAPH_LLM_PROVIDER=ollama
 3. From your repo, run:
-     codegraph init .
      codegraph index . --force   # rerun indexing when needed
 4. Start the MCP server when needed:
      codegraph start stdio       # for Claude Desktop

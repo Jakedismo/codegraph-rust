@@ -50,7 +50,6 @@ Next steps
      CODEGRAPH_LLM_PROVIDER=openai                # or anthropic/xai/ollama
      OPENAI_API_KEY=sk-...                        # set keys for the providers you enable
 3. Index your repository:
-     codegraph init .
      codegraph index . --languages rust,python    # optional language filter
 4. Run the MCP server over HTTP (SSE enabled):
      codegraph start http --host 127.0.0.1 --port ${HTTP_PORT}

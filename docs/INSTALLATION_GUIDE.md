@@ -16,6 +16,19 @@ This guide covers the complete installation process for CodeGraph, from building
 
 ---
 
+## Supported CLI Commands
+
+- `start` / `stop` / `status` — manage the MCP server transports (stdio/http)
+- `index` — index a project (supports `--force`, language filters, watch mode)
+- `estimate` — estimate indexing time/cost without persisting
+- `config` — init/show/set/get/validate configuration; agent-status/db-check live here
+- `dbcheck` — quick Surreal connectivity/schema canary
+- `daemon` — (feature-gated) file-watch daemon control
+
+Legacy helper commands (`code`, `test`, `perf`, `stats`, `clean`, `init`) are no longer part of the CLI.
+
+---
+
 ## Prerequisites
 
 Before installing CodeGraph, ensure you have:

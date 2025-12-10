@@ -106,7 +106,6 @@ Next Steps
      export JINA_API_KEY=jina_...
 
 4. Index your repository:
-     codegraph init .
      codegraph index . --languages rust,python,typescript
 
 5. Start the MCP server:

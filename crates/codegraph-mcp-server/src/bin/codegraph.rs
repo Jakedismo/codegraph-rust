@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use atty::Stream;
 use chrono::Utc;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use codegraph_mcp::{
     EmbeddingThroughputConfig, IndexerConfig, ProcessManager, ProjectIndexer, RepositoryEstimate,
     RepositoryEstimator,
@@ -236,90 +236,6 @@ enum Commands {
         action: ConfigAction,
     },
 
-    #[command(about = "Show statistics and metrics")]
-    Stats {
-        #[arg(long, help = "Show index statistics")]
-        index: bool,
-
-        #[arg(long, help = "Show server statistics")]
-        server: bool,
-
-        #[arg(long, help = "Show performance metrics")]
-        performance: bool,
-
-        #[arg(short, long, help = "Output format", default_value = "table")]
-        format: StatsFormat,
-    },
-
-    #[command(about = "Initialize a new CodeGraph project")]
-    Init {
-        #[arg(help = "Project directory", default_value = ".")]
-        path: PathBuf,
-
-        #[arg(long, help = "Project name")]
-        name: Option<String>,
-
-        #[arg(long, help = "Skip interactive setup")]
-        non_interactive: bool,
-    },
-
-    #[command(about = "Clean up resources and cache")]
-    Clean {
-        #[arg(long, help = "Clean index database")]
-        index: bool,
-
-        #[arg(long, help = "Clean vector embeddings")]
-        vectors: bool,
-
-        #[arg(long, help = "Clean cache files")]
-        cache: bool,
-
-        #[arg(long, help = "Clean all resources")]
-        all: bool,
-
-        #[arg(short, long, help = "Skip confirmation prompt")]
-        yes: bool,
-    },
-
-    #[command(about = "Code IO operations")]
-    Code {
-        #[command(subcommand)]
-        action: CodeAction,
-    },
-
-    #[command(about = "Test runner helpers")]
-    Test {
-        #[command(subcommand)]
-        action: TestAction,
-    },
-    #[command(about = "Run performance benchmarks (index + query)")]
-    Perf {
-        #[arg(help = "Path to project directory")]
-        path: PathBuf,
-        #[arg(long, value_delimiter = ',')]
-        langs: Option<Vec<String>>,
-        #[arg(long, default_value = "3", help = "Warmup runs before timing")]
-        warmup: usize,
-        #[arg(long, default_value = "10", help = "Timed query trials")]
-        trials: usize,
-        #[arg(long, value_delimiter = ',', help = "Queries to benchmark")]
-        queries: Option<Vec<String>>,
-        #[arg(long, default_value = "4")]
-        workers: usize,
-        #[arg(long, default_value = "100")]
-        batch_size: usize,
-        #[arg(long, help = "Local embedding device: cpu | metal | cuda:<id>")]
-        device: Option<String>,
-        #[arg(long, default_value = "512")]
-        max_seq_len: usize,
-        #[arg(long, help = "Remove existing .codegraph before indexing")]
-        clean: bool,
-        #[arg(long, default_value = "json", value_parser = clap::builder::PossibleValuesParser::new(["human","json"]))]
-        format: String,
-        #[arg(long, help = "Open graph in read-only mode for perf queries")]
-        graph_readonly: bool,
-    },
-
     #[cfg(feature = "daemon")]
     #[command(about = "Manage watch daemon for automatic re-indexing on file changes")]
     Daemon {
@@ -362,41 +278,6 @@ enum DaemonAction {
 
         #[arg(long, help = "Output as JSON")]
         json: bool,
-    },
-}
-
-#[derive(Subcommand)]
-enum CodeAction {
-    #[command(about = "Read a file or range")]
-    Read {
-        #[arg(help = "File path")]
-        path: String,
-        #[arg(long)]
-        start: Option<usize>,
-        #[arg(long)]
-        end: Option<usize>,
-    },
-    #[command(about = "Patch a file (find/replace)")]
-    Patch {
-        #[arg(help = "File path")]
-        path: String,
-        #[arg(long, help = "Find text")]
-        find: String,
-        #[arg(long, help = "Replace with")]
-        replace: String,
-        #[arg(long, help = "Dry run")]
-        dry_run: bool,
-    },
-}
-
-#[derive(Subcommand)]
-enum TestAction {
-    #[command(about = "Run tests (cargo test)")]
-    Run {
-        #[arg(long)]
-        package: Option<String>,
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
     },
 }
 
@@ -685,83 +566,6 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-        Commands::Code { action } => match action {
-            CodeAction::Read { path, start, end } => {
-                let text = std::fs::read_to_string(&path)?;
-                let total = text.lines().count();
-                let s = start.unwrap_or(1).max(1);
-                let e = end.unwrap_or(total).min(total);
-                for (i, line) in text.lines().enumerate() {
-                    let ln = i + 1;
-                    if ln >= s && ln <= e {
-                        println!("{:>6} | {}", ln, line);
-                    }
-                }
-            }
-            CodeAction::Patch {
-                path,
-                find,
-                replace,
-                dry_run,
-            } => {
-                let text = std::fs::read_to_string(&path)?;
-                let patched = text.replace(&find, &replace);
-                if dry_run {
-                    println!("--- DRY RUN: changes not written ---");
-                    println!("Replacements: {}", text.matches(&find).count());
-                } else {
-                    std::fs::write(&path, patched)?;
-                    println!("Patched '{}'", path);
-                }
-            }
-        },
-        Commands::Test { action } => match action {
-            TestAction::Run { package, args } => {
-                let mut cmd = std::process::Command::new("cargo");
-                cmd.arg("test");
-                if let Some(p) = package {
-                    cmd.arg("-p").arg(p);
-                }
-                if !args.is_empty() {
-                    cmd.args(args);
-                }
-                let status = cmd.status()?;
-                if !status.success() {
-                    anyhow::bail!("tests failed");
-                }
-            }
-        },
-        Commands::Perf {
-            path,
-            langs,
-            warmup,
-            trials,
-            queries,
-            workers,
-            batch_size,
-            device,
-            max_seq_len,
-            clean,
-            format,
-            graph_readonly,
-        } => {
-            handle_perf(
-                config,
-                path,
-                langs,
-                warmup,
-                trials,
-                queries,
-                workers,
-                batch_size,
-                device,
-                max_seq_len,
-                clean,
-                format,
-                graph_readonly,
-            )
-            .await?;
-        }
         Commands::Config { action } => {
             handle_config(action).await?;
         }
@@ -770,30 +574,6 @@ async fn main() -> Result<()> {
             database,
         } => {
             handle_db_check(namespace, database).await?;
-        }
-        Commands::Stats {
-            index,
-            server,
-            performance,
-            format,
-        } => {
-            handle_stats(index, server, performance, format).await?;
-        }
-        Commands::Init {
-            path,
-            name,
-            non_interactive,
-        } => {
-            handle_init(path, name, non_interactive).await?;
-        }
-        Commands::Clean {
-            index,
-            vectors,
-            cache,
-            all,
-            yes,
-        } => {
-            handle_clean(index, vectors, cache, all, yes).await?;
         }
 
         #[cfg(feature = "daemon")]
@@ -2222,160 +2002,6 @@ async fn handle_db_check(namespace: Option<String>, database: Option<String>) ->
     Ok(())
 }
 
-async fn handle_stats(
-    index: bool,
-    server: bool,
-    performance: bool,
-    _format: StatsFormat,
-) -> Result<()> {
-    println!("{}", "CodeGraph Statistics".blue().bold());
-    println!();
-
-    if index || (!index && !server && !performance) {
-        println!("Index Statistics:");
-        println!("  Projects: 3");
-        println!("  Files: 1,234");
-        println!("  Functions: 567");
-        println!("  Classes: 89");
-        println!("  Embeddings: 5,678");
-        println!("  Database Size: 125 MB");
-        println!();
-    }
-
-    if server {
-        println!("Server Statistics:");
-        println!("  Uptime: 2h 15m");
-        println!("  Requests: 1,234");
-        println!("  Errors: 2");
-        println!("  Avg Response Time: 45ms");
-        println!();
-    }
-
-    if performance {
-        println!("Performance Metrics:");
-        println!("  CPU Usage: 12%");
-        println!("  Memory: 45.2 MB");
-        println!("  Disk I/O: 1.2 MB/s");
-        println!("  Network: 0.5 MB/s");
-    }
-
-    Ok(())
-}
-
-async fn handle_init(path: PathBuf, name: Option<String>, _non_interactive: bool) -> Result<()> {
-    println!("{}", "Initializing CodeGraph project...".green().bold());
-    println!("Path: {:?}", path);
-
-    if let Some(name) = name {
-        println!("Project name: {}", name);
-    }
-
-    // Create .codegraph directory structure
-    let codegraph_dir = path.join(".codegraph");
-    std::fs::create_dir_all(&codegraph_dir)?;
-
-    // Create subdirectories
-    std::fs::create_dir_all(codegraph_dir.join("db"))?;
-    std::fs::create_dir_all(codegraph_dir.join("vectors"))?;
-    std::fs::create_dir_all(codegraph_dir.join("cache"))?;
-
-    // Create basic config.toml
-    let config_content = r#"# CodeGraph Project Configuration
-[project]
-name = "codegraph-project"
-version = "1.0.0"
-
-[indexing]
-languages = ["rust", "python", "typescript", "javascript", "go", "java", "cpp"]
-exclude_patterns = ["**/node_modules/**", "**/target/**", "**/.git/**", "**/build/**"]
-include_patterns = ["src/**", "lib/**", "**/*.rs", "**/*.py", "**/*.ts", "**/*.js"]
-
-[mcp]
-enable_qwen_integration = true
-enable_caching = true
-enable_pattern_detection = true
-
-[database]
-path = "./.codegraph/db"
-cache_path = "./.codegraph/cache"
-vectors_path = "./.codegraph/vectors"
-"#;
-
-    std::fs::write(codegraph_dir.join("config.toml"), config_content)?;
-
-    // Create .gitignore for CodeGraph files
-    let gitignore_content = r#"# CodeGraph generated files
-.codegraph/db/
-.codegraph/cache/
-.codegraph/vectors/
-.codegraph/logs/
-"#;
-
-    std::fs::write(path.join(".gitignore.codegraph"), gitignore_content)?;
-
-    println!("✓ Created .codegraph/config.toml");
-    println!("✓ Created .codegraph/db/");
-    println!("✓ Created .codegraph/vectors/");
-    println!("✓ Created .codegraph/cache/");
-    println!("✓ Created .gitignore.codegraph");
-    println!();
-    println!("Project initialized successfully!");
-    println!();
-    println!("{}", "Next steps:".yellow().bold());
-    println!("1. Run 'codegraph index .' to index your codebase");
-    println!("2. Start MCP server: 'codegraph start stdio'");
-    println!("3. Configure Claude Desktop with CodeGraph MCP");
-    println!("4. Experience revolutionary AI codebase intelligence!");
-
-    Ok(())
-}
-
-async fn handle_clean(index: bool, vectors: bool, cache: bool, all: bool, yes: bool) -> Result<()> {
-    println!("{}", "Cleaning CodeGraph resources...".yellow().bold());
-
-    if all || index {
-        println!("  Cleaning index database...");
-    }
-    if all || vectors {
-        println!("  Cleaning vector embeddings...");
-    }
-    if all || cache {
-        println!("  Cleaning cache files...");
-    }
-
-    if !yes {
-        println!();
-        println!("This will permanently delete data. Continue? (y/n)");
-        // TODO: Read user input
-    }
-
-    // TODO: Implement cleanup logic
-    println!();
-    println!("✓ Cleanup complete");
-
-    Ok(())
-}
-
-async fn handle_perf(
-    _config: &codegraph_core::config_manager::CodeGraphConfig,
-    _path: PathBuf,
-    _langs: Option<Vec<String>>,
-    _warmup: usize,
-    _trials: usize,
-    _queries: Option<Vec<String>>,
-    _workers: usize,
-    _batch_size: usize,
-    _device: Option<String>,
-    _max_seq_len: usize,
-    _clean: bool,
-    _format: String,
-    _graph_readonly: bool,
-) -> Result<()> {
-    println!("The legacy `codegraph perf` command depended on FAISS/RocksDB and has been retired.");
-    println!("Use the MCP harnesses (`test_agentic_tools.py` / `test_http_mcp.py`) to benchmark the new agentic tools instead.");
-    Ok(())
-}
-
 fn prepare_debug_writer(base_path: &Path) -> Result<(BoxMakeWriter, PathBuf)> {
     let log_dir = base_path.join(".codegraph").join("logs");
     std::fs::create_dir_all(&log_dir)?;
@@ -2599,6 +2225,26 @@ async fn handle_daemon_start(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod cli_command_tests {
+    use super::*;
+
+    #[test]
+    fn removed_subcommands_are_absent() {
+        let cmd = Cli::command();
+        let names: Vec<_> = cmd
+            .get_subcommands()
+            .map(|s| s.get_name().to_string())
+            .collect();
+        for removed in ["stats", "clean", "perf", "code", "test", "init"] {
+            assert!(
+                !names.iter().any(|n| n == removed),
+                "unexpected subcommand still present: {removed}"
+            );
+        }
+    }
 }
 
 #[cfg(feature = "daemon")]
