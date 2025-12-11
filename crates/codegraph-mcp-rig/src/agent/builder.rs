@@ -75,6 +75,7 @@ impl RigAgentBuilder {
 
     /// Get max output tokens, respecting MCP_CODE_AGENT_MAX_OUTPUT_TOKENS env var
     /// This ensures the LLM produces answers within Claude Code's limits
+    #[allow(dead_code)]
     fn get_max_output_tokens(&self) -> u64 {
         // Check for environment variable override first
         if let Ok(val) = std::env::var("MCP_CODE_AGENT_MAX_OUTPUT_TOKENS") {
