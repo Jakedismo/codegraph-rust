@@ -1176,9 +1176,38 @@ impl SurrealDbStorage {
     }
 
     async fn get_project_file_count(&self, project_id: &str) -> Result<i64> {
-        // Use explicit row enumeration to avoid Surreal count() serialization quirks observed in production.
-        // Limiting to a practical upper bound keeps memory reasonable for typical projects.
+        // Primary: use COUNT grouped to avoid serialization issues with VALUE count() in Surreal.
         let mut resp = self
+            .db
+            .query(
+                "SELECT count() AS count FROM file_metadata WHERE project_id = $project_id GROUP ALL;",
+            )
+            .bind(("project_id", project_id.to_string()))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Failed to query file_metadata count: {}",
+                    truncate_surreal_error(&e)
+                ))
+            })?;
+
+        let rows: Vec<JsonValue> = resp.take(0).map_err(|e| {
+            CodeGraphError::Database(format!(
+                "Failed to extract file_metadata count row: {}",
+                truncate_surreal_error(&e)
+            ))
+        })?;
+
+        if let Some(count) = rows
+            .first()
+            .and_then(|r| r.get("count"))
+            .and_then(|v| v.as_i64())
+        {
+            return Ok(count);
+        }
+
+        // Fallback: enumerate rows to derive count directly if count() shape is unexpected.
+        let mut fallback = self
             .db
             .query(
                 "SELECT file_path FROM file_metadata WHERE project_id = $project_id LIMIT 200000;",
@@ -1187,14 +1216,14 @@ impl SurrealDbStorage {
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!(
-                    "Failed to fetch file_metadata rows for count: {}",
+                    "Failed to fetch file_metadata rows for fallback count: {}",
                     truncate_surreal_error(&e)
                 ))
             })?;
 
-        let rows: Vec<JsonValue> = resp.take(0).map_err(|e| {
+        let rows: Vec<JsonValue> = fallback.take(0).map_err(|e| {
             CodeGraphError::Database(format!(
-                "Failed to extract file_metadata rows for count: {}",
+                "Failed to extract file_metadata rows for fallback count: {}",
                 truncate_surreal_error(&e)
             ))
         })?;
