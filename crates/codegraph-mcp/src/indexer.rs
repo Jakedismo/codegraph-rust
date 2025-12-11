@@ -3104,24 +3104,48 @@ impl ProjectIndexer {
             storage.db()
         };
 
-        let mut resp = db
-            .query("SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id")
+        let mut last_count = 0i64;
+        for attempt in 1..=3 {
+            let mut resp = db
+                .query("RETURN (SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id)[0];")
+                .bind(("project_id", self.project_id.clone()))
+                .await
+                .context("Failed to verify file_metadata count")?;
+            let counts: Vec<JsonValue> = resp.take(0)?;
+            last_count = extract_count(counts)?;
+
+            if last_count >= expected_files as i64 {
+                return Ok(());
+            }
+
+            if attempt < 3 {
+                tokio::time::sleep(std::time::Duration::from_millis(50 * attempt as u64)).await;
+            }
+        }
+
+        // Fetch a small sample to aid debugging
+        let mut sample_resp = db
+            .query("SELECT file_path FROM file_metadata WHERE project_id = $project_id LIMIT 5")
             .bind(("project_id", self.project_id.clone()))
             .await
-            .context("Failed to verify file_metadata count")?;
-        let counts: Vec<JsonValue> = resp.take(0)?;
-        let count = extract_count(counts)?;
+            .context("Failed to collect sample file_metadata rows")?;
+        let sample_rows: Vec<JsonValue> = sample_resp.take(0).unwrap_or_default();
+        let sample_paths: Vec<String> = sample_rows
+            .into_iter()
+            .filter_map(|row| {
+                row.get("file_path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .collect();
 
-        if count < expected_files as i64 {
-            Err(anyhow!(
-                "file_metadata count {} is less than expected {} for project {}",
-                count,
-                expected_files,
-                self.project_id
-            ))
-        } else {
-            Ok(())
-        }
+        Err(anyhow!(
+            "file_metadata count {} is less than expected {} for project {}. Sample stored file_paths: {:?}",
+            last_count,
+            expected_files,
+            self.project_id,
+            sample_paths
+        ))
     }
 
     async fn verify_project_metadata_present(&self) -> Result<()> {

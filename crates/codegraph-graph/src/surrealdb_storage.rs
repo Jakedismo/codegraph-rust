@@ -1107,37 +1107,17 @@ impl SurrealDbStorage {
                 ))
             })?;
 
-        // Verify writes actually succeeded by checking at least one record exists
-        // SurrealDB FOR loops can silently skip operations if schema/table missing
-        // Verify using a single-return statement to avoid multi-result take() errors
-        let project_id = &records[0].project_id;
-        let verify_query = r#"
-            RETURN (SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id)[0];
-        "#;
-        let mut verify_resp = self
-            .db
-            .query(verify_query)
-            .bind(("project_id", project_id.clone()))
-            .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!(
-                    "Failed to verify file metadata writes: {}",
-                    truncate_surreal_error(&e)
-                ))
-            })?;
+        let project_id = records[0].project_id.clone();
 
-        let written_value: Vec<JsonValue> = verify_resp.take(0).map_err(|e| {
-            CodeGraphError::Database(format!("Failed to extract verification count: {}", e))
-        })?;
-        let written = written_value
-            .into_iter()
-            .next()
-            .and_then(|v| match v {
-                JsonValue::Number(n) => n.as_i64(),
-                JsonValue::Object(map) => map.get("count").and_then(|c| c.as_i64()),
-                _ => None,
-            })
-            .unwrap_or(0) as usize;
+        // Verify writes with retry and diagnostics
+        let written = self
+            .verify_project_file_count(
+                &project_id,
+                records.len(),
+                3,
+                std::time::Duration::from_millis(50),
+            )
+            .await?;
 
         if written < records.len() {
             // Fallback: attempt per-record upserts to ensure persistence and surface exact error
@@ -1154,10 +1134,101 @@ impl SurrealDbStorage {
                     ))
                 })?;
             }
+
+            // Re-verify after fallback
+            self.verify_project_file_count(
+                &project_id,
+                records.len(),
+                3,
+                std::time::Duration::from_millis(100),
+            )
+            .await?;
         }
 
         debug!("Batch upserted {} file metadata records", records.len());
         Ok(())
+    }
+
+    async fn verify_project_file_count(
+        &self,
+        project_id: &str,
+        expected: usize,
+        attempts: usize,
+        delay: std::time::Duration,
+    ) -> Result<usize> {
+        if let Ok(reached) = verify_with_retry(expected, attempts, delay, || async {
+            self.get_project_file_count(project_id).await
+        })
+        .await
+        {
+            return Ok(reached);
+        }
+
+        let last_count = self.get_project_file_count(project_id).await.unwrap_or(0);
+        let samples = self
+            .sample_file_paths(project_id, 5)
+            .await
+            .unwrap_or_default();
+        Err(CodeGraphError::Database(format!(
+            "File metadata count {} is less than expected {} for project {}. Sample file_paths: {:?}",
+            last_count, expected, project_id, samples
+        )))
+    }
+
+    async fn get_project_file_count(&self, project_id: &str) -> Result<i64> {
+        let mut resp = self
+            .db
+            .query("RETURN (SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id)[0];")
+            .bind(("project_id", project_id.to_string()))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Failed to verify file metadata writes: {}",
+                    truncate_surreal_error(&e)
+                ))
+            })?;
+
+        let values: Vec<JsonValue> = resp.take(0).map_err(|e| {
+            CodeGraphError::Database(format!("Failed to extract verification count: {}", e))
+        })?;
+
+        parse_count(values)
+    }
+
+    async fn sample_file_paths(&self, project_id: &str, limit: usize) -> Result<Vec<String>> {
+        let mut resp = self
+            .db
+            .query(
+                "SELECT file_path FROM file_metadata WHERE project_id = $project_id LIMIT $limit",
+            )
+            .bind(("project_id", project_id.to_string()))
+            .bind(("limit", limit as i64))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Failed to fetch sample file_metadata rows: {}",
+                    truncate_surreal_error(&e)
+                ))
+            })?;
+
+        let rows: Vec<JsonValue> = resp.take(0).map_err(|e| {
+            CodeGraphError::Database(format!(
+                "Failed to extract sample file_metadata rows: {}",
+                truncate_surreal_error(&e)
+            ))
+        })?;
+
+        let mut paths = Vec::new();
+        for row in rows {
+            if let Some(path) = row
+                .get("file_path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+            {
+                paths.push(path);
+            }
+        }
+        Ok(paths)
     }
 
     /// Get all file metadata for a project
@@ -2188,6 +2259,58 @@ fn truncate_surreal_error(e: &SurrealError) -> String {
     msg
 }
 
+async fn verify_with_retry<F, Fut>(
+    expected: usize,
+    attempts: usize,
+    delay: std::time::Duration,
+    mut get_count: F,
+) -> Result<usize>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<i64>>,
+{
+    if attempts == 0 {
+        return Err(CodeGraphError::Database(
+            "verify_with_retry requires at least one attempt".to_string(),
+        ));
+    }
+
+    for attempt in 1..=attempts {
+        let count = get_count().await?;
+        if count >= expected as i64 {
+            return Ok(count as usize);
+        }
+
+        if attempt < attempts {
+            tokio::time::sleep(delay).await;
+        }
+    }
+
+    Err(CodeGraphError::Database(format!(
+        "Count did not reach expected {} after {} attempts",
+        expected, attempts
+    )))
+}
+
+fn parse_count(values: Vec<JsonValue>) -> Result<i64> {
+    let Some(first) = values.into_iter().next() else {
+        return Ok(0);
+    };
+
+    match first {
+        JsonValue::Number(n) => n.as_i64().ok_or_else(|| {
+            CodeGraphError::Database(format!("Count value is not an integer: {}", n))
+        }),
+        JsonValue::Object(map) => map.get("count").and_then(|v| v.as_i64()).ok_or_else(|| {
+            CodeGraphError::Database("Count object missing integer 'count' field".to_string())
+        }),
+        other => Err(CodeGraphError::Database(format!(
+            "Unexpected count shape: {}",
+            other
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2214,5 +2337,55 @@ mod tests {
     #[test]
     fn normalized_embedding_column_rejects_unknown_column() {
         assert!(normalized_embedding_column("embedding_9999").is_none());
+    }
+
+    #[tokio::test]
+    async fn verify_with_retry_succeeds_on_second_attempt() {
+        let counts = std::sync::Arc::new(std::sync::Mutex::new(vec![1_i64, 4_i64]));
+        let expected = 3usize;
+        let counts_clone = counts.clone();
+        let result = verify_with_retry(
+            expected,
+            3,
+            std::time::Duration::from_millis(1),
+            move || {
+                let counts_inner = counts_clone.clone();
+                async move {
+                    let mut data = counts_inner.lock().unwrap();
+                    let value = data.remove(0);
+                    Ok(value)
+                }
+            },
+        )
+        .await;
+
+        assert!(result.is_ok(), "expected success on second attempt");
+        assert_eq!(result.unwrap(), 4);
+    }
+
+    #[tokio::test]
+    async fn verify_with_retry_fails_after_attempts() {
+        let counts = std::sync::Arc::new(std::sync::Mutex::new(vec![1_i64, 1_i64, 2_i64]));
+        let expected = 5usize;
+        let counts_clone = counts.clone();
+        let result = verify_with_retry(
+            expected,
+            3,
+            std::time::Duration::from_millis(1),
+            move || {
+                let counts_inner = counts_clone.clone();
+                async move {
+                    let mut data = counts_inner.lock().unwrap();
+                    let value = data.remove(0);
+                    Ok(value)
+                }
+            },
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "should fail when counts never reach expected"
+        );
     }
 }
