@@ -14,7 +14,7 @@ use surrealdb::{
     opt::auth::{Database, Root},
     Error as SurrealError, Surreal,
 };
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// SurrealDB storage implementation with flexible schema support
 #[derive(Clone)]
@@ -1002,28 +1002,43 @@ impl SurrealDbStorage {
 
     /// Upsert single file metadata record
     pub async fn upsert_file_metadata(&self, record: &FileMetadataRecord) -> Result<()> {
-        let record_id = record.id();
-        let payload = json!({
-            "file_path": record.file_path,
-            "project_id": record.project_id,
-            "content_hash": record.content_hash,
-            "modified_at": record.modified_at,
-            "file_size": record.file_size,
-            "last_indexed_at": record.last_indexed_at,
-            "node_count": record.node_count,
-            "edge_count": record.edge_count,
-            "language": record.language,
-            "parse_errors": record.parse_errors,
-        });
+        let query = r#"
+            UPSERT type::thing('file_metadata', $id) SET
+                file_path = $file_path,
+                project_id = $project_id,
+                content_hash = $content_hash,
+                modified_at = <datetime>$modified_at,
+                file_size = $file_size,
+                last_indexed_at = <datetime>$last_indexed_at,
+                node_count = $node_count,
+                edge_count = $edge_count,
+                language = $language,
+                parse_errors = $parse_errors,
+                updated_at = time::now();
+        "#;
 
-        let _: Option<HashMap<String, JsonValue>> = self
+        let resp = self
             .db
-            .update(("file_metadata", record_id))
-            .content(payload)
+            .query(query)
+            .bind(("id", record.id()))
+            .bind(("file_path", record.file_path.clone()))
+            .bind(("project_id", record.project_id.clone()))
+            .bind(("content_hash", record.content_hash.clone()))
+            .bind(("modified_at", record.modified_at))
+            .bind(("file_size", record.file_size))
+            .bind(("last_indexed_at", record.last_indexed_at))
+            .bind(("node_count", record.node_count))
+            .bind(("edge_count", record.edge_count))
+            .bind(("language", record.language.clone()))
+            .bind(("parse_errors", record.parse_errors.clone()))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!("Failed to upsert file metadata: {}", e))
             })?;
+
+        resp.check().map_err(|e| {
+            CodeGraphError::Database(format!("Failed to upsert file metadata: {}", e))
+        })?;
 
         Ok(())
     }
@@ -1125,12 +1140,20 @@ impl SurrealDbStorage {
             .unwrap_or(0) as usize;
 
         if written < records.len() {
-            return Err(CodeGraphError::Database(format!(
-                "File metadata batch upsert verification failed: wrote {} of {} records. \
-                 Check that file_metadata table exists and schema is applied.",
+            // Fallback: attempt per-record upserts to ensure persistence and surface exact error
+            warn!(
+                "File metadata batch upsert verification shortfall: wrote {} of {}. Falling back to per-record upsert.",
                 written,
                 records.len()
-            )));
+            );
+            for record in records {
+                self.upsert_file_metadata(record).await.map_err(|e| {
+                    CodeGraphError::Database(format!(
+                        "File metadata fallback upsert failed for {}: {}",
+                        record.file_path, e
+                    ))
+                })?;
+            }
         }
 
         debug!("Batch upserted {} file metadata records", records.len());

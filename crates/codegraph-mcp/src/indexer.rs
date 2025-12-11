@@ -3109,8 +3109,8 @@ impl ProjectIndexer {
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to verify file_metadata count")?;
-        let counts: Vec<i64> = resp.take(0)?;
-        let count = counts.get(0).copied().unwrap_or(0);
+        let counts: Vec<JsonValue> = resp.take(0)?;
+        let count = extract_count(counts)?;
 
         if count < expected_files as i64 {
             Err(anyhow!(
