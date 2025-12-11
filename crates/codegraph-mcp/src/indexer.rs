@@ -25,6 +25,7 @@ use num_cpus;
 use rayon::prelude::*;
 use regex::Regex;
 use rustc_demangle::try_demangle;
+use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -114,6 +115,23 @@ impl SurrealEmbeddingColumn {
             SurrealEmbeddingColumn::Embedding3072 => 3072,
             SurrealEmbeddingColumn::Embedding4096 => 4096,
         }
+    }
+}
+
+fn extract_count(values: Vec<JsonValue>) -> Result<i64> {
+    let Some(first) = values.into_iter().next() else {
+        return Ok(0);
+    };
+
+    match first {
+        JsonValue::Number(n) => n
+            .as_i64()
+            .ok_or_else(|| anyhow!("Count value is not an integer: {}", n)),
+        JsonValue::Object(map) => map
+            .get("count")
+            .and_then(|v| v.as_i64())
+            .ok_or_else(|| anyhow!("Count object missing integer 'count' field")),
+        other => Err(anyhow!("Unexpected count shape: {}", other)),
     }
 }
 
@@ -2679,8 +2697,8 @@ impl ProjectIndexer {
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to query project_metadata")?;
-        let counts: Vec<i64> = response.take(0)?;
-        let count = counts.get(0).cloned().unwrap_or(0);
+        let counts: Vec<JsonValue> = response.take(0)?;
+        let count = extract_count(counts)?;
         Ok(count > 0)
     }
 
@@ -2695,8 +2713,8 @@ impl ProjectIndexer {
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to query file_metadata count")?;
-        let counts: Vec<i64> = response.take(0)?;
-        let count = counts.get(0).cloned().unwrap_or(0);
+        let counts: Vec<JsonValue> = response.take(0)?;
+        let count = extract_count(counts)?;
         Ok(count > 0)
     }
 
@@ -2975,14 +2993,16 @@ impl ProjectIndexer {
             .bind(("project_id", self.project_id.clone()))
             .await
         {
-            Ok(mut resp) => match resp.take::<Vec<i64>>(0) {
-                Ok(rows) => {
-                    let count = rows.get(0).copied().unwrap_or(0);
-                    info!(
-                        "🗄️ SurrealDB nodes persisted: {} (expected ≈ {})",
-                        count, expected
-                    );
-                }
+            Ok(mut resp) => match resp.take::<Vec<JsonValue>>(0) {
+                Ok(rows) => match extract_count(rows) {
+                    Ok(count) => {
+                        info!(
+                            "🗄️ SurrealDB nodes persisted: {} (expected ≈ {})",
+                            count, expected
+                        );
+                    }
+                    Err(e) => warn!("⚠️ Failed to interpret SurrealDB node count: {}", e),
+                },
                 Err(e) => warn!("⚠️ Failed to read SurrealDB node count: {}", e),
             },
             Err(e) => {
@@ -3007,14 +3027,16 @@ impl ProjectIndexer {
             .bind(("project_id", self.project_id.clone()))
             .await
         {
-            Ok(mut resp) => match resp.take::<Vec<i64>>(0) {
-                Ok(rows) => {
-                    let count = rows.get(0).copied().unwrap_or(0);
-                    info!(
-                        "🧩 SurrealDB chunks persisted: {} (expected ≈ {})",
-                        count, expected
-                    );
-                }
+            Ok(mut resp) => match resp.take::<Vec<JsonValue>>(0) {
+                Ok(rows) => match extract_count(rows) {
+                    Ok(count) => {
+                        info!(
+                            "🧩 SurrealDB chunks persisted: {} (expected ≈ {})",
+                            count, expected
+                        );
+                    }
+                    Err(e) => warn!("⚠️ Failed to interpret SurrealDB chunk count: {}", e),
+                },
                 Err(e) => warn!("⚠️ Failed to read SurrealDB chunk count: {}", e),
             },
             Err(e) => {
@@ -3050,20 +3072,22 @@ impl ProjectIndexer {
         };
 
         match db.query("SELECT VALUE count() FROM edges").await {
-            Ok(mut resp) => match resp.take::<Option<i64>>(0) {
-                Ok(count_opt) => {
-                    let count = count_opt.unwrap_or(0);
-                    info!(
-                        "🗄️ SurrealDB edges persisted: {} (expected ≈ {})",
-                        count, expected
-                    );
-                    if count < expected as i64 {
-                        warn!(
-                            "⚠️ Edge count ({}) is lower than resolved edges ({}). Verify SurrealDB schema and filters.",
+            Ok(mut resp) => match resp.take::<Vec<JsonValue>>(0) {
+                Ok(rows) => match extract_count(rows) {
+                    Ok(count) => {
+                        info!(
+                            "🗄️ SurrealDB edges persisted: {} (expected ≈ {})",
                             count, expected
                         );
+                        if count < expected as i64 {
+                            warn!(
+                                "⚠️ Edge count ({}) is lower than resolved edges ({}). Verify SurrealDB schema and filters.",
+                                count, expected
+                            );
+                        }
                     }
-                }
+                    Err(e) => warn!("⚠️ Failed to interpret SurrealDB edge count: {}", e),
+                },
                 Err(e) => warn!("⚠️ Failed to read SurrealDB edge count: {}", e),
             },
             Err(e) => warn!("⚠️ SurrealDB edge count query failed: {}", e),

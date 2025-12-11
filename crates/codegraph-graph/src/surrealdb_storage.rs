@@ -923,16 +923,16 @@ impl SurrealDbStorage {
     }
 
     pub async fn upsert_project_metadata(&self, record: ProjectMetadataRecord) -> Result<()> {
-        let resp = self
+        // Try update first (non-destructive to created_at). If nothing updated, create.
+        let update_sql = "UPDATE type::thing('project_metadata', $id) SET \
+                     project_id = $pid, name = $name, root_path = $root, primary_language = $lang, \
+                     file_count = $files, node_count = $nodes, edge_count = $edges, \
+                     avg_coverage_score = $cov, last_analyzed = time::now(), codegraph_version = $ver, \
+                     organization_id = $org, domain = $dom, metadata = $meta, updated_at = time::now();";
+
+        let mut update_resp = self
             .db
-            .query(
-                "UPSERT type::thing('project_metadata', $id) SET \
-                 project_id = $pid, name = $name, root_path = $root, primary_language = $lang, \
-                 file_count = $files, node_count = $nodes, edge_count = $edges, \
-                 avg_coverage_score = $cov, last_analyzed = time::now(), codegraph_version = $ver, \
-                 organization_id = $org, domain = $dom, metadata = $meta, \
-                 created_at = time::now(), updated_at = time::now();",
-            )
+            .query(update_sql)
             .bind(("id", record.project_id.clone()))
             .bind(("pid", record.project_id.clone()))
             .bind(("name", record.name.clone()))
@@ -948,11 +948,57 @@ impl SurrealDbStorage {
             .bind(("meta", json!({})))
             .await
             .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to upsert project metadata: {}", e))
+                CodeGraphError::Database(format!("Failed to update project metadata: {}", e))
             })?;
 
-        resp.check().map_err(|e| {
-            CodeGraphError::Database(format!("Project metadata upsert error: {}", e))
+        let updated: Vec<JsonValue> = update_resp.take(0).map_err(|e| {
+            CodeGraphError::Database(format!("Failed to read update result: {}", e))
+        })?;
+
+        if !updated.is_empty() {
+            return Ok(());
+        }
+
+        // Record not present: create it (created_at set by Surreal)
+        let create_sql = "CREATE type::thing('project_metadata', $id) CONTENT {
+                        project_id: $pid,
+                        name: $name,
+                        root_path: $root,
+                        primary_language: $lang,
+                        file_count: $files,
+                        node_count: $nodes,
+                        edge_count: $edges,
+                        avg_coverage_score: $cov,
+                        last_analyzed: time::now(),
+                        codegraph_version: $ver,
+                        organization_id: $org,
+                        domain: $dom,
+                        metadata: $meta
+                    };";
+
+        let create_resp = self
+            .db
+            .query(create_sql)
+            .bind(("id", record.project_id.clone()))
+            .bind(("pid", record.project_id.clone()))
+            .bind(("name", record.name.clone()))
+            .bind(("root", record.root_path.clone()))
+            .bind(("lang", record.primary_language.clone()))
+            .bind(("files", record.file_count))
+            .bind(("nodes", record.node_count))
+            .bind(("edges", record.edge_count))
+            .bind(("cov", record.avg_coverage_score))
+            .bind(("ver", record.codegraph_version.clone()))
+            .bind(("org", record.organization_id.clone()))
+            .bind(("dom", record.domain.clone()))
+            .bind(("meta", json!({})))
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to create project metadata: {}", e))
+            })?;
+
+        create_resp.check().map_err(|e| {
+            CodeGraphError::Database(format!("Project metadata create error: {}", e))
         })?;
 
         Ok(())
@@ -1060,10 +1106,18 @@ impl SurrealDbStorage {
                 ))
             })?;
 
-        let result: Option<HashMap<String, i64>> = verify_resp.take(0).map_err(|e| {
+        let counts: Vec<JsonValue> = verify_resp.take(0).map_err(|e| {
             CodeGraphError::Database(format!("Failed to extract verification count: {}", e))
         })?;
-        let written = result.and_then(|r| r.get("count").copied()).unwrap_or(0) as usize;
+        let written = counts
+            .into_iter()
+            .next()
+            .and_then(|v| match v {
+                JsonValue::Number(n) => n.as_i64(),
+                JsonValue::Object(map) => map.get("count").and_then(|c| c.as_i64()),
+                _ => None,
+            })
+            .unwrap_or(0) as usize;
 
         if written < records.len() {
             return Err(CodeGraphError::Database(format!(
