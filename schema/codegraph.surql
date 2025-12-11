@@ -709,7 +709,7 @@ DEFINE INDEX idx_file_metadata_project ON file_metadata FIELDS project_id CONCUR
 -- TABLE: metadata
 -- ------------------------------
 
-DEFINE TABLE metadata TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE metadata TYPE NORMAL SCHEMAFULL PERMISSIONS FULL;
 
 DEFINE FIELD `value` ON metadata FLEXIBLE TYPE option<string | number | bool | object | array> PERMISSIONS FULL;
 DEFINE FIELD `value`[*] ON metadata FLEXIBLE TYPE any PERMISSIONS FULL;
