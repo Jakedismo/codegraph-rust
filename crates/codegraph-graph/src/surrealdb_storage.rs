@@ -1176,23 +1176,30 @@ impl SurrealDbStorage {
     }
 
     async fn get_project_file_count(&self, project_id: &str) -> Result<i64> {
+        // Use explicit row enumeration to avoid Surreal count() serialization quirks observed in production.
+        // Limiting to a practical upper bound keeps memory reasonable for typical projects.
         let mut resp = self
             .db
-            .query("RETURN (SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id)[0];")
+            .query(
+                "SELECT file_path FROM file_metadata WHERE project_id = $project_id LIMIT 200000;",
+            )
             .bind(("project_id", project_id.to_string()))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!(
-                    "Failed to verify file metadata writes: {}",
+                    "Failed to fetch file_metadata rows for count: {}",
                     truncate_surreal_error(&e)
                 ))
             })?;
 
-        let values: Vec<JsonValue> = resp.take(0).map_err(|e| {
-            CodeGraphError::Database(format!("Failed to extract verification count: {}", e))
+        let rows: Vec<JsonValue> = resp.take(0).map_err(|e| {
+            CodeGraphError::Database(format!(
+                "Failed to extract file_metadata rows for count: {}",
+                truncate_surreal_error(&e)
+            ))
         })?;
 
-        parse_count(values)
+        Ok(rows.len() as i64)
     }
 
     async fn sample_file_paths(&self, project_id: &str, limit: usize) -> Result<Vec<String>> {
@@ -2292,6 +2299,7 @@ where
     )))
 }
 
+#[allow(dead_code)]
 fn parse_count(values: Vec<JsonValue>) -> Result<i64> {
     let Some(first) = values.into_iter().next() else {
         return Ok(0);
