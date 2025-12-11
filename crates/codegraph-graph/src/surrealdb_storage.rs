@@ -930,7 +930,7 @@ impl SurrealDbStorage {
                      avg_coverage_score = $cov, last_analyzed = time::now(), codegraph_version = $ver, \
                      organization_id = $org, domain = $dom, metadata = $meta, updated_at = time::now();";
 
-        let mut update_resp = self
+        let update_resp = self
             .db
             .query(update_sql)
             .bind(("id", record.project_id.clone()))
@@ -951,11 +951,7 @@ impl SurrealDbStorage {
                 CodeGraphError::Database(format!("Failed to update project metadata: {}", e))
             })?;
 
-        let updated: Vec<JsonValue> = update_resp.take(0).map_err(|e| {
-            CodeGraphError::Database(format!("Failed to read update result: {}", e))
-        })?;
-
-        if !updated.is_empty() {
+        if update_resp.check().is_ok() {
             return Ok(());
         }
 
