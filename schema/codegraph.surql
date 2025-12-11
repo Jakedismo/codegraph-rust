@@ -683,7 +683,7 @@ DEFINE INDEX idx_edges_project_type ON edges FIELDS project_id, edge_type CONCUR
 -- TABLE: file_metadata
 -- ------------------------------
 
-DEFINE TABLE file_metadata TYPE NORMAL SCHEMAFULL COMMENT 'Tracks file state for incremental indexing and change detection' PERMISSIONS NONE;
+DEFINE TABLE file_metadata TYPE NORMAL SCHEMAFULL COMMENT 'Tracks file state for incremental indexing and change detection' PERMISSIONS FULL;
 
 DEFINE FIELD content_hash ON file_metadata TYPE string PERMISSIONS FULL;
 DEFINE FIELD created_at ON file_metadata TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
@@ -812,7 +812,7 @@ DEFINE INDEX idx_project_org ON project_metadata FIELDS organization_id CONCURRE
 -- TABLE: schema_versions
 -- ------------------------------
 
-DEFINE TABLE schema_versions TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE schema_versions TYPE NORMAL SCHEMAFULL PERMISSIONS FULL;
 
 DEFINE FIELD applied_at ON schema_versions TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
 DEFINE FIELD checksum ON schema_versions TYPE option<string> PERMISSIONS FULL;

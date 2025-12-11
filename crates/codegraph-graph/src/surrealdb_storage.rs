@@ -1083,6 +1083,13 @@ impl SurrealDbStorage {
                     records.len(),
                     truncate_surreal_error(&e)
                 ))
+            })?
+            .check()
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "File metadata batch upsert returned error: {}",
+                    truncate_surreal_error(&e)
+                ))
             })?;
 
         // Verify writes actually succeeded by checking at least one record exists
@@ -1102,18 +1109,10 @@ impl SurrealDbStorage {
                 ))
             })?;
 
-        let counts: Vec<JsonValue> = verify_resp.take(0).map_err(|e| {
+        let written: Option<i64> = verify_resp.take(0).map_err(|e| {
             CodeGraphError::Database(format!("Failed to extract verification count: {}", e))
         })?;
-        let written = counts
-            .into_iter()
-            .next()
-            .and_then(|v| match v {
-                JsonValue::Number(n) => n.as_i64(),
-                JsonValue::Object(map) => map.get("count").and_then(|c| c.as_i64()),
-                _ => None,
-            })
-            .unwrap_or(0) as usize;
+        let written = written.unwrap_or(0) as usize;
 
         if written < records.len() {
             return Err(CodeGraphError::Database(format!(
