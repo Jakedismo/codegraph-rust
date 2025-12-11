@@ -1094,9 +1094,11 @@ impl SurrealDbStorage {
 
         // Verify writes actually succeeded by checking at least one record exists
         // SurrealDB FOR loops can silently skip operations if schema/table missing
-        // Use the first record's project_id to count records for that project
+        // Verify using a single-return statement to avoid multi-result take() errors
         let project_id = &records[0].project_id;
-        let verify_query = "SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id";
+        let verify_query = r#"
+            RETURN (SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id)[0];
+        "#;
         let mut verify_resp = self
             .db
             .query(verify_query)
