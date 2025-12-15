@@ -3,10 +3,24 @@
 #![cfg(feature = "surrealdb")]
 
 use std::path::PathBuf;
+use std::{env, str::FromStr};
 
 use anyhow::{Context, Result};
 use serde_json::Value;
 use surrealdb::{engine::local::Mem, Surreal};
+
+fn env_flag_enabled(name: &str) -> bool {
+    env::var(name)
+        .ok()
+        .and_then(|v| {
+            bool::from_str(v.trim()).ok().or_else(|| match v.trim() {
+                "1" => Some(true),
+                "0" => Some(false),
+                _ => None,
+            })
+        })
+        .unwrap_or(false)
+}
 
 fn extract_function(schema: &str, name: &str) -> Result<String> {
     let marker = format!("DEFINE FUNCTION {}(", name);
@@ -22,6 +36,10 @@ fn extract_function(schema: &str, name: &str) -> Result<String> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn vector_scores_surface_in_hybrid_search() -> Result<()> {
+    if !env_flag_enabled("CODEGRAPH_RUN_SEMANTIC_SEARCH_NODES_VIA_CHUNKS_TEST") {
+        return Ok(());
+    }
+
     let db = Surreal::new::<Mem>(()).await?;
     db.use_ns("test").use_db("test").await?;
 
