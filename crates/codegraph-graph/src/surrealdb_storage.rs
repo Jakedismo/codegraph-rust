@@ -923,79 +923,48 @@ impl SurrealDbStorage {
     }
 
     pub async fn upsert_project_metadata(&self, record: ProjectMetadataRecord) -> Result<()> {
-        // Try update first (non-destructive to created_at). If nothing updated, create.
-        let update_sql = "UPDATE type::thing('project_metadata', $id) SET \
-                     project_id = $pid, name = $name, root_path = $root, primary_language = $lang, \
-                     file_count = $files, node_count = $nodes, edge_count = $edges, \
-                     avg_coverage_score = $cov, last_analyzed = time::now(), codegraph_version = $ver, \
-                     organization_id = $org, domain = $dom, metadata = $meta, updated_at = time::now();";
+        let query = r#"
+            UPSERT type::thing('project_metadata', $id) SET
+                project_id = $pid,
+                name = $name,
+                root_path = $root,
+                primary_language = $lang,
+                file_count = $files,
+                node_count = $nodes,
+                edge_count = $edges,
+                avg_coverage_score = $cov,
+                last_analyzed = <datetime>$last_analyzed,
+                codegraph_version = $ver,
+                organization_id = $org,
+                domain = $dom,
+                metadata = $meta,
+                updated_at = time::now();
+        "#;
 
-        let update_resp = self
-            .db
-            .query(update_sql)
+        self.db
+            .query(query)
             .bind(("id", record.project_id.clone()))
-            .bind(("pid", record.project_id.clone()))
-            .bind(("name", record.name.clone()))
-            .bind(("root", record.root_path.clone()))
-            .bind(("lang", record.primary_language.clone()))
+            .bind(("pid", record.project_id))
+            .bind(("name", record.name))
+            .bind(("root", record.root_path))
+            .bind(("lang", record.primary_language))
             .bind(("files", record.file_count))
             .bind(("nodes", record.node_count))
             .bind(("edges", record.edge_count))
             .bind(("cov", record.avg_coverage_score))
-            .bind(("ver", record.codegraph_version.clone()))
-            .bind(("org", record.organization_id.clone()))
-            .bind(("dom", record.domain.clone()))
+            .bind(("last_analyzed", record.last_analyzed))
+            .bind(("ver", record.codegraph_version))
+            .bind(("org", record.organization_id))
+            .bind(("dom", record.domain))
             .bind(("meta", json!({})))
             .await
             .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to update project metadata: {}", e))
-            })?;
-
-        if update_resp.check().is_ok() {
-            return Ok(());
-        }
-
-        // Record not present: create it (created_at set by Surreal)
-        let create_sql = "CREATE type::thing('project_metadata', $id) CONTENT {
-                        project_id: $pid,
-                        name: $name,
-                        root_path: $root,
-                        primary_language: $lang,
-                        file_count: $files,
-                        node_count: $nodes,
-                        edge_count: $edges,
-                        avg_coverage_score: $cov,
-                        last_analyzed: time::now(),
-                        codegraph_version: $ver,
-                        organization_id: $org,
-                        domain: $dom,
-                        metadata: $meta
-                    };";
-
-        let create_resp = self
-            .db
-            .query(create_sql)
-            .bind(("id", record.project_id.clone()))
-            .bind(("pid", record.project_id.clone()))
-            .bind(("name", record.name.clone()))
-            .bind(("root", record.root_path.clone()))
-            .bind(("lang", record.primary_language.clone()))
-            .bind(("files", record.file_count))
-            .bind(("nodes", record.node_count))
-            .bind(("edges", record.edge_count))
-            .bind(("cov", record.avg_coverage_score))
-            .bind(("ver", record.codegraph_version.clone()))
-            .bind(("org", record.organization_id.clone()))
-            .bind(("dom", record.domain.clone()))
-            .bind(("meta", json!({})))
-            .await
+                CodeGraphError::Database(format!("Failed to upsert project metadata: {}", e))
+            })?
+            .check()
             .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to create project metadata: {}", e))
+                CodeGraphError::Database(format!("Project metadata upsert error: {}", e))
             })?;
-
-        create_resp.check().map_err(|e| {
-            CodeGraphError::Database(format!("Project metadata create error: {}", e))
-        })?;
 
         Ok(())
     }
@@ -2361,6 +2330,78 @@ mod tests {
 
         let storage = SurrealDbStorage::new(config).await;
         assert!(storage.is_ok());
+    }
+
+    #[tokio::test]
+    async fn upsert_project_metadata_creates_row_with_project_id() {
+        let config = SurrealDbConfig {
+            connection: "mem://".to_string(),
+            ..Default::default()
+        };
+
+        let storage = SurrealDbStorage::new(config).await.unwrap();
+
+        storage
+            .db
+            .query(
+                r#"
+                DEFINE TABLE project_metadata TYPE NORMAL SCHEMAFULL PERMISSIONS FULL;
+                DEFINE FIELD project_id ON project_metadata TYPE string PERMISSIONS FULL;
+                DEFINE FIELD name ON project_metadata TYPE string PERMISSIONS FULL;
+                DEFINE FIELD root_path ON project_metadata TYPE string PERMISSIONS FULL;
+                DEFINE FIELD primary_language ON project_metadata TYPE option<string> PERMISSIONS FULL;
+                DEFINE FIELD file_count ON project_metadata TYPE int PERMISSIONS FULL;
+                DEFINE FIELD node_count ON project_metadata TYPE int PERMISSIONS FULL;
+                DEFINE FIELD edge_count ON project_metadata TYPE int PERMISSIONS FULL;
+                DEFINE FIELD avg_coverage_score ON project_metadata TYPE float PERMISSIONS FULL;
+                DEFINE FIELD last_analyzed ON project_metadata TYPE option<datetime> PERMISSIONS FULL;
+                DEFINE FIELD codegraph_version ON project_metadata TYPE option<string> PERMISSIONS FULL;
+                DEFINE FIELD organization_id ON project_metadata TYPE option<string> PERMISSIONS FULL;
+                DEFINE FIELD domain ON project_metadata TYPE option<string> PERMISSIONS FULL;
+                DEFINE FIELD metadata ON project_metadata FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+                DEFINE FIELD created_at ON project_metadata TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
+                DEFINE FIELD updated_at ON project_metadata TYPE datetime VALUE time::now() PERMISSIONS FULL;
+            "#,
+            )
+            .await
+            .unwrap()
+            .check()
+            .unwrap();
+
+        let project_id = "project-a".to_string();
+        storage
+            .upsert_project_metadata(ProjectMetadataRecord {
+                project_id: project_id.clone(),
+                name: "Project A".to_string(),
+                root_path: "/tmp/project-a".to_string(),
+                primary_language: Some("rust".to_string()),
+                file_count: 3,
+                node_count: 10,
+                edge_count: 20,
+                avg_coverage_score: 0.5,
+                last_analyzed: chrono::Utc::now(),
+                codegraph_version: "0.0.0-test".to_string(),
+                organization_id: None,
+                domain: None,
+            })
+            .await
+            .unwrap();
+
+        let mut resp = storage
+            .db
+            .query(
+                "SELECT count() AS count FROM project_metadata WHERE project_id = $project_id GROUP ALL;",
+            )
+            .bind(("project_id", project_id))
+            .await
+            .unwrap();
+        let rows: Vec<JsonValue> = resp.take(0).unwrap();
+        let count = rows
+            .first()
+            .and_then(|v| v.get("count"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        assert_eq!(count, 1);
     }
 
     #[test]
