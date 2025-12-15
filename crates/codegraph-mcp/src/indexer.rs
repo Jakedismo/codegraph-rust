@@ -2693,7 +2693,7 @@ impl ProjectIndexer {
         };
 
         let mut response = db
-            .query("SELECT VALUE count() FROM project_metadata WHERE project_id = $project_id")
+            .query("SELECT VALUE count() FROM project_metadata WHERE project_id = $project_id GROUP ALL")
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to query project_metadata")?;
@@ -2709,7 +2709,9 @@ impl ProjectIndexer {
         };
 
         let mut response = db
-            .query("SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id")
+            .query(
+                "SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id GROUP ALL",
+            )
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to query file_metadata count")?;
@@ -2989,7 +2991,7 @@ impl ProjectIndexer {
         };
 
         match db
-            .query("SELECT VALUE count() FROM nodes WHERE project_id = $project_id")
+            .query("SELECT VALUE count() FROM nodes WHERE project_id = $project_id GROUP ALL")
             .bind(("project_id", self.project_id.clone()))
             .await
         {
@@ -3023,7 +3025,7 @@ impl ProjectIndexer {
         };
 
         match db
-            .query("SELECT VALUE count() FROM chunks WHERE project_id = $project_id")
+            .query("SELECT VALUE count() FROM chunks WHERE project_id = $project_id GROUP ALL")
             .bind(("project_id", self.project_id.clone()))
             .await
         {
@@ -3071,7 +3073,11 @@ impl ProjectIndexer {
             storage.db()
         };
 
-        match db.query("SELECT VALUE count() FROM edges").await {
+        match db
+            .query("SELECT VALUE count() FROM edges WHERE project_id = $project_id GROUP ALL")
+            .bind(("project_id", self.project_id.clone()))
+            .await
+        {
             Ok(mut resp) => match resp.take::<Vec<JsonValue>>(0) {
                 Ok(rows) => match extract_count(rows) {
                     Ok(count) => {
@@ -3107,7 +3113,7 @@ impl ProjectIndexer {
         let mut last_count = 0i64;
         for attempt in 1..=3 {
             let mut resp = db
-                .query("RETURN (SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id)[0];")
+                .query("RETURN (SELECT VALUE count() FROM file_metadata WHERE project_id = $project_id GROUP ALL)[0];")
                 .bind(("project_id", self.project_id.clone()))
                 .await
                 .context("Failed to verify file_metadata count")?;
@@ -3155,7 +3161,7 @@ impl ProjectIndexer {
         };
 
         let mut resp = db
-            .query("SELECT VALUE count() FROM project_metadata WHERE project_id = $project_id")
+            .query("SELECT VALUE count() FROM project_metadata WHERE project_id = $project_id GROUP ALL")
             .bind(("project_id", self.project_id.clone()))
             .await
             .context("Failed to verify project_metadata count")?;

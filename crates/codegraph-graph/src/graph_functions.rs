@@ -434,18 +434,24 @@ impl GraphFunctions {
     pub async fn count_nodes_for_project(&self) -> Result<usize> {
         let mut response = self
             .db
-            .query("SELECT VALUE count() FROM nodes WHERE project_id = $project_id")
+            .query("SELECT VALUE count() FROM nodes WHERE project_id = $project_id GROUP ALL")
             .bind(("project_id", self.project_id.clone()))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!("count_nodes_for_project query failed: {}", e))
             })?;
 
-        let count: Option<usize> = response
-            .take(0)
-            .map_err(|e| CodeGraphError::Database(format!("Failed to deserialize count: {}", e)))?;
+        let rows: Vec<serde_json::Value> = response.take(0).map_err(|e| {
+            CodeGraphError::Database(format!("Failed to deserialize count rows: {}", e))
+        })?;
 
-        Ok(count.unwrap_or(0))
+        let count = rows
+            .into_iter()
+            .next()
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        Ok(count as usize)
     }
 
     /// Find nodes by (partial) name within the current project
