@@ -434,7 +434,7 @@ impl GraphFunctions {
     pub async fn count_nodes_for_project(&self) -> Result<usize> {
         let mut response = self
             .db
-            .query("SELECT VALUE count() FROM nodes WHERE project_id = $project_id GROUP ALL")
+            .query("SELECT count() AS count FROM nodes WHERE project_id = $project_id GROUP ALL;")
             .bind(("project_id", self.project_id.clone()))
             .await
             .map_err(|e| {
@@ -446,8 +446,8 @@ impl GraphFunctions {
         })?;
 
         let count = rows
-            .into_iter()
-            .next()
+            .first()
+            .and_then(|v| v.get("count"))
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
