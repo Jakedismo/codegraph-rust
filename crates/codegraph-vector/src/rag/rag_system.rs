@@ -175,7 +175,7 @@ impl RAGSystem {
         // Step 1: Process the query
         let query_start = std::time::Instant::now();
         let processed_query = self.query_processor.analyze_query(query).await?;
-        performance_metrics.query_processing_ms = query_start.elapsed().as_millis() as u64;
+        performance_metrics.query_processing_ms = query_start.elapsed().as_millis().max(1) as u64;
 
         // Step 2: Retrieve context
         let retrieval_start = std::time::Instant::now();
@@ -189,7 +189,8 @@ impl RAGSystem {
                 )
                 .await?
         };
-        performance_metrics.context_retrieval_ms = retrieval_start.elapsed().as_millis() as u64;
+        performance_metrics.context_retrieval_ms =
+            retrieval_start.elapsed().as_millis().max(1) as u64;
         performance_metrics.results_retrieved = retrieval_results.len();
 
         // Step 3: Rank results
@@ -204,7 +205,7 @@ impl RAGSystem {
                 )
                 .await?
         };
-        performance_metrics.result_ranking_ms = ranking_start.elapsed().as_millis() as u64;
+        performance_metrics.result_ranking_ms = ranking_start.elapsed().as_millis().max(1) as u64;
         performance_metrics.results_ranked = ranked_results.len();
 
         // Step 4: Generate response
@@ -213,10 +214,11 @@ impl RAGSystem {
             .response_generator
             .generate_response(query, &ranked_results)
             .await?;
-        performance_metrics.response_generation_ms = generation_start.elapsed().as_millis() as u64;
+        performance_metrics.response_generation_ms =
+            generation_start.elapsed().as_millis().max(1) as u64;
 
         let total_time = start_time.elapsed();
-        performance_metrics.total_processing_ms = total_time.as_millis() as u64;
+        performance_metrics.total_processing_ms = total_time.as_millis().max(1) as u64;
 
         // Create result
         let result = QueryResult {
@@ -425,6 +427,7 @@ mod tests {
             name: name.into(),
             node_type: Some(node_type),
             language: Some(Language::Rust),
+            span: None,
             content: Some(content.into()),
             embedding: None,
             location: Location {

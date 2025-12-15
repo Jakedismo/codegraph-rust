@@ -477,6 +477,9 @@ impl ResponseGenerator {
         let query_keywords = self.extract_keywords(query);
         let answer_keywords = self.extract_keywords(answer);
 
+        let query_keywords = self.normalize_keyword_set_for_match(&query_keywords);
+        let answer_keywords = self.normalize_keyword_set_for_match(&answer_keywords);
+
         let overlap = query_keywords.intersection(&answer_keywords).count();
         if overlap == 0 && !query_keywords.is_empty() {
             return Ok(false);
@@ -484,18 +487,15 @@ impl ResponseGenerator {
 
         // Check if answer uses information from contexts
         if !contexts.is_empty() {
-            let context_text = contexts.join(" ").to_lowercase();
-            let mut uses_context = false;
+            let context_text = contexts.join(" ");
+            let context_keywords = self.extract_keywords(&context_text);
+            let context_keywords = self.normalize_keyword_set_for_match(&context_keywords);
 
-            for word in answer.split_whitespace().take(10) {
-                // Check first 10 words
-                if word.len() > 3 && context_text.contains(&word.to_lowercase()) {
-                    uses_context = true;
-                    break;
-                }
-            }
-
-            if !uses_context {
+            if context_keywords
+                .intersection(&answer_keywords)
+                .next()
+                .is_none()
+            {
                 return Ok(false);
             }
         }
@@ -509,17 +509,18 @@ impl ResponseGenerator {
         contexts: &[String],
     ) -> Result<Vec<f32>> {
         let query_keywords = self.extract_keywords(query);
+        let query_keywords = self.normalize_keyword_set_for_match(&query_keywords);
         let mut scores = Vec::new();
 
         for context in contexts {
             let context_keywords = self.extract_keywords(context);
+            let context_keywords = self.normalize_keyword_set_for_match(&context_keywords);
             let overlap = query_keywords.intersection(&context_keywords).count();
-            let total_keywords = query_keywords.len().max(context_keywords.len());
 
-            let keyword_score = if total_keywords > 0 {
-                overlap as f32 / total_keywords as f32
-            } else {
+            let keyword_score = if query_keywords.is_empty() {
                 0.0
+            } else {
+                overlap as f32 / query_keywords.len() as f32
             };
 
             // Boost score for exact phrase matches
@@ -583,15 +584,17 @@ impl ResponseGenerator {
     }
 
     fn extract_keywords(&self, text: &str) -> HashSet<String> {
-        text.to_lowercase()
+        let normalized = text
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+            .collect::<String>();
+
+        normalized
             .split_whitespace()
             .filter(|word| word.len() > 2)
             .filter(|word| !self.is_stop_word(word))
-            .map(|word| {
-                word.trim_matches(|c: char| !c.is_alphanumeric())
-                    .to_string()
-            })
-            .filter(|word| !word.is_empty())
+            .map(|word| word.to_string())
             .collect()
     }
 
@@ -616,7 +619,32 @@ impl ResponseGenerator {
                 | "are"
                 | "was"
                 | "were"
+                | "how"
+                | "what"
+                | "when"
+                | "where"
+                | "why"
         )
+    }
+
+    fn normalize_keyword_for_match(&self, keyword: &str) -> String {
+        let mut w = keyword.to_lowercase();
+        if w.ends_with("ies") && w.len() > 4 {
+            w.truncate(w.len() - 3);
+            w.push('y');
+            return w;
+        }
+        if w.ends_with('s') && w.len() > 3 && !w.ends_with("ss") {
+            w.pop();
+        }
+        w
+    }
+
+    fn normalize_keyword_set_for_match(&self, words: &HashSet<String>) -> HashSet<String> {
+        words
+            .iter()
+            .map(|w| self.normalize_keyword_for_match(w))
+            .collect()
     }
 
     async fn generate_no_results_response(&self, query: &str) -> Result<GeneratedResponse> {
@@ -726,6 +754,7 @@ mod tests {
                     name: name.into(),
                     node_type: Some(NodeType::Function),
                     language: Some(Language::Rust),
+                    span: None,
                     content: Some(content.into()),
                     embedding: None,
                     location: Location {

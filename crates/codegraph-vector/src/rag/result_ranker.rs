@@ -149,10 +149,34 @@ impl ResultRanker {
         // Calculate semantic similarity for each result
         for (content, score) in results.iter_mut() {
             let content_embedding = self.generate_text_embedding(content).await?;
-            let semantic_similarity = cosine_similarity(&query_embedding, &content_embedding);
+            let semantic_similarity =
+                cosine_similarity(&query_embedding, &content_embedding).max(0.0);
 
             // Combine original score with semantic similarity
-            *score = (*score * 0.4) + (semantic_similarity * 0.6);
+            let query_words: Vec<String> = query
+                .to_lowercase()
+                .split_whitespace()
+                .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+                .filter(|w| w.len() > 2)
+                .collect();
+            let content_words: Vec<String> = content
+                .to_lowercase()
+                .split_whitespace()
+                .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+                .filter(|w| w.len() > 2)
+                .collect();
+
+            let overlap = query_words
+                .iter()
+                .filter(|k| content_words.iter().any(|c| c == *k))
+                .count();
+            let keyword_score = if query_words.is_empty() {
+                0.0
+            } else {
+                overlap as f32 / query_words.len() as f32
+            };
+
+            *score = (*score * 0.3) + (semantic_similarity * 0.1) + (keyword_score * 0.6);
         }
 
         // Sort by combined score
@@ -462,6 +486,7 @@ mod tests {
                 name: name.into(),
                 node_type: Some(NodeType::Function),
                 language: Some(Language::Rust),
+                span: None,
                 content: Some(content.into()),
                 embedding: None,
                 location: Location {

@@ -271,6 +271,13 @@ impl ContextRetriever {
     ) -> Result<Vec<f32>> {
         let mut scores = Vec::new();
 
+        let query_keywords: Vec<String> = query
+            .to_lowercase()
+            .split_whitespace()
+            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+            .filter(|w| w.len() > 2)
+            .collect();
+
         // Generate query embedding for comparison
         let query_embedding = self.generate_query_embedding(query).await?;
 
@@ -280,7 +287,33 @@ impl ContextRetriever {
 
             // Calculate cosine similarity
             let similarity = cosine_similarity(&query_embedding, &context_embedding);
-            scores.push(similarity);
+
+            let context_keywords: Vec<String> = context
+                .to_lowercase()
+                .split_whitespace()
+                .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+                .filter(|w| w.len() > 2)
+                .collect();
+
+            let overlap = query_keywords
+                .iter()
+                .filter(|k| {
+                    context_keywords.iter().any(|c| {
+                        c == *k
+                            || (c.ends_with('s') && c.trim_end_matches('s') == k.as_str())
+                            || (k.ends_with('s') && k.trim_end_matches('s') == c.as_str())
+                    })
+                })
+                .count();
+
+            let keyword_score = if query_keywords.is_empty() {
+                0.0
+            } else {
+                overlap as f32 / query_keywords.len() as f32
+            };
+
+            let combined = (similarity * 0.4) + (keyword_score * 0.6);
+            scores.push(combined);
         }
 
         Ok(scores)
@@ -471,6 +504,7 @@ mod tests {
             name: name.into(),
             node_type: Some(node_type),
             language: Some(Language::Rust),
+            span: None,
             content: Some(content.into()),
             embedding: None,
             location: Location {

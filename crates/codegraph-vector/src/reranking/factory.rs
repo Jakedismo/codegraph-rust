@@ -118,8 +118,15 @@ mod tests {
         };
 
         let result = create_reranker(&config);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_some());
+        #[cfg(feature = "ollama")]
+        {
+            assert!(result.is_ok());
+            assert!(result.unwrap().is_some());
+        }
+        #[cfg(not(feature = "ollama"))]
+        {
+            assert!(result.is_err());
+        }
     }
 
     #[test]

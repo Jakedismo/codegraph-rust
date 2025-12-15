@@ -262,21 +262,29 @@ impl QueryProcessor {
 
         if keywords
             .iter()
-            .any(|k| ["function", "fn", "method"].contains(&k.as_str()))
+            .any(|k| ["function", "functions", "fn", "method", "methods"].contains(&k.as_str()))
         {
             Some(QueryType::FunctionLookup)
-        } else if query_lower.contains("error")
-            || query_lower.contains("fix")
-            || query_lower.contains("bug")
-        {
-            Some(QueryType::ErrorResolution)
         } else if query_lower.contains("pattern") || query_lower.contains("design") {
             Some(QueryType::PatternMatching)
         } else if query_lower.contains("how")
             || query_lower.contains("what")
             || query_lower.contains("explain")
+            || query_lower.contains("why")
         {
-            Some(QueryType::ConceptExplanation)
+            let is_debugging_request = query_lower.contains("fix")
+                || query_lower.contains("bug")
+                || query_lower.contains("debug")
+                || query_lower.contains("resolve")
+                || query_lower.contains("troubleshoot");
+
+            if is_debugging_request {
+                Some(QueryType::ErrorResolution)
+            } else {
+                Some(QueryType::ConceptExplanation)
+            }
+        } else if query_lower.contains("error") {
+            Some(QueryType::ErrorResolution)
         } else if query_lower.contains("doc") || query_lower.contains("documentation") {
             Some(QueryType::Documentation)
         } else if keywords

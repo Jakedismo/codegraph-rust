@@ -27,6 +27,7 @@ pub struct OllamaEmbeddingConfig {
     pub batch_size: usize,
     pub max_retries: usize,
     pub max_tokens_per_text: usize,
+    pub num_ctx: Option<usize>,
 }
 
 impl Default for OllamaEmbeddingConfig {
@@ -38,6 +39,7 @@ impl Default for OllamaEmbeddingConfig {
             batch_size: 32,
             max_retries: 3,
             max_tokens_per_text: 512,
+            num_ctx: None,
         }
     }
 }
@@ -59,6 +61,11 @@ impl From<&codegraph_core::EmbeddingConfig> for OllamaEmbeddingConfig {
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(512);
 
+        let num_ctx = std::env::var("CODEGRAPH_OLLAMA_NUM_CTX")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|v| *v > 0);
+
         Self {
             model_name,
             base_url: config.ollama_url.clone(),
@@ -71,6 +78,7 @@ impl From<&codegraph_core::EmbeddingConfig> for OllamaEmbeddingConfig {
             batch_size,
             max_retries: 3,
             max_tokens_per_text,
+            num_ctx,
         }
     }
 }
@@ -78,7 +86,7 @@ impl From<&codegraph_core::EmbeddingConfig> for OllamaEmbeddingConfig {
 /// Ollama API options for embedding requests
 #[derive(Debug, Serialize)]
 struct OllamaOptions {
-    /// Context window size - set to batch size for optimal slot efficiency
+    /// Context window size (tokens)
     num_ctx: usize,
 }
 
@@ -277,13 +285,12 @@ impl OllamaEmbeddingProvider {
             return Ok(Vec::new());
         }
 
+        let options = self.config.num_ctx.map(|num_ctx| OllamaOptions { num_ctx });
         let request = OllamaEmbeddingRequest {
             model: &self.config.model_name,
             input: texts,
             truncate: Some(true),
-            options: Some(OllamaOptions {
-                num_ctx: self.config.batch_size,
-            }),
+            options,
         };
 
         let request_start = Instant::now();
@@ -353,6 +360,34 @@ impl OllamaEmbeddingProvider {
         Ok(sanitized)
     }
 
+    fn is_context_overflow_message(message: &str) -> bool {
+        let msg = message.to_lowercase();
+        msg.contains("input length exceeds the context length")
+            || msg.contains("maximum context length")
+            || msg.contains("context length")
+    }
+
+    async fn embed_resilient(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        let result = embed_resilient_with(texts, |slice| async {
+            self.call_embed_endpoint(slice).await
+        })
+        .await;
+
+        match result {
+            Ok(v) => Ok(v),
+            Err(e) if texts.len() == 1 && Self::is_context_overflow_message(&e.to_string()) => {
+                let chars = texts[0].len();
+                Err(CodeGraphError::External(format!(
+                    "Ollama embedding request exceeded context length for single input (model={}, chars={}). Consider reducing CODEGRAPH_MAX_CHUNK_TOKENS or configuring CODEGRAPH_OLLAMA_NUM_CTX if supported by your Ollama server. Root error: {}",
+                    self.config.model_name,
+                    chars,
+                    e
+                )))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     pub async fn generate_embeddings_for_texts(
         &self,
         texts: &[String],
@@ -370,7 +405,7 @@ impl OllamaEmbeddingProvider {
                 batch_idx + 1,
                 batch.len()
             );
-            let batch_embeddings = self.call_embed_endpoint(batch).await?;
+            let batch_embeddings = self.embed_resilient(batch).await?;
             all_embeddings.extend(batch_embeddings);
         }
 
@@ -392,6 +427,112 @@ impl OllamaEmbeddingProvider {
         embeddings
             .pop()
             .ok_or_else(|| CodeGraphError::Vector("Ollama returned no embedding".to_string()))
+    }
+}
+
+async fn embed_resilient_with<F, Fut>(texts: &[String], mut embed_once: F) -> Result<Vec<Vec<f32>>>
+where
+    F: FnMut(&[String]) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<Vec<f32>>>>,
+{
+    if texts.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut out: Vec<Option<Vec<f32>>> = vec![None; texts.len()];
+    let mut stack: Vec<(usize, usize)> = vec![(0, texts.len())];
+
+    while let Some((start, end)) = stack.pop() {
+        let slice = &texts[start..end];
+        match embed_once(slice).await {
+            Ok(embeddings) => {
+                if embeddings.len() != slice.len() {
+                    return Err(CodeGraphError::Vector(format!(
+                        "Embedding provider returned {} embeddings for {} inputs",
+                        embeddings.len(),
+                        slice.len()
+                    )));
+                }
+                for (offset, emb) in embeddings.into_iter().enumerate() {
+                    out[start + offset] = Some(emb);
+                }
+            }
+            Err(e)
+                if slice.len() > 1
+                    && OllamaEmbeddingProvider::is_context_overflow_message(&e.to_string()) =>
+            {
+                let mid = start + (slice.len() / 2);
+                stack.push((mid, end));
+                stack.push((start, mid));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(out
+        .into_iter()
+        .map(|v| v.ok_or_else(|| CodeGraphError::Vector("Missing embedding result".to_string())))
+        .collect::<Result<Vec<_>>>()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_context_overflow_messages() {
+        assert!(OllamaEmbeddingProvider::is_context_overflow_message(
+            "Ollama embedding API error: {\"error\":\"the input length exceeds the context length\"}"
+        ));
+        assert!(OllamaEmbeddingProvider::is_context_overflow_message(
+            "maximum context length exceeded"
+        ));
+    }
+
+    #[tokio::test]
+    async fn embed_resilient_with_splits_on_overflow_and_preserves_order() -> Result<()> {
+        let texts: Vec<String> = (0..10).map(|i| "x".repeat((i + 1) * 10)).collect();
+
+        // Fail when total chars in the request exceed 120.
+        let embed_once = |slice: &[String]| async move {
+            let total: usize = slice.iter().map(|s| s.len()).sum();
+            if total > 120 {
+                return Err(CodeGraphError::External(
+                    "the input length exceeds the context length".to_string(),
+                ));
+            }
+            Ok(slice
+                .iter()
+                .map(|s| vec![s.len() as f32])
+                .collect::<Vec<_>>())
+        };
+
+        let embeddings = embed_resilient_with(&texts, embed_once).await?;
+        assert_eq!(embeddings.len(), texts.len());
+        for (i, emb) in embeddings.iter().enumerate() {
+            assert_eq!(emb.len(), 1);
+            assert_eq!(emb[0], texts[i].len() as f32);
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn embed_resilient_with_does_not_split_on_non_overflow_error() {
+        let texts: Vec<String> = (0..4).map(|_| "x".to_string()).collect();
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(0usize));
+        let calls_clone = calls.clone();
+
+        let embed_once = move |_slice: &[String]| {
+            let calls_inner = calls_clone.clone();
+            async move {
+                *calls_inner.lock().unwrap() += 1;
+                Err(CodeGraphError::External("some other error".to_string()))
+            }
+        };
+
+        let res = embed_resilient_with(&texts, embed_once).await;
+        assert!(res.is_err());
+        assert_eq!(*calls.lock().unwrap(), 1);
     }
 }
 

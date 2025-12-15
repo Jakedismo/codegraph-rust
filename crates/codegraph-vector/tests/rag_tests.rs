@@ -14,6 +14,7 @@ mod rag_integration_tests {
             name: name.to_string().into(),
             node_type: Some(node_type),
             language: Some(Language::Rust),
+            span: None,
             content: Some(content.to_string().into()),
             embedding: None,
             location: Location {

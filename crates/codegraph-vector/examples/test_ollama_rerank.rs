@@ -1,10 +1,18 @@
 // ABOUTME: Manual test for Ollama reranking with real API calls
 // ABOUTME: Run with: cargo run -p codegraph-vector --example test_ollama_rerank --features ollama
 
+#[cfg(feature = "ollama")]
 use codegraph_core::{OllamaRerankConfig, RerankConfig, RerankProvider};
+#[cfg(feature = "ollama")]
 use codegraph_vector::reranking::{ollama::OllamaReranker, RerankDocument, Reranker};
 
+#[cfg(not(feature = "ollama"))]
+fn main() {
+    eprintln!("This example requires the 'ollama' feature. Re-run with: cargo run -p codegraph-vector --example test_ollama_rerank --features ollama");
+}
+
 #[tokio::main]
+#[cfg(feature = "ollama")]
 async fn main() -> anyhow::Result<()> {
     // Load .env file if present (for CODEGRAPH_OLLAMA_RERANK_MODEL etc)
     let _ = dotenvy::dotenv();

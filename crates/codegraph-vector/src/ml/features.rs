@@ -451,6 +451,7 @@ mod tests {
                 end_line: Some(5),
                 end_column: Some(1),
             },
+            span: None,
             metadata: codegraph_core::Metadata {
                 attributes: std::collections::HashMap::new(),
                 created_at: chrono::Utc::now(),
