@@ -6,9 +6,7 @@ use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::future::Future;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokenizers::Tokenizer;
@@ -370,8 +368,7 @@ impl OllamaEmbeddingProvider {
     }
 
     async fn embed_resilient(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        let result =
-            embed_resilient_with(texts, |slice| Box::pin(self.call_embed_endpoint(slice))).await;
+        let result = embed_resilient_with(texts, |slice| self.call_embed_endpoint(slice)).await;
 
         match result {
             Ok(v) => Ok(v),
@@ -430,11 +427,13 @@ impl OllamaEmbeddingProvider {
     }
 }
 
-type EmbedOnceFuture<'a> = Pin<Box<dyn Future<Output = Result<Vec<Vec<f32>>>> + Send + 'a>>;
-
-async fn embed_resilient_with<F>(texts: &[String], mut embed_once: F) -> Result<Vec<Vec<f32>>>
+async fn embed_resilient_with<'t, F, Fut>(
+    texts: &'t [String],
+    mut embed_once: F,
+) -> Result<Vec<Vec<f32>>>
 where
-    F: for<'a> FnMut(&'a [String]) -> EmbedOnceFuture<'a>,
+    F: FnMut(&'t [String]) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<Vec<f32>>>> + Send + 't,
 {
     if texts.is_empty() {
         return Ok(Vec::new());
@@ -495,19 +494,17 @@ mod tests {
         let texts: Vec<String> = (0..10).map(|i| "x".repeat((i + 1) * 10)).collect();
 
         // Fail when total chars in the request exceed 120.
-        let embed_once = |slice: &[String]| {
-            Box::pin(async move {
-                let total: usize = slice.iter().map(|s| s.len()).sum();
-                if total > 120 {
-                    return Err(CodeGraphError::External(
-                        "the input length exceeds the context length".to_string(),
-                    ));
-                }
-                Ok(slice
-                    .iter()
-                    .map(|s| vec![s.len() as f32])
-                    .collect::<Vec<_>>())
-            })
+        let embed_once = |slice: &[String]| async move {
+            let total: usize = slice.iter().map(|s| s.len()).sum();
+            if total > 120 {
+                return Err(CodeGraphError::External(
+                    "the input length exceeds the context length".to_string(),
+                ));
+            }
+            Ok(slice
+                .iter()
+                .map(|s| vec![s.len() as f32])
+                .collect::<Vec<_>>())
         };
 
         let embeddings = embed_resilient_with(&texts, embed_once).await?;
@@ -527,10 +524,10 @@ mod tests {
 
         let embed_once = move |_slice: &[String]| {
             let calls_inner = calls_clone.clone();
-            Box::pin(async move {
+            async move {
                 *calls_inner.lock().unwrap() += 1;
                 Err(CodeGraphError::External("some other error".to_string()))
-            })
+            }
         };
 
         let res = embed_resilient_with(&texts, embed_once).await;
