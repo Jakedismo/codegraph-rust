@@ -2230,6 +2230,7 @@ async fn handle_daemon_start(
 #[cfg(test)]
 mod cli_command_tests {
     use super::*;
+    use clap::CommandFactory;
 
     #[test]
     fn removed_subcommands_are_absent() {

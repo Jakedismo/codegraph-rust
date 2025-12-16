@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ BREAKING CHANGES
+
+#### **Agentic Tool Consolidation (8 → 4 Tools)**
+- **Consolidated 8 agentic MCP tools into 4** to reduce cognitive load for AI agents:
+  - `agentic_context` (absorbs: `agentic_code_search`, `agentic_context_builder`, `agentic_semantic_question`)
+  - `agentic_impact` (absorbs: `agentic_dependency_analysis`, `agentic_call_chain_analysis`)
+  - `agentic_architecture` (absorbs: `agentic_architecture_analysis`, `agentic_api_surface_analysis`)
+  - `agentic_quality` (absorbs: `agentic_complexity_analysis`)
+
+- **Optional `focus` parameter** for precision when needed:
+  | Tool | Focus Values | Default Behavior |
+  |------|-------------|-----------------|
+  | `agentic_context` | `"search"`, `"builder"`, `"question"` | Auto-selects based on query |
+  | `agentic_impact` | `"dependencies"`, `"call_chain"` | Both dependency chains and call flows |
+  | `agentic_architecture` | `"structure"`, `"api_surface"` | Both structural and interface analysis |
+  | `agentic_quality` | `"complexity"`, `"coupling"`, `"hotspots"` | Comprehensive risk assessment |
+
+- **Migration guide**:
+  - `agentic_code_search` → `agentic_context` (or with `focus: "search"`)
+  - `agentic_dependency_analysis` → `agentic_impact` (or with `focus: "dependencies"`)
+  - `agentic_call_chain_analysis` → `agentic_impact` with `focus: "call_chain"`
+  - `agentic_architecture_analysis` → `agentic_architecture` (or with `focus: "structure"`)
+  - `agentic_api_surface_analysis` → `agentic_architecture` with `focus: "api_surface"`
+  - `agentic_context_builder` → `agentic_context` with `focus: "builder"`
+  - `agentic_semantic_question` → `agentic_context` with `focus: "question"`
+  - `agentic_complexity_analysis` → `agentic_quality`
+
+- **Note**: Legacy tools were removed (not feature-gated) due to rmcp SDK limitation that prevents multiple `#[tool_router]` impl blocks.
+
+### Added
+
+#### **New SurrealQL Functions**
+- `fn::get_top_directories($project_id, $limit)` - Returns top-level directories with node counts for project structure overview
+- `fn::count_nodes_for_project($project_id)` - Returns node, edge, and chunk counts for health/diagnostics
+
 ### Performance
 
 #### **Sub-Second Graph Query Performance**

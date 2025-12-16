@@ -38,18 +38,23 @@ When you search, you don't just get "similar code"—you get code with its **rel
 
 ### 2. Agentic Tools, Not Just Search
 
-CodeGraph doesn't return a list of files and wish you luck. It ships **8 agentic tools** that do the thinking:
+CodeGraph doesn't return a list of files and wish you luck. It ships **4 consolidated agentic tools** that do the thinking:
 
 | Tool | What It Actually Does |
 |------|----------------------|
-| `agentic_code_search` | Multi-step semantic search with AI-synthesized answers |
-| `agentic_dependency_analysis` | Maps impact before you touch anything |
-| `agentic_call_chain_analysis` | Traces execution paths through your system |
-| `agentic_architecture_analysis` | Gives you the 10,000-foot view |
-| `agentic_api_surface_analysis` | Understands your public interfaces |
-| `agentic_context_builder` | Gathers everything needed for a feature |
-| `agentic_semantic_question` | Answers complex questions about your code |
-| `agentic_complexity_analysis` | Identifies high-risk code hotspots for refactoring |
+| `agentic_context` | Gathers the context you need—searches code, builds comprehensive context, answers semantic questions |
+| `agentic_impact` | Maps change impact—dependency chains, call flows, what breaks if you touch something |
+| `agentic_architecture` | The big picture—system structure, API surfaces, architectural patterns |
+| `agentic_quality` | Risk assessment—complexity hotspots, coupling metrics, refactoring priorities |
+
+Each tool accepts an optional `focus` parameter for precision when needed:
+
+| Tool | Focus Values | Default Behavior |
+|------|-------------|-----------------|
+| `agentic_context` | `"search"`, `"builder"`, `"question"` | Auto-selects based on query |
+| `agentic_impact` | `"dependencies"`, `"call_chain"` | Analyzes both |
+| `agentic_architecture` | `"structure"`, `"api_surface"` | Provides both |
+| `agentic_quality` | `"complexity"`, `"coupling"`, `"hotspots"` | Comprehensive assessment |
 
 Each tool runs a **reasoning agent** that plans, searches, analyzes graph relationships, and synthesizes an answer. Not a search result—an *answer*.
 
@@ -94,7 +99,7 @@ CODEGRAPH_AGENT_ARCHITECTURE=rig ./codegraph start stdio
 CODEGRAPH_AGENT_ARCHITECTURE=lats ./codegraph start stdio
 ```
 
-All architectures use the same 8 graph analysis tools and tier-aware prompting—only the reasoning strategy differs.
+All architectures use the same 4 consolidated agentic tools (backed by 6 internal graph analysis tools) and tier-aware prompting—only the reasoning strategy differs.
 
 ### 3. Tier-Aware Intelligence
 
@@ -147,7 +152,7 @@ CODEGRAPH_CONTEXT_WINDOW=128000  # Default: 128K
 # Accumulation limit derived automatically: context_window × 4 × 0.8 bytes
 ```
 
-**Why this matters:** Without these guards, a single `agentic_dependency_analysis` on a large codebase could return 6M+ tokens—far exceeding most models' limits and causing expensive failures.
+**Why this matters:** Without these guards, a single `agentic_impact` query on a large codebase could return 6M+ tokens—far exceeding most models' limits and causing expensive failures.
 
 ### 5. Hybrid Search That Actually Works
 
@@ -168,7 +173,7 @@ When you connect CodeGraph to Claude Code, Cursor, or any MCP-compatible agent:
 
 **Before:** Your AI reads files one by one, grepping around, burning tokens on context-gathering.
 
-**After:** Your AI calls `agentic_dependency_analysis("UserService")` and instantly knows what breaks if you refactor it.
+**After:** Your AI calls `agentic_impact({"query": "UserService"})` and instantly knows what breaks if you refactor it.
 
 This isn't incremental improvement. It's the difference between an AI that *searches* your code and one that *understands* it.
 
@@ -277,7 +282,7 @@ Add to your MCP config:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Key insight:** The agentic tools don't just call one function. They *reason* about which graph operations to perform, chain them together, and synthesize results. A single `agentic_dependency_analysis` call might:
+**Key insight:** The agentic tools don't just call one function. They *reason* about which graph operations to perform, chain them together, and synthesize results. A single `agentic_impact` call might:
 
 1. Search for the target component semantically
 2. Get its direct dependencies

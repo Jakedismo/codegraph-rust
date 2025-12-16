@@ -25,16 +25,24 @@ HTTP_HOST = os.environ.get("CODEGRAPH_HTTP_HOST", "127.0.0.1")
 HTTP_PORT = os.environ.get("CODEGRAPH_HTTP_PORT", "3003")
 SERVER_URL = f"http://{HTTP_HOST}:{HTTP_PORT}/mcp"
 
-# Test cases (same as STDIO version, extended timeouts)
+# Test cases for consolidated 4 agentic tools
+# Each tuple: (tool_name, query, focus (optional), timeout)
 AGENTIC_TESTS = [
-    ("agentic_code_search", "How is configuration loaded in this codebase? Find all config loading mechanisms.", 300),
-    ("agentic_dependency_analysis", "Analyze the dependency chain for the AgenticOrchestrator. What does it depend on?", 300),
-    ("agentic_call_chain_analysis", "Trace the call chain from execute_agentic_workflow to the graph analysis tools", 300),
-    ("agentic_architecture_analysis", "Analyze the architecture of the MCP server. Find coupling metrics and hub nodes.", 300),
-    ("agentic_api_surface_analysis", "What is the public API surface of the GraphToolExecutor?", 300),
-    ("agentic_context_builder", "Gather comprehensive context about the tier-aware prompt selection system", 300),
-    ("agentic_semantic_question", "How does the LRU cache work in GraphToolExecutor? What gets cached and when?", 300),
-    ("agentic_complexity_analysis", "Find the highest complexity hotspots in the codebase. Which functions have the highest risk scores?", 300),
+    # agentic_context tests (absorbs: code_search, context_builder, semantic_question)
+    ("agentic_context", "How is configuration loaded in this codebase? Find all config loading mechanisms.", None, 300),
+    ("agentic_context", "Gather comprehensive context about the tier-aware prompt selection system", "builder", 300),
+    ("agentic_context", "How does the LRU cache work in GraphToolExecutor? What gets cached and when?", "question", 300),
+
+    # agentic_impact tests (absorbs: dependency_analysis, call_chain_analysis)
+    ("agentic_impact", "Analyze the dependency chain for the PromptSelector. What does it depend on?", "dependencies", 300),
+    ("agentic_impact", "Trace the call chain from execute_agentic_workflow to the graph analysis tools", "call_chain", 300),
+
+    # agentic_architecture tests (absorbs: architecture_analysis, api_surface_analysis)
+    ("agentic_architecture", "Analyze the architecture of the MCP server. Find coupling metrics and hub nodes.", "structure", 300),
+    ("agentic_architecture", "What is the public API surface of the GraphToolExecutor?", "api_surface", 300),
+
+    # agentic_quality tests (absorbs: complexity_analysis)
+    ("agentic_quality", "Find the highest complexity hotspots in the codebase. Which functions have the highest risk scores?", None, 300),
 ]
 
 async def run_tests():
@@ -43,6 +51,7 @@ async def run_tests():
 
     print("\n" + "=" * 72)
     print("CodeGraph HTTP Agentic Tools Test (Official MCP SDK)")
+    print("Testing 4 Consolidated Agentic Tools")
     print("=" * 72)
     print(f"Server: {SERVER_URL}")
     print("=" * 72 + "\n")
@@ -60,9 +69,11 @@ async def run_tests():
                 # Create output directory
                 os.makedirs("test_output_http", exist_ok=True)
 
-                for i, (tool_name, query, timeout) in enumerate(AGENTIC_TESTS, 1):
+                for i, test_case in enumerate(AGENTIC_TESTS, 1):
+                    tool_name, query, focus, timeout = test_case
+
                     print(f"{'=' * 72}")
-                    print(f"Testing: {tool_name}")
+                    print(f"Testing: {tool_name}" + (f" (focus={focus})" if focus else ""))
                     print(f"Query: {query}")
                     print(f"Timeout: {timeout}s")
                     print('=' * 72)
@@ -73,9 +84,14 @@ async def run_tests():
                     file_locations = []
 
                     try:
+                        # Build parameters
+                        params = {"query": query}
+                        if focus:
+                            params["focus"] = focus
+
                         # Call tool with timeout
                         result = await asyncio.wait_for(
-                            session.call_tool(tool_name, {"query": query}),
+                            session.call_tool(tool_name, params),
                             timeout=timeout
                         )
 
@@ -96,7 +112,7 @@ async def run_tests():
 
                             # Extract file locations from structured output
                             if structured_output:
-                                for field in ['components', 'hub_nodes', 'evidence', 'core_components']:
+                                for field in ['components', 'hub_nodes', 'evidence', 'core_components', 'items', 'highlights']:
                                     if field in structured_output:
                                         for item in structured_output[field]:
                                             if isinstance(item, dict) and 'file_path' in item:
@@ -112,7 +128,7 @@ async def run_tests():
                                 print(f"   📁 File Locations: {len(file_locations)}")
                                 for loc in file_locations[:3]:
                                     line = f":{loc['line_number']}" if loc.get('line_number') else ""
-                                    print(f"      - {loc['name']} in {loc['file_path']}{line}")
+                                    print(f"      - {loc.get('name', loc.get('title', 'unnamed'))} in {loc['file_path']}{line}")
                                 if len(file_locations) > 3:
                                     print(f"      ... and {len(file_locations) - 3} more")
                         else:
@@ -120,6 +136,7 @@ async def run_tests():
 
                         results.append({
                             "test": tool_name,
+                            "focus": focus,
                             "files": len(file_locations),
                             "duration": duration,
                         })
@@ -127,20 +144,23 @@ async def run_tests():
                     except asyncio.TimeoutError:
                         duration = asyncio.get_event_loop().time() - start_time
                         print(f"\n❌ TIMEOUT after {duration:.1f}s")
-                        results.append({"test": tool_name, "files": 0, "duration": duration})
+                        results.append({"test": tool_name, "focus": focus, "files": 0, "duration": duration})
                     except Exception as e:
                         duration = asyncio.get_event_loop().time() - start_time
                         print(f"\n❌ ERROR: {e}")
-                        results.append({"test": tool_name, "files": 0, "duration": duration})
+                        results.append({"test": tool_name, "focus": focus, "files": 0, "duration": duration})
 
                     # Write log file
                     try:
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        log_filename = f"test_output_http/{str(i).zfill(2)}_{tool_name}_{timestamp}.log"
+                        focus_suffix = f"_{focus}" if focus else ""
+                        log_filename = f"test_output_http/{str(i).zfill(2)}_{tool_name}{focus_suffix}_{timestamp}.log"
 
                         with open(log_filename, "w") as f:
                             f.write("=" * 80 + "\n")
                             f.write(f"Test: {tool_name}\n")
+                            if focus:
+                                f.write(f"Focus: {focus}\n")
                             f.write(f"Transport: HTTP (MCP SDK)\n")
                             f.write(f"Timestamp: {timestamp}\n")
                             f.write(f"Timeout: {timeout}s\n")
@@ -161,7 +181,7 @@ async def run_tests():
                                 f.write("-" * 80 + "\n")
                                 for loc in file_locations:
                                     line_info = f":{loc['line_number']}" if loc.get('line_number') else ""
-                                    f.write(f"  {loc['name']} in {loc['file_path']}{line_info}\n")
+                                    f.write(f"  {loc.get('name', loc.get('title', 'unnamed'))} in {loc['file_path']}{line_info}\n")
                             elif result_text:
                                 f.write(result_text)
                             else:
@@ -170,8 +190,7 @@ async def run_tests():
                             f.write("-" * 80 + "\n\n")
                             f.write(f"Duration: {duration:.1f}s\n")
                             f.write("Status: RECORDED\n")
-                            # Since we no longer assert success, always mark as "RECORDED"
-                            
+
                         print(f"   💾 Log saved: {log_filename}")
                     except Exception as e:
                         print(f"   ⚠️  Failed to write log: {e}")

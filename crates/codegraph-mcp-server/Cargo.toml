@@ -19,6 +19,8 @@ ai-enhanced = [
     "codegraph-mcp/ai-enhanced",
     "all-rig-providers"
 ]
+# Enable legacy 8 agentic tools (deprecated, use consolidated tools instead)
+legacy-agentic-tools = []
 server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util", "dep:tokio-util"]
 autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental", "codegraph-mcp/autoagents-experimental"]
 autoagents-lats = ["codegraph-mcp-autoagents/autoagents-lats", "codegraph-mcp/autoagents-lats"]

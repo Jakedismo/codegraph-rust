@@ -1,12 +1,11 @@
-// ABOUTME: Rig tool implementations wrapping GraphToolExecutor
+// ABOUTME: Rig tool implementations wrapping CountingExecutor
 // ABOUTME: 8 graph analysis tools implementing rig_core::Tool trait
 
-use codegraph_mcp_tools::GraphToolExecutor;
+use super::counting_executor::CountingExecutor;
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
-use std::sync::Arc;
 use thiserror::Error;
 
 /// Error type for graph tool operations
@@ -137,11 +136,11 @@ fn default_hotspot_limit() -> i32 {
 /// Get transitive dependencies for a node
 #[derive(Clone)]
 pub struct GetTransitiveDependencies {
-    executor: Arc<GraphToolExecutor>,
+    executor: CountingExecutor,
 }
 
 impl GetTransitiveDependencies {
-    pub fn new(executor: Arc<GraphToolExecutor>) -> Self {
+    pub fn new(executor: CountingExecutor) -> Self {
         Self { executor }
     }
 }
@@ -178,11 +177,11 @@ impl Tool for GetTransitiveDependencies {
 /// Detect circular dependencies in the graph
 #[derive(Clone)]
 pub struct DetectCircularDependencies {
-    executor: Arc<GraphToolExecutor>,
+    executor: CountingExecutor,
 }
 
 impl DetectCircularDependencies {
-    pub fn new(executor: Arc<GraphToolExecutor>) -> Self {
+    pub fn new(executor: CountingExecutor) -> Self {
         Self { executor }
     }
 }
@@ -219,11 +218,11 @@ impl Tool for DetectCircularDependencies {
 /// Trace call chain from a starting node
 #[derive(Clone)]
 pub struct TraceCallChain {
-    executor: Arc<GraphToolExecutor>,
+    executor: CountingExecutor,
 }
 
 impl TraceCallChain {
-    pub fn new(executor: Arc<GraphToolExecutor>) -> Self {
+    pub fn new(executor: CountingExecutor) -> Self {
         Self { executor }
     }
 }
@@ -261,11 +260,11 @@ impl Tool for TraceCallChain {
 /// Calculate coupling metrics for a node
 #[derive(Clone)]
 pub struct CalculateCouplingMetrics {
-    executor: Arc<GraphToolExecutor>,
+    executor: CountingExecutor,
 }
 
 impl CalculateCouplingMetrics {
-    pub fn new(executor: Arc<GraphToolExecutor>) -> Self {
+    pub fn new(executor: CountingExecutor) -> Self {
         Self { executor }
     }
 }
@@ -300,11 +299,11 @@ impl Tool for CalculateCouplingMetrics {
 /// Get hub nodes with high connectivity
 #[derive(Clone)]
 pub struct GetHubNodes {
-    executor: Arc<GraphToolExecutor>,
+    executor: CountingExecutor,
 }
 
 impl GetHubNodes {
-    pub fn new(executor: Arc<GraphToolExecutor>) -> Self {
+    pub fn new(executor: CountingExecutor) -> Self {
         Self { executor }
     }
 }
@@ -341,11 +340,11 @@ impl Tool for GetHubNodes {
 /// Get reverse dependencies (what depends on this node)
 #[derive(Clone)]
 pub struct GetReverseDependencies {
-    executor: Arc<GraphToolExecutor>,
+    executor: CountingExecutor,
 }
 
 impl GetReverseDependencies {
-    pub fn new(executor: Arc<GraphToolExecutor>) -> Self {
+    pub fn new(executor: CountingExecutor) -> Self {
         Self { executor }
     }
 }
@@ -385,11 +384,11 @@ impl Tool for GetReverseDependencies {
 /// Semantic code search using embeddings
 #[derive(Clone)]
 pub struct SemanticCodeSearch {
-    executor: Arc<GraphToolExecutor>,
+    executor: CountingExecutor,
 }
 
 impl SemanticCodeSearch {
-    pub fn new(executor: Arc<GraphToolExecutor>) -> Self {
+    pub fn new(executor: CountingExecutor) -> Self {
         Self { executor }
     }
 }
@@ -429,11 +428,11 @@ impl Tool for SemanticCodeSearch {
 /// Find complexity hotspots in the codebase
 #[derive(Clone)]
 pub struct FindComplexityHotspots {
-    executor: Arc<GraphToolExecutor>,
+    executor: CountingExecutor,
 }
 
 impl FindComplexityHotspots {
-    pub fn new(executor: Arc<GraphToolExecutor>) -> Self {
+    pub fn new(executor: CountingExecutor) -> Self {
         Self { executor }
     }
 }

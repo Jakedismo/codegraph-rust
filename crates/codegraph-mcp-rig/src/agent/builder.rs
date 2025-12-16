@@ -126,6 +126,7 @@ impl RigAgentBuilder {
 
         Ok(OpenAIAgent {
             agent,
+            factory,
             max_turns: self.max_turns,
             tier: self.tier,
         })
@@ -165,6 +166,7 @@ impl RigAgentBuilder {
 
         Ok(AnthropicAgent {
             agent,
+            factory,
             max_turns: self.max_turns,
             tier: self.tier,
         })
@@ -202,6 +204,7 @@ impl RigAgentBuilder {
 
         Ok(OllamaAgent {
             agent,
+            factory,
             max_turns: self.max_turns,
             tier: self.tier,
         })
@@ -268,6 +271,7 @@ impl RigAgentBuilder {
 
         Ok(XAIAgent {
             agent,
+            factory,
             max_turns: self.max_turns,
             tier: self.tier,
         })
@@ -307,6 +311,7 @@ impl RigAgentBuilder {
 
         Ok(OpenAIAgent {
             agent,
+            factory,
             max_turns: self.max_turns,
             tier: self.tier,
         })
@@ -347,6 +352,7 @@ impl RigAgentBuilder {
 
         Ok(OpenAIAgent {
             agent,
+            factory,
             max_turns: self.max_turns,
             tier: self.tier,
         })
@@ -364,12 +370,16 @@ pub trait RigAgentTrait: Send + Sync {
 
     /// Get max turns
     fn max_turns(&self) -> usize;
+
+    /// Get and reset the tool call count since last query
+    fn take_tool_call_count(&self) -> usize;
 }
 
 /// OpenAI-based Rig agent
 #[cfg(feature = "openai")]
 pub struct OpenAIAgent {
     agent: rig::agent::Agent<rig::providers::openai::responses_api::ResponsesCompletionModel>,
+    factory: GraphToolFactory,
     max_turns: usize,
     tier: ContextTier,
 }
@@ -397,12 +407,17 @@ impl RigAgentTrait for OpenAIAgent {
     fn max_turns(&self) -> usize {
         self.max_turns
     }
+
+    fn take_tool_call_count(&self) -> usize {
+        self.factory.take_call_count()
+    }
 }
 
 /// Anthropic-based Rig agent
 #[cfg(feature = "anthropic")]
 pub struct AnthropicAgent {
     agent: rig::agent::Agent<rig::providers::anthropic::completion::CompletionModel>,
+    factory: GraphToolFactory,
     max_turns: usize,
     tier: ContextTier,
 }
@@ -430,12 +445,17 @@ impl RigAgentTrait for AnthropicAgent {
     fn max_turns(&self) -> usize {
         self.max_turns
     }
+
+    fn take_tool_call_count(&self) -> usize {
+        self.factory.take_call_count()
+    }
 }
 
 /// Ollama-based Rig agent
 #[cfg(feature = "ollama")]
 pub struct OllamaAgent {
     agent: rig::agent::Agent<rig::providers::ollama::CompletionModel>,
+    factory: GraphToolFactory,
     max_turns: usize,
     tier: ContextTier,
 }
@@ -463,12 +483,17 @@ impl RigAgentTrait for OllamaAgent {
     fn max_turns(&self) -> usize {
         self.max_turns
     }
+
+    fn take_tool_call_count(&self) -> usize {
+        self.factory.take_call_count()
+    }
 }
 
 /// xAI-based Rig agent (native rig provider)
 #[cfg(feature = "xai")]
 pub struct XAIAgent {
     agent: rig::agent::Agent<rig::providers::xai::completion::CompletionModel>,
+    factory: GraphToolFactory,
     max_turns: usize,
     tier: ContextTier,
 }
@@ -495,6 +520,10 @@ impl RigAgentTrait for XAIAgent {
 
     fn max_turns(&self) -> usize {
         self.max_turns
+    }
+
+    fn take_tool_call_count(&self) -> usize {
+        self.factory.take_call_count()
     }
 }
 

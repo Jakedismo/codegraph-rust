@@ -78,25 +78,27 @@ impl RigExecutor {
         let response = agent.execute(&contextualized_query).await?;
 
         let duration_ms = start.elapsed().as_millis() as u64;
+        let tool_calls = agent.take_tool_call_count();
 
         // Record in history
         let turn = ConversationTurn {
             query: query.to_string(),
             response: response.clone(),
-            tool_calls: 0, // Rig doesn't expose tool call count easily
+            tool_calls,
             duration_ms,
         };
         self.history.push(turn);
 
         info!(
             duration_ms = duration_ms,
+            tool_calls = tool_calls,
             history_len = self.history.len(),
             "Rig agent execution completed"
         );
 
         Ok(RigAgentOutput {
             response,
-            tool_calls: 0,
+            tool_calls,
             duration_ms,
         })
     }
@@ -123,18 +125,19 @@ impl RigExecutor {
 
         let response = agent.execute(&contextualized_query).await?;
         let duration_ms = start.elapsed().as_millis() as u64;
+        let tool_calls = agent.take_tool_call_count();
 
         let turn = ConversationTurn {
             query: query.to_string(),
             response: response.clone(),
-            tool_calls: 0,
+            tool_calls,
             duration_ms,
         };
         self.history.push(turn);
 
         Ok(RigAgentOutput {
             response,
-            tool_calls: 0,
+            tool_calls,
             duration_ms,
         })
     }

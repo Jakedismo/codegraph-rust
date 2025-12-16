@@ -90,6 +90,24 @@ struct SearchRequest {
     limit: usize,
 }
 
+/// Request for consolidated agentic tools with optional focus parameter
+#[derive(Deserialize, JsonSchema)]
+struct ConsolidatedSearchRequest {
+    /// The search query for semantic analysis
+    query: String,
+    /// Maximum number of results to return
+    #[serde(default = "default_limit")]
+    limit: usize,
+    /// Optional focus to narrow analysis scope. When omitted, agent auto-selects.
+    /// Valid values depend on the tool:
+    /// - agentic_context: "search", "builder", "question"
+    /// - agentic_impact: "dependencies", "call_chain"
+    /// - agentic_architecture: "structure", "api_surface"
+    /// - agentic_quality: "complexity", "coupling", "hotspots"
+    #[serde(default)]
+    focus: Option<String>,
+}
+
 fn default_limit() -> usize {
     5 // Reduced from 10 for faster agent responses
 }
@@ -297,135 +315,98 @@ impl CodeGraphMCPServer {
         Ok(CallToolResult::success(vec![Content::text(content)]))
     }
 
-    // === AGENTIC MCP TOOLS ===
-    // These tools use AgenticOrchestrator for multi-step graph analysis workflows
-    // with automatic tier detection based on CODEGRAPH_CONTEXT_WINDOW or config
+    // === CONSOLIDATED AGENTIC MCP TOOLS ===
+    // These 4 tools replace the previous 8 specialized tools for reduced cognitive load
+    // Legacy tools available via "legacy-agentic-tools" feature flag
 
-    /// Agentic code search with multi-step graph exploration
+    /// Gather context for a query - default entrypoint for code discovery
     #[tool(
-        description = "Find code by semantic meaning. Returns: code snippets with file paths, line numbers, and explanations of relevance. Use the results to navigate to implementations or understand how features work. Required: query."
+        description = "Gather client-readable context for a query. Returns JSON with: summary, analysis (how this answers the query), highlights (with file:line and snippets), related_locations, risks, next_steps (read/run), and confidence. Required: query."
     )]
-    async fn agentic_code_search(
+    async fn agentic_context(
         &self,
         peer: Peer<RoleServer>,
         meta: Meta,
-        params: Parameters<SearchRequest>,
+        params: Parameters<ConsolidatedSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(AnalysisType::CodeSearch, &request.query, peer, meta)
+        let analysis_type = match request.focus.as_deref() {
+            Some("search") => AnalysisType::CodeSearch,
+            Some("builder") => AnalysisType::ContextBuilder,
+            Some("question") => AnalysisType::SemanticQuestion,
+            _ => AnalysisType::ContextBuilder, // Default for context
+        };
+        self.execute_agentic_workflow(analysis_type, &request.query, peer, meta)
             .await
     }
 
-    /// Agentic dependency analysis with multi-step exploration
+    /// Assess change impact for a query
     #[tool(
-        description = "Understand what code depends on what. Returns: dependency chains showing which components use which others, with impact analysis if components change. Use the results to plan refactoring, assess risk of changes, or understand coupling. Required: query."
+        description = "Assess change impact for a query. Returns client-readable JSON with: summary, analysis (how this answers the query), impact highlights, affected file:line locations, risks, next_steps (read/run), and confidence. Required: query."
     )]
-    async fn agentic_dependency_analysis(
+    async fn agentic_impact(
         &self,
         peer: Peer<RoleServer>,
         meta: Meta,
-        params: Parameters<SearchRequest>,
+        params: Parameters<ConsolidatedSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(AnalysisType::DependencyAnalysis, &request.query, peer, meta)
+        let analysis_type = match request.focus.as_deref() {
+            Some("dependencies") => AnalysisType::DependencyAnalysis,
+            Some("call_chain") => AnalysisType::CallChainAnalysis,
+            _ => AnalysisType::DependencyAnalysis, // Default for impact
+        };
+        self.execute_agentic_workflow(analysis_type, &request.query, peer, meta)
             .await
     }
 
-    /// Agentic call chain analysis with multi-step tracing
+    /// Summarize system structure relevant to a query
     #[tool(
-        description = "Trace how code executes from start to finish. Returns: execution paths showing which functions call which others, with file paths and line numbers. Use the results to debug issues, understand data flow, or trace request handling. Required: query."
+        description = "Summarize system structure relevant to a query. Returns client-readable JSON with: summary, analysis (how this answers the query), highlights, related_locations, risks, next_steps, and confidence (with file:line and snippets when available). Required: query."
     )]
-    async fn agentic_call_chain_analysis(
+    async fn agentic_architecture(
         &self,
         peer: Peer<RoleServer>,
         meta: Meta,
-        params: Parameters<SearchRequest>,
+        params: Parameters<ConsolidatedSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(AnalysisType::CallChainAnalysis, &request.query, peer, meta)
+        let analysis_type = match request.focus.as_deref() {
+            Some("structure") => AnalysisType::ArchitectureAnalysis,
+            Some("api_surface") => AnalysisType::ApiSurfaceAnalysis,
+            _ => AnalysisType::ArchitectureAnalysis, // Default for architecture
+        };
+        self.execute_agentic_workflow(analysis_type, &request.query, peer, meta)
             .await
     }
 
-    /// Agentic architecture analysis with multi-step system exploration
+    /// Highlight quality risks related to a query
     #[tool(
-        description = "Understand system structure and design patterns. Returns: module organization, architectural layers, design patterns used, and component relationships. Use the results to onboard to a codebase, plan architectural changes, or evaluate design decisions. Required: query."
+        description = "Highlight quality risks related to a query. Returns client-readable JSON with: summary, analysis (how this answers the query), hotspot highlights, risk notes, next_steps (read/run), and confidence (with file:line and snippets when available). Required: query."
     )]
-    async fn agentic_architecture_analysis(
+    async fn agentic_quality(
         &self,
         peer: Peer<RoleServer>,
         meta: Meta,
-        params: Parameters<SearchRequest>,
+        params: Parameters<ConsolidatedSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        self.execute_agentic_workflow(
-            AnalysisType::ArchitectureAnalysis,
-            &request.query,
-            peer,
-            meta,
-        )
-        .await
-    }
-
-    /// Agentic API surface analysis with multi-step exploration
-    #[tool(
-        description = "Discover public interfaces and contracts. Returns: public functions, types, and interfaces with their signatures and usage patterns. Use the results to understand integration points, plan API changes, or document interfaces. Required: query."
-    )]
-    async fn agentic_api_surface_analysis(
-        &self,
-        peer: Peer<RoleServer>,
-        meta: Meta,
-        params: Parameters<SearchRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        let request = params.0;
-        self.execute_agentic_workflow(AnalysisType::ApiSurfaceAnalysis, &request.query, peer, meta)
+        // All quality focuses use ComplexityAnalysis internally
+        let analysis_type = AnalysisType::ComplexityAnalysis;
+        self.execute_agentic_workflow(analysis_type, &request.query, peer, meta)
             .await
     }
 
-    /// Agentic context builder with multi-step comprehensive context gathering
-    #[tool(
-        description = "Gather comprehensive context for implementing changes. Returns: relevant code snippets, dependencies, patterns, and related implementations needed to understand a feature area. Use the results to prepare for coding tasks or understand how to extend functionality. Required: query."
-    )]
-    async fn agentic_context_builder(
-        &self,
-        peer: Peer<RoleServer>,
-        meta: Meta,
-        params: Parameters<SearchRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        let request = params.0;
-        self.execute_agentic_workflow(AnalysisType::ContextBuilder, &request.query, peer, meta)
-            .await
-    }
-
-    /// Agentic semantic question answering with multi-step exploration
-    #[tool(
-        description = "Answer complex questions about the codebase. Returns: detailed explanations with supporting code evidence and reasoning. Use for questions that span multiple files or require understanding across the system. Required: query."
-    )]
-    async fn agentic_semantic_question(
-        &self,
-        peer: Peer<RoleServer>,
-        meta: Meta,
-        params: Parameters<SearchRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        let request = params.0;
-        self.execute_agentic_workflow(AnalysisType::SemanticQuestion, &request.query, peer, meta)
-            .await
-    }
-
-    /// Agentic complexity analysis with multi-step risk assessment
-    #[tool(
-        description = "Analyze code complexity hotspots and their architectural impact. Returns: functions ranked by risk (complexity × coupling), refactoring recommendations, and dependency analysis for high-risk components. Use for: technical debt assessment, code review prioritization, refactoring planning. Required: query."
-    )]
-    async fn agentic_complexity_analysis(
-        &self,
-        peer: Peer<RoleServer>,
-        meta: Meta,
-        params: Parameters<SearchRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        let request = params.0;
-        self.execute_agentic_workflow(AnalysisType::ComplexityAnalysis, &request.query, peer, meta)
-            .await
-    }
 }
+
+// NOTE: Legacy agentic tools (agentic_code_search, agentic_dependency_analysis, etc.)
+// have been removed in favor of the 4 consolidated tools above.
+// The rmcp SDK doesn't support multiple #[tool_router] blocks, so feature-flag based
+// toggling is not possible. Use the consolidated tools with the focus parameter instead:
+// - agentic_context (focus: search, builder, question)
+// - agentic_impact (focus: dependencies, call_chain)
+// - agentic_architecture (focus: structure, api_surface)
+// - agentic_quality (focus: complexity, coupling, hotspots)
 
 impl CodeGraphMCPServer {
     #[cfg(feature = "ai-enhanced")]

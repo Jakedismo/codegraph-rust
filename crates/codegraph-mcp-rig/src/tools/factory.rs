@@ -1,19 +1,22 @@
-// ABOUTME: Factory for creating Rig graph tools
-// ABOUTME: Instantiates all 8 tools with shared GraphToolExecutor
+// ABOUTME: Factory for creating Rig graph tools with call counting
+// ABOUTME: Instantiates all 8 tools with shared CountingExecutor
 
+use super::counting_executor::CountingExecutor;
 use super::graph_tools::*;
 use codegraph_mcp_tools::GraphToolExecutor;
 use std::sync::Arc;
 
 /// Factory for creating graph analysis tools for Rig agents
 pub struct GraphToolFactory {
-    executor: Arc<GraphToolExecutor>,
+    executor: CountingExecutor,
 }
 
 impl GraphToolFactory {
-    /// Create a new factory with shared executor
+    /// Create a new factory with shared executor wrapped in CountingExecutor
     pub fn new(executor: Arc<GraphToolExecutor>) -> Self {
-        Self { executor }
+        Self {
+            executor: CountingExecutor::new(executor),
+        }
     }
 
     /// Create the transitive dependencies tool
@@ -58,7 +61,17 @@ impl GraphToolFactory {
 
     /// Get the underlying executor for direct access
     pub fn executor(&self) -> Arc<GraphToolExecutor> {
-        self.executor.clone()
+        self.executor.inner().clone()
+    }
+
+    /// Get the current tool call count
+    pub fn call_count(&self) -> usize {
+        self.executor.call_count()
+    }
+
+    /// Get and reset the tool call count (for per-query tracking)
+    pub fn take_call_count(&self) -> usize {
+        self.executor.take_call_count()
     }
 }
 

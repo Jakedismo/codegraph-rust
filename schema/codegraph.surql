@@ -872,4 +872,37 @@ DEFINE INDEX idx_symbol_embeddings_vector_2560 ON symbol_embeddings FIELDS embed
 DEFINE INDEX idx_symbol_embeddings_vector_3072 ON symbol_embeddings FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_3584 ON symbol_embeddings FIELDS embedding_3584 HNSW DIMENSION 3584 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_4096 ON symbol_embeddings FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+
+-- ------------------------------
+-- CONSOLIDATED AGENTIC TOOL FUNCTIONS
+-- ------------------------------
+
+-- Get top-level directories with node counts for project structure overview
+-- Used by: agentic_architecture, agentic_context
+DEFINE FUNCTION fn::get_top_directories($project_id: string, $limit: int) {
+    LET $safe_limit = IF $limit > 0 AND $limit <= 50 THEN $limit ELSE 10 END;
+
+    RETURN (
+        SELECT
+            string::split(file_path, '/')[0] AS directory,
+            count() AS node_count,
+            array::distinct(language) AS languages
+        FROM nodes
+        WHERE project_id = $project_id AND file_path != NONE
+        GROUP BY directory
+        ORDER BY node_count DESC
+        LIMIT $safe_limit
+    );
+} PERMISSIONS FULL;
+
+-- Count nodes, edges, and chunks for a project (health/diagnostics)
+-- Used by: All consolidated tools for adaptive bundle sizing
+DEFINE FUNCTION fn::count_nodes_for_project($project_id: string) {
+    RETURN {
+        nodes: (SELECT count() AS count FROM nodes WHERE project_id = $project_id)[0].count ?? 0,
+        edges: (SELECT count() AS count FROM edges WHERE project_id = $project_id)[0].count ?? 0,
+        chunks: (SELECT count() AS count FROM chunks WHERE project_id = $project_id)[0].count ?? 0
+    };
+} PERMISSIONS FULL;
+
 --------------------------------
