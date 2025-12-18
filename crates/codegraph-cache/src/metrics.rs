@@ -1,3 +1,5 @@
+// ABOUTME: Collects cache performance metrics and produces aggregate reports.
+// ABOUTME: Provides throughput tracking and human-readable recommendations from collected stats.
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -446,6 +448,10 @@ impl MetricsCollector {
             }
         }
 
+        if recommendations.is_empty() {
+            recommendations.push("Cache performance is within expected bounds.".to_string());
+        }
+
         recommendations
     }
 }
@@ -639,6 +645,8 @@ mod tests {
     #[tokio::test]
     async fn test_performance_report() {
         let collector = MetricsCollector::new();
+
+        sleep(Duration::from_millis(1)).await;
 
         collector.record_hit();
         collector.record_miss();

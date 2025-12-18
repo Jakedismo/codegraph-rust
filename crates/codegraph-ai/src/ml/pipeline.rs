@@ -1,3 +1,5 @@
+// ABOUTME: Coordinates model training/inference and versioning for code analysis workflows.
+// ABOUTME: Wraps the vector ML pipeline with a filesystem-backed registry and hot-swap model handle.
 //! CodeGraph AI Pipeline
 //!
 //! This module composes the ML building blocks in `codegraph-vector` (feature extraction,
@@ -421,31 +423,49 @@ mod tests {
 
     #[tokio::test]
     async fn builds_and_infers() {
-        let p = AiPipeline::builder().build().unwrap();
+        let tempdir = tempfile::tempdir().unwrap();
+
+        let mut builder = AiPipeline::builder();
+        builder.registry_root = tempdir.path().to_path_buf();
+        builder.training.hyperparameters.epochs = 1;
+        builder.training.hyperparameters.validation_frequency = 1;
+        builder.training.hyperparameters.early_stopping_patience = 1;
+        builder.training.output_config.save_checkpoints = false;
+        builder.training.output_config.model_path = tempdir.path().to_string_lossy().to_string();
+
+        let p = builder.build().unwrap();
         p.initialize().await.unwrap();
 
-        let node = CodeNode {
-            id: uuid::Uuid::new_v4(),
-            name: "foo".into(),
-            language: Some(Language::Rust),
-            node_type: Some(NodeType::Function),
-            location: codegraph_core::Location {
-                file_path: "test.rs".to_string(),
-                line: 1,
-                column: 0,
-                end_line: None,
-                end_column: None,
-            },
-            span: None,
-            content: Some("fn foo() { 1 }".into()),
-            metadata: codegraph_core::Metadata {
-                attributes: std::collections::HashMap::new(),
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-            },
-            embedding: None,
-            complexity: None,
-        };
-        let _ = p.infer(&node).await.unwrap();
+        let nodes: Vec<CodeNode> = (0..10)
+            .map(|i| CodeNode {
+                id: uuid::Uuid::new_v4(),
+                name: format!("foo_{i}").into(),
+                language: Some(Language::Rust),
+                node_type: Some(NodeType::Function),
+                location: codegraph_core::Location {
+                    file_path: "test.rs".to_string(),
+                    line: 1,
+                    column: 0,
+                    end_line: None,
+                    end_column: None,
+                },
+                span: None,
+                content: Some("fn foo() { 1 }".into()),
+                metadata: codegraph_core::Metadata {
+                    attributes: std::collections::HashMap::new(),
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+                embedding: None,
+                complexity: None,
+            })
+            .collect();
+
+        let targets = vec![vml::TrainingTarget::Classification(0); nodes.len()];
+        p.train_and_deploy("unit", &nodes, targets, "v1", true)
+            .await
+            .unwrap();
+
+        let _ = p.infer(&nodes[0]).await.unwrap();
     }
 }

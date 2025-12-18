@@ -1,7 +1,9 @@
 // ABOUTME: Integration tests for LM Studio embedding provider
 // ABOUTME: Tests actual embedding generation with clear error surfacing
 
+#[cfg(feature = "lmstudio")]
 use codegraph_core::{CodeNode, Language, Location, NodeType};
+#[cfg(feature = "lmstudio")]
 use std::time::Duration;
 
 #[cfg(feature = "lmstudio")]
@@ -11,6 +13,7 @@ use codegraph_vector::{
 };
 
 /// Create a test CodeNode for embedding tests
+#[cfg(feature = "lmstudio")]
 fn create_test_node(name: &str, content: &str) -> CodeNode {
     CodeNode::new(
         name.to_string(),

@@ -10,3 +10,4 @@ pub mod tools;
 pub use agent::builder::RigAgentBuilder;
 pub use agent::executor::RigExecutor;
 pub use agent::RigAgentOutput;
+pub use tools::ToolTrace;

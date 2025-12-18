@@ -1,3 +1,5 @@
+// ABOUTME: Watches source trees for changes and derives affected dependents for incremental indexing.
+// ABOUTME: Normalizes sources, extracts imports/symbols, and emits debounced change events.
 use crate::{ChangeEvent, Language, Result};
 use crossbeam_channel::Sender as CbSender;
 use dashmap::DashMap;
@@ -272,7 +274,7 @@ impl IntelligentFileWatcher {
             };
             let (code_hash, symbols_hash, imports) = summarize_file(p, &content, &lang);
 
-            // Locate previous state across variants
+            // Locate previous state across variants (clone to avoid holding map guards while mutating)
             let mut prev = self.files.get(p);
             if prev.is_none() {
                 prev = self.files.get(&normalize_path(p));
@@ -283,7 +285,10 @@ impl IntelligentFileWatcher {
                 }
             }
 
-            if let Some(prev_state) = prev.as_deref() {
+            let prev_state: Option<FileState> = prev.as_deref().cloned();
+            drop(prev);
+
+            if let Some(prev_state) = prev_state.as_ref() {
                 if prev_state.code_hash != code_hash {
                     // Modified
                     let changes = diff_symbol_maps(&prev_state.symbols_hash, &symbols_hash);
@@ -309,10 +314,12 @@ impl IntelligentFileWatcher {
                             },
                         );
                     }
-                    self.update_reverse_deps(p, &Some(&prev_state.imports), &imports);
+                    let prev_imports = Some(&prev_state.imports);
+                    self.update_reverse_deps(p, &prev_imports, &imports);
                     let _ = tx.send(ChangeEvent::Modified(p.to_string_lossy().to_string()));
                     // immediate dependents
-                    if let Some(dependents) = self
+                    let mut dependents: HashSet<PathBuf> = HashSet::new();
+                    if let Some(deps) = self
                         .reverse_deps
                         .get(p)
                         .or_else(|| self.reverse_deps.get(&normalize_path(p)))
@@ -322,11 +329,18 @@ impl IntelligentFileWatcher {
                                 .and_then(|cp| self.reverse_deps.get(&cp))
                         })
                     {
-                        for dep in dependents.iter() {
-                            if dep != p {
-                                let _ = tx
-                                    .send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                        dependents.extend(deps.iter().cloned());
+                    } else if let Some(name) = p.file_name() {
+                        for entry in self.reverse_deps.iter() {
+                            if entry.key().file_name() == Some(name) {
+                                dependents.extend(entry.value().iter().cloned());
                             }
+                        }
+                    }
+                    for dep in dependents {
+                        if dep != *p {
+                            let _ =
+                                tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
                         }
                     }
                     changed_files.push(p.clone());
@@ -357,7 +371,8 @@ impl IntelligentFileWatcher {
                 self.update_reverse_deps(p, &None, &imports);
                 let _ = tx.send(ChangeEvent::Created(p.to_string_lossy().to_string()));
                 // immediate dependents (if any pre-recorded)
-                if let Some(dependents) = self
+                let mut dependents: HashSet<PathBuf> = HashSet::new();
+                if let Some(deps) = self
                     .reverse_deps
                     .get(p)
                     .or_else(|| self.reverse_deps.get(&normalize_path(p)))
@@ -367,11 +382,17 @@ impl IntelligentFileWatcher {
                             .and_then(|cp| self.reverse_deps.get(&cp))
                     })
                 {
-                    for dep in dependents.iter() {
-                        if dep != p {
-                            let _ =
-                                tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                    dependents.extend(deps.iter().cloned());
+                } else if let Some(name) = p.file_name() {
+                    for entry in self.reverse_deps.iter() {
+                        if entry.key().file_name() == Some(name) {
+                            dependents.extend(entry.value().iter().cloned());
                         }
+                    }
+                }
+                for dep in dependents {
+                    if dep != *p {
+                        let _ = tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
                     }
                 }
                 changed_files.push(p.clone());
@@ -399,8 +420,10 @@ impl IntelligentFileWatcher {
                 normalize_path(&p),
                 fs::canonicalize(&p).unwrap_or_else(|_| p.clone()),
             ];
+            let mut any_found = false;
             for k in keys.iter() {
                 if let Some(dependents) = self.reverse_deps.get(k) {
+                    any_found = true;
                     for dep in dependents.iter() {
                         if dep == &p {
                             continue;
@@ -410,6 +433,25 @@ impl IntelligentFileWatcher {
                                 tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
                         }
                         deps_accum.insert(dep.clone());
+                    }
+                }
+            }
+            if !any_found {
+                if let Some(name) = p.file_name() {
+                    for entry in self.reverse_deps.iter() {
+                        if entry.key().file_name() == Some(name) {
+                            for dep in entry.value().iter() {
+                                if dep == &p {
+                                    continue;
+                                }
+                                if notified.insert(dep.clone()) {
+                                    let _ = tx.send(ChangeEvent::Modified(
+                                        dep.to_string_lossy().to_string(),
+                                    ));
+                                }
+                                deps_accum.insert(dep.clone());
+                            }
+                        }
                     }
                 }
             }
@@ -435,8 +477,10 @@ impl IntelligentFileWatcher {
                 normalize_path(p),
                 fs::canonicalize(p).unwrap_or_else(|_| p.clone()),
             ];
+            let mut any_found = false;
             for k in keys.iter() {
                 if let Some(dependents) = self.reverse_deps.get(k) {
+                    any_found = true;
                     for dep in dependents.iter() {
                         if dep == p {
                             continue;
@@ -444,6 +488,24 @@ impl IntelligentFileWatcher {
                         if notified.insert(dep.clone()) {
                             let _ =
                                 tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                        }
+                    }
+                }
+            }
+            if !any_found {
+                if let Some(name) = p.file_name() {
+                    for entry in self.reverse_deps.iter() {
+                        if entry.key().file_name() == Some(name) {
+                            for dep in entry.value().iter() {
+                                if dep == p {
+                                    continue;
+                                }
+                                if notified.insert(dep.clone()) {
+                                    let _ = tx.send(ChangeEvent::Modified(
+                                        dep.to_string_lossy().to_string(),
+                                    ));
+                                }
+                            }
                         }
                     }
                 }
@@ -662,15 +724,27 @@ impl IntelligentFileWatcher {
         previous: &Option<&HashSet<PathBuf>>,
         current: &HashSet<PathBuf>,
     ) {
+        fn target_keys(p: &PathBuf) -> HashSet<PathBuf> {
+            let mut keys = HashSet::new();
+            keys.insert(p.clone());
+            keys.insert(normalize_path(p));
+            if let Ok(cp) = fs::canonicalize(p) {
+                keys.insert(cp);
+            }
+            keys
+        }
+
         // Remove this file from old dependency targets
         if let Some(prev) = previous {
             for target in (*prev).iter() {
                 if !current.contains(target) {
-                    if let Some(mut set) = self.reverse_deps.get_mut(target) {
-                        set.remove(file);
-                        if set.is_empty() {
-                            drop(set);
-                            self.reverse_deps.remove(target);
+                    for key in target_keys(target).iter() {
+                        if let Some(mut set) = self.reverse_deps.get_mut(key) {
+                            set.remove(file);
+                            if set.is_empty() {
+                                drop(set);
+                                self.reverse_deps.remove(key);
+                            }
                         }
                     }
                 }
@@ -678,15 +752,18 @@ impl IntelligentFileWatcher {
         }
         // Add this file to new dependency targets
         for target in current.iter() {
-            self.reverse_deps
-                .entry(target.clone())
-                .or_default()
-                .insert(file.to_path_buf());
+            for key in target_keys(target).iter() {
+                self.reverse_deps
+                    .entry(key.clone())
+                    .or_default()
+                    .insert(file.to_path_buf());
+            }
         }
     }
 
     // For tests/introspection: retrieve a shallow snapshot of internal state
     #[cfg(test)]
+    #[allow(dead_code)]
     fn state_snapshot(&self, path: &Path) -> Option<FileState> {
         self.files.get(path).map(|e| e.clone())
     }
@@ -1343,6 +1420,7 @@ mod tests {
             watcher.watch(tx).unwrap();
         });
 
+        std::thread::sleep(Duration::from_millis(120));
         fs::write(&file, "fn a(){}\n").unwrap();
         std::thread::sleep(Duration::from_millis(120));
         // Rapid edits
@@ -1381,20 +1459,23 @@ mod tests {
     fn test_comment_only_changes_ignored() {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("main.rs");
-        let watcher =
-            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
+        let watcher = Arc::new(
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20)),
+        );
         let (tx, rx) = crossbeam_channel::unbounded();
 
-        std::thread::spawn(move || {
-            watcher.watch(tx).unwrap();
-        });
-
         fs::write(&file, "fn a(){1}\n").unwrap();
-        std::thread::sleep(Duration::from_millis(120));
+        watcher.scan_and_emit(&tx);
+        let initial: Vec<_> = rx.try_iter().collect();
+        assert!(
+            initial.iter().any(|e| matches!(e, ChangeEvent::Created(_))),
+            "expected initial Created event"
+        );
+        while rx.try_recv().is_ok() {}
+
         // comment-only change
         fs::write(&file, "// comment\nfn a(){1}\n").unwrap();
-        std::thread::sleep(Duration::from_millis(120));
-
+        watcher.scan_and_emit(&tx);
         let evs: Vec<_> = rx.try_iter().collect();
         // Should have a Created, but no Modified due to comment-only change
         let modified = evs
@@ -1409,21 +1490,35 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let a = tmp.path().join("a.ts");
         let b = tmp.path().join("b.ts");
+        let watcher = Arc::new(
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20)),
+        );
+        let (tx, rx) = crossbeam_channel::unbounded();
         fs::write(&a, "export const A=1\n").unwrap();
         fs::write(&b, "import {A} from './a'\nexport const B=A\n").unwrap();
+        watcher.scan_and_emit(&tx);
+        while rx.try_recv().is_ok() {}
 
-        let watcher =
-            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
-        let (tx, rx) = crossbeam_channel::unbounded();
-        std::thread::spawn(move || {
-            watcher.watch(tx).unwrap();
+        let reverse_dep_present = watcher.reverse_deps.iter().any(|entry| {
+            entry.key().file_name() == a.file_name()
+                && entry.value().iter().any(|p| p.file_name() == b.file_name())
         });
+        assert!(
+            reverse_dep_present,
+            "reverse deps missing b.ts dependent for a.ts"
+        );
 
         // Modify a.ts and expect b.ts to be scheduled too
-        std::thread::sleep(Duration::from_millis(120));
         fs::write(&a, "export const A=2\n").unwrap();
-        std::thread::sleep(Duration::from_millis(160));
-        let evs: Vec<_> = rx.try_iter().collect();
+        watcher.scan_and_emit(&tx);
+        let mut evs: Vec<ChangeEvent> = Vec::new();
+        let deadline = Instant::now() + Duration::from_millis(300);
+        while Instant::now() < deadline {
+            match rx.recv_timeout(Duration::from_millis(40)) {
+                Ok(ev) => evs.push(ev),
+                Err(_) => {}
+            }
+        }
         let b_triggered = evs
             .iter()
             .any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("b.ts")));
@@ -1528,22 +1623,41 @@ mod tests {
         let a = tmp.path().join("a.ts");
         let b = tmp.path().join("b.ts");
         let c = tmp.path().join("c.ts");
+        let watcher = Arc::new(
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20)),
+        );
+        let (tx, rx) = crossbeam_channel::unbounded();
         fs::write(&a, "export const A=1\n").unwrap();
         fs::write(&b, "import {A} from './a'\nexport const B=A\n").unwrap();
         fs::write(&c, "import {A} from './a'\nexport const C=A\n").unwrap();
-        let watcher =
-            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
-        let (tx, rx) = crossbeam_channel::unbounded();
-        std::thread::spawn(move || {
-            watcher.watch(tx).unwrap();
-        });
-        std::thread::sleep(Duration::from_millis(200));
+        watcher.scan_and_emit(&tx);
+        while rx.try_recv().is_ok() {}
+
+        let reverse_deps = watcher
+            .reverse_deps
+            .iter()
+            .find(|entry| entry.key().file_name() == a.file_name());
+        let dependents: HashSet<PathBuf> = reverse_deps
+            .map(|entry| entry.value().clone())
+            .unwrap_or_default();
+        assert!(
+            dependents.iter().any(|p| p.file_name() == b.file_name()),
+            "reverse deps missing b.ts dependent for a.ts"
+        );
+        assert!(
+            dependents.iter().any(|p| p.file_name() == c.file_name()),
+            "reverse deps missing c.ts dependent for a.ts"
+        );
+
         fs::write(&a, "export const A=3\n").unwrap();
-        std::thread::sleep(Duration::from_millis(300));
-        let evs: Vec<_> = rx.try_iter().collect();
-        eprintln!("Received {} events:", evs.len());
-        for ev in &evs {
-            eprintln!("  {:?}", ev);
+        watcher.scan_and_emit(&tx);
+        let mut evs: Vec<ChangeEvent> = Vec::new();
+        let deadline = Instant::now() + Duration::from_millis(350);
+        while Instant::now() < deadline {
+            match rx.recv_timeout(Duration::from_millis(40)) {
+                Ok(ev) => evs.push(ev),
+                Err(_) => {}
+            }
         }
         let b_tr = evs
             .iter()
@@ -1551,7 +1665,6 @@ mod tests {
         let c_tr = evs
             .iter()
             .any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("c.ts")));
-        eprintln!("b_tr: {}, c_tr: {}", b_tr, c_tr);
         assert!(b_tr && c_tr);
     }
 
@@ -1560,18 +1673,37 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let lib = tmp.path().join("lib.rs");
         let utils = tmp.path().join("utils.rs");
+        let watcher = Arc::new(
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20)),
+        );
+        let (tx, rx) = crossbeam_channel::unbounded();
         fs::write(&lib, "mod utils;\npub fn a(){}\n").unwrap();
         fs::write(&utils, "pub fn util(){}\n").unwrap();
-        let watcher =
-            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
-        let (tx, rx) = crossbeam_channel::unbounded();
-        std::thread::spawn(move || {
-            watcher.watch(tx).unwrap();
+        watcher.scan_and_emit(&tx);
+        while rx.try_recv().is_ok() {}
+
+        let reverse_dep_present = watcher.reverse_deps.iter().any(|entry| {
+            entry.key().file_name() == utils.file_name()
+                && entry
+                    .value()
+                    .iter()
+                    .any(|p| p.file_name() == lib.file_name())
         });
-        std::thread::sleep(Duration::from_millis(120));
+        assert!(
+            reverse_dep_present,
+            "reverse deps missing lib.rs dependent for utils.rs"
+        );
+
         fs::write(&utils, "pub fn util(){ /* changed */ }\n").unwrap();
-        std::thread::sleep(Duration::from_millis(160));
-        let evs: Vec<_> = rx.try_iter().collect();
+        watcher.scan_and_emit(&tx);
+        let mut evs: Vec<ChangeEvent> = Vec::new();
+        let deadline = Instant::now() + Duration::from_millis(300);
+        while Instant::now() < deadline {
+            match rx.recv_timeout(Duration::from_millis(40)) {
+                Ok(ev) => evs.push(ev),
+                Err(_) => {}
+            }
+        }
         let lib_tr = evs
             .iter()
             .any(|e| matches!(e, ChangeEvent::Modified(p) if p.ends_with("lib.rs")));

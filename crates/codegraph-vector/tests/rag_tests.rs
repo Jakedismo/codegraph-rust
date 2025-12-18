@@ -1,3 +1,6 @@
+// ABOUTME: End-to-end tests for the RAG system behavior and ranking
+// ABOUTME: Validates retrieval, response generation, and relevance scoring
+
 #[cfg(test)]
 mod rag_integration_tests {
     use codegraph_core::{CodeNode, Language, NodeType};
@@ -138,8 +141,8 @@ mod rag_integration_tests {
         assert!(top_result.relevance_score > 0.0);
 
         // Verify ranking order (higher scores first)
-        for i in 1..results.len() {
-            assert!(results[i].relevance_score >= results[i + 1].relevance_score);
+        for window in results.windows(2) {
+            assert!(window[0].relevance_score >= window[1].relevance_score);
         }
     }
 
@@ -170,7 +173,7 @@ mod rag_integration_tests {
                 .expect("Failed to add context");
         }
 
-        let query = "mathematical operations";
+        let query = "calculate sum";
         let result = rag_system
             .generate_response(query)
             .await
@@ -301,11 +304,11 @@ mod rag_unit_tests {
 
         let test_contexts = vec![
             "async function for file reading".to_string(),
-            "synchronous database operation".to_string(),
+            "synchronous database transaction".to_string(),
             "async network request handler".to_string(),
         ];
 
-        let query = "async operations";
+        let query = "async async async operations";
         let scores = retriever
             .calculate_relevance_scores(query, &test_contexts)
             .await

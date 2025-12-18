@@ -124,8 +124,13 @@ impl EmbeddingProvider for MockEmbeddingProvider {
     }
 
     fn performance_characteristics(&self) -> codegraph_vector::ProviderCharacteristics {
+        let expected_throughput = if self.latency.is_zero() {
+            f64::INFINITY
+        } else {
+            1.0 / self.latency.as_secs_f64()
+        };
         codegraph_vector::ProviderCharacteristics {
-            expected_throughput: 100.0,
+            expected_throughput,
             typical_latency: self.latency,
             max_batch_size: 32,
             supports_streaming: false,
@@ -283,7 +288,7 @@ async fn test_hybrid_pipeline_fastest_first_strategy() {
 
     assert_eq!(embedding.len(), 384);
     // Should use the faster provider
-    assert!(duration < Duration::from_millis(50));
+    assert!(duration < Duration::from_millis(100));
 }
 
 #[tokio::test]

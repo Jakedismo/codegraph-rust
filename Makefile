@@ -1,4 +1,5 @@
 .PHONY: build test lint fmt check bench clean install-deps doc
+.PHONY: build-llvm test-llvm check-llvm
 
 # Default target
 all: check test
@@ -10,6 +11,17 @@ build:
 # Build in release mode
 build-release:
 	cargo build --workspace --release
+
+# macOS: build/test using LLVM lld for faster linking (requires ld64.lld on PATH)
+check-llvm:
+	@if [ "$$(uname -s)" != "Darwin" ]; then echo "check-llvm is macOS-only"; exit 1; fi
+	@if ! command -v ld64.lld >/dev/null 2>&1; then echo "Missing ld64.lld (install LLVM and add it to PATH)"; exit 1; fi
+
+build-llvm: check-llvm
+	RUSTFLAGS="-C link-arg=-fuse-ld=lld" cargo build --workspace
+
+test-llvm: check-llvm
+	RUSTFLAGS="-C link-arg=-fuse-ld=lld" cargo test --workspace
 
 # Build MCP server with AutoAgents experimental feature
 build-mcp-autoagents:

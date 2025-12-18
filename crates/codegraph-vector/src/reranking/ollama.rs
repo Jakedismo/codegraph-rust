@@ -10,6 +10,12 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
+fn build_http_client() -> Result<Client> {
+    std::panic::catch_unwind(|| Client::builder().no_proxy().build())
+        .map_err(|_| anyhow::anyhow!("HTTP client initialization panicked"))?
+        .context("Failed to initialize HTTP client")
+}
+
 /// Ollama chat request structure
 #[derive(Debug, Serialize)]
 struct OllamaChatRequest {
@@ -65,7 +71,7 @@ impl OllamaReranker {
             .context("Ollama reranking configuration is required")?;
 
         Ok(Self {
-            client: Client::new(),
+            client: build_http_client()?,
             api_base: ollama_config.api_base.clone(),
             model: ollama_config.model.clone(),
             max_retries: ollama_config.max_retries as usize,

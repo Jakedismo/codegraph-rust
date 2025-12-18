@@ -27,14 +27,53 @@ AI coding assistants are powerful, but they're flying blind. They see files one 
 Most semantic search tools create embeddings and call it a day. CodeGraph builds a **real knowledge graph**:
 
 ```
-Your Code → AST + FastML → Graph Construction → Vector Embeddings
-                ↓                  ↓                    ↓
-           Functions          Dependencies        Semantic Search
-           Classes            Call chains         Similarity
-           Modules            Data flow           Context
+Your Code → Build Context → AST + FastML → LSP Resolution → Enrichment → Graph + Embeddings
+              ↓               ↓              ↓              ↓              ↓         ↓
+          Packages        Nodes/edges    Type-aware     API surface      Graph    Semantic
+          Features        Fast patterns  linking        Module graph   traversal   search
+          Targets         Spans          Definitions    Dataflow/Docs             (hybrid)
 ```
 
 When you search, you don't just get "similar code"—you get code with its **relationships intact**. The function that matches your query, plus what calls it, what it depends on, and where it fits in the architecture.
+
+Indexing enrichment adds:
+- Module nodes and module-level import/containment edges for cross-file navigation
+- Rust-local dataflow edges (`defines`, `uses`, `flows_to`, `returns`, `mutates`) for impact analysis
+- Document/spec nodes linked to backticked symbols in `README.md`, `docs/**/*.md`, and `schema/**/*.surql`
+- Architecture signals (package cycles + optional boundary violations)
+
+#### Indexing prerequisites (required by default)
+
+Indexing runs analyzer stages by default, and it **fails fast** if the required external tools are missing.
+
+Required tools by language:
+- Rust: `rust-analyzer`
+- TypeScript/JavaScript: `node` and `typescript-language-server`
+- Python: `node` and `pyright-langserver`
+- Go: `gopls`
+- Java: `jdtls`
+- C/C++: `clangd`
+
+You can disable analyzers (and tool requirements) for troubleshooting with `CODEGRAPH_ANALYZERS=0`, but the default indexing behavior assumes the tools exist.
+
+If indexing appears to stall during LSP resolution, you can adjust the per-request timeout:
+
+- `CODEGRAPH_LSP_REQUEST_TIMEOUT_SECS` (default `600`, minimum `5`)
+
+If LSP resolution fails immediately and the error includes something like `Unknown binary 'rust-analyzer' in official toolchain ...`, your `rust-analyzer` is a rustup shim without an installed binary. Install a runnable `rust-analyzer` (e.g. via `brew install rust-analyzer` or by switching to a toolchain that provides it).
+
+#### Optional architecture boundary rules
+
+If you want CodeGraph to flag forbidden package dependencies, add `codegraph.boundaries.toml` at the project root:
+
+```toml
+[[deny]]
+from = "your_crate"
+to = "forbidden_crate"
+reason = "explain the boundary"
+```
+
+Indexing will emit `violates_boundary` edges when a `depends_on` relationship matches a deny rule.
 
 ### 2. Agentic Tools, Not Just Search
 
@@ -166,6 +205,7 @@ We don't pick sides in the "embeddings vs keywords" debate. CodeGraph combines:
 The result? You find `handleUserAuth` when you search for "login logic"—but also when you search for "handleUserAuth".
 
 ---
+![Intelligence](docs/assets/mid.png)
 
 ## Why This Matters for AI Coding
 
@@ -176,6 +216,42 @@ When you connect CodeGraph to Claude Code, Cursor, or any MCP-compatible agent:
 **After:** Your AI calls `agentic_impact({"query": "UserService"})` and instantly knows what breaks if you refactor it.
 
 This isn't incremental improvement. It's the difference between an AI that *searches* your code and one that *understands* it.
+
+### Why this is powerful for code agents
+
+CodeGraph shifts the *cognitive load* (search + relevance + dependency reasoning) into CodeGraph’s agentic tools, so your code agent can spend its context budget on *making the change*, not *discovering what to change*.
+
+#### What an agentic tool returns (example)
+
+`agentic_impact` returns structured output (file paths, line numbers, and bounded snippets/highlights) plus analysis:
+
+```json
+{
+  "analysis_type": "dependency_analysis",
+  "query": "PromptSelector",
+  "structured_output": {
+    "analysis": "…what depends on PromptSelector and why…",
+    "highlights": [
+      { "file_path": "crates/codegraph-mcp-server/src/prompt_selector.rs", "line_number": 42, "snippet": "pub struct PromptSelector { … }" }
+    ],
+    "next_steps": ["…"]
+  },
+  "steps_taken": "5",
+  "tool_use_count": 5
+}
+```
+
+#### What a code agent would otherwise have to do
+
+Without CodeGraph’s agentic tools, a code agent typically needs multiple “single-purpose” calls to reach the same confidence:
+- search for the symbol (often multiple strategies: text + semantic + ripgrep-style search)
+- open and read multiple files (definition + usages + callers + related modules)
+- reconstruct dependency/call graphs mentally from partial evidence
+- repeat when a guess is wrong (more reads, more tokens)
+
+This burns context quickly: reading “just” a handful of medium-sized files + surrounding context can easily consume tens of thousands of tokens, and larger repos can push into hundreds of thousands depending on how much code gets pulled into context.
+
+With CodeGraph, the agent gets *pinpointed locations and relationships* (plus bounded context) and can keep far more of the context window available for planning and implementing changes.
 
 ---
 
@@ -188,6 +264,19 @@ This isn't incremental improvement. It's the difference between an AI that *sear
 git clone https://github.com/yourorg/codegraph-rust
 cd codegraph-rust
 ./install-codegraph-full-features.sh
+```
+
+#### macOS faster builds (LLVM lld)
+
+If you develop on macOS, you can opt into LLVM's `lld` linker for faster linking:
+
+```bash
+# Install LLVM so ld64.lld is on PATH (Homebrew)
+brew install llvm
+
+# Use the repo-provided Makefile targets
+make build-llvm
+make test-llvm
 ```
 
 ### 2. Start SurrealDB
@@ -340,6 +429,33 @@ database = "codegraph"
 ```
 
 See [INSTALLATION_GUIDE.md](docs/INSTALLATION_GUIDE.md) for complete configuration options.
+
+### Experimental graph schema (optional)
+
+CodeGraph can run against an experimental SurrealDB **graphdb-style schema** (`schema/codegraph_graph_experimental.surql`) that is interoperable with the existing CodeGraph tools and indexing pipeline.
+
+Compared to the relational/vanilla schema (`schema/codegraph.surql`), the experimental schema is designed for faster and more efficient graph-query operations (traversals, neighborhood expansion, and tool-driven graph analytics) on large codebases.
+
+To use it:
+
+1) Load the schema into a dedicated database (once):
+
+```bash
+# Example (SurrealDB CLI)
+surreal sql --conn ws://localhost:3004 --ns ouroboros --db codegraph_experimental < schema/codegraph_graph_experimental.surql
+```
+
+2) Point CodeGraph at that database:
+
+```bash
+CODEGRAPH_USE_GRAPH_SCHEMA=true
+CODEGRAPH_GRAPH_DB_DATABASE=codegraph_experimental
+```
+
+Notes:
+- The schema file defines HNSW indexes for multiple embedding dimensions (384–4096) so you can switch embedding models without reworking the DB.
+- Schema loading is not currently performed automatically at runtime; you must apply the `.surql` file to the target database before indexing.
+- `CODEGRAPH_GRAPH_DB_DATABASE` controls which Surreal database indexing/tools use when `CODEGRAPH_USE_GRAPH_SCHEMA=true`.
 
 ---
 

@@ -151,20 +151,24 @@ fn test_error_types() {
 
 #[test]
 fn test_json_rpc_message_serialization() {
-    // Test request serialization
+    // Test request serialization (wire format includes "jsonrpc" via JsonRpcMessage wrapper)
     let request = JsonRpcRequest::new(
         json!(1),
         "test_method".to_string(),
         Some(json!({"param": "value"})),
     );
-    let serialized = serde_json::to_string(&request).unwrap();
+    let serialized = serde_json::to_string(&JsonRpcMessage::V2(JsonRpcV2Message::Request(
+        request.clone(),
+    )))
+    .unwrap();
     assert!(serialized.contains("jsonrpc"));
     assert!(serialized.contains("test_method"));
     assert!(serialized.contains("param"));
 
     // Test response serialization
     let response = JsonRpcResponse::success(json!(1), json!("result"));
-    let serialized = serde_json::to_string(&response).unwrap();
+    let serialized =
+        serde_json::to_string(&JsonRpcMessage::V2(JsonRpcV2Message::Response(response))).unwrap();
     assert!(serialized.contains("jsonrpc"));
     assert!(serialized.contains("result"));
 
@@ -173,7 +177,10 @@ fn test_json_rpc_message_serialization() {
         "test_notification".to_string(),
         Some(json!({"data": "test"})),
     );
-    let serialized = serde_json::to_string(&notification).unwrap();
+    let serialized = serde_json::to_string(&JsonRpcMessage::V2(JsonRpcV2Message::Notification(
+        notification,
+    )))
+    .unwrap();
     assert!(serialized.contains("jsonrpc"));
     assert!(serialized.contains("test_notification"));
     assert!(!serialized.contains("id")); // Notifications have no ID

@@ -1,3 +1,6 @@
+// ABOUTME: Generates user-facing answers from ranked retrieval results
+// ABOUTME: Produces responses with confidence, sources, and validation outcomes
+
 use crate::rag::RankedResult;
 use codegraph_core::Result;
 use serde::{Deserialize, Serialize};
@@ -649,7 +652,7 @@ impl ResponseGenerator {
 
     async fn generate_no_results_response(&self, query: &str) -> Result<GeneratedResponse> {
         let answer = format!(
-            "I couldn't find any relevant information for '{}'. You might want to try rephrasing your query or using different keywords.",
+            "No relevant context found for query: '{}'. You might want to try rephrasing your query or using different keywords.",
             query
         );
 
@@ -862,7 +865,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.confidence, 0.0);
-        assert!(response.answer.contains("couldn't find"));
+        assert!(response.answer.contains("No relevant"));
         assert!(response.sources.is_empty());
     }
 

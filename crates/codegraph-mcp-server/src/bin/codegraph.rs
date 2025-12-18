@@ -1172,6 +1172,41 @@ async fn handle_index(
         "│ 🎯 Resolution: {:>6.1}% ({} resolved, {} unresolved)      │",
         stats.resolution_rate, stats.resolved_edges, stats.unresolved_edges
     );
+    if stats.analyzers_enabled {
+        println!(
+            "│ 🧩 Build ctx:   {:>6} nodes, {:>4} edges                 │",
+            stats.build_context_nodes, stats.build_context_edges
+        );
+        println!(
+            "│ 🧠 LSP:         {:>6} symbols, {:>4} edges               │",
+            stats.lsp_nodes_enriched, stats.lsp_edges_resolved
+        );
+        println!(
+            "│ 🧾 Rustdoc/API: {:>6} docs, {:>4} exports               │",
+            stats.docs_attached, stats.export_edges_added
+        );
+        println!(
+            "│               +{:>6} reexports, {:>3} enables            │",
+            stats.reexport_edges_added, stats.feature_enables_edges_added
+        );
+        println!(
+            "│ 🧭 Modules:     {:>6} nodes, {:>4} imports              │",
+            stats.module_nodes_added, stats.module_import_edges_added
+        );
+        println!(
+            "│ 🌊 Dataflow:    {:>6} vars, {:>4} flows                │",
+            stats.dataflow_variable_nodes_added, stats.dataflow_flows_to_edges_added
+        );
+        println!(
+            "│ 📚 Docs:        {:>6} docs, {:>4} links                │",
+            stats.doc_nodes_added,
+            stats.document_edges_added + stats.specification_edges_added
+        );
+        println!(
+            "│ 🏛️  Arch:       {:>6} cycles, {:>4} violations          │",
+            stats.package_cycles_detected, stats.boundary_violations_added
+        );
+    }
     println!(
         "│ 💾 Embeddings: {:>6} chunks ({}-dim)                  │",
         stats.embeddings, stats.embedding_dimension

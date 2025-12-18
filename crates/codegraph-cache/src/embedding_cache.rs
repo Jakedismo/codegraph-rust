@@ -326,7 +326,6 @@ impl Default for EmbeddingCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
 
     #[tokio::test]
     async fn test_embedding_cache_basic_operations() {

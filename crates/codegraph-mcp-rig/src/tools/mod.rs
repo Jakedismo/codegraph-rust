@@ -6,5 +6,6 @@ mod factory;
 mod graph_tools;
 
 pub use counting_executor::CountingExecutor;
+pub use counting_executor::ToolTrace;
 pub use factory::GraphToolFactory;
 pub use graph_tools::*;

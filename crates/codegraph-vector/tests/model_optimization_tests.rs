@@ -1,10 +1,13 @@
-use approx::relative_eq;
 use codegraph_core::Result;
 use codegraph_vector::{
     GpuAcceleration, MemoryOptimizer, MemoryPoolConfig, ModelOptimizer, OptimizationPipelineConfig,
     ParallelConfig, QuantizationConfig, QuantizationMethod,
 };
 use std::time::Instant;
+
+#[cfg(feature = "persistent")]
+use approx::relative_eq;
+#[cfg(feature = "persistent")]
 use tempfile::TempDir;
 
 /// Test configuration for model optimization
