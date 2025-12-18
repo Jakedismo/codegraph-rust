@@ -27,14 +27,28 @@ AI coding assistants are powerful, but they're flying blind. They see files one 
 Most semantic search tools create embeddings and call it a day. CodeGraph builds a **real knowledge graph**:
 
 ```
-Your Code → AST + FastML → Graph Construction → Vector Embeddings
-                ↓                  ↓                    ↓
-           Functions          Dependencies        Semantic Search
-           Classes            Call chains         Similarity
-           Modules            Data flow           Context
+Your Code → Build Context → AST + FastML → LSP Resolution → Enrichment → Graph + Embeddings
+              ↓               ↓              ↓              ↓              ↓
+          Packages        Nodes/edges    Type-aware     API surface     Semantic
+          Features        Fast patterns  linking        Docs/contracts  search
+          Targets         Spans          Definitions    Cycles/impact   (hybrid)
 ```
 
 When you search, you don't just get "similar code"—you get code with its **relationships intact**. The function that matches your query, plus what calls it, what it depends on, and where it fits in the architecture.
+
+#### Indexing prerequisites (required by default)
+
+Indexing runs analyzer stages by default, and it **fails fast** if the required external tools are missing.
+
+Required tools by language:
+- Rust: `rust-analyzer`
+- TypeScript/JavaScript: `node` and `typescript-language-server`
+- Python: `node` and `pyright-langserver`
+- Go: `gopls`
+- Java: `jdtls`
+- C/C++: `clangd`
+
+You can disable analyzers (and tool requirements) for troubleshooting with `CODEGRAPH_ANALYZERS=0`, but the default indexing behavior assumes the tools exist.
 
 ### 2. Agentic Tools, Not Just Search
 
