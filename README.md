@@ -56,6 +56,10 @@ Required tools by language:
 
 You can disable analyzers (and tool requirements) for troubleshooting with `CODEGRAPH_ANALYZERS=0`, but the default indexing behavior assumes the tools exist.
 
+If indexing appears to stall during LSP resolution, you can adjust the per-request timeout:
+
+- `CODEGRAPH_LSP_REQUEST_TIMEOUT_SECS` (default `600`, minimum `5`)
+
 #### Optional architecture boundary rules
 
 If you want CodeGraph to flag forbidden package dependencies, add `codegraph.boundaries.toml` at the project root:

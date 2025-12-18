@@ -7,7 +7,14 @@ use serde_json::Value as JsonValue;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::time::{Duration, Instant};
+use tracing::{debug, info};
 use url::Url;
+
+#[cfg(unix)]
+use nix::fcntl::{fcntl, FcntlArg, OFlag};
+#[cfg(unix)]
+use std::os::fd::AsFd;
 
 pub fn encode_lsp_message(body: &str) -> Vec<u8> {
     format!("Content-Length: {}\r\n\r\n{}", body.as_bytes().len(), body).into_bytes()
@@ -119,6 +126,7 @@ pub fn enrich_nodes_and_edges_with_lsp(
     nodes: &mut [CodeNode],
     edges: &mut [EdgeRelationship],
 ) -> Result<LspEnrichmentStats> {
+    let start_total = Instant::now();
     let root_uri = Url::from_directory_path(project_root)
         .map_err(|_| anyhow::anyhow!("failed to create file URI for {:?}", project_root))?
         .to_string();
@@ -143,6 +151,9 @@ pub fn enrich_nodes_and_edges_with_lsp(
     }
 
     let mut stats = LspEnrichmentStats::default();
+    let total_files = files.len().max(1);
+    let mut processed_files: usize = 0;
+    let mut last_progress_log = Instant::now();
 
     for file_path in files {
         let content = std::fs::read_to_string(file_path)?;
@@ -229,6 +240,19 @@ pub fn enrich_nodes_and_edges_with_lsp(
                 stats.edges_resolved += 1;
             }
         }
+
+        processed_files += 1;
+        if last_progress_log.elapsed() >= Duration::from_secs(10) {
+            info!(
+                "🧠 LSP progress: {}/{} files | enriched {} symbols | resolved {} edges | elapsed {:.1?}",
+                processed_files,
+                total_files,
+                stats.nodes_enriched,
+                stats.edges_resolved,
+                start_total.elapsed()
+            );
+            last_progress_log = Instant::now();
+        }
     }
 
     Ok(stats)
@@ -286,6 +310,14 @@ pub struct LspProcess {
 
 impl LspProcess {
     pub fn start(command: &Path, args: &[&str], root_uri: &str) -> Result<Self> {
+        let start = Instant::now();
+        info!(
+            "🧠 Starting LSP server: {} (rootUri={})",
+            command.display(),
+            root_uri
+        );
+        debug!("🧠 LSP args: {:?}", args);
+
         let mut child = Command::new(command)
             .args(args)
             .stdin(Stdio::piped())
@@ -301,6 +333,9 @@ impl LspProcess {
             .stdout
             .take()
             .ok_or_else(|| anyhow::anyhow!("missing stdout"))?;
+
+        #[cfg(unix)]
+        set_stdout_nonblocking(&stdout)?;
 
         let mut proc = Self {
             child,
@@ -323,9 +358,10 @@ impl LspProcess {
             }
         });
 
-        let _ = proc.request("initialize", init_params)?;
+        let _ = proc.request_with_timeout("initialize", init_params, lsp_request_timeout())?;
         proc.notify("initialized", serde_json::json!({}))?;
 
+        info!("🧠 LSP server initialized in {:.1?}", start.elapsed());
         Ok(proc)
     }
 
@@ -340,6 +376,15 @@ impl LspProcess {
     }
 
     pub fn request(&mut self, method: &str, params: JsonValue) -> Result<JsonValue> {
+        self.request_with_timeout(method, params, lsp_request_timeout())
+    }
+
+    pub fn request_with_timeout(
+        &mut self,
+        method: &str,
+        params: JsonValue,
+        timeout: Duration,
+    ) -> Result<JsonValue> {
         let id = self.next_id;
         self.next_id += 1;
 
@@ -351,9 +396,25 @@ impl LspProcess {
         });
         self.write_message(&msg)?;
 
+        let deadline = Instant::now() + timeout;
         loop {
-            let next = self.read_message()?;
+            if Instant::now() >= deadline {
+                let status = self.child.try_wait().ok().flatten();
+                return Err(anyhow::anyhow!(
+                    "LSP request timed out after {:.1?}: method={} id={} status={:?}",
+                    timeout,
+                    method,
+                    id,
+                    status
+                ));
+            }
+
+            let next = self.read_message_until(deadline)?;
             let Some(v) = next else {
+                if let Some(status) = self.child.try_wait().ok().flatten() {
+                    return Err(anyhow::anyhow!("LSP process exited: {}", status));
+                }
+                std::thread::sleep(Duration::from_millis(10));
                 continue;
             };
 
@@ -374,7 +435,7 @@ impl LspProcess {
         Ok(())
     }
 
-    fn read_message(&mut self) -> Result<Option<JsonValue>> {
+    fn read_message_until(&mut self, deadline: Instant) -> Result<Option<JsonValue>> {
         loop {
             if let Some((body, consumed)) = decode_one_lsp_message(&self.read_buffer)? {
                 self.read_buffer.drain(..consumed);
@@ -382,8 +443,16 @@ impl LspProcess {
                 return Ok(Some(v));
             }
 
+            if Instant::now() >= deadline {
+                return Ok(None);
+            }
+
             let mut buf = [0u8; 8192];
-            let n = self.stdout.read(&mut buf)?;
+            let n = match self.stdout.read(&mut buf) {
+                Ok(n) => n,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+                Err(e) => return Err(e.into()),
+            };
             if n == 0 {
                 return Ok(None);
             }
@@ -399,9 +468,25 @@ impl Drop for LspProcess {
     }
 }
 
+#[cfg(unix)]
+fn set_stdout_nonblocking(stdout: &ChildStdout) -> Result<()> {
+    let flags = OFlag::from_bits_truncate(fcntl(stdout.as_fd(), FcntlArg::F_GETFL)?);
+    fcntl(stdout.as_fd(), FcntlArg::F_SETFL(flags | OFlag::O_NONBLOCK))?;
+    Ok(())
+}
+
+fn lsp_request_timeout() -> Duration {
+    let secs = std::env::var("CODEGRAPH_LSP_REQUEST_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(600);
+    Duration::from_secs(secs.max(5))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn lsp_message_round_trips_through_framing() {
@@ -477,5 +562,39 @@ mod tests {
         assert!(flat
             .iter()
             .any(|s| s.qualified_name == "mod_a::foo" && s.start_line == 2));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lsp_request_times_out_when_server_is_silent() {
+        let mut child = Command::new("sh")
+            .args(["-c", "cat >/dev/null"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn fake LSP server");
+
+        let stdin = child.stdin.take().expect("stdin");
+        let stdout = child.stdout.take().expect("stdout");
+
+        set_stdout_nonblocking(&stdout).expect("set nonblocking");
+
+        let mut proc = LspProcess {
+            child,
+            stdin,
+            stdout,
+            read_buffer: Vec::new(),
+            next_id: 1,
+        };
+
+        let err = proc
+            .request_with_timeout(
+                "initialize",
+                serde_json::json!({}),
+                Duration::from_millis(50),
+            )
+            .expect_err("initialize should time out");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("timed out"), "unexpected error: {msg}");
     }
 }

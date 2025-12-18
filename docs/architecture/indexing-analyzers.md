@@ -99,6 +99,11 @@ In addition to AST + FastML extraction, the indexing pipeline runs analyzer stag
 - **Docs/contracts**: creates document/spec nodes and links backticked symbols (`documents`, `specifies`)
 - **Architecture/boundaries**: counts package dependency cycles and (optionally) emits `violates_boundary` edges from configured rules
 
+LSP resolution is inherently dependent on external tooling and workspace size. To keep indexing observable and avoid indefinite hangs:
+
+- Indexing emits periodic progress for LSP resolution (count-oriented, no per-file noise at info level).
+- The per-request LSP timeout can be configured via `CODEGRAPH_LSP_REQUEST_TIMEOUT_SECS` (default `600`, minimum `5`).
+
 ### Project-level resolution (cross-file)
 
 Even after FastML, many extracted edges still have `to: String` rather than a resolved node ID. The indexer builds a project-wide symbol index and attempts to resolve edge targets across the whole project, with optional semantic matching behind the `ai-enhanced` feature flag.
