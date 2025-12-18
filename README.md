@@ -28,10 +28,10 @@ Most semantic search tools create embeddings and call it a day. CodeGraph builds
 
 ```
 Your Code → Build Context → AST + FastML → LSP Resolution → Enrichment → Graph + Embeddings
-              ↓               ↓              ↓              ↓              ↓
-          Packages        Nodes/edges    Type-aware     API surface     Semantic
-          Features        Fast patterns  linking        Module graph    search
-          Targets         Spans          Definitions    Dataflow/Docs   (hybrid)
+              ↓               ↓              ↓              ↓              ↓         ↓
+          Packages        Nodes/edges    Type-aware     API surface      Graph    Semantic
+          Features        Fast patterns  linking        Module graph   traversal   search
+          Targets         Spans          Definitions    Dataflow/Docs             (hybrid)
 ```
 
 When you search, you don't just get "similar code"—you get code with its **relationships intact**. The function that matches your query, plus what calls it, what it depends on, and where it fits in the architecture.
