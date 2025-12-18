@@ -19,6 +19,8 @@ use tokio::time::sleep;
 #[tokio::test]
 async fn watch_updates_file_metadata_on_change() -> Result<()> {
     std::env::set_var("CODEGRAPH_NO_PROGRESS", "1");
+    std::env::set_var("CODEGRAPH_ANALYZERS", "0");
+    std::env::set_var("CODEGRAPH_ANALYZERS_REQUIRE_TOOLS", "0");
 
     // Isolated in-memory SurrealDB
     std::env::set_var("CODEGRAPH_SURREALDB_URL", "mem://");

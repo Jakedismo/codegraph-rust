@@ -5,6 +5,7 @@
 use crate::estimation::{
     extend_symbol_index, parse_files_with_unified_extraction as shared_unified_parse,
 };
+use crate::analyzers::{find_tool_on_path, required_tools_for_languages, AnalyzerSettings};
 use anyhow::{anyhow, Context, Result};
 use codegraph_core::{CodeNode, EdgeRelationship, NodeId, NodeType};
 use codegraph_graph::ChunkEmbeddingRecord;
@@ -587,6 +588,37 @@ impl ProjectIndexer {
         (batch_size, max_concurrent)
     }
 
+    fn validate_analyzer_tools(
+        languages: &[codegraph_core::Language],
+        settings: AnalyzerSettings,
+        path_env: &str,
+    ) -> Result<()> {
+        if !settings.enabled {
+            return Ok(());
+        }
+        if !settings.require_tools {
+            return Ok(());
+        }
+
+        let required = required_tools_for_languages(languages);
+        let mut missing: Vec<String> = Vec::new();
+
+        for tool in required {
+            if find_tool_on_path(tool.name, path_env).is_none() {
+                missing.push(format!("{} (for {:?})", tool.name, tool.language));
+            }
+        }
+
+        if missing.is_empty() {
+            return Ok(());
+        }
+
+        Err(anyhow!(
+            "Missing required analyzer tools: {}. Install the tools or set CODEGRAPH_ANALYZERS=0 to disable analyzers.",
+            missing.join(", ")
+        ))
+    }
+
     pub async fn new(
         mut config: IndexerConfig,
         global_config: &codegraph_core::config_manager::CodeGraphConfig,
@@ -922,6 +954,44 @@ impl ProjectIndexer {
             codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?
         };
 
+        let analyzer_settings = AnalyzerSettings::from_env();
+        let path_env = std::env::var("PATH").unwrap_or_default();
+        let mut analyzer_languages: HashSet<codegraph_core::Language> = HashSet::new();
+        if analyzer_settings.enabled {
+            let registry = codegraph_parser::LanguageRegistry::new();
+            for (p, _) in &files_to_index {
+                if let Some(lang) = registry.detect_language(&p.to_string_lossy()) {
+                    analyzer_languages.insert(lang);
+                }
+            }
+        }
+        let analyzer_languages: Vec<codegraph_core::Language> = analyzer_languages.into_iter().collect();
+        Self::validate_analyzer_tools(&analyzer_languages, analyzer_settings, &path_env)?;
+
+        let mut build_context_nodes = 0usize;
+        let mut build_context_edges = 0usize;
+        let build_context_out = if analyzer_settings.enabled
+            && analyzer_languages.contains(&codegraph_core::Language::Rust)
+        {
+            let start = std::time::Instant::now();
+            info!("🧩 Build context analysis (Cargo metadata) starting");
+            let out = crate::analyzers::build_context::analyze_cargo_workspace(
+                &self.project_root,
+                &self.project_id,
+            )?;
+            build_context_nodes = out.nodes.len();
+            build_context_edges = out.edges.len();
+            info!(
+                "🧩 Build context analysis complete: {} nodes + {} edges in {:.1?}",
+                build_context_nodes,
+                build_context_edges,
+                start.elapsed()
+            );
+            out
+        } else {
+            Default::default()
+        };
+
         // STAGE 1: File Collection & Parsing
         let files = files_to_index;
         let total_files = files.len();
@@ -948,6 +1018,11 @@ impl ProjectIndexer {
             .parse_files_with_unified_extraction(files.clone(), total_files as u64)
             .await?;
 
+        if analyzer_settings.enabled && (!build_context_out.nodes.is_empty() || !build_context_out.edges.is_empty()) {
+            nodes.extend(build_context_out.nodes);
+            edges.extend(build_context_out.edges);
+        }
+
         self.finish_bar(
             ast_pb,
             format!(
@@ -973,6 +1048,110 @@ impl ProjectIndexer {
             if let Some(new_id) = id_mapping.get(&edge.from) {
                 edge.from = *new_id;
             }
+        }
+
+        let mut lsp_enrichment_stats = crate::analyzers::lsp::LspEnrichmentStats::default();
+        if analyzer_settings.enabled && !analyzer_languages.is_empty() {
+            let start = std::time::Instant::now();
+            info!(
+                "🧠 Language-server analysis starting (languages: {:?})",
+                analyzer_languages
+            );
+
+            let project_root = self.project_root.clone();
+            let path_env = path_env.clone();
+
+            let mut language_files: std::collections::HashMap<codegraph_core::Language, Vec<PathBuf>> =
+                std::collections::HashMap::new();
+            let registry = codegraph_parser::LanguageRegistry::new();
+            for (p, _) in &files {
+                if let Some(lang) = registry.detect_language(&p.to_string_lossy()) {
+                    language_files.entry(lang).or_default().push(p.clone());
+                }
+            }
+
+            let mut nodes_moved = Vec::new();
+            std::mem::swap(&mut nodes_moved, &mut nodes);
+            let mut edges_moved = Vec::new();
+            std::mem::swap(&mut edges_moved, &mut edges);
+
+            let (mut nodes_updated, mut edges_updated, total_stats) =
+                tokio::task::spawn_blocking(move || -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, crate::analyzers::lsp::LspEnrichmentStats)> {
+                    let mut nodes = nodes_moved;
+                    let mut edges = edges_moved;
+                    let mut total = crate::analyzers::lsp::LspEnrichmentStats::default();
+
+                    for (lang, files) in language_files {
+                        let Some(spec) = crate::analyzers::lsp_server_for_language(&lang) else {
+                            continue;
+                        };
+                        let Some(tool_path) = find_tool_on_path(spec.tool_name, &path_env) else {
+                            return Err(anyhow!("Missing required analyzer tool: {}", spec.tool_name));
+                        };
+                        let stats = crate::analyzers::lsp::enrich_nodes_and_edges_with_lsp(
+                            &tool_path,
+                            spec.args,
+                            spec.language_id,
+                            spec.name_joiner,
+                            &project_root,
+                            &files,
+                            &mut nodes,
+                            &mut edges,
+                        )?;
+                        total.nodes_enriched += stats.nodes_enriched;
+                        total.edges_resolved += stats.edges_resolved;
+                    }
+
+                    Ok((nodes, edges, total))
+                })
+                .await??;
+
+            std::mem::swap(&mut nodes, &mut nodes_updated);
+            std::mem::swap(&mut edges, &mut edges_updated);
+
+            lsp_enrichment_stats = total_stats;
+            info!(
+                "🧠 Language-server analysis complete: {} nodes enriched + {} edges resolved in {:.1?}",
+                lsp_enrichment_stats.nodes_enriched,
+                lsp_enrichment_stats.edges_resolved,
+                start.elapsed()
+            );
+        }
+
+        let mut enrichment_stats = crate::analyzers::enrichment::EnrichmentStats::default();
+        if analyzer_settings.enabled {
+            let start = std::time::Instant::now();
+            info!("🧾 Enrichment analysis starting (docs, api surface, architecture)");
+            let project_root = self.project_root.clone();
+
+            let mut nodes_moved = Vec::new();
+            std::mem::swap(&mut nodes_moved, &mut nodes);
+            let mut edges_moved = Vec::new();
+            std::mem::swap(&mut edges_moved, &mut edges);
+
+            let (mut nodes_updated, mut edges_updated, enrich_stats) =
+                tokio::task::spawn_blocking(move || -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, crate::analyzers::enrichment::EnrichmentStats)> {
+                    let mut nodes = nodes_moved;
+                    let mut edges = edges_moved;
+                    let stats =
+                        crate::analyzers::enrichment::apply_basic_enrichment(&project_root, &mut nodes, &mut edges)?;
+                    Ok((nodes, edges, stats))
+                })
+                .await??;
+
+            std::mem::swap(&mut nodes, &mut nodes_updated);
+            std::mem::swap(&mut edges, &mut edges_updated);
+
+            enrichment_stats = enrich_stats;
+            info!(
+                "🧾 Enrichment analysis complete: docs={} api_marked={} exports={} uses={} package_cycles={} in {:.1?}",
+                enrichment_stats.docs_attached,
+                enrichment_stats.api_marked,
+                enrichment_stats.export_edges_added,
+                enrichment_stats.uses_edges_derived,
+                enrichment_stats.package_cycles_detected,
+                start.elapsed()
+            );
         }
 
         // Store counts for final summary (before consumption)
@@ -1091,6 +1270,15 @@ impl ProjectIndexer {
         let mut stats = IndexStats {
             files: pstats.parsed_files,
             skipped: pstats.total_files - pstats.parsed_files,
+            analyzers_enabled: analyzer_settings.enabled,
+            build_context_nodes,
+            build_context_edges,
+            lsp_nodes_enriched: lsp_enrichment_stats.nodes_enriched,
+            lsp_edges_resolved: lsp_enrichment_stats.edges_resolved,
+            docs_attached: enrichment_stats.docs_attached,
+            export_edges_added: enrichment_stats.export_edges_added,
+            uses_edges_derived: enrichment_stats.uses_edges_derived,
+            package_cycles_detected: enrichment_stats.package_cycles_detected,
             ..Default::default()
         };
         let mut symbol_map: std::collections::HashMap<String, NodeId> =
@@ -4043,6 +4231,18 @@ mod tests {
         assert_eq!(column.column_name(), SURR_EMBEDDING_COLUMN_3072);
         assert_eq!(column.dimension(), 3072);
     }
+
+    #[test]
+    fn analyzer_requires_rust_analyzer_when_enabled() {
+        let settings = AnalyzerSettings {
+            enabled: true,
+            require_tools: true,
+        };
+
+        let err = ProjectIndexer::validate_analyzer_tools(&[codegraph_core::Language::Rust], settings, "")
+            .expect_err("should fail when required tools are missing");
+        let _ = err;
+    }
 }
 
 pub fn prepare_node_text(node: &CodeNode) -> String {
@@ -4157,6 +4357,16 @@ pub struct IndexStats {
     pub resolved_edges: usize,
     pub unresolved_edges: usize,
     pub resolution_rate: f64,
+    // Analyzer stats
+    pub analyzers_enabled: bool,
+    pub build_context_nodes: usize,
+    pub build_context_edges: usize,
+    pub lsp_nodes_enriched: usize,
+    pub lsp_edges_resolved: usize,
+    pub docs_attached: usize,
+    pub export_edges_added: usize,
+    pub uses_edges_derived: usize,
+    pub package_cycles_detected: usize,
 }
 
 impl IndexStats {

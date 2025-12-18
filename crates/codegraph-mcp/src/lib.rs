@@ -1,4 +1,5 @@
 pub mod connection;
+pub mod analyzers;
 pub mod estimation;
 pub mod heartbeat;
 pub mod indexer;

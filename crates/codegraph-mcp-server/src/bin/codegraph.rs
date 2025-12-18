@@ -1172,6 +1172,24 @@ async fn handle_index(
         "│ 🎯 Resolution: {:>6.1}% ({} resolved, {} unresolved)      │",
         stats.resolution_rate, stats.resolved_edges, stats.unresolved_edges
     );
+    if stats.analyzers_enabled {
+        println!(
+            "│ 🧩 Build ctx:   {:>6} nodes, {:>4} edges                 │",
+            stats.build_context_nodes, stats.build_context_edges
+        );
+        println!(
+            "│ 🧠 LSP:         {:>6} symbols, {:>4} edges               │",
+            stats.lsp_nodes_enriched, stats.lsp_edges_resolved
+        );
+        println!(
+            "│ 🧾 Enrichment:  {:>6} docs, {:>4} exports               │",
+            stats.docs_attached, stats.export_edges_added
+        );
+        println!(
+            "│    Dataflow:    {:>6} uses, {:>4} cycles                │",
+            stats.uses_edges_derived, stats.package_cycles_detected
+        );
+    }
     println!(
         "│ 💾 Embeddings: {:>6} chunks ({}-dim)                  │",
         stats.embeddings, stats.embedding_dimension
