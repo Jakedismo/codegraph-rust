@@ -2,6 +2,14 @@
 
 Welcome to the comprehensive documentation for the CodeGraph project.
 
+## Guides
+
+- [Installation & setup](INSTALLATION_GUIDE.md)
+- [Usage guide (for AI assistants)](USAGE_GUIDE.md)
+- [AI provider configuration (embeddings + LLMs)](AI_PROVIDERS.md)
+- [Agentic prompt tiers (4-tier system)](AGENT_PROMPT_TIERS.md)
+- [Supported languages](SUPPORTED_LANGUAGES.md)
+
 ## Architecture Visualization
 Explore the interactive [Architecture Diagram](architecture-visualization.html) to understand the system components and data flow.
 
