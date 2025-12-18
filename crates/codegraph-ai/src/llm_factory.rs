@@ -1,3 +1,5 @@
+// ABOUTME: Builds LLM provider instances from user configuration.
+// ABOUTME: Centralizes provider selection and feature-gated availability rules.
 use crate::llm_provider::*;
 use crate::qwen_simple::{QwenClient, QwenConfig};
 use anyhow::{anyhow, Result};
@@ -302,7 +304,7 @@ mod tests {
     fn test_qwen_provider_creation() {
         let config = LLMConfig {
             enabled: true,
-            provider: "ollama".to_string(),
+            provider: "qwen".to_string(),
             model: Some("qwen2.5-coder:14b".to_string()),
             ollama_url: "http://localhost:11434".to_string(),
             context_window: 128000,

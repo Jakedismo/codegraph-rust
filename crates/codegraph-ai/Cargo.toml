@@ -28,6 +28,9 @@ num_cpus = { workspace = true }
 prometheus = { workspace = true }
 reqwest = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [features]
 default = []
 anthropic = []

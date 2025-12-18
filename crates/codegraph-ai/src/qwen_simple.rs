@@ -1,8 +1,11 @@
+// ABOUTME: Provides a minimal client for invoking a local Qwen model via an Ollama-compatible API.
+// ABOUTME: Supports availability checks and request/response shaping for code analysis prompts.
 use crate::llm_provider::*;
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 use tracing::{debug, info};
@@ -66,16 +69,28 @@ pub struct QwenResult {
 }
 
 pub struct QwenClient {
-    client: Client,
+    client: OnceLock<Client>,
     config: QwenConfig,
 }
 
 impl QwenClient {
     pub fn new(config: QwenConfig) -> Self {
         Self {
-            client: Client::new(),
+            client: OnceLock::new(),
             config,
         }
+    }
+
+    fn client(&self) -> Result<&Client> {
+        if let Some(client) = self.client.get() {
+            return Ok(client);
+        }
+
+        let built = std::panic::catch_unwind(Client::new).map_err(|_| {
+            CodeGraphError::Network("Failed to initialize HTTP client".to_string())
+        })?;
+        let _ = self.client.set(built);
+        Ok(self.client.get().expect("client should be initialized"))
     }
 
     /// Generate analysis using Qwen2.5-Coder with comprehensive context
@@ -111,7 +126,7 @@ impl QwenClient {
 
         let response = timeout(
             self.config.timeout,
-            self.client
+            self.client()?
                 .post(&format!("{}/api/generate", self.config.base_url))
                 .json(&request)
                 .send(),
@@ -173,7 +188,7 @@ impl QwenClient {
 
         let response = timeout(
             Duration::from_secs(5),
-            self.client
+            self.client()?
                 .get(&format!("{}/api/tags", self.config.base_url))
                 .send(),
         )
@@ -270,7 +285,7 @@ impl LLMProvider for QwenClient {
 
         let response = timeout(
             self.config.timeout,
-            self.client
+            self.client()?
                 .post(&format!("{}/api/generate", self.config.base_url))
                 .json(&request)
                 .send(),

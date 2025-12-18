@@ -462,7 +462,6 @@ mod tests {
     }
 
     struct InMemoryVectorStore {
-        dim: usize,
         // NodeId -> embedding
         embs: DashMap<NodeId, Vec<f32>>,
     }
@@ -545,7 +544,6 @@ mod tests {
                 nodes: DashMap::new(),
             });
             let vstore = InMemoryVectorStore {
-                dim: 384,
                 embs: DashMap::new(),
             };
             let embedder = Arc::new(HasherEmbeddingService::new(384));

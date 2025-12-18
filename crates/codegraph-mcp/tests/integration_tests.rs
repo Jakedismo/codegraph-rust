@@ -1,22 +1,78 @@
+// ABOUTME: Integration tests for starting a CodeGraph MCP stdio server process.
+// ABOUTME: Exercises basic server lifecycle and tool discovery via rmcp.
 /// Practical E2E Integration Tests for CodeGraph MCP Server
 ///
 /// Tests that focus on validating essential functionality
 /// Tests against the indexed Rust codebase in this repository
-use std::process::{Command, Stdio};
+use std::process::{Command as StdCommand, Stdio};
 use std::time::Duration;
+use std::{path::PathBuf, sync::OnceLock};
+
+use rmcp::{transport::TokioChildProcess, ServiceExt};
+use tokio::process::Command;
+
+static CODEGRAPH_BIN: OnceLock<PathBuf> = OnceLock::new();
+
+fn workspace_root_dir() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .map(PathBuf::from)
+        .expect("Expected CARGO_MANIFEST_DIR to be under <workspace>/crates/<crate>")
+}
+
+fn target_dir() -> PathBuf {
+    std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| workspace_root_dir().join("target"))
+}
+
+fn codegraph_bin_path() -> PathBuf {
+    let exe = if cfg!(windows) { "codegraph.exe" } else { "codegraph" };
+    target_dir().join("debug").join(exe)
+}
+
+fn ensure_codegraph_bin() -> PathBuf {
+    CODEGRAPH_BIN
+        .get_or_init(|| {
+            let workspace_root = workspace_root_dir();
+            let output = StdCommand::new("cargo")
+                .current_dir(&workspace_root)
+                .args(["build", "-q", "-p", "codegraph-mcp-server", "--bin", "codegraph"])
+                .stdin(Stdio::null())
+                .output()
+                .expect("Failed to invoke cargo build for codegraph-mcp-server");
+
+            if !output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                panic!(
+                    "Failed to build codegraph-mcp-server binary.\nstdout:\n{}\nstderr:\n{}",
+                    stdout, stderr
+                );
+            }
+
+            let bin = codegraph_bin_path();
+            assert!(
+                bin.exists(),
+                "Expected built binary at '{}', but it does not exist",
+                bin.display()
+            );
+            bin
+        })
+        .clone()
+}
 
 #[tokio::test]
 async fn test_mcp_server_startup() {
     println!("🚀 Testing MCP server startup with indexed Rust codebase...");
 
     // Test that the server starts without crashing
-    let mut child = Command::new("codegraph")
+    let mut child = StdCommand::new(ensure_codegraph_bin())
         .args(["start", "stdio"])
         .env("RUST_LOG", "error")
-        .env(
-            "CODEGRAPH_MODEL",
-            "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M",
-        )
+        .env("CODEGRAPH_DEBUG", "0")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -94,15 +150,31 @@ async fn test_language_support_comprehensive() {
 
 #[tokio::test]
 async fn test_official_server_creation() {
-    println!("🔧 Testing official MCP server creation...");
+    println!("🔧 Testing MCP server handshake via stdio...");
 
-    // Test that we can create the server instance
-    let server = codegraph_mcp::official_server::CodeGraphMCPServer::new();
-    println!("✅ CodeGraph MCP server instance created successfully");
+    let mut cmd = Command::new(ensure_codegraph_bin());
+    cmd.args(["start", "stdio"])
+        .env("RUST_LOG", "error")
+        .env("CODEGRAPH_DEBUG", "0");
 
-    // Test Qwen initialization (if available)
-    server.initialize_qwen().await;
-    println!("✅ Qwen initialization completed (may show warnings if model not available)");
+    let (transport, _stderr) = TokioChildProcess::builder(cmd)
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("Failed to start MCP server process");
 
-    println!("🎉 Official server creation test passed!");
+    let service = ()
+        .serve(transport)
+        .await
+        .expect("Failed to initialize MCP client");
+
+    let tools = service
+        .list_tools(Default::default())
+        .await
+        .expect("Failed to list tools");
+    assert!(!tools.tools.is_empty(), "Server should expose tools");
+
+    service
+        .cancel()
+        .await
+        .expect("Failed to cancel MCP client session");
 }

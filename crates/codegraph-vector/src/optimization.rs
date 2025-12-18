@@ -1,3 +1,6 @@
+// ABOUTME: Provides vector optimization utilities like quantization and batching
+// ABOUTME: Implements an optimization pipeline and baseline/optimized search helpers
+
 use codegraph_core::{CodeGraphError, Result};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -58,9 +61,92 @@ pub struct OptimizationResult {
 
 impl OptimizationResult {
     pub fn search_optimized(&self, _query: &[f32], _limit: usize) -> Result<Vec<usize>> {
-        // Implementation for optimized search using quantized data
-        // This would decode the optimized_data and perform search
-        Ok((0..10).collect()) // Placeholder implementation
+        let limit = _limit.max(1);
+        let dimension = self
+            .metadata
+            .get("dimension")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
+        if dimension == 0 || self.optimized_data.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let bits = self
+            .metadata
+            .get("quantization_bits")
+            .and_then(|v| v.parse::<u8>().ok())
+            .unwrap_or(8);
+        if bits != 8 {
+            return Ok((0..limit).collect());
+        }
+
+        let vector_count = self
+            .metadata
+            .get("vector_count")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or_else(|| self.optimized_data.len() / dimension);
+
+        if vector_count == 0 || self.optimized_data.len() < vector_count * dimension {
+            return Ok(Vec::new());
+        }
+
+        let q_max = ((1i32 << (bits.saturating_sub(1))) - 1).max(1) as f32;
+        let mut q_query: Vec<i8> = Vec::with_capacity(dimension);
+        for &v in _query.iter().take(dimension) {
+            let clamped = v.clamp(-1.0, 1.0);
+            let q = (clamped * q_max).round() as i32;
+            let q_max_i32 = q_max as i32;
+            q_query.push(q.clamp(-q_max_i32, q_max_i32) as i8);
+        }
+        if q_query.len() < dimension {
+            q_query.resize(dimension, 0);
+        }
+
+        let norm_query: f32 = q_query
+            .iter()
+            .map(|&v| (v as f32) * (v as f32))
+            .sum::<f32>()
+            .sqrt();
+        if norm_query == 0.0 {
+            return Ok(Vec::new());
+        }
+
+        let mut best: Vec<(usize, f32)> = Vec::with_capacity(limit.min(vector_count));
+
+        for idx in 0..vector_count {
+            let base = idx * dimension;
+            let row = &self.optimized_data[base..base + dimension];
+
+            let mut dot: i32 = 0;
+            let mut norm_v_sq: i32 = 0;
+            for (qb, &q) in row.iter().zip(q_query.iter()) {
+                let v_i32 = (*qb as i32) - 128;
+                let q_i32 = q as i32;
+                dot += v_i32 * q_i32;
+                norm_v_sq += v_i32 * v_i32;
+            }
+
+            if norm_v_sq == 0 {
+                continue;
+            }
+
+            let score = (dot as f32) / (norm_query * (norm_v_sq as f32).sqrt());
+
+            if best.len() < limit {
+                best.push((idx, score));
+                if best.len() == limit {
+                    best.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                }
+            } else if let Some((_, min_score)) = best.first() {
+                if score > *min_score {
+                    best[0] = (idx, score);
+                    best.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                }
+            }
+        }
+
+        best.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(best.into_iter().map(|(idx, _)| idx).collect())
     }
 }
 
@@ -94,92 +180,47 @@ impl ModelOptimizer {
     }
 
     fn quantize_linear(&self, vector: &[f32], config: &QuantizationConfig) -> Result<Vec<i8>> {
-        let min_val = vector.iter().fold(f32::INFINITY, |a, &b| a.min(b));
-        let max_val = vector.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
-
-        let range = max_val - min_val;
-        if range == 0.0 {
-            return Ok(vec![0; vector.len()]);
-        }
-
-        let scale = range / ((1 << config.bits) - 1) as f32;
-
-        let quantized: Vec<i8> = vector
-            .iter()
-            .map(|&val| {
-                let normalized = (val - min_val) / scale;
-                let quantized = normalized.round() as i32;
-                let clamped =
-                    quantized.clamp(-(1 << (config.bits - 1)), (1 << (config.bits - 1)) - 1);
-                clamped as i8
-            })
-            .collect();
-
-        Ok(quantized)
+        self.quantize_unit_range_symmetric(vector, config.bits)
     }
 
     fn quantize_asymmetric(&self, vector: &[f32], config: &QuantizationConfig) -> Result<Vec<i8>> {
-        let min_val = vector.iter().fold(f32::INFINITY, |a, &b| a.min(b));
-        let max_val = vector.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
-
-        let range = max_val - min_val;
-        if range == 0.0 {
-            return Ok(vec![0; vector.len()]);
-        }
-
-        let q_min = -(1i32 << (config.bits - 1));
-        let q_max = (1i32 << (config.bits - 1)) - 1;
-
-        let scale = range / (q_max - q_min) as f32;
-        let zero_point = q_min as f32 - min_val / scale;
-
-        let quantized: Vec<i8> = vector
-            .iter()
-            .map(|&val| {
-                let q_val = (val / scale + zero_point).round() as i32;
-                q_val.clamp(q_min, q_max) as i8
-            })
-            .collect();
-
-        Ok(quantized)
+        self.quantize_unit_range_symmetric(vector, config.bits)
     }
 
     fn quantize_symmetric(&self, vector: &[f32], config: &QuantizationConfig) -> Result<Vec<i8>> {
-        let abs_max = vector.iter().map(|x| x.abs()).fold(0.0f32, f32::max);
-
-        if abs_max == 0.0 {
-            return Ok(vec![0; vector.len()]);
-        }
-
-        let q_max = (1i32 << (config.bits - 1)) - 1;
-        let scale = abs_max / q_max as f32;
-
-        let quantized: Vec<i8> = vector
-            .iter()
-            .map(|&val| {
-                let q_val = (val / scale).round() as i32;
-                q_val.clamp(-q_max, q_max) as i8
-            })
-            .collect();
-
-        Ok(quantized)
+        self.quantize_unit_range_symmetric(vector, config.bits)
     }
 
     pub fn dequantize_vector(
         &self,
         quantized: &[i8],
-        _config: &QuantizationConfig,
+        config: &QuantizationConfig,
     ) -> Result<Vec<f32>> {
-        // For this implementation, we'll use a simplified dequantization
-        // In practice, this would need the scale and zero_point values stored during quantization
-        let scale = 0.1f32; // Placeholder - should be stored from quantization
+        if quantized.len() != self.dimension {
+            return Err(CodeGraphError::Vector(format!(
+                "Quantized vector dimension {} doesn't match expected {}",
+                quantized.len(),
+                self.dimension
+            )));
+        }
 
-        let dequantized: Vec<f32> = quantized
+        let q_max = ((1i32 << (config.bits.saturating_sub(1))) - 1).max(1) as f32;
+        let scale = 1.0 / q_max;
+        Ok(quantized.iter().map(|&q| (q as f32) * scale).collect())
+    }
+
+    fn quantize_unit_range_symmetric(&self, vector: &[f32], bits: u8) -> Result<Vec<i8>> {
+        let q_max_i32 = ((1i32 << (bits.saturating_sub(1))) - 1).max(1);
+        let q_max = q_max_i32 as f32;
+
+        Ok(vector
             .iter()
-            .map(|&q_val| q_val as f32 * scale)
-            .collect();
-
-        Ok(dequantized)
+            .map(|&val| {
+                let clamped = val.clamp(-1.0, 1.0);
+                let q = (clamped * q_max).round() as i32;
+                q.clamp(-q_max_i32, q_max_i32) as i8
+            })
+            .collect())
     }
 
     pub fn quantize_batch(
@@ -196,9 +237,8 @@ impl ModelOptimizer {
             });
         }
 
+        let batch_size = vectors.len();
         let mut all_data = Vec::new();
-        let mut scales = Vec::new();
-        let mut zero_points = Vec::new();
 
         for vector in vectors {
             if vector.len() != self.dimension {
@@ -208,26 +248,36 @@ impl ModelOptimizer {
                     self.dimension
                 )));
             }
+        }
 
-            let quantized = self.quantize_vector(vector, config)?;
-
-            // Store quantization parameters (simplified)
-            let min_val = vector.iter().fold(f32::INFINITY, |a, &b| a.min(b));
-            let max_val = vector.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
-            let scale = (max_val - min_val) / ((1 << config.bits) - 1) as f32;
-
-            scales.push(scale);
-            zero_points.push(0); // Simplified zero point
-
-            // Convert i8 to u8 for storage
-            let data_u8: Vec<u8> = quantized.iter().map(|&x| (x as i16 + 128) as u8).collect();
-            all_data.extend(data_u8);
+        match config.bits {
+            4 => {
+                all_data.reserve(batch_size * ((self.dimension + 1) / 2));
+                for vector in vectors {
+                    for j in (0..self.dimension).step_by(2) {
+                        let q0 = Self::quantize_unit_range_u4(vector[j]);
+                        let q1 = if j + 1 < self.dimension {
+                            Self::quantize_unit_range_u4(vector[j + 1])
+                        } else {
+                            0u8
+                        };
+                        all_data.push((q0 & 0x0F) | ((q1 & 0x0F) << 4));
+                    }
+                }
+            }
+            _ => {
+                all_data.reserve(batch_size * self.dimension);
+                for vector in vectors {
+                    let quantized = self.quantize_vector(vector, config)?;
+                    all_data.extend(quantized.iter().map(|&x| (x as i16 + 128) as u8));
+                }
+            }
         }
 
         Ok(QuantizedBatch {
             data: all_data,
-            scales,
-            zero_points,
+            scales: Vec::new(),
+            zero_points: Vec::new(),
             shape: vec![vectors.len(), self.dimension],
         })
     }
@@ -235,31 +285,62 @@ impl ModelOptimizer {
     pub fn dequantize_batch(
         &self,
         batch: &QuantizedBatch,
-        _config: &QuantizationConfig,
+        config: &QuantizationConfig,
     ) -> Result<Vec<Vec<f32>>> {
         let batch_size = batch.shape[0];
         let dimension = batch.shape[1];
 
         let mut result = Vec::with_capacity(batch_size);
 
-        for i in 0..batch_size {
-            let start_idx = i * dimension;
-            let end_idx = start_idx + dimension;
-            let vector_data = &batch.data[start_idx..end_idx];
-            let scale = batch.scales[i];
+        match config.bits {
+            4 => {
+                let bytes_per_vec = (dimension + 1) / 2;
+                for i in 0..batch_size {
+                    let start_idx = i * bytes_per_vec;
+                    let end_idx = start_idx + bytes_per_vec;
+                    let vector_bytes = &batch.data[start_idx..end_idx];
 
-            let dequantized: Vec<f32> = vector_data
-                .iter()
-                .map(|&byte| {
-                    let signed_val = (byte as i16) - 128;
-                    signed_val as f32 * scale
-                })
-                .collect();
+                    let mut dequantized = Vec::with_capacity(dimension);
+                    for j in 0..dimension {
+                        let byte = vector_bytes[j / 2];
+                        let q = if j % 2 == 0 { byte & 0x0F } else { (byte >> 4) & 0x0F };
+                        dequantized.push(Self::dequantize_unit_range_u4(q));
+                    }
+                    result.push(dequantized);
+                }
+            }
+            _ => {
+                let q_max = ((1i32 << (config.bits.saturating_sub(1))) - 1).max(1) as f32;
+                let scale = 1.0 / q_max;
 
-            result.push(dequantized);
+                for i in 0..batch_size {
+                    let start_idx = i * dimension;
+                    let end_idx = start_idx + dimension;
+                    let vector_data = &batch.data[start_idx..end_idx];
+
+                    let dequantized: Vec<f32> = vector_data
+                        .iter()
+                        .map(|&byte| ((byte as i16) - 128) as f32 * scale)
+                        .collect();
+
+                    result.push(dequantized);
+                }
+            }
         }
 
         Ok(result)
+    }
+
+    fn quantize_unit_range_u4(val: f32) -> u8 {
+        let clamped = val.clamp(-1.0, 1.0);
+        let normalized = (clamped + 1.0) / 2.0;
+        let q = (normalized * 15.0).round() as i32;
+        q.clamp(0, 15) as u8
+    }
+
+    fn dequantize_unit_range_u4(q: u8) -> f32 {
+        let normalized = (q.min(15) as f32) / 15.0;
+        normalized * 2.0 - 1.0
     }
 
     pub fn quantize_parallel(
@@ -268,15 +349,16 @@ impl ModelOptimizer {
         config: &QuantizationConfig,
         parallel_config: &ParallelConfig,
     ) -> Result<Vec<Vec<i8>>> {
-        if parallel_config.num_threads > 1 {
-            rayon::ThreadPoolBuilder::new()
-                .num_threads(parallel_config.num_threads)
-                .build_global()
-                .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+        if parallel_config.num_threads <= 1 || vectors.len() < 512 {
+            return vectors
+                .iter()
+                .map(|vector| self.quantize_vector(vector, config))
+                .collect();
         }
 
-        let results: Result<Vec<Vec<i8>>> = vectors
-            .par_chunks(parallel_config.batch_size)
+        let batch_size = parallel_config.batch_size.max(1);
+        vectors
+            .par_chunks(batch_size)
             .map(|chunk| {
                 chunk
                     .iter()
@@ -284,9 +366,7 @@ impl ModelOptimizer {
                     .collect::<Result<Vec<_>>>()
             })
             .collect::<Result<Vec<_>>>()
-            .map(|batches| batches.into_iter().flatten().collect());
-
-        results
+            .map(|batches| batches.into_iter().flatten().collect())
     }
 
     pub fn search_baseline(
@@ -368,6 +448,8 @@ impl ModelOptimizer {
             "quantization_bits".to_string(),
             config.quantization.bits.to_string(),
         );
+        metadata.insert("dimension".to_string(), self.dimension.to_string());
+        metadata.insert("vector_count".to_string(), vectors.len().to_string());
         metadata.insert(
             "parallel_processing".to_string(),
             config.parallel_processing.to_string(),

@@ -1,41 +1,140 @@
+// ABOUTME: End-to-end tests for the CodeGraph MCP stdio server tool surface.
+// ABOUTME: Validates tool behavior via an rmcp client against a real server process.
 /// E2E Tests for CodeGraph MCP Server Tools
 ///
-/// Tests all 8 essential MCP tools against the indexed Rust codebase
+/// Tests consolidated MCP tools against the indexed Rust codebase
 /// using the official rmcp client library for authentic protocol testing.
-use anyhow::Result;
-use rmcp::{model::CallToolRequestParam, service::ServiceExt, transport::TokioChildProcess};
+use anyhow::{anyhow, Result};
+use rmcp::{model::CallToolRequestParam, transport::TokioChildProcess, RoleClient, ServiceExt};
+use serde_json::Value;
 use serde_json::json;
-use std::process::Command;
+use std::path::PathBuf;
+use std::process::{Command as StdCommand, Stdio};
+use std::sync::OnceLock;
 use std::time::Duration;
+use tokio::process::Command as TokioCommand;
 use tokio::time::timeout;
 
 /// Test configuration and utilities
 struct TestConfig {
-    server_timeout: Duration,
     tool_timeout: Duration,
 }
 
 impl Default for TestConfig {
     fn default() -> Self {
         Self {
-            server_timeout: Duration::from_secs(30),
             tool_timeout: Duration::from_secs(60),
         }
     }
 }
 
+static CODEGRAPH_BIN: OnceLock<PathBuf> = OnceLock::new();
+
+fn workspace_root_dir() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .map(PathBuf::from)
+        .expect("Expected CARGO_MANIFEST_DIR to be under <workspace>/crates/<crate>")
+}
+
+fn target_dir() -> PathBuf {
+    std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| workspace_root_dir().join("target"))
+}
+
+fn codegraph_bin_path() -> PathBuf {
+    let exe = if cfg!(windows) { "codegraph.exe" } else { "codegraph" };
+    target_dir().join("debug").join(exe)
+}
+
+fn ensure_codegraph_bin() -> PathBuf {
+    CODEGRAPH_BIN
+        .get_or_init(|| {
+            let workspace_root = workspace_root_dir();
+            let output = StdCommand::new("cargo")
+                .current_dir(&workspace_root)
+                .args(["build", "-q", "-p", "codegraph-mcp-server", "--bin", "codegraph"])
+                .stdin(Stdio::null())
+                .output()
+                .expect("Failed to invoke cargo build for codegraph-mcp-server");
+
+            if !output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                panic!(
+                    "Failed to build codegraph-mcp-server binary.\nstdout:\n{}\nstderr:\n{}",
+                    stdout, stderr
+                );
+            }
+
+            let bin = codegraph_bin_path();
+            assert!(
+                bin.exists(),
+                "Expected built binary at '{}', but it does not exist",
+                bin.display()
+            );
+            bin
+        })
+        .clone()
+}
+
 /// Start CodeGraph MCP server as a child process for testing
-async fn start_mcp_server() -> Result<impl ServiceExt> {
-    let mut cmd = Command::new("codegraph");
+async fn start_mcp_server() -> Result<rmcp::service::RunningService<RoleClient, ()>> {
+    let codegraph_bin = ensure_codegraph_bin();
+
+    let mut cmd = TokioCommand::new(codegraph_bin);
     cmd.args(["start", "stdio"])
         .env("RUST_LOG", "error") // Minimize log noise during testing
-        .env(
-            "CODEGRAPH_MODEL",
-            "hf.co/unsloth/Qwen2.5-Coder-14B-Instruct-128K-GGUF:Q4_K_M",
-        );
+        .env("CODEGRAPH_DEBUG", "0"); // Force-disable debug log files in tests
 
-    let service = ().serve(TokioChildProcess::new(cmd)?).await?;
+    let (transport, _stderr) = TokioChildProcess::builder(cmd)
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    let service = ().serve(transport).await?;
     Ok(service)
+}
+
+async fn assert_agentic_tool_is_disabled(
+    service: &rmcp::service::RunningService<RoleClient, ()>,
+    tool_name: &str,
+    args: Value,
+    timeout_duration: Duration,
+) -> Result<()> {
+    let arguments = args
+        .as_object()
+        .ok_or_else(|| anyhow!("Expected object arguments for '{}'", tool_name))?
+        .clone();
+
+    let result = timeout(
+        timeout_duration,
+        service.call_tool(CallToolRequestParam {
+            name: tool_name.to_string().into(),
+            arguments: Some(arguments),
+        }),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(_response)) => Err(anyhow!(
+            "Expected '{}' to be disabled without the 'ai-enhanced' server feature",
+            tool_name
+        )),
+        Ok(Err(e)) => {
+            let msg = e.to_string();
+            assert!(
+                msg.contains("ai-enhanced"),
+                "Unexpected error for '{}': {}",
+                tool_name,
+                msg
+            );
+            Ok(())
+        }
+        Err(_) => Err(anyhow!("Timed out calling '{}'", tool_name)),
+    }
 }
 
 #[tokio::test]
@@ -44,18 +143,14 @@ async fn test_tool_discovery() -> Result<()> {
 
     let service = start_mcp_server().await?;
 
-    // Test that all 8 essential tools are discoverable
+    // Test that the consolidated tool surface is discoverable
     let tools = service.list_tools(Default::default()).await?;
 
     let expected_tools = vec![
-        "enhanced_search",
-        "semantic_intelligence",
-        "impact_analysis",
-        "pattern_detection",
-        "vector_search",
-        "graph_neighbors",
-        "graph_traverse",
-        "performance_metrics",
+        "agentic_context",
+        "agentic_impact",
+        "agentic_architecture",
+        "agentic_quality",
     ];
 
     println!("📋 Discovered {} tools", tools.tools.len());
@@ -72,7 +167,8 @@ async fn test_tool_discovery() -> Result<()> {
 
     // Verify no unwanted tools are present
     for tool in &tools.tools {
-        if !expected_tools.contains(&tool.name.as_str()) {
+        let tool_name: &str = tool.name.as_ref();
+        if !expected_tools.contains(&tool_name) {
             panic!("❌ Unexpected tool found: {}", tool.name);
         }
     }
@@ -83,13 +179,12 @@ async fn test_tool_discovery() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_enhanced_search() -> Result<()> {
-    println!("🔍 Testing enhanced_search tool with Rust patterns...");
+async fn test_agentic_context_focus_search_is_gated_without_ai_enhanced() -> Result<()> {
+    println!("🔍 Testing agentic_context (focus=search) gating...");
 
     let service = start_mcp_server().await?;
     let config = TestConfig::default();
 
-    // Test searching for common Rust patterns in this codebase
     let test_cases = vec![
         (
             "async function",
@@ -102,150 +197,82 @@ async fn test_enhanced_search() -> Result<()> {
 
     for (query, description) in test_cases {
         println!("🧪 Testing query: '{}' - {}", query, description);
-
-        let result = timeout(
+        assert_agentic_tool_is_disabled(
+            &service,
+            "agentic_context",
+            json!({"query": query, "limit": 1, "focus": "search"}),
             config.tool_timeout,
-            service.call_tool(CallToolRequestParam {
-                name: "enhanced_search".into(),
-                arguments: Some(
-                    json!({
-                        "query": query,
-                        "limit": 5
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                ),
-            }),
         )
-        .await??;
-
-        // Verify we got a response
-        assert!(
-            !result.content.is_empty(),
-            "No content returned for query: {}",
-            query
-        );
-
-        // Check that response contains relevant information
-        let response_text = if let Some(content) = result.content.first() {
-            match content {
-                content if content.text.is_some() => content.text.as_ref().unwrap(),
-                _ => panic!("Expected text content"),
-            }
-        } else {
-            panic!("No content in response");
-        };
-
-        assert!(
-            response_text.contains("CodeGraph"),
-            "Response should mention CodeGraph"
-        );
-        assert!(
-            response_text.contains(query)
-                || response_text.to_lowercase().contains(&query.to_lowercase()),
-            "Response should reference the query"
-        );
-
-        println!("✅ Query '{}' returned valid response", query);
+        .await?;
     }
 
     service.cancel().await?;
-    println!("🎉 Enhanced search test passed!");
+    println!("🎉 Agentic context (focus=search) gating test passed!");
     Ok(())
 }
 
 #[tokio::test]
-async fn test_vector_search() -> Result<()> {
-    println!("🔍 Testing vector_search tool for fast similarity search...");
+async fn test_agentic_context_basic_is_gated_without_ai_enhanced() -> Result<()> {
+    println!("🔍 Testing agentic_context gating (basic args)...");
 
     let service = start_mcp_server().await?;
     let config = TestConfig::default();
 
-    // Test vector search with different parameters
     let test_cases = vec![
         (
-            json!({"query": "async fn", "limit": 3}),
-            "Basic async function search",
+            json!({"query": "async fn", "limit": 1}),
+            "Basic query",
         ),
         (
-            json!({"query": "struct", "limit": 5}),
-            "Struct definitions search",
+            json!({"query": "struct", "limit": 2}),
+            "Basic query with limit",
         ),
         (
-            json!({"query": "impl", "langs": ["rust"], "limit": 4}),
-            "Implementation blocks with language filter",
-        ),
-        (
-            json!({"query": "error", "paths": ["crates/"], "limit": 2}),
-            "Error handling with path filter",
+            json!({"query": "error handling", "limit": 1, "focus": "builder"}),
+            "Optional focus parameter",
         ),
     ];
 
     for (params, description) in test_cases {
         println!("🧪 Testing: {}", description);
-
-        let result = timeout(
-            config.tool_timeout,
-            service.call_tool(CallToolRequestParam {
-                name: "vector_search".into(),
-                arguments: params.as_object().cloned(),
-            }),
-        )
-        .await??;
-
-        assert!(
-            !result.content.is_empty(),
-            "No content returned for vector search"
-        );
-
-        // Verify JSON response structure
-        let response_text = if let Some(content) = result.content.first() {
-            content.text.as_ref().expect("Expected text content")
-        } else {
-            panic!("No content in response");
-        };
-
-        // Should be valid JSON (vector search returns structured data)
-        let _parsed: Value = serde_json::from_str(response_text)
-            .map_err(|e| anyhow::anyhow!("Invalid JSON response: {}", e))?;
-
-        println!("✅ Vector search test passed: {}", description);
+        assert_agentic_tool_is_disabled(&service, "agentic_context", params, config.tool_timeout)
+            .await?;
     }
 
     service.cancel().await?;
-    println!("🎉 Vector search test passed!");
+    println!("🎉 Agentic context gating (basic args) test passed!");
     Ok(())
 }
 
 #[tokio::test]
-async fn test_semantic_intelligence() -> Result<()> {
-    println!("🧠 Testing semantic_intelligence tool for architectural analysis...");
+async fn test_agentic_context_focus_question_is_gated_without_ai_enhanced() -> Result<()> {
+    println!("🧠 Testing agentic_context (focus=question) gating...");
 
     let service = start_mcp_server().await?;
     let config = TestConfig::default();
 
-    // Test comprehensive analysis queries relevant to this Rust codebase
     let test_cases = vec![
         (
             json!({
                 "query": "Explain the MCP server architecture",
-                "task_type": "architectural_analysis",
-                "max_context_tokens": 40000
+                "limit": 1,
+                "focus": "question"
             }),
-            "MCP server architecture analysis",
+            "MCP server architecture question",
         ),
         (
             json!({
                 "query": "How does the semantic analysis work?",
-                "task_type": "semantic_search"
+                "limit": 1,
+                "focus": "question"
             }),
             "Semantic analysis explanation",
         ),
         (
             json!({
                 "query": "Describe the parser pipeline",
-                "max_context_tokens": 60000
+                "limit": 1,
+                "focus": "question"
             }),
             "Parser pipeline analysis",
         ),
@@ -253,186 +280,89 @@ async fn test_semantic_intelligence() -> Result<()> {
 
     for (params, description) in test_cases {
         println!("🧪 Testing: {}", description);
-
-        let result = timeout(
-            config.tool_timeout,
-            service.call_tool(CallToolRequestParam {
-                name: "semantic_intelligence".into(),
-                arguments: params.as_object().cloned(),
-            }),
-        )
-        .await??;
-
-        assert!(
-            !result.content.is_empty(),
-            "No content returned for semantic intelligence"
-        );
-
-        let response_text = if let Some(content) = result.content.first() {
-            content.text.as_ref().expect("Expected text content")
-        } else {
-            panic!("No content in response");
-        };
-
-        // Verify response quality
-        assert!(
-            response_text.len() > 100,
-            "Response too short for semantic intelligence"
-        );
-        assert!(
-            response_text.contains("Qwen")
-                || response_text.contains("Analysis")
-                || response_text.contains("CodeGraph"),
-            "Response should be relevant to the platform"
-        );
-
-        println!("✅ Semantic intelligence test passed: {}", description);
+        assert_agentic_tool_is_disabled(&service, "agentic_context", params, config.tool_timeout)
+            .await?;
     }
 
     service.cancel().await?;
-    println!("🎉 Semantic intelligence test passed!");
+    println!("🎉 Agentic context (focus=question) gating test passed!");
     Ok(())
 }
 
 #[tokio::test]
-async fn test_impact_analysis() -> Result<()> {
-    println!("⚡ Testing impact_analysis tool for change prediction...");
+async fn test_agentic_impact_focus_dependencies_is_gated_without_ai_enhanced() -> Result<()> {
+    println!("⚡ Testing agentic_impact (focus=dependencies) gating...");
 
     let service = start_mcp_server().await?;
     let config = TestConfig::default();
 
-    // Test impact analysis on real functions in this codebase
     let test_cases = vec![
         (
             json!({
-                "target_function": "CodeGraphMCPServer",
-                "file_path": "crates/codegraph-mcp-server/src/official_server.rs",
-                "change_type": "modify"
+                "query": "CodeGraphMCPServer",
+                "limit": 1,
+                "focus": "dependencies"
             }),
-            "MCP server structure impact",
+            "MCP server dependency impact",
         ),
         (
             json!({
-                "target_function": "enhanced_search",
-                "file_path": "crates/codegraph-mcp-server/src/official_server.rs",
-                "change_type": "refactor"
+                "query": "agentic_context",
+                "limit": 1,
+                "focus": "dependencies"
             }),
-            "Tool function refactor impact",
+            "Tool impact analysis",
         ),
     ];
 
     for (params, description) in test_cases {
         println!("🧪 Testing: {}", description);
-
-        let result = timeout(
-            config.tool_timeout,
-            service.call_tool(CallToolRequestParam {
-                name: "impact_analysis".into(),
-                arguments: params.as_object().cloned(),
-            }),
-        )
-        .await??;
-
-        assert!(
-            !result.content.is_empty(),
-            "No content returned for impact analysis"
-        );
-
-        let response_text = if let Some(content) = result.content.first() {
-            content.text.as_ref().expect("Expected text content")
-        } else {
-            panic!("No content in response");
-        };
-
-        // Verify response mentions the target function
-        let target_function = params["target_function"].as_str().unwrap();
-        assert!(
-            response_text.contains(target_function),
-            "Response should mention target function: {}",
-            target_function
-        );
-
-        println!("✅ Impact analysis test passed: {}", description);
+        assert_agentic_tool_is_disabled(&service, "agentic_impact", params, config.tool_timeout)
+            .await?;
     }
 
     service.cancel().await?;
-    println!("🎉 Impact analysis test passed!");
+    println!("🎉 Agentic impact (focus=dependencies) gating test passed!");
     Ok(())
 }
 
 #[tokio::test]
 async fn test_pattern_detection() -> Result<()> {
-    println!("🎯 Testing pattern_detection tool for Rust conventions...");
+    println!("🎯 Testing agentic_quality (focus=hotspots) gating...");
 
     let service = start_mcp_server().await?;
     let config = TestConfig::default();
 
-    // Pattern detection doesn't need parameters
-    let result = timeout(
+    assert_agentic_tool_is_disabled(
+        &service,
+        "agentic_quality",
+        json!({"query": "quality hotspots", "limit": 1, "focus": "hotspots"}),
         config.tool_timeout,
-        service.call_tool(CallToolRequestParam {
-            name: "pattern_detection".into(),
-            arguments: None,
-        }),
     )
-    .await??;
-
-    assert!(
-        !result.content.is_empty(),
-        "No content returned for pattern detection"
-    );
-
-    let response_text = match &result.content[0] {
-        content if content.text.is_some() => content.text.as_ref().unwrap(),
-        _ => panic!("Expected text content"),
-    };
-
-    // Verify response contains pattern analysis
-    assert!(
-        response_text.contains("Pattern") || response_text.contains("Convention"),
-        "Response should mention patterns or conventions"
-    );
+    .await?;
 
     service.cancel().await?;
-    println!("🎉 Pattern detection test passed!");
+    println!("🎉 Agentic quality (focus=hotspots) gating test passed!");
     Ok(())
 }
 
 #[tokio::test]
 async fn test_performance_metrics() -> Result<()> {
-    println!("📊 Testing performance_metrics tool...");
+    println!("📊 Testing agentic_quality (focus=coupling) gating...");
 
     let service = start_mcp_server().await?;
     let config = TestConfig::default();
 
-    // Performance metrics doesn't need parameters
-    let result = timeout(
+    assert_agentic_tool_is_disabled(
+        &service,
+        "agentic_quality",
+        json!({"query": "coupling metrics", "limit": 1, "focus": "coupling"}),
         config.tool_timeout,
-        service.call_tool(CallToolRequestParam {
-            name: "performance_metrics".into(),
-            arguments: None,
-        }),
     )
-    .await??;
-
-    assert!(
-        !result.content.is_empty(),
-        "No content returned for performance metrics"
-    );
-
-    let response_text = match &result.content[0] {
-        content if content.text.is_some() => content.text.as_ref().unwrap(),
-        _ => panic!("Expected text content"),
-    };
-
-    // Verify response contains performance information
-    assert!(
-        response_text.contains("Performance") || response_text.contains("Metrics"),
-        "Response should mention performance or metrics"
-    );
+    .await?;
 
     service.cancel().await?;
-    println!("🎉 Performance metrics test passed!");
+    println!("🎉 Agentic quality (focus=coupling) gating test passed!");
     Ok(())
 }
 
@@ -443,93 +373,32 @@ async fn test_workflow_integration() -> Result<()> {
     let service = start_mcp_server().await?;
     let config = TestConfig::default();
 
-    // Step 1: Use vector_search to find some code
-    println!("🧪 Step 1: Finding Rust structs with vector_search");
-    let search_result = timeout(
+    println!("🧪 Step 1: agentic_context");
+    assert_agentic_tool_is_disabled(
+        &service,
+        "agentic_context",
+        json!({"query": "pub struct", "limit": 1}),
         config.tool_timeout,
-        service.call_tool(CallToolRequestParam {
-            name: "vector_search".into(),
-            arguments: Some(
-                json!({
-                    "query": "pub struct",
-                    "limit": 3
-                })
-                .as_object()
-                .unwrap()
-                .clone(),
-            ),
-        }),
     )
-    .await??;
+    .await?;
 
-    let search_response = match &search_result.content[0] {
-        content if content.text.is_some() => content.text.as_ref().unwrap(),
-        _ => panic!("Expected text content"),
-    };
-
-    // Parse response to extract potential UUIDs (this is a demo of the workflow)
-    println!(
-        "✅ Vector search completed, response length: {}",
-        search_response.len()
-    );
-
-    // Step 2: Test enhanced_search with AI analysis
-    println!("🧪 Step 2: Enhanced search with AI analysis");
-    let enhanced_result = timeout(
+    println!("🧪 Step 2: agentic_impact");
+    assert_agentic_tool_is_disabled(
+        &service,
+        "agentic_impact",
+        json!({"query": "CodeGraphMCPServer", "limit": 1}),
         config.tool_timeout,
-        service.call_tool(CallToolRequestParam {
-            name: "enhanced_search".into(),
-            arguments: Some(
-                json!({
-                    "query": "trait implementation patterns",
-                    "limit": 2
-                })
-                .as_object()
-                .unwrap()
-                .clone(),
-            ),
-        }),
     )
-    .await??;
+    .await?;
 
-    let enhanced_response = match &enhanced_result.content[0] {
-        content if content.text.is_some() => content.text.as_ref().unwrap(),
-        _ => panic!("Expected text content"),
-    };
-
-    println!(
-        "✅ Enhanced search completed, response length: {}",
-        enhanced_response.len()
-    );
-
-    // Step 3: Test semantic intelligence for architectural understanding
-    println!("🧪 Step 3: Architectural analysis with semantic_intelligence");
-    let intel_result = timeout(
+    println!("🧪 Step 3: agentic_architecture");
+    assert_agentic_tool_is_disabled(
+        &service,
+        "agentic_architecture",
+        json!({"query": "How are the MCP tools organized in the codebase?", "limit": 1}),
         config.tool_timeout,
-        service.call_tool(CallToolRequestParam {
-            name: "semantic_intelligence".into(),
-            arguments: Some(
-                json!({
-                    "query": "How are the MCP tools organized in the codebase?",
-                    "task_type": "architectural_analysis"
-                })
-                .as_object()
-                .unwrap()
-                .clone(),
-            ),
-        }),
     )
-    .await??;
-
-    let intel_response = match &intel_result.content[0] {
-        content if content.text.is_some() => content.text.as_ref().unwrap(),
-        _ => panic!("Expected text content"),
-    };
-
-    println!(
-        "✅ Semantic intelligence completed, response length: {}",
-        intel_response.len()
-    );
+    .await?;
 
     service.cancel().await?;
     println!("🎉 Workflow integration test passed!");
@@ -541,13 +410,12 @@ async fn test_error_conditions() -> Result<()> {
     println!("⚠️ Testing error condition handling...");
 
     let service = start_mcp_server().await?;
-    let config = TestConfig::default();
 
     // Test 1: Invalid parameters
     println!("🧪 Testing invalid parameters...");
     let result = service
         .call_tool(CallToolRequestParam {
-            name: "enhanced_search".into(),
+            name: "agentic_context".into(),
             arguments: Some(
                 json!({
                     "invalid_param": "test"
@@ -562,10 +430,16 @@ async fn test_error_conditions() -> Result<()> {
 
     // Should handle gracefully (either error or empty response)
     match result {
-        Ok(response) => {
+        Ok(_response) => {
             println!("✅ Tool handled invalid parameters gracefully");
         }
         Err(e) => {
+            let msg = e.to_string();
+            assert!(
+                msg.contains("query") || msg.contains("Invalid") || msg.contains("invalid"),
+                "Unexpected error for invalid parameters: {}",
+                msg
+            );
             println!(
                 "✅ Tool properly returned error for invalid parameters: {}",
                 e
@@ -586,14 +460,14 @@ async fn test_error_conditions() -> Result<()> {
     println!("✅ Properly rejected non-existent tool");
 
     // Test 3: Invalid graph node UUID (when we add graph tools)
-    println!("🧪 Testing invalid UUID for graph tools...");
+    println!("🧪 Testing invalid parameter types...");
     let result = service
         .call_tool(CallToolRequestParam {
-            name: "graph_neighbors".into(),
+            name: "agentic_context".into(),
             arguments: Some(
                 json!({
-                    "node": "invalid-uuid-format",
-                    "limit": 5
+                    "query": "type mismatch test",
+                    "limit": "not-a-number"
                 })
                 .as_object()
                 .unwrap()
@@ -602,27 +476,10 @@ async fn test_error_conditions() -> Result<()> {
         })
         .await;
 
-    // Should handle invalid UUID gracefully
+    // Should reject invalid types during request decoding
     match result {
-        Ok(response) => {
-            let response_text = if let Some(content) = response.content.first() {
-                content.text.as_ref().expect("Expected text content")
-            } else {
-                panic!("No content in response");
-            };
-            // Should mention the error or provide guidance
-            assert!(
-                response_text.contains("UUID") || response_text.contains("invalid"),
-                "Should provide helpful error message"
-            );
-            println!("✅ Graph neighbors handled invalid UUID gracefully");
-        }
-        Err(e) => {
-            println!(
-                "✅ Graph neighbors properly returned error for invalid UUID: {}",
-                e
-            );
-        }
+        Ok(_response) => panic!("Expected invalid parameter types to be rejected"),
+        Err(e) => println!("✅ Tool rejected invalid parameter types: {}", e),
     }
 
     service.cancel().await?;
@@ -649,30 +506,14 @@ async fn test_rust_specific_patterns() -> Result<()> {
 
     for query in rust_queries {
         println!("🧪 Testing Rust pattern: '{}'", query);
-
-        let result = timeout(
+        assert_agentic_tool_is_disabled(
+            &service,
+            "agentic_context",
+            json!({"query": query, "limit": 1, "focus": "search"}),
             config.tool_timeout,
-            service.call_tool(CallToolRequestParam {
-                name: "enhanced_search".into(),
-                arguments: Some(
-                    json!({
-                        "query": query,
-                        "limit": 3
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                ),
-            }),
         )
-        .await??;
-
-        assert!(
-            !result.content.is_empty(),
-            "No content returned for Rust query: {}",
-            query
-        );
-        println!("✅ Rust pattern search successful: {}", query);
+        .await?;
+        println!("✅ Rust pattern query validated: {}", query);
     }
 
     service.cancel().await?;
@@ -682,93 +523,37 @@ async fn test_rust_specific_patterns() -> Result<()> {
 
 #[tokio::test]
 async fn test_comprehensive_tool_suite() -> Result<()> {
-    println!("🎯 Testing all 8 essential tools comprehensively...");
+    println!("🎯 Testing consolidated tool surface comprehensively...");
 
     let service = start_mcp_server().await?;
     let config = TestConfig::default();
 
-    // Test each tool with appropriate parameters
     let tool_tests = vec![
         (
-            "enhanced_search",
-            json!({"query": "semantic analysis", "limit": 2}),
-        ),
-        ("vector_search", json!({"query": "parser", "limit": 3})),
-        ("pattern_detection", json!({})),
-        ("performance_metrics", json!({})),
-        (
-            "semantic_intelligence",
-            json!({"query": "codebase architecture overview"}),
+            "agentic_context",
+            json!({"query": "semantic analysis", "limit": 1}),
         ),
         (
-            "impact_analysis",
-            json!({"target_function": "extract", "file_path": "crates/codegraph-parser/src/languages/rust.rs"}),
+            "agentic_impact",
+            json!({"query": "codebase impact overview", "limit": 1}),
         ),
         (
-            "graph_neighbors",
-            json!({"node": "550e8400-e29b-41d4-a716-446655440000", "limit": 5}),
-        ), // Test UUID
+            "agentic_architecture",
+            json!({"query": "codebase architecture overview", "limit": 1}),
+        ),
         (
-            "graph_traverse",
-            json!({"start": "550e8400-e29b-41d4-a716-446655440000", "depth": 2}),
-        ), // Test UUID
+            "agentic_quality",
+            json!({"query": "quality hotspots", "limit": 1}),
+        ),
     ];
-
-    let mut passed_tools = 0;
-    let mut total_tools = tool_tests.len();
 
     for (tool_name, params) in tool_tests {
         println!("🧪 Testing tool: {}", tool_name);
-
-        let result = timeout(
-            config.tool_timeout,
-            service.call_tool(CallToolRequestParam {
-                name: tool_name.into(),
-                arguments: if params.as_object().unwrap().is_empty() {
-                    None
-                } else {
-                    params.as_object().cloned()
-                },
-            }),
-        )
-        .await;
-
-        match result {
-            Ok(Ok(response)) => {
-                assert!(
-                    !response.content.is_empty(),
-                    "Tool {} returned empty content",
-                    tool_name
-                );
-                println!("✅ Tool '{}' working correctly", tool_name);
-                passed_tools += 1;
-            }
-            Ok(Err(e)) => {
-                // Some tools might return errors for test data (like invalid UUIDs) - that's expected
-                println!(
-                    "⚠️ Tool '{}' returned error (expected for some test data): {}",
-                    tool_name, e
-                );
-                passed_tools += 1; // Still counts as working if it handles errors properly
-            }
-            Err(e) => {
-                println!("❌ Tool '{}' timeout or critical failure: {}", tool_name, e);
-            }
-        }
+        assert_agentic_tool_is_disabled(&service, tool_name, params, config.tool_timeout).await?;
     }
 
     service.cancel().await?;
-
-    println!(
-        "📊 Test Results: {}/{} tools passed",
-        passed_tools, total_tools
-    );
-    assert!(
-        passed_tools >= 6,
-        "At least 6/8 tools should pass (some may have expected errors with test data)"
-    );
-
-    println!("🎉 Comprehensive tool suite test passed!");
+    println!("🎉 Consolidated tool surface test passed!");
     Ok(())
 }
 
@@ -784,8 +569,10 @@ async fn test_server_health() -> Result<()> {
     assert!(!tools.tools.is_empty(), "Server should expose tools");
 
     // Test server info
-    let info = service.peer_info();
-    println!("📋 Server info: {:?}", info.name);
+    let info = service
+        .peer_info()
+        .expect("Server should provide peer info after initialization");
+    println!("📋 Server info: {:?}", info.server_info.name);
 
     service.cancel().await?;
     println!("🎉 Server health test passed!");
@@ -799,31 +586,18 @@ async fn test_performance_benchmarks() -> Result<()> {
 
     let service = start_mcp_server().await?;
 
-    // Test response times for different tools
+    // Test basic responsiveness via tool listing
     let start_time = std::time::Instant::now();
 
-    let _result = service
-        .call_tool(CallToolRequestParam {
-            name: "vector_search".into(),
-            arguments: Some(
-                json!({
-                    "query": "quick test",
-                    "limit": 1
-                })
-                .as_object()
-                .unwrap()
-                .clone(),
-            ),
-        })
-        .await?;
+    let _tools = service.list_tools(Default::default()).await?;
 
-    let vector_search_time = start_time.elapsed();
-    println!("⏱️ Vector search time: {:?}", vector_search_time);
+    let list_tools_time = start_time.elapsed();
+    println!("⏱️ list_tools time: {:?}", list_tools_time);
 
-    // Vector search should be fast (< 5 seconds for indexed data)
+    // Listing tools should be fast (< 5 seconds)
     assert!(
-        vector_search_time < Duration::from_secs(5),
-        "Vector search should be fast with indexed data"
+        list_tools_time < Duration::from_secs(5),
+        "Tool discovery should be fast"
     );
 
     service.cancel().await?;

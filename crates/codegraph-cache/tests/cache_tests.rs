@@ -1,8 +1,3 @@
-use codegraph_cache::*;
-use codegraph_core::*;
-use std::time::Duration;
-use tokio_test;
-
 #[tokio::test]
 async fn test_cache_basic_operations() {
     // TODO: Implement when LruCache is ready
@@ -44,8 +39,6 @@ async fn test_cache_metrics() {
 }
 
 mod integration_tests {
-    use super::*;
-
     #[tokio::test]
     async fn test_rag_integration() {
         // TODO: Test integration with RAG engineer

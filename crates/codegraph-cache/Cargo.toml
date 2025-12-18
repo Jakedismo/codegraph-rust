@@ -32,6 +32,7 @@ futures = { workspace = true }
 [features]
 default = []
 readahead = []
+demo = []
 
 [[example]]
 name = "memory_profiler_demo"

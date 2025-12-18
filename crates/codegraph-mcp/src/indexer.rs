@@ -3059,15 +3059,15 @@ impl ProjectIndexer {
             storage.db()
         };
 
-        let mut resp = db
-            .query(
-                "SELECT file_path, last_indexed_at, node_count FROM file_metadata WHERE file_path = $file_path",
-            )
-            .bind(("file_path", file_path))
-            .await?;
-        let rows: Vec<serde_json::Value> = resp.take(0)?;
-        Ok(rows.into_iter().next())
-    }
+	        let mut resp = db
+	            .query(
+	                "SELECT file_path, last_indexed_at, node_count FROM file_metadata WHERE file_path = $file_path",
+	            )
+	            .bind(("file_path", file_path.to_string()))
+	            .await?;
+	        let rows: Vec<serde_json::Value> = resp.take(0)?;
+	        Ok(rows.into_iter().next())
+	    }
 
     async fn log_surreal_edge_count(&self, expected: usize) {
         let db = {
@@ -3575,9 +3575,33 @@ impl ProjectIndexer {
         Self::normalize_symbol_target(target)
     }
 
+    fn progress_enabled() -> bool {
+        if let Ok(v) = std::env::var("CODEGRAPH_NO_PROGRESS") {
+            let v = v.trim();
+            if v == "1" || v.eq_ignore_ascii_case("true") {
+                return false;
+            }
+        }
+        if let Ok(v) = std::env::var("CODEGRAPH_PROGRESS") {
+            let v = v.trim();
+            if v == "0" || v.eq_ignore_ascii_case("false") {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn progress_draw_target() -> ProgressDrawTarget {
+        if Self::progress_enabled() {
+            ProgressDrawTarget::stderr_with_hz(4)
+        } else {
+            ProgressDrawTarget::hidden()
+        }
+    }
+
     fn create_progress_bar(&self, total: u64, message: &str) -> ProgressBar {
         let pb = self.progress.add(ProgressBar::new(total));
-        pb.set_draw_target(ProgressDrawTarget::stderr_with_hz(4));
+        pb.set_draw_target(Self::progress_draw_target());
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{spinner:.blue} [{elapsed_precise}] [{bar:34.cyan/blue}] {pos}/{len} ({percent}%) {msg} | {per_sec}/s | ETA:{eta}")
@@ -3610,7 +3634,7 @@ impl ProjectIndexer {
         secondary_msg: &str,
     ) -> ProgressBar {
         let pb = self.progress.add(ProgressBar::new(total));
-        pb.set_draw_target(ProgressDrawTarget::stderr_with_hz(4));
+        pb.set_draw_target(Self::progress_draw_target());
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{spinner:.blue} [{elapsed_precise}] [{bar:34.cyan/blue}] {pos}/{len} {msg} | Success: {percent}% | {per_sec}/s | ETA:{eta}")
@@ -3624,7 +3648,7 @@ impl ProjectIndexer {
     /// Create high-performance progress bar for batch processing
     fn create_batch_progress_bar(&self, total: u64, batch_size: usize, label: &str) -> ProgressBar {
         let pb = self.progress.add(ProgressBar::new(total));
-        pb.set_draw_target(ProgressDrawTarget::stderr_with_hz(4));
+        pb.set_draw_target(Self::progress_draw_target());
         let batch_info = if batch_size >= 10000 {
             format!("🚀 Ultra-High Performance ({}K batch)", batch_size / 1000)
         } else if batch_size >= 5000 {
@@ -3647,7 +3671,9 @@ impl ProjectIndexer {
 
     fn finish_bar(&self, pb: ProgressBar, message: impl Into<String>) -> Result<()> {
         pb.finish_and_clear();
-        self.progress.println(message.into())?;
+        if Self::progress_enabled() {
+            self.progress.println(message.into())?;
+        }
         Ok(())
     }
 

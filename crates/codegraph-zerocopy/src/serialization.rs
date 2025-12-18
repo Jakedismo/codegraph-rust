@@ -45,12 +45,19 @@ impl ZeroCopySerializer {
 
         let bytes = to_bytes::<Failure>(data).map_err(ZeroCopyError::Serialization)?;
 
-        // Ensure proper alignment
-        let aligned_len = align_up(bytes.len(), self.alignment);
-        self.buffer.extend_from_slice(&bytes);
-        self.buffer.resize(aligned_len, 0);
+        self.buffer.reserve(self.alignment + bytes.len());
 
-        Ok(self.buffer.split().freeze())
+        let base_ptr = self.buffer.as_ptr() as usize;
+        let prefix = align_up(base_ptr, self.alignment) - base_ptr;
+
+        if prefix > 0 {
+            self.buffer.resize(prefix, 0);
+        }
+
+        self.buffer.extend_from_slice(&bytes);
+
+        let frozen = self.buffer.split().freeze();
+        Ok(frozen.slice(prefix..prefix + bytes.len()))
     }
 
     /// Serialize with validation

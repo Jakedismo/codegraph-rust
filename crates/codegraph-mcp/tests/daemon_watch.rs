@@ -8,7 +8,7 @@ use std::time::Duration;
 use anyhow::Result;
 use codegraph_core::config_manager::CodeGraphConfig;
 use codegraph_mcp::indexer::{set_watch_test_notifier, IndexerConfig, ProjectIndexer};
-use indicatif::MultiProgress;
+use indicatif::{MultiProgress, ProgressDrawTarget};
 use notify::event::{DataChange, EventKind, ModifyKind};
 use notify::Event;
 use serde_json::Value;
@@ -18,6 +18,8 @@ use tokio::time::sleep;
 
 #[tokio::test]
 async fn watch_updates_file_metadata_on_change() -> Result<()> {
+    std::env::set_var("CODEGRAPH_NO_PROGRESS", "1");
+
     // Isolated in-memory SurrealDB
     std::env::set_var("CODEGRAPH_SURREALDB_URL", "mem://");
     std::env::set_var("CODEGRAPH_SURREALDB_NAMESPACE", "watch_ns");
@@ -36,7 +38,8 @@ async fn watch_updates_file_metadata_on_change() -> Result<()> {
     config.force_reindex = true;
 
     let global_config = CodeGraphConfig::default();
-    let mut indexer = ProjectIndexer::new(config, &global_config, MultiProgress::new()).await?;
+    let progress = MultiProgress::with_draw_target(ProgressDrawTarget::hidden());
+    let mut indexer = ProjectIndexer::new(config, &global_config, progress).await?;
 
     // Baseline full index to seed file metadata
     indexer.index_project(project_dir.path()).await?;

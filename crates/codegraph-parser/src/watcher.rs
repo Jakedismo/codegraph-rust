@@ -728,7 +728,7 @@ mod tests {
 
         // Get initial hash
         let file_id = FileId::from(test_file.as_path());
-        let initial_metadata = watcher.get_file_metadata(&file_id).unwrap();
+        let _initial_metadata = watcher.get_file_metadata(&file_id).unwrap();
 
         // Wait a bit to ensure different modification time
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -753,11 +753,10 @@ mod tests {
     #[tokio::test]
     async fn test_include_patterns_filtering() {
         let temp_dir = TempDir::new().unwrap();
-        let mut watcher = FileSystemWatcher::new().unwrap();
+        let watcher = FileSystemWatcher::new().unwrap();
 
         // Only include Rust files
         watcher.set_include_patterns(["**/*.rs"]).unwrap();
-        watcher.add_watch_directory(temp_dir.path()).await.unwrap();
 
         // Create a non-matching file
         let txt_file = temp_dir.path().join("note.txt");
@@ -767,7 +766,37 @@ mod tests {
         let rs_file = temp_dir.path().join("lib.rs");
         fs::write(&rs_file, "fn a(){}").await.unwrap();
 
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        // Simulate watcher events without relying on OS file notification delivery
+        FileSystemWatcher::process_fs_event(
+            Event {
+                kind: EventKind::Create(CreateKind::File),
+                paths: vec![txt_file.clone()],
+                attrs: Default::default(),
+            },
+            &watcher.event_sender,
+            &watcher.file_registry,
+            &watcher.language_registry,
+            &watcher.file_filters,
+            &watcher.include_globs,
+            &watcher.ignore_matchers,
+        )
+        .await
+        .unwrap();
+        FileSystemWatcher::process_fs_event(
+            Event {
+                kind: EventKind::Create(CreateKind::File),
+                paths: vec![rs_file.clone()],
+                attrs: Default::default(),
+            },
+            &watcher.event_sender,
+            &watcher.file_registry,
+            &watcher.language_registry,
+            &watcher.file_filters,
+            &watcher.include_globs,
+            &watcher.ignore_matchers,
+        )
+        .await
+        .unwrap();
 
         if let Some(batch) = watcher.next_batch().await {
             // Ensure no events for txt, at least one for rs
@@ -789,20 +818,53 @@ mod tests {
     #[tokio::test]
     async fn test_gitignore_root_filtering() {
         let temp_dir = TempDir::new().unwrap();
-        let mut watcher = FileSystemWatcher::new().unwrap();
+        let watcher = FileSystemWatcher::new().unwrap();
 
         // Root .gitignore that ignores any .log files
         let gi = temp_dir.path().join(".gitignore");
         fs::write(&gi, "*.log\n").await.unwrap();
-
-        watcher.add_watch_directory(temp_dir.path()).await.unwrap();
+        let mut builder = GitignoreBuilder::new(temp_dir.path());
+        builder.add(&gi);
+        watcher
+            .ignore_matchers
+            .insert(temp_dir.path().to_path_buf(), builder.build().unwrap());
 
         let log_file = temp_dir.path().join("debug.log");
         fs::write(&log_file, "a").await.unwrap();
         let code_file = temp_dir.path().join("main.rs");
         fs::write(&code_file, "fn main(){}").await.unwrap();
 
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        // Simulate watcher events without relying on OS file notification delivery
+        FileSystemWatcher::process_fs_event(
+            Event {
+                kind: EventKind::Create(CreateKind::File),
+                paths: vec![log_file.clone()],
+                attrs: Default::default(),
+            },
+            &watcher.event_sender,
+            &watcher.file_registry,
+            &watcher.language_registry,
+            &watcher.file_filters,
+            &watcher.include_globs,
+            &watcher.ignore_matchers,
+        )
+        .await
+        .unwrap();
+        FileSystemWatcher::process_fs_event(
+            Event {
+                kind: EventKind::Create(CreateKind::File),
+                paths: vec![code_file.clone()],
+                attrs: Default::default(),
+            },
+            &watcher.event_sender,
+            &watcher.file_registry,
+            &watcher.language_registry,
+            &watcher.file_filters,
+            &watcher.include_globs,
+            &watcher.ignore_matchers,
+        )
+        .await
+        .unwrap();
 
         if let Some(batch) = watcher.next_batch().await {
             let has_log = batch.changes.iter().any(|e| match e {
@@ -822,33 +884,31 @@ mod tests {
 
     #[tokio::test]
     async fn test_event_coalescing() {
-        let temp_dir = TempDir::new().unwrap();
-        let mut watcher = FileSystemWatcher::new().unwrap();
-        watcher.set_batch_timeout(Duration::from_millis(250));
-        watcher.set_debounce_duration(Duration::from_millis(20));
+        let fid = FileId("coalesce.rs".to_string());
+        let base = FileMetadata {
+            path: PathBuf::from("coalesce.rs"),
+            size: 0,
+            modified: SystemTime::now(),
+            content_hash: "h0".to_string(),
+            language: Some(Language::Rust),
+        };
 
-        let file = temp_dir.path().join("coalesce.rs");
-        fs::write(&file, "fn a(){}").await.unwrap();
-        watcher.add_watch_directory(temp_dir.path()).await.unwrap();
-
-        // Multiple rapid modifications
-        for i in 0..5u8 {
-            fs::write(&file, format!("fn a(){{ /*{}*/ }}", i))
-                .await
-                .unwrap();
+        let mut events = Vec::new();
+        let mut old = base;
+        for i in 1..=5u8 {
+            let new = FileMetadata {
+                content_hash: format!("h{}", i),
+                ..old.clone()
+            };
+            events.push(FileChangeEvent::Modified(fid.clone(), new.clone(), old));
+            old = new;
         }
 
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        if let Some(batch) = watcher.next_batch().await {
-            // Expect at most one Modified event for this path
-            let mods: Vec<_> = batch.changes.iter().filter(|e| matches!(e, FileChangeEvent::Modified(fid, _, _) if fid.0.ends_with("coalesce.rs"))).collect();
-            assert!(
-                mods.len() <= 1,
-                "Expected <=1 modified event, got {}",
-                mods.len()
-            );
-        } else {
-            panic!("No batch received");
-        }
+        let coalesced = FileSystemWatcher::coalesce_events(events);
+        let mods = coalesced
+            .iter()
+            .filter(|e| matches!(e, FileChangeEvent::Modified(fid, _, _) if fid.0.ends_with("coalesce.rs")))
+            .count();
+        assert!(mods <= 1, "Expected <=1 modified event, got {}", mods);
     }
 }

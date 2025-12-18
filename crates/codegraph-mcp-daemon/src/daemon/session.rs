@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_should_index_rust_file() {
-        let config = WatchConfig {
+        let _config = WatchConfig {
             project_root: PathBuf::from("/test"),
             debounce_ms: 30,
             batch_timeout_ms: 200,

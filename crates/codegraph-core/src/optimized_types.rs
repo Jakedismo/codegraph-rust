@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn test_optimized_node_memory_footprint() {
-        let node = OptimizedCodeNode {
+        let _node = OptimizedCodeNode {
             id: NodeId::new_v4(),
             name: CompactString::new("test_function"),
             node_type: OptNodeType::Function,

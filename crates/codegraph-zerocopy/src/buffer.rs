@@ -669,22 +669,22 @@ mod tests {
         let ring_writer = ring.clone();
 
         let writer = thread::spawn(move || {
-            for i in 0..100 {
-                let data = format!("message {}", i);
-                while ring_writer.write(data.as_bytes()) == 0 {
+            for i in 0u8..100u8 {
+                let data = [i];
+                while ring_writer.write(&data) == 0 {
                     thread::yield_now();
                 }
             }
         });
 
         let reader = thread::spawn(move || {
-            let mut received = 0;
-            let mut buffer = [0u8; 100];
+            let mut received_bytes = 0usize;
+            let mut buffer = [0u8; 64];
 
-            while received < 100 {
+            while received_bytes < 100 {
                 let read = ring_reader.read(&mut buffer);
                 if read > 0 {
-                    received += 1;
+                    received_bytes += read;
                 }
                 thread::yield_now();
             }

@@ -1283,6 +1283,7 @@ dependencies = [
  "schemars 1.1.0",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -1519,6 +1520,7 @@ dependencies = [
  "indicatif 0.18.3",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -5371,6 +5373,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-wrap"
+version = "8.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3ef4f2f0422f23a82ec9f628ea2acd12871c81a9362b02c43c1aa86acfc3ba1"
+dependencies = [
+ "futures",
+ "indexmap 2.12.1",
+ "nix",
+ "tokio",
+ "tracing",
+ "windows 0.61.3",
+]
+
+[[package]]
 name = "procfs"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6159,6 +6175,7 @@ dependencies = [
  "http-body-util",
  "pastey",
  "pin-project-lite",
+ "process-wrap",
  "rand 0.9.2",
  "rmcp-macros",
  "schemars 1.1.0",

@@ -39,7 +39,7 @@ struct SharedMemoryHeader {
     write_lock: AtomicBool,
     data_offset: u32,
     data_size: u32,
-    checksum: u64,
+    data_len: u64,
 }
 
 const SHARED_MEMORY_MAGIC: u64 = 0x5A45524F434F5059; // "ZEROCOPY"
@@ -78,7 +78,7 @@ impl SharedMemorySegment {
                 write_lock: AtomicBool::new(false),
                 data_offset: HEADER_SIZE as u32,
                 data_size: size as u32,
-                checksum: 0,
+                data_len: 0,
             };
         }
 
@@ -240,6 +240,12 @@ impl<'a> SharedMemoryReader<'a> {
         T::Archived: for<'b> bytecheck::CheckBytes<HighValidator<'b, rkyv::rancor::Failure>>,
     {
         let data = self.segment.data_section();
+        let data_len = unsafe { (*self.segment.header).data_len as usize };
+        let data = if data_len == 0 || data_len > data.len() {
+            data
+        } else {
+            &data[..data_len]
+        };
         access::<T::Archived, rkyv::rancor::Failure>(data).map_err(|e| {
             ZeroCopyError::ArchiveAccess(format!("Failed to access archived data: {:?}", e))
         })
@@ -302,6 +308,10 @@ impl<'a> SharedMemoryWriter<'a> {
 
         // Copy data
         data_section[..data.len()].copy_from_slice(data);
+
+        unsafe {
+            (*self.segment.header).data_len = data.len() as u64;
+        }
 
         // Update generation
         unsafe {
