@@ -205,6 +205,7 @@ We don't pick sides in the "embeddings vs keywords" debate. CodeGraph combines:
 The result? You find `handleUserAuth` when you search for "login logic"—but also when you search for "handleUserAuth".
 
 ---
+![Intelligence](docs/assets/mid.png)
 
 ## Why This Matters for AI Coding
 
