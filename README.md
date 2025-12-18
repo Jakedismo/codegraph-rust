@@ -223,6 +223,19 @@ cd codegraph-rust
 ./install-codegraph-full-features.sh
 ```
 
+#### macOS faster builds (LLVM lld)
+
+If you develop on macOS, you can opt into LLVM's `lld` linker for faster linking:
+
+```bash
+# Install LLVM so ld64.lld is on PATH (Homebrew)
+brew install llvm
+
+# Use the repo-provided Makefile targets
+make build-llvm
+make test-llvm
+```
+
 ### 2. Start SurrealDB
 
 ```bash
