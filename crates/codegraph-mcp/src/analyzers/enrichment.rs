@@ -22,7 +22,7 @@ pub fn apply_basic_enrichment(
 ) -> Result<EnrichmentStats> {
     let mut stats = EnrichmentStats::default();
 
-    let package_roots = package_roots(nodes);
+    let package_roots = package_roots(project_root, nodes);
     let feature_ids = feature_ids_by_package(nodes);
     let package_name_by_id: std::collections::HashMap<NodeId, String> = nodes
         .iter()
@@ -82,7 +82,8 @@ pub fn apply_basic_enrichment(
             continue;
         }
 
-        let Some((package_id, _root)) = package_for_file(&package_roots, &node.location.file_path)
+        let Some((package_id, _root)) =
+            package_for_file(project_root, &package_roots, &node.location.file_path)
         else {
             continue;
         };
@@ -136,7 +137,8 @@ pub fn apply_basic_enrichment(
     let mut seen_reexport: std::collections::HashSet<(NodeId, String)> =
         std::collections::HashSet::new();
     for (file_path, lines) in file_cache.iter() {
-        let Some((package_id, _root)) = package_for_file(&package_roots, file_path) else {
+        let Some((package_id, _root)) = package_for_file(project_root, &package_roots, file_path)
+        else {
             continue;
         };
         for target in pub_use_reexports(lines) {
@@ -293,7 +295,7 @@ fn feature_ids_by_package(
     out
 }
 
-fn package_roots(nodes: &[CodeNode]) -> Vec<(PathBuf, NodeId)> {
+fn package_roots(project_root: &Path, nodes: &[CodeNode]) -> Vec<(PathBuf, NodeId)> {
     let mut out: Vec<(PathBuf, NodeId)> = Vec::new();
     for node in nodes {
         if node.node_type != Some(NodeType::Other("package".to_string())) {
@@ -302,7 +304,7 @@ fn package_roots(nodes: &[CodeNode]) -> Vec<(PathBuf, NodeId)> {
         if !node.location.file_path.ends_with("Cargo.toml") {
             continue;
         }
-        let manifest = PathBuf::from(&node.location.file_path);
+        let manifest = normalize_project_path(project_root, Path::new(&node.location.file_path));
         if let Some(dir) = manifest.parent() {
             out.push((dir.to_path_buf(), node.id));
         }
@@ -312,16 +314,37 @@ fn package_roots(nodes: &[CodeNode]) -> Vec<(PathBuf, NodeId)> {
 }
 
 fn package_for_file(
+    project_root: &Path,
     package_roots: &[(PathBuf, NodeId)],
     file_path: &str,
 ) -> Option<(NodeId, PathBuf)> {
-    let p = PathBuf::from(file_path);
+    let p = normalize_project_path(project_root, Path::new(file_path));
     for (root, id) in package_roots {
         if p.starts_with(root) {
             return Some((*id, root.clone()));
         }
     }
     None
+}
+
+fn normalize_project_path(project_root: &Path, path: &Path) -> PathBuf {
+    let combined = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        project_root.join(path)
+    };
+
+    let mut out = PathBuf::new();
+    for component in combined.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                let _ = out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -443,5 +466,65 @@ mod tests {
         assert!(edges
             .iter()
             .any(|e| e.edge_type == EdgeType::Other("enables".to_string())));
+    }
+
+    #[test]
+    fn api_surface_enrichment_matches_packages_for_relative_file_paths() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        std::fs::write(
+            temp.path().join("Cargo.toml"),
+            "[package]\nname=\"x\"\nversion=\"0.1.0\"\n",
+        )
+        .expect("write Cargo.toml");
+        let lib_rs = temp.path().join("src/lib.rs");
+        std::fs::create_dir_all(lib_rs.parent().unwrap()).expect("mkdir");
+        std::fs::write(&lib_rs, "pub fn api() {}\npub use crate::api;\n").expect("write lib.rs");
+
+        let package = CodeNode::new(
+            "x",
+            Some(NodeType::Other("package".to_string())),
+            Some(Language::Rust),
+            Location {
+                file_path: temp.path().join("Cargo.toml").to_string_lossy().to_string(),
+                line: 1,
+                column: 0,
+                end_line: Some(1),
+                end_column: Some(0),
+            },
+        )
+        .with_deterministic_id("p");
+
+        let api_fn = CodeNode::new(
+            "api",
+            Some(NodeType::Function),
+            Some(Language::Rust),
+            Location {
+                file_path: "./src/lib.rs".to_string(),
+                line: 1,
+                column: 0,
+                end_line: Some(1),
+                end_column: Some(0),
+            },
+        );
+
+        let mut nodes = vec![package, api_fn];
+        let mut edges = Vec::new();
+        let stats = apply_basic_enrichment(temp.path(), &mut nodes, &mut edges).expect("enrich");
+
+        assert!(stats.api_marked > 0);
+        assert!(
+            stats.export_edges_added > 0,
+            "expected export edges for public API items"
+        );
+        assert!(
+            stats.reexport_edges_added > 0,
+            "expected reexport edges for pub use"
+        );
+        assert!(edges
+            .iter()
+            .any(|e| e.edge_type == EdgeType::Other("exports".to_string())));
+        assert!(edges
+            .iter()
+            .any(|e| e.edge_type == EdgeType::Other("reexports".to_string())));
     }
 }
