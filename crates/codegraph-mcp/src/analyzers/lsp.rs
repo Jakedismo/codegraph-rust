@@ -5,7 +5,7 @@ use anyhow::Result;
 use codegraph_core::{CodeNode, EdgeRelationship};
 use serde_json::Value as JsonValue;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
@@ -127,7 +127,9 @@ pub fn enrich_nodes_and_edges_with_lsp(
     edges: &mut [EdgeRelationship],
 ) -> Result<LspEnrichmentStats> {
     let start_total = Instant::now();
-    let root_uri = Url::from_directory_path(project_root)
+    let project_root =
+        std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
+    let root_uri = Url::from_directory_path(&project_root)
         .map_err(|_| anyhow::anyhow!("failed to create file URI for {:?}", project_root))?
         .to_string();
 
@@ -142,6 +144,15 @@ pub fn enrich_nodes_and_edges_with_lsp(
 
     for (idx, node) in nodes.iter().enumerate() {
         let file = node.location.file_path.clone();
+        if let Some(abs) = absolute_file_key(&project_root, Path::new(&file)) {
+            if abs != file {
+                let line0 = node.location.line.saturating_sub(1);
+                nodes_by_file_line_name.insert((abs.clone(), line0, node.name.to_string()), idx);
+                nodes_by_file_line
+                    .entry((abs.clone(), line0))
+                    .or_insert(idx);
+            }
+        }
         let line0 = node.location.line.saturating_sub(1);
         nodes_by_file_line_name.insert((file.clone(), line0, node.name.to_string()), idx);
         nodes_by_file_line
@@ -156,11 +167,13 @@ pub fn enrich_nodes_and_edges_with_lsp(
     let mut last_progress_log = Instant::now();
 
     for file_path in files {
-        let content = std::fs::read_to_string(file_path)?;
+        let abs_path = absolute_file_path(&project_root, file_path);
+        let content = std::fs::read_to_string(&abs_path)?;
         let file_str = file_path.to_string_lossy().to_string();
-        let uri = Url::from_file_path(file_path)
-            .map_err(|_| anyhow::anyhow!("failed to create file URI for {}", file_str))?
+        let uri = Url::from_file_path(&abs_path)
+            .map_err(|_| anyhow::anyhow!("failed to create file URI for {}", abs_path.display()))?
             .to_string();
+        let abs_file_str = abs_path.to_string_lossy().to_string();
 
         proc.notify(
             "textDocument/didOpen",
@@ -182,9 +195,13 @@ pub fn enrich_nodes_and_edges_with_lsp(
         )?;
 
         for sym in collect_document_symbols(&symbols, name_joiner) {
-            if let Some(&node_idx) =
-                nodes_by_file_line_name.get(&(file_str.clone(), sym.start_line, sym.name.clone()))
-            {
+            let rel_key = (file_str.clone(), sym.start_line, sym.name.clone());
+            let abs_key = (abs_file_str.clone(), sym.start_line, sym.name.clone());
+            let node_idx = nodes_by_file_line_name
+                .get(&rel_key)
+                .or_else(|| nodes_by_file_line_name.get(&abs_key))
+                .copied();
+            if let Some(node_idx) = node_idx {
                 let node = &mut nodes[node_idx];
                 node.metadata
                     .attributes
@@ -203,7 +220,7 @@ pub fn enrich_nodes_and_edges_with_lsp(
             let Some(from_file) = node_file_by_id.get(&edge.from) else {
                 continue;
             };
-            if *from_file != file_str {
+            if *from_file != file_str && *from_file != abs_file_str {
                 continue;
             }
             let Some(span) = edge.span.as_ref() else {
@@ -223,8 +240,15 @@ pub fn enrich_nodes_and_edges_with_lsp(
                 continue;
             };
 
-            if let Some(&target_idx) = nodes_by_file_line.get(&(target_file.clone(), target_line0))
-            {
+            let target_idx = nodes_by_file_line
+                .get(&(target_file.clone(), target_line0))
+                .copied()
+                .or_else(|| {
+                    let rel_target = Path::new(&target_file);
+                    let rel_key = relative_file_key(&project_root, rel_target)?;
+                    nodes_by_file_line.get(&(rel_key, target_line0)).copied()
+                });
+            if let Some(target_idx) = target_idx {
                 let target = &nodes[target_idx];
                 let target_name = target
                     .metadata
@@ -256,6 +280,44 @@ pub fn enrich_nodes_and_edges_with_lsp(
     }
 
     Ok(stats)
+}
+
+fn absolute_file_path(project_root: &Path, file_path: &Path) -> PathBuf {
+    let combined = if file_path.is_absolute() {
+        file_path.to_path_buf()
+    } else {
+        project_root.join(file_path)
+    };
+    normalize_path(&combined)
+}
+
+fn absolute_file_key(project_root: &Path, file_path: &Path) -> Option<String> {
+    Some(
+        absolute_file_path(project_root, file_path)
+            .to_string_lossy()
+            .to_string(),
+    )
+}
+
+fn relative_file_key(project_root: &Path, file_path: &Path) -> Option<String> {
+    let abs = absolute_file_path(project_root, file_path);
+    abs.strip_prefix(project_root)
+        .ok()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                let _ = out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
 }
 
 fn extract_first_definition_location(def: &JsonValue) -> Option<(String, u32)> {
@@ -690,5 +752,25 @@ mod tests {
             .expect_err("initialize should fail");
         let msg = format!("{err:#}");
         assert!(msg.contains("boom"), "stderr should be included: {msg}");
+    }
+
+    #[test]
+    fn relative_paths_convert_to_file_uris() {
+        let root =
+            std::env::temp_dir().join(format!("codegraph_lsp_uri_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("crates")).expect("create temp dir");
+        std::fs::write(root.join("crates").join("a.rs"), "fn a() {}").expect("write file");
+
+        let rel = PathBuf::from("./crates/a.rs");
+        let abs = absolute_file_path(&root, &rel);
+        let uri = Url::from_file_path(&abs).expect("file uri").to_string();
+        assert!(uri.starts_with("file://"));
+        assert!(
+            !uri.contains("/./"),
+            "uri should be normalized (no /./ segments): {uri}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
