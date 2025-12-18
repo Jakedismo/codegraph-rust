@@ -1,7 +1,7 @@
 // ABOUTME: Factory for creating Rig graph tools with call counting
 // ABOUTME: Instantiates all 8 tools with shared CountingExecutor
 
-use super::counting_executor::CountingExecutor;
+use super::counting_executor::{CountingExecutor, ToolTrace};
 use super::graph_tools::*;
 use codegraph_mcp_tools::GraphToolExecutor;
 use std::sync::Arc;
@@ -72,6 +72,11 @@ impl GraphToolFactory {
     /// Get and reset the tool call count (for per-query tracking)
     pub fn take_call_count(&self) -> usize {
         self.executor.take_call_count()
+    }
+
+    /// Get and reset the tool traces since last query.
+    pub fn take_traces(&self) -> Vec<ToolTrace> {
+        self.executor.take_traces()
     }
 }
 

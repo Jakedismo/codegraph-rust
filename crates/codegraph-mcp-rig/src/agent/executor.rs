@@ -79,6 +79,7 @@ impl RigExecutor {
 
         let duration_ms = start.elapsed().as_millis() as u64;
         let tool_calls = agent.take_tool_call_count();
+        let tool_traces = agent.take_tool_traces();
 
         // Record in history
         let turn = ConversationTurn {
@@ -100,6 +101,7 @@ impl RigExecutor {
             response,
             tool_calls,
             duration_ms,
+            tool_traces,
         })
     }
 
@@ -126,6 +128,7 @@ impl RigExecutor {
         let response = agent.execute(&contextualized_query).await?;
         let duration_ms = start.elapsed().as_millis() as u64;
         let tool_calls = agent.take_tool_call_count();
+        let tool_traces = agent.take_tool_traces();
 
         let turn = ConversationTurn {
             query: query.to_string(),
@@ -139,6 +142,7 @@ impl RigExecutor {
             response,
             tool_calls,
             duration_ms,
+            tool_traces,
         })
     }
 

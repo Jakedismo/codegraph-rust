@@ -373,6 +373,9 @@ pub trait RigAgentTrait: Send + Sync {
 
     /// Get and reset the tool call count since last query
     fn take_tool_call_count(&self) -> usize;
+
+    /// Get and reset tool traces since last query
+    fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace>;
 }
 
 /// OpenAI-based Rig agent
@@ -410,6 +413,10 @@ impl RigAgentTrait for OpenAIAgent {
 
     fn take_tool_call_count(&self) -> usize {
         self.factory.take_call_count()
+    }
+
+    fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace> {
+        self.factory.take_traces()
     }
 }
 
@@ -449,6 +456,10 @@ impl RigAgentTrait for AnthropicAgent {
     fn take_tool_call_count(&self) -> usize {
         self.factory.take_call_count()
     }
+
+    fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace> {
+        self.factory.take_traces()
+    }
 }
 
 /// Ollama-based Rig agent
@@ -487,6 +498,10 @@ impl RigAgentTrait for OllamaAgent {
     fn take_tool_call_count(&self) -> usize {
         self.factory.take_call_count()
     }
+
+    fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace> {
+        self.factory.take_traces()
+    }
 }
 
 /// xAI-based Rig agent (native rig provider)
@@ -524,6 +539,10 @@ impl RigAgentTrait for XAIAgent {
 
     fn take_tool_call_count(&self) -> usize {
         self.factory.take_call_count()
+    }
+
+    fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace> {
+        self.factory.take_traces()
     }
 }
 

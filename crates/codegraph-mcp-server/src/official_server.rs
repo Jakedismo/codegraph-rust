@@ -409,6 +409,130 @@ impl CodeGraphMCPServer {
 
 impl CodeGraphMCPServer {
     #[cfg(feature = "ai-enhanced")]
+    fn synthesize_structured_output_from_traces(
+        analysis_type: AnalysisType,
+        analysis_text: &str,
+        traces: &[codegraph_mcp_rig::ToolTrace],
+    ) -> Option<serde_json::Value> {
+        let mut highlights: Vec<serde_json::Value> = Vec::new();
+
+        for trace in traces {
+            let Some(result) = trace.result.as_ref() else {
+                continue;
+            };
+
+            let candidates = result
+                .get("result")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            for item in candidates {
+                let (file_path, line_number, snippet) = Self::extract_pinpoint(&item);
+                let Some(file_path) = file_path else {
+                    continue;
+                };
+
+                let name = item
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| item.get("function_name").and_then(|v| v.as_str()))
+                    .unwrap_or(trace.tool_name.as_str())
+                    .to_string();
+
+                highlights.push(serde_json::json!({
+                    "name": name,
+                    "file_path": file_path,
+                    "line_number": line_number,
+                    "snippet": snippet,
+                    "source_tool": trace.tool_name,
+                }));
+
+                if highlights.len() >= 25 {
+                    break;
+                }
+            }
+
+            if highlights.len() >= 25 {
+                break;
+            }
+        }
+
+        if highlights.is_empty() {
+            return None;
+        }
+
+        let summary = analysis_text
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .map(|l| l.trim().to_string())
+            .unwrap_or_else(|| analysis_text.chars().take(160).collect());
+
+        Some(serde_json::json!({
+            "analysis_type": analysis_type.as_str(),
+            "summary": summary,
+            "analysis": analysis_text,
+            "highlights": highlights,
+        }))
+    }
+
+    #[cfg(feature = "ai-enhanced")]
+    fn extract_pinpoint(item: &serde_json::Value) -> (Option<String>, Option<usize>, Option<String>) {
+        let file_path = item
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                item.get("location")
+                    .and_then(|loc| loc.get("file_path"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .or_else(|| {
+                item.get("node")
+                    .and_then(|n| n.get("location"))
+                    .and_then(|loc| loc.get("file_path"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            });
+
+        let line_number = item
+            .get("line_number")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .or_else(|| item.get("start_line").and_then(|v| v.as_u64()).map(|n| n as usize))
+            .or_else(|| {
+                item.get("location")
+                    .and_then(|loc| loc.get("start_line"))
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize)
+            })
+            .or_else(|| {
+                item.get("node")
+                    .and_then(|n| n.get("location"))
+                    .and_then(|loc| loc.get("start_line"))
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize)
+            });
+
+        let raw_snippet = item
+            .get("content")
+            .and_then(|v| v.as_str())
+            .or_else(|| item.get("text").and_then(|v| v.as_str()));
+
+        let snippet = raw_snippet.map(|s| {
+            let trimmed = s.trim();
+            if trimmed.len() <= 240 {
+                trimmed.to_string()
+            } else {
+                format!("{}…", trimmed.chars().take(240).collect::<String>())
+            }
+        });
+
+        (file_path, line_number, snippet)
+    }
+
+    #[cfg(feature = "ai-enhanced")]
     fn timeout_fallback_output(
         elapsed_secs: u64,
         partial_result: Option<String>,
@@ -729,6 +853,8 @@ impl CodeGraphMCPServer {
         let step_counter = Arc::new(AtomicUsize::new(0));
 
         // Execute using the selected architecture
+        let mut rig_traces: Option<Vec<codegraph_mcp_rig::ToolTrace>> = None;
+
         let (mut result, framework_name, observed_steps): (CodeGraphAgentOutput, &str, usize) =
             match architecture {
                 AgentArchitecture::Rig => {
@@ -736,6 +862,7 @@ impl CodeGraphMCPServer {
                     let mut rig_executor = RigExecutor::new(tool_executor.clone());
                     match rig_executor.execute(query, analysis_type).await {
                         Ok(rig_output) => {
+                            rig_traces = Some(rig_output.tool_traces.clone());
                             // Convert RigAgentOutput to CodeGraphAgentOutput
                             let result = CodeGraphAgentOutput {
                                 answer: rig_output.response,
@@ -954,8 +1081,14 @@ impl CodeGraphMCPServer {
             }
         };
 
+        let synthesized = structured_output.or_else(|| {
+            rig_traces
+                .as_deref()
+                .and_then(|t| Self::synthesize_structured_output_from_traces(analysis_type, &result.answer, t))
+        });
+
         // Format result as JSON with structured output if available
-        let response_json = if let Some(structured) = structured_output {
+        let response_json = if let Some(structured) = synthesized {
             serde_json::json!({
                 "analysis_type": analysis_type.as_str(),
                 "tier": format!("{:?}", tier),
@@ -964,6 +1097,8 @@ impl CodeGraphMCPServer {
                 "steps_taken": result.steps_taken,
                 "tool_use_count": tool_use_count,
                 "framework": framework_name,
+                "answer": result.answer,
+                "findings": result.findings,
             })
         } else {
             // Fallback to original format if parsing failed
@@ -1085,6 +1220,7 @@ impl ServerHandler for CodeGraphMCPServer {
 #[cfg(all(test, feature = "ai-enhanced"))]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn timeout_fallback_uses_partial_when_present() {
@@ -1118,5 +1254,42 @@ mod tests {
     #[test]
     fn reconcile_prefers_reported_when_higher() {
         assert_eq!(CodeGraphMCPServer::reconcile_tool_use_counts(7, 3), 7);
+    }
+
+    #[test]
+    fn synthesize_structured_output_includes_highlights_from_trace() {
+        let traces = vec![codegraph_mcp_rig::ToolTrace {
+            tool_name: "semantic_code_search".to_string(),
+            parameters: json!({"query": "config loading"}),
+            result: Some(json!({
+                "tool": "semantic_code_search",
+                "result": [
+                    {
+                        "name": "load_config",
+                        "file_path": "crates/codegraph-core/src/config_manager.rs",
+                        "start_line": 123,
+                        "content": "fn load_config() { /* ... */ }"
+                    }
+                ]
+            })),
+            error: None,
+        }];
+
+        let synthesized = CodeGraphMCPServer::synthesize_structured_output_from_traces(
+            AnalysisType::ContextBuilder,
+            "analysis text",
+            &traces,
+        )
+        .expect("expected synthesized output");
+
+        let highlights = synthesized
+            .get("highlights")
+            .and_then(|v| v.as_array())
+            .expect("expected highlights array");
+        assert!(!highlights.is_empty(), "expected at least one highlight");
+        assert_eq!(
+            highlights[0].get("file_path").and_then(|v| v.as_str()),
+            Some("crates/codegraph-core/src/config_manager.rs")
+        );
     }
 }

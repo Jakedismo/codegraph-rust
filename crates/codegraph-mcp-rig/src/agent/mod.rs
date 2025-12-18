@@ -18,4 +18,6 @@ pub struct RigAgentOutput {
     pub tool_calls: usize,
     /// Execution duration in milliseconds
     pub duration_ms: u64,
+    /// Tool call trace for deterministic post-processing
+    pub tool_traces: Vec<crate::tools::ToolTrace>,
 }
