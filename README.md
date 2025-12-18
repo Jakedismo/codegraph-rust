@@ -393,6 +393,30 @@ database = "codegraph"
 
 See [INSTALLATION_GUIDE.md](docs/INSTALLATION_GUIDE.md) for complete configuration options.
 
+### Experimental graph schema (optional)
+
+CodeGraph can run against an experimental SurrealDB schema optimized for large graph workloads and multi-model embeddings.
+
+To use it:
+
+1) Load the schema into a dedicated database (once):
+
+```bash
+# Example (SurrealDB CLI)
+surreal sql --conn ws://localhost:3004 --ns ouroboros --db codegraph_experimental < schema/codegraph_graph_experimental.surql
+```
+
+2) Point CodeGraph at that database:
+
+```bash
+CODEGRAPH_USE_GRAPH_SCHEMA=true
+CODEGRAPH_GRAPH_DB_DATABASE=codegraph_experimental
+```
+
+Notes:
+- The schema file defines HNSW indexes for multiple embedding dimensions (384–4096) so you can switch embedding models without reworking the DB.
+- Schema loading is not currently performed automatically at runtime; you must apply the `.surql` file to the target database before indexing.
+
 ---
 
 ## Daemon Mode

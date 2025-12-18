@@ -533,6 +533,176 @@ DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(
              FROM $all_incoming WHERE source_node = node_ref LIMIT 5) AS incoming_edges
         FROM $scored
     );
+} 
+PERMISSIONS FULL;
+-- Semantic search over CHUNKS using HNSW KNN index (optionally enriched with graph context)
+DEFINE FUNCTION fn::semantic_search_chunks_with_context(
+    $project_id: string,
+    $query_embedding: array<float>,
+    $query_text: string,
+    $dimension: int,
+    $limit: int,
+    $threshold: float,
+    $include_graph_context: bool
+) {
+    LET $safe_limit = IF $limit > 0 AND $limit <= 100 THEN $limit ELSE 10 END;
+    LET $safe_threshold =
+        IF $threshold >= 0.0 AND $threshold <= 1.0
+        THEN $threshold
+        ELSE 0.7
+        END;
+
+    LET $chunk_hits =
+        IF $dimension = 384 THEN (
+            SELECT id, parent_node, chunk_index, text, vector::distance::knn() AS distance,
+                   vector::similarity::cosine(embedding_384, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_384 <|100,200|> $query_embedding
+        )
+        ELSE IF $dimension = 768 THEN (
+            SELECT id, parent_node, chunk_index, text, vector::distance::knn() AS distance,
+                   vector::similarity::cosine(embedding_768, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_768 <|100,200|> $query_embedding
+        )
+        ELSE IF $dimension = 1024 THEN (
+            SELECT id, parent_node, chunk_index, text, vector::distance::knn() AS distance,
+                   vector::similarity::cosine(embedding_1024, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_1024 <|100,200|> $query_embedding
+        )
+        ELSE IF $dimension = 1536 THEN (
+            SELECT id, parent_node, chunk_index, text, vector::distance::knn() AS distance,
+                   vector::similarity::cosine(embedding_1536, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_1536 <|100,200|> $query_embedding
+        )
+        ELSE IF $dimension = 2048 THEN (
+            SELECT id, parent_node, chunk_index, text, vector::distance::knn() AS distance,
+                   vector::similarity::cosine(embedding_2048, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_2048 <|100,200|> $query_embedding
+        )
+        ELSE IF $dimension = 2560 THEN (
+            SELECT id, parent_node, chunk_index, text, vector::distance::knn() AS distance,
+                   vector::similarity::cosine(embedding_2560, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_2560 <|100,200|> $query_embedding
+        )
+        ELSE IF $dimension = 3072 THEN (
+            SELECT id, parent_node, chunk_index, text, vector::distance::knn() AS distance,
+                   vector::similarity::cosine(embedding_3072, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_3072 <|100,200|> $query_embedding
+        )
+        ELSE IF $dimension = 3584 THEN (
+            SELECT id, parent_node, chunk_index, text, vector::distance::knn() AS distance,
+                   vector::similarity::cosine(embedding_3584, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_3584 <|100,200|> $query_embedding
+        )
+        ELSE IF $dimension = 4096 THEN (
+            SELECT id, parent_node, chunk_index, text, vector::distance::knn() AS distance,
+                   vector::similarity::cosine(embedding_4096, $query_embedding) AS vector_score
+            FROM chunks
+            WHERE project_id = $project_id AND parent_node != NONE
+              AND embedding_4096 <|100,200|> $query_embedding
+        )
+        ELSE [] END;
+
+    LET $scored = (
+        SELECT *
+        FROM $chunk_hits
+        WHERE vector_score >= $safe_threshold
+        ORDER BY distance ASC
+        LIMIT $safe_limit
+    );
+
+    LET $base_results = (
+        SELECT
+            id,
+            parent_node,
+            chunk_index,
+            text,
+            vector_score,
+            parent_node.name AS parent_name,
+            parent_node.node_type AS parent_kind,
+            parent_node.file_path AS file_path,
+            parent_node.start_line AS start_line,
+            parent_node.end_line AS end_line
+        FROM $scored
+        FETCH parent_node
+    );
+
+    IF $include_graph_context THEN (
+        LET $node_refs = (SELECT VALUE parent_node FROM $base_results WHERE parent_node != NONE);
+
+        LET $all_outgoing = (
+            SELECT
+                `from` AS source_node,
+                <string>`to` AS node_id,
+                `to`.name AS name,
+                `to`.node_type AS kind,
+                `to`.file_path AS file_path,
+                edge_type AS relationship
+            FROM edges
+            WHERE `from` INSIDE $node_refs
+            LIMIT 50
+        );
+
+        LET $all_incoming = (
+            SELECT
+                `to` AS source_node,
+                <string>`from` AS node_id,
+                `from`.name AS name,
+                `from`.node_type AS kind,
+                `from`.file_path AS file_path,
+                edge_type AS relationship
+            FROM edges
+            WHERE `to` INSIDE $node_refs
+            LIMIT 50
+        );
+
+        RETURN (
+            SELECT
+                id,
+                chunk_index,
+                text,
+                vector_score,
+                parent_node.name AS parent_name,
+                parent_node.node_type AS parent_kind,
+                file_path,
+                start_line,
+                end_line,
+                (SELECT node_id, name, kind, file_path, relationship
+                 FROM $all_outgoing WHERE source_node = parent_node LIMIT 5) AS outgoing_edges,
+                (SELECT node_id, name, kind, file_path, relationship
+                 FROM $all_incoming WHERE source_node = parent_node LIMIT 5) AS incoming_edges
+            FROM $base_results
+        );
+    END;
+
+    RETURN (
+        SELECT
+            id,
+            chunk_index,
+            text,
+            vector_score,
+            parent_name,
+            parent_kind,
+            file_path,
+            start_line,
+            end_line
+        FROM $base_results
+    );
 }
 PERMISSIONS FULL;
 DEFINE FUNCTION fn::trace_call_chain($project_id: string, $from_node: any, $max_depth: int) {
@@ -546,7 +716,7 @@ LET $record = fn::parse_record_id('nodes', $resolved_id);
 LET $rec_proj = (SELECT VALUE project_id FROM ONLY $record);
 IF $rec_proj != NONE AND $rec_proj != $project_id { RETURN []; };
 -- Use direct field access for project_id filtering
-LET $raw = (SELECT fn::node_info(id) AS node, array::distinct((SELECT fn::node_reference(from) AS caller FROM edges WHERE to = id AND edge_type = 'Calls' AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE)).caller) AS called_by FROM (SELECT ->edges[WHERE edge_type = 'Calls' AND (to.project_id ?? $project_id) = $project_id] FROM ONLY $record)->to);
+LET $raw = (SELECT fn::node_info(id) AS node, array::distinct((SELECT fn::node_reference(from) AS caller FROM edges WHERE to = id AND edge_type = 'calls' AND (from.project_id = $project_id OR from.project_id = NONE) AND (to.project_id = $project_id OR to.project_id = NONE)).caller) AS called_by FROM (SELECT ->edges[WHERE edge_type = 'calls' AND (to.project_id ?? $project_id) = $project_id] FROM ONLY $record)->to);
 RETURN (SELECT node.id AS id, node.name AS name, node.kind AS kind, node.location AS location, node.language AS language, node.content AS content, node.metadata AS metadata, 1 AS call_depth, called_by, $safe_depth AS requested_depth FROM $raw WHERE node != NONE);
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::get_complexity_hotspots($project_id: string, $min_complexity: float, $limit: int) {

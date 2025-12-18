@@ -64,3 +64,68 @@ fn experimental_schema_matches_storage_contracts() {
         );
     }
 }
+
+#[test]
+fn schemas_define_graph_tool_functions() {
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("schema");
+
+    let schemas = [
+        ("main", base.join("codegraph.surql")),
+        ("experimental", base.join("codegraph_graph_experimental.surql")),
+    ];
+
+    let required_functions = [
+        "DEFINE FUNCTION fn::get_transitive_dependencies(",
+        "DEFINE FUNCTION fn::detect_circular_dependencies(",
+        "DEFINE FUNCTION fn::trace_call_chain(",
+        "DEFINE FUNCTION fn::calculate_coupling_metrics(",
+        "DEFINE FUNCTION fn::get_hub_nodes(",
+        "DEFINE FUNCTION fn::get_reverse_dependencies(",
+        "DEFINE FUNCTION fn::get_complexity_hotspots(",
+        "DEFINE FUNCTION fn::find_nodes_by_name(",
+        "DEFINE FUNCTION fn::semantic_search_nodes_via_chunks(",
+        "DEFINE FUNCTION fn::semantic_search_chunks_with_context(",
+    ];
+
+    for (label, path) in schemas {
+        let schema = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+
+        for needle in required_functions {
+            assert!(
+                schema.contains(needle),
+                "{} schema missing expected function definition: {}",
+                label,
+                needle
+            );
+        }
+
+        let header_start = schema
+            .find("DEFINE FUNCTION fn::semantic_search_chunks_with_context(")
+            .unwrap_or_else(|| panic!("{} schema missing chunk search function", label));
+        let header_tail = &schema[header_start..];
+        let header_end = header_tail
+            .find(") {")
+            .unwrap_or_else(|| panic!("{} schema chunk search header missing ') {{'", label));
+        let header = &header_tail[..header_end];
+
+        assert!(
+            header.contains("$query_text"),
+            "{} schema chunk search signature must include $query_text",
+            label
+        );
+        assert!(
+            header.contains("$threshold"),
+            "{} schema chunk search signature must include $threshold",
+            label
+        );
+        assert!(
+            header.contains("$include_graph_context"),
+            "{} schema chunk search signature must include $include_graph_context",
+            label
+        );
+    }
+}
