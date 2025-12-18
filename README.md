@@ -216,6 +216,42 @@ When you connect CodeGraph to Claude Code, Cursor, or any MCP-compatible agent:
 
 This isn't incremental improvement. It's the difference between an AI that *searches* your code and one that *understands* it.
 
+### Why this is powerful for code agents
+
+CodeGraph shifts the *cognitive load* (search + relevance + dependency reasoning) into CodeGraph’s agentic tools, so your code agent can spend its context budget on *making the change*, not *discovering what to change*.
+
+#### What an agentic tool returns (example)
+
+`agentic_impact` returns structured output (file paths, line numbers, and bounded snippets/highlights) plus analysis:
+
+```json
+{
+  "analysis_type": "dependency_analysis",
+  "query": "PromptSelector",
+  "structured_output": {
+    "analysis": "…what depends on PromptSelector and why…",
+    "highlights": [
+      { "file_path": "crates/codegraph-mcp-server/src/prompt_selector.rs", "line_number": 42, "snippet": "pub struct PromptSelector { … }" }
+    ],
+    "next_steps": ["…"]
+  },
+  "steps_taken": "5",
+  "tool_use_count": 5
+}
+```
+
+#### What a code agent would otherwise have to do
+
+Without CodeGraph’s agentic tools, a code agent typically needs multiple “single-purpose” calls to reach the same confidence:
+- search for the symbol (often multiple strategies: text + semantic + ripgrep-style search)
+- open and read multiple files (definition + usages + callers + related modules)
+- reconstruct dependency/call graphs mentally from partial evidence
+- repeat when a guess is wrong (more reads, more tokens)
+
+This burns context quickly: reading “just” a handful of medium-sized files + surrounding context can easily consume tens of thousands of tokens, and larger repos can push into hundreds of thousands depending on how much code gets pulled into context.
+
+With CodeGraph, the agent gets *pinpointed locations and relationships* (plus bounded context) and can keep far more of the context window available for planning and implementing changes.
+
 ---
 
 ## Quick Start
