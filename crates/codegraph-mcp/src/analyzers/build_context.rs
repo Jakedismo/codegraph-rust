@@ -13,7 +13,10 @@ pub struct BuildContextOutput {
     pub edges: Vec<EdgeRelationship>,
 }
 
-pub fn analyze_cargo_workspace(project_root: &Path, project_id: &str) -> Result<BuildContextOutput> {
+pub fn analyze_cargo_workspace(
+    project_root: &Path,
+    project_id: &str,
+) -> Result<BuildContextOutput> {
     if !project_root.join("Cargo.toml").is_file() {
         return Ok(BuildContextOutput::default());
     }
@@ -55,6 +58,7 @@ pub fn parse_cargo_metadata_json(json: &str, project_id: &str) -> Result<BuildCo
             .get("manifest_path")
             .and_then(|v| v.as_str())
             .unwrap_or("");
+        let package_qualified = format!("package::{}", name);
 
         let mut node = CodeNode::new(
             name,
@@ -73,17 +77,61 @@ pub fn parse_cargo_metadata_json(json: &str, project_id: &str) -> Result<BuildCo
         node.metadata
             .attributes
             .insert("analyzer".to_string(), "build_context".to_string());
-        node.metadata.attributes.insert(
-            "analyzer_confidence".to_string(),
-            "1.0".to_string(),
-        );
-        node.metadata.attributes.insert(
-            "qualified_name".to_string(),
-            format!("package::{}", name),
-        );
+        node.metadata
+            .attributes
+            .insert("analyzer_confidence".to_string(), "1.0".to_string());
+        node.metadata
+            .attributes
+            .insert("qualified_name".to_string(), package_qualified.clone());
 
         package_ids.insert(name.to_string(), node.id);
         out.nodes.push(node);
+
+        let features = pkg
+            .get("features")
+            .and_then(|v| v.as_object())
+            .cloned()
+            .unwrap_or_default();
+        for (feature_name, _) in features {
+            let mut feature_node = CodeNode::new(
+                format!("{}::{}", name, feature_name),
+                Some(NodeType::Other("feature".to_string())),
+                Some(Language::Rust),
+                Location {
+                    file_path: manifest_path.to_string(),
+                    line: 1,
+                    column: 0,
+                    end_line: Some(1),
+                    end_column: Some(0),
+                },
+            )
+            .with_deterministic_id(project_id);
+
+            feature_node
+                .metadata
+                .attributes
+                .insert("analyzer".to_string(), "build_context".to_string());
+            feature_node
+                .metadata
+                .attributes
+                .insert("analyzer_confidence".to_string(), "1.0".to_string());
+            feature_node.metadata.attributes.insert(
+                "qualified_name".to_string(),
+                format!("feature::{}::{}", name, feature_name),
+            );
+            out.edges.push(EdgeRelationship {
+                from: feature_node.id,
+                to: package_qualified.clone(),
+                edge_type: EdgeType::Other("enables".to_string()),
+                metadata: std::collections::HashMap::from([
+                    ("analyzer".to_string(), "build_context".to_string()),
+                    ("analyzer_confidence".to_string(), "1.0".to_string()),
+                ]),
+                span: None,
+            });
+
+            out.nodes.push(feature_node);
+        }
     }
 
     for pkg in &packages {
@@ -158,6 +206,23 @@ mod tests {
                 e.edge_type == EdgeType::Other("depends_on".to_string()) && e.to == "lib"
             }),
             "expected a depends_on edge from app to lib"
+        );
+
+        let features: Vec<_> = out
+            .nodes
+            .iter()
+            .filter(|n| n.node_type == Some(NodeType::Other("feature".to_string())))
+            .collect();
+        assert!(
+            !features.is_empty(),
+            "expected at least one feature node from cargo metadata"
+        );
+
+        assert!(
+            out.edges.iter().any(|e| {
+                e.edge_type == EdgeType::Other("enables".to_string()) && e.to == "package::app"
+            }),
+            "expected an enables edge from a feature to the owning package"
         );
     }
 

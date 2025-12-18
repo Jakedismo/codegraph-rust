@@ -29,7 +29,11 @@ fn target_dir() -> PathBuf {
 }
 
 fn codegraph_bin_path() -> PathBuf {
-    let exe = if cfg!(windows) { "codegraph.exe" } else { "codegraph" };
+    let exe = if cfg!(windows) {
+        "codegraph.exe"
+    } else {
+        "codegraph"
+    };
     target_dir().join("debug").join(exe)
 }
 
@@ -39,7 +43,14 @@ fn ensure_codegraph_bin() -> PathBuf {
             let workspace_root = workspace_root_dir();
             let output = StdCommand::new("cargo")
                 .current_dir(&workspace_root)
-                .args(["build", "-q", "-p", "codegraph-mcp-server", "--bin", "codegraph"])
+                .args([
+                    "build",
+                    "-q",
+                    "-p",
+                    "codegraph-mcp-server",
+                    "--bin",
+                    "codegraph",
+                ])
                 .stdin(Stdio::null())
                 .output()
                 .expect("Failed to invoke cargo build for codegraph-mcp-server");
@@ -162,10 +173,7 @@ async fn test_official_server_creation() {
         .spawn()
         .expect("Failed to start MCP server process");
 
-    let service = ()
-        .serve(transport)
-        .await
-        .expect("Failed to initialize MCP client");
+    let service = ().serve(transport).await.expect("Failed to initialize MCP client");
 
     let tools = service
         .list_tools(Default::default())

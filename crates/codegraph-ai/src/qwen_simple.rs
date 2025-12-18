@@ -86,9 +86,8 @@ impl QwenClient {
             return Ok(client);
         }
 
-        let built = std::panic::catch_unwind(Client::new).map_err(|_| {
-            CodeGraphError::Network("Failed to initialize HTTP client".to_string())
-        })?;
+        let built = std::panic::catch_unwind(Client::new)
+            .map_err(|_| CodeGraphError::Network("Failed to initialize HTTP client".to_string()))?;
         let _ = self.client.set(built);
         Ok(self.client.get().expect("client should be initialized"))
     }

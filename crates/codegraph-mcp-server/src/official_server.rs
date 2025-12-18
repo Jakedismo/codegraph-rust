@@ -396,7 +396,6 @@ impl CodeGraphMCPServer {
         self.execute_agentic_workflow(analysis_type, &request.query, peer, meta)
             .await
     }
-
 }
 
 // NOTE: Legacy agentic tools (agentic_code_search, agentic_dependency_analysis, etc.)

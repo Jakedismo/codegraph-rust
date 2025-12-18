@@ -87,6 +87,18 @@ FastML currently combines:
 
 This improves recall, especially for edges that are hard to extract purely from Tree-sitter patterns (or where the extractor is conservative).
 
+## Analyzer pipeline in this repository (implemented)
+
+In addition to AST + FastML extraction, the indexing pipeline runs analyzer stages that enrich the graph by default:
+
+- **Build context**: Cargo workspace packages, features, and dependency edges (`depends_on`, `enables`)
+- **LSP resolution**: enriches qualified names and resolves reference targets via language servers
+- **Rustdoc + API surface**: attaches doc comments, marks API visibility, emits `exports`/`reexports`, and links feature-gated items
+- **Module linker**: adds module nodes plus module-level import/containment edges
+- **Dataflow (Rust-local)**: emits conservative def-use + propagation edges (`defines`, `uses`, `flows_to`, `returns`, `mutates`)
+- **Docs/contracts**: creates document/spec nodes and links backticked symbols (`documents`, `specifies`)
+- **Architecture/boundaries**: counts package dependency cycles and (optionally) emits `violates_boundary` edges from configured rules
+
 ### Project-level resolution (cross-file)
 
 Even after FastML, many extracted edges still have `to: String` rather than a resolved node ID. The indexer builds a project-wide symbol index and attempts to resolve edge targets across the whole project, with optional semantic matching behind the `ai-enhanced` feature flag.

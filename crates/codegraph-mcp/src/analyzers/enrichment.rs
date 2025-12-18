@@ -10,8 +10,9 @@ pub struct EnrichmentStats {
     pub docs_attached: usize,
     pub api_marked: usize,
     pub export_edges_added: usize,
+    pub reexport_edges_added: usize,
+    pub feature_enables_edges_added: usize,
     pub uses_edges_derived: usize,
-    pub package_cycles_detected: usize,
 }
 
 pub fn apply_basic_enrichment(
@@ -22,6 +23,12 @@ pub fn apply_basic_enrichment(
     let mut stats = EnrichmentStats::default();
 
     let package_roots = package_roots(nodes);
+    let feature_ids = feature_ids_by_package(nodes);
+    let package_name_by_id: std::collections::HashMap<NodeId, String> = nodes
+        .iter()
+        .filter(|n| n.node_type == Some(NodeType::Other("package".to_string())))
+        .map(|n| (n.id, n.name.to_string()))
+        .collect();
     let mut file_cache: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
 
@@ -51,9 +58,16 @@ pub fn apply_basic_enrichment(
                 .insert("api_visibility".to_string(), visibility.to_string());
             stats.api_marked += 1;
         }
+
+        if let Some(feature) = cfg_feature(lines, node.location.line) {
+            node.metadata
+                .attributes
+                .insert("cfg_feature".to_string(), feature);
+        }
     }
 
     let mut export_edges: Vec<EdgeRelationship> = Vec::new();
+    let mut feature_edges: Vec<EdgeRelationship> = Vec::new();
     for node in nodes.iter() {
         if node.language != Some(Language::Rust) {
             continue;
@@ -88,17 +102,63 @@ pub fn apply_basic_enrichment(
             ]),
             span: None,
         });
+
+        if let Some(feature) = node.metadata.attributes.get("cfg_feature") {
+            let package_name = package_name_by_id
+                .get(&package_id)
+                .cloned()
+                .unwrap_or_default();
+            if let Some(&feature_id) = feature_ids.get(&(package_name, feature.to_string())) {
+                feature_edges.push(EdgeRelationship {
+                    from: feature_id,
+                    to: node
+                        .metadata
+                        .attributes
+                        .get("qualified_name")
+                        .cloned()
+                        .unwrap_or_else(|| node.name.to_string()),
+                    edge_type: EdgeType::Other("enables".to_string()),
+                    metadata: std::collections::HashMap::from([
+                        ("analyzer".to_string(), "api_surface".to_string()),
+                        ("analyzer_confidence".to_string(), "0.8".to_string()),
+                    ]),
+                    span: None,
+                });
+            }
+        }
     }
     stats.export_edges_added = export_edges.len();
     edges.extend(export_edges);
+    stats.feature_enables_edges_added = feature_edges.len();
+    edges.extend(feature_edges);
+
+    let mut reexport_edges: Vec<EdgeRelationship> = Vec::new();
+    let mut seen_reexport: std::collections::HashSet<(NodeId, String)> =
+        std::collections::HashSet::new();
+    for (file_path, lines) in file_cache.iter() {
+        let Some((package_id, _root)) = package_for_file(&package_roots, file_path) else {
+            continue;
+        };
+        for target in pub_use_reexports(lines) {
+            if seen_reexport.insert((package_id, target.clone())) {
+                reexport_edges.push(EdgeRelationship {
+                    from: package_id,
+                    to: target,
+                    edge_type: EdgeType::Other("reexports".to_string()),
+                    metadata: std::collections::HashMap::from([
+                        ("analyzer".to_string(), "api_surface".to_string()),
+                        ("analyzer_confidence".to_string(), "0.7".to_string()),
+                    ]),
+                    span: None,
+                });
+            }
+        }
+    }
+    stats.reexport_edges_added = reexport_edges.len();
+    edges.extend(reexport_edges);
 
     for edge in edges.iter_mut() {
-        if edge
-            .metadata
-            .get("analyzer")
-            .map(|v| v.as_str())
-            != Some("lsp_definition")
-        {
+        if edge.metadata.get("analyzer").map(|v| v.as_str()) != Some("lsp_definition") {
             continue;
         }
         if edge.edge_type == EdgeType::References {
@@ -106,8 +166,6 @@ pub fn apply_basic_enrichment(
             stats.uses_edges_derived += 1;
         }
     }
-
-    stats.package_cycles_detected = count_package_cycles(nodes, edges);
 
     Ok(stats)
 }
@@ -170,6 +228,71 @@ fn rust_visibility(lines: &[String], line_1based: u32) -> Option<&'static str> {
     Some("private")
 }
 
+fn cfg_feature(lines: &[String], line_1based: u32) -> Option<String> {
+    let idx = (line_1based as usize).saturating_sub(1);
+    let start = idx.saturating_sub(3);
+    let end = idx.min(lines.len());
+
+    for l in &lines[start..end] {
+        let trimmed = l.trim();
+        if !trimmed.starts_with("#[cfg") {
+            continue;
+        }
+        if let Some(feature_idx) = trimmed.find("feature") {
+            let after = &trimmed[feature_idx..];
+            if let Some(start_quote) = after.find('"') {
+                let rest = &after[start_quote + 1..];
+                if let Some(end_quote) = rest.find('"') {
+                    return Some(rest[..end_quote].to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn pub_use_reexports(lines: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    for l in lines {
+        let trimmed = l.trim_start();
+        if !trimmed.starts_with("pub use ") {
+            continue;
+        }
+        let rest = trimmed.trim_start_matches("pub use ").trim();
+        let rest = rest.trim_end_matches(';').trim();
+        if !rest.is_empty() {
+            out.push(rest.to_string());
+        }
+    }
+    out
+}
+
+fn feature_ids_by_package(
+    nodes: &[CodeNode],
+) -> std::collections::HashMap<(String, String), NodeId> {
+    let mut out = std::collections::HashMap::new();
+    for n in nodes {
+        if n.node_type != Some(NodeType::Other("feature".to_string())) {
+            continue;
+        }
+        let Some(q) = n.metadata.attributes.get("qualified_name") else {
+            continue;
+        };
+        let mut parts = q.split("::");
+        if parts.next() != Some("feature") {
+            continue;
+        }
+        let Some(pkg) = parts.next() else {
+            continue;
+        };
+        let Some(feature) = parts.next() else {
+            continue;
+        };
+        out.insert((pkg.to_string(), feature.to_string()), n.id);
+    }
+    out
+}
+
 fn package_roots(nodes: &[CodeNode]) -> Vec<(PathBuf, NodeId)> {
     let mut out: Vec<(PathBuf, NodeId)> = Vec::new();
     for node in nodes {
@@ -201,102 +324,6 @@ fn package_for_file(
     None
 }
 
-fn count_package_cycles(nodes: &[CodeNode], edges: &[EdgeRelationship]) -> usize {
-    let mut package_names: std::collections::HashMap<NodeId, String> = std::collections::HashMap::new();
-    for n in nodes {
-        if n.node_type == Some(NodeType::Other("package".to_string())) {
-            package_names.insert(n.id, n.name.to_string());
-        }
-    }
-
-    let mut adj: std::collections::HashMap<NodeId, Vec<NodeId>> = std::collections::HashMap::new();
-    for e in edges {
-        if e.edge_type != EdgeType::Other("depends_on".to_string()) {
-            continue;
-        }
-        if !package_names.contains_key(&e.from) {
-            continue;
-        }
-        let Some((&to_id, _)) = package_names
-            .iter()
-            .find(|(_, name)| name.as_str() == e.to.as_str())
-        else {
-            continue;
-        };
-        adj.entry(e.from).or_default().push(to_id);
-    }
-
-    let mut index: usize = 0;
-    let mut stack: Vec<NodeId> = Vec::new();
-    let mut on_stack: std::collections::HashSet<NodeId> = std::collections::HashSet::new();
-    let mut indices: std::collections::HashMap<NodeId, usize> = std::collections::HashMap::new();
-    let mut lowlink: std::collections::HashMap<NodeId, usize> = std::collections::HashMap::new();
-    let mut scc_count = 0usize;
-
-    fn strongconnect(
-        v: NodeId,
-        index: &mut usize,
-        indices: &mut std::collections::HashMap<NodeId, usize>,
-        lowlink: &mut std::collections::HashMap<NodeId, usize>,
-        stack: &mut Vec<NodeId>,
-        on_stack: &mut std::collections::HashSet<NodeId>,
-        adj: &std::collections::HashMap<NodeId, Vec<NodeId>>,
-        scc_count: &mut usize,
-    ) {
-        indices.insert(v, *index);
-        lowlink.insert(v, *index);
-        *index += 1;
-        stack.push(v);
-        on_stack.insert(v);
-
-        for w in adj.get(&v).cloned().unwrap_or_default() {
-            if !indices.contains_key(&w) {
-                strongconnect(
-                    w, index, indices, lowlink, stack, on_stack, adj, scc_count,
-                );
-                let lw = *lowlink.get(&w).unwrap();
-                let lv = lowlink.get_mut(&v).unwrap();
-                *lv = (*lv).min(lw);
-            } else if on_stack.contains(&w) {
-                let iw = *indices.get(&w).unwrap();
-                let lv = lowlink.get_mut(&v).unwrap();
-                *lv = (*lv).min(iw);
-            }
-        }
-
-        if lowlink.get(&v) == indices.get(&v) {
-            let mut members = Vec::new();
-            while let Some(w) = stack.pop() {
-                on_stack.remove(&w);
-                members.push(w);
-                if w == v {
-                    break;
-                }
-            }
-            if members.len() > 1 {
-                *scc_count += 1;
-            }
-        }
-    }
-
-    for v in package_names.keys().cloned().collect::<Vec<_>>() {
-        if !indices.contains_key(&v) {
-            strongconnect(
-                v,
-                &mut index,
-                &mut indices,
-                &mut lowlink,
-                &mut stack,
-                &mut on_stack,
-                &adj,
-                &mut scc_count,
-            );
-        }
-    }
-
-    scc_count
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,11 +334,7 @@ mod tests {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let file = temp.path().join("src/lib.rs");
         std::fs::create_dir_all(file.parent().unwrap()).expect("mkdir");
-        std::fs::write(
-            &file,
-            "/// Hello\n/// world\npub fn foo() {}\n",
-        )
-        .expect("write");
+        std::fs::write(&file, "/// Hello\n/// world\npub fn foo() {}\n").expect("write");
 
         let mut nodes = vec![CodeNode::new(
             "foo",
@@ -341,5 +364,84 @@ mod tests {
             Some("public")
         );
     }
-}
 
+    #[test]
+    fn api_surface_enrichment_emits_reexports_and_feature_edges() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let lib_rs = temp.path().join("src/lib.rs");
+        std::fs::create_dir_all(lib_rs.parent().unwrap()).expect("mkdir");
+        std::fs::write(
+            &lib_rs,
+            r#"
+                #[cfg(feature = "foo")]
+                pub fn public_fn() {}
+
+                pub use crate::other::Thing;
+            "#,
+        )
+        .expect("write");
+
+        let cargo = temp.path().join("Cargo.toml");
+        std::fs::write(&cargo, "[package]\nname = \"app\"\n").expect("write cargo");
+
+        let package = CodeNode::new(
+            "app",
+            Some(NodeType::Other("package".to_string())),
+            Some(Language::Rust),
+            Location {
+                file_path: cargo.to_string_lossy().to_string(),
+                line: 1,
+                column: 0,
+                end_line: Some(1),
+                end_column: Some(0),
+            },
+        );
+
+        let mut feature = CodeNode::new(
+            "app::foo",
+            Some(NodeType::Other("feature".to_string())),
+            Some(Language::Rust),
+            Location {
+                file_path: cargo.to_string_lossy().to_string(),
+                line: 1,
+                column: 0,
+                end_line: Some(1),
+                end_column: Some(0),
+            },
+        );
+        feature.metadata.attributes.insert(
+            "qualified_name".to_string(),
+            "feature::app::foo".to_string(),
+        );
+
+        let mut public_fn = CodeNode::new(
+            "public_fn",
+            Some(NodeType::Function),
+            Some(Language::Rust),
+            Location {
+                file_path: lib_rs.to_string_lossy().to_string(),
+                line: 3,
+                column: 0,
+                end_line: Some(3),
+                end_column: Some(0),
+            },
+        );
+        public_fn
+            .metadata
+            .attributes
+            .insert("qualified_name".to_string(), "crate::public_fn".to_string());
+
+        let mut nodes = vec![package, feature, public_fn];
+        let mut edges = Vec::new();
+        let stats = apply_basic_enrichment(temp.path(), &mut nodes, &mut edges).expect("enrich");
+
+        assert!(stats.reexport_edges_added > 0);
+        assert!(stats.feature_enables_edges_added > 0);
+        assert!(edges
+            .iter()
+            .any(|e| e.edge_type == EdgeType::Other("reexports".to_string())));
+        assert!(edges
+            .iter()
+            .any(|e| e.edge_type == EdgeType::Other("enables".to_string())));
+    }
+}

@@ -21,6 +21,7 @@ fn schema_defines_project_scoped_indexes() {
         "DEFINE FIELD project_id ON edges",
         "DEFINE INDEX idx_edges_project ON edges FIELDS project_id",
         "DEFINE INDEX idx_edges_project_type ON edges FIELDS project_id, edge_type",
+        "DEFINE FUNCTION fn::edge_types() { RETURN ['calls', 'defines', 'imports', 'uses', 'extends', 'implements', 'references', 'contains', 'belongs_to', 'depends_on', 'exports', 'reexports', 'enables', 'generates', 'flows_to', 'returns', 'captures', 'mutates', 'violates_boundary', 'documents', 'specifies']; }",
     ];
 
     for needle in expectations {

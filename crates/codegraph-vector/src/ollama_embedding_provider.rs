@@ -492,25 +492,25 @@ mod tests {
     }
 
     #[tokio::test]
-	    async fn embed_resilient_with_splits_on_overflow_and_preserves_order() -> Result<()> {
-	        let texts: Vec<String> = (0..10).map(|i| "x".repeat((i + 1) * 10)).collect();
+    async fn embed_resilient_with_splits_on_overflow_and_preserves_order() -> Result<()> {
+        let texts: Vec<String> = (0..10).map(|i| "x".repeat((i + 1) * 10)).collect();
 
-	        // Fail when total chars in the request exceed 120.
-	        let embed_once = |slice: &[String]| {
-	            let lengths: Vec<usize> = slice.iter().map(|s| s.len()).collect();
-	            async move {
-	                let total: usize = lengths.iter().sum();
-	                if total > 120 {
-	                    return Err(CodeGraphError::External(
-	                        "the input length exceeds the context length".to_string(),
-	                    ));
-	                }
-	                Ok(lengths
-	                    .into_iter()
-	                    .map(|len| vec![len as f32])
-	                    .collect::<Vec<_>>())
-	            }
-	        };
+        // Fail when total chars in the request exceed 120.
+        let embed_once = |slice: &[String]| {
+            let lengths: Vec<usize> = slice.iter().map(|s| s.len()).collect();
+            async move {
+                let total: usize = lengths.iter().sum();
+                if total > 120 {
+                    return Err(CodeGraphError::External(
+                        "the input length exceeds the context length".to_string(),
+                    ));
+                }
+                Ok(lengths
+                    .into_iter()
+                    .map(|len| vec![len as f32])
+                    .collect::<Vec<_>>())
+            }
+        };
 
         let embeddings = embed_resilient_with(&texts, embed_once).await?;
         assert_eq!(embeddings.len(), texts.len());

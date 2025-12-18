@@ -22,7 +22,7 @@ RETURN type::thing($table, $clean_id);
 -- Calculate coupling metrics (afferent/efferent coupling, instability)
 -- FIXED: Added missing edge queries for dependents/dependencies
 DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: string) {
-    LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references'];
+    LET $edge_list = ['calls', 'defines', 'imports', 'uses', 'extends', 'implements', 'references', 'depends_on', 'exports', 'reexports', 'enables', 'generates', 'flows_to', 'returns', 'captures', 'mutates'];
 
     -- Resolve chunk IDs to parent nodes
     LET $resolved_id = IF string::starts_with($node_id, 'chunks:') THEN
@@ -156,7 +156,7 @@ DEFINE FUNCTION fn::detect_circular_dependencies($project_id: string, $edge_type
         WHERE node1 != NONE AND node2 != NONE
     );
 } PERMISSIONS FULL;
-DEFINE FUNCTION fn::edge_types() { RETURN ['calls', 'imports', 'uses', 'extends', 'implements', 'references', 'contains', 'belongs_to']; } PERMISSIONS FULL;
+DEFINE FUNCTION fn::edge_types() { RETURN ['calls', 'defines', 'imports', 'uses', 'extends', 'implements', 'references', 'contains', 'belongs_to', 'depends_on', 'exports', 'reexports', 'enables', 'generates', 'flows_to', 'returns', 'captures', 'mutates', 'violates_boundary', 'documents', 'specifies']; } PERMISSIONS FULL;
 DEFINE FUNCTION fn::find_nodes_by_name($project_id: string, $needle: string, $limit: int) {
 LET $max = IF $limit != NONE AND $limit > 0 THEN $limit ELSE 10 END;
 RETURN (SELECT id, name, node_type AS kind, language, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM nodes WHERE project_id = $project_id AND (string::lowercase(name) CONTAINS string::lowercase($needle) OR file_path CONTAINS $needle) ORDER BY name
@@ -166,7 +166,7 @@ RETURN (SELECT id, name, node_type AS kind, language, metadata, { end_line: end_
 -- OPTIMIZED: Filter by threshold BEFORE enriching, use efficient lookups
 DEFINE FUNCTION fn::get_hub_nodes($project_id: string, $min_degree: int) {
     LET $threshold = IF $min_degree != NONE AND $min_degree > 0 THEN $min_degree ELSE 5 END;
-    LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references', 'contains', 'belongs_to'];
+    LET $edge_list = ['calls', 'defines', 'imports', 'uses', 'extends', 'implements', 'references', 'contains', 'belongs_to', 'depends_on', 'exports', 'reexports', 'enables', 'generates', 'flows_to', 'returns', 'captures', 'mutates'];
 
     ------------------------------------------------------------------------
     -- 1) Get all project edges in ONE query
@@ -552,7 +552,7 @@ RETURN (SELECT node.id AS id, node.name AS name, node.kind AS kind, node.locatio
 DEFINE FUNCTION fn::get_complexity_hotspots($project_id: string, $min_complexity: float, $limit: int) {
     LET $safe_limit = IF $limit > 0 AND $limit <= 100 { $limit } ELSE { 20 };
     LET $threshold = IF $min_complexity > 0f { $min_complexity } ELSE { 5f };
-    LET $edge_list = ['calls', 'imports', 'uses', 'extends', 'implements', 'references'];
+    LET $edge_list = ['calls', 'defines', 'imports', 'uses', 'extends', 'implements', 'references', 'depends_on', 'exports', 'reexports', 'enables', 'generates', 'flows_to', 'returns', 'captures', 'mutates'];
 
     LET $complex_nodes = SELECT id, name, node_type AS kind, language, file_path, start_line, end_line, complexity
         FROM nodes

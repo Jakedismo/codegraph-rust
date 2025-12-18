@@ -30,11 +30,17 @@ Most semantic search tools create embeddings and call it a day. CodeGraph builds
 Your Code → Build Context → AST + FastML → LSP Resolution → Enrichment → Graph + Embeddings
               ↓               ↓              ↓              ↓              ↓
           Packages        Nodes/edges    Type-aware     API surface     Semantic
-          Features        Fast patterns  linking        Docs/contracts  search
-          Targets         Spans          Definitions    Cycles/impact   (hybrid)
+          Features        Fast patterns  linking        Module graph    search
+          Targets         Spans          Definitions    Dataflow/Docs   (hybrid)
 ```
 
 When you search, you don't just get "similar code"—you get code with its **relationships intact**. The function that matches your query, plus what calls it, what it depends on, and where it fits in the architecture.
+
+Indexing enrichment adds:
+- Module nodes and module-level import/containment edges for cross-file navigation
+- Rust-local dataflow edges (`defines`, `uses`, `flows_to`, `returns`, `mutates`) for impact analysis
+- Document/spec nodes linked to backticked symbols in `README.md`, `docs/**/*.md`, and `schema/**/*.surql`
+- Architecture signals (package cycles + optional boundary violations)
 
 #### Indexing prerequisites (required by default)
 
@@ -49,6 +55,19 @@ Required tools by language:
 - C/C++: `clangd`
 
 You can disable analyzers (and tool requirements) for troubleshooting with `CODEGRAPH_ANALYZERS=0`, but the default indexing behavior assumes the tools exist.
+
+#### Optional architecture boundary rules
+
+If you want CodeGraph to flag forbidden package dependencies, add `codegraph.boundaries.toml` at the project root:
+
+```toml
+[[deny]]
+from = "your_crate"
+to = "forbidden_crate"
+reason = "explain the boundary"
+```
+
+Indexing will emit `violates_boundary` edges when a `depends_on` relationship matches a deny rule.
 
 ### 2. Agentic Tools, Not Just Search
 

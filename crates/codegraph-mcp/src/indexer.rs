@@ -2,10 +2,10 @@
 // ABOUTME: Coordinates parsing, embeddings, and persistence into SurrealDB.
 #![allow(dead_code, unused_variables, unused_imports)]
 
+use crate::analyzers::{find_tool_on_path, required_tools_for_languages, AnalyzerSettings};
 use crate::estimation::{
     extend_symbol_index, parse_files_with_unified_extraction as shared_unified_parse,
 };
-use crate::analyzers::{find_tool_on_path, required_tools_for_languages, AnalyzerSettings};
 use anyhow::{anyhow, Context, Result};
 use codegraph_core::{CodeNode, EdgeRelationship, NodeId, NodeType};
 use codegraph_graph::ChunkEmbeddingRecord;
@@ -965,7 +965,8 @@ impl ProjectIndexer {
                 }
             }
         }
-        let analyzer_languages: Vec<codegraph_core::Language> = analyzer_languages.into_iter().collect();
+        let analyzer_languages: Vec<codegraph_core::Language> =
+            analyzer_languages.into_iter().collect();
         Self::validate_analyzer_tools(&analyzer_languages, analyzer_settings, &path_env)?;
 
         let mut build_context_nodes = 0usize;
@@ -1018,7 +1019,9 @@ impl ProjectIndexer {
             .parse_files_with_unified_extraction(files.clone(), total_files as u64)
             .await?;
 
-        if analyzer_settings.enabled && (!build_context_out.nodes.is_empty() || !build_context_out.edges.is_empty()) {
+        if analyzer_settings.enabled
+            && (!build_context_out.nodes.is_empty() || !build_context_out.edges.is_empty())
+        {
             nodes.extend(build_context_out.nodes);
             edges.extend(build_context_out.edges);
         }
@@ -1061,8 +1064,10 @@ impl ProjectIndexer {
             let project_root = self.project_root.clone();
             let path_env = path_env.clone();
 
-            let mut language_files: std::collections::HashMap<codegraph_core::Language, Vec<PathBuf>> =
-                std::collections::HashMap::new();
+            let mut language_files: std::collections::HashMap<
+                codegraph_core::Language,
+                Vec<PathBuf>,
+            > = std::collections::HashMap::new();
             let registry = codegraph_parser::LanguageRegistry::new();
             for (p, _) in &files {
                 if let Some(lang) = registry.detect_language(&p.to_string_lossy()) {
@@ -1121,7 +1126,7 @@ impl ProjectIndexer {
         let mut enrichment_stats = crate::analyzers::enrichment::EnrichmentStats::default();
         if analyzer_settings.enabled {
             let start = std::time::Instant::now();
-            info!("🧾 Enrichment analysis starting (docs, api surface, architecture)");
+            info!("🧾 Enrichment analysis starting (rustdoc + api surface)");
             let project_root = self.project_root.clone();
 
             let mut nodes_moved = Vec::new();
@@ -1144,12 +1149,162 @@ impl ProjectIndexer {
 
             enrichment_stats = enrich_stats;
             info!(
-                "🧾 Enrichment analysis complete: docs={} api_marked={} exports={} uses={} package_cycles={} in {:.1?}",
+                "🧾 Enrichment analysis complete: docs={} api_marked={} exports={} reexports={} feature_enables={} lsp_uses={} in {:.1?}",
                 enrichment_stats.docs_attached,
                 enrichment_stats.api_marked,
                 enrichment_stats.export_edges_added,
+                enrichment_stats.reexport_edges_added,
+                enrichment_stats.feature_enables_edges_added,
                 enrichment_stats.uses_edges_derived,
-                enrichment_stats.package_cycles_detected,
+                start.elapsed()
+            );
+        }
+
+        let mut module_linker_stats = crate::analyzers::module_linker::ModuleLinkerStats::default();
+        if analyzer_settings.enabled {
+            let start = std::time::Instant::now();
+            info!("🧭 Module linking starting (modules, imports, containment)");
+            let project_root = self.project_root.clone();
+            let project_id = self.project_id.clone();
+
+            let mut nodes_moved = Vec::new();
+            std::mem::swap(&mut nodes_moved, &mut nodes);
+            let mut edges_moved = Vec::new();
+            std::mem::swap(&mut edges_moved, &mut edges);
+
+            let (mut nodes_updated, mut edges_updated, stats) =
+                tokio::task::spawn_blocking(move || -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, crate::analyzers::module_linker::ModuleLinkerStats)> {
+                    let mut nodes = nodes_moved;
+                    let mut edges = edges_moved;
+                    let stats = crate::analyzers::module_linker::link_modules(
+                        &project_root,
+                        &project_id,
+                        &mut nodes,
+                        &mut edges,
+                    )?;
+                    Ok((nodes, edges, stats))
+                })
+                .await??;
+
+            std::mem::swap(&mut nodes, &mut nodes_updated);
+            std::mem::swap(&mut edges, &mut edges_updated);
+            for node in nodes.iter_mut() {
+                self.annotate_node(node);
+            }
+
+            module_linker_stats = stats;
+            info!(
+                "🧭 Module linking complete: modules={} contains={} imports={} in {:.1?}",
+                module_linker_stats.module_nodes_added,
+                module_linker_stats.contains_edges_added,
+                module_linker_stats.module_import_edges_added,
+                start.elapsed()
+            );
+        }
+
+        let mut dataflow_stats = crate::analyzers::dataflow::DataflowStats::default();
+        if analyzer_settings.enabled && analyzer_languages.contains(&codegraph_core::Language::Rust)
+        {
+            let start = std::time::Instant::now();
+            info!("🌊 Dataflow enrichment starting (local def-use)");
+            let project_root = self.project_root.clone();
+            let project_id = self.project_id.clone();
+
+            let mut nodes_moved = Vec::new();
+            std::mem::swap(&mut nodes_moved, &mut nodes);
+            let mut edges_moved = Vec::new();
+            std::mem::swap(&mut edges_moved, &mut edges);
+
+            let (mut nodes_updated, mut edges_updated, stats) =
+                tokio::task::spawn_blocking(move || -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, crate::analyzers::dataflow::DataflowStats)> {
+                    let mut nodes = nodes_moved;
+                    let mut edges = edges_moved;
+                    let stats = crate::analyzers::dataflow::enrich_rust_dataflow(
+                        &project_root,
+                        &project_id,
+                        &mut nodes,
+                        &mut edges,
+                    )?;
+                    Ok((nodes, edges, stats))
+                })
+                .await??;
+
+            std::mem::swap(&mut nodes, &mut nodes_updated);
+            std::mem::swap(&mut edges, &mut edges_updated);
+            for node in nodes.iter_mut() {
+                self.annotate_node(node);
+            }
+
+            dataflow_stats = stats;
+            info!(
+                "🌊 Dataflow enrichment complete: vars={} defines={} uses={} flows={} returns={} mutates={} in {:.1?}",
+                dataflow_stats.variable_nodes_added,
+                dataflow_stats.defines_edges_added,
+                dataflow_stats.uses_edges_added,
+                dataflow_stats.flows_to_edges_added,
+                dataflow_stats.returns_edges_added,
+                dataflow_stats.mutates_edges_added,
+                start.elapsed()
+            );
+        }
+
+        let mut docs_contracts_stats =
+            crate::analyzers::docs_contracts::DocsContractsStats::default();
+        if analyzer_settings.enabled {
+            let start = std::time::Instant::now();
+            info!("📚 Docs/contracts linking starting");
+            let project_root = self.project_root.clone();
+            let project_id = self.project_id.clone();
+
+            let mut nodes_moved = Vec::new();
+            std::mem::swap(&mut nodes_moved, &mut nodes);
+            let mut edges_moved = Vec::new();
+            std::mem::swap(&mut edges_moved, &mut edges);
+
+            let (mut nodes_updated, mut edges_updated, stats) =
+                tokio::task::spawn_blocking(move || -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, crate::analyzers::docs_contracts::DocsContractsStats)> {
+                    let mut nodes = nodes_moved;
+                    let mut edges = edges_moved;
+                    let stats = crate::analyzers::docs_contracts::link_docs_and_contracts(
+                        &project_root,
+                        &project_id,
+                        &mut nodes,
+                        &mut edges,
+                    )?;
+                    Ok((nodes, edges, stats))
+                })
+                .await??;
+
+            std::mem::swap(&mut nodes, &mut nodes_updated);
+            std::mem::swap(&mut edges, &mut edges_updated);
+            for node in nodes.iter_mut() {
+                self.annotate_node(node);
+            }
+
+            docs_contracts_stats = stats;
+            info!(
+                "📚 Docs/contracts linking complete: docs={} documents={} specifies={} in {:.1?}",
+                docs_contracts_stats.document_nodes_added,
+                docs_contracts_stats.document_edges_added,
+                docs_contracts_stats.specification_edges_added,
+                start.elapsed()
+            );
+        }
+
+        let mut architecture_stats = crate::analyzers::architecture::ArchitectureStats::default();
+        if analyzer_settings.enabled {
+            let start = std::time::Instant::now();
+            info!("🏛️  Architecture analysis starting (cycles, boundaries)");
+
+            architecture_stats = crate::analyzers::architecture::analyze_architecture(
+                &self.project_root,
+                &nodes,
+                &mut edges,
+            )?;
+            info!(
+                "🏛️  Architecture analysis complete: package_cycles={} boundary_violations={} in {:.1?}",
+                architecture_stats.package_cycles_detected,
+                architecture_stats.boundary_violations_added,
                 start.elapsed()
             );
         }
@@ -1277,8 +1432,23 @@ impl ProjectIndexer {
             lsp_edges_resolved: lsp_enrichment_stats.edges_resolved,
             docs_attached: enrichment_stats.docs_attached,
             export_edges_added: enrichment_stats.export_edges_added,
+            reexport_edges_added: enrichment_stats.reexport_edges_added,
+            feature_enables_edges_added: enrichment_stats.feature_enables_edges_added,
             uses_edges_derived: enrichment_stats.uses_edges_derived,
-            package_cycles_detected: enrichment_stats.package_cycles_detected,
+            module_nodes_added: module_linker_stats.module_nodes_added,
+            module_contains_edges_added: module_linker_stats.contains_edges_added,
+            module_import_edges_added: module_linker_stats.module_import_edges_added,
+            dataflow_variable_nodes_added: dataflow_stats.variable_nodes_added,
+            dataflow_defines_edges_added: dataflow_stats.defines_edges_added,
+            dataflow_uses_edges_added: dataflow_stats.uses_edges_added,
+            dataflow_flows_to_edges_added: dataflow_stats.flows_to_edges_added,
+            dataflow_returns_edges_added: dataflow_stats.returns_edges_added,
+            dataflow_mutates_edges_added: dataflow_stats.mutates_edges_added,
+            doc_nodes_added: docs_contracts_stats.document_nodes_added,
+            document_edges_added: docs_contracts_stats.document_edges_added,
+            specification_edges_added: docs_contracts_stats.specification_edges_added,
+            package_cycles_detected: architecture_stats.package_cycles_detected,
+            boundary_violations_added: architecture_stats.boundary_violations_added,
             ..Default::default()
         };
         let mut symbol_map: std::collections::HashMap<String, NodeId> =
@@ -3247,15 +3417,15 @@ impl ProjectIndexer {
             storage.db()
         };
 
-	        let mut resp = db
+        let mut resp = db
 	            .query(
 	                "SELECT file_path, last_indexed_at, node_count FROM file_metadata WHERE file_path = $file_path",
 	            )
 	            .bind(("file_path", file_path.to_string()))
 	            .await?;
-	        let rows: Vec<serde_json::Value> = resp.take(0)?;
-	        Ok(rows.into_iter().next())
-	    }
+        let rows: Vec<serde_json::Value> = resp.take(0)?;
+        Ok(rows.into_iter().next())
+    }
 
     async fn log_surreal_edge_count(&self, expected: usize) {
         let db = {
@@ -4239,8 +4409,12 @@ mod tests {
             require_tools: true,
         };
 
-        let err = ProjectIndexer::validate_analyzer_tools(&[codegraph_core::Language::Rust], settings, "")
-            .expect_err("should fail when required tools are missing");
+        let err = ProjectIndexer::validate_analyzer_tools(
+            &[codegraph_core::Language::Rust],
+            settings,
+            "",
+        )
+        .expect_err("should fail when required tools are missing");
         let _ = err;
     }
 }
@@ -4365,8 +4539,23 @@ pub struct IndexStats {
     pub lsp_edges_resolved: usize,
     pub docs_attached: usize,
     pub export_edges_added: usize,
+    pub reexport_edges_added: usize,
+    pub feature_enables_edges_added: usize,
     pub uses_edges_derived: usize,
+    pub module_nodes_added: usize,
+    pub module_contains_edges_added: usize,
+    pub module_import_edges_added: usize,
+    pub dataflow_variable_nodes_added: usize,
+    pub dataflow_defines_edges_added: usize,
+    pub dataflow_uses_edges_added: usize,
+    pub dataflow_flows_to_edges_added: usize,
+    pub dataflow_returns_edges_added: usize,
+    pub dataflow_mutates_edges_added: usize,
+    pub doc_nodes_added: usize,
+    pub document_edges_added: usize,
+    pub specification_edges_added: usize,
     pub package_cycles_detected: usize,
+    pub boundary_violations_added: usize,
 }
 
 impl IndexStats {

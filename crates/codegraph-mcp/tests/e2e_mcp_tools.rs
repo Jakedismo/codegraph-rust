@@ -6,8 +6,8 @@
 /// using the official rmcp client library for authentic protocol testing.
 use anyhow::{anyhow, Result};
 use rmcp::{model::CallToolRequestParam, transport::TokioChildProcess, RoleClient, ServiceExt};
-use serde_json::Value;
 use serde_json::json;
+use serde_json::Value;
 use std::path::PathBuf;
 use std::process::{Command as StdCommand, Stdio};
 use std::sync::OnceLock;
@@ -46,7 +46,11 @@ fn target_dir() -> PathBuf {
 }
 
 fn codegraph_bin_path() -> PathBuf {
-    let exe = if cfg!(windows) { "codegraph.exe" } else { "codegraph" };
+    let exe = if cfg!(windows) {
+        "codegraph.exe"
+    } else {
+        "codegraph"
+    };
     target_dir().join("debug").join(exe)
 }
 
@@ -56,7 +60,14 @@ fn ensure_codegraph_bin() -> PathBuf {
             let workspace_root = workspace_root_dir();
             let output = StdCommand::new("cargo")
                 .current_dir(&workspace_root)
-                .args(["build", "-q", "-p", "codegraph-mcp-server", "--bin", "codegraph"])
+                .args([
+                    "build",
+                    "-q",
+                    "-p",
+                    "codegraph-mcp-server",
+                    "--bin",
+                    "codegraph",
+                ])
                 .stdin(Stdio::null())
                 .output()
                 .expect("Failed to invoke cargo build for codegraph-mcp-server");
@@ -219,10 +230,7 @@ async fn test_agentic_context_basic_is_gated_without_ai_enhanced() -> Result<()>
     let config = TestConfig::default();
 
     let test_cases = vec![
-        (
-            json!({"query": "async fn", "limit": 1}),
-            "Basic query",
-        ),
+        (json!({"query": "async fn", "limit": 1}), "Basic query"),
         (
             json!({"query": "struct", "limit": 2}),
             "Basic query with limit",

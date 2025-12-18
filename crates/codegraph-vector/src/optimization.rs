@@ -303,7 +303,11 @@ impl ModelOptimizer {
                     let mut dequantized = Vec::with_capacity(dimension);
                     for j in 0..dimension {
                         let byte = vector_bytes[j / 2];
-                        let q = if j % 2 == 0 { byte & 0x0F } else { (byte >> 4) & 0x0F };
+                        let q = if j % 2 == 0 {
+                            byte & 0x0F
+                        } else {
+                            (byte >> 4) & 0x0F
+                        };
                         dequantized.push(Self::dequantize_unit_range_u4(q));
                     }
                     result.push(dequantized);

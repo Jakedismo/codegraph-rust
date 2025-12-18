@@ -167,8 +167,8 @@ fn test_json_rpc_message_serialization() {
 
     // Test response serialization
     let response = JsonRpcResponse::success(json!(1), json!("result"));
-    let serialized = serde_json::to_string(&JsonRpcMessage::V2(JsonRpcV2Message::Response(response)))
-        .unwrap();
+    let serialized =
+        serde_json::to_string(&JsonRpcMessage::V2(JsonRpcV2Message::Response(response))).unwrap();
     assert!(serialized.contains("jsonrpc"));
     assert!(serialized.contains("result"));
 

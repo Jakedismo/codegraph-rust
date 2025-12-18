@@ -59,16 +59,8 @@ pub struct LspDocumentSymbol {
     pub start_line: u32,
 }
 
-pub fn collect_document_symbols(
-    symbols: &JsonValue,
-    joiner: &str,
-) -> Vec<LspDocumentSymbol> {
-    fn walk(
-        out: &mut Vec<LspDocumentSymbol>,
-        v: &JsonValue,
-        prefix: Option<&str>,
-        joiner: &str,
-    ) {
+pub fn collect_document_symbols(symbols: &JsonValue, joiner: &str) -> Vec<LspDocumentSymbol> {
+    fn walk(out: &mut Vec<LspDocumentSymbol>, v: &JsonValue, prefix: Option<&str>, joiner: &str) {
         let Some(name) = v.get("name").and_then(|v| v.as_str()) else {
             return;
         };
@@ -144,7 +136,9 @@ pub fn enrich_nodes_and_edges_with_lsp(
         let file = node.location.file_path.clone();
         let line0 = node.location.line.saturating_sub(1);
         nodes_by_file_line_name.insert((file.clone(), line0, node.name.to_string()), idx);
-        nodes_by_file_line.entry((file.clone(), line0)).or_insert(idx);
+        nodes_by_file_line
+            .entry((file.clone(), line0))
+            .or_insert(idx);
         node_file_by_id.insert(node.id, file);
     }
 
@@ -177,11 +171,9 @@ pub fn enrich_nodes_and_edges_with_lsp(
         )?;
 
         for sym in collect_document_symbols(&symbols, name_joiner) {
-            if let Some(&node_idx) = nodes_by_file_line_name.get(&(
-                file_str.clone(),
-                sym.start_line,
-                sym.name.clone(),
-            )) {
+            if let Some(&node_idx) =
+                nodes_by_file_line_name.get(&(file_str.clone(), sym.start_line, sym.name.clone()))
+            {
                 let node = &mut nodes[node_idx];
                 node.metadata
                     .attributes
@@ -189,10 +181,9 @@ pub fn enrich_nodes_and_edges_with_lsp(
                 node.metadata
                     .attributes
                     .insert("analyzer".to_string(), "lsp_symbols".to_string());
-                node.metadata.attributes.insert(
-                    "analyzer_confidence".to_string(),
-                    "1.0".to_string(),
-                );
+                node.metadata
+                    .attributes
+                    .insert("analyzer_confidence".to_string(), "1.0".to_string());
                 stats.nodes_enriched += 1;
             }
         }
@@ -221,8 +212,7 @@ pub fn enrich_nodes_and_edges_with_lsp(
                 continue;
             };
 
-            if let Some(&target_idx) =
-                nodes_by_file_line.get(&(target_file.clone(), target_line0))
+            if let Some(&target_idx) = nodes_by_file_line.get(&(target_file.clone(), target_line0))
             {
                 let target = &nodes[target_idx];
                 let target_name = target
@@ -303,7 +293,10 @@ impl LspProcess {
             .stderr(Stdio::null())
             .spawn()?;
 
-        let stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("missing stdin"))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("missing stdin"))?;
         let stdout = child
             .stdout
             .take()
@@ -368,10 +361,7 @@ impl LspProcess {
                 if let Some(err) = v.get("error") {
                     return Err(anyhow::anyhow!("LSP request failed: {}", err));
                 }
-                return Ok(v
-                    .get("result")
-                    .cloned()
-                    .unwrap_or_else(|| JsonValue::Null));
+                return Ok(v.get("result").cloned().unwrap_or_else(|| JsonValue::Null));
             }
         }
     }
@@ -428,18 +418,42 @@ mod tests {
     fn byte_offsets_map_to_utf16_positions() {
         let text = "a🙂b\nc";
         let pos_a = byte_offset_to_utf16_position(text, 0);
-        assert_eq!(pos_a, LspPosition { line: 0, character: 0 });
+        assert_eq!(
+            pos_a,
+            LspPosition {
+                line: 0,
+                character: 0
+            }
+        );
 
         let pos_b = byte_offset_to_utf16_position(text, 1);
-        assert_eq!(pos_b, LspPosition { line: 0, character: 1 });
+        assert_eq!(
+            pos_b,
+            LspPosition {
+                line: 0,
+                character: 1
+            }
+        );
 
         let emoji_start = "a".len() as u32;
         let after_emoji = ("a🙂".len()) as u32;
         let pos_after_emoji = byte_offset_to_utf16_position(text, after_emoji);
-        assert_eq!(pos_after_emoji, LspPosition { line: 0, character: 3 });
+        assert_eq!(
+            pos_after_emoji,
+            LspPosition {
+                line: 0,
+                character: 3
+            }
+        );
 
         let pos_second_line = byte_offset_to_utf16_position(text, ("a🙂b\n".len()) as u32);
-        assert_eq!(pos_second_line, LspPosition { line: 1, character: 0 });
+        assert_eq!(
+            pos_second_line,
+            LspPosition {
+                line: 1,
+                character: 0
+            }
+        );
         let _ = emoji_start;
     }
 
@@ -460,6 +474,8 @@ mod tests {
 
         let flat = collect_document_symbols(&symbols, "::");
         assert!(flat.iter().any(|s| s.qualified_name == "mod_a"));
-        assert!(flat.iter().any(|s| s.qualified_name == "mod_a::foo" && s.start_line == 2));
+        assert!(flat
+            .iter()
+            .any(|s| s.qualified_name == "mod_a::foo" && s.start_line == 2));
     }
 }

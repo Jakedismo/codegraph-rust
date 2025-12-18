@@ -4,9 +4,13 @@
 use codegraph_core::Language;
 use std::path::PathBuf;
 
+pub mod architecture;
 pub mod build_context;
-pub mod lsp;
+pub mod dataflow;
+pub mod docs_contracts;
 pub mod enrichment;
+pub mod lsp;
+pub mod module_linker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AnalyzerSettings {

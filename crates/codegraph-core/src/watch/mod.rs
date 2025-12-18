@@ -339,7 +339,8 @@ impl IntelligentFileWatcher {
                     }
                     for dep in dependents {
                         if dep != *p {
-                            let _ = tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
+                            let _ =
+                                tx.send(ChangeEvent::Modified(dep.to_string_lossy().to_string()));
                         }
                     }
                     changed_files.push(p.clone());
@@ -1683,7 +1684,10 @@ mod tests {
 
         let reverse_dep_present = watcher.reverse_deps.iter().any(|entry| {
             entry.key().file_name() == utils.file_name()
-                && entry.value().iter().any(|p| p.file_name() == lib.file_name())
+                && entry
+                    .value()
+                    .iter()
+                    .any(|p| p.file_name() == lib.file_name())
         });
         assert!(
             reverse_dep_present,
