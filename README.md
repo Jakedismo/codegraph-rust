@@ -60,6 +60,8 @@ If indexing appears to stall during LSP resolution, you can adjust the per-reque
 
 - `CODEGRAPH_LSP_REQUEST_TIMEOUT_SECS` (default `600`, minimum `5`)
 
+If LSP resolution fails immediately and the error includes something like `Unknown binary 'rust-analyzer' in official toolchain ...`, your `rust-analyzer` is a rustup shim without an installed binary. Install a runnable `rust-analyzer` (e.g. via `brew install rust-analyzer` or by switching to a toolchain that provides it).
+
 #### Optional architecture boundary rules
 
 If you want CodeGraph to flag forbidden package dependencies, add `codegraph.boundaries.toml` at the project root:

@@ -6,7 +6,7 @@ use codegraph_core::{CodeNode, EdgeRelationship};
 use serde_json::Value as JsonValue;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
 use url::Url;
@@ -304,8 +304,10 @@ pub struct LspProcess {
     child: Child,
     stdin: ChildStdin,
     stdout: ChildStdout,
+    stderr: Option<ChildStderr>,
     read_buffer: Vec<u8>,
     next_id: u64,
+    stderr_buffer: String,
 }
 
 impl LspProcess {
@@ -322,7 +324,7 @@ impl LspProcess {
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()?;
 
         let stdin = child
@@ -333,6 +335,7 @@ impl LspProcess {
             .stdout
             .take()
             .ok_or_else(|| anyhow::anyhow!("missing stdout"))?;
+        let stderr = child.stderr.take();
 
         #[cfg(unix)]
         set_stdout_nonblocking(&stdout)?;
@@ -341,8 +344,10 @@ impl LspProcess {
             child,
             stdin,
             stdout,
+            stderr,
             read_buffer: Vec::with_capacity(16 * 1024),
             next_id: 1,
+            stderr_buffer: String::new(),
         };
 
         let init_params = serde_json::json!({
@@ -394,7 +399,25 @@ impl LspProcess {
             "method": method,
             "params": params
         });
-        self.write_message(&msg)?;
+        if let Err(e) = self.write_message(&msg) {
+            if let Some(status) = self.child.try_wait().ok().flatten() {
+                let stderr = self.read_stderr_snapshot().unwrap_or_default();
+                if stderr.is_empty() {
+                    return Err(anyhow::anyhow!(
+                        "LSP request write failed; process exited: {}",
+                        status
+                    ))
+                    .map_err(|err| err.context(e));
+                }
+                return Err(anyhow::anyhow!(
+                    "LSP request write failed; process exited: {} stderr={}",
+                    status,
+                    stderr.trim()
+                ))
+                .map_err(|err| err.context(e));
+            }
+            return Err(e);
+        }
 
         let deadline = Instant::now() + timeout;
         loop {
@@ -412,7 +435,15 @@ impl LspProcess {
             let next = self.read_message_until(deadline)?;
             let Some(v) = next else {
                 if let Some(status) = self.child.try_wait().ok().flatten() {
-                    return Err(anyhow::anyhow!("LSP process exited: {}", status));
+                    let stderr = self.read_stderr_snapshot().unwrap_or_default();
+                    if stderr.is_empty() {
+                        return Err(anyhow::anyhow!("LSP process exited: {}", status));
+                    }
+                    return Err(anyhow::anyhow!(
+                        "LSP process exited: {} stderr={}",
+                        status,
+                        stderr.trim()
+                    ));
                 }
                 std::thread::sleep(Duration::from_millis(10));
                 continue;
@@ -433,6 +464,27 @@ impl LspProcess {
         self.stdin.write_all(&framed)?;
         self.stdin.flush()?;
         Ok(())
+    }
+
+    fn read_stderr_snapshot(&mut self) -> Result<String> {
+        if self.stderr.is_none() {
+            return Ok(self.stderr_buffer.clone());
+        }
+
+        let mut buf = Vec::new();
+        if let Some(mut stderr) = self.stderr.take() {
+            let _ = stderr.read_to_end(&mut buf);
+        }
+
+        if !buf.is_empty() {
+            let text = String::from_utf8_lossy(&buf);
+            if !self.stderr_buffer.is_empty() {
+                self.stderr_buffer.push('\n');
+            }
+            self.stderr_buffer.push_str(text.trim_end());
+        }
+
+        Ok(self.stderr_buffer.clone())
     }
 
     fn read_message_until(&mut self, deadline: Instant) -> Result<Option<JsonValue>> {
@@ -571,11 +623,13 @@ mod tests {
             .args(["-c", "cat >/dev/null"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("spawn fake LSP server");
 
         let stdin = child.stdin.take().expect("stdin");
         let stdout = child.stdout.take().expect("stdout");
+        let stderr = child.stderr.take();
 
         set_stdout_nonblocking(&stdout).expect("set nonblocking");
 
@@ -583,8 +637,10 @@ mod tests {
             child,
             stdin,
             stdout,
+            stderr,
             read_buffer: Vec::new(),
             next_id: 1,
+            stderr_buffer: String::new(),
         };
 
         let err = proc
@@ -596,5 +652,43 @@ mod tests {
             .expect_err("initialize should time out");
         let msg = format!("{err:#}");
         assert!(msg.contains("timed out"), "unexpected error: {msg}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lsp_exit_includes_stderr_in_error() {
+        let mut child = Command::new("sh")
+            .args(["-c", "echo \"boom\" 1>&2; exit 1"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn fake LSP server");
+
+        let stdin = child.stdin.take().expect("stdin");
+        let stdout = child.stdout.take().expect("stdout");
+        let stderr = child.stderr.take();
+
+        set_stdout_nonblocking(&stdout).expect("set nonblocking");
+
+        let mut proc = LspProcess {
+            child,
+            stdin,
+            stdout,
+            stderr,
+            read_buffer: Vec::new(),
+            next_id: 1,
+            stderr_buffer: String::new(),
+        };
+
+        let err = proc
+            .request_with_timeout(
+                "initialize",
+                serde_json::json!({}),
+                Duration::from_millis(200),
+            )
+            .expect_err("initialize should fail");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("boom"), "stderr should be included: {msg}");
     }
 }
