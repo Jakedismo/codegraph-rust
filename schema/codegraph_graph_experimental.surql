@@ -9,8 +9,8 @@ USE DB codegraph_experimental;
 -- =====================================================================
 
 DEFINE ANALYZER code_analyzer
-  TOKENIZERS class, camel, punct
-  FILTERS lowercase, ascii;
+  TOKENIZERS BLANK,CLASS
+  FILTERS LOWERCASE,SNOWBALL(ENGLISH);
 
 -- =====================================================================
 -- CORE TABLES
@@ -22,37 +22,51 @@ DEFINE ANALYZER code_analyzer
 DEFINE TABLE nodes SCHEMAFULL
   PERMISSIONS FULL;
 
-DEFINE FIELD project_id      ON TABLE nodes TYPE string ASSERT $value != '';
+DEFINE FIELD project_id      ON TABLE nodes TYPE option<string>;
 DEFINE FIELD language        ON TABLE nodes TYPE option<string>;
-DEFINE FIELD node_type       ON TABLE nodes TYPE string;              -- e.g. function, struct, class
+DEFINE FIELD node_type       ON TABLE nodes TYPE option<string>;      -- e.g. function, struct, class
 DEFINE FIELD name            ON TABLE nodes TYPE string;              -- symbol name
-DEFINE FIELD file_path       ON TABLE nodes TYPE string;              -- file path
+DEFINE FIELD file_path       ON TABLE nodes TYPE option<string>;      -- file path
 DEFINE FIELD content         ON TABLE nodes TYPE option<string>;      -- optional full body / doc
 DEFINE FIELD start_line      ON TABLE nodes TYPE option<int>;
 DEFINE FIELD end_line        ON TABLE nodes TYPE option<int>;
 DEFINE FIELD metadata        ON TABLE nodes TYPE option<object>;      -- arbitrary metadata
 DEFINE FIELD range           ON TABLE nodes TYPE option<object>;      -- {start:{line}, end:{line}}
 DEFINE FIELD chunk_count     ON TABLE nodes TYPE option<int> DEFAULT 0;
+DEFINE FIELD complexity      ON TABLE nodes TYPE option<float>;
+DEFINE FIELD organization_id ON TABLE nodes TYPE option<string>;
+DEFINE FIELD repository_url  ON TABLE nodes TYPE option<string>;
 
 DEFINE FIELD embedding_384   ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 384;
+DEFINE FIELD embedding_384[*]   ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_768   ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 768;
+DEFINE FIELD embedding_768[*]   ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_1024  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1024;
+DEFINE FIELD embedding_1024[*]  ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_1536  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1536;
+DEFINE FIELD embedding_1536[*]  ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_2048  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2048;
+DEFINE FIELD embedding_2048[*]  ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_2560  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2560;
+DEFINE FIELD embedding_2560[*]  ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_3072  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 3072;
+DEFINE FIELD embedding_3072[*]  ON TABLE nodes TYPE float;
+DEFINE FIELD embedding_3584  ON TABLE nodes TYPE option<array<float>>
+  ASSERT $value = NONE OR array::len($value) = 3584;
+DEFINE FIELD embedding_3584[*]  ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_4096  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 4096;
+DEFINE FIELD embedding_4096[*]  ON TABLE nodes TYPE float;
 
-DEFINE FIELD embedding_model ON TABLE nodes TYPE option<string>;
-DEFINE FIELD created_at      ON TABLE nodes TYPE datetime VALUE time::now();
+DEFINE FIELD embedding_model ON TABLE nodes TYPE option<string> DEFAULT 'jina-embeddings-v4';
+DEFINE FIELD created_at      ON TABLE nodes TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD updated_at      ON TABLE nodes TYPE datetime VALUE time::now();
 
 -- -----------------------------
@@ -61,13 +75,13 @@ DEFINE FIELD updated_at      ON TABLE nodes TYPE datetime VALUE time::now();
 DEFINE TABLE edges SCHEMAFULL
   PERMISSIONS FULL;
 
-DEFINE FIELD project_id   ON TABLE edges TYPE string ASSERT $value != '';
-DEFINE FIELD kind         ON TABLE edges TYPE string;             -- "Calls", "Imports", "Inherits", ...
+DEFINE FIELD project_id   ON TABLE edges TYPE option<string>;
+DEFINE FIELD edge_type    ON TABLE edges TYPE string;             -- calls, imports, uses, ...
 DEFINE FIELD from         ON TABLE edges TYPE record<nodes>;
 DEFINE FIELD to           ON TABLE edges TYPE record<nodes>;
-DEFINE FIELD weight       ON TABLE edges TYPE option<float>;
+DEFINE FIELD weight       ON TABLE edges TYPE float DEFAULT 1f ASSERT $value > 0f;
 DEFINE FIELD metadata     ON TABLE edges TYPE option<object>;
-DEFINE FIELD created_at   ON TABLE edges TYPE datetime VALUE time::now();
+DEFINE FIELD created_at   ON TABLE edges TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD updated_at   ON TABLE edges TYPE datetime VALUE time::now();
 
 -- -----------------------------
@@ -76,30 +90,41 @@ DEFINE FIELD updated_at   ON TABLE edges TYPE datetime VALUE time::now();
 DEFINE TABLE chunks SCHEMAFULL
   PERMISSIONS FULL;
 
-DEFINE FIELD project_id      ON TABLE chunks TYPE string ASSERT $value != '';
+DEFINE FIELD project_id      ON TABLE chunks TYPE string;
 DEFINE FIELD parent_node     ON TABLE chunks TYPE record<nodes>;
 DEFINE FIELD chunk_index     ON TABLE chunks TYPE int;
 DEFINE FIELD text            ON TABLE chunks TYPE string;
 
 DEFINE FIELD embedding_384   ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 384;
+DEFINE FIELD embedding_384[*]   ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_768   ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 768;
+DEFINE FIELD embedding_768[*]   ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_1024  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1024;
+DEFINE FIELD embedding_1024[*]  ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_1536  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1536;
+DEFINE FIELD embedding_1536[*]  ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_2048  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2048;
+DEFINE FIELD embedding_2048[*]  ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_2560  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2560;
+DEFINE FIELD embedding_2560[*]  ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_3072  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 3072;
+DEFINE FIELD embedding_3072[*]  ON TABLE chunks TYPE float;
+DEFINE FIELD embedding_3584  ON TABLE chunks TYPE option<array<float>>
+  ASSERT $value = NONE OR array::len($value) = 3584;
+DEFINE FIELD embedding_3584[*]  ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_4096  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 4096;
+DEFINE FIELD embedding_4096[*]  ON TABLE chunks TYPE float;
 
 DEFINE FIELD embedding_model ON TABLE chunks TYPE option<string>;
-DEFINE FIELD created_at      ON TABLE chunks TYPE datetime VALUE time::now();
+DEFINE FIELD created_at      ON TABLE chunks TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD updated_at      ON TABLE chunks TYPE datetime VALUE time::now();
 
 -- -----------------------------
@@ -108,12 +133,19 @@ DEFINE FIELD updated_at      ON TABLE chunks TYPE datetime VALUE time::now();
 DEFINE TABLE file_metadata SCHEMAFULL
   PERMISSIONS FULL;
 
-DEFINE FIELD project_id  ON TABLE file_metadata TYPE string ASSERT $value != '';
-DEFINE FIELD file_path   ON TABLE file_metadata TYPE string;
-DEFINE FIELD language    ON TABLE file_metadata TYPE option<string>;
-DEFINE FIELD node_ids    ON TABLE file_metadata TYPE option<array<record<nodes>>>;
-DEFINE FIELD created_at  ON TABLE file_metadata TYPE datetime VALUE time::now();
-DEFINE FIELD updated_at  ON TABLE file_metadata TYPE datetime VALUE time::now();
+DEFINE FIELD project_id       ON TABLE file_metadata TYPE string;
+DEFINE FIELD file_path        ON TABLE file_metadata TYPE string;
+DEFINE FIELD language         ON TABLE file_metadata TYPE option<string>;
+DEFINE FIELD content_hash     ON TABLE file_metadata TYPE string;
+DEFINE FIELD file_size        ON TABLE file_metadata TYPE int;
+DEFINE FIELD modified_at      ON TABLE file_metadata TYPE datetime;
+DEFINE FIELD node_count       ON TABLE file_metadata TYPE int DEFAULT 0;
+DEFINE FIELD edge_count       ON TABLE file_metadata TYPE int DEFAULT 0;
+DEFINE FIELD parse_errors     ON TABLE file_metadata TYPE option<array<string>>;
+DEFINE FIELD parse_errors[*]  ON TABLE file_metadata TYPE string;
+DEFINE FIELD last_indexed_at  ON TABLE file_metadata TYPE datetime DEFAULT time::now();
+DEFINE FIELD created_at       ON TABLE file_metadata TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD updated_at       ON TABLE file_metadata TYPE datetime VALUE time::now();
 
 -- -----------------------------
 -- project_metadata: project-level stats
@@ -121,14 +153,20 @@ DEFINE FIELD updated_at  ON TABLE file_metadata TYPE datetime VALUE time::now();
 DEFINE TABLE project_metadata SCHEMAFULL
   PERMISSIONS FULL;
 
-DEFINE FIELD project_root   ON TABLE project_metadata TYPE string;
-DEFINE FIELD language       ON TABLE project_metadata TYPE option<string>;
-DEFINE FIELD node_count     ON TABLE project_metadata TYPE option<int>;
-DEFINE FIELD edge_count     ON TABLE project_metadata TYPE option<int>;
-DEFINE FIELD chunk_count    ON TABLE project_metadata TYPE option<int>;
-DEFINE FIELD last_analyzed  ON TABLE project_metadata TYPE option<datetime>;
-DEFINE FIELD created_at     ON TABLE project_metadata TYPE datetime VALUE time::now();
-DEFINE FIELD updated_at     ON TABLE project_metadata TYPE datetime VALUE time::now();
+DEFINE FIELD project_id        ON TABLE project_metadata TYPE string;
+DEFINE FIELD name              ON TABLE project_metadata TYPE string;
+DEFINE FIELD root_path         ON TABLE project_metadata TYPE string;
+DEFINE FIELD primary_language  ON TABLE project_metadata TYPE option<string>;
+DEFINE FIELD file_count        ON TABLE project_metadata TYPE int DEFAULT 0;
+DEFINE FIELD node_count        ON TABLE project_metadata TYPE int DEFAULT 0;
+DEFINE FIELD edge_count        ON TABLE project_metadata TYPE int DEFAULT 0;
+DEFINE FIELD last_analyzed     ON TABLE project_metadata TYPE option<datetime>;
+DEFINE FIELD organization_id   ON TABLE project_metadata TYPE option<string>;
+DEFINE FIELD domain            ON TABLE project_metadata TYPE option<string>;
+DEFINE FIELD codegraph_version ON TABLE project_metadata TYPE option<string>;
+DEFINE FIELD metadata          ON TABLE project_metadata TYPE option<object>;
+DEFINE FIELD created_at        ON TABLE project_metadata TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD updated_at        ON TABLE project_metadata TYPE datetime VALUE time::now();
 
 -- -----------------------------
 -- symbol_embeddings: identifier-level embeddings per node
@@ -136,42 +174,59 @@ DEFINE FIELD updated_at     ON TABLE project_metadata TYPE datetime VALUE time::
 DEFINE TABLE symbol_embeddings SCHEMAFULL
   PERMISSIONS FULL;
 
-DEFINE FIELD project_id         ON TABLE symbol_embeddings TYPE string ASSERT $value != '';
-DEFINE FIELD node_id            ON TABLE symbol_embeddings TYPE record<nodes>;
+DEFINE FIELD access_count       ON TABLE symbol_embeddings TYPE int DEFAULT 0;
+DEFINE FIELD embedding_model    ON TABLE symbol_embeddings TYPE string DEFAULT 'jina-embeddings-v4';
+DEFINE FIELD last_computed_at   ON TABLE symbol_embeddings TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD metadata           ON TABLE symbol_embeddings TYPE option<object>;
+DEFINE FIELD node_id            ON TABLE symbol_embeddings TYPE option<record<nodes>>;
+DEFINE FIELD normalized_symbol  ON TABLE symbol_embeddings TYPE string;
+DEFINE FIELD organization_id    ON TABLE symbol_embeddings TYPE option<string>;
+DEFINE FIELD project_id         ON TABLE symbol_embeddings TYPE option<string>;
+DEFINE FIELD source_edge_id     ON TABLE symbol_embeddings TYPE option<record<edges>>;
 DEFINE FIELD symbol             ON TABLE symbol_embeddings TYPE string;
-DEFINE FIELD normalized_symbol  ON TABLE symbol_embeddings TYPE option<string>;
 
 DEFINE FIELD embedding_384      ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 384;
+DEFINE FIELD embedding_384[*]      ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_768      ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 768;
+DEFINE FIELD embedding_768[*]      ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_1024     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1024;
+DEFINE FIELD embedding_1024[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_1536     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1536;
+DEFINE FIELD embedding_1536[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_2048     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2048;
+DEFINE FIELD embedding_2048[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_2560     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2560;
+DEFINE FIELD embedding_2560[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_3072     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 3072;
+DEFINE FIELD embedding_3072[*]     ON TABLE symbol_embeddings TYPE float;
+DEFINE FIELD embedding_3584     ON TABLE symbol_embeddings TYPE option<array<float>>
+  ASSERT $value = NONE OR array::len($value) = 3584;
+DEFINE FIELD embedding_3584[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_4096     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 4096;
-
-DEFINE FIELD embedding_model    ON TABLE symbol_embeddings TYPE option<string>;
-DEFINE FIELD created_at         ON TABLE symbol_embeddings TYPE datetime VALUE time::now();
+DEFINE FIELD embedding_4096[*]     ON TABLE symbol_embeddings TYPE float;
+DEFINE FIELD created_at         ON TABLE symbol_embeddings TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD updated_at         ON TABLE symbol_embeddings TYPE datetime VALUE time::now();
 
 -- =====================================================================
 -- INDEXES
 -- =====================================================================
 
--- nodes: scalar indexes
-DEFINE INDEX idx_nodes_name       ON TABLE nodes COLUMNS name CONCURRENTLY;
-DEFINE INDEX idx_nodes_type       ON TABLE nodes COLUMNS node_type CONCURRENTLY;
-DEFINE INDEX idx_nodes_language   ON TABLE nodes COLUMNS language CONCURRENTLY;
-DEFINE INDEX idx_nodes_file_path  ON TABLE nodes COLUMNS file_path CONCURRENTLY;
-DEFINE INDEX idx_nodes_project    ON TABLE nodes COLUMNS project_id CONCURRENTLY;
+-- nodes: scalar indexes (project-scoped)
+DEFINE INDEX idx_nodes_name       ON TABLE nodes FIELDS name CONCURRENTLY;
+DEFINE INDEX idx_nodes_type       ON TABLE nodes FIELDS node_type CONCURRENTLY;
+DEFINE INDEX idx_nodes_language   ON TABLE nodes FIELDS language CONCURRENTLY;
+DEFINE INDEX idx_nodes_file_path  ON TABLE nodes FIELDS file_path CONCURRENTLY;
+DEFINE INDEX idx_nodes_project    ON TABLE nodes FIELDS project_id CONCURRENTLY;
+DEFINE INDEX idx_nodes_project_file ON TABLE nodes FIELDS project_id, file_path CONCURRENTLY;
+DEFINE INDEX idx_nodes_project_type ON TABLE nodes FIELDS project_id, node_type CONCURRENTLY;
 -- nodes: full-text indexes for hybrid search
 DEFINE INDEX idx_nodes_name_search
   ON TABLE nodes FIELDS name
@@ -183,86 +238,104 @@ DEFINE INDEX idx_nodes_content_search
 
 -- nodes: HNSW vector indexes (COSINE metric)
 DEFINE INDEX idx_nodes_embedding_384
-  ON TABLE nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_768
-  ON TABLE nodes FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE nodes FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_1024
-  ON TABLE nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_1536
-  ON TABLE nodes FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE nodes FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_2048
-  ON TABLE nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE nodes FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_2560
-  ON TABLE nodes FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE nodes FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_3072
-  ON TABLE nodes FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE nodes FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_nodes_embedding_3584
+  ON TABLE nodes FIELDS embedding_3584 HNSW DIMENSION 3584 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_4096
-  ON TABLE nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE nodes FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 
 -- edges: scalar indexes (project-scoped)
-DEFINE INDEX idx_edges_project      ON TABLE edges COLUMNS project_id CONCURRENTLY;
-DEFINE INDEX idx_edges_from         ON TABLE edges COLUMNS from CONCURRENTLY;
-DEFINE INDEX idx_edges_to           ON TABLE edges COLUMNS to CONCURRENTLY;
-DEFINE INDEX idx_edges_kind         ON TABLE edges COLUMNS kind CONCURRENTLY;
-DEFINE INDEX idx_edges_from_to      ON TABLE edges COLUMNS from, to CONCURRENTLY;
-DEFINE INDEX idx_edges_kind_from    ON TABLE edges COLUMNS kind, from CONCURRENTLY;
-DEFINE INDEX idx_edges_project_kind_from
-  ON TABLE edges COLUMNS project_id, kind, from CONCURRENTLY;
-DEFINE INDEX idx_edges_project_kind_to
-  ON TABLE edges COLUMNS project_id, kind, to CONCURRENTLY;
+DEFINE INDEX idx_edges_project      ON TABLE edges FIELDS project_id CONCURRENTLY;
+DEFINE INDEX idx_edges_from         ON TABLE edges FIELDS from CONCURRENTLY;
+DEFINE INDEX idx_edges_to           ON TABLE edges FIELDS to CONCURRENTLY;
+DEFINE INDEX idx_edges_type         ON TABLE edges FIELDS edge_type CONCURRENTLY;
+DEFINE INDEX idx_edges_from_to      ON TABLE edges FIELDS from, to CONCURRENTLY;
+DEFINE INDEX idx_edges_type_from    ON TABLE edges FIELDS edge_type, from CONCURRENTLY;
+DEFINE INDEX idx_edges_project_type ON TABLE edges FIELDS project_id, edge_type CONCURRENTLY;
 
 -- chunks: scalar + vector indexes
 DEFINE INDEX idx_chunks_parent
-  ON TABLE chunks COLUMNS parent_node CONCURRENTLY;
+  ON TABLE chunks FIELDS parent_node CONCURRENTLY;
 DEFINE INDEX idx_chunks_order
-  ON TABLE chunks COLUMNS parent_node, chunk_index CONCURRENTLY;
+  ON TABLE chunks FIELDS parent_node, chunk_index CONCURRENTLY;
 DEFINE INDEX idx_chunks_project
-  ON TABLE chunks COLUMNS project_id CONCURRENTLY;
+  ON TABLE chunks FIELDS project_id CONCURRENTLY;
 
 DEFINE INDEX idx_chunks_embedding_384
-  ON TABLE chunks FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE chunks FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_768
-  ON TABLE chunks FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE chunks FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_1024
-  ON TABLE chunks FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE chunks FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_1536
-  ON TABLE chunks FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE chunks FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_2048
-  ON TABLE chunks FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE chunks FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_2560
-  ON TABLE chunks FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE chunks FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_3072
-  ON TABLE chunks FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE chunks FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_chunks_embedding_3584
+  ON TABLE chunks FIELDS embedding_3584 HNSW DIMENSION 3584 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_chunks_embedding_4096
-  ON TABLE chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE chunks FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 
 -- file_metadata indexes
 DEFINE INDEX idx_file_metadata_project_path
-  ON TABLE file_metadata COLUMNS project_id, file_path CONCURRENTLY;
+  ON TABLE file_metadata FIELDS project_id, file_path UNIQUE CONCURRENTLY;
+
+-- project_metadata indexes
+DEFINE INDEX idx_project_id ON TABLE project_metadata FIELDS project_id UNIQUE CONCURRENTLY;
+DEFINE INDEX idx_project_name ON TABLE project_metadata FIELDS name CONCURRENTLY;
+DEFINE INDEX idx_project_org ON TABLE project_metadata FIELDS organization_id CONCURRENTLY;
+DEFINE INDEX idx_project_domain ON TABLE project_metadata FIELDS domain CONCURRENTLY;
 
 -- symbol_embeddings indexes
 DEFINE INDEX idx_symbol_embeddings_symbol
-  ON TABLE symbol_embeddings COLUMNS normalized_symbol CONCURRENTLY;
+  ON TABLE symbol_embeddings FIELDS normalized_symbol CONCURRENTLY;
 
 DEFINE INDEX idx_symbol_embeddings_project_symbol
-  ON TABLE symbol_embeddings COLUMNS project_id, normalized_symbol CONCURRENTLY;
+  ON TABLE symbol_embeddings FIELDS project_id, normalized_symbol CONCURRENTLY;
+
+DEFINE INDEX idx_symbol_embeddings_project
+  ON TABLE symbol_embeddings FIELDS project_id CONCURRENTLY;
+
+DEFINE INDEX idx_symbol_embeddings_node
+  ON TABLE symbol_embeddings FIELDS node_id CONCURRENTLY;
+
+DEFINE INDEX idx_symbol_embeddings_edge
+  ON TABLE symbol_embeddings FIELDS source_edge_id CONCURRENTLY;
 
 DEFINE INDEX idx_symbol_embeddings_vector_384
-  ON TABLE symbol_embeddings FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE symbol_embeddings FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_768
-  ON TABLE symbol_embeddings FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE symbol_embeddings FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_1024
-  ON TABLE symbol_embeddings FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE symbol_embeddings FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_1536
-  ON TABLE symbol_embeddings FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE symbol_embeddings FIELDS embedding_1536 HNSW DIMENSION 1536 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_2048
-  ON TABLE symbol_embeddings FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE symbol_embeddings FIELDS embedding_2048 HNSW DIMENSION 2048 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_2560
-  ON TABLE symbol_embeddings FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE symbol_embeddings FIELDS embedding_2560 HNSW DIMENSION 2560 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_3072
-  ON TABLE symbol_embeddings FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE symbol_embeddings FIELDS embedding_3072 HNSW DIMENSION 3072 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_symbol_embeddings_vector_4096
-  ON TABLE symbol_embeddings FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE EFC 150 M 12 CONCURRENTLY;
+  ON TABLE symbol_embeddings FIELDS embedding_4096 HNSW DIMENSION 4096 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
+DEFINE INDEX idx_symbol_embeddings_vector_3584
+  ON TABLE symbol_embeddings FIELDS embedding_3584 HNSW DIMENSION 3584 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 
 -- =====================================================================
 -- FUNCTIONS
@@ -479,6 +552,28 @@ DEFINE FUNCTION fn::semantic_search_with_context(
         WHERE vector_score >= $safe_threshold
         ORDER BY distance ASC
         LIMIT $safe_limit
+    ) ELSE IF $dimension = 3584 THEN (
+        SELECT *
+        FROM (
+            SELECT
+                id,
+                name,
+                node_type AS kind,
+                language,
+                content,
+                file_path,
+                start_line,
+                end_line,
+                metadata,
+                vector::distance::knn() AS distance,
+                vector::similarity::cosine(embedding_3584, $query_embedding) AS vector_score
+            FROM nodes
+            WHERE project_id = $project_id
+              AND embedding_3584 <|100,200|> $query_embedding
+        )
+        WHERE vector_score >= $safe_threshold
+        ORDER BY distance ASC
+        LIMIT $safe_limit
     ) ELSE IF $dimension = 4096 THEN (
         SELECT *
         FROM (
@@ -597,7 +692,7 @@ DEFINE FUNCTION fn::semantic_search_with_context(
                     FROM edges
                     WHERE project_id = $project_id
                       AND from       = $parent.id
-                      AND kind IN ["Calls", "Imports", "References"]
+                      AND edge_type IN ["calls", "imports", "references", "uses"]
                     LIMIT 5
                 ) AS direct_dependencies,
 
@@ -607,7 +702,7 @@ DEFINE FUNCTION fn::semantic_search_with_context(
                     FROM edges
                     WHERE project_id = $project_id
                       AND to         = $parent.id
-                      AND kind IN ["Calls", "Imports", "References"]
+                      AND edge_type IN ["calls", "imports", "references", "uses"]
                     LIMIT 5
                 ) AS direct_dependents,
 
@@ -774,6 +869,22 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             ORDER BY distance ASC
             LIMIT $safe_limit
         )
+        ELSE IF $dim = 3584 THEN (
+            SELECT *
+            FROM (
+                SELECT
+                    id,
+                    parent_node,
+                    chunk_index,
+                    text,
+                    vector::distance::knn() AS distance
+                FROM chunks
+                WHERE project_id    = $project
+                  AND embedding_3584 <|100,200|> $query_vec
+            )
+            ORDER BY distance ASC
+            LIMIT $safe_limit
+        )
         ELSE IF $dim = 4096 THEN (
             SELECT *
             FROM (
@@ -806,6 +917,20 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
     RETURN $results;
 }
 PERMISSIONS FULL;
+
+-- =====================================================================
+-- SCHEMA VERSIONING
+-- =====================================================================
+
+DEFINE TABLE schema_versions SCHEMAFULL PERMISSIONS FULL;
+
+DEFINE FIELD applied_at ON TABLE schema_versions TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD checksum ON TABLE schema_versions TYPE option<string>;
+DEFINE FIELD description ON TABLE schema_versions TYPE option<string>;
+DEFINE FIELD name ON TABLE schema_versions TYPE string;
+DEFINE FIELD version ON TABLE schema_versions TYPE int;
+
+DEFINE INDEX idx_schema_version ON TABLE schema_versions FIELDS version UNIQUE CONCURRENTLY;
 -- ---------------------------------------------------------------------
 -- Graph helpers: neighbors / traversal / edge types / degree
 -- ---------------------------------------------------------------------
@@ -814,13 +939,13 @@ PERMISSIONS FULL;
 DEFINE FUNCTION fn::neighbors(
     $project_id: string,
     $node: record<nodes>,
-    $kind: string
+    $edge_type: string
 ) {
-    RETURN SELECT to, kind
+    RETURN SELECT to, edge_type
     FROM edges
     WHERE project_id = $project_id
       AND from       = $node
-      AND kind       = $kind;
+      AND edge_type  = $edge_type;
 }
 PERMISSIONS FULL;
 
@@ -828,7 +953,7 @@ PERMISSIONS FULL;
 DEFINE FUNCTION fn::traverse_kind(
   $project_id: string,
   $start: record<nodes>,
-  $kind: string,
+  $edge_type: string,
   $depth: int
 ) {
   LET $safe_depth = IF $depth > 0 THEN $depth ELSE 0 END;
@@ -847,7 +972,7 @@ DEFINE FUNCTION fn::traverse_kind(
       SELECT VALUE to
       FROM edges
       WHERE project_id = $project_id
-        AND kind       = $kind
+        AND edge_type  = $edge_type
         AND from IN $frontier
     );
 
@@ -861,7 +986,29 @@ PERMISSIONS FULL;
 
 -- Enumerate supported edge kinds
 DEFINE FUNCTION fn::edge_types() {
-  RETURN ["Calls", "Imports", "Inherits", "Contains", "References"];
+  RETURN [
+    "calls",
+    "defines",
+    "imports",
+    "uses",
+    "extends",
+    "implements",
+    "references",
+    "contains",
+    "belongs_to",
+    "depends_on",
+    "exports",
+    "reexports",
+    "enables",
+    "generates",
+    "flows_to",
+    "returns",
+    "captures",
+    "mutates",
+    "violates_boundary",
+    "documents",
+    "specifies"
+  ];
 }
 PERMISSIONS FULL;
 
@@ -878,26 +1025,7 @@ DEFINE FUNCTION fn::degree(
 PERMISSIONS FULL;
 
 -- =====================================================================
--- EVENTS TO KEEP updated_at IN SYNC
+-- EVENTS
 -- =====================================================================
 
-DEFINE EVENT edges_touch_updated
-ON TABLE edges
-WHEN $event != "DELETE"
-THEN (
-  UPDATE $after.id SET updated_at = time::now()
-);
-
-DEFINE EVENT nodes_touch_updated
-ON TABLE nodes
-WHEN $event != "DELETE"
-THEN (
-  UPDATE $after.id SET updated_at = time::now()
-);
-
-DEFINE EVENT chunks_touch_updated
-ON TABLE chunks
-WHEN $event != "DELETE"
-THEN (
-  UPDATE $after.id SET updated_at = time::now()
-);
+-- No events required: updated_at is defined as VALUE time::now() on write.
