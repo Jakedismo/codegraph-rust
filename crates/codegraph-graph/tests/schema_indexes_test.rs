@@ -3,6 +3,29 @@
 
 use std::path::PathBuf;
 
+fn assert_schema_has_no_expression_if_followed_by_let(label: &str, schema: &str) {
+    let needles = ["THEN (", "THEN("];
+
+    for needle in needles {
+        let mut search_start = 0usize;
+        while let Some(match_offset) = schema[search_start..].find(needle) {
+            let absolute_offset = search_start + match_offset + needle.len();
+            let after_then = &schema[absolute_offset..];
+            let first_token_offset = after_then
+                .find(|c: char| !c.is_whitespace())
+                .unwrap_or(after_then.len());
+            let first_token = &after_then[first_token_offset..];
+
+            assert!(
+                !first_token.starts_with("LET"),
+                "{label} schema must not put LET inside an expression IF/THEN block (SurrealQL parse error)"
+            );
+
+            search_start = absolute_offset;
+        }
+    }
+}
+
 #[test]
 fn schema_defines_project_scoped_indexes() {
     let schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -128,10 +151,6 @@ fn schemas_define_graph_tool_functions() {
             label
         );
 
-        assert!(
-            !schema.contains("IF $include_graph_context THEN (\n        LET $node_refs"),
-            "{} schema chunk search must not use an expression-IF followed by LET",
-            label
-        );
+        assert_schema_has_no_expression_if_followed_by_let(label, &schema);
     }
 }
