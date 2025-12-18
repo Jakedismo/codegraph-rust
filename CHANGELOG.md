@@ -42,6 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `fn::get_top_directories($project_id, $limit)` - Returns top-level directories with node counts for project structure overview
 - `fn::count_nodes_for_project($project_id)` - Returns node, edge, and chunk counts for health/diagnostics
 
+#### **Experimental GraphDB Schema (Interoperable)**
+- `schema/codegraph_graph_experimental.surql` can now be used interoperably with CodeGraph’s indexing pipeline and agentic tools (function surface aligned with `schema/codegraph.surql`).
+- Enable by setting:
+  - `CODEGRAPH_USE_GRAPH_SCHEMA=true`
+  - `CODEGRAPH_GRAPH_DB_DATABASE=codegraph_experimental` (or your chosen DB name)
+- Designed for faster/more efficient graph-style queries than the relational/vanilla schema on large codebases.
+
 ### Performance
 
 #### **Sub-Second Graph Query Performance**
@@ -88,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Provider support: OpenAI, Anthropic, Ollama (via feature flags)
 - **Runtime dispatcher**: `execute_agentic_workflow` dispatches to selected architecture without recompilation
 - **Framework identification**: Response JSON includes `framework` field (`"Rig"`, `"AutoAgents-ReAct"`, `"AutoAgents-LATS"`)
+- **Rig structured output fallback**: When the Rig backend returns plain text instead of schema JSON, the server synthesizes `structured_output` (with pinpoint `file_path`/`line_number` highlights) from recorded tool-call traces for better client/agent interoperability.
 
 #### **Complexity Analysis Agentic Tool**
 - **`agentic_complexity_analysis`**: New MCP tool for identifying high-risk code hotspots
