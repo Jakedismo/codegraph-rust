@@ -127,5 +127,11 @@ fn schemas_define_graph_tool_functions() {
             "{} schema chunk search signature must include $include_graph_context",
             label
         );
+
+        assert!(
+            !schema.contains("IF $include_graph_context THEN (\n        LET $node_refs"),
+            "{} schema chunk search must not use an expression-IF followed by LET",
+            label
+        );
     }
 }

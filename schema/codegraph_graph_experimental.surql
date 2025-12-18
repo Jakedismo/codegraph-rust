@@ -1370,55 +1370,55 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
         FETCH parent_node
     );
 
-    IF $include_graph_context THEN (
-        LET $node_refs = (SELECT VALUE parent_node FROM $base_results WHERE parent_node != NONE);
+    LET $node_refs = IF $include_graph_context THEN (
+        SELECT VALUE parent_node
+        FROM $base_results
+        WHERE parent_node != NONE
+    ) ELSE [] END;
 
-        LET $all_outgoing = (
-            SELECT
-                `from` AS source_node,
-                <string>`to` AS node_id,
-                `to`.name AS name,
-                `to`.node_type AS kind,
-                `to`.file_path AS file_path,
-                edge_type AS relationship
-            FROM edges
-            WHERE `from` INSIDE $node_refs
-            LIMIT 50
-        );
+    LET $all_outgoing = IF $include_graph_context THEN (
+        SELECT
+            `from` AS source_node,
+            <string>`to` AS node_id,
+            `to`.name AS name,
+            `to`.node_type AS kind,
+            `to`.file_path AS file_path,
+            edge_type AS relationship
+        FROM edges
+        WHERE `from` INSIDE $node_refs
+        LIMIT 50
+    ) ELSE [] END;
 
-        LET $all_incoming = (
-            SELECT
-                `to` AS source_node,
-                <string>`from` AS node_id,
-                `from`.name AS name,
-                `from`.node_type AS kind,
-                `from`.file_path AS file_path,
-                edge_type AS relationship
-            FROM edges
-            WHERE `to` INSIDE $node_refs
-            LIMIT 50
-        );
+    LET $all_incoming = IF $include_graph_context THEN (
+        SELECT
+            `to` AS source_node,
+            <string>`from` AS node_id,
+            `from`.name AS name,
+            `from`.node_type AS kind,
+            `from`.file_path AS file_path,
+            edge_type AS relationship
+        FROM edges
+        WHERE `to` INSIDE $node_refs
+        LIMIT 50
+    ) ELSE [] END;
 
-        RETURN (
-            SELECT
-                id,
-                chunk_index,
-                text,
-                vector_score,
-                parent_node.name AS parent_name,
-                parent_node.node_type AS parent_kind,
-                file_path,
-                start_line,
-                end_line,
-                (SELECT node_id, name, kind, file_path, relationship
-                 FROM $all_outgoing WHERE source_node = parent_node LIMIT 5) AS outgoing_edges,
-                (SELECT node_id, name, kind, file_path, relationship
-                 FROM $all_incoming WHERE source_node = parent_node LIMIT 5) AS incoming_edges
-            FROM $base_results
-        );
-    END;
-
-    RETURN (
+    RETURN IF $include_graph_context THEN (
+        SELECT
+            id,
+            chunk_index,
+            text,
+            vector_score,
+            parent_node.name AS parent_name,
+            parent_node.node_type AS parent_kind,
+            file_path,
+            start_line,
+            end_line,
+            (SELECT node_id, name, kind, file_path, relationship
+             FROM $all_outgoing WHERE source_node = parent_node LIMIT 5) AS outgoing_edges,
+            (SELECT node_id, name, kind, file_path, relationship
+             FROM $all_incoming WHERE source_node = parent_node LIMIT 5) AS incoming_edges
+        FROM $base_results
+    ) ELSE (
         SELECT
             id,
             chunk_index,
@@ -1430,7 +1430,7 @@ DEFINE FUNCTION fn::semantic_search_chunks_with_context(
             start_line,
             end_line
         FROM $base_results
-    );
+    ) END;
 }
 PERMISSIONS FULL;
 
