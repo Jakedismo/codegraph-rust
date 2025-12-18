@@ -1090,21 +1090,48 @@ impl ProjectIndexer {
                         let Some(spec) = crate::analyzers::lsp_server_for_language(&lang) else {
                             continue;
                         };
-                        let Some(tool_path) = find_tool_on_path(spec.tool_name, &path_env) else {
-                            return Err(anyhow!("Missing required analyzer tool: {}", spec.tool_name));
-                        };
-                        let stats = crate::analyzers::lsp::enrich_nodes_and_edges_with_lsp(
-                            &tool_path,
-                            spec.args,
-                            spec.language_id,
-                            spec.name_joiner,
-                            &project_root,
-                            &files,
-                            &mut nodes,
-                            &mut edges,
-                        )?;
-                        total.nodes_enriched += stats.nodes_enriched;
-                        total.edges_resolved += stats.edges_resolved;
+                        let candidates =
+                            crate::analyzers::find_tool_candidates_on_path(spec.tool_name, &path_env);
+                        if candidates.is_empty() {
+                            return Err(anyhow!(
+                                "Missing required analyzer tool: {}",
+                                spec.tool_name
+                            ));
+                        }
+
+                        let mut last_err: Option<anyhow::Error> = None;
+                        for tool_path in candidates {
+                            match crate::analyzers::lsp::enrich_nodes_and_edges_with_lsp(
+                                &tool_path,
+                                spec.args,
+                                spec.language_id,
+                                spec.name_joiner,
+                                &project_root,
+                                &files,
+                                &mut nodes,
+                                &mut edges,
+                            ) {
+                                Ok(stats) => {
+                                    total.nodes_enriched += stats.nodes_enriched;
+                                    total.edges_resolved += stats.edges_resolved;
+                                    last_err = None;
+                                    break;
+                                }
+                                Err(e) => {
+                                    last_err = Some(e.context(format!(
+                                        "LSP server candidate failed: {}",
+                                        tool_path.display()
+                                    )));
+                                }
+                            }
+                        }
+
+                        if let Some(e) = last_err {
+                            return Err(e.context(format!(
+                                "All LSP server candidates failed for tool: {}",
+                                spec.tool_name
+                            )));
+                        }
                     }
 
                     Ok((nodes, edges, total))

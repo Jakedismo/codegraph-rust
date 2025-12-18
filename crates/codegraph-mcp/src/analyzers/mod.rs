@@ -151,21 +151,31 @@ pub fn required_tools_for_languages(languages: &[Language]) -> Vec<RequiredTool>
 }
 
 pub fn find_tool_on_path(tool: &str, path_env: &str) -> Option<PathBuf> {
-    let paths = std::env::split_paths(path_env);
-    for dir in paths {
+    find_tool_candidates_on_path(tool, path_env)
+        .into_iter()
+        .next()
+}
+
+pub fn find_tool_candidates_on_path(tool: &str, path_env: &str) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for dir in std::env::split_paths(path_env) {
         let candidate = dir.join(tool);
         if candidate.is_file() {
-            return Some(candidate);
+            if !out.contains(&candidate) {
+                out.push(candidate);
+            }
         }
         #[cfg(windows)]
         {
             let candidate = dir.join(format!("{}.exe", tool));
             if candidate.is_file() {
-                return Some(candidate);
+                if !out.contains(&candidate) {
+                    out.push(candidate);
+                }
             }
         }
     }
-    None
+    out
 }
 
 #[cfg(test)]
