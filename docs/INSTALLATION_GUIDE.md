@@ -181,6 +181,8 @@ CodeGraph uses a hierarchical configuration system. Settings can be specified vi
 3. Environment variables (with `CODEGRAPH_` prefix)
 4. `.env` file in project root
 
+For detailed configuration examples (Ollama/LM Studio/Jina embeddings and OpenAI/xAI/Anthropic/OpenAI-compatible LLMs), see `docs/AI_PROVIDERS.md`.
+
 ### Global Configuration (`~/.codegraph/config.toml`)
 
 Create the directory and config file:
