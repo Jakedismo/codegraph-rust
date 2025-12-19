@@ -1,6 +1,4 @@
-use codegraph_cache::{ReadAheadConfig, ReadAheadIntegration, ReadAheadOptimizer};
-use codegraph_core::{CacheType, CompactCacheKey};
-use std::time::{Duration, Instant};
+use codegraph_cache::{ReadAheadIntegration};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("\n🎉 Demo completed successfully!");
 
             // Show final metrics
-            let metrics = integration.optimizer.get_metrics().await;
+            let metrics = integration.optimizer().get_metrics().await;
             print_detailed_metrics(&metrics);
         }
         Err(e) => {
@@ -76,6 +74,7 @@ fn print_detailed_metrics(metrics: &codegraph_cache::ReadAheadMetrics) {
 }
 
 /// Standalone example showing basic read-ahead functionality
+#[cfg(test)]
 async fn basic_readahead_example() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 Basic Read-Ahead Example");
 
@@ -97,10 +96,7 @@ async fn basic_readahead_example() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
 
     for i in 0..50 {
-        let key = CompactCacheKey {
-            hash: 1000 + i,
-            cache_type: CacheType::Node,
-        };
+        let key = codegraph_cache::CacheKey::Custom(format!("node-{}", 1000 + i));
 
         if let Some(_data) = optimizer.optimize_read(key).await? {
             // Data retrieved successfully

@@ -18,6 +18,8 @@ dashmap = { workspace = true }
 crossbeam-channel = { workspace = true }
 sha2 = { workspace = true }
 fastrand = { workspace = true }
+once_cell = "1.19"
+uuid = { version = "1.7", features = ["v4"] }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
@@ -26,6 +28,7 @@ approx = { workspace = true }
 criterion = { workspace = true }
 fastrand = { workspace = true }
 futures = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 
 

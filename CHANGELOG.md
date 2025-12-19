@@ -101,6 +101,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Massive tier: 8 tool calls max
 - Addresses issue where agents could make 10+ tool calls in a single query
 
+#### **Cache System Reliability and Performance**
+- **Read-Ahead Optimizer Fixes**: Resolved critical type mismatch and moved value issues in the read-ahead optimization engine.
+- **Memory Profiler Integration**: Provided a minimal memory profiling implementation to support real-time allocation tracking and dashboard visualization.
+- **Demo & Example Repairs**: Fully restored and fixed the `memory_profiler_demo` and `readahead_demo` examples, including proper formatting and dependency management.
+- **Dependency Optimization**: Added `once_cell`, `uuid`, and enhanced `tracing-subscriber` configuration to the cache crate for improved robustness.
+
 ### Added
 
 #### **Runtime Agent Architecture Selection**

@@ -1,6 +1,6 @@
-use crate::{CacheEntry, CacheKey};
-use codegraph_core::{CodeGraphError, NodeId, Result};
-use crossbeam_channel::{bounded, Receiver, Sender};
+#![allow(dead_code)]
+use crate::{CacheKey};
+use codegraph_core::{Result};
 use dashmap::DashMap;
 use parking_lot::RwLock as SyncRwLock;
 use std::collections::hash_map::DefaultHasher;
@@ -14,7 +14,7 @@ fn key_hash(key: &CacheKey) -> u64 {
     h.finish()
 }
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{RwLock};
 
 /// Advanced Read-Ahead Optimizer with predictive data loading capabilities
 pub struct ReadAheadOptimizer {
@@ -359,7 +359,7 @@ impl AccessPatternAnalyzer {
 
         // Analyze similar patterns
         for pattern_entry in self.pattern_frequencies.iter() {
-            let pattern = pattern_entry.key();
+            let _pattern = pattern_entry.key();
             let metrics = pattern_entry.value();
 
             // Check if pattern is recent and confident
@@ -454,7 +454,7 @@ impl PredictiveLoader {
 
     async fn prefetch_batch(&self, keys: Vec<CacheKey>) -> Result<()> {
         // Simulate batch prefetching
-        for chunk in keys.chunks(10) {
+        for _chunk in keys.chunks(10) {
             tokio::spawn(async move {
                 // Simulate I/O delay
                 tokio::time::sleep(Duration::from_micros(100)).await;
@@ -483,7 +483,7 @@ pub struct CacheWarmer {
     /// Hot data tracking
     hot_keys: Arc<DashMap<CacheKey, HotKeyMetrics>>,
     /// Warming schedule
-    warming_scheduler: Arc<Mutex<VecDeque<WarmingTask>>>,
+    warming_scheduler: Arc<tokio::sync::Mutex<VecDeque<WarmingTask>>>,
     config: ReadAheadConfig,
 }
 
@@ -505,7 +505,7 @@ impl CacheWarmer {
     fn new(config: &ReadAheadConfig) -> Self {
         Self {
             hot_keys: Arc::new(DashMap::new()),
-            warming_scheduler: Arc::new(Mutex::new(VecDeque::new())),
+            warming_scheduler: Arc::new(tokio::sync::Mutex::new(VecDeque::new())),
             config: config.clone(),
         }
     }
@@ -573,13 +573,13 @@ impl CacheWarmer {
         hot_key_list
     }
 
-    async fn execute_warming_tasks(warming_scheduler: &Mutex<VecDeque<WarmingTask>>) {
+    async fn execute_warming_tasks(warming_scheduler: &tokio::sync::Mutex<VecDeque<WarmingTask>>) {
         let mut scheduler = warming_scheduler.lock().await;
 
         while let Some(task) = scheduler.pop_front() {
             // Execute warming task in background
             tokio::spawn(async move {
-                for key in task.keys {
+                for _key in task.keys {
                     // Simulate cache warming
                     tokio::time::sleep(Duration::from_micros(50)).await;
                     // In practice, this would preload data into cache
@@ -723,7 +723,7 @@ impl SequentialReadAccelerator {
 
     fn generate_sequential_readahead(
         &self,
-        pattern: SequencePattern,
+        _pattern: SequencePattern,
         current_key: CacheKey,
     ) -> Vec<CacheKey> {
         let mut readahead_keys = Vec::new();
@@ -755,7 +755,7 @@ impl SequentialReadAccelerator {
                 for key in keys {
                     // Simulate sequential data loading
                     tokio::time::sleep(Duration::from_micros(10)).await;
-                    let data = format!("sequential_data_{}", key_hash(&key)).into_bytes();
+                    let _data = format!("sequential_data_{}", key_hash(&key)).into_bytes();
                     // In practice, this would load into the buffer
                 }
             });
@@ -768,7 +768,6 @@ impl SequentialReadAccelerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio_test;
 
     #[tokio::test]
     async fn test_readahead_optimizer_creation() {
@@ -785,7 +784,7 @@ mod tests {
         let analyzer = AccessPatternAnalyzer::new(&config);
 
         let key = CacheKey::Embedding("test_key".to_string());
-        analyzer.record_access(key).await;
+        analyzer.record_access(key.clone()).await;
 
         // Test pattern recognition
         let predictions = analyzer.get_pattern_predictions(key).await;
@@ -805,8 +804,9 @@ mod tests {
         ];
 
         for key in keys {
+            let key_h = key_hash(&key);
             let result = accelerator.detect_sequential_pattern(key).await;
-            if key.hash == 102 {
+            if key_h == 102 {
                 assert!(result.is_some());
             }
         }
@@ -830,7 +830,7 @@ mod tests {
         let warmer = CacheWarmer::new(&config);
 
         let key = CacheKey::Embedding("test_key".to_string());
-        warmer.record_key_access(key).await;
+        warmer.record_key_access(key.clone()).await;
 
         // Verify hot key tracking
         assert!(warmer.hot_keys.contains_key(&key));

@@ -7,47 +7,19 @@
 /// 4. Live dashboard with WebSocket monitoring
 /// 5. Integration with existing cache system
 use codegraph_cache::{
-    AllocationType, CacheConfig, CacheOptimizedHashMap, MemoryDashboard, MemoryManager,
-    MemoryProfiler, ProfilerConfig, MEMORY_PROFILER,
+    AllocationType, CacheOptimizedHashMap, MemoryDashboard,
+    ProfilerConfig, MEMORY_PROFILER,
 };
-use std::alloc::{GlobalAlloc, Layout, System};
+use std::alloc::Layout;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{interval, sleep};
 use tracing::{error, info, warn};
-use tracing_subscriber;
-
-/// Custom allocator that integrates with the memory profiler
-struct DemoAllocator;
-
-unsafe impl GlobalAlloc for DemoAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ptr = System.alloc(layout);
-        if !ptr.is_null() {
-            // Categorize allocation based on size (simplified heuristic)
-            let category = match layout.size() {
-                s if s < 1024 => AllocationType::String,
-                s if s < 64 * 1024 => AllocationType::Buffer,
-                s if s < 1024 * 1024 => AllocationType::Cache,
-                _ => AllocationType::Vector,
-            };
-
-            MEMORY_PROFILER.record_allocation(ptr, layout, category);
-        }
-        ptr
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // Note: In a real implementation, you'd need to track ptr -> allocation_id mapping
-        MEMORY_PROFILER.record_deallocation(0, layout.size());
-        System.dealloc(ptr, layout);
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
-    tracing_subscriber::fmt().with_env_filter("debug").init();
+    tracing_subscriber::fmt().init();
 
     info!("🚀 Starting Memory Profiler Demo");
 
@@ -84,6 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(simulate_memory_workload());
     tokio::spawn(simulate_cache_operations());
     tokio::spawn(simulate_vector_operations());
+    tokio::spawn(simulate_graph_operations());
     tokio::spawn(simulate_memory_leaks());
 
     info!("📊 Memory workload simulation started");
@@ -106,6 +79,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Simulate generic memory workload
+async fn simulate_memory_workload() {
+    let mut interval = interval(Duration::from_millis(500));
+    for _ in 0..600 {
+        interval.tick().await;
+        let _data = vec![0u8; fastrand::usize(1024..1024 * 1024)];
+    }
+}
+
 /// Monitor the memory profiler and log key events
 async fn monitor_memory_profiler() {
     let mut event_receiver = MEMORY_PROFILER.start_monitoring();
@@ -126,7 +108,6 @@ async fn monitor_memory_profiler() {
                         info!("💡 Optimization recommendation: {} - estimated savings: {} bytes",
                               recommendation.description, recommendation.estimated_savings);
                     }
-                    _ => {}
                 }
             }
 
@@ -276,13 +257,13 @@ async fn generate_final_report() {
     let patterns = MEMORY_PROFILER.analyze_patterns();
     let recommendations = MEMORY_PROFILER.generate_recommendations();
 
-    println!("\n" + "=".repeat(80));
+    println!("\n{}", "=".repeat(80));
     println!("🧠 CODEGRAPH MEMORY PROFILER - FINAL REPORT");
-    println!("=".repeat(80));
+    println!("{}", "=".repeat(80));
 
     // Overall Memory Metrics
     println!("\n📈 OVERALL MEMORY METRICS");
-    println!("─".repeat(40));
+    println!("{}", "─".repeat(40));
     println!(
         "Total Allocated:     {} MB",
         metrics.total_allocated / (1024 * 1024)
@@ -308,7 +289,7 @@ async fn generate_final_report() {
 
     // Memory by Category
     println!("\n🎯 MEMORY USAGE BY CATEGORY");
-    println!("─".repeat(40));
+    println!("{}", "─".repeat(40));
     for (category, cat_metrics) in &metrics.categories {
         println!(
             "{:12} - Current: {:>8} MB, Peak: {:>8} MB, Count: {:>6}",
@@ -321,7 +302,7 @@ async fn generate_final_report() {
 
     // Memory Leaks
     println!("\n🚨 DETECTED MEMORY LEAKS");
-    println!("─".repeat(40));
+    println!("{}", "─".repeat(40));
     if leaks.is_empty() {
         println!("✅ No memory leaks detected!");
     } else {
@@ -349,7 +330,7 @@ async fn generate_final_report() {
 
     // Usage Patterns
     println!("\n📊 USAGE PATTERNS ANALYSIS");
-    println!("─".repeat(40));
+    println!("{}", "─".repeat(40));
     for (category, pattern) in &patterns {
         println!(
             "{:12} - Avg: {:>6} KB, Peak: {:>8} KB, Fragmentation: {:.1}%",
@@ -362,7 +343,7 @@ async fn generate_final_report() {
 
     // Optimization Recommendations
     println!("\n💡 OPTIMIZATION RECOMMENDATIONS");
-    println!("─".repeat(40));
+    println!("{}", "─".repeat(40));
     if recommendations.is_empty() {
         println!("✅ No optimization recommendations at this time!");
     } else {
@@ -379,7 +360,7 @@ async fn generate_final_report() {
 
     // Performance Assessment
     println!("\n⚡ PERFORMANCE ASSESSMENT");
-    println!("─".repeat(40));
+    println!("{}", "─".repeat(40));
 
     let performance_score = calculate_performance_score(&metrics, &leaks, usage_percentage);
     let grade = match performance_score {
@@ -406,9 +387,10 @@ async fn generate_final_report() {
         }
     );
 
-    println!("\n" + "=".repeat(80));
+    println!("\n{}", "=".repeat(80));
     println!("📋 Report completed. Dashboard available at: http://localhost:8080");
-    println!("=".repeat(80) + "\n");
+    println!("{}
+", "=".repeat(80));
 }
 
 /// Calculate an overall performance score based on memory metrics
@@ -442,7 +424,7 @@ fn calculate_performance_score(
         codegraph_cache::MemoryPressure::Critical => score = score.saturating_sub(30),
         codegraph_cache::MemoryPressure::High => score = score.saturating_sub(15),
         codegraph_cache::MemoryPressure::Medium => score = score.saturating_sub(5),
-        codegraph_cache::MemoryPressure::Low => {}
+        codegraph_cache::MemoryPressure::Low => {} // No deduction for low pressure
     }
 
     score

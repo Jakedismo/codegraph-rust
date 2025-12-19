@@ -1,5 +1,5 @@
-use crate::{CacheKey, ReadAheadConfig, ReadAheadMetrics, ReadAheadOptimizer};
-use codegraph_core::{CodeGraphError, Result};
+use crate::{CacheKey, ReadAheadConfig, ReadAheadOptimizer};
+use codegraph_core::{Result};
 use dashmap::DashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,8 +17,6 @@ struct PerformanceMonitor {
     total_requests: u64,
     cache_hits: u64,
     prefetch_hits: u64,
-    total_bytes_served: u64,
-    average_response_time_ms: f64,
 }
 
 impl ReadAheadIntegration {
@@ -39,6 +37,11 @@ impl ReadAheadIntegration {
             cache_storage: Arc::new(DashMap::new()),
             performance_monitor: Arc::new(RwLock::new(PerformanceMonitor::default())),
         }
+    }
+
+    /// Get the read-ahead optimizer
+    pub fn optimizer(&self) -> Arc<ReadAheadOptimizer> {
+        Arc::clone(&self.optimizer)
     }
 
     /// Get data with read-ahead optimization
@@ -216,11 +219,12 @@ impl Default for ReadAheadIntegration {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_basic_integration() -> Result<()> {
         let integration = ReadAheadIntegration::new();
-        let key = CacheKey::Node("test_key".to_string());
+        let key = CacheKey::Node(Uuid::new_v4());
 
         let data = integration.get_data(key).await?;
         assert!(!data.is_empty());
