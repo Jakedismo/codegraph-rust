@@ -96,6 +96,9 @@ impl AgentExecutorFactory {
                 "LATS requires 'autoagents-lats' feature. Rebuild with --features autoagents-lats"
                     .to_string(),
             )),
+            AgentArchitecture::Rig | AgentArchitecture::Reflexion => Err(ExecutorError::BuildFailed(
+                format!("{} architecture is only supported by the Rig backend. Set CODEGRAPH_AGENT_ARCHITECTURE=rig", architecture)
+            )),
         }
     }
 

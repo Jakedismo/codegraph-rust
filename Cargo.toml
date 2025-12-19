@@ -2,7 +2,6 @@
 members = [
     "crates/codegraph-core",
     "crates/codegraph-vector",
-    "crates/codegraph-cache",
     "crates/codegraph-parser",
     "crates/codegraph-mcp",
 
@@ -276,7 +275,6 @@ codegraph-core = { path = "crates/codegraph-core" }
 codegraph-graph = { path = "crates/codegraph-graph" }
 codegraph-parser = { path = "crates/codegraph-parser" }
 codegraph-vector = { path = "crates/codegraph-vector", default-features = false }
-codegraph-cache = { path = "crates/codegraph-cache", default-features = false }
 codegraph-mcp = { path = "crates/codegraph-mcp" }
 
 codegraph-zerocopy = { path = "crates/codegraph-zerocopy" }

@@ -1292,28 +1292,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codegraph-cache"
-version = "1.0.0"
-dependencies = [
- "approx 0.5.1",
- "async-trait",
- "codegraph-core",
- "criterion",
- "crossbeam-channel",
- "dashmap 6.1.0",
- "fastrand",
- "futures",
- "parking_lot",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
- "tokio-test",
- "tracing",
-]
-
-[[package]]
 name = "codegraph-concurrent"
 version = "0.1.0"
 dependencies = [
@@ -1664,7 +1642,6 @@ dependencies = [
  "candle-nn",
  "candle-transformers",
  "chrono",
- "codegraph-cache",
  "codegraph-core",
  "codegraph-graph",
  "criterion",

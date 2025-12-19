@@ -36,40 +36,13 @@ use codegraph_ai::agentic_schemas::AgenticOutput;
 use codegraph_mcp_autoagents::{
     CodeGraphAgentOutput, CodeGraphExecutor, CodeGraphExecutorBuilder, ExecutorError,
 };
+use codegraph_mcp_core::agent_architecture::AgentArchitecture;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_core::debug_logger::DebugLogger;
 #[cfg(feature = "ai-enhanced")]
 use codegraph_mcp_rig::{RigAgentOutput, RigExecutor};
 use codegraph_mcp_tools::GraphToolExecutor;
 use codegraph_vector::EmbeddingGenerator;
-
-/// Agent architecture selection for agentic workflows
-/// Set via CODEGRAPH_AGENT_ARCHITECTURE environment variable
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AgentArchitecture {
-    /// ReAct-style orchestrator (default)
-    #[default]
-    React,
-    /// Language Agent Tree Search
-    Lats,
-    /// Rig framework agent
-    Rig,
-}
-
-impl AgentArchitecture {
-    /// Detect architecture from environment variable
-    pub fn from_env() -> Self {
-        match std::env::var("CODEGRAPH_AGENT_ARCHITECTURE")
-            .unwrap_or_default()
-            .to_lowercase()
-            .as_str()
-        {
-            "lats" => Self::Lats,
-            "rig" => Self::Rig,
-            _ => Self::React, // Default to react
-        }
-    }
-}
 
 /// Parameter structs following official rmcp SDK pattern
 // #[derive(Deserialize, JsonSchema)]
@@ -846,8 +819,9 @@ impl CodeGraphMCPServer {
         // Sent after all setup is complete, before actual agent execution
         progress_notifier.notify_analyzing().await;
 
-        // Detect agent architecture from environment
-        let architecture = AgentArchitecture::from_env();
+        // Detect agent architecture from environment (defaults to Rig)
+        let architecture = AgentArchitecture::parse(&std::env::var("CODEGRAPH_AGENT_ARCHITECTURE").unwrap_or_else(|_| "rig".to_string()))
+            .unwrap_or(AgentArchitecture::Rig);
         tracing::info!("Using agent architecture: {:?}", architecture);
 
         let step_counter = Arc::new(AtomicUsize::new(0));
@@ -857,8 +831,8 @@ impl CodeGraphMCPServer {
 
         let (mut result, framework_name, observed_steps): (CodeGraphAgentOutput, &str, usize) =
             match architecture {
-                AgentArchitecture::Rig => {
-                    // Use Rig framework
+                AgentArchitecture::Rig | AgentArchitecture::Reflexion => {
+                    // Use Rig framework (Rig and Reflexion are handled by Rig backend)
                     let mut rig_executor = RigExecutor::new(tool_executor.clone());
                     match rig_executor.execute(query, analysis_type).await {
                         Ok(rig_output) => {
@@ -886,8 +860,8 @@ impl CodeGraphMCPServer {
                         }
                     }
                 }
-                AgentArchitecture::React | AgentArchitecture::Lats => {
-                    // Use AutoAgents framework (React or LATS)
+                AgentArchitecture::ReAct | AgentArchitecture::LATS => {
+                    // Use AutoAgents framework (ReAct or LATS)
                     // Create step progress callback if progress token is available
                     let mut builder = CodeGraphExecutorBuilder::new()
                         .llm_provider(llm_provider)
@@ -919,7 +893,7 @@ impl CodeGraphMCPServer {
                     })?;
 
                     let framework = match architecture {
-                        AgentArchitecture::Lats => "AutoAgents-LATS",
+                        AgentArchitecture::LATS => "AutoAgents-LATS",
                         _ => "AutoAgents-ReAct",
                     };
 

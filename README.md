@@ -101,18 +101,18 @@ Each tool runs a **reasoning agent** that plans, searches, analyzes graph relati
 
 #### Agent Architectures
 
-CodeGraph supports **three agent backends** selectable at runtime via `CODEGRAPH_AGENT_ARCHITECTURE`:
+CodeGraph implements agents using **Rig** the default and recommended choice (legacy `react` and `lats` implemented with autoagents still work). Selectable at runtime via `CODEGRAPH_AGENT_ARCHITECTURE=rig`:
 
-| Architecture | Description | Best For | Model Type |
-|--------------|-------------|----------|------------|
-| `rig` | Rig framework native orchestration | **Fastest performance**, deep analysis | Thinking/reasoning models (gpt-5.1, Claude 4.5 family, Grok 4.1 Fast Reasoning) |
-| `react` (default) | ReAct-style single-pass reasoning | Quick queries, simple lookups | Basic Instruction following models |
-| `lats` | Language Agent Tree Search | Complex problems requiring exploration | Works well with both |
+**Why Rig is Default:**
+The Rig-based backend delivers the best performance with modern thinking and reasoning models. It is a native Rust implementation that supports internal sub-architectures and provides features like **True Token Streaming** and **Automatic Recovery**.
 
-**Performance notes:**
-- **Rig** delivers the best performance with modern thinking/reasoning models. These models excel at multi-step tool orchestration and produce superior results for complex code analysis.
-- **ReAct** remains the default for backward compatibility and works well with traditional instruction-following models.
-- **LATS** uses tree search exploration, making it suitable for complex problems regardless of model type.
+**Internal Rig Sub-Architectures:**
+When using the `rig` backend, the system automatically maps the **consolidated agentic tools** to the most effective reasoning strategy:
+- **LATS (Tree Search)**: Deep multi-path exploration for complex, non-linear tasks.
+  - Automatically used for: `agentic_architecture` (structure), `agentic_quality`, and `agentic_context` (question).
+- **ReAct (Linear)**: High-speed, focused reasoning for direct data lookups.
+  - Automatically used for: `agentic_context` (search/builder), `agentic_impact`, and `agentic_architecture` (api_surface).
+- **Reflexion (Auto-Recovery)**: A self-correcting fallback that kicks in automatically if the primary strategy fails to find an answer. It analyzes the failure and retries with a refined plan.
 
 ### Agent Bootstrap Context
 

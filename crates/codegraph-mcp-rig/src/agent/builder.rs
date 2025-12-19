@@ -3,10 +3,24 @@
 
 #[allow(unused_imports)]
 use crate::adapter::{get_context_window, get_model_name, RigLLMAdapter, RigProvider};
+use crate::agent::api::RigAgentTrait;
+#[allow(unused_imports)]
+use crate::agent::lats::LatsAgent;
+#[cfg(feature = "anthropic")]
+use crate::agent::react::AnthropicAgent;
+#[cfg(feature = "ollama")]
+use crate::agent::react::OllamaAgent;
+#[cfg(feature = "openai")]
+use crate::agent::react::OpenAIAgent;
+#[cfg(feature = "xai")]
+use crate::agent::react::XAIAgent;
+#[allow(unused_imports)]
+use crate::agent::reflexion::ReflexionAgent;
 use crate::prompts::{get_max_turns, get_tier_system_prompt, AnalysisType};
 #[allow(unused_imports)] // Used when provider features are enabled
 use crate::tools::GraphToolFactory;
 use anyhow::{anyhow, Result};
+use codegraph_mcp_core::agent_architecture::AgentArchitecture;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
 #[allow(unused_imports)] // Used when provider features are enabled
@@ -22,6 +36,9 @@ pub struct RigAgentBuilder {
     analysis_type: AnalysisType,
     tier: ContextTier,
     max_turns: usize,
+    architecture: Option<AgentArchitecture>,
+    #[allow(dead_code)]
+    response_format: Option<serde_json::Value>,
 }
 
 impl RigAgentBuilder {
@@ -31,13 +48,33 @@ impl RigAgentBuilder {
         let context_window = get_context_window();
         let tier = ContextTier::from_context_window(context_window);
         let max_turns = get_max_turns(tier);
+        // Check env var immediately, but store as Option
+        let architecture = Self::detect_architecture_from_env();
 
         Self {
             executor,
             analysis_type: AnalysisType::SemanticQuestion,
             tier,
             max_turns,
+            architecture,
+            response_format: None,
         }
+    }
+
+    /// Set required response format (JSON schema)
+    pub fn response_format(mut self, schema: serde_json::Value) -> Self {
+        self.response_format = Some(schema);
+        self
+    }
+
+    /// Detect architecture from environment only
+    fn detect_architecture_from_env() -> Option<AgentArchitecture> {
+        if let Ok(arch_str) = std::env::var("CODEGRAPH_AGENT_ARCHITECTURE") {
+            if let Some(arch) = AgentArchitecture::parse(&arch_str) {
+                return Some(arch);
+            }
+        }
+        None
     }
 
     /// Set the analysis type for this agent
@@ -55,6 +92,12 @@ impl RigAgentBuilder {
     /// Override the max turns for tool loop
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
+        self
+    }
+
+    /// Override the architecture
+    pub fn architecture(mut self, architecture: AgentArchitecture) -> Self {
+        self.architecture = Some(architecture);
         self
     }
 
@@ -92,23 +135,115 @@ impl RigAgentBuilder {
         self.tier.max_output_tokens()
     }
 
-    /// Build an OpenAI-based agent
+    /// Resolve architecture using heuristic if not explicitly set
+    fn resolve_architecture(&self) -> AgentArchitecture {
+        if let Some(arch) = self.architecture {
+            return arch;
+        }
+
+        // Heuristic: Use LATS for complex/deep analysis types
+        match self.analysis_type {
+            AnalysisType::ArchitectureAnalysis |
+            AnalysisType::ComplexityAnalysis |
+            AnalysisType::SemanticQuestion => {
+                info!("Selecting LATS architecture for complex analysis: {:?}", self.analysis_type);
+                AgentArchitecture::LATS
+            },
+            _ => AgentArchitecture::ReAct,
+        }
+    }
+
+    /// Build agent for the detected provider and architecture
+    pub fn build(self) -> Result<Box<dyn RigAgentTrait>> {
+        let provider = RigLLMAdapter::provider()?;
+        let architecture = self.resolve_architecture();
+
+        match architecture {
+            AgentArchitecture::ReAct | AgentArchitecture::Rig => self.build_react(provider),
+            AgentArchitecture::LATS => self.build_lats(provider),
+            AgentArchitecture::Reflexion => self.build_reflexion(provider),
+        }
+    }
+
+    fn build_react(self, provider: RigProvider) -> Result<Box<dyn RigAgentTrait>> {
+        match provider {
+            #[cfg(feature = "openai")]
+            RigProvider::OpenAI => Ok(Box::new(self.build_openai_react()?)),
+            #[cfg(feature = "anthropic")]
+            RigProvider::Anthropic => Ok(Box::new(self.build_anthropic_react()?)),
+            #[cfg(feature = "ollama")]
+            RigProvider::Ollama => Ok(Box::new(self.build_ollama_react()?)),
+            #[cfg(feature = "xai")]
+            RigProvider::XAI => Ok(Box::new(self.build_xai_react()?)),
+            #[cfg(feature = "openai")]
+            RigProvider::LMStudio => Ok(Box::new(self.build_lmstudio_react()?)),
+            #[cfg(feature = "openai")]
+            RigProvider::OpenAICompatible { ref base_url } => {
+                Ok(Box::new(self.build_openai_compatible_react(base_url)?))
+            }
+            #[allow(unreachable_patterns)]
+            _ => Err(anyhow!(
+                "Provider {:?} not enabled in build features",
+                provider
+            )),
+        }
+    }
+
+    fn build_lats(self, provider: RigProvider) -> Result<Box<dyn RigAgentTrait>> {
+        let model_name = get_model_name();
+        let factory = GraphToolFactory::new(self.executor.clone());
+
+        match provider {
+            #[cfg(feature = "openai")]
+            RigProvider::OpenAI => {
+                let client = RigLLMAdapter::openai_client();
+                let model = client.completion_model(&model_name);
+                Ok(Box::new(LatsAgent {
+                    model,
+                    factory,
+                    max_turns: self.max_turns,
+                    tier: self.tier,
+                }))
+            }
+            #[cfg(feature = "anthropic")]
+            RigProvider::Anthropic => {
+                let client = RigLLMAdapter::anthropic_client();
+                let model = client.completion_model(&model_name);
+                Ok(Box::new(LatsAgent {
+                    model,
+                    factory,
+                    max_turns: self.max_turns,
+                    tier: self.tier,
+                }))
+            }
+            // Add other providers as needed, mostly mimicking the above pattern
+             #[allow(unreachable_patterns)]
+            _ => {
+                let _ = model_name;
+                let _ = factory;
+                Err(anyhow!("LATS not yet supported for provider {:?}", provider))
+            },
+        }
+    }
+
+    fn build_reflexion(self, provider: RigProvider) -> Result<Box<dyn RigAgentTrait>> {
+        // Reflexion wraps a ReAct agent
+        let inner = self.build_react(provider)?;
+        Ok(Box::new(ReflexionAgent {
+            inner,
+            max_retries: 2, // Default to 2 retries
+        }))
+    }
+
+    // --- ReAct Builders (Internal) ---
+
     #[cfg(feature = "openai")]
-    pub fn build_openai(self) -> Result<OpenAIAgent> {
+    fn build_openai_react(self) -> Result<OpenAIAgent> {
         let client = RigLLMAdapter::openai_client();
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
-
-        info!(
-            provider = "openai",
-            model = %model,
-            tier = ?self.tier,
-            max_turns = self.max_turns,
-            analysis_type = ?self.analysis_type,
-            "Building Rig agent"
-        );
 
         let agent = client
             .agent(&model)
@@ -132,23 +267,13 @@ impl RigAgentBuilder {
         })
     }
 
-    /// Build an Anthropic-based agent
     #[cfg(feature = "anthropic")]
-    pub fn build_anthropic(self) -> Result<AnthropicAgent> {
+    fn build_anthropic_react(self) -> Result<AnthropicAgent> {
         let client = RigLLMAdapter::anthropic_client();
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
-
-        info!(
-            provider = "anthropic",
-            model = %model,
-            tier = ?self.tier,
-            max_turns = self.max_turns,
-            analysis_type = ?self.analysis_type,
-            "Building Rig agent"
-        );
 
         let agent = client
             .agent(&model)
@@ -172,22 +297,12 @@ impl RigAgentBuilder {
         })
     }
 
-    /// Build an Ollama-based agent
     #[cfg(feature = "ollama")]
-    pub fn build_ollama(self) -> Result<OllamaAgent> {
+    fn build_ollama_react(self) -> Result<OllamaAgent> {
         let client = RigLLMAdapter::ollama_client();
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let factory = GraphToolFactory::new(self.executor);
-
-        info!(
-            provider = "ollama",
-            model = %model,
-            tier = ?self.tier,
-            max_turns = self.max_turns,
-            analysis_type = ?self.analysis_type,
-            "Building Rig agent"
-        );
 
         let agent = client
             .agent(&model)
@@ -210,50 +325,13 @@ impl RigAgentBuilder {
         })
     }
 
-    /// Build agent for the detected provider
-    pub fn build(self) -> Result<Box<dyn RigAgentTrait>> {
-        let provider = RigLLMAdapter::provider()?;
-
-        match provider {
-            #[cfg(feature = "openai")]
-            RigProvider::OpenAI => Ok(Box::new(self.build_openai()?)),
-            #[cfg(feature = "anthropic")]
-            RigProvider::Anthropic => Ok(Box::new(self.build_anthropic()?)),
-            #[cfg(feature = "ollama")]
-            RigProvider::Ollama => Ok(Box::new(self.build_ollama()?)),
-            #[cfg(feature = "xai")]
-            RigProvider::XAI => Ok(Box::new(self.build_xai()?)),
-            #[cfg(feature = "openai")]
-            RigProvider::LMStudio => Ok(Box::new(self.build_lmstudio()?)),
-            #[cfg(feature = "openai")]
-            RigProvider::OpenAICompatible { ref base_url } => {
-                Ok(Box::new(self.build_openai_compatible(base_url)?))
-            }
-            #[allow(unreachable_patterns)]
-            _ => Err(anyhow!(
-                "Provider {:?} not enabled in build features",
-                provider
-            )),
-        }
-    }
-
-    /// Build an xAI-based agent (native rig xAI provider)
     #[cfg(feature = "xai")]
-    pub fn build_xai(self) -> Result<XAIAgent> {
+    fn build_xai_react(self) -> Result<XAIAgent> {
         let client = RigLLMAdapter::xai_client();
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
-
-        info!(
-            provider = "xai",
-            model = %model,
-            tier = ?self.tier,
-            max_turns = self.max_turns,
-            analysis_type = ?self.analysis_type,
-            "Building Rig agent"
-        );
 
         let agent = client
             .agent(&model)
@@ -277,24 +355,14 @@ impl RigAgentBuilder {
         })
     }
 
-    /// Build an LM Studio-based agent (uses OpenAI-compatible API)
     #[cfg(feature = "openai")]
-    pub fn build_lmstudio(self) -> Result<OpenAIAgent> {
+    fn build_lmstudio_react(self) -> Result<OpenAIAgent> {
         let client = RigLLMAdapter::lmstudio_client();
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        info!(
-            provider = "lmstudio",
-            model = %model,
-            tier = ?self.tier,
-            max_turns = self.max_turns,
-            analysis_type = ?self.analysis_type,
-            "Building Rig agent"
-        );
-
         let agent = client
             .agent(&model)
             .preamble(&system_prompt)
@@ -317,25 +385,14 @@ impl RigAgentBuilder {
         })
     }
 
-    /// Build an OpenAI-compatible agent with custom base URL
     #[cfg(feature = "openai")]
-    pub fn build_openai_compatible(self, base_url: &str) -> Result<OpenAIAgent> {
+    fn build_openai_compatible_react(self, base_url: &str) -> Result<OpenAIAgent> {
         let client = RigLLMAdapter::openai_compatible_client(base_url);
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        info!(
-            provider = "openai-compatible",
-            base_url = %base_url,
-            model = %model,
-            tier = ?self.tier,
-            max_turns = self.max_turns,
-            analysis_type = ?self.analysis_type,
-            "Building Rig agent"
-        );
-
         let agent = client
             .agent(&model)
             .preamble(&system_prompt)
@@ -356,206 +413,5 @@ impl RigAgentBuilder {
             max_turns: self.max_turns,
             tier: self.tier,
         })
-    }
-}
-
-/// Trait for unified agent interface
-#[async_trait::async_trait]
-pub trait RigAgentTrait: Send + Sync {
-    /// Execute the agent with the given query
-    async fn execute(&self, query: &str) -> Result<String>;
-
-    /// Get the configured tier
-    fn tier(&self) -> ContextTier;
-
-    /// Get max turns
-    fn max_turns(&self) -> usize;
-
-    /// Get and reset the tool call count since last query
-    fn take_tool_call_count(&self) -> usize;
-
-    /// Get and reset tool traces since last query
-    fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace>;
-}
-
-/// OpenAI-based Rig agent
-#[cfg(feature = "openai")]
-pub struct OpenAIAgent {
-    agent: rig::agent::Agent<rig::providers::openai::responses_api::ResponsesCompletionModel>,
-    factory: GraphToolFactory,
-    max_turns: usize,
-    tier: ContextTier,
-}
-
-#[cfg(feature = "openai")]
-#[async_trait::async_trait]
-impl RigAgentTrait for OpenAIAgent {
-    async fn execute(&self, query: &str) -> Result<String> {
-        use rig::agent::PromptRequest;
-
-        let mut chat_history = vec![];
-        let response = PromptRequest::new(&self.agent, query)
-            .multi_turn(self.max_turns)
-            .with_history(&mut chat_history)
-            .await
-            .map_err(|e| anyhow!("Agent execution failed: {}", e))?;
-
-        Ok(response)
-    }
-
-    fn tier(&self) -> ContextTier {
-        self.tier
-    }
-
-    fn max_turns(&self) -> usize {
-        self.max_turns
-    }
-
-    fn take_tool_call_count(&self) -> usize {
-        self.factory.take_call_count()
-    }
-
-    fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace> {
-        self.factory.take_traces()
-    }
-}
-
-/// Anthropic-based Rig agent
-#[cfg(feature = "anthropic")]
-pub struct AnthropicAgent {
-    agent: rig::agent::Agent<rig::providers::anthropic::completion::CompletionModel>,
-    factory: GraphToolFactory,
-    max_turns: usize,
-    tier: ContextTier,
-}
-
-#[cfg(feature = "anthropic")]
-#[async_trait::async_trait]
-impl RigAgentTrait for AnthropicAgent {
-    async fn execute(&self, query: &str) -> Result<String> {
-        use rig::agent::PromptRequest;
-
-        let mut chat_history = vec![];
-        let response = PromptRequest::new(&self.agent, query)
-            .multi_turn(self.max_turns)
-            .with_history(&mut chat_history)
-            .await
-            .map_err(|e| anyhow!("Agent execution failed: {}", e))?;
-
-        Ok(response)
-    }
-
-    fn tier(&self) -> ContextTier {
-        self.tier
-    }
-
-    fn max_turns(&self) -> usize {
-        self.max_turns
-    }
-
-    fn take_tool_call_count(&self) -> usize {
-        self.factory.take_call_count()
-    }
-
-    fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace> {
-        self.factory.take_traces()
-    }
-}
-
-/// Ollama-based Rig agent
-#[cfg(feature = "ollama")]
-pub struct OllamaAgent {
-    agent: rig::agent::Agent<rig::providers::ollama::CompletionModel>,
-    factory: GraphToolFactory,
-    max_turns: usize,
-    tier: ContextTier,
-}
-
-#[cfg(feature = "ollama")]
-#[async_trait::async_trait]
-impl RigAgentTrait for OllamaAgent {
-    async fn execute(&self, query: &str) -> Result<String> {
-        use rig::agent::PromptRequest;
-
-        let mut chat_history = vec![];
-        let response = PromptRequest::new(&self.agent, query)
-            .multi_turn(self.max_turns)
-            .with_history(&mut chat_history)
-            .await
-            .map_err(|e| anyhow!("Agent execution failed: {}", e))?;
-
-        Ok(response)
-    }
-
-    fn tier(&self) -> ContextTier {
-        self.tier
-    }
-
-    fn max_turns(&self) -> usize {
-        self.max_turns
-    }
-
-    fn take_tool_call_count(&self) -> usize {
-        self.factory.take_call_count()
-    }
-
-    fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace> {
-        self.factory.take_traces()
-    }
-}
-
-/// xAI-based Rig agent (native rig provider)
-#[cfg(feature = "xai")]
-pub struct XAIAgent {
-    agent: rig::agent::Agent<rig::providers::xai::completion::CompletionModel>,
-    factory: GraphToolFactory,
-    max_turns: usize,
-    tier: ContextTier,
-}
-
-#[cfg(feature = "xai")]
-#[async_trait::async_trait]
-impl RigAgentTrait for XAIAgent {
-    async fn execute(&self, query: &str) -> Result<String> {
-        use rig::agent::PromptRequest;
-
-        let mut chat_history = vec![];
-        let response = PromptRequest::new(&self.agent, query)
-            .multi_turn(self.max_turns)
-            .with_history(&mut chat_history)
-            .await
-            .map_err(|e| anyhow!("Agent execution failed: {}", e))?;
-
-        Ok(response)
-    }
-
-    fn tier(&self) -> ContextTier {
-        self.tier
-    }
-
-    fn max_turns(&self) -> usize {
-        self.max_turns
-    }
-
-    fn take_tool_call_count(&self) -> usize {
-        self.factory.take_call_count()
-    }
-
-    fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace> {
-        self.factory.take_traces()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_builder_configuration() {
-        // We can't fully test without GraphToolExecutor, but we can test the builder API
-        fn _assert_builder_api() {
-            // This just verifies the API compiles correctly
-            let _: fn(Arc<GraphToolExecutor>) -> RigAgentBuilder = RigAgentBuilder::new;
-        }
     }
 }

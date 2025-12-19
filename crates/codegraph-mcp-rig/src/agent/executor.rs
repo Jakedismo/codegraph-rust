@@ -1,12 +1,15 @@
 // ABOUTME: Rig agent executor with conversation memory
 // ABOUTME: Maintains conversation history for analysis task duration
 
+use super::api::{AgentEvent, RigAgentTrait};
 use super::builder::RigAgentBuilder;
 use super::RigAgentOutput;
 use anyhow::Result;
 use codegraph_mcp_core::analysis::AnalysisType;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
+use futures::Stream;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, info};
@@ -56,10 +59,28 @@ impl RigExecutor {
             "Starting Rig agent execution"
         );
 
-        // Build agent with appropriate configuration
-        let agent = RigAgentBuilder::new(self.executor.clone())
-            .analysis_type(analysis_type)
-            .build()?;
+        // --- Dynamic Context Throttling ---
+        let max_tokens = crate::adapter::RigLLMAdapter::context_window();
+        let estimated_history_tokens: usize = self
+            .history
+            .iter()
+            .map(|t| (t.query.len() + t.response.len()) / 4)
+            .sum();
+        let usage_ratio = estimated_history_tokens as f64 / max_tokens as f64;
+
+        let mut builder = RigAgentBuilder::new(self.executor.clone())
+            .analysis_type(analysis_type);
+
+        if usage_ratio > 0.8 {
+            info!(
+                usage_ratio = usage_ratio,
+                "Context usage high (>80%), throttling tier to Small"
+            );
+            builder = builder.tier(ContextTier::Small);
+            // Future: Trigger summary if > 0.95
+        }
+
+        let agent = builder.build()?;
 
         debug!(
             tier = ?agent.tier(),
@@ -74,12 +95,40 @@ impl RigExecutor {
             self.build_contextualized_query(query)
         };
 
-        // Execute the agent
-        let response = agent.execute(&contextualized_query).await?;
+        // Execute with automatic Reflexion fallback
+        let (response, tool_calls, tool_traces) = match agent.execute(&contextualized_query).await {
+            Ok(resp) => {
+                let calls = agent.take_tool_call_count();
+                let traces = agent.take_tool_traces();
+                (resp, calls, traces)
+            },
+            Err(e) => {
+                info!(
+                    error = %e,
+                    "Primary agent execution failed. Initiating Reflexion auto-recovery..."
+                );
+                
+                // Wrap the primary agent in ReflexionAgent for retry
+                let reflexion_agent = crate::agent::reflexion::ReflexionAgent {
+                    inner: agent,
+                    max_retries: 2,
+                };
+
+                // Retry execution with self-correction
+                match reflexion_agent.execute(&contextualized_query).await {
+                    Ok(resp) => {
+                        let calls = reflexion_agent.take_tool_call_count();
+                        let traces = reflexion_agent.take_tool_traces();
+                        (resp, calls, traces)
+                    },
+                    Err(final_err) => {
+                        return Err(anyhow::anyhow!("Agent failed after Reflexion recovery: {}", final_err));
+                    }
+                }
+            }
+        };
 
         let duration_ms = start.elapsed().as_millis() as u64;
-        let tool_calls = agent.take_tool_call_count();
-        let tool_traces = agent.take_tool_traces();
 
         // Record in history
         let turn = ConversationTurn {
@@ -103,6 +152,27 @@ impl RigExecutor {
             duration_ms,
             tool_traces,
         })
+    }
+
+    /// Execute agent with streaming events
+    /// Note: This does NOT update history automatically (limit of this simple implementation)
+    /// Clients using streaming must handle history recording manually or use execute() for stateful turns.
+    pub async fn execute_stream(
+        &mut self,
+        query: &str,
+        analysis_type: AnalysisType,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<AgentEvent>> + Send>>> {
+        let agent = RigAgentBuilder::new(self.executor.clone())
+            .analysis_type(analysis_type)
+            .build()?;
+
+        let contextualized_query = if self.history.is_empty() {
+            query.to_string()
+        } else {
+            self.build_contextualized_query(query)
+        };
+
+        agent.execute_stream(&contextualized_query).await
     }
 
     /// Execute with explicit tier override

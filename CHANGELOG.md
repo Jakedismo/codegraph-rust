@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 **Enhanced - Rig-Based Agent System (Now Default)**
+
+#### **Default Backend Switch**
+- **Rig is now the default agent backend**: The system now uses the high-performance Rig backend by default over the legacy AutoAgents implementation.
+- **Improved Performance**: Rig delivers faster reasoning and better tool orchestration, especially with modern thinking models.
+
+#### **Multi-Architecture Support**
+- **LATS (Language Agent Tree Search)**: New `LatsAgent` implementation using Rig primitives for tree-based exploration.
+- **Reflexion**: New `ReflexionAgent` that wraps other agents and automatically retries with self-reflection upon failure.
+- **Dynamic Architecture Switching**: `RigExecutor` now intelligently selects the best architecture based on task complexity (e.g., LATS for Architecture Analysis) and can fallback on failure.
+- **Streaming Support**: Added `execute_stream` to `RigAgentTrait` and `RigExecutor`, enabling real-time feedback (Thought/ToolCall/Result/Answer events).
+
+#### **Dynamic Context Throttling**
+- **Smart Tier Adjustment**: Agent now monitors context usage during execution.
+- **Automatic Downgrade**: If context usage >80%, automatically downgrades tier (e.g., Detailed -> Terse prompts) to prevent overflow errors.
+- **Prevention**: Proactively manages token budget to ensure successful completion of long analysis chains.
+
+#### **Operational Enhancements**
+- **Structured Output**: Added `response_format` support to `RigAgentBuilder` for schema-enforced answers.
+- **Unified Interface**: Refactored `RigAgentTrait` to support both blocking and streaming execution modes across all architectures (ReAct, LATS, Reflexion).
+
 ### ⚠️ BREAKING CHANGES
 
 #### **Agentic Tool Consolidation (8 → 4 Tools)**
@@ -79,6 +100,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Large tier: 6 tool calls max
   - Massive tier: 8 tool calls max
 - Addresses issue where agents could make 10+ tool calls in a single query
+
+#### **Cache System Reliability and Performance**
+- **Read-Ahead Optimizer Fixes**: Resolved critical type mismatch and moved value issues in the read-ahead optimization engine.
+- **Memory Profiler Integration**: Provided a minimal memory profiling implementation to support real-time allocation tracking and dashboard visualization.
+- **Demo & Example Repairs**: Fully restored and fixed the `memory_profiler_demo` and `readahead_demo` examples, including proper formatting and dependency management.
+- **Dependency Optimization**: Added `once_cell`, `uuid`, and enhanced `tracing-subscriber` configuration to the cache crate for improved robustness.
 
 ### Added
 
