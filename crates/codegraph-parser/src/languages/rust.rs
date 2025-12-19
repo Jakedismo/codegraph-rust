@@ -164,6 +164,7 @@ impl<'a> Collector<'a> {
 
                 // REVOLUTIONARY: Extract import edges during same AST traversal
                 let import_node_id = code.id;
+                let import_span = self.span_for(&node);
                 for import in &imports {
                     let edge = EdgeRelationship {
                         from: import_node_id,
@@ -175,7 +176,7 @@ impl<'a> Collector<'a> {
                             meta.insert("source_file".to_string(), self.file_path.to_string());
                             meta
                         },
-                        span: None,
+                        span: Some(import_span.clone()),
                     };
                     self.edges.push(edge);
                 }
@@ -231,6 +232,11 @@ impl<'a> Collector<'a> {
                     code.metadata
                         .attributes
                         .insert("qualified_name".into(), self.qname(&ctx.module_path, &name));
+
+                    // REVOLUTIONARY: Extract references to types in struct fields
+                    let struct_node_id = code.id;
+                    self.extract_references_from_fields(node, struct_node_id);
+
                     self.nodes.push(code);
                 }
             }
@@ -275,16 +281,39 @@ impl<'a> Collector<'a> {
                     loc,
                 )
                 .with_content(text.clone());
-                code.span = Some(self.span_for(&node));
+                let impl_span = self.span_for(&node);
+                code.span = Some(impl_span.clone());
                 if let Some(for_type) = &impl_info.for_type {
                     code.metadata
                         .attributes
                         .insert("impl_for".into(), for_type.clone());
+                    
+                    // Add reference to the 'for' type
+                    if let Some(type_node) = node.child_by_field_name("type") {
+                        self.edges.push(EdgeRelationship {
+                            from: code.id,
+                            to: for_type.clone(),
+                            edge_type: EdgeType::References,
+                            metadata: HashMap::from([("kind".into(), "impl_for".into())]),
+                            span: Some(self.span_for(&type_node)),
+                        });
+                    }
                 }
                 if let Some(trait_name) = &impl_info.trait_name {
                     code.metadata
                         .attributes
                         .insert("impl_trait".into(), trait_name.clone());
+                    
+                    // Add reference to the trait
+                    if let Some(trait_node) = node.child_by_field_name("trait") {
+                        self.edges.push(EdgeRelationship {
+                            from: code.id,
+                            to: trait_name.clone(),
+                            edge_type: EdgeType::References,
+                            metadata: HashMap::from([("kind".into(), "impl_trait".into())]),
+                            span: Some(self.span_for(&trait_node)),
+                        });
+                    }
                 }
                 code.metadata.attributes.insert(
                     "inherent".into(),
@@ -333,7 +362,8 @@ impl<'a> Collector<'a> {
                     .with_complexity(
                         crate::complexity::calculate_cyclomatic_complexity(&node, self.content),
                     );
-                    code.span = Some(self.span_for(&node));
+                    let function_span = self.span_for(&node);
+                    code.span = Some(function_span.clone());
                     let (generics, lifetimes) = self.collect_generics_and_lifetimes(node);
                     code.metadata
                         .attributes
@@ -341,6 +371,10 @@ impl<'a> Collector<'a> {
                     code.metadata
                         .attributes
                         .insert("lifetimes".into(), json!(lifetimes).to_string());
+                    
+                    // REVOLUTIONARY: Extract references from parameters and return type
+                    self.extract_references_from_signature(node, code.id);
+
                     let is_async =
                         self.node_text(&node).contains("async fn") || has_child_kind(node, "async");
                     let is_unsafe = self.node_text(&node).contains("unsafe fn")
@@ -417,7 +451,7 @@ impl<'a> Collector<'a> {
                                 meta.insert("source_file".to_string(), self.file_path.to_string());
                                 meta
                             },
-                            span: None,
+                            span: Some(self.span_for(&node)), // Attach span for LSP resolution
                         };
                         self.edges.push(edge);
                     }
@@ -439,7 +473,7 @@ impl<'a> Collector<'a> {
                                 meta.insert("source_file".to_string(), self.file_path.to_string());
                                 meta
                             },
-                            span: None,
+                            span: Some(self.span_for(&node)), // Attach span for LSP resolution
                         };
                         self.edges.push(edge);
                     }
@@ -595,6 +629,87 @@ impl<'a> Collector<'a> {
             *node,
             &["identifier", "scoped_identifier", "field_identifier"],
         )
+    }
+
+    /// REVOLUTIONARY: Extract references to types in function parameters and return type
+    fn extract_references_from_signature(&mut self, node: Node, from_id: NodeId) {
+        // Parameters
+        if let Some(params) = node.child_by_field_name("parameters") {
+            let mut cursor = params.walk();
+            if cursor.goto_first_child() {
+                loop {
+                    let param = cursor.node();
+                    if param.kind() == "parameter" {
+                        if let Some(type_node) = param.child_by_field_name("type") {
+                            self.extract_type_references(type_node, from_id, "parameter_type");
+                        }
+                    }
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Return type
+        if let Some(ret) = node.child_by_field_name("return_type") {
+            self.extract_type_references(ret, from_id, "return_type");
+        }
+    }
+
+    /// REVOLUTIONARY: Extract references to types in struct fields
+    fn extract_references_from_fields(&mut self, node: Node, from_id: NodeId) {
+        if let Some(body) = node.child_by_field_name("body") {
+            let mut cursor = body.walk();
+            if cursor.goto_first_child() {
+                loop {
+                    let field = cursor.node();
+                    if field.kind() == "field_declaration" {
+                        if let Some(type_node) = field.child_by_field_name("type") {
+                            self.extract_type_references(type_node, from_id, "field_type");
+                        }
+                    }
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Deep scan for type identifiers within a type node (handles generics, pointers, etc.)
+    fn extract_type_references(&mut self, node: Node, from_id: NodeId, kind: &str) {
+        let mut stack = vec![node];
+        while let Some(n) = stack.pop() {
+            match n.kind() {
+                "type_identifier" | "primitive_type" => {
+                    let name = self.node_text(&n);
+                    if !name.is_empty() {
+                        self.edges.push(EdgeRelationship {
+                            from: from_id,
+                            to: name,
+                            edge_type: EdgeType::References,
+                            metadata: HashMap::from([
+                                ("kind".into(), kind.into()),
+                                ("source_file".into(), self.file_path.into()),
+                            ]),
+                            span: Some(self.span_for(&n)),
+                        });
+                    }
+                }
+                _ => {
+                    let mut cursor = n.walk();
+                    if cursor.goto_first_child() {
+                        loop {
+                            stack.push(cursor.node());
+                            if !cursor.goto_next_sibling() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

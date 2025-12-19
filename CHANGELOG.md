@@ -101,6 +101,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Massive tier: 8 tool calls max
 - Addresses issue where agents could make 10+ tool calls in a single query
 
+#### **LSP Analysis & Graph Enrichment**
+- **Fixed `lsp_uses` Metric**: Resolved issue where `lsp_uses` always returned 0 during indexing.
+- **Enhanced Rust Extraction**: Added support for extracting type references from function signatures and struct fields, including full source spans for LSP resolution.
+- **Improved Python Extraction**: Added extraction of type hints and base classes as reference edges with spans.
+- **Enrichment Logic Update**: Refined the enrichment analyzer to count all LSP-resolved edges while promoting generic references to concrete uses.
+
 #### **Cache System Reliability and Performance**
 - **Read-Ahead Optimizer Fixes**: Resolved critical type mismatch and moved value issues in the read-ahead optimization engine.
 - **Memory Profiler Integration**: Provided a minimal memory profiling implementation to support real-time allocation tracking and dashboard visualization.

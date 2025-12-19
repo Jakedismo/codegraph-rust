@@ -163,9 +163,13 @@ pub fn apply_basic_enrichment(
         if edge.metadata.get("analyzer").map(|v| v.as_str()) != Some("lsp_definition") {
             continue;
         }
+        
+        // Count all LSP-resolved edges in the metric
+        stats.uses_edges_derived += 1;
+
+        // Promote generic references to concrete uses
         if edge.edge_type == EdgeType::References {
             edge.edge_type = EdgeType::Uses;
-            stats.uses_edges_derived += 1;
         }
     }
 

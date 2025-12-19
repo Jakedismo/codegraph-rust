@@ -85,6 +85,10 @@ impl<'a> PythonCollector<'a> {
                     code.span = Some(self.span_for(&node));
 
                     self.current_function_id = Some(code.id);
+                    
+                    // REVOLUTIONARY: Extract type hints as References
+                    self.extract_type_hints(node, code.id);
+
                     self.nodes.push(code);
                 }
             }
@@ -99,6 +103,10 @@ impl<'a> PythonCollector<'a> {
                     code.span = Some(self.span_for(&node));
 
                     self.current_class_id = Some(code.id);
+                    
+                    // REVOLUTIONARY: Extract base classes as References (extends)
+                    self.extract_base_classes(node, code.id);
+
                     self.nodes.push(code);
                 }
             }
@@ -219,6 +227,71 @@ impl<'a> PythonCollector<'a> {
             }
         }
         None
+    }
+
+    fn extract_type_hints(&mut self, node: Node, from_id: NodeId) {
+        // Parameter type hints: (arg: Type)
+        if let Some(parameters) = node.child_by_field_name("parameters") {
+            let mut cursor = parameters.walk();
+            if cursor.goto_first_child() {
+                loop {
+                    let param = cursor.node();
+                    // arg or typed_parameter or typed_default_parameter
+                    match param.kind() {
+                        "typed_parameter" | "typed_default_parameter" => {
+                            if let Some(type_node) = param.child_by_field_name("type") {
+                                self.add_reference_edge(from_id, type_node, "parameter_type");
+                            }
+                        }
+                        _ => {}
+                    }
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Return type hint: def foo() -> Type:
+        if let Some(return_type) = node.child_by_field_name("return_type") {
+            self.add_reference_edge(from_id, return_type, "return_type");
+        }
+    }
+
+    fn extract_base_classes(&mut self, node: Node, from_id: NodeId) {
+        // class Foo(Base1, Base2):
+        if let Some(superclasses) = node.child_by_field_name("superclasses") {
+            let mut cursor = superclasses.walk();
+            if cursor.goto_first_child() {
+                loop {
+                    let superclass = cursor.node();
+                    if superclass.kind() == "identifier" || superclass.kind() == "attribute" {
+                        self.add_reference_edge(from_id, superclass, "base_class");
+                    }
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    fn add_reference_edge(&mut self, from_id: NodeId, node: Node, kind: &str) {
+        let name = self.node_text(&node);
+        if !name.is_empty() {
+            self.edges.push(EdgeRelationship {
+                from: from_id,
+                to: name,
+                edge_type: EdgeType::References,
+                metadata: {
+                    let mut meta = HashMap::new();
+                    meta.insert("kind".to_string(), kind.to_string());
+                    meta.insert("source_file".to_string(), self.file_path.to_string());
+                    meta
+                },
+                span: Some(self.span_for(&node)),
+            });
+        }
     }
 }
 
