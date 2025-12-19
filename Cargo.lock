@@ -1303,6 +1303,7 @@ dependencies = [
  "dashmap 6.1.0",
  "fastrand",
  "futures",
+ "once_cell",
  "parking_lot",
  "serde",
  "serde_json",
@@ -1311,6 +1312,8 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
