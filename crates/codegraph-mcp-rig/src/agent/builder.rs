@@ -36,7 +36,7 @@ pub struct RigAgentBuilder {
     analysis_type: AnalysisType,
     tier: ContextTier,
     max_turns: usize,
-    architecture: AgentArchitecture,
+    architecture: Option<AgentArchitecture>,
     #[allow(dead_code)]
     response_format: Option<serde_json::Value>,
 }
@@ -48,7 +48,8 @@ impl RigAgentBuilder {
         let context_window = get_context_window();
         let tier = ContextTier::from_context_window(context_window);
         let max_turns = get_max_turns(tier);
-        let architecture = Self::detect_architecture();
+        // Check env var immediately, but store as Option
+        let architecture = Self::detect_architecture_from_env();
 
         Self {
             executor,
@@ -66,14 +67,14 @@ impl RigAgentBuilder {
         self
     }
 
-    /// Detect architecture from environment
-    fn detect_architecture() -> AgentArchitecture {
+    /// Detect architecture from environment only
+    fn detect_architecture_from_env() -> Option<AgentArchitecture> {
         if let Ok(arch_str) = std::env::var("CODEGRAPH_AGENT_ARCHITECTURE") {
             if let Some(arch) = AgentArchitecture::parse(&arch_str) {
-                return arch;
+                return Some(arch);
             }
         }
-        AgentArchitecture::default()
+        None
     }
 
     /// Set the analysis type for this agent
@@ -96,7 +97,7 @@ impl RigAgentBuilder {
 
     /// Override the architecture
     pub fn architecture(mut self, architecture: AgentArchitecture) -> Self {
-        self.architecture = architecture;
+        self.architecture = Some(architecture);
         self
     }
 
@@ -134,11 +135,30 @@ impl RigAgentBuilder {
         self.tier.max_output_tokens()
     }
 
+    /// Resolve architecture using heuristic if not explicitly set
+    fn resolve_architecture(&self) -> AgentArchitecture {
+        if let Some(arch) = self.architecture {
+            return arch;
+        }
+
+        // Heuristic: Use LATS for complex/deep analysis types
+        match self.analysis_type {
+            AnalysisType::ArchitectureAnalysis |
+            AnalysisType::ComplexityAnalysis |
+            AnalysisType::SemanticQuestion => {
+                info!("Selecting LATS architecture for complex analysis: {:?}", self.analysis_type);
+                AgentArchitecture::LATS
+            },
+            _ => AgentArchitecture::ReAct,
+        }
+    }
+
     /// Build agent for the detected provider and architecture
     pub fn build(self) -> Result<Box<dyn RigAgentTrait>> {
         let provider = RigLLMAdapter::provider()?;
+        let architecture = self.resolve_architecture();
 
-        match self.architecture {
+        match architecture {
             AgentArchitecture::ReAct => self.build_react(provider),
             AgentArchitecture::LATS => self.build_lats(provider),
             AgentArchitecture::Reflexion => self.build_reflexion(provider),
