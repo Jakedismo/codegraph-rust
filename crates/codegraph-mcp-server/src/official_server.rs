@@ -29,7 +29,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::prompt_selector::AnalysisType;
-use crate::prompts::INITIAL_INSTRUCTIONS;
+use crate::prompts::{INITIAL_INSTRUCTIONS, INITIAL_INSTRUCTIONS_PROMPT_NAME};
 #[cfg(feature = "ai-enhanced")]
 use codegraph_ai::agentic_schemas::AgenticOutput;
 #[cfg(feature = "ai-enhanced")]
@@ -281,8 +281,8 @@ impl CodeGraphMCPServer {
         _params: Parameters<EmptyRequest>,
     ) -> Result<CallToolResult, McpError> {
         let content = format!(
-            "{}\n\n---\n\n**Tip:** These instructions are also available as the MCP prompt 'codegraph_initial_instructions'.",
-            INITIAL_INSTRUCTIONS
+            "{}\n\n---\n\n**Tip:** These instructions are also available as the MCP prompt '{}'.",
+            INITIAL_INSTRUCTIONS, INITIAL_INSTRUCTIONS_PROMPT_NAME
         );
 
         Ok(CallToolResult::success(vec![Content::text(content)]))
@@ -1123,7 +1123,7 @@ impl ServerHandler for CodeGraphMCPServer {
         ServerInfo {
             // Use the aggressive MANDATORY instructions for automatic delivery
             // This is sent automatically in the initialize response
-            // Also available via MCP prompt 'codegraph_initial_instructions'
+            // Also available via MCP prompt INITIAL_INSTRUCTIONS_PROMPT_NAME
             instructions: Some(INITIAL_INSTRUCTIONS.into()),
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
@@ -1141,16 +1141,7 @@ impl ServerHandler for CodeGraphMCPServer {
     ) -> impl Future<Output = Result<ListPromptsResult, McpError>> + Send + '_ {
         async move {
             Ok(ListPromptsResult {
-                prompts: vec![Prompt {
-                    name: "codegraph_initial_instructions".to_string(),
-                    title: Some("MANDATORY: CodeGraph Usage Protocol for AI Agents".to_string()),
-                    description: Some(
-                        "REQUIRED reading before using CodeGraph tools. Enforces context-efficient tool usage patterns. You MUST use CodeGraph agentic tools BEFORE grep/read/find. Includes tool selection decision tree, anti-patterns, and compliance checklist.".to_string()
-                    ),
-                    arguments: None,
-                    icons: None,
-                    meta: None,
-                }],
+                prompts: vec![initial_instructions_prompt()],
                 next_cursor: None,
                 meta: None,
             })
@@ -1165,7 +1156,7 @@ impl ServerHandler for CodeGraphMCPServer {
         let name = request.name.clone();
         async move {
             match name.as_str() {
-                "codegraph_initial_instructions" => Ok(GetPromptResult {
+                INITIAL_INSTRUCTIONS_PROMPT_NAME => Ok(GetPromptResult {
                     description: Some(
                         "MANDATORY: CodeGraph Usage Protocol - You MUST read and follow these instructions before using any CodeGraph tools".to_string()
                     ),
@@ -1188,6 +1179,19 @@ impl ServerHandler for CodeGraphMCPServer {
                 )),
             }
         }
+    }
+}
+
+fn initial_instructions_prompt() -> Prompt {
+    Prompt {
+        name: INITIAL_INSTRUCTIONS_PROMPT_NAME.to_string(),
+        title: None,
+        description: Some(
+            "REQUIRED reading before using CodeGraph tools. Enforces context-efficient tool usage patterns. You MUST use CodeGraph agentic tools BEFORE grep/read/find. Includes tool selection decision tree, anti-patterns, and compliance checklist.".to_string()
+        ),
+        arguments: None,
+        icons: None,
+        meta: None,
     }
 }
 
@@ -1264,6 +1268,19 @@ mod tests {
         assert_eq!(
             highlights[0].get("file_path").and_then(|v| v.as_str()),
             Some("crates/codegraph-core/src/config_manager.rs")
+        );
+    }
+}
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::*;
+
+    #[test]
+    fn initial_instructions_prompt_name_is_mcp_compatible() {
+        assert_eq!(
+            initial_instructions_prompt().name,
+            "codegraph:initial_instructions"
         );
     }
 }
