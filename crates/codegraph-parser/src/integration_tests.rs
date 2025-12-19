@@ -1,23 +1,21 @@
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use tempfile::TempDir;
 use tokio::fs;
 use tokio::time::sleep;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::{
-    BatchedChanges, ChangeImpactAnalysis, DiffBasedParser, FileChangeEvent, FileSystemWatcher,
-    IncrementalParseResult, SemanticAnalyzer, TreeSitterParser,
+    DiffBasedParser, FileChangeEvent, FileSystemWatcher, SemanticAnalyzer, TreeSitterParser,
 };
-use codegraph_core::{CodeNode, Language};
+use codegraph_core::CodeParser;
 
 pub struct IncrementalParsingTestSuite {
     temp_dir: TempDir,
     parser: TreeSitterParser,
     diff_parser: DiffBasedParser,
-    semantic_analyzer: SemanticAnalyzer,
+    _semantic_analyzer: SemanticAnalyzer,
 }
 
 impl IncrementalParsingTestSuite {
@@ -26,7 +24,7 @@ impl IncrementalParsingTestSuite {
             temp_dir: TempDir::new()?,
             parser: TreeSitterParser::new(),
             diff_parser: DiffBasedParser::new(),
-            semantic_analyzer: SemanticAnalyzer::new(),
+            _semantic_analyzer: SemanticAnalyzer::new(),
         })
     }
 
@@ -231,7 +229,7 @@ fn main() {
         let analysis_start = Instant::now();
 
         // For this test, we'll simulate finding affected symbols
-        let changed_lines = vec![2, 3]; // Lines where calculate_total is defined
+        let _changed_lines = vec![2, 3]; // Lines where calculate_total is defined
 
         // In a real implementation, this would use the tree and semantic analyzer
         let affected_symbols = vec!["calculate_total".to_string(), "main".to_string()];
@@ -404,11 +402,10 @@ impl Calculator {
         let e2e_start = Instant::now();
 
         // Parse all files initially
-        let initial_nodes = self
+        let (initial_nodes, _stats) = self
             .parser
-            .parse_directory(&src_dir.to_string_lossy())
-            .await?
-            .0;
+            .parse_directory_parallel(&src_dir.to_string_lossy())
+            .await?;
         let initial_parse_time = e2e_start.elapsed();
 
         // Simulate a change to the calculator module

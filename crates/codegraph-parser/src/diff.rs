@@ -1,5 +1,3 @@
-use std::collections::{HashMap, HashSet};
-use std::ops::Range;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -8,7 +6,7 @@ use tracing::{debug, info, warn};
 use tree_sitter::{InputEdit, Node, Point, Tree, TreeCursor};
 
 use crate::{AstVisitor, LanguageRegistry};
-use codegraph_core::{CodeGraphError, CodeNode, Language};
+use codegraph_core::{CodeGraphError, CodeNode, Language, NodeType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextRange {
@@ -86,9 +84,8 @@ impl DiffBasedParser {
             .detect_language(file_path)
             .ok_or_else(|| CodeGraphError::Parse(format!("Unknown file type: {}", file_path)))?;
 
-        // Compute text diff
-        let diff = TextDiff::from_lines(old_content, new_content);
-        let changed_regions = self.compute_changed_regions(&diff, old_content, new_content)?;
+        // Compute changed regions from a text diff
+        let changed_regions = self.compute_changed_regions(old_content, new_content)?;
 
         debug!(
             "Found {} changed regions for {}",
@@ -131,10 +128,10 @@ impl DiffBasedParser {
 
     fn compute_changed_regions(
         &self,
-        diff: &TextDiff<str>,
         old_content: &str,
         new_content: &str,
     ) -> Result<Vec<ChangedRegion>> {
+        let diff = TextDiff::from_lines(old_content, new_content);
         let mut regions = Vec::new();
         let mut old_byte_offset = 0;
         let mut new_byte_offset = 0;
@@ -333,7 +330,7 @@ impl DiffBasedParser {
         Ok(())
     }
 
-    fn determine_reparse_necessity(&self, node: &Node, region: &ChangedRegion) -> bool {
+    fn determine_reparse_necessity(&self, node: &Node, _region: &ChangedRegion) -> bool {
         // Simple heuristic: reparse if the change affects structural elements
         matches!(
             node.kind(),
@@ -416,7 +413,7 @@ impl DiffBasedParser {
         old_content: &str,
         new_content: &str,
         old_tree: &Tree,
-        old_nodes: &[CodeNode],
+        _old_nodes: &[CodeNode],
         changed_regions: &[ChangedRegion],
         affected_nodes: &[AffectedNode],
         language: Language,
@@ -484,8 +481,8 @@ impl DiffBasedParser {
     fn convert_to_input_edits(
         &self,
         regions: &[ChangedRegion],
-        old_content: &str,
-        new_content: &str,
+        _old_content: &str,
+        _new_content: &str,
     ) -> Result<Vec<InputEdit>> {
         let mut edits = Vec::new();
         let mut offset_adjustment = 0i32;
@@ -568,17 +565,50 @@ impl SemanticAnalyzer {
             // Find function calls, variable references, etc. that might be affected
             for node in old_nodes {
                 if self.is_semantically_dependent(node, affected) {
+                    let node_kind = match node.node_type.as_ref() {
+                        Some(NodeType::Function) => "function_item".to_string(),
+                        Some(NodeType::Variable) => "variable".to_string(),
+                        Some(NodeType::Class) => "class_declaration".to_string(),
+                        Some(NodeType::Struct) => "struct_item".to_string(),
+                        Some(NodeType::Module) => "mod_item".to_string(),
+                        Some(other) => format!("{:?}", other),
+                        None => "unknown".to_string(),
+                    };
+
+                    let node_type = node
+                        .node_type
+                        .as_ref()
+                        .map(|t| format!("{:?}", t))
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                    let start_byte = node
+                        .span
+                        .as_ref()
+                        .map(|s| s.start_byte as usize)
+                        .unwrap_or(0);
+                    let end_byte = node
+                        .span
+                        .as_ref()
+                        .map(|s| s.end_byte as usize)
+                        .unwrap_or(start_byte);
+
+                    let start_line0 = node.location.line.saturating_sub(1) as usize;
+                    let start_col0 = node.location.column as usize;
+                    let end_line0 = node
+                        .location
+                        .end_line
+                        .unwrap_or(node.location.line)
+                        .saturating_sub(1) as usize;
+                    let end_col0 = node.location.end_column.unwrap_or(node.location.column) as usize;
+
                     semantic_affected.push(AffectedNode {
-                        node_id: format!("semantic:{}:{}", node.node_type, node.name.as_str()),
-                        node_type: node.node_type.clone(),
+                        node_id: format!("semantic:{}:{}", node_kind, node.id),
+                        node_type,
                         range: TextRange::new(
-                            node.start_byte.unwrap_or(0),
-                            node.end_byte.unwrap_or(0),
-                            Point::new(
-                                node.start_line.unwrap_or(0),
-                                node.start_column.unwrap_or(0),
-                            ),
-                            Point::new(node.end_line.unwrap_or(0), node.end_column.unwrap_or(0)),
+                            start_byte,
+                            end_byte,
+                            Point::new(start_line0, start_col0),
+                            Point::new(end_line0, end_col0),
                         ),
                         change_type: ChangeType::Modify,
                         needs_reparse: true,
@@ -592,16 +622,15 @@ impl SemanticAnalyzer {
 
     fn is_semantically_dependent(&self, node: &CodeNode, affected: &AffectedNode) -> bool {
         // Simple heuristic: check if names match or if one references the other
-        if let Some(node_name) = &node.name {
-            // Check for function calls, variable references, etc.
-            if affected.node_type == "function_item" || affected.node_type == "variable" {
-                // This would need more sophisticated analysis in a real implementation
-                return node
-                    .content
-                    .as_ref()
-                    .map(|content| content.contains(node_name))
-                    .unwrap_or(false);
-            }
+        let node_name = node.name.as_str();
+        // Check for function calls, variable references, etc.
+        if affected.node_type == "function_item" || affected.node_type == "variable" {
+            // This would need more sophisticated analysis in a real implementation
+            return node
+                .content
+                .as_ref()
+                .map(|content| content.as_str().contains(node_name))
+                .unwrap_or(false);
         }
         false
     }
@@ -615,7 +644,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_diff_based_parser_creation() {
-        let parser = DiffBasedParser::new();
+        let _parser = DiffBasedParser::new();
         // Just test that it can be created
         assert!(true);
     }
@@ -626,10 +655,7 @@ mod tests {
         let old_content = "fn main() {\n    println!(\"Hello\");\n}";
         let new_content = "fn main() {\n    println!(\"Hello, World!\");\n}";
 
-        let diff = TextDiff::from_lines(old_content, new_content);
-        let regions = parser
-            .compute_changed_regions(&diff, old_content, new_content)
-            .unwrap();
+        let regions = parser.compute_changed_regions(old_content, new_content).unwrap();
 
         assert!(!regions.is_empty());
         assert!(regions

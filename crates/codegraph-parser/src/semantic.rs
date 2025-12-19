@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
 use anyhow::Result;
-use tracing::{debug, info, warn};
+use tracing::warn;
 use tree_sitter::{Node, Tree, TreeCursor};
 
-use codegraph_core::{CodeGraphError, CodeNode, Language};
+use codegraph_core::Language;
 
 #[derive(Debug, Clone)]
 pub struct SemanticContext {
@@ -202,14 +201,14 @@ impl SemanticAnalyzer {
 
     pub fn find_affected_symbols(
         &self,
-        old_context: &SemanticContext,
+        _old_context: &SemanticContext,
         new_context: &SemanticContext,
         changed_lines: &[usize],
     ) -> Result<Vec<String>> {
         let mut affected_symbols = HashSet::new();
 
         // Find directly affected symbols (those in changed lines)
-        for line in changed_lines {
+        for _line in changed_lines {
             // Find symbols defined or referenced on these lines
             for (name, symbol) in &new_context.symbols {
                 if self.symbol_intersects_lines(symbol, changed_lines) {
