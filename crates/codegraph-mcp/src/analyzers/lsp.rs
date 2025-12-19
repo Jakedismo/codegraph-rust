@@ -554,7 +554,7 @@ fn normalize_path(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
         match component {
-            Component::CurDir => {{}}
+            Component::CurDir => {}
             Component::ParentDir => {
                 let _ = out.pop();
             }
