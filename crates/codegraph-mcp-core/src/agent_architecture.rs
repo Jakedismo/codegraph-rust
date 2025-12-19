@@ -6,11 +6,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentArchitecture {
-    #[default]
+    /// ReAct-style orchestrator
     ReAct,
+    /// Language Agent Tree Search
     LATS,
+    /// Self-correcting agent
     Reflexion,
-    // Future: ToT, CoTSC
+    /// Rig framework agent (default)
+    #[default]
+    Rig,
 }
 
 impl AgentArchitecture {
@@ -19,6 +23,7 @@ impl AgentArchitecture {
             "react" => Some(Self::ReAct),
             "lats" => Some(Self::LATS),
             "reflexion" => Some(Self::Reflexion),
+            "rig" => Some(Self::Rig),
             _ => None,
         }
     }
@@ -30,6 +35,7 @@ impl std::fmt::Display for AgentArchitecture {
             Self::ReAct => write!(f, "react"),
             Self::LATS => write!(f, "lats"),
             Self::Reflexion => write!(f, "reflexion"),
+            Self::Rig => write!(f, "rig"),
         }
     }
 }

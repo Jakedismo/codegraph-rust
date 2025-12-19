@@ -159,7 +159,7 @@ impl RigAgentBuilder {
         let architecture = self.resolve_architecture();
 
         match architecture {
-            AgentArchitecture::ReAct => self.build_react(provider),
+            AgentArchitecture::ReAct | AgentArchitecture::Rig => self.build_react(provider),
             AgentArchitecture::LATS => self.build_lats(provider),
             AgentArchitecture::Reflexion => self.build_reflexion(provider),
         }
