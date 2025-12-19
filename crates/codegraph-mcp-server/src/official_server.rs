@@ -47,12 +47,12 @@ use codegraph_vector::EmbeddingGenerator;
 /// Set via CODEGRAPH_AGENT_ARCHITECTURE environment variable
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AgentArchitecture {
-    /// ReAct-style orchestrator (default)
-    #[default]
+    /// ReAct-style orchestrator
     React,
     /// Language Agent Tree Search
     Lats,
-    /// Rig framework agent
+    /// Rig framework agent (default)
+    #[default]
     Rig,
 }
 
@@ -65,8 +65,8 @@ impl AgentArchitecture {
             .as_str()
         {
             "lats" => Self::Lats,
-            "rig" => Self::Rig,
-            _ => Self::React, // Default to react
+            "react" => Self::React,
+            _ => Self::Rig, // Default to rig
         }
     }
 }

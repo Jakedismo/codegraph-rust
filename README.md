@@ -101,20 +101,22 @@ Each tool runs a **reasoning agent** that plans, searches, analyzes graph relati
 
 #### Agent Architectures
 
-CodeGraph supports **three agent backends** selectable at runtime via `CODEGRAPH_AGENT_ARCHITECTURE`:
+CodeGraph supports multiple agent backends, with **Rig** being the default and recommended choice. Selectable at runtime via `CODEGRAPH_AGENT_ARCHITECTURE`:
 
 | Architecture | Description | Best For | Model Type |
 |--------------|-------------|----------|------------|
-| `rig` | Rig framework native orchestration | **Fastest performance**, deep analysis | Thinking/reasoning models (gpt-5.1, Claude 4.5 family, Grok 4.1 Fast Reasoning) |
-| `react` (default) | ReAct-style single-pass reasoning | Quick queries, simple lookups | Basic Instruction following models |
-| `lats` | Language Agent Tree Search | Complex problems requiring exploration | Works well with both |
-| `reflexion` | Self-correcting agent | Tasks needing high reliability | Models with strong critique capabilities |
+| `rig` (default) | Rig framework native orchestration | **Fastest performance**, deep analysis | Thinking/reasoning models (gpt-5.1, Claude 4.5 family, Grok 4.1 Fast Reasoning) |
+| `react` | ReAct-style single-pass reasoning (AutoAgents) | Legacy compatibility | Basic Instruction following models |
+| `lats` | Tree Search reasoning (AutoAgents) | Legacy complex problems | Works well with both |
 
-**Performance notes:**
-- **Rig** delivers the best performance with modern thinking/reasoning models. It now supports sub-architectures like LATS and Reflexion internally.
-- **ReAct** remains the default for backward compatibility.
-- **LATS** uses tree search exploration, making it suitable for complex problems.
-- **Reflexion** adds a self-correction loop to catch errors before returning.
+**Why Rig is Default:**
+The Rig-based backend delivers the best performance with modern thinking and reasoning models. It is a native Rust implementation that supports internal sub-architectures and provides features like **True Token Streaming** and **Automatic Recovery**.
+
+**Internal Rig Sub-Architectures:**
+When using the `rig` backend, the system automatically selects the most appropriate reasoning strategy based on task complexity:
+- **LATS (Tree Search)**: Automatically used for `ArchitectureAnalysis`, `ComplexityAnalysis`, and `SemanticQuestion`. Explores multiple reasoning paths to find the optimal answer.
+- **ReAct (Linear)**: Used for `CodeSearch`, `ImpactAnalysis`, and `ContextBuilding`. Optimized for speed and direct tool use.
+- **Reflexion (Auto-Recovery)**: Kicks in automatically if the primary strategy fails. It performs a self-critique of the failure and retries with a refined plan.
 
 ### Agent Bootstrap Context
 
