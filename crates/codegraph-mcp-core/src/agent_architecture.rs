@@ -1,4 +1,4 @@
-// ABOUTME: Defines agent architecture types for runtime selection between ReAct and LATS
+// ABOUTME: Defines agent architecture types for runtime selection between supported orchestrators.
 // ABOUTME: Supports configuration-driven architecture switching via CODEGRAPH_AGENT_ARCHITECTURE
 
 use serde::{Deserialize, Serialize};
@@ -81,17 +81,36 @@ mod tests {
         assert_eq!(AgentArchitecture::parse("invalid"), None);
         assert_eq!(AgentArchitecture::parse(""), None);
         assert_eq!(AgentArchitecture::parse("tot"), None);
-        assert_eq!(AgentArchitecture::parse("reflexion"), None);
+    }
+
+    #[test]
+    fn test_parse_valid_reflexion() {
+        assert_eq!(
+            AgentArchitecture::parse("reflexion"),
+            Some(AgentArchitecture::Reflexion)
+        );
+        assert_eq!(
+            AgentArchitecture::parse("Reflexion"),
+            Some(AgentArchitecture::Reflexion)
+        );
+    }
+
+    #[test]
+    fn test_parse_valid_rig() {
+        assert_eq!(AgentArchitecture::parse("rig"), Some(AgentArchitecture::Rig));
+        assert_eq!(AgentArchitecture::parse("RIG"), Some(AgentArchitecture::Rig));
     }
 
     #[test]
     fn test_display() {
         assert_eq!(format!("{}", AgentArchitecture::ReAct), "react");
         assert_eq!(format!("{}", AgentArchitecture::LATS), "lats");
+        assert_eq!(format!("{}", AgentArchitecture::Reflexion), "reflexion");
+        assert_eq!(format!("{}", AgentArchitecture::Rig), "rig");
     }
 
     #[test]
     fn test_default() {
-        assert_eq!(AgentArchitecture::default(), AgentArchitecture::ReAct);
+        assert_eq!(AgentArchitecture::default(), AgentArchitecture::Rig);
     }
 }

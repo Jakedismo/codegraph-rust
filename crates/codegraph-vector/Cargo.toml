@@ -9,7 +9,6 @@ description = "Vector storage and similarity search using FAISS for CodeGraph"
 [dependencies]
 codegraph-core = { workspace = true }
 codegraph-graph = { path = "../codegraph-graph", features = ["surrealdb"] }
-codegraph-cache = { path = "../codegraph-cache", optional = true }
 ndarray = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -64,7 +63,6 @@ dotenvy = "0.15"
 [features]
 # Minimal defaults; opt-in providers from dependents
 default = []
-cache = ["dep:codegraph-cache"]
 persistent = ["dep:memmap2", "dep:flate2"]
 openai = ["dep:reqwest"]
 local-embeddings = [
