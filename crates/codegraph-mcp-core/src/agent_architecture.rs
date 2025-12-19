@@ -9,7 +9,8 @@ pub enum AgentArchitecture {
     #[default]
     ReAct,
     LATS,
-    // Future: ToT, CoTSC, Reflexion
+    Reflexion,
+    // Future: ToT, CoTSC
 }
 
 impl AgentArchitecture {
@@ -17,6 +18,7 @@ impl AgentArchitecture {
         match s.to_lowercase().as_str() {
             "react" => Some(Self::ReAct),
             "lats" => Some(Self::LATS),
+            "reflexion" => Some(Self::Reflexion),
             _ => None,
         }
     }
@@ -27,6 +29,7 @@ impl std::fmt::Display for AgentArchitecture {
         match self {
             Self::ReAct => write!(f, "react"),
             Self::LATS => write!(f, "lats"),
+            Self::Reflexion => write!(f, "reflexion"),
         }
     }
 }

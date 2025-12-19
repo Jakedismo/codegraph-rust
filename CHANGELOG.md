@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 **Enhanced - Rig-Based Agent System**
+
+#### **Multi-Architecture Support**
+- **LATS (Language Agent Tree Search)**: New `LatsAgent` implementation using Rig primitives for tree-based exploration.
+- **Reflexion**: New `ReflexionAgent` that wraps other agents and automatically retries with self-reflection upon failure.
+- **Dynamic Architecture Switching**: `RigExecutor` now intelligently selects the best architecture based on task complexity and can fallback on failure.
+- **Streaming Support**: Added `execute_stream` to `RigAgentTrait` and `RigExecutor`, enabling real-time feedback (Thought/ToolCall/Result/Answer events).
+
+#### **Dynamic Context Throttling**
+- **Smart Tier Adjustment**: Agent now monitors context usage during execution.
+- **Automatic Downgrade**: If context usage >80%, automatically downgrades tier (e.g., Detailed -> Terse prompts) to prevent overflow errors.
+- **Prevention**: Proactively manages token budget to ensure successful completion of long analysis chains.
+
+#### **Operational Enhancements**
+- **Structured Output**: Added `response_format` support to `RigAgentBuilder` for schema-enforced answers.
+- **Unified Interface**: Refactored `RigAgentTrait` to support both blocking and streaming execution modes across all architectures (ReAct, LATS, Reflexion).
+
 ### ⚠️ BREAKING CHANGES
 
 #### **Agentic Tool Consolidation (8 → 4 Tools)**

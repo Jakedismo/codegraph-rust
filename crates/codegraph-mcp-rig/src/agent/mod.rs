@@ -1,10 +1,15 @@
 // ABOUTME: Rig agent construction and execution
 // ABOUTME: Tier-aware agent builder and executor with conversation memory
 
+pub mod api;
 pub mod builder;
 pub mod executor;
+pub mod lats;
+pub mod react;
+pub mod reflexion;
 
-pub use builder::{RigAgentBuilder, RigAgentTrait};
+pub use api::{AgentEvent, RigAgentTrait};
+pub use builder::RigAgentBuilder;
 pub use executor::{ConversationTurn, RigExecutor};
 
 use serde::{Deserialize, Serialize};

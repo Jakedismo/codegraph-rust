@@ -108,11 +108,13 @@ CodeGraph supports **three agent backends** selectable at runtime via `CODEGRAPH
 | `rig` | Rig framework native orchestration | **Fastest performance**, deep analysis | Thinking/reasoning models (gpt-5.1, Claude 4.5 family, Grok 4.1 Fast Reasoning) |
 | `react` (default) | ReAct-style single-pass reasoning | Quick queries, simple lookups | Basic Instruction following models |
 | `lats` | Language Agent Tree Search | Complex problems requiring exploration | Works well with both |
+| `reflexion` | Self-correcting agent | Tasks needing high reliability | Models with strong critique capabilities |
 
 **Performance notes:**
-- **Rig** delivers the best performance with modern thinking/reasoning models. These models excel at multi-step tool orchestration and produce superior results for complex code analysis.
-- **ReAct** remains the default for backward compatibility and works well with traditional instruction-following models.
-- **LATS** uses tree search exploration, making it suitable for complex problems regardless of model type.
+- **Rig** delivers the best performance with modern thinking/reasoning models. It now supports sub-architectures like LATS and Reflexion internally.
+- **ReAct** remains the default for backward compatibility.
+- **LATS** uses tree search exploration, making it suitable for complex problems.
+- **Reflexion** adds a self-correction loop to catch errors before returning.
 
 ### Agent Bootstrap Context
 
