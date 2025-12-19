@@ -47,7 +47,21 @@ fn sql_value_to_json(value: surrealdb::sql::Value) -> serde_json::Value {
             serde_json::Value::Object(map)
         }
         SqlValue::Thing(thing) => serde_json::Value::String(thing.to_string()),
-        SqlValue::Bytes(b) => serde_json::Value::String(format!("bytes:{}", b.len())),
+        SqlValue::Bytes(b) => {
+            // Attempt transparent decompression if possible
+            if let Ok(decompressed) = codegraph_core::decompress_if_needed(&b) {
+                // If it looks like JSON, parse it
+                if (decompressed.starts_with('{') && decompressed.ends_with('}')) || 
+                   (decompressed.starts_with('[') && decompressed.ends_with(']')) {
+                    if let Ok(json) = serde_json::from_str(&decompressed) {
+                        return json;
+                    }
+                }
+                serde_json::Value::String(decompressed)
+            } else {
+                serde_json::Value::String(format!("bytes:{}", b.len()))
+            }
+        }
         other => serde_json::Value::String(format!("{}", other)),
     }
 }
@@ -695,7 +709,7 @@ pub struct DependencyNode {
     pub kind: Option<String>,
     pub location: Option<NodeLocation>,
     pub language: Option<String>,
-    pub content: Option<String>,
+    pub content: Option<serde_json::Value>, // Use Value to allow Blob
     pub metadata: Option<serde_json::Value>,
     pub dependency_depth: Option<i32>,
     pub dependent_depth: Option<i32>,
@@ -719,7 +733,7 @@ pub struct CallChainNode {
     pub kind: Option<String>,
     pub location: Option<NodeLocation>,
     pub language: Option<String>,
-    pub content: Option<String>,
+    pub content: Option<serde_json::Value>, // Use Value to allow Blob
     pub metadata: Option<serde_json::Value>,
     pub call_depth: Option<i32>,
     pub called_by: Option<Vec<CallerInfo>>,
@@ -784,7 +798,7 @@ pub struct NodeInfo {
     pub kind: Option<String>,
     pub location: Option<NodeLocation>,
     pub language: Option<String>,
-    pub content: Option<String>,
+    pub content: Option<serde_json::Value>, // Use Value to allow Blob
     pub metadata: Option<serde_json::Value>,
 }
 

@@ -4,6 +4,7 @@ pub mod estimation;
 pub mod heartbeat;
 pub mod indexer;
 pub mod transport;
+pub mod utils;
 
 pub use codegraph_mcp_core::context_aware_limits;
 pub use codegraph_mcp_core::{

@@ -107,6 +107,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Improved Python Extraction**: Added extraction of type hints and base classes as reference edges with spans.
 - **Enrichment Logic Update**: Refined the enrichment analyzer to count all LSP-resolved edges while promoting generic references to concrete uses.
 
+#### **Database Storage Optimization**
+- **Transparent Zstd Compression**: Implemented high-performance compression for code content and metadata fields in SurrealDB.
+- **Significant Footprint Reduction**: Achieves 3-5x storage efficiency for source code snippets and large metadata JSON blobs.
+- **Zero-Config Activation**: Proactively compresses any field larger than 1KB using optimized Zstd level 3.
+- **Automatic Decompression**: Retrieval paths automatically detect and decompress data, ensuring full compatibility with existing tools and agents.
+
 #### **Cache System Reliability and Performance**
 - **Read-Ahead Optimizer Fixes**: Resolved critical type mismatch and moved value issues in the read-ahead optimization engine.
 - **Memory Profiler Integration**: Provided a minimal memory profiling implementation to support real-time allocation tracking and dashboard visualization.

@@ -474,7 +474,13 @@ impl SurrealDbStorage {
         let metadata = if node.metadata.attributes.is_empty() {
             None
         } else {
-            Some(node.metadata.attributes.clone())
+            let metadata_json = serde_json::to_value(&node.metadata.attributes).unwrap_or(JsonValue::Null);
+            let compressed = codegraph_core::compress_if_needed(&metadata_json.to_string());
+            if !compressed.is_empty() && compressed[0] == 0x5A {
+                Some(JsonValue::from(compressed))
+            } else {
+                Some(metadata_json)
+            }
         };
 
         let (
@@ -500,12 +506,22 @@ impl SurrealDbStorage {
 
         let embedding_model = node.metadata.attributes.get("embedding_model").cloned();
 
+        let content = node.content.as_ref().map(|c| {
+            let text = c.to_string();
+            let compressed = codegraph_core::compress_if_needed(&text);
+            if !compressed.is_empty() && compressed[0] == 0x5A {
+                JsonValue::from(compressed)
+            } else {
+                JsonValue::from(text)
+            }
+        });
+
         Ok(SurrealNodeRecord {
             id: node.id.to_string(),
             name: node.name.to_string(),
             node_type: node.node_type.as_ref().map(|value| format!("{:?}", value)),
             language: node.language.as_ref().map(|value| format!("{:?}", value)),
-            content: node.content.as_ref().map(|c| c.to_string()),
+            content,
             file_path: node.location.file_path.to_string(),
             start_line: node.location.line,
             end_line: node.location.end_line,
@@ -1865,7 +1881,7 @@ struct SurrealNodeRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    content: Option<String>,
+    content: Option<JsonValue>, // Use JsonValue to allow both String and Blob
     file_path: String,
     start_line: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1887,7 +1903,7 @@ struct SurrealNodeRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     complexity: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    metadata: Option<HashMap<String, String>>,
+    metadata: Option<JsonValue>, // Store compressed metadata as Blob
     #[serde(skip_serializing_if = "Option::is_none")]
     project_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1959,7 +1975,7 @@ pub struct ChunkEmbeddingRecord {
     pub id: String,
     pub parent_node: String,
     pub chunk_index: i32,
-    pub text: String,
+    pub text: JsonValue, // Use Value to allow Blob
     pub project_id: String,
     pub embedding_384: Option<Vec<f64>>,
     pub embedding_768: Option<Vec<f64>>,
@@ -1985,6 +2001,14 @@ impl ChunkEmbeddingRecord {
         project_id: &str,
     ) -> Self {
         let embedding_vec: Vec<f64> = embedding.iter().map(|&f| f as f64).collect();
+        
+        let compressed_text = codegraph_core::compress_if_needed(&text);
+        let text_val = if !compressed_text.is_empty() && compressed_text[0] == 0x5A {
+            JsonValue::from(compressed_text) // Store as bytes/blob in Surreal
+        } else {
+            JsonValue::from(text) // Store as string
+        };
+
         let (
             embedding_384,
             embedding_768,
@@ -2090,7 +2114,7 @@ impl ChunkEmbeddingRecord {
             id,
             parent_node: parent_node.to_string(),
             chunk_index: chunk_index as i32,
-            text,
+            text: text_val,
             project_id: project_id.to_string(),
             embedding_384,
             embedding_768,
