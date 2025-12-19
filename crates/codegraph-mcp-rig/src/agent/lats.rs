@@ -18,7 +18,6 @@ use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
 struct SearchNode {
-    id: usize,
     parent_id: Option<usize>,
     content: String, // The thought/action/response at this step
     children: Vec<usize>,
@@ -28,9 +27,8 @@ struct SearchNode {
 }
 
 impl SearchNode {
-    fn new(id: usize, parent_id: Option<usize>, content: String, depth: usize) -> Self {
+    fn new(_id: usize, parent_id: Option<usize>, content: String, depth: usize) -> Self {
         Self {
-            id,
             parent_id,
             content,
             children: Vec::new(),
