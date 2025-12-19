@@ -5,6 +5,7 @@ pub mod heartbeat;
 pub mod indexer;
 pub mod transport;
 
+pub use codegraph_mcp_core::context_aware_limits;
 pub use codegraph_mcp_core::{
     config_manager::*,
     context_aware_limits::{ContextAwareLimits, ContextTier},

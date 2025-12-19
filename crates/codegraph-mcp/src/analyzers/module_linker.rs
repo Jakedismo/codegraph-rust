@@ -55,6 +55,10 @@ pub fn link_modules(
         if existing_modules.contains(&module_key) {
             continue;
         }
+        if let Some(existing_id) = module_key_to_id.get(&module_key) {
+            file_to_module.insert(file_path.clone(), *existing_id);
+            continue;
+        }
 
         let mut module_node = CodeNode::new(
             module_key.clone(),
@@ -96,7 +100,10 @@ pub fn link_modules(
         return Ok(stats);
     }
 
-    let module_keys: HashSet<String> = module_key_to_id.keys().cloned().collect();
+    let module_keys: HashSet<String> = existing_modules
+        .into_iter()
+        .chain(module_key_to_id.keys().cloned())
+        .collect();
 
     let mut contains_edges: Vec<EdgeRelationship> = Vec::new();
     for n in nodes.iter() {
@@ -166,10 +173,13 @@ pub fn link_modules(
 
 fn module_linker_languages() -> &'static [Language] {
     &[
+        Language::Rust,
         Language::TypeScript,
         Language::JavaScript,
         Language::Python,
         Language::Go,
+        Language::Java,
+        Language::Cpp,
     ]
 }
 
@@ -196,15 +206,43 @@ fn module_key(project_root: &Path, file_path: &Path, language: &Language) -> Opt
     let s = if s.is_empty() { "root".to_string() } else { s };
 
     let lang = match language {
+        Language::Rust => "rust",
         Language::TypeScript => "typescript",
         Language::JavaScript => "javascript",
         Language::Python => "python",
         Language::Go => "go",
+        Language::Java => "java",
+        Language::Cpp => "cpp",
         other => match other {
             _ => return None,
         },
     };
-    Some(format!("module::{}::{}", lang, s))
+    if *language != Language::Rust {
+        return Some(format!("module::{}::{}", lang, s));
+    }
+
+    let mut rust_path = s;
+    if rust_path.ends_with("/mod") {
+        rust_path.truncate(rust_path.len().saturating_sub("/mod".len()));
+    }
+    let (crate_prefix, mut module_suffix) = split_rust_src_module_path(&rust_path);
+    if module_suffix == "lib" || module_suffix == "main" {
+        module_suffix.clear();
+    }
+
+    let normalized = if module_suffix.is_empty() {
+        if crate_prefix.is_empty() {
+            "root".to_string()
+        } else {
+            crate_prefix
+        }
+    } else if crate_prefix.is_empty() {
+        module_suffix
+    } else {
+        format!("{}/{}", crate_prefix, module_suffix)
+    };
+
+    Some(format!("module::{}::{}", lang, normalized))
 }
 
 fn canonical_import_target(
@@ -215,14 +253,24 @@ fn canonical_import_target(
     known_module_keys: &HashSet<String>,
 ) -> String {
     let (lang, exts) = match language {
+        Language::Rust => ("rust", &["rs"][..]),
         Language::TypeScript => ("typescript", &["ts", "tsx", "d.ts"][..]),
         Language::JavaScript => ("javascript", &["js", "jsx"][..]),
         Language::Python => ("python", &["py"][..]),
         Language::Go => ("go", &["go"][..]),
+        Language::Java => ("java", &["java"][..]),
+        Language::Cpp => ("cpp", &["h", "hpp", "hh", "c", "cc", "cpp", "cxx"][..]),
         _ => return format!("external::{:?}::{}", language, spec),
     };
 
     let spec = spec.trim();
+    if *language == Language::Rust {
+        if let Some(resolved) = resolve_rust_import(project_root, from_file, spec, known_module_keys)
+        {
+            return resolved;
+        }
+        return format!("external::{}::{}", lang, spec);
+    }
     if !spec.starts_with('.') {
         return format!("external::{}::{}", lang, spec);
     }
@@ -252,6 +300,105 @@ fn canonical_import_target(
     }
 
     format!("external::{}::{}", lang, spec)
+}
+
+fn split_rust_src_module_path(path: &str) -> (String, String) {
+    if let Some(pos) = path.rfind("/src/") {
+        let crate_prefix = path[..pos].trim_matches('/').to_string();
+        let module_suffix = path[(pos + "/src/".len())..].trim_matches('/').to_string();
+        return (crate_prefix, module_suffix);
+    }
+    if let Some(rest) = path.strip_prefix("src/") {
+        return (String::new(), rest.trim_matches('/').to_string());
+    }
+    (String::new(), path.trim_matches('/').to_string())
+}
+
+fn resolve_rust_import(
+    project_root: &Path,
+    from_file: &Path,
+    spec: &str,
+    known_module_keys: &HashSet<String>,
+) -> Option<String> {
+    let rel = if from_file.is_absolute() {
+        from_file.strip_prefix(project_root).unwrap_or(from_file)
+    } else {
+        from_file
+    };
+    let mut rel_no_ext = rel.to_path_buf();
+    rel_no_ext.set_extension("");
+
+    let mut from_path = rel_no_ext.to_string_lossy().to_string();
+    if std::path::MAIN_SEPARATOR != '/' {
+        from_path = from_path.replace(std::path::MAIN_SEPARATOR, "/");
+    }
+    if from_path.ends_with("/mod") {
+        from_path.truncate(from_path.len().saturating_sub("/mod".len()));
+    }
+    let from_path = from_path.trim_matches('/').to_string();
+    let (crate_prefix, module_suffix) = split_rust_src_module_path(&from_path);
+    let current_module = match module_suffix.as_str() {
+        "lib" | "main" => String::new(),
+        other => other.to_string(),
+    };
+
+    let spec = spec.trim().trim_start_matches("::");
+    let (prefix, tail) = if let Some(rest) = spec.strip_prefix("crate::") {
+        ("crate", rest)
+    } else if let Some(rest) = spec.strip_prefix("self::") {
+        ("self", rest)
+    } else if let Some(rest) = spec.strip_prefix("super::") {
+        ("super", rest)
+    } else {
+        return None;
+    };
+
+    let mut parts: Vec<&str> = tail.split("::").filter(|p| !p.is_empty()).collect();
+    let mut base: Vec<String> = Vec::new();
+    match prefix {
+        "crate" => {}
+        "self" => {
+            if !current_module.is_empty() {
+                base.extend(current_module.split('/').map(|s| s.to_string()));
+            }
+        }
+        "super" => {
+            if !current_module.is_empty() {
+                let mut segments: Vec<&str> = current_module.split('/').collect();
+                segments.pop();
+                base.extend(segments.into_iter().map(|s| s.to_string()));
+            }
+        }
+        _ => {}
+    }
+
+    base.extend(parts.drain(..).map(|s| s.to_string()));
+
+    for i in (1..=base.len()).rev() {
+        let candidate = base[..i].join("/");
+        let full = if crate_prefix.is_empty() {
+            candidate
+        } else {
+            format!("{}/{}", crate_prefix, candidate)
+        };
+        let key = format!("module::rust::{}", full);
+        if known_module_keys.contains(&key) {
+            return Some(key);
+        }
+    }
+
+    if base.is_empty() {
+        let root_key = if crate_prefix.is_empty() {
+            "module::rust::root".to_string()
+        } else {
+            format!("module::rust::{}", crate_prefix)
+        };
+        if known_module_keys.contains(&root_key) {
+            return Some(root_key);
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -312,5 +459,65 @@ mod tests {
         assert_eq!(stats.module_nodes_added, 2);
         assert!(edges.iter().any(|e| e.edge_type == EdgeType::Imports));
         assert!(edges.iter().any(|e| e.edge_type == EdgeType::Contains));
+    }
+
+    #[test]
+    fn module_linker_creates_rust_modules_and_resolves_crate_imports() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+
+        let lib = root.join("src/lib.rs");
+        let foo = root.join("src/foo.rs");
+
+        let mut nodes = vec![
+            CodeNode::new(
+                "crate::foo",
+                Some(NodeType::Import),
+                Some(Language::Rust),
+                Location {
+                    file_path: lib.to_string_lossy().to_string(),
+                    line: 1,
+                    column: 0,
+                    end_line: Some(1),
+                    end_column: Some(0),
+                },
+            ),
+            CodeNode::new(
+                "Lib",
+                Some(NodeType::Function),
+                Some(Language::Rust),
+                Location {
+                    file_path: lib.to_string_lossy().to_string(),
+                    line: 1,
+                    column: 0,
+                    end_line: Some(1),
+                    end_column: Some(1),
+                },
+            ),
+            CodeNode::new(
+                "Foo",
+                Some(NodeType::Function),
+                Some(Language::Rust),
+                Location {
+                    file_path: foo.to_string_lossy().to_string(),
+                    line: 1,
+                    column: 0,
+                    end_line: Some(1),
+                    end_column: Some(1),
+                },
+            ),
+        ];
+        let mut edges = Vec::new();
+
+        let stats = link_modules(root, "project", &mut nodes, &mut edges).expect("link");
+
+        assert_eq!(stats.module_nodes_added, 2);
+        assert!(edges.iter().any(|e| e.edge_type == EdgeType::Contains));
+
+        let import_edge = edges
+            .iter()
+            .find(|e| e.edge_type == EdgeType::Imports)
+            .expect("imports edge");
+        assert_eq!(import_edge.to, "module::rust::foo");
     }
 }

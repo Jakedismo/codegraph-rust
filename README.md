@@ -99,6 +99,7 @@ Each tool runs a **reasoning agent** that plans, searches, analyzes graph relati
 
 > **[View Agent Context Gathering Flow](docs/architecture/agent-context-gathering-flow.html)** - Interactive diagram showing how agents use graph tools to gather context.
 
+![AgenticArchitectures](docs/assets/agentic_architectures.jpeg)
 #### Agent Architectures
 
 CodeGraph implements agents using **Rig** the default and recommended choice (legacy `react` and `lats` implemented with autoagents still work). Selectable at runtime via `CODEGRAPH_AGENT_ARCHITECTURE=rig`:
