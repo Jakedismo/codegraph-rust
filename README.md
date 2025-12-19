@@ -101,13 +101,7 @@ Each tool runs a **reasoning agent** that plans, searches, analyzes graph relati
 
 #### Agent Architectures
 
-CodeGraph supports multiple agent backends, with **Rig** being the default and recommended choice. Selectable at runtime via `CODEGRAPH_AGENT_ARCHITECTURE`:
-
-| Architecture | Description | Best For | Model Type |
-|--------------|-------------|----------|------------|
-| `rig` (default) | Rig framework native orchestration | **Fastest performance**, deep analysis | Thinking/reasoning models (gpt-5.1, Claude 4.5 family, Grok 4.1 Fast Reasoning) |
-| `react` | ReAct-style single-pass reasoning (AutoAgents) | Legacy compatibility | Basic Instruction following models |
-| `lats` | Tree Search reasoning (AutoAgents) | Legacy complex problems | Works well with both |
+CodeGraph implements agents using **Rig** the default and recommended choice (legacy `react` and `lats` implemented with autoagents still work). Selectable at runtime via `CODEGRAPH_AGENT_ARCHITECTURE=rig`:
 
 **Why Rig is Default:**
 The Rig-based backend delivers the best performance with modern thinking and reasoning models. It is a native Rust implementation that supports internal sub-architectures and provides features like **True Token Streaming** and **Automatic Recovery**.
