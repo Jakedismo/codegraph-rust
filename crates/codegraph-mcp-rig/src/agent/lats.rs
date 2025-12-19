@@ -27,7 +27,7 @@ struct SearchNode {
 }
 
 impl SearchNode {
-    fn new(_id: usize, parent_id: Option<usize>, content: String, depth: usize) -> Self {
+    fn new(parent_id: Option<usize>, content: String, depth: usize) -> Self {
         Self {
             parent_id,
             content,
@@ -142,7 +142,7 @@ impl<M: CompletionModel + Send + Sync> LatsAgent<M> {
             if let Ok(content) = res {
                 let id = *next_id;
                 *next_id += 1;
-                let child = SearchNode::new(id, Some(leaf_id), content, depth + 1);
+                let child = SearchNode::new(Some(leaf_id), content, depth + 1);
                 nodes.insert(id, child);
                 new_child_ids.push(id);
             }
@@ -197,7 +197,7 @@ impl<M: CompletionModel + Send + Sync> RigAgentTrait for LatsAgent<M> {
         
         // Initialize Tree
         let mut nodes = HashMap::new();
-        let root = SearchNode::new(0, None, format!("Start Query: {}", query), 0);
+        let root = SearchNode::new(None, format!("Start Query: {}", query), 0);
         nodes.insert(0, root);
         let mut next_id = 1;
 

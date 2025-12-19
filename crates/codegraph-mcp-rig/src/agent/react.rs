@@ -11,9 +11,7 @@ use async_trait::async_trait;
 #[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 #[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
-use futures::stream;
-#[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
-use futures::Stream;
+use futures::{stream, Stream};
 #[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
 use std::pin::Pin;
 
@@ -47,30 +45,15 @@ impl RigAgentTrait for OpenAIAgent {
         &self,
         query: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<AgentEvent>> + Send>>> {
-        use rig::agent::PromptRequest;
-
-        // Start streaming from rig agent
-        let mut chat_history = vec![];
-        let stream = PromptRequest::new(&self.agent, query)
-            .multi_turn(self.max_turns)
-            .with_history(&mut chat_history)
-            .stream()
-            .await
-            .map_err(|e| anyhow!("Streaming failed: {}", e))?;
-
-        // Map rig's chunk stream to AgentEvent stream
-        let event_stream = stream.map(|res| {
-            match res {
-                Ok(chunk) => Ok(AgentEvent::OutputChunk(chunk)),
-                Err(e) => Ok(AgentEvent::Error(e.to_string())),
-            }
-        });
-
-        // Add thinking start and done events
-        let start_event = stream::once(async { Ok(AgentEvent::Thinking("Agent starting reasoning loop...".to_string())) });
-        let final_event = stream::once(async { Ok(AgentEvent::Done) });
-
-        Ok(Box::pin(start_event.chain(event_stream).chain(final_event)))
+        // Fallback to buffered implementation because rig::agent::PromptRequest 
+        // does not support .stream() for multi-turn execution yet in this version.
+        let response = self.execute(query).await?;
+        let events = vec![
+            Ok(AgentEvent::Thinking("Agent processing...".to_string())),
+            Ok(AgentEvent::OutputChunk(response)),
+            Ok(AgentEvent::Done),
+        ];
+        Ok(Box::pin(stream::iter(events)))
     }
 
     fn tier(&self) -> ContextTier {
@@ -119,30 +102,13 @@ impl RigAgentTrait for AnthropicAgent {
         &self,
         query: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<AgentEvent>> + Send>>> {
-        use rig::agent::PromptRequest;
-
-        // Start streaming from rig agent
-        let mut chat_history = vec![];
-        let stream = PromptRequest::new(&self.agent, query)
-            .multi_turn(self.max_turns)
-            .with_history(&mut chat_history)
-            .stream()
-            .await
-            .map_err(|e| anyhow!("Streaming failed: {}", e))?;
-
-        // Map rig's chunk stream to AgentEvent stream
-        let event_stream = stream.map(|res| {
-            match res {
-                Ok(chunk) => Ok(AgentEvent::OutputChunk(chunk)),
-                Err(e) => Ok(AgentEvent::Error(e.to_string())),
-            }
-        });
-
-        // Add thinking start and done events
-        let start_event = stream::once(async { Ok(AgentEvent::Thinking("Agent starting reasoning loop...".to_string())) });
-        let final_event = stream::once(async { Ok(AgentEvent::Done) });
-
-        Ok(Box::pin(start_event.chain(event_stream).chain(final_event)))
+        let response = self.execute(query).await?;
+        let events = vec![
+            Ok(AgentEvent::Thinking("Agent processing...".to_string())),
+            Ok(AgentEvent::OutputChunk(response)),
+            Ok(AgentEvent::Done),
+        ];
+        Ok(Box::pin(stream::iter(events)))
     }
 
     fn tier(&self) -> ContextTier {
@@ -191,30 +157,13 @@ impl RigAgentTrait for OllamaAgent {
         &self,
         query: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<AgentEvent>> + Send>>> {
-        use rig::agent::PromptRequest;
-
-        // Start streaming from rig agent
-        let mut chat_history = vec![];
-        let stream = PromptRequest::new(&self.agent, query)
-            .multi_turn(self.max_turns)
-            .with_history(&mut chat_history)
-            .stream()
-            .await
-            .map_err(|e| anyhow!("Streaming failed: {}", e))?;
-
-        // Map rig's chunk stream to AgentEvent stream
-        let event_stream = stream.map(|res| {
-            match res {
-                Ok(chunk) => Ok(AgentEvent::OutputChunk(chunk)),
-                Err(e) => Ok(AgentEvent::Error(e.to_string())),
-            }
-        });
-
-        // Add thinking start and done events
-        let start_event = stream::once(async { Ok(AgentEvent::Thinking("Agent starting reasoning loop...".to_string())) });
-        let final_event = stream::once(async { Ok(AgentEvent::Done) });
-
-        Ok(Box::pin(start_event.chain(event_stream).chain(final_event)))
+        let response = self.execute(query).await?;
+        let events = vec![
+            Ok(AgentEvent::Thinking("Agent processing...".to_string())),
+            Ok(AgentEvent::OutputChunk(response)),
+            Ok(AgentEvent::Done),
+        ];
+        Ok(Box::pin(stream::iter(events)))
     }
 
     fn tier(&self) -> ContextTier {
@@ -263,30 +212,13 @@ impl RigAgentTrait for XAIAgent {
         &self,
         query: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<AgentEvent>> + Send>>> {
-        use rig::agent::PromptRequest;
-
-        // Start streaming from rig agent
-        let mut chat_history = vec![];
-        let stream = PromptRequest::new(&self.agent, query)
-            .multi_turn(self.max_turns)
-            .with_history(&mut chat_history)
-            .stream()
-            .await
-            .map_err(|e| anyhow!("Streaming failed: {}", e))?;
-
-        // Map rig's chunk stream to AgentEvent stream
-        let event_stream = stream.map(|res| {
-            match res {
-                Ok(chunk) => Ok(AgentEvent::OutputChunk(chunk)),
-                Err(e) => Ok(AgentEvent::Error(e.to_string())),
-            }
-        });
-
-        // Add thinking start and done events
-        let start_event = stream::once(async { Ok(AgentEvent::Thinking("Agent starting reasoning loop...".to_string())) });
-        let final_event = stream::once(async { Ok(AgentEvent::Done) });
-
-        Ok(Box::pin(start_event.chain(event_stream).chain(final_event)))
+        let response = self.execute(query).await?;
+        let events = vec![
+            Ok(AgentEvent::Thinking("Agent processing...".to_string())),
+            Ok(AgentEvent::OutputChunk(response)),
+            Ok(AgentEvent::Done),
+        ];
+        Ok(Box::pin(stream::iter(events)))
     }
 
     fn tier(&self) -> ContextTier {
