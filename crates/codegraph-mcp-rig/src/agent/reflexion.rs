@@ -4,7 +4,7 @@ use crate::agent::api::{AgentEvent, RigAgentTrait};
 use anyhow::Result;
 use async_trait::async_trait;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
-use futures::stream::{self, StreamExt};
+use futures::stream;
 use futures::Stream;
 use std::pin::Pin;
 

@@ -1,12 +1,20 @@
 // ABOUTME: ReAct agent implementations for different providers
 
+#[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
 use crate::agent::api::{AgentEvent, RigAgentTrait};
+#[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
 use crate::tools::GraphToolFactory;
+#[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
 use anyhow::{anyhow, Result};
+#[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
 use async_trait::async_trait;
+#[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
 use codegraph_mcp_core::context_aware_limits::ContextTier;
+#[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
 use futures::stream;
+#[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
 use futures::Stream;
+#[cfg(any(feature = "openai", feature = "anthropic", feature = "ollama", feature = "xai"))]
 use std::pin::Pin;
 
 /// OpenAI-based Rig agent
