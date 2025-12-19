@@ -1,10 +1,9 @@
 // ABOUTME: Rig agent executor with conversation memory
 // ABOUTME: Maintains conversation history for analysis task duration
 
-use super::api::AgentEvent;
+use super::api::{AgentEvent, RigAgentTrait};
 use super::builder::RigAgentBuilder;
 use super::RigAgentOutput;
-use crate::adapter::RigLLMAdapter;
 use anyhow::Result;
 use codegraph_mcp_core::analysis::AnalysisType;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
@@ -61,7 +60,7 @@ impl RigExecutor {
         );
 
         // --- Dynamic Context Throttling ---
-        let max_tokens = RigLLMAdapter::context_window();
+        let max_tokens = crate::adapter::RigLLMAdapter::context_window();
         let estimated_history_tokens: usize = self
             .history
             .iter()
@@ -96,12 +95,40 @@ impl RigExecutor {
             self.build_contextualized_query(query)
         };
 
-        // Execute the agent
-        let response = agent.execute(&contextualized_query).await?;
+        // Execute with automatic Reflexion fallback
+        let (response, tool_calls, tool_traces) = match agent.execute(&contextualized_query).await {
+            Ok(resp) => {
+                let calls = agent.take_tool_call_count();
+                let traces = agent.take_tool_traces();
+                (resp, calls, traces)
+            },
+            Err(e) => {
+                info!(
+                    error = %e,
+                    "Primary agent execution failed. Initiating Reflexion auto-recovery..."
+                );
+                
+                // Wrap the primary agent in ReflexionAgent for retry
+                let reflexion_agent = crate::agent::reflexion::ReflexionAgent {
+                    inner: agent,
+                    max_retries: 2,
+                };
+
+                // Retry execution with self-correction
+                match reflexion_agent.execute(&contextualized_query).await {
+                    Ok(resp) => {
+                        let calls = reflexion_agent.take_tool_call_count();
+                        let traces = reflexion_agent.take_tool_traces();
+                        (resp, calls, traces)
+                    },
+                    Err(final_err) => {
+                        return Err(anyhow::anyhow!("Agent failed after Reflexion recovery: {}", final_err));
+                    }
+                }
+            }
+        };
 
         let duration_ms = start.elapsed().as_millis() as u64;
-        let tool_calls = agent.take_tool_call_count();
-        let tool_traces = agent.take_tool_traces();
 
         // Record in history
         let turn = ConversationTurn {
