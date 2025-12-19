@@ -20,7 +20,7 @@ xai = []
 
 [dependencies]
 # Rig framework (aliased as 'rig' for cleaner imports)
-rig = { package = "rig-core", version = "0.26" }
+rig = { package = "rig-core", version = "0.27.0" }
 
 # Internal shared crates
 codegraph-core = { path = "../codegraph-core" }
