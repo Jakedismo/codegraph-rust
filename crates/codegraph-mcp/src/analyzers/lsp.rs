@@ -141,6 +141,7 @@ pub fn enrich_nodes_and_edges_with_lsp(
         std::collections::HashMap::new();
     let mut node_file_by_id: std::collections::HashMap<codegraph_core::NodeId, String> =
         std::collections::HashMap::new();
+    let mut files_with_nodes: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for (idx, node) in nodes.iter().enumerate() {
         let file = node.location.file_path.clone();
@@ -151,6 +152,7 @@ pub fn enrich_nodes_and_edges_with_lsp(
                 nodes_by_file_line
                     .entry((abs.clone(), line0))
                     .or_insert(idx);
+                files_with_nodes.insert(abs);
             }
         }
         let line0 = node.location.line.saturating_sub(1);
@@ -159,14 +161,34 @@ pub fn enrich_nodes_and_edges_with_lsp(
             .entry((file.clone(), line0))
             .or_insert(idx);
         node_file_by_id.insert(node.id, file);
+        if let Some(file) = node_file_by_id.get(&node.id) {
+            files_with_nodes.insert(file.clone());
+        }
     }
 
+    let def_edges_by_file = definition_edge_indices_by_file(&project_root, nodes, edges);
+
     let mut stats = LspEnrichmentStats::default();
-    let total_files = files.len().max(1);
+    let mut files_to_process: Vec<PathBuf> = Vec::new();
+    for file_path in files {
+        let abs_path = absolute_file_path(&project_root, file_path);
+        let file_str = file_path.to_string_lossy().to_string();
+        let abs_file_str = abs_path.to_string_lossy().to_string();
+        if !files_with_nodes.contains(&file_str)
+            && !files_with_nodes.contains(&abs_file_str)
+            && !def_edges_by_file.contains_key(&file_str)
+            && !def_edges_by_file.contains_key(&abs_file_str)
+        {
+            continue;
+        }
+        files_to_process.push(file_path.clone());
+    }
+
+    let total_files = files_to_process.len().max(1);
     let mut processed_files: usize = 0;
     let mut last_progress_log = Instant::now();
 
-    for file_path in files {
+    for file_path in &files_to_process {
         let abs_path = absolute_file_path(&project_root, file_path);
         let content = std::fs::read_to_string(&abs_path)?;
         let file_str = file_path.to_string_lossy().to_string();
@@ -174,6 +196,7 @@ pub fn enrich_nodes_and_edges_with_lsp(
             .map_err(|_| anyhow::anyhow!("failed to create file URI for {}", abs_path.display()))?
             .to_string();
         let abs_file_str = abs_path.to_string_lossy().to_string();
+        let pos_index = LspPositionIndex::new(&content);
 
         proc.notify(
             "textDocument/didOpen",
@@ -216,54 +239,63 @@ pub fn enrich_nodes_and_edges_with_lsp(
             }
         }
 
-        for edge in edges.iter_mut() {
-            let Some(from_file) = node_file_by_id.get(&edge.from) else {
-                continue;
-            };
-            if *from_file != file_str && *from_file != abs_file_str {
-                continue;
-            }
-            let Some(span) = edge.span.as_ref() else {
-                continue;
-            };
+        if let Some(edge_indices) = def_edges_by_file
+            .get(&abs_file_str)
+            .or_else(|| def_edges_by_file.get(&file_str))
+        {
+            for &edge_idx in edge_indices {
+                let edge = &mut edges[edge_idx];
+                let Some(span) = edge.span.as_ref() else {
+                    continue;
+                };
 
-            let pos = byte_offset_to_utf16_position(&content, span.start_byte);
-            let def = proc.request(
-                "textDocument/definition",
-                serde_json::json!({
-                    "textDocument": { "uri": uri },
-                    "position": { "line": pos.line, "character": pos.character }
-                }),
-            )?;
+                let pos = pos_index.position_for_byte_offset(span.start_byte);
+                let def = proc.request(
+                    "textDocument/definition",
+                    serde_json::json!({
+                        "textDocument": { "uri": uri },
+                        "position": { "line": pos.line, "character": pos.character }
+                    }),
+                )?;
 
-            let Some((target_file, target_line0)) = extract_first_definition_location(&def) else {
-                continue;
-            };
+                let Some((target_file, target_line0)) =
+                    extract_first_definition_location(&def)
+                else {
+                    continue;
+                };
 
-            let target_idx = nodes_by_file_line
-                .get(&(target_file.clone(), target_line0))
-                .copied()
-                .or_else(|| {
-                    let rel_target = Path::new(&target_file);
-                    let rel_key = relative_file_key(&project_root, rel_target)?;
-                    nodes_by_file_line.get(&(rel_key, target_line0)).copied()
-                });
-            if let Some(target_idx) = target_idx {
-                let target = &nodes[target_idx];
-                let target_name = target
-                    .metadata
-                    .attributes
-                    .get("qualified_name")
-                    .cloned()
-                    .unwrap_or_else(|| target.name.to_string());
-                edge.to = target_name;
-                edge.metadata
-                    .insert("analyzer".to_string(), "lsp_definition".to_string());
-                edge.metadata
-                    .insert("analyzer_confidence".to_string(), "1.0".to_string());
-                stats.edges_resolved += 1;
+                let target_idx = nodes_by_file_line
+                    .get(&(target_file.clone(), target_line0))
+                    .copied()
+                    .or_else(|| {
+                        let rel_target = Path::new(&target_file);
+                        let rel_key = relative_file_key(&project_root, rel_target)?;
+                        nodes_by_file_line.get(&(rel_key, target_line0)).copied()
+                    });
+                if let Some(target_idx) = target_idx {
+                    let target = &nodes[target_idx];
+                    let target_name = target
+                        .metadata
+                        .attributes
+                        .get("qualified_name")
+                        .cloned()
+                        .unwrap_or_else(|| target.name.to_string());
+                    edge.to = target_name;
+                    edge.metadata
+                        .insert("analyzer".to_string(), "lsp_definition".to_string());
+                    edge.metadata
+                        .insert("analyzer_confidence".to_string(), "1.0".to_string());
+                    stats.edges_resolved += 1;
+                }
             }
         }
+
+        proc.notify(
+            "textDocument/didClose",
+            serde_json::json!({
+                "textDocument": { "uri": uri }
+            }),
+        )?;
 
         processed_files += 1;
         if last_progress_log.elapsed() >= Duration::from_secs(10) {
@@ -360,6 +392,83 @@ pub fn byte_offset_to_utf16_position(text: &str, byte_offset: u32) -> LspPositio
     }
 
     LspPosition { line, character }
+}
+
+#[derive(Debug, Clone)]
+pub struct LspPositionIndex<'a> {
+    text: &'a str,
+    line_starts: Vec<usize>,
+}
+
+impl<'a> LspPositionIndex<'a> {
+    pub fn new(text: &'a str) -> Self {
+        let mut line_starts = Vec::new();
+        line_starts.push(0);
+        for (idx, ch) in text.char_indices() {
+            if ch == '\n' {
+                let next = idx.saturating_add(1);
+                if next <= text.len() {
+                    line_starts.push(next);
+                }
+            }
+        }
+        Self { text, line_starts }
+    }
+
+    pub fn position_for_byte_offset(&self, byte_offset: u32) -> LspPosition {
+        let target = (byte_offset as usize).min(self.text.len());
+        let line_idx = match self.line_starts.binary_search(&target) {
+            Ok(i) => i,
+            Err(insert) => insert.saturating_sub(1),
+        };
+        let line_start = *self.line_starts.get(line_idx).unwrap_or(&0);
+
+        let mut character: u32 = 0;
+        for (idx, ch) in self.text[line_start..].char_indices() {
+            let abs = line_start.saturating_add(idx);
+            if abs >= target {
+                break;
+            }
+            character += ch.encode_utf16(&mut [0u16; 2]).len() as u32;
+        }
+
+        LspPosition {
+            line: line_idx as u32,
+            character,
+        }
+    }
+}
+
+fn definition_edge_indices_by_file(
+    project_root: &Path,
+    nodes: &[CodeNode],
+    edges: &[EdgeRelationship],
+) -> std::collections::HashMap<String, Vec<usize>> {
+    let mut file_by_id: std::collections::HashMap<codegraph_core::NodeId, String> =
+        std::collections::HashMap::with_capacity(nodes.len());
+
+    for node in nodes {
+        file_by_id.insert(node.id, node.location.file_path.clone());
+    }
+
+    let mut out: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
+    for (idx, edge) in edges.iter().enumerate() {
+        if edge.span.is_none() {
+            continue;
+        }
+        let Some(file_key) = file_by_id.get(&edge.from) else {
+            continue;
+        };
+
+        out.entry(file_key.clone()).or_default().push(idx);
+        if let Some(abs) = absolute_file_key(project_root, Path::new(file_key)) {
+            if abs != *file_key {
+                out.entry(abs).or_default().push(idx);
+            }
+        }
+    }
+
+    out
 }
 
 pub struct LspProcess {
@@ -772,5 +881,88 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn utf16_line_index_matches_reference_mapping() {
+        let text = "a🙂b\nc";
+        let index = LspPositionIndex::new(text);
+
+        for offset in 0..=(text.len() as u32) {
+            let expected = byte_offset_to_utf16_position(text, offset);
+            let observed = index.position_for_byte_offset(offset);
+            assert_eq!(observed, expected, "mismatch at byte offset {offset}");
+        }
+    }
+
+    #[test]
+    fn groups_edge_indices_by_file_path() {
+        let project_root =
+            std::env::temp_dir().join(format!("codegraph_lsp_edges_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&project_root);
+
+        let a_path = project_root.join("a.rs");
+        let b_path = project_root.join("b.rs");
+        let _ = std::fs::write(&a_path, "fn a() {}");
+        let _ = std::fs::write(&b_path, "fn b() {}");
+
+        let node_a = CodeNode::new(
+            "a",
+            None,
+            None,
+            codegraph_core::Location {
+                file_path: "a.rs".to_string(),
+                line: 1,
+                column: 0,
+                end_line: Some(1),
+                end_column: Some(0),
+            },
+        );
+        let node_b = CodeNode::new(
+            "b",
+            None,
+            None,
+            codegraph_core::Location {
+                file_path: "b.rs".to_string(),
+                line: 1,
+                column: 0,
+                end_line: Some(1),
+                end_column: Some(0),
+            },
+        );
+
+        let edges = vec![
+            EdgeRelationship {
+                from: node_a.id,
+                to: "x".to_string(),
+                edge_type: codegraph_core::EdgeType::Uses,
+                metadata: std::collections::HashMap::new(),
+                span: Some(codegraph_core::Span {
+                    start_byte: 0,
+                    end_byte: 1,
+                }),
+            },
+            EdgeRelationship {
+                from: node_b.id,
+                to: "y".to_string(),
+                edge_type: codegraph_core::EdgeType::Uses,
+                metadata: std::collections::HashMap::new(),
+                span: Some(codegraph_core::Span {
+                    start_byte: 0,
+                    end_byte: 1,
+                }),
+            },
+        ];
+
+        let nodes = vec![node_a, node_b];
+        let grouped = definition_edge_indices_by_file(&project_root, &nodes, &edges);
+
+        assert_eq!(grouped.get("a.rs"), Some(&vec![0]));
+        assert_eq!(grouped.get("b.rs"), Some(&vec![1]));
+
+        let a_abs = a_path.to_string_lossy().to_string();
+        let b_abs = b_path.to_string_lossy().to_string();
+        assert_eq!(grouped.get(&a_abs), Some(&vec![0]));
+        assert_eq!(grouped.get(&b_abs), Some(&vec![1]));
     }
 }
