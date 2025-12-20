@@ -475,12 +475,8 @@ impl SurrealDbStorage {
             None
         } else {
             let metadata_json = serde_json::to_value(&node.metadata.attributes).unwrap_or(JsonValue::Null);
-            let compressed = codegraph_core::compress_if_needed(&metadata_json.to_string());
-            if !compressed.is_empty() && compressed[0] == 0x5A {
-                Some(JsonValue::from(compressed))
-            } else {
-                Some(metadata_json)
-            }
+            let compressed = codegraph_core::compress_json(&metadata_json);
+            Some(JsonValue::String(compressed))
         };
 
         let (
@@ -507,13 +503,7 @@ impl SurrealDbStorage {
         let embedding_model = node.metadata.attributes.get("embedding_model").cloned();
 
         let content = node.content.as_ref().map(|c| {
-            let text = c.to_string();
-            let compressed = codegraph_core::compress_if_needed(&text);
-            if !compressed.is_empty() && compressed[0] == 0x5A {
-                JsonValue::from(compressed)
-            } else {
-                JsonValue::from(text)
-            }
+            codegraph_core::compress_to_string(&c)
         });
 
         Ok(SurrealNodeRecord {
@@ -1881,7 +1871,7 @@ struct SurrealNodeRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    content: Option<JsonValue>, // Use JsonValue to allow both String and Blob
+    content: Option<String>, // Back to String (Base64 encoded if compressed)
     file_path: String,
     start_line: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1903,7 +1893,7 @@ struct SurrealNodeRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     complexity: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    metadata: Option<JsonValue>, // Store compressed metadata as Blob
+    metadata: Option<JsonValue>, // JsonValue but contains strings if compressed
     #[serde(skip_serializing_if = "Option::is_none")]
     project_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1951,7 +1941,6 @@ pub fn surreal_embedding_column_for_dimension(dim: usize) -> &'static str {
         4096 => SURR_EMBEDDING_COLUMN_4096,
         _ => {
             // Fallback to 2048 for unsupported dimensions
-            // TODO: Consider returning Result<&'static str, Error> instead of silent fallback
             tracing::warn!(
                 "Unsupported embedding dimension {}, falling back to 2048. \
                  Supported dimensions: 384, 768, 1024, 1536, 2048, 2560, 3072, 4096",
@@ -1975,7 +1964,7 @@ pub struct ChunkEmbeddingRecord {
     pub id: String,
     pub parent_node: String,
     pub chunk_index: i32,
-    pub text: JsonValue, // Use Value to allow Blob
+    pub text: String, // Back to String (Base64 encoded if compressed)
     pub project_id: String,
     pub embedding_384: Option<Vec<f64>>,
     pub embedding_768: Option<Vec<f64>>,
@@ -2002,12 +1991,8 @@ impl ChunkEmbeddingRecord {
     ) -> Self {
         let embedding_vec: Vec<f64> = embedding.iter().map(|&f| f as f64).collect();
         
-        let compressed_text = codegraph_core::compress_if_needed(&text);
-        let text_val = if !compressed_text.is_empty() && compressed_text[0] == 0x5A {
-            JsonValue::from(compressed_text) // Store as bytes/blob in Surreal
-        } else {
-            JsonValue::from(text) // Store as string
-        };
+        // Use Base64 encoding for compression to satisfy String type
+        let text_val = codegraph_core::compress_to_string(&text);
 
         let (
             embedding_384,
@@ -2019,6 +2004,7 @@ impl ChunkEmbeddingRecord {
             embedding_3072,
             embedding_4096,
         ) = match embedding_column {
+            // ... match arms ...
             SURR_EMBEDDING_COLUMN_384 => (
                 Some(embedding_vec),
                 None,
