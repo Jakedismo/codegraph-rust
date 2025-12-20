@@ -41,6 +41,7 @@ hashbrown = { workspace = true }
 rustc-hash = { workspace = true }
 sha2 = { workspace = true }
 bincode = { workspace = true }
+zstd = "0.13"
 
 memmap2 = { workspace = true }
 

@@ -16,7 +16,7 @@ use serde::Serialize;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
 
-use crate::indexer::IndexerConfig;
+use crate::indexer::{filter_edges_for_tier, IndexerConfig};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RepositoryCounts {
@@ -130,8 +130,9 @@ impl RepositoryEstimator {
         let files = file_collect::collect_source_files_with_config(path, &file_config)?;
         let total_files = files.len() as u64;
 
-        let (nodes, edges, stats) =
+        let (nodes, mut edges, stats) =
             parse_files_with_unified_extraction(&self.parser, files, total_files).await?;
+        filter_edges_for_tier(self.config.indexing_tier, &mut edges);
         let symbol_map = build_symbol_index(&nodes);
 
         let counts = RepositoryCounts {

@@ -14,28 +14,76 @@ pub mod module_linker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AnalyzerSettings {
-    pub enabled: bool,
+    pub build_context: bool,
+    pub lsp_mode: LspMode,
+    pub enrichment: bool,
+    pub module_linking: bool,
+    pub dataflow: bool,
+    pub docs_contracts: bool,
+    pub architecture: bool,
     pub require_tools: bool,
 }
 
 impl AnalyzerSettings {
-    pub fn from_env() -> Self {
-        let enabled = match std::env::var("CODEGRAPH_ANALYZERS").ok().as_deref() {
-            Some("0") | Some("false") | Some("FALSE") => false,
-            _ => true,
-        };
-        let require_tools = match std::env::var("CODEGRAPH_ANALYZERS_REQUIRE_TOOLS")
-            .ok()
-            .as_deref()
-        {
-            Some("0") | Some("false") | Some("FALSE") => false,
-            _ => true,
-        };
-        Self {
-            enabled,
-            require_tools,
+    pub fn for_tier(tier: codegraph_core::config_manager::IndexingTier) -> Self {
+        match tier {
+            codegraph_core::config_manager::IndexingTier::Fast => Self {
+                build_context: false,
+                lsp_mode: LspMode::Off,
+                enrichment: false,
+                module_linking: false,
+                dataflow: false,
+                docs_contracts: false,
+                architecture: false,
+                require_tools: true,
+            },
+            codegraph_core::config_manager::IndexingTier::Balanced => Self {
+                build_context: true,
+                lsp_mode: LspMode::SymbolsOnly,
+                enrichment: true,
+                module_linking: true,
+                dataflow: false,
+                docs_contracts: true,
+                architecture: false,
+                require_tools: true,
+            },
+            codegraph_core::config_manager::IndexingTier::Full => Self {
+                build_context: true,
+                lsp_mode: LspMode::SymbolsAndDefinitions,
+                enrichment: true,
+                module_linking: true,
+                dataflow: true,
+                docs_contracts: true,
+                architecture: true,
+                require_tools: true,
+            },
         }
     }
+
+    pub fn lsp_enabled(&self) -> bool {
+        !matches!(self.lsp_mode, LspMode::Off)
+    }
+
+    pub fn lsp_definitions_enabled(&self) -> bool {
+        matches!(self.lsp_mode, LspMode::SymbolsAndDefinitions)
+    }
+
+    pub fn any_enabled(&self) -> bool {
+        self.build_context
+            || self.lsp_enabled()
+            || self.enrichment
+            || self.module_linking
+            || self.dataflow
+            || self.docs_contracts
+            || self.architecture
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LspMode {
+    Off,
+    SymbolsOnly,
+    SymbolsAndDefinitions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,12 +229,12 @@ pub fn find_tool_candidates_on_path(tool: &str, path_env: &str) -> Vec<PathBuf> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use codegraph_core::config_manager::IndexingTier;
 
     #[test]
-    fn analyzer_settings_default_to_enabled_and_require_tools() {
-        let settings = AnalyzerSettings::from_env();
-        assert!(settings.enabled);
-        assert!(settings.require_tools);
+    fn analyzer_settings_fast_tier_disables_lsp() {
+        let settings = AnalyzerSettings::for_tier(IndexingTier::Fast);
+        assert!(!settings.lsp_enabled());
     }
 
     #[test]

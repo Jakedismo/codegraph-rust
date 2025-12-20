@@ -1,6 +1,7 @@
 pub mod advanced_config;
 pub mod buffer_pool;
 pub mod cli_config;
+pub mod compression;
 pub mod config;
 pub mod config_manager; // NEW: Simplified configuration system
 pub mod embedding_config;
@@ -31,6 +32,7 @@ pub use config::{
     SurrealDbConfig, VectorConfig,
 };
 pub use config_manager::*;
+pub use compression::*;
 pub use embedding_config::*;
 pub use error::*;
 pub use incremental::*;

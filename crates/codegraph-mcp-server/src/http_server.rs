@@ -13,13 +13,7 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-/// Start HTTP server with CodeGraph MCP service
-pub async fn start_http_server(
-    server: CodeGraphMCPServer,
-    config: HttpServerConfig,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    info!("Starting HTTP server at {}", config.bind_address());
-
+pub fn build_http_app(server: CodeGraphMCPServer, config: &HttpServerConfig) -> Router {
     // Create session manager for stateful HTTP connections
     let session_manager = Arc::new(LocalSessionManager::default());
 
@@ -40,9 +34,19 @@ pub async fn start_http_server(
     // Build Axum router with MCP service mounted as Tower service
     // IMPORTANT: Use nest_service to mount the StreamableHttpService directly
     // This lets the service handle its own /mcp POST/GET routing internally
-    let app = Router::new()
+    Router::new()
         .nest_service("/mcp", http_service)
-        .route("/health", axum::routing::get(health_check));
+        .route("/health", axum::routing::get(health_check))
+}
+
+/// Start HTTP server with CodeGraph MCP service
+pub async fn start_http_server(
+    server: CodeGraphMCPServer,
+    config: HttpServerConfig,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    info!("Starting HTTP server at {}", config.bind_address());
+
+    let app = build_http_app(server, &config);
 
     // Parse bind address
     let addr: SocketAddr = config

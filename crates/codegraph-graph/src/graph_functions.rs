@@ -32,7 +32,6 @@ fn sql_value_to_json(value: surrealdb::sql::Value) -> serde_json::Value {
                 serde_json::json!(f)
             }
         }
-        SqlValue::Strand(s) => serde_json::Value::String(s.to_string()),
         SqlValue::Duration(d) => serde_json::Value::String(d.to_string()),
         SqlValue::Datetime(dt) => serde_json::Value::String(dt.to_string()),
         SqlValue::Uuid(u) => serde_json::Value::String(u.to_string()),
@@ -48,6 +47,22 @@ fn sql_value_to_json(value: surrealdb::sql::Value) -> serde_json::Value {
         }
         SqlValue::Thing(thing) => serde_json::Value::String(thing.to_string()),
         SqlValue::Bytes(b) => serde_json::Value::String(format!("bytes:{}", b.len())),
+        SqlValue::Strand(s) => {
+            let s_str = s.to_string();
+            // Transparently decompress if it looks like our compressed format
+            if let Ok(decompressed) = codegraph_core::decompress_string(&s_str) {
+                 // Try parsing as JSON first if it looks like it
+                 if (decompressed.starts_with('{') && decompressed.ends_with('}')) || 
+                    (decompressed.starts_with('[') && decompressed.ends_with(']')) {
+                     if let Ok(json) = serde_json::from_str(&decompressed) {
+                         return json;
+                     }
+                 }
+                 serde_json::Value::String(decompressed)
+            } else {
+                 serde_json::Value::String(s_str)
+            }
+        }
         other => serde_json::Value::String(format!("{}", other)),
     }
 }
@@ -695,6 +710,7 @@ pub struct DependencyNode {
     pub kind: Option<String>,
     pub location: Option<NodeLocation>,
     pub language: Option<String>,
+    #[serde(default, deserialize_with = "codegraph_core::deserialize_content_string")]
     pub content: Option<String>,
     pub metadata: Option<serde_json::Value>,
     pub dependency_depth: Option<i32>,
@@ -719,6 +735,7 @@ pub struct CallChainNode {
     pub kind: Option<String>,
     pub location: Option<NodeLocation>,
     pub language: Option<String>,
+    #[serde(default, deserialize_with = "codegraph_core::deserialize_content_string")]
     pub content: Option<String>,
     pub metadata: Option<serde_json::Value>,
     pub call_depth: Option<i32>,
@@ -784,6 +801,7 @@ pub struct NodeInfo {
     pub kind: Option<String>,
     pub location: Option<NodeLocation>,
     pub language: Option<String>,
+    #[serde(default, deserialize_with = "codegraph_core::deserialize_content_string")]
     pub content: Option<String>,
     pub metadata: Option<serde_json::Value>,
 }

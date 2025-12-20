@@ -173,6 +173,9 @@ enum Commands {
             value_parser = clap::value_parser!(usize)
         )]
         symbol_max_concurrent: Option<usize>,
+
+        #[arg(long, value_enum, help = "Indexing tier: fast | balanced | full")]
+        index_tier: Option<IndexTier>,
     },
 
     #[command(
@@ -225,6 +228,9 @@ enum Commands {
             help = "Override local embedding throughput (embeddings per minute)"
         )]
         local_throughput: Option<f64>,
+
+        #[arg(long, value_enum, help = "Indexing tier: fast | balanced | full")]
+        index_tier: Option<IndexTier>,
 
         #[arg(short, long, help = "Output format", default_value = "human")]
         format: StatsFormat,
@@ -466,6 +472,23 @@ enum StatsFormat {
     Human,
 }
 
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum IndexTier {
+    Fast,
+    Balanced,
+    Full,
+}
+
+impl From<IndexTier> for codegraph_core::config_manager::IndexingTier {
+    fn from(value: IndexTier) -> Self {
+        match value {
+            IndexTier::Fast => codegraph_core::config_manager::IndexingTier::Fast,
+            IndexTier::Balanced => codegraph_core::config_manager::IndexingTier::Balanced,
+            IndexTier::Full => codegraph_core::config_manager::IndexingTier::Full,
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Load .env file if present
@@ -516,6 +539,7 @@ async fn main() -> Result<()> {
             max_seq_len,
             symbol_batch_size,
             symbol_max_concurrent,
+            index_tier,
         } => {
             handle_index(
                 config,
@@ -533,6 +557,7 @@ async fn main() -> Result<()> {
                 max_seq_len,
                 symbol_batch_size,
                 symbol_max_concurrent,
+                index_tier,
                 cli.debug,
             )
             .await?;
@@ -548,6 +573,7 @@ async fn main() -> Result<()> {
             jina_batch_size,
             jina_batch_minutes,
             local_throughput,
+            index_tier,
             format,
         } => {
             handle_estimate(
@@ -562,6 +588,7 @@ async fn main() -> Result<()> {
                 jina_batch_size,
                 jina_batch_minutes,
                 local_throughput,
+                index_tier,
                 format,
             )
             .await?;
@@ -1052,6 +1079,7 @@ async fn handle_index(
     max_seq_len: usize,
     symbol_batch_size: Option<usize>,
     symbol_max_concurrent: Option<usize>,
+    index_tier: Option<IndexTier>,
     debug_log: bool,
 ) -> Result<()> {
     let project_root = path.clone().canonicalize().unwrap_or_else(|_| path.clone());
@@ -1103,6 +1131,23 @@ async fn handle_index(
         ))?;
     }
 
+    let tier = index_tier.map(Into::into).unwrap_or(config.indexing.tier);
+    let tier_hint = match tier {
+        codegraph_core::config_manager::IndexingTier::Fast => {
+            "fast (speed-first: AST + core edges)"
+        }
+        codegraph_core::config_manager::IndexingTier::Balanced => {
+            "balanced (adds LSP symbols + enrichment)"
+        }
+        codegraph_core::config_manager::IndexingTier::Full => {
+            "full (max detail: LSP definitions + dataflow + architecture)"
+        }
+    };
+    multi_progress.println(format!(
+        "🧭 Indexing tier: {} — override with --index-tier or CODEGRAPH_INDEX_TIER",
+        tier_hint
+    ))?;
+
     // Configure indexer
     let languages_list = languages.clone().unwrap_or_default();
     let indexer_config = IndexerConfig {
@@ -1119,6 +1164,7 @@ async fn handle_index(
         max_seq_len,
         symbol_batch_size,
         symbol_max_concurrent,
+        indexing_tier: tier,
         project_root: project_root.clone(),
         ..Default::default()
     };
@@ -1292,11 +1338,13 @@ async fn handle_estimate(
     jina_batch_size: Option<usize>,
     jina_batch_minutes: Option<f64>,
     local_throughput: Option<f64>,
+    index_tier: Option<IndexTier>,
     format: StatsFormat,
 ) -> Result<()> {
     let project_root = path.clone().canonicalize().unwrap_or(path.clone());
     let languages_list = languages.clone().unwrap_or_default();
 
+    let tier = index_tier.map(Into::into).unwrap_or(config.indexing.tier);
     let mut estimator_config = IndexerConfig {
         languages: languages_list.clone(),
         exclude_patterns: exclude,
@@ -1304,6 +1352,7 @@ async fn handle_estimate(
         recursive,
         workers,
         batch_size,
+        indexing_tier: tier,
         ..Default::default()
     };
     estimator_config.project_root = project_root.clone();
