@@ -42,9 +42,24 @@ Indexing enrichment adds:
 - Document/spec nodes linked to backticked symbols in `README.md`, `docs/**/*.md`, and `schema/**/*.surql`
 - Architecture signals (package cycles + optional boundary violations)
 
-#### Indexing prerequisites (required by default)
+#### Indexing tiers (speed vs richness)
 
-Indexing runs analyzer stages by default, and it **fails fast** if the required external tools are missing.
+Indexing is tiered so you can choose between speed/storage and graph richness. The default is **fast**.
+
+| Tier | What it enables | Typical use |
+|------|-----------------|-------------|
+| `fast` | AST nodes + core edges only (no LSP or enrichment) | Quick indexing, low storage |
+| `balanced` | LSP symbols + docs/enrichment + module linking | Good agentic results without full cost |
+| `full` | All analyzers + LSP definitions + dataflow + architecture | Maximum accuracy/richness |
+
+Configure the tier:
+- CLI: `codegraph index --index-tier balanced`
+- Env: `CODEGRAPH_INDEX_TIER=balanced`
+- Config: `[indexing] tier = "balanced"`
+
+#### Indexing prerequisites (LSP-enabled tiers)
+
+When the tier enables LSP (`balanced`/`full`), indexing **fails fast** if required external tools are missing.
 
 Required tools by language:
 - Rust: `rust-analyzer`
@@ -53,8 +68,6 @@ Required tools by language:
 - Go: `gopls`
 - Java: `jdtls`
 - C/C++: `clangd`
-
-You can disable analyzers (and tool requirements) for troubleshooting with `CODEGRAPH_ANALYZERS=0`, but the default indexing behavior assumes the tools exist.
 
 If indexing appears to stall during LSP resolution, you can adjust the per-request timeout:
 

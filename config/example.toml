@@ -49,6 +49,10 @@ workers = 4               # caps Rayon threads (leave one core free by default)
 max_concurrent = 4        # concurrent embedding requests
 max_texts_per_request = 256
 
+[indexing]
+# Indexing tiers: fast | balanced | full
+tier = "fast"
+
 [monitoring]
 enabled = true
 metrics_enabled = true

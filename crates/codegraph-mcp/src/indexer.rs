@@ -7,7 +7,7 @@ use crate::estimation::{
     extend_symbol_index, parse_files_with_unified_extraction as shared_unified_parse,
 };
 use anyhow::{anyhow, Context, Result};
-use codegraph_core::{CodeNode, EdgeRelationship, NodeId, NodeType};
+use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, NodeId, NodeType};
 use codegraph_graph::ChunkEmbeddingRecord;
 use codegraph_graph::{
     edge::CodeEdge, FileMetadataRecord, NodeEmbeddingRecord, ProjectMetadataRecord,
@@ -152,6 +152,7 @@ pub struct IndexerConfig {
     pub max_seq_len: usize,
     pub symbol_batch_size: Option<usize>,
     pub symbol_max_concurrent: Option<usize>,
+    pub indexing_tier: codegraph_core::config_manager::IndexingTier,
     /// Root directory of the project being indexed (where .codegraph/ will be created)
     /// Defaults to current directory if not specified
     pub project_root: PathBuf,
@@ -174,6 +175,7 @@ impl Default for IndexerConfig {
             max_seq_len: 512,
             symbol_batch_size: None,
             symbol_max_concurrent: None,
+            indexing_tier: codegraph_core::config_manager::IndexingTier::default(),
             project_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         }
     }
@@ -188,6 +190,25 @@ impl From<&IndexerConfig> for codegraph_parser::file_collect::FileCollectionConf
             exclude_patterns: config.exclude_patterns.clone(),
         }
     }
+}
+
+pub(crate) fn filter_edges_for_tier(
+    tier: codegraph_core::config_manager::IndexingTier,
+    edges: &mut Vec<EdgeRelationship>,
+) -> usize {
+    let before = edges.len();
+    match tier {
+        codegraph_core::config_manager::IndexingTier::Full => {}
+        codegraph_core::config_manager::IndexingTier::Balanced => {
+            edges.retain(|edge| !matches!(edge.edge_type, EdgeType::References));
+        }
+        codegraph_core::config_manager::IndexingTier::Fast => {
+            edges.retain(|edge| {
+                !matches!(edge.edge_type, EdgeType::Uses | EdgeType::References)
+            });
+        }
+    }
+    before.saturating_sub(edges.len())
 }
 
 pub struct ProjectIndexer {
@@ -593,7 +614,7 @@ impl ProjectIndexer {
         settings: AnalyzerSettings,
         path_env: &str,
     ) -> Result<()> {
-        if !settings.enabled {
+        if !settings.lsp_enabled() {
             return Ok(());
         }
         if !settings.require_tools {
@@ -614,7 +635,7 @@ impl ProjectIndexer {
         }
 
         Err(anyhow!(
-            "Missing required analyzer tools: {}. Install the tools or set CODEGRAPH_ANALYZERS=0 to disable analyzers.",
+            "Missing required analyzer tools: {}. Install the tools or choose a tier without LSP (e.g. --index-tier fast or CODEGRAPH_INDEX_TIER=fast).",
             missing.join(", ")
         ))
     }
@@ -954,10 +975,12 @@ impl ProjectIndexer {
             codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?
         };
 
-        let analyzer_settings = AnalyzerSettings::from_env();
+        let analyzer_settings = AnalyzerSettings::for_tier(self.config.indexing_tier);
         let path_env = std::env::var("PATH").unwrap_or_default();
         let mut analyzer_languages: HashSet<codegraph_core::Language> = HashSet::new();
-        if analyzer_settings.enabled {
+        let needs_language_scan =
+            analyzer_settings.lsp_enabled() || analyzer_settings.build_context || analyzer_settings.dataflow;
+        if needs_language_scan {
             let registry = codegraph_parser::LanguageRegistry::new();
             for (p, _) in &files_to_index {
                 if let Some(lang) = registry.detect_language(&p.to_string_lossy()) {
@@ -969,9 +992,26 @@ impl ProjectIndexer {
             analyzer_languages.into_iter().collect();
         Self::validate_analyzer_tools(&analyzer_languages, analyzer_settings, &path_env)?;
 
+        let lsp_mode_label = match analyzer_settings.lsp_mode {
+            crate::analyzers::LspMode::Off => "off",
+            crate::analyzers::LspMode::SymbolsOnly => "symbols",
+            crate::analyzers::LspMode::SymbolsAndDefinitions => "symbols+definitions",
+        };
+        info!(
+            "🧭 Indexing tier: {:?} | analyzers: build_context={} lsp={} enrichment={} module_linking={} dataflow={} docs_contracts={} architecture={}",
+            self.config.indexing_tier,
+            analyzer_settings.build_context,
+            lsp_mode_label,
+            analyzer_settings.enrichment,
+            analyzer_settings.module_linking,
+            analyzer_settings.dataflow,
+            analyzer_settings.docs_contracts,
+            analyzer_settings.architecture
+        );
+
         let mut build_context_nodes = 0usize;
         let mut build_context_edges = 0usize;
-        let build_context_out = if analyzer_settings.enabled
+        let build_context_out = if analyzer_settings.build_context
             && analyzer_languages.contains(&codegraph_core::Language::Rust)
         {
             let start = std::time::Instant::now();
@@ -1019,11 +1059,19 @@ impl ProjectIndexer {
             .parse_files_with_unified_extraction(files.clone(), total_files as u64)
             .await?;
 
-        if analyzer_settings.enabled
+        if analyzer_settings.build_context
             && (!build_context_out.nodes.is_empty() || !build_context_out.edges.is_empty())
         {
             nodes.extend(build_context_out.nodes);
             edges.extend(build_context_out.edges);
+        }
+
+        let removed_edges = filter_edges_for_tier(self.config.indexing_tier, &mut edges);
+        if removed_edges > 0 {
+            info!(
+                "🧹 Tier edge filter removed {} edges (tier: {:?})",
+                removed_edges, self.config.indexing_tier
+            );
         }
 
         self.finish_bar(
@@ -1054,10 +1102,11 @@ impl ProjectIndexer {
         }
 
         let mut lsp_enrichment_stats = crate::analyzers::lsp::LspEnrichmentStats::default();
-        if analyzer_settings.enabled && !analyzer_languages.is_empty() {
+        if analyzer_settings.lsp_enabled() && !analyzer_languages.is_empty() {
             let start = std::time::Instant::now();
             info!(
-                "🧠 Language-server analysis starting (languages: {:?})",
+                "🧠 Language-server analysis starting (mode: {}, languages: {:?})",
+                lsp_mode_label,
                 analyzer_languages
             );
 
@@ -1106,6 +1155,7 @@ impl ProjectIndexer {
                                 spec.args,
                                 spec.language_id,
                                 spec.name_joiner,
+                                analyzer_settings.lsp_definitions_enabled(),
                                 &project_root,
                                 &files,
                                 &mut nodes,
@@ -1151,7 +1201,7 @@ impl ProjectIndexer {
         }
 
         let mut enrichment_stats = crate::analyzers::enrichment::EnrichmentStats::default();
-        if analyzer_settings.enabled {
+        if analyzer_settings.enrichment {
             let start = std::time::Instant::now();
             info!("🧾 Enrichment analysis starting (rustdoc + api surface)");
             let project_root = self.project_root.clone();
@@ -1188,7 +1238,7 @@ impl ProjectIndexer {
         }
 
         let mut module_linker_stats = crate::analyzers::module_linker::ModuleLinkerStats::default();
-        if analyzer_settings.enabled {
+        if analyzer_settings.module_linking {
             let start = std::time::Instant::now();
             info!("🧭 Module linking starting (modules, imports, containment)");
             let project_root = self.project_root.clone();
@@ -1230,7 +1280,7 @@ impl ProjectIndexer {
         }
 
         let mut dataflow_stats = crate::analyzers::dataflow::DataflowStats::default();
-        if analyzer_settings.enabled && analyzer_languages.contains(&codegraph_core::Language::Rust)
+        if analyzer_settings.dataflow && analyzer_languages.contains(&codegraph_core::Language::Rust)
         {
             let start = std::time::Instant::now();
             info!("🌊 Dataflow enrichment starting (local def-use)");
@@ -1277,7 +1327,7 @@ impl ProjectIndexer {
 
         let mut docs_contracts_stats =
             crate::analyzers::docs_contracts::DocsContractsStats::default();
-        if analyzer_settings.enabled {
+        if analyzer_settings.docs_contracts {
             let start = std::time::Instant::now();
             info!("📚 Docs/contracts linking starting");
             let project_root = self.project_root.clone();
@@ -1319,7 +1369,7 @@ impl ProjectIndexer {
         }
 
         let mut architecture_stats = crate::analyzers::architecture::ArchitectureStats::default();
-        if analyzer_settings.enabled {
+        if analyzer_settings.architecture {
             let start = std::time::Instant::now();
             info!("🏛️  Architecture analysis starting (cycles, boundaries)");
 
@@ -1452,7 +1502,7 @@ impl ProjectIndexer {
         let mut stats = IndexStats {
             files: pstats.parsed_files,
             skipped: pstats.total_files - pstats.parsed_files,
-            analyzers_enabled: analyzer_settings.enabled,
+            analyzers_enabled: analyzer_settings.any_enabled(),
             build_context_nodes,
             build_context_edges,
             lsp_nodes_enriched: lsp_enrichment_stats.nodes_enriched,
@@ -4430,11 +4480,8 @@ mod tests {
     }
 
     #[test]
-    fn analyzer_requires_rust_analyzer_when_enabled() {
-        let settings = AnalyzerSettings {
-            enabled: true,
-            require_tools: true,
-        };
+    fn analyzer_requires_rust_analyzer_when_lsp_enabled() {
+        let settings = AnalyzerSettings::for_tier(codegraph_core::config_manager::IndexingTier::Full);
 
         let err = ProjectIndexer::validate_analyzer_tools(
             &[codegraph_core::Language::Rust],
@@ -4443,6 +4490,50 @@ mod tests {
         )
         .expect_err("should fail when required tools are missing");
         let _ = err;
+    }
+
+    #[test]
+    fn fast_tier_filters_noisy_edges() {
+        let mut edges = vec![
+            EdgeRelationship {
+                from: NodeId::new_v4(),
+                to: "a".to_string(),
+                edge_type: EdgeType::Calls,
+                metadata: std::collections::HashMap::new(),
+                span: None,
+            },
+            EdgeRelationship {
+                from: NodeId::new_v4(),
+                to: "b".to_string(),
+                edge_type: EdgeType::Uses,
+                metadata: std::collections::HashMap::new(),
+                span: None,
+            },
+            EdgeRelationship {
+                from: NodeId::new_v4(),
+                to: "c".to_string(),
+                edge_type: EdgeType::References,
+                metadata: std::collections::HashMap::new(),
+                span: None,
+            },
+            EdgeRelationship {
+                from: NodeId::new_v4(),
+                to: "d".to_string(),
+                edge_type: EdgeType::Other("flows_to".to_string()),
+                metadata: std::collections::HashMap::new(),
+                span: None,
+            },
+        ];
+
+        let removed = filter_edges_for_tier(
+            codegraph_core::config_manager::IndexingTier::Fast,
+            &mut edges,
+        );
+        assert_eq!(removed, 2);
+        assert!(edges.iter().any(|e| e.edge_type == EdgeType::Calls));
+        assert!(edges.iter().any(|e| e.edge_type == EdgeType::Other("flows_to".to_string())));
+        assert!(!edges.iter().any(|e| e.edge_type == EdgeType::Uses));
+        assert!(!edges.iter().any(|e| e.edge_type == EdgeType::References));
     }
 }
 

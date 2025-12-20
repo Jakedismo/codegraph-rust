@@ -304,6 +304,7 @@ pub fn enrich_nodes_and_edges_with_lsp(
     server_args: &[&str],
     language_id: &str,
     name_joiner: &str,
+    resolve_definitions: bool,
     project_root: &Path,
     files: &[PathBuf],
     nodes: &mut [CodeNode],
@@ -315,7 +316,18 @@ pub fn enrich_nodes_and_edges_with_lsp(
         .build()?;
     
     rt.block_on(async {
-        enrich_async(server_path, server_args, language_id, name_joiner, project_root, files, nodes, edges).await
+        enrich_async(
+            server_path,
+            server_args,
+            language_id,
+            name_joiner,
+            resolve_definitions,
+            project_root,
+            files,
+            nodes,
+            edges,
+        )
+        .await
     })
 }
 
@@ -324,6 +336,7 @@ async fn enrich_async(
     server_args: &[&str],
     language_id: &str,
     name_joiner: &str,
+    resolve_definitions: bool,
     project_root: &Path,
     files: &[PathBuf],
     nodes: &mut [CodeNode],
@@ -353,7 +366,11 @@ async fn enrich_async(
         }
     }
 
-    let def_edges_by_file = definition_edge_indices_by_file(&project_root, nodes, edges);
+    let def_edges_by_file = if resolve_definitions {
+        definition_edge_indices_by_file(&project_root, nodes, edges)
+    } else {
+        std::collections::HashMap::new()
+    };
     let def_edges_by_file = Arc::new(def_edges_by_file); // Share across tasks
 
     // Filter files
@@ -376,16 +393,19 @@ async fn enrich_async(
     info!("🧠 LSP Analysis: Processing {} files concurrently", total_files);
 
     // Pre-collect edge spans to avoid borrowing `edges` inside the async block
-    let mut file_edge_spans: std::collections::HashMap<String, Vec<(usize, u32)>> = std::collections::HashMap::new();
-    
-    for (file, indices) in def_edges_by_file.iter() {
-        let mut spans = Vec::new();
-        for &idx in indices {
-            if let Some(span) = edges[idx].span.as_ref() {
-                spans.push((idx, span.start_byte));
+    let mut file_edge_spans: std::collections::HashMap<String, Vec<(usize, u32)>> =
+        std::collections::HashMap::new();
+
+    if resolve_definitions {
+        for (file, indices) in def_edges_by_file.iter() {
+            let mut spans = Vec::new();
+            for &idx in indices {
+                if let Some(span) = edges[idx].span.as_ref() {
+                    spans.push((idx, span.start_byte));
+                }
             }
+            file_edge_spans.insert(file.clone(), spans);
         }
-        file_edge_spans.insert(file.clone(), spans);
     }
     let file_edge_spans = Arc::new(file_edge_spans);
 
@@ -427,7 +447,7 @@ async fn enrich_async(
 
                 // Definitions
                 let mut def_results = Vec::new();
-                if !file_keys.is_empty() {
+                if resolve_definitions && !file_keys.is_empty() {
                     let mut seen_edges = std::collections::HashSet::new();
                     for key in &file_keys {
                         if let Some(spans) = file_edge_spans.get(key) {

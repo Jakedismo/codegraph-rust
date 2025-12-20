@@ -41,6 +41,10 @@ pub struct CodeGraphConfig {
     #[serde(default)]
     pub performance: PerformanceConfig,
 
+    /// Indexing configuration
+    #[serde(default)]
+    pub indexing: IndexingConfig,
+
     /// Logging configuration
     #[serde(default)]
     pub logging: LoggingConfig,
@@ -362,6 +366,49 @@ pub struct PerformanceConfig {
     /// Maximum concurrent requests
     #[serde(default = "default_max_concurrent")]
     pub max_concurrent_requests: usize,
+}
+
+/// Indexing configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexingConfig {
+    /// Indexing tier: fast | balanced | full
+    #[serde(default)]
+    pub tier: IndexingTier,
+}
+
+impl Default for IndexingConfig {
+    fn default() -> Self {
+        Self {
+            tier: IndexingTier::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum IndexingTier {
+    Fast,
+    Balanced,
+    Full,
+}
+
+impl Default for IndexingTier {
+    fn default() -> Self {
+        IndexingTier::Fast
+    }
+}
+
+impl std::str::FromStr for IndexingTier {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.to_lowercase().as_str() {
+            "fast" => Ok(IndexingTier::Fast),
+            "balanced" => Ok(IndexingTier::Balanced),
+            "full" => Ok(IndexingTier::Full),
+            other => Err(format!("Invalid indexing tier: {}", other)),
+        }
+    }
 }
 
 impl Default for PerformanceConfig {
@@ -760,6 +807,14 @@ impl ConfigManager {
                 use_completions.to_lowercase() == "true" || use_completions == "1";
         }
 
+        // Indexing configuration
+        if let Ok(tier) = std::env::var("CODEGRAPH_INDEX_TIER") {
+            match tier.parse::<IndexingTier>() {
+                Ok(parsed) => config.indexing.tier = parsed,
+                Err(err) => warn!("Invalid CODEGRAPH_INDEX_TIER: {}", err),
+            }
+        }
+
         // LATS configuration
         let mut has_lats_config = false;
         let mut lats_config = config.llm.lats.take().unwrap_or_default();
@@ -998,6 +1053,18 @@ mod tests {
         assert_eq!(config.embedding.provider, "auto");
         assert_eq!(config.llm.enabled, false);
         assert_eq!(config.llm.insights_mode, "context-only");
+        assert_eq!(config.indexing.tier, IndexingTier::Fast);
+    }
+
+    #[test]
+    fn test_indexing_tier_env_override() {
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = ENV_LOCK.lock().expect("env lock");
+
+        std::env::set_var("CODEGRAPH_INDEX_TIER", "balanced");
+        let config = ConfigManager::apply_env_overrides(CodeGraphConfig::default());
+        assert_eq!(config.indexing.tier, IndexingTier::Balanced);
+        std::env::remove_var("CODEGRAPH_INDEX_TIER");
     }
 
     #[test]
