@@ -138,6 +138,7 @@ impl LspClient {
 
         // Writer task
         tokio::spawn(async move {
+            let _child_guard = child; // Keep child alive as long as this task runs
             while let Some(msg) = rx.recv().await {
                 let json = match msg {
                     LspRequest::Request { id, method, params } => {
