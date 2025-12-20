@@ -341,26 +341,15 @@ async fn enrich_async(
         std::collections::HashMap::new();
     let mut nodes_by_file_line: std::collections::HashMap<(String, u32), usize> =
         std::collections::HashMap::new();
-    let mut node_file_by_id: std::collections::HashMap<codegraph_core::NodeId, String> =
-        std::collections::HashMap::new();
     let mut files_with_nodes: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for (idx, node) in nodes.iter().enumerate() {
         let file = node.location.file_path.clone();
-        if let Some(abs) = absolute_file_key(&project_root, Path::new(&file)) {
-            if abs != file {
-                let line0 = node.location.line.saturating_sub(1);
-                nodes_by_file_line_name.insert((abs.clone(), line0, node.name.to_string()), idx);
-                nodes_by_file_line.entry((abs.clone(), line0)).or_insert(idx);
-                files_with_nodes.insert(abs);
-            }
-        }
         let line0 = node.location.line.saturating_sub(1);
-        nodes_by_file_line_name.insert((file.clone(), line0, node.name.to_string()), idx);
-        nodes_by_file_line.entry((file.clone(), line0)).or_insert(idx);
-        node_file_by_id.insert(node.id, file);
-        if let Some(file) = node_file_by_id.get(&node.id) {
-            files_with_nodes.insert(file.clone());
+        for key in normalized_file_keys(&project_root, Path::new(&file)) {
+            nodes_by_file_line_name.insert((key.clone(), line0, node.name.to_string()), idx);
+            nodes_by_file_line.entry((key.clone(), line0)).or_insert(idx);
+            files_with_nodes.insert(key);
         }
     }
 
@@ -370,14 +359,14 @@ async fn enrich_async(
     // Filter files
     let mut files_to_process: Vec<PathBuf> = Vec::new();
     for file_path in files {
-        let abs_path = absolute_file_path(&project_root, file_path);
-        let file_str = file_path.to_string_lossy().to_string();
-        let abs_file_str = abs_path.to_string_lossy().to_string();
-        if !files_with_nodes.contains(&file_str)
-            && !files_with_nodes.contains(&abs_file_str)
-            && !def_edges_by_file.contains_key(&file_str)
-            && !def_edges_by_file.contains_key(&abs_file_str)
-        {
+        let file_keys = normalized_file_keys(&project_root, file_path);
+        let has_nodes = file_keys
+            .iter()
+            .any(|key| files_with_nodes.contains(key));
+        let has_edges = file_keys
+            .iter()
+            .any(|key| def_edges_by_file.contains_key(key));
+        if !has_nodes && !has_edges {
             continue;
         }
         files_to_process.push(file_path.clone());
@@ -410,8 +399,7 @@ async fn enrich_async(
             async move {
                 let abs_path = absolute_file_path(&project_root, &file_path);
                 let Ok(content) = tokio::fs::read_to_string(&abs_path).await else { return Ok(None) };
-                let file_str = file_path.to_string_lossy().to_string();
-                let abs_file_str = abs_path.to_string_lossy().to_string();
+                let file_keys = normalized_file_keys(&project_root, &file_path);
                 
                 let Ok(uri) = Url::from_file_path(&abs_path) else { return Ok(None) };
                 let uri_str = uri.to_string();
@@ -439,20 +427,27 @@ async fn enrich_async(
 
                 // Definitions
                 let mut def_results = Vec::new();
-                if let Some(spans) = file_edge_spans.get(&abs_file_str).or_else(|| file_edge_spans.get(&file_str)) {
-                    for &(edge_idx, byte_offset) in spans {
-                        let pos = pos_index.position_for_byte_offset(byte_offset);
-                        // Fire definition request
-                        let def_response = client.request(
-                            "textDocument/definition",
-                            serde_json::json!({
-                                "textDocument": { "uri": uri_str },
-                                "position": { "line": pos.line, "character": pos.character }
-                            })
-                        ).await;
-                        
-                        if let Ok(def) = def_response {
-                            def_results.push((edge_idx, def));
+                if !file_keys.is_empty() {
+                    let mut seen_edges = std::collections::HashSet::new();
+                    for key in &file_keys {
+                        if let Some(spans) = file_edge_spans.get(key) {
+                            for &(edge_idx, byte_offset) in spans {
+                                if !seen_edges.insert(edge_idx) {
+                                    continue;
+                                }
+                                let pos = pos_index.position_for_byte_offset(byte_offset);
+                                let def_response = client.request(
+                                    "textDocument/definition",
+                                    serde_json::json!({
+                                        "textDocument": { "uri": uri_str },
+                                        "position": { "line": pos.line, "character": pos.character }
+                                    })
+                                ).await;
+                                
+                                if let Ok(def) = def_response {
+                                    def_results.push((edge_idx, def));
+                                }
+                            }
                         }
                     }
                 }
@@ -463,7 +458,7 @@ async fn enrich_async(
                     serde_json::json!({ "textDocument": { "uri": uri_str } }),
                 ).await;
 
-                Ok::<_, anyhow::Error>(Some((file_str, abs_file_str, symbols, def_results)))
+                Ok::<_, anyhow::Error>(Some((file_keys, symbols, def_results)))
             }
         })
         .buffer_unordered(16); // Concurrency limit: 16 files at once
@@ -474,15 +469,17 @@ async fn enrich_async(
     
     // Process results as they come in and mutate state
     while let Some(res) = results.next().await {
-        if let Ok(Some((file_str, abs_file_str, symbols, def_results))) = res {
+        if let Ok(Some((file_keys, symbols, def_results))) = res {
             // 1. Process Symbols
             for sym in collect_document_symbols(&symbols, name_joiner) {
-                let rel_key = (file_str.clone(), sym.start_line, sym.name.clone());
-                let abs_key = (abs_file_str.clone(), sym.start_line, sym.name.clone());
-                let node_idx = nodes_by_file_line_name
-                    .get(&rel_key)
-                    .or_else(|| nodes_by_file_line_name.get(&abs_key))
-                    .copied();
+                let mut node_idx: Option<usize> = None;
+                for key in &file_keys {
+                    let key_tuple = (key.clone(), sym.start_line, sym.name.clone());
+                    if let Some(idx) = nodes_by_file_line_name.get(&key_tuple).copied() {
+                        node_idx = Some(idx);
+                        break;
+                    }
+                }
                 if let Some(node_idx) = node_idx {
                     let node = &mut nodes[node_idx];
                     node.metadata.attributes.insert("qualified_name".to_string(), sym.qualified_name.clone());
@@ -535,14 +532,6 @@ fn absolute_file_path(project_root: &Path, file_path: &Path) -> PathBuf {
         project_root.join(file_path)
     };
     normalize_path(&combined)
-}
-
-fn absolute_file_key(project_root: &Path, file_path: &Path) -> Option<String> {
-    Some(
-        absolute_file_path(project_root, file_path)
-            .to_string_lossy()
-            .to_string(),
-    )
 }
 
 fn relative_file_key(project_root: &Path, file_path: &Path) -> Option<String> {
@@ -653,6 +642,26 @@ impl<'a> LspPositionIndex<'a> {
     }
 }
 
+fn normalized_file_keys(project_root: &Path, file_path: &Path) -> Vec<String> {
+    let mut keys = Vec::new();
+    let normalized = normalize_path(file_path);
+    let normalized_str = normalized.to_string_lossy().to_string();
+    keys.push(normalized_str.clone());
+
+    if normalized.is_absolute() {
+        if let Some(rel) = normalized.strip_prefix(project_root).ok() {
+            keys.push(rel.to_string_lossy().to_string());
+        }
+    } else {
+        let abs = absolute_file_path(project_root, &normalized);
+        keys.push(abs.to_string_lossy().to_string());
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    keys.retain(|key| seen.insert(key.clone()));
+    keys
+}
+
 fn definition_edge_indices_by_file(
     project_root: &Path,
     nodes: &[CodeNode],
@@ -674,11 +683,8 @@ fn definition_edge_indices_by_file(
             continue;
         };
 
-        out.entry(file_key.clone()).or_default().push(idx);
-        if let Some(abs) = absolute_file_key(project_root, Path::new(file_key)) {
-            if abs != *file_key {
-                out.entry(abs).or_default().push(idx);
-            }
+        for key in normalized_file_keys(project_root, Path::new(file_key)) {
+            out.entry(key).or_default().push(idx);
         }
     }
 
@@ -721,7 +727,6 @@ pub fn decode_one_lsp_message(buffer: &[u8]) -> Result<Option<(String, usize)>> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     #[test]
     fn lsp_message_round_trips_through_framing() {
