@@ -85,6 +85,7 @@ pub struct LspEnrichmentStats {
 }
 
 /// Async LSP Client handle
+/// Manages the lifecycle of the LSP server process and concurrent request dispatch.
 #[derive(Clone)]
 pub struct LspClient {
     tx: mpsc::Sender<LspRequest>,
