@@ -1131,9 +1131,25 @@ async fn handle_index(
         ))?;
     }
 
+    let tier = index_tier.map(Into::into).unwrap_or(config.indexing.tier);
+    let tier_hint = match tier {
+        codegraph_core::config_manager::IndexingTier::Fast => {
+            "fast (speed-first: AST + core edges)"
+        }
+        codegraph_core::config_manager::IndexingTier::Balanced => {
+            "balanced (adds LSP symbols + enrichment)"
+        }
+        codegraph_core::config_manager::IndexingTier::Full => {
+            "full (max detail: LSP definitions + dataflow + architecture)"
+        }
+    };
+    multi_progress.println(format!(
+        "🧭 Indexing tier: {} — override with --index-tier or CODEGRAPH_INDEX_TIER",
+        tier_hint
+    ))?;
+
     // Configure indexer
     let languages_list = languages.clone().unwrap_or_default();
-    let tier = index_tier.map(Into::into).unwrap_or(config.indexing.tier);
     let indexer_config = IndexerConfig {
         languages: languages_list.clone(),
         exclude_patterns: exclude,

@@ -52,6 +52,11 @@ Indexing is tiered so you can choose between speed/storage and graph richness. T
 | `balanced` | LSP symbols + docs/enrichment + module linking | Good agentic results without full cost |
 | `full` | All analyzers + LSP definitions + dataflow + architecture | Maximum accuracy/richness |
 
+Tier behavior details:
+- `fast`: disables build context, LSP, enrichment, module linking, dataflow, docs/contracts, and architecture; filters out `Uses`/`References` edges.
+- `balanced`: enables build context, LSP symbols, enrichment, module linking, and docs/contracts; filters out `References` edges.
+- `full`: enables all analyzers and LSP definitions; no edge filtering.
+
 Configure the tier:
 - CLI: `codegraph index --index-tier balanced`
 - Env: `CODEGRAPH_INDEX_TIER=balanced`
