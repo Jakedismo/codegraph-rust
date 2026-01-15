@@ -455,7 +455,7 @@ mod tests {
         println!("Adaptive similarity result: {}", result);
 
         // Should be valid similarity score
-        assert!(result >= -1.0 && result <= 1.0);
+        assert!((-1.0..=1.0).contains(&result));
     }
 
     #[test]

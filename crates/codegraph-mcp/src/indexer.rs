@@ -1877,16 +1877,12 @@ impl ProjectIndexer {
                 (known_embeddings, unresolved_embeddings, node_degrees)
             };
             #[cfg(not(feature = "ai-enhanced"))]
-            let (symbol_embeddings, unresolved_embeddings, node_degrees): (
-                std::collections::HashMap<String, Vec<f32>>,
-                std::collections::HashMap<String, Vec<f32>>,
-                std::collections::HashMap<NodeId, i32>,
-            ) = {
+            let (symbol_embeddings, unresolved_embeddings, node_degrees) = {
                 info!("🚀 Pattern-only resolution: AI semantic matching disabled (ai-enhanced feature not enabled)");
                 (
-                    std::collections::HashMap::new(),
-                    std::collections::HashMap::new(),
-                    std::collections::HashMap::new(),
+                    std::collections::HashMap::<String, Vec<f32>>::new(),
+                    std::collections::HashMap::<String, Vec<f32>>::new(),
+                    std::collections::HashMap::<NodeId, i32>::new(),
                 )
             };
 

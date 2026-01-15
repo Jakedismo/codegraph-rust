@@ -8,14 +8,12 @@ use memmap2::{MmapMut, MmapOptions};
 use parking_lot::RwLock;
 use rkyv::api::high::HighValidator;
 use rkyv::{access, access_unchecked, Archive};
+use std::rc::Rc;
 use std::{
     fs::{File, OpenOptions},
     marker::PhantomData,
     path::Path,
-    sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 use tracing::{debug, instrument, trace, warn};
 
@@ -360,7 +358,7 @@ impl<'a> Drop for SharedMemoryWriter<'a> {
 
 /// Manager for multiple shared memory segments
 pub struct SharedMemoryManager {
-    segments: RwLock<std::collections::HashMap<String, Arc<SharedMemorySegment>>>,
+    segments: RwLock<std::collections::HashMap<String, Rc<SharedMemorySegment>>>,
     base_path: std::path::PathBuf,
 }
 
@@ -382,7 +380,7 @@ impl SharedMemoryManager {
         &self,
         name: &str,
         size: usize,
-    ) -> ZeroCopyResult<Arc<SharedMemorySegment>> {
+    ) -> ZeroCopyResult<Rc<SharedMemorySegment>> {
         let segment_path = self.base_path.join(format!("{}.shm", name));
 
         // Check if segment already exists in manager
@@ -400,7 +398,7 @@ impl SharedMemoryManager {
             SharedMemorySegment::create(&segment_path, size)?
         };
 
-        let segment = Arc::new(segment);
+        let segment = Rc::new(segment);
 
         // Store in manager
         {
@@ -477,13 +475,13 @@ impl SharedMemoryManager {
 
 /// Cross-process lock using shared memory
 pub struct SharedMemoryLock {
-    segment: Arc<SharedMemorySegment>,
+    segment: Rc<SharedMemorySegment>,
     lock_offset: usize,
 }
 
 impl SharedMemoryLock {
     /// Create a new shared memory lock
-    pub fn new(segment: Arc<SharedMemorySegment>, lock_offset: usize) -> Self {
+    pub fn new(segment: Rc<SharedMemorySegment>, lock_offset: usize) -> Self {
         Self {
             segment,
             lock_offset,
@@ -618,7 +616,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let segment_path = temp_dir.path().join("lock_test.shm");
 
-        let segment = Arc::new(SharedMemorySegment::create(&segment_path, 1024).unwrap());
+        let segment = Rc::new(SharedMemorySegment::create(&segment_path, 1024).unwrap());
         let lock = SharedMemoryLock::new(segment, 0);
 
         // Test lock acquisition

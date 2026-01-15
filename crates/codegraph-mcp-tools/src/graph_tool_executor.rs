@@ -892,10 +892,13 @@ mod tests {
                     inner: Arc::new(Mutex::new(Vec::new())),
                 }
             }
+        }
 
-            fn to_string(&self) -> String {
+        impl std::fmt::Display for BufferWriter {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let bytes = self.inner.lock().unwrap().clone();
-                String::from_utf8(bytes).unwrap()
+                let s = String::from_utf8(bytes).map_err(|_| std::fmt::Error)?;
+                write!(f, "{}", s)
             }
         }
 

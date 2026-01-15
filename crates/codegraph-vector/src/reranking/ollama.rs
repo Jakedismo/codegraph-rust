@@ -200,7 +200,7 @@ Scores:"#,
             let request_result = tokio::time::timeout(
                 self.timeout,
                 self.client
-                    .post(&format!("{}/api/chat", self.api_base))
+                    .post(format!("{}/api/chat", self.api_base))
                     .header("Content-Type", "application/json")
                     .json(&request)
                     .send(),
