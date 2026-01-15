@@ -107,10 +107,11 @@ fn test_auto_tuning() {
 
 #[test]
 fn test_validation_rules() {
-    let mut config = EmbeddingModelConfig::default();
-
+    let mut config = EmbeddingModelConfig {
+        dimension: 0,
+        ..EmbeddingModelConfig::default()
+    };
     // Test invalid dimension
-    config.dimension = 0;
     assert!(config.validate().is_err());
 
     config.dimension = 10000;

@@ -311,7 +311,7 @@ impl<'a> CppCollector<'a> {
                             code.metadata
                                 .attributes
                                 .insert("kind".into(), "destructor".into());
-                        } else if ctx.current_class.as_ref().map_or(false, |c| c == &name) {
+                        } else if ctx.current_class.as_ref() == Some(&name) {
                             code.metadata
                                 .attributes
                                 .insert("kind".into(), "constructor".into());

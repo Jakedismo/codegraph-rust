@@ -287,7 +287,7 @@ impl<'a> Collector<'a> {
                     code.metadata
                         .attributes
                         .insert("impl_for".into(), for_type.clone());
-                    
+
                     // Add reference to the 'for' type
                     if let Some(type_node) = node.child_by_field_name("type") {
                         self.edges.push(EdgeRelationship {
@@ -303,7 +303,7 @@ impl<'a> Collector<'a> {
                     code.metadata
                         .attributes
                         .insert("impl_trait".into(), trait_name.clone());
-                    
+
                     // Add reference to the trait
                     if let Some(trait_node) = node.child_by_field_name("trait") {
                         self.edges.push(EdgeRelationship {
@@ -371,7 +371,7 @@ impl<'a> Collector<'a> {
                     code.metadata
                         .attributes
                         .insert("lifetimes".into(), json!(lifetimes).to_string());
-                    
+
                     // REVOLUTIONARY: Extract references from parameters and return type
                     self.extract_references_from_signature(node, code.id);
 
@@ -539,11 +539,8 @@ impl<'a> Collector<'a> {
         if cursor.goto_first_child() {
             loop {
                 let n = cursor.node();
-                match n.kind() {
-                    "type_parameters" => {
-                        self.collect_type_parameters(n, &mut generics, &mut lifetimes);
-                    }
-                    _ => {}
+                if n.kind() == "type_parameters" {
+                    self.collect_type_parameters(n, &mut generics, &mut lifetimes);
                 }
                 if !cursor.goto_next_sibling() {
                     break;
@@ -854,7 +851,7 @@ fn parse_impl_signature_text(text: &str) -> ImplInfo {
     if let Some(idx) = s.find(" for ") {
         // trait impl
         let head = s.trim_start_matches("impl").trim();
-        let trait_part = head[..idx - 0].trim();
+        let trait_part = head[..idx].trim();
         let after_for = &s[idx + 5..];
         let ty = after_for.split('{').next().unwrap_or(after_for).trim();
         info.trait_name = Some(trait_part.to_string());

@@ -77,7 +77,7 @@ impl FileSystemWatcher {
         Ok(Self {
             watcher: None,
             file_registry: Arc::new(DashMap::new()),
-            language_registry: Arc::new(LanguageRegistry::new()),
+            language_registry: Arc::new(LanguageRegistry::default()),
             event_sender,
             event_receiver,
             watched_directories: Arc::new(RwLock::new(HashSet::new())),
@@ -556,10 +556,7 @@ impl FileSystemWatcher {
             Err(_) => {
                 // No immediate changes, wait a bit
                 tokio::time::sleep(Duration::from_millis(1)).await;
-                match self.event_receiver.try_recv() {
-                    Ok(change) => Some(change),
-                    Err(_) => None,
-                }
+                self.event_receiver.try_recv().ok()
             }
         }
     }

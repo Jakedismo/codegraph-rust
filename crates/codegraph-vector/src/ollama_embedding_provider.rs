@@ -164,7 +164,7 @@ impl OllamaEmbeddingProvider {
         let response = timeout(
             Duration::from_secs(5),
             self.client
-                .get(&format!("{}/api/tags", self.config.base_url))
+                .get(format!("{}/api/tags", self.config.base_url))
                 .send(),
         )
         .await
@@ -471,74 +471,9 @@ where
         }
     }
 
-    Ok(out
-        .into_iter()
+    out.into_iter()
         .map(|v| v.ok_or_else(|| CodeGraphError::Vector("Missing embedding result".to_string())))
-        .collect::<Result<Vec<_>>>()?)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn detects_context_overflow_messages() {
-        assert!(OllamaEmbeddingProvider::is_context_overflow_message(
-            "Ollama embedding API error: {\"error\":\"the input length exceeds the context length\"}"
-        ));
-        assert!(OllamaEmbeddingProvider::is_context_overflow_message(
-            "maximum context length exceeded"
-        ));
-    }
-
-    #[tokio::test]
-    async fn embed_resilient_with_splits_on_overflow_and_preserves_order() -> Result<()> {
-        let texts: Vec<String> = (0..10).map(|i| "x".repeat((i + 1) * 10)).collect();
-
-        // Fail when total chars in the request exceed 120.
-        let embed_once = |slice: &[String]| {
-            let lengths: Vec<usize> = slice.iter().map(|s| s.len()).collect();
-            async move {
-                let total: usize = lengths.iter().sum();
-                if total > 120 {
-                    return Err(CodeGraphError::External(
-                        "the input length exceeds the context length".to_string(),
-                    ));
-                }
-                Ok(lengths
-                    .into_iter()
-                    .map(|len| vec![len as f32])
-                    .collect::<Vec<_>>())
-            }
-        };
-
-        let embeddings = embed_resilient_with(&texts, embed_once).await?;
-        assert_eq!(embeddings.len(), texts.len());
-        for (i, emb) in embeddings.iter().enumerate() {
-            assert_eq!(emb.len(), 1);
-            assert_eq!(emb[0], texts[i].len() as f32);
-        }
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn embed_resilient_with_does_not_split_on_non_overflow_error() {
-        let texts: Vec<String> = (0..4).map(|_| "x".to_string()).collect();
-        let calls = std::sync::Arc::new(std::sync::Mutex::new(0usize));
-        let calls_clone = calls.clone();
-
-        let embed_once = move |_slice: &[String]| {
-            let calls_inner = calls_clone.clone();
-            async move {
-                *calls_inner.lock().unwrap() += 1;
-                Err(CodeGraphError::External("some other error".to_string()))
-            }
-        };
-
-        let res = embed_resilient_with(&texts, embed_once).await;
-        assert!(res.is_err());
-        assert_eq!(*calls.lock().unwrap(), 1);
-    }
+        .collect::<Result<Vec<_>>>()
 }
 
 #[async_trait]
@@ -689,8 +624,10 @@ pub fn create_ollama_provider() -> OllamaEmbeddingProvider {
 
 /// Create Ollama embedding provider with custom model
 pub fn create_ollama_provider_with_model(model_name: String) -> OllamaEmbeddingProvider {
-    let mut config = OllamaEmbeddingConfig::default();
-    config.model_name = model_name;
+    let config = OllamaEmbeddingConfig {
+        model_name,
+        ..Default::default()
+    };
     OllamaEmbeddingProvider::new(config)
 }
 
@@ -717,5 +654,69 @@ fn infer_dimension_for_model(model: &str) -> usize {
         1024
     } else {
         768
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_context_overflow_messages() {
+        assert!(OllamaEmbeddingProvider::is_context_overflow_message(
+            "Ollama embedding API error: {\"error\":\"the input length exceeds the context length\"}"
+        ));
+        assert!(OllamaEmbeddingProvider::is_context_overflow_message(
+            "maximum context length exceeded"
+        ));
+    }
+
+    #[tokio::test]
+    async fn embed_resilient_with_splits_on_overflow_and_preserves_order() -> Result<()> {
+        let texts: Vec<String> = (0..10).map(|i| "x".repeat((i + 1) * 10)).collect();
+
+        // Fail when total chars in the request exceed 120.
+        let embed_once = |slice: &[String]| {
+            let lengths: Vec<usize> = slice.iter().map(|s| s.len()).collect();
+            async move {
+                let total: usize = lengths.iter().sum();
+                if total > 120 {
+                    return Err(CodeGraphError::External(
+                        "the input length exceeds the context length".to_string(),
+                    ));
+                }
+                Ok(lengths
+                    .into_iter()
+                    .map(|len| vec![len as f32])
+                    .collect::<Vec<_>>())
+            }
+        };
+
+        let embeddings = embed_resilient_with(&texts, embed_once).await?;
+        assert_eq!(embeddings.len(), texts.len());
+        for (i, emb) in embeddings.iter().enumerate() {
+            assert_eq!(emb.len(), 1);
+            assert_eq!(emb[0], texts[i].len() as f32);
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn embed_resilient_with_does_not_split_on_non_overflow_error() {
+        let texts: Vec<String> = (0..4).map(|_| "x".to_string()).collect();
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(0usize));
+        let calls_clone = calls.clone();
+
+        let embed_once = move |_slice: &[String]| {
+            let calls_inner = calls_clone.clone();
+            async move {
+                *calls_inner.lock().unwrap() += 1;
+                Err(CodeGraphError::External("some other error".to_string()))
+            }
+        };
+
+        let res = embed_resilient_with(&texts, embed_once).await;
+        assert!(res.is_err());
+        assert_eq!(*calls.lock().unwrap(), 1);
     }
 }

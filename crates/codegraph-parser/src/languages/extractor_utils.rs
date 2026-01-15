@@ -57,7 +57,7 @@ pub fn children_by_kind<'a>(node: &Node<'a>, kind: &str) -> Vec<Node<'a>> {
 }
 
 /// Get text of a child by field name
-pub fn child_text_by_field<'a>(node: &Node, field_name: &str, content: &'a str) -> Option<String> {
+pub fn child_text_by_field(node: &Node, field_name: &str, content: &str) -> Option<String> {
     node.child_by_field_name(field_name)
         .map(|child| node_text(&child, content).to_string())
 }

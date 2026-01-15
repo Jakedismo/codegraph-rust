@@ -21,7 +21,7 @@ mod rag_integration_tests {
             content: Some(content.to_string().into()),
             embedding: None,
             location: Location {
-                file_path: "test.rs".to_string().into(),
+                file_path: "test.rs".to_string(),
                 line: 1,
                 column: 1,
                 end_line: None,

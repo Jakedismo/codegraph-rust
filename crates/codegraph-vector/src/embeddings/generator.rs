@@ -570,9 +570,9 @@ impl AdvancedEmbeddingGenerator {
             h = h.wrapping_mul(33).wrapping_add(b as u32);
         }
         let mut state = h;
-        for i in 0..dim {
+        for o in out.iter_mut() {
             state = state.wrapping_mul(1103515245).wrapping_add(12345);
-            out[i] = ((state as f32 / u32::MAX as f32) - 0.5) * 2.0;
+            *o = ((state as f32 / u32::MAX as f32) - 0.5) * 2.0;
         }
         let norm: f32 = out.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {

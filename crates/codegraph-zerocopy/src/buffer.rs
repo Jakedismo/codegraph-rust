@@ -468,7 +468,7 @@ impl BufferManager {
         let mut stats = self.stats.write();
         stats.total_requests += 1;
 
-        let buffer = if size <= 4096 {
+        if size <= 4096 {
             stats.small_requests += 1;
             self.small_pool.get()
         } else if size <= 65536 {
@@ -480,9 +480,7 @@ impl BufferManager {
         } else {
             stats.oversized_requests += 1;
             BytesMut::with_capacity(size)
-        };
-
-        buffer
+        }
     }
 
     /// Return a buffer to the appropriate pool

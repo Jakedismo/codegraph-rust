@@ -249,15 +249,17 @@ pub struct CodeGraphMCPServer {
     tool_router: ToolRouter<Self>,
 }
 
-#[tool_router]
-impl CodeGraphMCPServer {
-    pub fn new() -> Self {
+impl Default for CodeGraphMCPServer {
+    fn default() -> Self {
         Self {
             counter: Arc::new(Mutex::new(0)),
             tool_router: Self::tool_router(),
         }
     }
+}
 
+#[tool_router]
+impl CodeGraphMCPServer {
     // /// Increment counter with proper parameter schema (DISABLED - redundant for development)
     // #[tool(description = "Increment the counter by a specified amount")]
     // async fn increment(&self, params: Parameters<IncrementRequest>) -> Result<CallToolResult, McpError> {
@@ -450,7 +452,9 @@ impl CodeGraphMCPServer {
     }
 
     #[cfg(feature = "ai-enhanced")]
-    fn extract_pinpoint(item: &serde_json::Value) -> (Option<String>, Option<usize>, Option<String>) {
+    fn extract_pinpoint(
+        item: &serde_json::Value,
+    ) -> (Option<String>, Option<usize>, Option<String>) {
         let file_path = item
             .get("file_path")
             .and_then(|v| v.as_str())
@@ -473,7 +477,11 @@ impl CodeGraphMCPServer {
             .get("line_number")
             .and_then(|v| v.as_u64())
             .map(|n| n as usize)
-            .or_else(|| item.get("start_line").and_then(|v| v.as_u64()).map(|n| n as usize))
+            .or_else(|| {
+                item.get("start_line")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize)
+            })
             .or_else(|| {
                 item.get("location")
                     .and_then(|loc| loc.get("start_line"))
@@ -820,8 +828,10 @@ impl CodeGraphMCPServer {
         progress_notifier.notify_analyzing().await;
 
         // Detect agent architecture from environment (defaults to Rig)
-        let architecture = AgentArchitecture::parse(&std::env::var("CODEGRAPH_AGENT_ARCHITECTURE").unwrap_or_else(|_| "rig".to_string()))
-            .unwrap_or(AgentArchitecture::Rig);
+        let architecture = AgentArchitecture::parse(
+            &std::env::var("CODEGRAPH_AGENT_ARCHITECTURE").unwrap_or_else(|_| "rig".to_string()),
+        )
+        .unwrap_or(AgentArchitecture::Rig);
         tracing::info!("Using agent architecture: {:?}", architecture);
 
         let step_counter = Arc::new(AtomicUsize::new(0));
@@ -1056,9 +1066,9 @@ impl CodeGraphMCPServer {
         };
 
         let synthesized = structured_output.or_else(|| {
-            rig_traces
-                .as_deref()
-                .and_then(|t| Self::synthesize_structured_output_from_traces(analysis_type, &result.answer, t))
+            rig_traces.as_deref().and_then(|t| {
+                Self::synthesize_structured_output_from_traces(analysis_type, &result.answer, t)
+            })
         });
 
         // Format result as JSON with structured output if available
@@ -1134,18 +1144,16 @@ impl ServerHandler for CodeGraphMCPServer {
         }
     }
 
-    fn list_prompts(
+    async fn list_prompts(
         &self,
         _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<ListPromptsResult, McpError>> + Send + '_ {
-        async move {
-            Ok(ListPromptsResult {
-                prompts: vec![initial_instructions_prompt()],
-                next_cursor: None,
-                meta: None,
-            })
-        }
+    ) -> Result<ListPromptsResult, McpError> {
+        Ok(ListPromptsResult {
+            prompts: vec![initial_instructions_prompt()],
+            next_cursor: None,
+            meta: None,
+        })
     }
 
     fn get_prompt(

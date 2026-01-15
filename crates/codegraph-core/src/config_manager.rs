@@ -369,33 +369,20 @@ pub struct PerformanceConfig {
 }
 
 /// Indexing configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct IndexingConfig {
     /// Indexing tier: fast | balanced | full
     #[serde(default)]
     pub tier: IndexingTier,
 }
 
-impl Default for IndexingConfig {
-    fn default() -> Self {
-        Self {
-            tier: IndexingTier::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum IndexingTier {
+    #[default]
     Fast,
     Balanced,
     Full,
-}
-
-impl Default for IndexingTier {
-    fn default() -> Self {
-        IndexingTier::Fast
-    }
 }
 
 impl std::str::FromStr for IndexingTier {
@@ -1051,7 +1038,7 @@ mod tests {
     fn test_default_config() {
         let config = CodeGraphConfig::default();
         assert_eq!(config.embedding.provider, "auto");
-        assert_eq!(config.llm.enabled, false);
+        assert!(!config.llm.enabled);
         assert_eq!(config.llm.insights_mode, "context-only");
         assert_eq!(config.indexing.tier, IndexingTier::Fast);
     }

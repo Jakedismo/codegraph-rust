@@ -33,11 +33,13 @@ async fn watch_updates_file_metadata_on_change() -> Result<()> {
     let file_path = project_dir.path().join("foo.rs");
     fs::write(&file_path, "fn foo() {}\n").await?;
 
-    let mut config = IndexerConfig::default();
-    config.project_root = project_dir.path().to_path_buf();
-    config.languages = vec!["rust".to_string()];
-    config.recursive = true;
-    config.force_reindex = true;
+    let config = IndexerConfig {
+        project_root: project_dir.path().to_path_buf(),
+        languages: vec!["rust".to_string()],
+        recursive: true,
+        force_reindex: true,
+        ..Default::default()
+    };
 
     let global_config = CodeGraphConfig::default();
     let progress = MultiProgress::with_draw_target(ProgressDrawTarget::hidden());

@@ -20,15 +20,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for node in &nodes {
         rag_system.add_context(node.clone()).await?;
         println!(
-            "   Added: {} ({})",
+            "   Added: {} ({:?})",
             node.name,
-            format!("{:?}", node.node_type.as_ref().unwrap())
+            node.node_type.as_ref().unwrap()
         );
     }
 
     // Test queries
     println!("\n3. Testing RAG queries...");
-    let test_queries = vec![
+    let test_queries = [
         "How do I read files?",
         "Find functions that handle errors",
         "What are the async operations available?",

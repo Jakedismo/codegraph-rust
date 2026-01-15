@@ -155,8 +155,8 @@ pub struct OptimizerMetrics {
     pub gpu_utilization: Gauge,
 }
 
-impl OptimizerMetrics {
-    pub fn new() -> Self {
+impl Default for OptimizerMetrics {
+    fn default() -> Self {
         Self {
             inference_requests_total: register_int_counter!(
                 "cg_ai_inference_requests_total",
@@ -326,7 +326,7 @@ pub struct ModelOptimizer {
 
 impl ModelOptimizer {
     pub fn new(model: Arc<dyn InferenceModel>, thresholds: MonitoringThresholds) -> Result<Self> {
-        let metrics = OptimizerMetrics::new();
+        let metrics = OptimizerMetrics::default();
         let size = model.size_bytes().unwrap_or(0);
         metrics.model_size_bytes.set(size as f64);
         Ok(Self {

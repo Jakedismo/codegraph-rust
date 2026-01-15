@@ -124,7 +124,7 @@ impl ResponseGenerator {
         let validation_passed = if self.config.enable_answer_validation {
             let context_texts: Vec<&str> = selected_sources
                 .iter()
-                .filter_map(|s| Some(s.retrieval_result.context_snippet.as_str()))
+                .map(|s| s.retrieval_result.context_snippet.as_str())
                 .collect();
             self.validate_answer(&answer, query, &context_texts).await?
         } else {
@@ -340,15 +340,12 @@ impl ResponseGenerator {
             if let Some(ref node) = source.retrieval_result.node {
                 let part = if self.config.include_code_examples && node.content.is_some() {
                     format!(
-                        "{}. **{}** ({}): {}",
+                        "{}. **{}** ({:?}): {}",
                         i + 1,
                         node.name.as_str(),
-                        format!(
-                            "{:?}",
-                            node.node_type
-                                .as_ref()
-                                .unwrap_or(&codegraph_core::NodeType::Other("unknown".to_string()))
-                        ),
+                        node.node_type
+                            .as_ref()
+                            .unwrap_or(&codegraph_core::NodeType::Other("unknown".to_string())),
                         source.retrieval_result.context_snippet
                     )
                 } else {

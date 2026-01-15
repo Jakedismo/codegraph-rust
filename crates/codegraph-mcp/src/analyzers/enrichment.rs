@@ -17,7 +17,7 @@ pub struct EnrichmentStats {
 
 pub fn apply_basic_enrichment(
     project_root: &Path,
-    nodes: &mut Vec<CodeNode>,
+    nodes: &mut [CodeNode],
     edges: &mut Vec<EdgeRelationship>,
 ) -> Result<EnrichmentStats> {
     let mut stats = EnrichmentStats::default();
@@ -163,7 +163,7 @@ pub fn apply_basic_enrichment(
         if edge.metadata.get("analyzer").map(|v| v.as_str()) != Some("lsp_definition") {
             continue;
         }
-        
+
         // Count all LSP-resolved edges in the metric
         stats.uses_edges_derived += 1;
 
@@ -203,8 +203,6 @@ fn rust_doc_comment_block(lines: &[String], line_1based: u32) -> Option<String> 
         let trimmed = l.trim_start();
         if let Some(rest) = trimmed.strip_prefix("///") {
             collected.push(rest.trim_start().to_string());
-        } else if trimmed.is_empty() && !collected.is_empty() {
-            break;
         } else {
             break;
         }

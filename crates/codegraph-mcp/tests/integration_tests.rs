@@ -122,7 +122,7 @@ async fn test_mcp_server_startup() {
 async fn test_language_support_comprehensive() {
     println!("🌍 Testing comprehensive language support...");
 
-    let registry = codegraph_parser::LanguageRegistry::new();
+    let registry = codegraph_parser::LanguageRegistry::default();
 
     // Test all 11 supported languages
     let language_tests = vec![

@@ -208,10 +208,8 @@ pub fn find_tool_candidates_on_path(tool: &str, path_env: &str) -> Vec<PathBuf> 
     let mut out = Vec::new();
     for dir in std::env::split_paths(path_env) {
         let candidate = dir.join(tool);
-        if candidate.is_file() {
-            if !out.contains(&candidate) {
-                out.push(candidate);
-            }
+        if candidate.is_file() && !out.contains(&candidate) {
+            out.push(candidate);
         }
         #[cfg(windows)]
         {

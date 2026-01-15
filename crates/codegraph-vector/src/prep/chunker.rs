@@ -186,9 +186,8 @@ pub fn build_chunk_plan_with_sources(
             raw_chunks.extend(chunker.chunk(&segment));
         }
         let mut overlap_tail: Option<String> = None;
-        let mut chunk_idx = 0;
 
-        for chunk_text in raw_chunks {
+        for (chunk_idx, chunk_text) in raw_chunks.into_iter().enumerate() {
             let mut text = chunk_text;
 
             if let Some(tail) = &overlap_tail {
@@ -213,8 +212,6 @@ pub fn build_chunk_plan_with_sources(
                 file_path: node.location.file_path.clone(),
                 node_name: node.name.to_string(),
             });
-
-            chunk_idx += 1;
 
             // Capture tail for next chunk (approximate overlap using chars, UTF-8 safe)
             if config.overlap_tokens > 0 {

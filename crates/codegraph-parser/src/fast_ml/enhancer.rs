@@ -113,7 +113,7 @@ mod tests {
         };
 
         let enhanced = enhancer.enhance(result, content);
-        assert!(enhanced.edges.len() > 0, "Should add pattern-based edges");
+        assert!(!enhanced.edges.is_empty(), "Should add pattern-based edges");
     }
 
     #[test]
@@ -142,7 +142,7 @@ mod tests {
 
         let enhanced = enhancer.enhance(result, "fn foo() {}");
         assert!(
-            enhanced.edges.len() >= 1,
+            !enhanced.edges.is_empty(),
             "Symbol resolver should preserve/augment edges"
         );
     }
@@ -157,6 +157,6 @@ mod tests {
 
         let enhanced = enhance_extraction(result, content);
         // Should work without panicking
-        assert!(enhanced.nodes.len() > 0);
+        assert!(!enhanced.nodes.is_empty());
     }
 }

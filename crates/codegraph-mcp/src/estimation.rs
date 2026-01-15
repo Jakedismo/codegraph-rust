@@ -115,7 +115,7 @@ pub struct RepositoryEstimator {
 impl RepositoryEstimator {
     pub fn new(config: IndexerConfig) -> Self {
         Self {
-            parser: TreeSitterParser::new(),
+            parser: TreeSitterParser::default(),
             config,
         }
     }

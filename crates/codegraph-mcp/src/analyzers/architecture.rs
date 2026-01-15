@@ -32,9 +32,10 @@ pub fn analyze_architecture(
     nodes: &[CodeNode],
     edges: &mut Vec<EdgeRelationship>,
 ) -> Result<ArchitectureStats> {
-    let mut stats = ArchitectureStats::default();
-
-    stats.package_cycles_detected = count_package_cycles(nodes, edges);
+    let mut stats = ArchitectureStats {
+        package_cycles_detected: count_package_cycles(nodes, edges),
+        ..ArchitectureStats::default()
+    };
 
     let boundary = read_boundary_config(project_root).unwrap_or_default();
     if boundary.deny.is_empty() {
@@ -256,7 +257,7 @@ mod tests {
     #[test]
     fn cycle_detection_counts_sccs() {
         let dir = tempdir().expect("tempdir");
-        let nodes = vec![CodeNode::new_test(), CodeNode::new_test()];
+        let nodes = [CodeNode::new_test(), CodeNode::new_test()];
         let a = nodes[0].id;
         let b = nodes[1].id;
 

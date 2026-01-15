@@ -91,16 +91,11 @@ impl Default for SurrealDbConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DatabaseBackend {
+    #[default]
     SurrealDb,
-}
-
-impl Default for DatabaseBackend {
-    fn default() -> Self {
-        Self::SurrealDb
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]

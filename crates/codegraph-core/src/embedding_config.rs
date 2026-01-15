@@ -3,21 +3,16 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum EmbeddingProvider {
     OpenAI,
+    #[default]
     Local,
     Cohere,
     HuggingFace,
     Jina,
     Custom(String),
-}
-
-impl Default for EmbeddingProvider {
-    fn default() -> Self {
-        Self::Local
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -449,8 +444,10 @@ mod tests {
 
     #[test]
     fn test_config_validation() {
-        let mut config = EmbeddingModelConfig::default();
-        config.dimension = 0;
+        let mut config = EmbeddingModelConfig {
+            dimension: 0,
+            ..EmbeddingModelConfig::default()
+        };
         assert!(config.validate().is_err());
 
         config.dimension = 10000;

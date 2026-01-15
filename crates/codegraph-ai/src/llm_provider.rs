@@ -230,7 +230,7 @@ pub struct LLMResponse {
 impl LLMResponse {
     /// Check if the LLM wants to make tool calls
     pub fn has_tool_calls(&self) -> bool {
-        self.tool_calls.as_ref().map_or(false, |tc| !tc.is_empty())
+        self.tool_calls.as_ref().is_some_and(|tc| !tc.is_empty())
     }
 
     /// Check if this is a final response (no more tool calls needed)

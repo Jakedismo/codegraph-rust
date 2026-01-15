@@ -8,9 +8,6 @@ use tree_sitter::Parser;
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use tree_sitter_python;
-    use tree_sitter_rust;
-    use tree_sitter_typescript;
 
     #[test]
     fn test_full_rust_conversion() {

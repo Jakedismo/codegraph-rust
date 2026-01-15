@@ -177,7 +177,7 @@ impl<'a> GoCollector<'a> {
                     }
 
                     // Detect exported functions (capitalized)
-                    if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                    if name.chars().next().is_some_and(|c| c.is_uppercase()) {
                         code.metadata
                             .attributes
                             .insert("exported".into(), "true".into());
@@ -225,7 +225,7 @@ impl<'a> GoCollector<'a> {
                     }
 
                     // Detect exported methods
-                    if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                    if name.chars().next().is_some_and(|c| c.is_uppercase()) {
                         code.metadata
                             .attributes
                             .insert("exported".into(), "true".into());
@@ -379,7 +379,7 @@ impl<'a> GoCollector<'a> {
             code.span = Some(self.span_for(node));
 
             // Detect exported types
-            if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+            if name.chars().next().is_some_and(|c| c.is_uppercase()) {
                 code.metadata
                     .attributes
                     .insert("exported".into(), "true".into());

@@ -45,6 +45,8 @@ impl McpClientConfig {
     }
 }
 
+type NotifyHandler = RwLock<Option<Arc<dyn Fn(JsonRpcNotification) + Send + Sync>>>;
+
 /// Core MCP connection supporting JSON-RPC 2.0 and MCP handshake
 pub struct McpConnection {
     #[allow(dead_code)]
@@ -55,7 +57,7 @@ pub struct McpConnection {
     protocol: RwLock<McpProtocol>,
     pending: DashMap<String, oneshot::Sender<JsonRpcMessage>>, // request_id -> tx
     in_flight: AtomicU64,
-    notify_handler: RwLock<Option<Arc<dyn Fn(JsonRpcNotification) + Send + Sync>>>,
+    notify_handler: NotifyHandler,
 }
 
 impl McpConnection {

@@ -187,7 +187,7 @@ impl AstToGraphConverter {
                 });
             }
 
-            if content.contains(&format!("{}", other_name))
+            if content.contains(&other_name.to_string())
                 && matches!(
                     other_entity.node.node_type,
                     Some(NodeType::Variable)
@@ -232,31 +232,31 @@ impl AstToGraphConverter {
                     }
                 }
             }
-        } else if matches!(self.language, Language::TypeScript | Language::JavaScript) {
-            if content.contains("extends ") || content.contains("implements ") {
-                for other_entity in &self.entities {
-                    if content.contains(&format!("extends {}", other_entity.symbol_name)) {
-                        self.relationships.push(SemanticRelationship {
-                            from: entity.node.id,
-                            to: other_entity.node.id,
-                            edge_type: EdgeType::Extends,
-                            context: format!(
-                                "Class {} extends {}",
-                                entity.symbol_name, other_entity.symbol_name
-                            ),
-                        });
-                    }
-                    if content.contains(&format!("implements {}", other_entity.symbol_name)) {
-                        self.relationships.push(SemanticRelationship {
-                            from: entity.node.id,
-                            to: other_entity.node.id,
-                            edge_type: EdgeType::Implements,
-                            context: format!(
-                                "Class {} implements {}",
-                                entity.symbol_name, other_entity.symbol_name
-                            ),
-                        });
-                    }
+        } else if matches!(self.language, Language::TypeScript | Language::JavaScript)
+            && (content.contains("extends ") || content.contains("implements "))
+        {
+            for other_entity in &self.entities {
+                if content.contains(&format!("extends {}", other_entity.symbol_name)) {
+                    self.relationships.push(SemanticRelationship {
+                        from: entity.node.id,
+                        to: other_entity.node.id,
+                        edge_type: EdgeType::Extends,
+                        context: format!(
+                            "Class {} extends {}",
+                            entity.symbol_name, other_entity.symbol_name
+                        ),
+                    });
+                }
+                if content.contains(&format!("implements {}", other_entity.symbol_name)) {
+                    self.relationships.push(SemanticRelationship {
+                        from: entity.node.id,
+                        to: other_entity.node.id,
+                        edge_type: EdgeType::Implements,
+                        context: format!(
+                            "Class {} implements {}",
+                            entity.symbol_name, other_entity.symbol_name
+                        ),
+                    });
                 }
             }
         }
@@ -543,8 +543,8 @@ impl AstToGraphConverter {
     }
 
     fn node_text(&self, node: &Node) -> SharedStr {
-        let start = node.start_byte() as usize;
-        let end = node.end_byte() as usize;
+        let start = node.start_byte();
+        let end = node.end_byte();
         SharedStr::from_arc_slice(self.source_bytes.clone(), start, end)
     }
 

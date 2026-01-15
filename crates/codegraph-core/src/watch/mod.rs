@@ -1514,9 +1514,8 @@ mod tests {
         let mut evs: Vec<ChangeEvent> = Vec::new();
         let deadline = Instant::now() + Duration::from_millis(300);
         while Instant::now() < deadline {
-            match rx.recv_timeout(Duration::from_millis(40)) {
-                Ok(ev) => evs.push(ev),
-                Err(_) => {}
+            if let Ok(ev) = rx.recv_timeout(Duration::from_millis(40)) {
+                evs.push(ev)
             }
         }
         let b_triggered = evs
@@ -1654,9 +1653,8 @@ mod tests {
         let mut evs: Vec<ChangeEvent> = Vec::new();
         let deadline = Instant::now() + Duration::from_millis(350);
         while Instant::now() < deadline {
-            match rx.recv_timeout(Duration::from_millis(40)) {
-                Ok(ev) => evs.push(ev),
-                Err(_) => {}
+            if let Ok(ev) = rx.recv_timeout(Duration::from_millis(40)) {
+                evs.push(ev)
             }
         }
         let b_tr = evs
@@ -1699,9 +1697,8 @@ mod tests {
         let mut evs: Vec<ChangeEvent> = Vec::new();
         let deadline = Instant::now() + Duration::from_millis(300);
         while Instant::now() < deadline {
-            match rx.recv_timeout(Duration::from_millis(40)) {
-                Ok(ev) => evs.push(ev),
-                Err(_) => {}
+            if let Ok(ev) = rx.recv_timeout(Duration::from_millis(40)) {
+                evs.push(ev)
             }
         }
         let lib_tr = evs

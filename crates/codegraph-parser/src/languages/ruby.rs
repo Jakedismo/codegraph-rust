@@ -41,8 +41,10 @@ impl RubyExtractor {
             || file_path.contains("/config/")
             || file_path.contains("/db/migrate");
 
-        let mut ctx = RubyContext::default();
-        ctx.is_rails_file = is_rails;
+        let ctx = RubyContext {
+            is_rails_file: is_rails,
+            ..Default::default()
+        };
 
         collector.walk(&mut cursor, ctx);
         collector.into_nodes()
@@ -58,8 +60,10 @@ impl RubyExtractor {
             || file_path.contains("/config/")
             || file_path.contains("/db/migrate");
 
-        let mut ctx = RubyContext::default();
-        ctx.is_rails_file = is_rails;
+        let ctx = RubyContext {
+            is_rails_file: is_rails,
+            ..Default::default()
+        };
 
         collector.walk(&mut cursor, ctx);
         collector.into_result()
@@ -222,16 +226,15 @@ impl<'a> RubyCollector<'a> {
                         && ctx
                             .current_class
                             .as_ref()
-                            .map_or(false, |c| c.ends_with("Controller"))
-                    {
-                        if matches!(
+                            .is_some_and(|c| c.ends_with("Controller"))
+                        && matches!(
                             name.as_str(),
                             "index" | "show" | "new" | "create" | "edit" | "update" | "destroy"
-                        ) {
-                            code.metadata
-                                .attributes
-                                .insert("rails_action".into(), "true".into());
-                        }
+                        )
+                    {
+                        code.metadata
+                            .attributes
+                            .insert("rails_action".into(), "true".into());
                     }
 
                     // Detect metaprogramming patterns

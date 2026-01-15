@@ -213,9 +213,7 @@ fn module_key(project_root: &Path, file_path: &Path, language: &Language) -> Opt
         Language::Go => "go",
         Language::Java => "java",
         Language::Cpp => "cpp",
-        other => match other {
-            _ => return None,
-        },
+        _other => return None,
     };
     if *language != Language::Rust {
         return Some(format!("module::{}::{}", lang, s));
@@ -265,7 +263,8 @@ fn canonical_import_target(
 
     let spec = spec.trim();
     if *language == Language::Rust {
-        if let Some(resolved) = resolve_rust_import(project_root, from_file, spec, known_module_keys)
+        if let Some(resolved) =
+            resolve_rust_import(project_root, from_file, spec, known_module_keys)
         {
             return resolved;
         }

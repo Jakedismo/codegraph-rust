@@ -319,7 +319,7 @@ impl ContextRetriever {
             else if node
                 .content
                 .as_ref()
-                .map_or(false, |c| c.to_lowercase().contains(&keyword_lower))
+                .is_some_and(|c| c.to_lowercase().contains(&keyword_lower))
             {
                 matches += 1;
                 total_weight += 2.0;

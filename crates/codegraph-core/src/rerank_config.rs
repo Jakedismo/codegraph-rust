@@ -4,7 +4,7 @@ use anyhow::Result;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RerankProvider {
     /// Jina AI reranking API (jina-reranker-v3)
@@ -12,13 +12,8 @@ pub enum RerankProvider {
     /// Ollama chat-based reranking (e.g., Qwen3-Reranker)
     Ollama,
     /// No reranking (use HNSW scores directly)
+    #[default]
     None,
-}
-
-impl Default for RerankProvider {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl std::fmt::Display for RerankProvider {
@@ -262,9 +257,11 @@ mod tests {
 
     #[test]
     fn test_config_validation() {
-        let mut config = RerankConfig::default();
-        config.provider = RerankProvider::Jina;
-        config.jina = None;
+        let mut config = RerankConfig {
+            provider: RerankProvider::Jina,
+            jina: None,
+            ..RerankConfig::default()
+        };
         assert!(config.validate().is_err());
 
         config.provider = RerankProvider::Ollama;

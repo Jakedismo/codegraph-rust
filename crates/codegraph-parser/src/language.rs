@@ -13,8 +13,8 @@ pub struct LanguageRegistry {
     configs: HashMap<Language, LanguageConfig>,
 }
 
-impl LanguageRegistry {
-    pub fn new() -> Self {
+impl Default for LanguageRegistry {
+    fn default() -> Self {
         let mut configs = HashMap::new();
 
         configs.insert(
@@ -125,7 +125,9 @@ impl LanguageRegistry {
 
         Self { configs }
     }
+}
 
+impl LanguageRegistry {
     pub fn detect_language(&self, file_path: &str) -> Option<Language> {
         let extension = std::path::Path::new(file_path).extension()?.to_str()?;
 
@@ -157,7 +159,7 @@ mod tests {
 
     #[test]
     fn registered_languages_use_supported_versions() {
-        let registry = LanguageRegistry::new();
+        let registry = LanguageRegistry::default();
         for (language, config) in &registry.configs {
             let version = config.language.abi_version();
             assert!(

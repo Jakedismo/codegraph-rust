@@ -14,6 +14,8 @@ const TOKEN_SAFETY_MARGIN: f32 = 0.85; // Use 85% of limit to be safe
 const SAFE_MCP_OUTPUT_TOKENS: usize =
     ((MCP_MAX_OUTPUT_TOKENS as f32) * TOKEN_SAFETY_MARGIN) as usize;
 
+const _: () = assert!(SAFE_MCP_OUTPUT_TOKENS < MCP_MAX_OUTPUT_TOKENS);
+
 /// Context window tiers for different model capabilities
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContextTier {
@@ -208,7 +210,7 @@ mod tests {
     #[test]
     fn test_mcp_output_limit() {
         // Ensure we're under 52K with safety margin
-        assert!(SAFE_MCP_OUTPUT_TOKENS < MCP_MAX_OUTPUT_TOKENS);
+        const _: () = assert!(SAFE_MCP_OUTPUT_TOKENS < MCP_MAX_OUTPUT_TOKENS);
         assert_eq!(SAFE_MCP_OUTPUT_TOKENS, 44_200); // 85% of 52K
     }
 }

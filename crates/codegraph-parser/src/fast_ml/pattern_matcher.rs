@@ -300,7 +300,7 @@ mod tests {
         let enhanced = matcher.enhance_extraction(result, content);
         println!("Edges: {:?}", enhanced.edges.len());
         assert!(
-            enhanced.edges.len() > 0,
+            !enhanced.edges.is_empty(),
             "Should have found Rust patterns in content"
         );
     }

@@ -307,9 +307,9 @@ impl QueryProcessor {
                 let hash = simple_hash(&query);
                 let mut rng_state = hash;
 
-                for i in 0..dimension {
+                for e in embedding.iter_mut() {
                     rng_state = rng_state.wrapping_mul(1103515245).wrapping_add(12345);
-                    embedding[i] = ((rng_state as f32 / u32::MAX as f32) - 0.5) * 2.0;
+                    *e = ((rng_state as f32 / u32::MAX as f32) - 0.5) * 2.0;
                 }
 
                 // Normalize embedding

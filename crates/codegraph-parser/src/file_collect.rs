@@ -129,11 +129,7 @@ pub fn collect_source_files_with_config(
         filtered_files += 1;
 
         // Size extraction (best-effort)
-        let size = dent
-            .metadata()
-            .ok()
-            .and_then(|m| Some(m.len()))
-            .unwrap_or(0);
+        let size = dent.metadata().ok().map(|m| m.len()).unwrap_or(0);
 
         paths.push((path.to_path_buf(), size));
     }

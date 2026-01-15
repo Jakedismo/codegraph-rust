@@ -733,7 +733,7 @@ async fn handle_start(
             }
 
             // Create and initialize the revolutionary CodeGraph server with official SDK
-            let server = CodeGraphMCPServer::new();
+            let server = CodeGraphMCPServer::default();
 
             if atty::is(Stream::Stderr) {
                 eprintln!(
@@ -990,12 +990,10 @@ async fn handle_start(
         }
     }
 
-    if daemon {
-        if atty::is(Stream::Stdout) {
-            println!("Running in daemon mode");
-            if let Some(ref pid_file) = pid_file {
-                println!("PID file: {:?}", pid_file);
-            }
+    if daemon && atty::is(Stream::Stdout) {
+        println!("Running in daemon mode");
+        if let Some(ref pid_file) = pid_file {
+            println!("PID file: {:?}", pid_file);
         }
     }
 
@@ -1009,10 +1007,8 @@ async fn handle_stop(pid_file: Option<PathBuf>, force: bool) -> Result<()> {
 
     let manager = ProcessManager::new();
 
-    if force {
-        if atty::is(Stream::Stdout) {
-            println!("Force stopping server");
-        }
+    if force && atty::is(Stream::Stdout) {
+        println!("Force stopping server");
     }
 
     manager.stop_server(pid_file, force).await?;
@@ -1824,7 +1820,7 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
             println!("Set {} = {}", key.yellow(), value.green());
         }
         ConfigAction::Get { key } => {
-            println!("{}: {}", key, "value");
+            println!("{}: value", key);
         }
         ConfigAction::Reset { yes } => {
             if !yes {
@@ -2311,27 +2307,6 @@ async fn handle_daemon_start(
     Ok(())
 }
 
-#[cfg(test)]
-mod cli_command_tests {
-    use super::*;
-    use clap::CommandFactory;
-
-    #[test]
-    fn removed_subcommands_are_absent() {
-        let cmd = Cli::command();
-        let names: Vec<_> = cmd
-            .get_subcommands()
-            .map(|s| s.get_name().to_string())
-            .collect();
-        for removed in ["stats", "clean", "perf", "code", "test", "init"] {
-            assert!(
-                !names.iter().any(|n| n == removed),
-                "unexpected subcommand still present: {removed}"
-            );
-        }
-    }
-}
-
 #[cfg(feature = "daemon")]
 async fn handle_daemon_stop(path: PathBuf) -> Result<()> {
     use nix::sys::signal::{kill, Signal};
@@ -2428,4 +2403,25 @@ async fn handle_daemon_status(path: PathBuf, json: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod cli_command_tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn removed_subcommands_are_absent() {
+        let cmd = Cli::command();
+        let names: Vec<_> = cmd
+            .get_subcommands()
+            .map(|s| s.get_name().to_string())
+            .collect();
+        for removed in ["stats", "clean", "perf", "code", "test", "init"] {
+            assert!(
+                !names.iter().any(|n| n == removed),
+                "unexpected subcommand still present: {removed}"
+            );
+        }
+    }
 }

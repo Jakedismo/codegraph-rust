@@ -274,7 +274,7 @@ impl GraphToolExecutor {
     /// Generate a cache key from project, tool name, and parameters
     fn cache_key(project_id: &str, tool_name: &str, parameters: &JsonValue) -> String {
         // Create deterministic key from project + function name + serialized params
-        format!("{}:{}:{}", project_id, tool_name, parameters.to_string())
+        format!("{}:{}:{}", project_id, tool_name, parameters)
     }
 
     /// Execute a tool call from LLM
@@ -350,9 +350,10 @@ impl GraphToolExecutor {
                         .await?
                 }
                 _ => {
-                    return Err(
-                        McpError::Protocol(format!("Tool not implemented: {}", tool_name)).into(),
-                    );
+                    return Err(McpError::Protocol(format!(
+                        "Tool not implemented: {}",
+                        tool_name
+                    )));
                 }
             };
 
@@ -892,7 +893,7 @@ mod tests {
                 }
             }
 
-            fn into_string(&self) -> String {
+            fn to_string(&self) -> String {
                 let bytes = self.inner.lock().unwrap().clone();
                 String::from_utf8(bytes).unwrap()
             }
@@ -934,6 +935,6 @@ mod tests {
 
         with_default(subscriber, f);
 
-        writer.into_string()
+        writer.to_string()
     }
 }

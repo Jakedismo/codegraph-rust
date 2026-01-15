@@ -3,20 +3,15 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PerformanceMode {
     HighAccuracy,
+    #[default]
     Balanced,
     HighSpeed,
     UltraFast,
     Custom,
-}
-
-impl Default for PerformanceMode {
-    fn default() -> Self {
-        Self::Balanced
-    }
 }
 
 impl PerformanceMode {

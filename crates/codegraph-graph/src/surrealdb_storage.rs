@@ -474,7 +474,8 @@ impl SurrealDbStorage {
         let metadata = if node.metadata.attributes.is_empty() {
             None
         } else {
-            let metadata_json = serde_json::to_value(&node.metadata.attributes).unwrap_or(JsonValue::Null);
+            let metadata_json =
+                serde_json::to_value(&node.metadata.attributes).unwrap_or(JsonValue::Null);
             let compressed = codegraph_core::compress_json(&metadata_json);
             Some(JsonValue::String(compressed))
         };
@@ -502,9 +503,10 @@ impl SurrealDbStorage {
 
         let embedding_model = node.metadata.attributes.get("embedding_model").cloned();
 
-        let content = node.content.as_ref().map(|c| {
-            codegraph_core::compress_to_string(&c)
-        });
+        let content = node
+            .content
+            .as_ref()
+            .map(|c| codegraph_core::compress_to_string(c));
 
         Ok(SurrealNodeRecord {
             id: node.id.to_string(),
@@ -848,7 +850,7 @@ impl SurrealDbStorage {
         let content = data
             .get("content")
             .and_then(|v| v.as_str())
-            .map(|s| SharedStr::from(s));
+            .map(SharedStr::from);
 
         let file_path = data.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -1990,7 +1992,7 @@ impl ChunkEmbeddingRecord {
         project_id: &str,
     ) -> Self {
         let embedding_vec: Vec<f64> = embedding.iter().map(|&f| f as f64).collect();
-        
+
         // Use Base64 encoding for compression to satisfy String type
         let text_val = codegraph_core::compress_to_string(&text);
 
@@ -2269,7 +2271,7 @@ fn truncate_surreal_error(e: &SurrealError) -> String {
     let mut msg = e.to_string();
     if msg.len() > MAX_LEN {
         msg.truncate(MAX_LEN);
-        msg.push_str("…");
+        msg.push('…');
     }
     msg
 }

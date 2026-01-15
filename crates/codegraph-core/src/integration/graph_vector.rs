@@ -229,9 +229,9 @@ impl SnippetExtractor {
 
 /// Maintains a vector index synced with the code graph and provides semantic search returning graph nodes.
 pub struct GraphVectorIntegrator {
-    graph: Arc<dyn GraphStore>,
-    vector: Arc<Mutex<Box<dyn VectorStore + Send>>>,
-    embedder: Arc<dyn EmbeddingService>,
+    graph: Arc<dyn GraphStore + Send + Sync>,
+    vector: Arc<Mutex<Box<dyn VectorStore + Send + Sync>>>,
+    embedder: Arc<dyn EmbeddingService + Send + Sync>,
     extractor: SnippetExtractor,
     // Track node signatures for incremental updates
     signatures: DashMap<NodeId, u64>,
@@ -239,9 +239,9 @@ pub struct GraphVectorIntegrator {
 
 impl GraphVectorIntegrator {
     pub fn new(
-        graph: Arc<dyn GraphStore>,
-        vector: Box<dyn VectorStore + Send>,
-        embedder: Arc<dyn EmbeddingService>,
+        graph: Arc<dyn GraphStore + Send + Sync>,
+        vector: Box<dyn VectorStore + Send + Sync>,
+        embedder: Arc<dyn EmbeddingService + Send + Sync>,
     ) -> Self {
         Self {
             graph,
@@ -485,7 +485,7 @@ mod tests {
                 .embs
                 .iter()
                 .map(|kv| {
-                    let s = cosine(&kv.value(), query_embedding);
+                    let s = cosine(kv.value(), query_embedding);
                     (*kv.key(), s)
                 })
                 .collect();

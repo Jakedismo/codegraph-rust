@@ -43,8 +43,10 @@ impl PhpExtractor {
             || file_path.contains("Controller.php")
             || file_path.contains("Model.php");
 
-        let mut ctx = PhpContext::default();
-        ctx.is_framework_file = is_framework;
+        let ctx = PhpContext {
+            is_framework_file: is_framework,
+            ..Default::default()
+        };
 
         collector.walk(&mut cursor, ctx);
         collector.into_nodes()
@@ -61,8 +63,10 @@ impl PhpExtractor {
             || file_path.contains("Controller.php")
             || file_path.contains("Model.php");
 
-        let mut ctx = PhpContext::default();
-        ctx.is_framework_file = is_framework;
+        let ctx = PhpContext {
+            is_framework_file: is_framework,
+            ..Default::default()
+        };
 
         collector.walk(&mut cursor, ctx);
         collector.into_result()

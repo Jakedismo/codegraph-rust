@@ -49,18 +49,20 @@ pub struct TreeSitterParser {
     parser_pool: Arc<parking_lot::Mutex<Vec<HashMap<Language, Parser>>>>,
 }
 
-impl TreeSitterParser {
-    pub fn new() -> Self {
+impl Default for TreeSitterParser {
+    fn default() -> Self {
         let num_cpus = num_cpus::get();
         Self {
-            registry: Arc::new(LanguageRegistry::new()),
+            registry: Arc::new(LanguageRegistry::default()),
             max_concurrent_files: num_cpus * 2,
             chunk_size: 50,
             parsed_cache: Arc::new(dashmap::DashMap::new()),
             parser_pool: Arc::new(parking_lot::Mutex::new(Vec::new())),
         }
     }
+}
 
+impl TreeSitterParser {
     pub fn with_concurrency(mut self, max_concurrent_files: usize) -> Self {
         self.max_concurrent_files = max_concurrent_files;
         self
@@ -318,10 +320,8 @@ impl TreeSitterParser {
 
     async fn parse_file_with_caching(&self, file_path: &str) -> Result<(Vec<CodeNode>, usize)> {
         let path = Path::new(file_path);
-        let metadata = fs::metadata(path)
-            .await
-            .map_err(|e| CodeGraphError::Io(e))?;
-        let last_modified = metadata.modified().map_err(|e| CodeGraphError::Io(e))?;
+        let metadata = fs::metadata(path).await.map_err(CodeGraphError::Io)?;
+        let last_modified = metadata.modified().map_err(CodeGraphError::Io)?;
 
         // Check cache first
         if let Some(cached) = self.parsed_cache.get(file_path) {
@@ -350,7 +350,7 @@ impl TreeSitterParser {
                     .registry
                     .detect_language(file_path)
                     .unwrap_or(Language::Other("unknown".to_string()));
-                let content_hash = format!("{:x}", sha2::Sha256::digest(&content));
+                let content_hash = format!("{:x}", sha2::Sha256::digest(content));
 
                 // Enable tree caching for better performance
                 let cached_tree = if content.len() < 500_000 {
@@ -359,13 +359,11 @@ impl TreeSitterParser {
                     if let Ok((nodes, _, _)) = &result {
                         if !nodes.is_empty() {
                             // Parse again just for caching (small performance cost for future gains)
-                            let mut cache_parser = self
-                                .registry
-                                .create_parser(&language)
-                                .unwrap_or_else(|| tree_sitter::Parser::new());
+                            let mut cache_parser =
+                                self.registry.create_parser(&language).unwrap_or_default();
                             if let Some(config) = self.registry.get_config(&language) {
                                 if cache_parser.set_language(&config.language).is_ok() {
-                                    cache_parser.parse(&content, None)
+                                    cache_parser.parse(content, None)
                                 } else {
                                     None
                                 }
@@ -409,7 +407,7 @@ impl TreeSitterParser {
 
         let content = read_file_to_string(file_path)
             .await
-            .map_err(|e| CodeGraphError::Io(e))?;
+            .map_err(CodeGraphError::Io)?;
 
         let line_count = content.lines().count();
         let nodes = self
@@ -783,7 +781,7 @@ impl TreeSitterParser {
 
         let content = read_file_to_string(file_path)
             .await
-            .map_err(|e| CodeGraphError::Io(e))?;
+            .map_err(CodeGraphError::Io)?;
 
         self.parse_content_with_unified_extraction(&content, file_path, language)
             .await
@@ -822,11 +820,8 @@ impl TreeSitterParser {
                     }
                 }
 
-                found_parser.unwrap_or_else(|| {
-                    registry
-                        .create_parser(&language)
-                        .unwrap_or_else(|| tree_sitter::Parser::new())
-                })
+                found_parser
+                    .unwrap_or_else(|| registry.create_parser(&language).unwrap_or_default())
             };
 
             // Ensure parser has correct language set

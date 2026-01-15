@@ -447,8 +447,8 @@ async fn test_semantic_search_nodes_via_chunks() {
     let mut unique_node_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for (i, result) in results.iter().enumerate() {
-        let has_content = result.get("content").map_or(false, |c| !c.is_null());
-        let has_node_id = result.get("node_id").map_or(false, |n| !n.is_null());
+        let has_content = result.get("content").is_some_and(|c| !c.is_null());
+        let has_node_id = result.get("node_id").is_some_and(|n| !n.is_null());
         let has_outgoing = result.get("outgoing_edges").is_some();
         let has_incoming = result.get("incoming_edges").is_some();
 

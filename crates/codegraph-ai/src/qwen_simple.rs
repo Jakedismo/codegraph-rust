@@ -126,7 +126,7 @@ impl QwenClient {
         let response = timeout(
             self.config.timeout,
             self.client()?
-                .post(&format!("{}/api/generate", self.config.base_url))
+                .post(format!("{}/api/generate", self.config.base_url))
                 .json(&request)
                 .send(),
         )
@@ -188,7 +188,7 @@ impl QwenClient {
         let response = timeout(
             Duration::from_secs(5),
             self.client()?
-                .get(&format!("{}/api/tags", self.config.base_url))
+                .get(format!("{}/api/tags", self.config.base_url))
                 .send(),
         )
         .await
@@ -285,7 +285,7 @@ impl LLMProvider for QwenClient {
         let response = timeout(
             self.config.timeout,
             self.client()?
-                .post(&format!("{}/api/generate", self.config.base_url))
+                .post(format!("{}/api/generate", self.config.base_url))
                 .json(&request)
                 .send(),
         )

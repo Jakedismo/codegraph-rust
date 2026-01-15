@@ -203,9 +203,7 @@ pub(crate) fn filter_edges_for_tier(
             edges.retain(|edge| !matches!(edge.edge_type, EdgeType::References));
         }
         codegraph_core::config_manager::IndexingTier::Fast => {
-            edges.retain(|edge| {
-                !matches!(edge.edge_type, EdgeType::Uses | EdgeType::References)
-            });
+            edges.retain(|edge| !matches!(edge.edge_type, EdgeType::Uses | EdgeType::References));
         }
     }
     before.saturating_sub(edges.len())
@@ -685,7 +683,7 @@ impl ProjectIndexer {
             }
         }
 
-        let parser = TreeSitterParser::new();
+        let parser = TreeSitterParser::default();
         let project_root = config.project_root.clone();
         let (surreal, surreal_pool) = Self::connect_surreal_from_env().await?;
         let surreal_writer = SurrealWriterHandle::new(surreal_pool);
@@ -978,10 +976,11 @@ impl ProjectIndexer {
         let analyzer_settings = AnalyzerSettings::for_tier(self.config.indexing_tier);
         let path_env = std::env::var("PATH").unwrap_or_default();
         let mut analyzer_languages: HashSet<codegraph_core::Language> = HashSet::new();
-        let needs_language_scan =
-            analyzer_settings.lsp_enabled() || analyzer_settings.build_context || analyzer_settings.dataflow;
+        let needs_language_scan = analyzer_settings.lsp_enabled()
+            || analyzer_settings.build_context
+            || analyzer_settings.dataflow;
         if needs_language_scan {
-            let registry = codegraph_parser::LanguageRegistry::new();
+            let registry = codegraph_parser::LanguageRegistry::default();
             for (p, _) in &files_to_index {
                 if let Some(lang) = registry.detect_language(&p.to_string_lossy()) {
                     analyzer_languages.insert(lang);
@@ -1106,8 +1105,7 @@ impl ProjectIndexer {
             let start = std::time::Instant::now();
             info!(
                 "🧠 Language-server analysis starting (mode: {}, languages: {:?})",
-                lsp_mode_label,
-                analyzer_languages
+                lsp_mode_label, analyzer_languages
             );
 
             let project_root = self.project_root.clone();
@@ -1117,7 +1115,7 @@ impl ProjectIndexer {
                 codegraph_core::Language,
                 Vec<PathBuf>,
             > = std::collections::HashMap::new();
-            let registry = codegraph_parser::LanguageRegistry::new();
+            let registry = codegraph_parser::LanguageRegistry::default();
             for (p, _) in &files {
                 if let Some(lang) = registry.detect_language(&p.to_string_lossy()) {
                     language_files.entry(lang).or_default().push(p.clone());
@@ -1280,7 +1278,8 @@ impl ProjectIndexer {
         }
 
         let mut dataflow_stats = crate::analyzers::dataflow::DataflowStats::default();
-        if analyzer_settings.dataflow && analyzer_languages.contains(&codegraph_core::Language::Rust)
+        if analyzer_settings.dataflow
+            && analyzer_languages.contains(&codegraph_core::Language::Rust)
         {
             let start = std::time::Instant::now();
             info!("🌊 Dataflow enrichment starting (local def-use)");
@@ -1785,7 +1784,7 @@ impl ProjectIndexer {
             info!("   🚀 M4 Max optimization: Parallel processing with bulk database operations");
 
             // REVOLUTIONARY: Parallel symbol resolution optimized for M4 Max 128GB
-            let chunk_size = (edges.len() / 12).max(100).min(1000); // Optimal for 12+ cores
+            let chunk_size = (edges.len() / 12).clamp(100, 1000); // Optimal for 12+ cores
             let chunks: Vec<_> = edges.chunks(chunk_size).collect();
             let total_chunks = chunks.len();
 
@@ -4215,10 +4214,8 @@ impl ProjectIndexer {
             nodes.iter().map(|n| n.id.to_string()).collect();
 
         // Build symbol name to node ID map for edge resolution
-        let symbol_map: std::collections::HashMap<String, codegraph_core::NodeId> = nodes
-            .iter()
-            .map(|n| (n.name.to_string(), n.id.clone()))
-            .collect();
+        let symbol_map: std::collections::HashMap<String, codegraph_core::NodeId> =
+            nodes.iter().map(|n| (n.name.to_string(), n.id)).collect();
 
         // Convert EdgeRelationship to CodeEdge for intra-file edges only
         let resolved_edges: Vec<codegraph_graph::CodeEdge> = edges
@@ -4230,7 +4227,7 @@ impl ProjectIndexer {
                     Some(
                         codegraph_graph::CodeEdge::new(
                             edge_rel.from,
-                            target_id.clone(),
+                            *target_id,
                             edge_rel.edge_type,
                         )
                         .with_project_id(self.project_id.clone()),
@@ -4481,7 +4478,8 @@ mod tests {
 
     #[test]
     fn analyzer_requires_rust_analyzer_when_lsp_enabled() {
-        let settings = AnalyzerSettings::for_tier(codegraph_core::config_manager::IndexingTier::Full);
+        let settings =
+            AnalyzerSettings::for_tier(codegraph_core::config_manager::IndexingTier::Full);
 
         let err = ProjectIndexer::validate_analyzer_tools(
             &[codegraph_core::Language::Rust],
@@ -4531,7 +4529,9 @@ mod tests {
         );
         assert_eq!(removed, 2);
         assert!(edges.iter().any(|e| e.edge_type == EdgeType::Calls));
-        assert!(edges.iter().any(|e| e.edge_type == EdgeType::Other("flows_to".to_string())));
+        assert!(edges
+            .iter()
+            .any(|e| e.edge_type == EdgeType::Other("flows_to".to_string())));
         assert!(!edges.iter().any(|e| e.edge_type == EdgeType::Uses));
         assert!(!edges.iter().any(|e| e.edge_type == EdgeType::References));
     }

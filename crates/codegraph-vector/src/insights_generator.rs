@@ -6,10 +6,11 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 /// Mode for insights generation
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum InsightsMode {
     /// Fast mode: Return context only, no LLM processing
     /// Best for agent-based workflows (Claude, GPT-4, etc.)
+    #[default]
     ContextOnly,
 
     /// Balanced mode: Use reranking + lightweight LLM
@@ -19,12 +20,6 @@ pub enum InsightsMode {
     /// Deep mode: Use full LLM processing
     /// Best for comprehensive analysis, slower
     Deep,
-}
-
-impl Default for InsightsMode {
-    fn default() -> Self {
-        Self::ContextOnly // Default to fastest mode
-    }
 }
 
 /// Configuration for insights generation

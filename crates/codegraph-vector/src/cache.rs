@@ -110,16 +110,14 @@ where
     V: Clone + Send + Sync + 'static,
 {
     pub fn new(config: CacheConfig) -> Self {
-        let cache = Self {
+        Self {
             data: Arc::new(DashMap::new()),
             frequency: Arc::new(DashMap::new()),
             access_order: Arc::new(Mutex::new(VecDeque::new())),
             config: config.clone(),
             stats: Arc::new(RwLock::new(CacheStats::new())),
             cleanup_handle: None,
-        };
-
-        cache
+        }
     }
 
     pub fn start_cleanup_task(&mut self) {

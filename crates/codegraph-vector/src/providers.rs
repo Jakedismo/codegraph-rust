@@ -130,7 +130,7 @@ impl HybridEmbeddingPipeline {
             primary,
             fallbacks: Vec::new(),
             strategy,
-            health_checker: ProviderHealthChecker::new(),
+            health_checker: ProviderHealthChecker::default(),
         }
     }
 
@@ -255,16 +255,13 @@ impl EmbeddingProvider for HybridEmbeddingPipeline {
 }
 
 /// Health checker to track provider reliability over time
+#[derive(Default)]
 pub struct ProviderHealthChecker {
     // Implementation for tracking provider health metrics
     // This would maintain success/failure rates, response times, etc.
 }
 
 impl ProviderHealthChecker {
-    pub fn new() -> Self {
-        Self {}
-    }
-
     pub async fn select_most_reliable<'a>(
         &self,
         primary: &'a dyn EmbeddingProvider,

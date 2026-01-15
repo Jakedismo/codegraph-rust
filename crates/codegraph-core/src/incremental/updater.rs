@@ -695,7 +695,7 @@ mod tests {
         };
         let embedder = Arc::new(crate::integration::graph_vector::HasherEmbeddingService::new(64));
         // Provide a graph instance for vector integrator; it won't be used for indexing path here.
-        let g_for_vec: Arc<dyn GraphStore> = Arc::new(InMemoryGraph {
+        let g_for_vec: Arc<dyn GraphStore + Send + Sync> = Arc::new(InMemoryGraph {
             nodes: DashMap::new(),
         });
         let integrator = Arc::new(GraphVectorIntegrator::new(
