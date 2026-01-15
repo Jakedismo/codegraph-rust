@@ -95,6 +95,7 @@ impl ProcessManager {
         Ok(pid)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn start_http_server(
         &self,
         host: String,

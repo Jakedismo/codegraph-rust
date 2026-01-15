@@ -128,6 +128,7 @@ fn count_package_cycles(nodes: &[CodeNode], edges: &[EdgeRelationship]) -> usize
     let mut lowlink: HashMap<NodeId, usize> = HashMap::new();
     let mut cycles = 0usize;
 
+    #[allow(clippy::too_many_arguments)]
     fn strongconnect(
         v: NodeId,
         index: &mut usize,

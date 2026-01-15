@@ -63,6 +63,10 @@ impl Default for TreeSitterParser {
 }
 
 impl TreeSitterParser {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     pub fn with_concurrency(mut self, max_concurrent_files: usize) -> Self {
         self.max_concurrent_files = max_concurrent_files;
         self

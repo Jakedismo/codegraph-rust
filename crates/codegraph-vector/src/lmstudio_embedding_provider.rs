@@ -28,6 +28,19 @@ pub struct LmStudioEmbeddingConfig {
     pub max_tokens_per_request: usize,
 }
 
+impl LmStudioEmbeddingConfig {
+    pub fn from_env() -> Self {
+        let mut config = Self::default();
+        if let Ok(model) = std::env::var("CODEGRAPH_LMSTUDIO_MODEL") {
+            config.model = model;
+        }
+        if let Ok(url) = std::env::var("CODEGRAPH_LMSTUDIO_URL") {
+            config.api_base = url;
+        }
+        config
+    }
+}
+
 impl Default for LmStudioEmbeddingConfig {
     fn default() -> Self {
         Self {

@@ -274,6 +274,7 @@ impl FileSystemWatcher {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn handle_fs_event(
         event: Event,
         event_sender: Sender<FileChangeEvent>,

@@ -295,6 +295,7 @@ impl SIMDVectorOps {
     }
 
     #[cfg(not(target_arch = "x86_64"))]
+    #[allow(clippy::missing_safety_doc)]
     pub unsafe fn cosine_similarity_avx2(_a: &[f32], _b: &[f32]) -> Result<f32> {
         Err(
             crate::VectorError::SimdError("AVX2 not supported on this architecture".to_string())
@@ -303,6 +304,7 @@ impl SIMDVectorOps {
     }
 
     #[cfg(not(target_arch = "x86_64"))]
+    #[allow(clippy::missing_safety_doc)]
     pub unsafe fn batch_cosine_similarity_avx2(
         _query: &[f32],
         _embeddings: &[&[f32]],
@@ -315,6 +317,7 @@ impl SIMDVectorOps {
     }
 
     #[cfg(not(target_arch = "x86_64"))]
+    #[allow(clippy::missing_safety_doc)]
     pub unsafe fn l2_distance_avx2(_a: &[f32], _b: &[f32]) -> Result<f32> {
         Err(
             crate::VectorError::SimdError("AVX2 not supported on this architecture".to_string())
@@ -323,6 +326,7 @@ impl SIMDVectorOps {
     }
 
     #[cfg(not(target_arch = "x86_64"))]
+    #[allow(clippy::missing_safety_doc)]
     pub unsafe fn dot_product_avx2(_a: &[f32], _b: &[f32]) -> Result<f32> {
         Err(
             crate::VectorError::SimdError("AVX2 not supported on this architecture".to_string())
@@ -331,6 +335,7 @@ impl SIMDVectorOps {
     }
 
     #[cfg(not(target_arch = "x86_64"))]
+    #[allow(clippy::missing_safety_doc)]
     pub unsafe fn normalize_avx2(_vector: &mut [f32]) -> Result<()> {
         Err(
             crate::VectorError::SimdError("AVX2 not supported on this architecture".to_string())

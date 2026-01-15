@@ -128,6 +128,10 @@ impl Default for LanguageRegistry {
 }
 
 impl LanguageRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     pub fn detect_language(&self, file_path: &str) -> Option<Language> {
         let extension = std::path::Path::new(file_path).extension()?.to_str()?;
 

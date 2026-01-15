@@ -328,6 +328,7 @@ impl SurrealDbStorage {
     }
 
     /// Vector search with metadata filtering
+    #[allow(clippy::too_many_arguments)]
     pub async fn vector_search_with_metadata(
         &self,
         embedding_column: &str,
@@ -1676,6 +1677,7 @@ pub struct SymbolEmbeddingRecord {
 }
 
 impl SymbolEmbeddingRecord {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         project_id: &str,
         organization_id: Option<&str>,

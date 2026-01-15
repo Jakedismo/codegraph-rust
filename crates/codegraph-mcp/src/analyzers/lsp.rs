@@ -307,6 +307,7 @@ impl LspClient {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn enrich_nodes_and_edges_with_lsp(
     server_path: &Path,
     server_args: &[&str],
@@ -339,6 +340,7 @@ pub fn enrich_nodes_and_edges_with_lsp(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn enrich_async(
     server_path: &Path,
     server_args: &[&str],
