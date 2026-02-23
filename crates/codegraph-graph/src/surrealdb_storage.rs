@@ -634,9 +634,11 @@ impl SurrealDbStorage {
                 Ok(()) => {}
                 Err(err) => {
                     let msg = err.to_string();
-                    let recoverable = msg.contains("excessive computation depth")
-                        || msg.contains("ComputationDepth")
-                        || msg.contains("connection reset");
+                    let msg_lower = msg.to_lowercase();
+                    let recoverable = msg_lower.contains("excessive computation depth")
+                        || msg_lower.contains("computationdepth")
+                        || msg_lower.contains("connection reset")
+                        || msg_lower.contains("broken pipe");
                     if recoverable && remaining > 0 && batch.len() > 1 {
                         let mid = batch.len() / 2;
                         let (left, right) = batch.split_at(mid);
@@ -731,10 +733,12 @@ impl SurrealDbStorage {
         // First, try a bulk INSERT (shallow query, no FOR loop)
         if let Err(err) = self.insert_chunk_embeddings_batch(records).await {
             let msg = err.to_string();
-            let duplicate = msg.to_lowercase().contains("duplicate");
-            let depth_hit = msg.contains("excessive computation depth")
-                || msg.contains("ComputationDepth")
-                || msg.contains("connection reset");
+            let msg_lower = msg.to_lowercase();
+            let duplicate = msg_lower.contains("duplicate");
+            let depth_hit = msg_lower.contains("excessive computation depth")
+                || msg_lower.contains("computationdepth")
+                || msg_lower.contains("connection reset")
+                || msg_lower.contains("broken pipe");
 
             // Only fall through to upsert/backoff on duplicate or depth issues; otherwise fail fast
             if !duplicate && !depth_hit {
@@ -756,9 +760,11 @@ impl SurrealDbStorage {
                 Ok(()) => {}
                 Err(err) => {
                     let msg = err.to_string();
-                    let depth_hit = msg.contains("excessive computation depth")
-                        || msg.contains("ComputationDepth")
-                        || msg.contains("connection reset");
+                    let msg_lower = msg.to_lowercase();
+                    let depth_hit = msg_lower.contains("excessive computation depth")
+                        || msg_lower.contains("computationdepth")
+                        || msg_lower.contains("connection reset")
+                        || msg_lower.contains("broken pipe");
 
                     if depth_hit && remaining > 0 && batch.len() > 1 {
                         let mid = batch.len() / 2;
