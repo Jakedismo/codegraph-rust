@@ -604,6 +604,54 @@ impl SurrealDbStorage {
         Ok(())
     }
 
+    /// Resilient edge upsert for large codebases.
+    ///
+    /// Pre-chunks the input into slices of [`EDGE_BATCH_CHUNK_SIZE`] before
+    /// sending to SurrealDB.  If a chunk still fails with a WebSocket
+    /// connection-reset or an "excessive computation depth" error (both caused
+    /// by SurrealDB's `FOR … IN $batch` loop hitting internal limits), the
+    /// chunk is split in half and retried up to 3 times.  This mirrors the
+    /// existing `upsert_chunk_embeddings_resilient` strategy.
+    ///
+    /// Use this instead of `upsert_edges_batch` whenever the total number of
+    /// edges is not tightly bounded (e.g. during full project indexing).
+    pub async fn upsert_edges_batch_resilient(&mut self, edges: &[CodeEdge]) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+
+        // Iterative queue: (batch_slice, retries_remaining)
+        let mut queue: Vec<(Vec<CodeEdge>, u8)> = edges
+            .chunks(EDGE_BATCH_CHUNK_SIZE)
+            .map(|c| (c.to_vec(), 3u8))
+            .collect();
+
+        while let Some((batch, remaining)) = queue.pop() {
+            if batch.is_empty() {
+                continue;
+            }
+            match self.upsert_edges_batch(&batch).await {
+                Ok(()) => {}
+                Err(err) => {
+                    let msg = err.to_string();
+                    let recoverable = msg.contains("excessive computation depth")
+                        || msg.contains("ComputationDepth")
+                        || msg.contains("connection reset");
+                    if recoverable && remaining > 0 && batch.len() > 1 {
+                        let mid = batch.len() / 2;
+                        let (left, right) = batch.split_at(mid);
+                        queue.push((right.to_vec(), remaining - 1));
+                        queue.push((left.to_vec(), remaining - 1));
+                    } else {
+                        return Err(err);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn upsert_symbol_embeddings_batch(
         &self,
         records: &[SymbolEmbeddingRecord],
@@ -919,7 +967,7 @@ impl SurrealDbStorage {
     }
 
     pub async fn add_code_edges(&mut self, edges: Vec<CodeEdge>) -> Result<()> {
-        self.upsert_edges_batch(&edges).await
+        self.upsert_edges_batch_resilient(&edges).await
     }
 
     pub async fn upsert_symbol_embedding(&self, record: SymbolEmbeddingUpsert<'_>) -> Result<()> {
@@ -2147,6 +2195,12 @@ FOR $doc IN $batch {
         updated_at = time::now();
 }
 "#;
+
+/// Maximum number of edges sent in a single SurrealDB `FOR … IN $batch` query.
+/// Larger batches cause WebSocket connection resets or "excessive computation
+/// depth" errors in SurrealDB.  `upsert_edges_batch_resilient` pre-chunks to
+/// this size and halves further on transient errors.
+const EDGE_BATCH_CHUNK_SIZE: usize = 2_000;
 
 const UPSERT_EDGES_QUERY: &str = r#"
 LET $batch = $data;

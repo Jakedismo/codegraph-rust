@@ -281,7 +281,7 @@ impl SurrealWriterHandle {
                         }
                         if let Err(err) = {
                             let mut guard = storage.lock().await;
-                            guard.upsert_edges_batch(&edges).await
+                            guard.upsert_edges_batch_resilient(&edges).await
                         } {
                             error!("Surreal edge batch failed: {}", err);
                             last_error = Some(anyhow!(err.to_string()));
