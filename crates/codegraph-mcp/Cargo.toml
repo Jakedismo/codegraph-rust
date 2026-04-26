@@ -77,7 +77,7 @@ anyhow = { workspace = true }
 serial_test = "3.2"
 rmcp = { workspace = true, features = ["client", "transport-child-process"] }
 codegraph-vector = { workspace = true, features = ["ollama"] }
-surrealdb = { version = "2.2", features = ["kv-mem"] }
+surrealdb = { version = "3.0.5", features = ["kv-mem"] }
 
 [features]
 default = []
