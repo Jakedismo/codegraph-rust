@@ -2334,7 +2334,9 @@ mod cli_command_tests {
 
 #[cfg(feature = "daemon")]
 async fn handle_daemon_stop(path: PathBuf) -> Result<()> {
+    #[cfg(unix)]
     use nix::sys::signal::{kill, Signal};
+    #[cfg(unix)]
     use nix::unistd::Pid;
 
     let project_root = std::fs::canonicalize(&path)
@@ -2350,9 +2352,26 @@ async fn handle_daemon_stop(path: PathBuf) -> Result<()> {
                 format!("🛑 Stopping daemon (PID: {})...", pid).yellow()
             );
 
-            // Send SIGTERM
-            let pid = Pid::from_raw(pid as i32);
-            match kill(pid, Signal::SIGTERM) {
+            #[cfg(unix)]
+            let stop_result = {
+                let pid = Pid::from_raw(pid as i32);
+                kill(pid, Signal::SIGTERM).map_err(anyhow::Error::from)
+            };
+
+            #[cfg(windows)]
+            let stop_result = std::process::Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T"])
+                .status()
+                .map(|status| {
+                    if status.success() {
+                        Ok(())
+                    } else {
+                        Err(anyhow::anyhow!("taskkill exited with status {}", status))
+                    }
+                })
+                .unwrap_or_else(|e| Err(anyhow::Error::from(e)));
+
+            match stop_result {
                 Ok(_) => {
                     println!("{}", "✅ Stop signal sent successfully".green());
 

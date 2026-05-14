@@ -766,7 +766,7 @@ impl ProjectIndexer {
                         target: "codegraph_mcp::indexer",
                         "CODEGRAPH_EMBEDDING_PROVIDER=local requested but the 'embeddings-local' feature is not enabled; using auto provider"
                     );
-                    let g = EmbeddingGenerator::with_auto_from_env().await;
+                    let mut g = EmbeddingGenerator::with_auto_from_env().await;
                     // Set batch_size and max_concurrent for Jina provider if applicable
                     #[cfg(feature = "embeddings-jina")]
                     {

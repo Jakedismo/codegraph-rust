@@ -106,10 +106,29 @@ fn is_pid_running(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn is_pid_running(pid: u32) -> bool {
+    let filter = format!("PID eq {}", pid);
+    std::process::Command::new("tasklist")
+        .args(["/FI", &filter, "/FO", "CSV", "/NH"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .and_then(|output| {
+            if output.status.success() {
+                Some(String::from_utf8_lossy(&output.stdout).into_owned())
+            } else {
+                None
+            }
+        })
+        .map(|stdout| stdout.contains(&format!(",\"{}\"", pid)) || stdout.contains(&format!(",{}", pid)))
+        .unwrap_or(false)
+}
+
+#[cfg(not(any(unix, windows)))]
 fn is_pid_running(_pid: u32) -> bool {
-    // On non-Unix systems, assume process is running if we can't check
-    true
+    false
 }
 
 impl Drop for PidFile {

@@ -1,14 +1,16 @@
 use crate::error::Result;
 use anyhow::Context;
 use dashmap::DashMap;
+#[cfg(unix)]
 use nix::sys::signal::{self, Signal};
+#[cfg(unix)]
 use nix::unistd::Pid;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
 pub struct ProcessInfo {
@@ -287,6 +289,7 @@ impl ProcessManager {
         Err(anyhow::anyhow!("No running server found").into())
     }
 
+    #[cfg(unix)]
     fn is_process_running(&self, pid: u32) -> Result<bool> {
         match signal::kill(Pid::from_raw(pid as i32), None) {
             Ok(_) => Ok(true),
@@ -295,6 +298,25 @@ impl ProcessManager {
         }
     }
 
+    #[cfg(windows)]
+    fn is_process_running(&self, pid: u32) -> Result<bool> {
+        let filter = format!("PID eq {}", pid);
+        let output = Command::new("tasklist")
+            .args(["/FI", &filter, "/FO", "CSV", "/NH"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .context("Failed to check process with tasklist")?;
+
+        if !output.status.success() {
+            return Ok(false);
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(stdout.contains(&format!(",\"{}\"", pid)) || stdout.contains(&format!(",{}", pid)))
+    }
+
+    #[cfg(unix)]
     fn graceful_shutdown(&self, pid: u32) -> Result<()> {
         info!("Sending SIGTERM to process {}", pid);
         signal::kill(Pid::from_raw(pid as i32), Signal::SIGTERM)
@@ -314,11 +336,46 @@ impl ProcessManager {
         Ok(())
     }
 
+    #[cfg(windows)]
+    fn graceful_shutdown(&self, pid: u32) -> Result<()> {
+        info!("Stopping process {} with taskkill", pid);
+        let status = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .context("Failed to run taskkill")?;
+
+        if !status.success() && self.is_process_running(pid)? {
+            self.force_kill(pid)?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg(unix)]
     fn force_kill(&self, pid: u32) -> Result<()> {
         info!("Sending SIGKILL to process {}", pid);
         signal::kill(Pid::from_raw(pid as i32), Signal::SIGKILL)
             .context("Failed to send SIGKILL")?;
         Ok(())
+    }
+
+    #[cfg(windows)]
+    fn force_kill(&self, pid: u32) -> Result<()> {
+        info!("Force killing process {} with taskkill", pid);
+        let status = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .context("Failed to run forced taskkill")?;
+
+        if status.success() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("taskkill failed for PID {}", pid).into())
+        }
     }
 
     pub async fn cleanup(&self) -> Result<()> {

@@ -81,7 +81,13 @@ impl Default for SurrealDbConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SchemaVersion {
     version: u32,
-    applied_at: String,
+    applied_at: DateTime<Utc>,
+    description: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SchemaVersionInsert {
+    version: u32,
     description: String,
 }
 
@@ -147,12 +153,15 @@ impl SurrealDbStorage {
             schema_version: Arc::new(std::sync::RwLock::new(0)),
         };
 
-        info!("SurrealDB storage initialized successfully (schema management disabled)");
+        if config.auto_migrate {
+            storage.initialize_schema().await?;
+        }
+
+        info!("SurrealDB storage initialized successfully");
         Ok(storage)
     }
 
-    /// Initialize database schema with flexible design (unused when schema managed externally)
-    #[allow(dead_code)]
+    /// Initialize database schema with a minimal, code-driven baseline.
     async fn initialize_schema(&self) -> Result<()> {
         info!("Initializing SurrealDB schema");
 
@@ -239,10 +248,9 @@ impl SurrealDbStorage {
         // Initialize schema version if not exists
         let _: Option<SchemaVersion> = self
             .db
-            .create(("schema_versions", "current"))
-            .content(SchemaVersion {
+            .update(("schema_versions", "current"))
+            .merge(SchemaVersionInsert {
                 version: 1,
-                applied_at: chrono::Utc::now().to_rfc3339(),
                 description: "Initial schema".to_string(),
             })
             .await

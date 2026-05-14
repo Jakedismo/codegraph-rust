@@ -36,7 +36,6 @@ clap = { workspace = true }
 colored = { workspace = true }
 indicatif = { workspace = true }
 once_cell = { workspace = true }
-tikv-jemallocator = { workspace = true }
 hashbrown = { workspace = true }
 rustc-hash = { workspace = true }
 sha2 = { workspace = true }
@@ -54,6 +53,7 @@ rkyv = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+tikv-jemallocator = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
