@@ -1,5 +1,6 @@
-// ABOUTME: C++ language AST extractor for code intelligence
+// ABOUTME: C++/C language AST extractor for code intelligence
 // ABOUTME: Extracts namespaces, classes, structs, functions, includes, and call edges
+// ABOUTME: Supports C, C++, and CUDA-specific patterns
 
 use codegraph_core::{
     CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
@@ -8,21 +9,27 @@ use codegraph_core::{
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
 
-/// Advanced C++ AST extractor for systems development intelligence.
+/// Advanced C++/C AST extractor for systems development intelligence.
 ///
 /// Extracts:
-/// - namespaces, classes, structs, templates
+/// - namespaces, classes, structs, templates (C++)
+/// - struct, union, enum (C)
 /// - functions, methods, constructors, destructors
 /// - #include directives (system and local)
 /// - function/method calls
 /// - class inheritance
 /// - template specializations
 ///
-/// Notes:
-/// - Optimized for modern C++ (C++11/14/17/20) patterns
-/// - Captures RAII and smart pointer patterns
-/// - Handles header/source file relationships
-/// - Understands STL and Boost patterns
+/// C-specific patterns:
+/// - struct, union, enum declarations
+/// - #define macros
+/// - inline functions
+///
+/// CUDA-specific patterns:
+/// - __global__, __device__, __host__ kernels
+/// - threadIdx, blockIdx, blockDim
+/// - __shared__, __constant__ memory
+/// - cudaMalloc, cudaFree, cudaMemcpy
 pub struct CppExtractor;
 
 #[derive(Default, Clone)]
@@ -30,6 +37,8 @@ struct CppContext {
     namespace_path: Vec<String>,
     current_class: Option<String>,
     current_struct: Option<String>,
+    is_pure_c: bool,     // Detected as pure C (no classes)
+    is_cuda_file: bool,   // Detected as CUDA file
 }
 
 impl CppExtractor {
@@ -70,10 +79,39 @@ struct CppCollector<'a> {
     edges: Vec<EdgeRelationship>,
     current_function_id: Option<NodeId>,
     current_class_id: Option<NodeId>,
+    is_pure_c: bool,
+    is_cuda_file: bool,
 }
 
 impl<'a> CppCollector<'a> {
     fn new(content: &'a str, file_path: &'a str) -> Self {
+        let lower = content.to_lowercase();
+        let path_lower = file_path.to_lowercase();
+
+        // Detect CUDA files
+        let is_cuda = path_lower.ends_with(".cu")
+            || path_lower.ends_with(".cuh")
+            || lower.contains("__global__")
+            || lower.contains("__device__")
+            || lower.contains("__host__")
+            || lower.contains("threadidx")
+            || lower.contains("blockidx")
+            || lower.contains("blockdim")
+            || lower.contains("cudamalloc")
+            || lower.contains("cudafree")
+            || lower.contains("cudamemcpy")
+            || lower.contains("nvcc");
+
+        // Detect pure C (no classes, uses .c extension)
+        let is_pure_c = path_lower.ends_with(".c")
+            && !path_lower.ends_with(".cpp")
+            && !path_lower.ends_with(".cc")
+            && !path_lower.ends_with(".cxx")
+            && !path_lower.ends_with(".h")
+            && !path_lower.ends_with(".hpp")
+            && !lower.contains("class ")
+            && !lower.contains("namespace ");
+
         Self {
             content,
             file_path,
@@ -81,6 +119,8 @@ impl<'a> CppCollector<'a> {
             edges: Vec::new(),
             current_function_id: None,
             current_class_id: None,
+            is_pure_c,
+            is_cuda_file: is_cuda,
         }
     }
 
@@ -327,10 +367,77 @@ impl<'a> CppCollector<'a> {
                                 .insert("parent_class".into(), current_class.clone());
                         }
 
+                        // CUDA-specific: kernel detection
+                        if ctx.is_cuda_file {
+                            if content_text.contains("__global__") || content_text.contains("__global ") {
+                                code.metadata.attributes.insert("cuda_kernel".into(), "global".into());
+                                code.metadata.attributes.insert("pattern".into(), "kernel".into());
+                            }
+                            if content_text.contains("__device__") || content_text.contains("__device ") {
+                                code.metadata.attributes.insert("cuda_kernel".into(), "device".into());
+                            }
+                            if content_text.contains("__host__") || content_text.contains("__host ") {
+                                code.metadata.attributes.insert("cuda_kernel".into(), "host".into());
+                            }
+                            if content_text.contains("__shared__") {
+                                code.metadata.attributes.insert("memory_space".into(), "shared".into());
+                            }
+                            if content_text.contains("__constant__") {
+                                code.metadata.attributes.insert("memory_space".into(), "constant".into());
+                            }
+                        }
+
+                        // Pure C patterns
+                        if ctx.is_pure_c && content_text.contains("inline ") {
+                            code.metadata.attributes.insert("pattern".into(), "c_inline".into());
+                        }
+
                         // Track current function for call edge attribution
                         self.current_function_id = Some(code.id);
                         self.nodes.push(code);
                     }
+                }
+            }
+
+            // C: struct/union/enum type definition
+            "type_definition" => {
+                let text = self.node_text(&node);
+                if text.contains("struct ") || text.contains("union ") || text.contains("enum ") {
+                    if let Some(name_node) = node.child_by_field_name("name") {
+                        let name = self.node_text(&name_node);
+                        let loc = self.location(&node);
+                        let mut node_type = NodeType::Struct;
+                        if text.contains("union ") {
+                            node_type = NodeType::Other("union".into());
+                        } else if text.contains("enum ") {
+                            node_type = NodeType::Enum;
+                        }
+                        let mut code = CodeNode::new(name.clone(), Some(node_type), Some(Language::Cpp), loc)
+                            .with_content(text);
+                        code.span = Some(self.span_for(&node));
+                        code.metadata.attributes.insert("kind".into(), "c_type".into());
+                        code.metadata.attributes.insert("language".into(), "c".into());
+                        self.nodes.push(code);
+                    }
+                }
+            }
+
+            // Preprocessor macro definition (#define)
+            "preproc_def" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = self.node_text(&name_node);
+                    let text = self.node_text(&node);
+                    let loc = self.location(&node);
+                    let mut code = CodeNode::new(
+                        name.clone(),
+                        Some(NodeType::Other("macro".into())),
+                        Some(Language::Cpp),
+                        loc,
+                    )
+                    .with_content(text);
+                    code.span = Some(self.span_for(&node));
+                    code.metadata.attributes.insert("kind".into(), "define".into());
+                    self.nodes.push(code);
                 }
             }
 
