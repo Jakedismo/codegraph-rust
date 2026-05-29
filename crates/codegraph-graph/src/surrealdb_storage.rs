@@ -64,6 +64,10 @@ impl Default for SurrealDbConfig {
             .ok()
             .filter(|value| !value.trim().is_empty());
 
+        let auto_migrate = env::var("CODEGRAPH_AUTO_MIGRATE")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(true);
+
         Self {
             connection,
             namespace,
@@ -71,7 +75,7 @@ impl Default for SurrealDbConfig {
             username,
             password,
             strict_mode: false,
-            auto_migrate: true,
+            auto_migrate,
             cache_enabled: true,
         }
     }
@@ -491,21 +495,26 @@ impl SurrealDbStorage {
             embedding_384,
             embedding_768,
             embedding_1024,
+            embedding_1536,
             embedding_2048,
             embedding_2560,
+            embedding_3072,
             embedding_4096,
         ) = if let Some(values) = &node.embedding {
             let embedding_vec: Vec<f64> = values.iter().map(|&f| f as f64).collect();
             match values.len() {
-                384 => (Some(embedding_vec), None, None, None, None, None),
-                768 => (None, Some(embedding_vec), None, None, None, None),
-                1024 => (None, None, Some(embedding_vec), None, None, None),
-                2560 => (None, None, None, None, Some(embedding_vec), None),
-                4096 => (None, None, None, None, None, Some(embedding_vec)),
-                _ => (None, None, None, Some(embedding_vec), None, None),
+                384  => (Some(embedding_vec.clone()), None, None, None, None, None, None, None),
+                768  => (None, Some(embedding_vec.clone()), None, None, None, None, None, None),
+                1024 => (None, None, Some(embedding_vec.clone()), None, None, None, None, None),
+                1536 => (None, None, None, Some(embedding_vec.clone()), None, None, None, None),
+                2048 => (None, None, None, None, Some(embedding_vec.clone()), None, None, None),
+                2560 => (None, None, None, None, None, Some(embedding_vec.clone()), None, None),
+                3072 => (None, None, None, None, None, None, Some(embedding_vec.clone()), None),
+                4096 => (None, None, None, None, None, None, None, Some(embedding_vec.clone())),
+                _    => (None, None, None, None, None, None, None, None),
             }
         } else {
-            (None, None, None, None, None, None)
+            (None, None, None, None, None, None, None, None)
         };
 
         let embedding_model = node.metadata.attributes.get("embedding_model").cloned();
@@ -515,7 +524,7 @@ impl SurrealDbStorage {
         });
 
         Ok(SurrealNodeRecord {
-            id: node.id.to_string(),
+            id: format!("nodes:{}", node.id),
             name: node.name.to_string(),
             node_type: node.node_type.as_ref().map(|value| format!("{:?}", value)),
             language: node.language.as_ref().map(|value| format!("{:?}", value)),
@@ -544,24 +553,89 @@ impl SurrealDbStorage {
         })
     }
 
+    /// Converts a CodeNode to a serde_json::Map for SurrealDB upsert.
+    /// Skips all `None` optional fields so SurrealDB strict mode doesn't see null.
+    fn node_to_surreal_map(&self, node: &CodeNode) -> serde_json::Map<String, JsonValue> {
+        use serde_json::Value as JV;
+        let mut m = serde_json::Map::new();
+        m.insert("id".into(), JV::String(node.id.to_string()));
+        m.insert("name".into(), JV::String(node.name.to_string()));
+        m.insert("file_path".into(), JV::String(node.location.file_path.to_string()));
+        m.insert("start_line".into(), JV::Number(node.location.line.into()));
+        if let Some(v) = node.node_type.as_ref() {
+            m.insert("node_type".into(), JV::String(format!("{:?}", v)));
+        }
+        if let Some(v) = node.language.as_ref() {
+            m.insert("language".into(), JV::String(format!("{:?}", v)));
+        }
+        if let Some(ref v) = node.content {
+            let compressed = codegraph_core::compress_to_string(v);
+            m.insert("content".into(), JV::String(compressed));
+        }
+        if let Some(v) = node.location.end_line {
+            m.insert("end_line".into(), JV::Number(v.into()));
+        }
+        if let Some(ref values) = node.embedding {
+            let vec: Vec<f64> = values.iter().map(|&f| f as f64).collect();
+            let key = match values.len() {
+                384   => "embedding_384",
+                768   => "embedding_768",
+                1024  => "embedding_1024",
+                1536  => "embedding_1536",
+                2048  => "embedding_2048",
+                2560  => "embedding_2560",
+                3072  => "embedding_3072",
+                4096  => "embedding_4096",
+                _     => return m, // unknown dim, skip embedding
+            };
+            m.insert(key.into(), JV::Array(vec.into_iter().map(JV::from).collect()));
+            if let Some(v) = node.metadata.attributes.get("embedding_model") {
+                m.insert("embedding_model".into(), JV::String(v.clone()));
+            }
+        }
+        if let Some(v) = node.complexity {
+            m.insert("complexity".into(), JV::Number(serde_json::Number::from_f64(v as f64).unwrap_or_else(|| serde_json::Number::from(0))));
+        }
+        if !node.metadata.attributes.is_empty() {
+            let metadata_json = serde_json::to_value(&node.metadata.attributes).unwrap_or(JV::Null);
+            m.insert("metadata".into(), metadata_json);
+        }
+        for (key, attr) in [
+            ("project_id", "project_id"),
+            ("organization_id", "organization_id"),
+            ("repository_url", "repository_url"),
+            ("domain", "domain"),
+        ] {
+            if let Some(v) = node.metadata.attributes.get(attr) {
+                m.insert(key.into(), JV::String(v.clone()));
+            }
+        }
+        if let Some(v) = node.metadata.attributes.get("chunk_count")
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            m.insert("chunk_count".into(), JV::Number(v.into()));
+        }
+        m
+    }
+
     pub async fn upsert_nodes_batch(&mut self, nodes: &[CodeNode]) -> Result<()> {
         if nodes.is_empty() {
             return Ok(());
         }
 
-        let mut records = Vec::with_capacity(nodes.len());
-        for node in nodes {
-            records.push(self.node_to_surreal(node)?);
-        }
+        let payloads: Vec<serde_json::Map<String, JsonValue>> = nodes
+            .iter()
+            .map(|node| self.node_to_surreal_map(node))
+            .collect();
 
         self.db
             .query(UPSERT_NODES_QUERY)
-            .bind(("data", records.clone()))
+            .bind(("data", payloads))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!(
                     "Failed to upsert node batch ({} items): {}",
-                    records.len(),
+                    nodes.len(),
                     truncate_surreal_error(&e)
                 ))
             })?;
@@ -571,7 +645,6 @@ impl SurrealDbStorage {
                 self.node_cache.insert(node.id, node.clone());
             }
         }
-
         Ok(())
     }
 
@@ -586,6 +659,7 @@ impl SurrealDbStorage {
                 let metadata_value =
                     serde_json::to_value(&record.metadata).unwrap_or_else(|_| JsonValue::Null);
                 json!({
+                    // Bare UUIDs — type::thing() constructs record refs in SQL
                     "id": record.id.to_string(),
                     "from": record.from.to_string(),
                     "to": record.to.to_string(),
@@ -2129,12 +2203,13 @@ const UPSERT_NODES_QUERY: &str = r#"
 LET $batch = $data;
 FOR $doc IN $batch {
     UPSERT type::thing('nodes', $doc.id) SET
+        id = $doc.id,
         name = $doc.name,
+        file_path = $doc.file_path,
+        start_line = $doc.start_line,
         node_type = $doc.node_type,
         language = $doc.language,
         content = $doc.content,
-        file_path = $doc.file_path,
-        start_line = $doc.start_line,
         end_line = $doc.end_line,
         embedding_384 = $doc.embedding_384,
         embedding_768 = $doc.embedding_768,
@@ -2152,7 +2227,8 @@ FOR $doc IN $batch {
         repository_url = $doc.repository_url,
         domain = $doc.domain,
         chunk_count = $doc.chunk_count,
-        updated_at = time::now();
+        updated_at = time::now()
+    RETURN id;
 }
 "#;
 

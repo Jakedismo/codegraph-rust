@@ -65,8 +65,8 @@ tokenizers = { workspace = true }  # Qwen2.5-Coder tokenizer for accurate token 
 ## core-rag-mcp-server intentionally not linked to keep binary lean
 
 # AutoAgents framework for agentic workflows
-autoagents = { git = "https://github.com/liquidos-ai/AutoAgents", optional = true }
-autoagents-derive = { git = "https://github.com/liquidos-ai/AutoAgents", optional = true }
+autoagents = { version = "0.3.0", optional = true }
+autoagents-derive = { version = "0.3.0", optional = true }
 codegraph-mcp-core = { path = "../codegraph-mcp-core" }
 codegraph-mcp-tools = { path = "../codegraph-mcp-tools", optional = true }
 unicode-bom = "2.0.3"

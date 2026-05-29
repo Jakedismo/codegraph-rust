@@ -120,20 +120,18 @@ impl SurrealEmbeddingColumn {
 }
 
 fn extract_count(values: Vec<JsonValue>) -> Result<i64> {
-    let Some(first) = values.into_iter().next() else {
+    if values.is_empty() {
         return Ok(0);
-    };
-
-    match first {
-        JsonValue::Number(n) => n
-            .as_i64()
-            .ok_or_else(|| anyhow!("Count value is not an integer: {}", n)),
-        JsonValue::Object(map) => map
-            .get("count")
-            .and_then(|v| v.as_i64())
-            .ok_or_else(|| anyhow!("Count object missing integer 'count' field")),
-        other => Err(anyhow!("Unexpected count shape: {}", other)),
     }
+    let total: i64 = values
+        .iter()
+        .filter_map(|v| match v {
+            JsonValue::Number(n) => n.as_i64(),
+            JsonValue::Object(map) => map.get("count").and_then(|v| v.as_i64()),
+            _ => None,
+        })
+        .sum();
+    Ok(total)
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -1530,6 +1528,11 @@ impl ProjectIndexer {
         };
         let mut symbol_map: std::collections::HashMap<String, NodeId> =
             std::collections::HashMap::new();
+
+        // Annotate all nodes with project metadata BEFORE persisting
+        for node in nodes.iter_mut() {
+            self.annotate_node(node);
+        }
 
         for node in nodes.iter() {
             match node.node_type {
@@ -3427,23 +3430,24 @@ impl ProjectIndexer {
             storage.db()
         };
 
-        match db
-            .query("SELECT count() AS count FROM nodes WHERE project_id = $project_id GROUP ALL;")
-            .bind(("project_id", self.project_id.clone()))
-            .await
-        {
-            Ok(mut resp) => match resp.take::<Vec<JsonValue>>(0) {
-                Ok(rows) => match extract_count(rows) {
-                    Ok(count) => {
-                        info!(
-                            "🗄️ SurrealDB nodes persisted: {} (expected ≈ {})",
-                            count, expected
-                        );
+        let query = "SELECT count() FROM nodes;";
+        match db.query(query).await {
+            Ok(mut resp) => {
+                match resp.take::<Vec<JsonValue>>(0) {
+                    Ok(rows) => {
+                        match extract_count(rows) {
+                            Ok(count) => {
+                                info!(
+                                    "🗄️ SurrealDB nodes persisted: {} (expected ≈ {})",
+                                    count, expected
+                                );
+                            }
+                            Err(e) => warn!("⚠️ Failed to interpret SurrealDB node count: {}", e),
+                        }
                     }
-                    Err(e) => warn!("⚠️ Failed to interpret SurrealDB node count: {}", e),
-                },
-                Err(e) => warn!("⚠️ Failed to read SurrealDB node count: {}", e),
-            },
+                    Err(e) => warn!("⚠️ Failed to read SurrealDB node count: {}", e),
+                }
+            }
             Err(e) => {
                 warn!("⚠️ SurrealDB node count query failed: {}", e);
             }
@@ -3780,12 +3784,17 @@ impl ProjectIndexer {
             database
         );
 
+        let auto_migrate = std::env::var("CODEGRAPH_AUTO_MIGRATE")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
         let config = SurrealDbConfig {
             connection: connection.clone(),
             namespace: namespace.clone(),
             database: database.clone(),
             username: username.clone(),
             password: password.clone(),
+            auto_migrate,
             ..SurrealDbConfig::default()
         };
 

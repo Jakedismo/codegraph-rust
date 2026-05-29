@@ -458,20 +458,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74ec243f75118d32aa99fa9390c34ee8ab7740abdfde2712cb7fe451d092c626"
 dependencies = [
  "async-trait",
- "autoagents-core 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "autoagents-derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "autoagents-llm 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "autoagents"
-version = "0.3.0"
-source = "git+https://github.com/liquidos-ai/AutoAgents#55fd373fd849756bd76b630a59039f8ae5e4a01d"
-dependencies = [
- "async-trait",
- "autoagents-core 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
- "autoagents-derive 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
- "autoagents-llm 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
+ "autoagents-core",
+ "autoagents-derive",
+ "autoagents-llm",
 ]
 
 [[package]]
@@ -481,7 +470,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f0d837fe0a6066a4788547424e21772a56c59225b409763a7e80d2fc0a09bde"
 dependencies = [
  "async-trait",
- "autoagents-llm 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "autoagents-llm",
  "futures",
  "futures-core",
  "futures-util",
@@ -495,31 +484,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "uuid",
- "wasm-bindgen",
- "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "autoagents-core"
-version = "0.3.0"
-source = "git+https://github.com/liquidos-ai/AutoAgents#55fd373fd849756bd76b630a59039f8ae5e4a01d"
-dependencies = [
- "async-trait",
- "autoagents-llm 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
- "futures",
- "futures-core",
- "futures-util",
- "getrandom 0.3.4",
- "log",
- "ractor",
- "regex",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "tokio",
- "tokio-stream",
- "uuid",
- "walkdir",
  "wasm-bindgen",
  "wasm-bindgen-futures",
 ]
@@ -539,50 +503,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "autoagents-derive"
-version = "0.3.0"
-source = "git+https://github.com/liquidos-ai/AutoAgents#55fd373fd849756bd76b630a59039f8ae5e4a01d"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde",
- "serde_json",
- "strum 0.27.2",
- "syn 2.0.111",
-]
-
-[[package]]
 name = "autoagents-llm"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b04ae8943e84fd72251ce270eb143b9f665c59978bc2ed03f524373ab12d9d68"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "chrono",
- "dirs 6.0.0",
- "either",
- "futures",
- "getrandom 0.3.4",
- "log",
- "reqwest",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "strum 0.27.2",
- "strum_macros 0.27.2",
- "thiserror 2.0.17",
- "tokio",
- "tokio-stream",
- "ureq 3.1.4",
- "wasm-bindgen",
- "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "autoagents-llm"
-version = "0.3.0"
-source = "git+https://github.com/liquidos-ai/AutoAgents#55fd373fd849756bd76b630a59039f8ae5e4a01d"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1384,8 +1308,8 @@ dependencies = [
  "anyhow",
  "async-trait",
  "atty",
- "autoagents 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
- "autoagents-derive 0.3.0 (git+https://github.com/liquidos-ai/AutoAgents)",
+ "autoagents",
+ "autoagents-derive",
  "chrono",
  "clap",
  "codegraph-ai",
@@ -1444,8 +1368,8 @@ name = "codegraph-mcp-autoagents"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "autoagents 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "autoagents-derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "autoagents",
+ "autoagents-derive",
  "codegraph-ai",
  "codegraph-graph",
  "codegraph-mcp-core",
