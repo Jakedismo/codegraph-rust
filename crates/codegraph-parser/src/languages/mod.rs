@@ -13,6 +13,8 @@ pub mod java;
 pub mod php;
 pub mod ruby;
 pub mod swift;
+// Extended language support
+pub mod scala;
 
 use codegraph_core::{EdgeType, ExtractionResult, Language};
 use tree_sitter::Tree;
@@ -43,6 +45,7 @@ pub use python::PythonExtractor;
 pub use ruby::RubyExtractor;
 pub use rust::RustExtractor;
 pub use swift::SwiftExtractor;
+pub use scala::ScalaExtractor;
 
 /// Unified extraction dispatch for all supported languages
 ///
@@ -94,6 +97,9 @@ pub fn extract_for_language(
             tree, content, file_path,
         )),
         Language::Php => Some(<PhpExtractor as LanguageExtractor>::extract_with_edges(
+            tree, content, file_path,
+        )),
+        Language::Scala => Some(<ScalaExtractor as LanguageExtractor>::extract_with_edges(
             tree, content, file_path,
         )),
         // Languages without dedicated extractors yet

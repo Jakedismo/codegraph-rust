@@ -51,6 +51,8 @@ pub enum Language {
     Ruby,
     Php,
     Dart,
+    Scala,
+    Svelte,
     Other(String),
 }
 

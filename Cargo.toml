@@ -205,6 +205,10 @@ tree-sitter-ruby = "0.23.0"
 tree-sitter-php = "0.24.2"
 tree-sitter-dart = "0.0.4"
 
+# Extended language support
+tree-sitter-scala = "0.25"
+# tree-sitter-svelte = "0.10"  # Windows build fails, disabled temporarily
+
 # GraphQL
 async-graphql = "7.0"
 async-graphql-axum = "7.0"

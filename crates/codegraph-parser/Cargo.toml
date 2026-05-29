@@ -24,6 +24,10 @@ tree-sitter-ruby = { workspace = true }
 tree-sitter-php = { workspace = true }
 # Disabled: tree-sitter-kotlin and tree-sitter-dart pull in incompatible tree-sitter v0.20.10
 
+# Extended language support
+tree-sitter-scala = { workspace = true }
+# tree-sitter-svelte disabled - Windows build fails
+
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

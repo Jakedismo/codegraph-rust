@@ -123,6 +123,15 @@ impl LanguageRegistry {
         //     },
         // );
 
+        // Scala support
+        configs.insert(
+            Language::Scala,
+            LanguageConfig {
+                language: tree_sitter_scala::LANGUAGE.into(),
+                file_extensions: vec!["scala", "sc"],
+            },
+        );
+
         Self { configs }
     }
 
