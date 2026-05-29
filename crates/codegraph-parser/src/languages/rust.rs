@@ -14,9 +14,10 @@ use tree_sitter::{Node, Tree, TreeCursor};
 /// - builds dependency info for `use` statements (stored in node metadata)
 /// - handles macros, async functions, unsafe blocks
 ///
-/// Notes:
-/// - We encode rich details in `CodeNode.metadata.attributes` to avoid API changes.
-/// - Names are kept simple; qualified names and contexts are added as metadata.
+/// Framework-aware patterns for:
+/// - Axum: Router, extractors, #[axum_macros::debug_handler]
+/// - Actix-web: #[actix_web::get/post/...], web::scope, HttpServer
+/// - Rocket: #[rocket::get/post/...], #[rocket::launch]
 pub struct RustExtractor;
 
 #[derive(Default, Clone)]
@@ -24,6 +25,7 @@ struct WalkContext {
     module_path: Vec<String>,
     current_impl_for: Option<String>,
     current_impl_trait: Option<String>,
+    framework_type: Option<String>, // "axum", "actix", "rocket"
 }
 
 impl RustExtractor {
@@ -66,17 +68,53 @@ struct Collector<'a> {
     nodes: Vec<CodeNode>,
     edges: Vec<EdgeRelationship>,
     current_node_id: Option<NodeId>, // Track current context for edge relationships
+    framework_type: Option<String>,
 }
 
 impl<'a> Collector<'a> {
     fn new(content: &'a str, file_path: &'a str) -> Self {
+        let framework_type = Self::detect_framework(content, file_path);
         Self {
             content,
             file_path,
             nodes: Vec::new(),
             edges: Vec::new(),
             current_node_id: None,
+            framework_type,
         }
+    }
+
+    fn detect_framework(content: &str, file_path: &str) -> Option<String> {
+        let lower = content.to_lowercase();
+        // Axum indicators
+        if lower.contains("axum::")
+            || lower.contains("use axum")
+            || lower.contains("tower::")
+            || lower.contains("axum_macros")
+        {
+            return Some("axum".to_string());
+        }
+        // Actix-web indicators
+        if lower.contains("actix_web")
+            || lower.contains("actix-rt")
+            || lower.contains("#[actix_web::")
+        {
+            return Some("actix".to_string());
+        }
+        // Rocket indicators
+        if lower.contains("rocket::")
+            || lower.contains("#[rocket::")
+            || lower.contains("rocket_sync::")
+        {
+            return Some("rocket".to_string());
+        }
+        // Poem indicators
+        if lower.contains("poem::")
+            || lower.contains("poem-openapi")
+        {
+            return Some("poem".to_string());
+        }
+        None
     }
 
     fn span_for(&self, node: &Node) -> Span {
@@ -400,6 +438,51 @@ impl<'a> Collector<'a> {
                             .attributes
                             .insert("implements_trait".into(), trait_name.clone());
                     }
+
+                    // Framework-specific route handlers
+                    if let Some(ref fw) = self.framework_type {
+                        let text = self.node_text(&node);
+                        let lower = text.to_lowercase();
+                        match fw.as_str() {
+                            "axum" => {
+                                if lower.contains("#[axum_macros::debug_handler]")
+                                    || lower.contains("axum::extract")
+                                    || lower.contains("Json(")
+                                    || lower.contains("Path(")
+                                    || lower.contains("Query(")
+                                {
+                                    code.metadata.attributes.insert("framework".into(), "axum".into());
+                                    code.metadata.attributes.insert("pattern".into(), "handler".into());
+                                }
+                            }
+                            "actix" => {
+                                if lower.contains("#[actix_web::get]")
+                                    || lower.contains("#[actix_web::post]")
+                                    || lower.contains("#[actix_web::put]")
+                                    || lower.contains("#[actix_web::delete]")
+                                    || lower.contains("#[get]")
+                                    || lower.contains("#[post]")
+                                {
+                                    code.metadata.attributes.insert("framework".into(), "actix".into());
+                                    code.metadata.attributes.insert("pattern".into(), "handler".into());
+                                }
+                            }
+                            "rocket" => {
+                                if lower.contains("#[rocket::get]")
+                                    || lower.contains("#[rocket::post]")
+                                    || lower.contains("#[rocket::put]")
+                                    || lower.contains("#[rocket::delete]")
+                                    || lower.contains("#[get]")
+                                    || lower.contains("#[post]")
+                                {
+                                    code.metadata.attributes.insert("framework".into(), "rocket".into());
+                                    code.metadata.attributes.insert("pattern".into(), "handler".into());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
                     code.metadata
                         .attributes
                         .insert("qualified_name".into(), self.qname_with_impl(&ctx, &name));

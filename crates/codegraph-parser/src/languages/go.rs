@@ -1,5 +1,6 @@
 // ABOUTME: Go language AST extractor for code intelligence
 // ABOUTME: Extracts packages, functions, methods, types, imports, and call edges
+// ABOUTME: Framework-aware: Gin, Axum, Echo, Fiber, chi
 
 use codegraph_core::{
     CodeNode, EdgeRelationship, EdgeType, ExtractionResult, Language, Location, NodeId, NodeType,
@@ -9,19 +10,7 @@ use std::collections::HashMap;
 use tree_sitter::{Node, Tree, TreeCursor};
 
 /// Advanced Go AST extractor for backend development intelligence.
-///
-/// Extracts:
-/// - packages, functions, methods, types (struct, interface)
-/// - imports (single and grouped)
-/// - function/method calls
-/// - struct embeddings and interface implementations
-/// - goroutines and channels patterns
-/// - error handling patterns
-///
-/// Notes:
-/// - Optimized for Go backend patterns
-/// - Captures composition over inheritance patterns
-/// - Handles Go's unique interface satisfaction model
+/// Now with framework-aware pattern detection for Gin, Axum, Echo, Fiber, chi.
 pub struct GoExtractor;
 
 #[derive(Default, Clone)]
@@ -29,6 +18,8 @@ struct GoContext {
     package_name: Option<String>,
     current_type: Option<String>,
     current_receiver: Option<String>,
+    framework_type: Option<String>, // "gin", "axum", "echo", "fiber", "chi"
+    is_route_handler: bool,
 }
 
 impl GoExtractor {
@@ -69,10 +60,12 @@ struct GoCollector<'a> {
     edges: Vec<EdgeRelationship>,
     current_function_id: Option<NodeId>,
     current_type_id: Option<NodeId>,
+    framework_type: Option<String>,
 }
 
 impl<'a> GoCollector<'a> {
     fn new(content: &'a str, file_path: &'a str) -> Self {
+        let framework_type = Self::detect_framework(content, file_path);
         Self {
             content,
             file_path,
@@ -80,7 +73,49 @@ impl<'a> GoCollector<'a> {
             edges: Vec::new(),
             current_function_id: None,
             current_type_id: None,
+            framework_type,
         }
+    }
+
+    fn detect_framework(content: &str, file_path: &str) -> Option<String> {
+        let lower = content.to_lowercase();
+        // Gin indicators
+        if lower.contains("github.com/gin-gonic/gin")
+            || lower.contains("gin.default()")
+            || lower.contains("gin.new()")
+            || lower.contains("\".gin\"")
+        {
+            return Some("gin".to_string());
+        }
+        // Axum indicators
+        if lower.contains("axum")
+            || lower.contains("tower")
+            || lower.contains("tower-service")
+        {
+            return Some("axum".to_string());
+        }
+        // Echo indicators
+        if lower.contains("github.com/labstack/echo")
+            || lower.contains("echo.new()")
+            || lower.contains("\".echo\"")
+        {
+            return Some("echo".to_string());
+        }
+        // Fiber indicators
+        if lower.contains("github.com/gofiber/fiber")
+            || lower.contains("fiber.new()")
+            || lower.contains("\".fiber\"")
+        {
+            return Some("fiber".to_string());
+        }
+        // chi router
+        if lower.contains("github.com/go-chi/chi")
+            || lower.contains("chi.newrouter()")
+            || lower.contains("chi.routemux")
+        {
+            return Some("chi".to_string());
+        }
+        None
     }
 
     fn into_nodes(self) -> Vec<CodeNode> {
@@ -183,6 +218,45 @@ impl<'a> GoCollector<'a> {
                             .insert("exported".into(), "true".into());
                     }
 
+                    // Framework-specific route handlers
+                    if let Some(ref fw) = self.framework_type {
+                        match fw.as_str() {
+                            "gin" => {
+                                // Gin handlers typically take *gin.Context
+                                if content_text.contains("gin.Context") || content_text.contains("*gin.Context") {
+                                    code.metadata.attributes.insert("framework".into(), "gin".into());
+                                    code.metadata.attributes.insert("pattern".into(), "handler".into());
+                                }
+                            }
+                            "echo" => {
+                                if content_text.contains("echo.Context") || content_text.contains("*echo.Context") {
+                                    code.metadata.attributes.insert("framework".into(), "echo".into());
+                                    code.metadata.attributes.insert("pattern".into(), "handler".into());
+                                }
+                            }
+                            "fiber" => {
+                                if content_text.contains("*fiber.Ctx") || content_text.contains("fiber.Ctx") {
+                                    code.metadata.attributes.insert("framework".into(), "fiber".into());
+                                    code.metadata.attributes.insert("pattern".into(), "handler".into());
+                                }
+                            }
+                            "chi" => {
+                                if content_text.contains("chi.Context") || content_text.contains("http.ResponseWriter") {
+                                    code.metadata.attributes.insert("framework".into(), "chi".into());
+                                    code.metadata.attributes.insert("pattern".into(), "handler".into());
+                                }
+                            }
+                            "axum" => {
+                                // Axum handlers use async with specific return types
+                                if content_text.contains("axum::") || content_text.contains("extract::") {
+                                    code.metadata.attributes.insert("framework".into(), "axum".into());
+                                    code.metadata.attributes.insert("pattern".into(), "handler".into());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
                     code.metadata
                         .attributes
                         .insert("kind".into(), "function".into());
@@ -229,6 +303,31 @@ impl<'a> GoCollector<'a> {
                         code.metadata
                             .attributes
                             .insert("exported".into(), "true".into());
+                    }
+
+                    // Framework-specific route handlers for methods too
+                    if let Some(ref fw) = self.framework_type {
+                        match fw.as_str() {
+                            "gin" => {
+                                if content_text.contains("gin.Context") || content_text.contains("*gin.Context") {
+                                    code.metadata.attributes.insert("framework".into(), "gin".into());
+                                    code.metadata.attributes.insert("pattern".into(), "handler".into());
+                                }
+                            }
+                            "echo" => {
+                                if content_text.contains("echo.Context") || content_text.contains("*echo.Context") {
+                                    code.metadata.attributes.insert("framework".into(), "echo".into());
+                                    code.metadata.attributes.insert("pattern".into(), "handler".into());
+                                }
+                            }
+                            "chi" => {
+                                if content_text.contains("chi.Context") || content_text.contains("http.ResponseWriter") {
+                                    code.metadata.attributes.insert("framework".into(), "chi".into());
+                                    code.metadata.attributes.insert("pattern".into(), "handler".into());
+                                }
+                            }
+                            _ => {}
+                        }
                     }
 
                     code.metadata
