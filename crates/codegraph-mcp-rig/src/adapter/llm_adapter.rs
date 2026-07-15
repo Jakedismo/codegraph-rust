@@ -20,9 +20,57 @@ pub enum RigProvider {
     },
     /// LM Studio - uses OpenAI-compatible API
     LMStudio,
+    /// MiniMax using its OpenAI-compatible API
+    MiniMaxOpenAI {
+        base_url: String,
+    },
+    /// MiniMax using its Anthropic-compatible API
+    MiniMaxAnthropic {
+        base_url: String,
+    },
 }
 
 impl RigProvider {
+    fn minimax_is_cn_region() -> bool {
+        matches!(
+            env::var("MINIMAX_REGION")
+                .unwrap_or_else(|_| "global_en".to_string())
+                .to_ascii_lowercase()
+                .as_str(),
+            "cn_zh" | "cn" | "china"
+        )
+    }
+
+    fn minimax_openai_base_url() -> String {
+        let variable = if Self::minimax_is_cn_region() {
+            "MINIMAX_CN_OPENAI_BASE_URL"
+        } else {
+            "MINIMAX_OPENAI_BASE_URL"
+        };
+        env::var(variable).unwrap_or_else(|_| {
+            if Self::minimax_is_cn_region() {
+                "https://api.minimaxi.com/v1".to_string()
+            } else {
+                "https://api.minimax.io/v1".to_string()
+            }
+        })
+    }
+
+    fn minimax_anthropic_base_url() -> String {
+        let variable = if Self::minimax_is_cn_region() {
+            "MINIMAX_CN_ANTHROPIC_BASE_URL"
+        } else {
+            "MINIMAX_ANTHROPIC_BASE_URL"
+        };
+        env::var(variable).unwrap_or_else(|_| {
+            if Self::minimax_is_cn_region() {
+                "https://api.minimaxi.com/anthropic".to_string()
+            } else {
+                "https://api.minimax.io/anthropic".to_string()
+            }
+        })
+    }
+
     /// Detect provider from environment variables
     /// Priority: CODEGRAPH_LLM_PROVIDER > API key presence
     pub fn from_env() -> Result<Self> {
@@ -34,6 +82,11 @@ impl RigProvider {
         // Fall back to API key detection
         if env::var("XAI_API_KEY").is_ok() {
             return Ok(Self::XAI);
+        }
+        if env::var("MINIMAX_API_KEY").is_ok() {
+            return Ok(Self::MiniMaxOpenAI {
+                base_url: Self::minimax_openai_base_url(),
+            });
         }
         if env::var("ANTHROPIC_API_KEY").is_ok() {
             return Ok(Self::Anthropic);
@@ -61,6 +114,12 @@ impl RigProvider {
             "ollama" => Ok(Self::Ollama),
             "xai" => Ok(Self::XAI),
             "lmstudio" => Ok(Self::LMStudio),
+            "minimax" | "minimax-openai" => Ok(Self::MiniMaxOpenAI {
+                base_url: Self::minimax_openai_base_url(),
+            }),
+            "minimax-anthropic" => Ok(Self::MiniMaxAnthropic {
+                base_url: Self::minimax_anthropic_base_url(),
+            }),
             "openai-compatible" => {
                 let base_url = env::var("CODEGRAPH_OPENAI_COMPATIBLE_URL")
                     .or_else(|_| env::var("OPENAI_COMPATIBLE_URL"))
@@ -68,7 +127,7 @@ impl RigProvider {
                 Ok(Self::OpenAICompatible { base_url })
             }
             _ => Err(anyhow!(
-                "Unknown provider: {}. Supported: openai, anthropic, ollama, xai, lmstudio, openai-compatible",
+                "Unknown provider: {}. Supported: openai, anthropic, ollama, xai, lmstudio, minimax, minimax-anthropic, openai-compatible",
                 name
             )),
         }
@@ -90,6 +149,9 @@ fn default_model_for_provider() -> String {
         Ok(RigProvider::Ollama) => "llama3.2".to_string(),
         Ok(RigProvider::XAI) => "grok-3-latest".to_string(),
         Ok(RigProvider::LMStudio) => "default".to_string(),
+        Ok(RigProvider::MiniMaxOpenAI { .. }) | Ok(RigProvider::MiniMaxAnthropic { .. }) => {
+            "MiniMax-M3".to_string()
+        }
         Ok(RigProvider::OpenAICompatible { .. }) => "default".to_string(),
         Err(_) => "gpt-4o".to_string(),
     }
@@ -129,6 +191,26 @@ impl RigLLMAdapter {
     #[cfg(feature = "anthropic")]
     pub fn anthropic_client() -> rig::providers::anthropic::Client {
         rig::providers::anthropic::Client::from_env()
+    }
+
+    /// Create a MiniMax OpenAI-compatible client using Chat Completions.
+    #[cfg(feature = "openai")]
+    pub fn minimax_openai_client(base_url: &str) -> rig::providers::openai::CompletionsClient {
+        let api_key = env::var("MINIMAX_API_KEY").unwrap_or_else(|_| "no-key".to_string());
+        env::set_var("OPENAI_API_KEY", &api_key);
+        env::set_var("OPENAI_BASE_URL", base_url);
+        rig::providers::openai::Client::from_env().completions_api()
+    }
+
+    /// Create a MiniMax Anthropic-compatible client with its direct base URL.
+    #[cfg(feature = "anthropic")]
+    pub fn minimax_anthropic_client(base_url: &str) -> rig::providers::anthropic::Client {
+        let api_key = env::var("MINIMAX_API_KEY").unwrap_or_else(|_| "no-key".to_string());
+        rig::providers::anthropic::Client::builder()
+            .api_key(api_key)
+            .base_url(base_url)
+            .build()
+            .expect("MiniMax Anthropic client configuration is invalid")
     }
 
     /// Create Ollama client from environment
@@ -233,6 +315,18 @@ mod tests {
             RigProvider::OpenAICompatible { .. }
         ));
         assert!(RigProvider::from_name("unknown").is_err());
+    }
+
+    #[test]
+    fn test_minimax_provider_names() {
+        assert!(matches!(
+            RigProvider::from_name("minimax").unwrap(),
+            RigProvider::MiniMaxOpenAI { .. }
+        ));
+        assert!(matches!(
+            RigProvider::from_name("minimax-anthropic").unwrap(),
+            RigProvider::MiniMaxAnthropic { .. }
+        ));
     }
 
     #[test]

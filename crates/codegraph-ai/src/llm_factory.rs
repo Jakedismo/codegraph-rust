@@ -15,6 +15,43 @@ use crate::openai_llm_provider::{OpenAIConfig, OpenAIProvider};
 #[cfg(feature = "openai-compatible")]
 use crate::openai_compatible_provider::{OpenAICompatibleConfig, OpenAICompatibleProvider};
 
+#[cfg(any(feature = "openai-compatible", feature = "anthropic"))]
+const MINIMAX_MODELS: [&str; 2] = ["MiniMax-M3", "MiniMax-M2.7"];
+
+#[cfg(any(feature = "openai-compatible", feature = "anthropic"))]
+fn minimax_model(config: &LLMConfig) -> String {
+    config
+        .model
+        .clone()
+        .unwrap_or_else(|| MINIMAX_MODELS[0].to_string())
+}
+
+#[cfg(any(feature = "openai-compatible", feature = "anthropic"))]
+fn minimax_is_cn_region(config: &LLMConfig) -> bool {
+    matches!(
+        config.minimax_region.to_ascii_lowercase().as_str(),
+        "cn_zh" | "cn" | "china"
+    )
+}
+
+#[cfg(feature = "openai-compatible")]
+fn minimax_openai_base_url(config: &LLMConfig) -> String {
+    if minimax_is_cn_region(config) {
+        config.minimax_cn_openai_base_url.clone()
+    } else {
+        config.minimax_openai_base_url.clone()
+    }
+}
+
+#[cfg(feature = "anthropic")]
+fn minimax_anthropic_base_url(config: &LLMConfig) -> String {
+    if minimax_is_cn_region(config) {
+        config.minimax_cn_anthropic_base_url.clone()
+    } else {
+        config.minimax_anthropic_base_url.clone()
+    }
+}
+
 /// Factory for creating LLM providers based on configuration
 pub struct LLMProviderFactory;
 
@@ -33,17 +70,21 @@ impl LLMProviderFactory {
             "lmstudio" => Self::create_lmstudio_provider(config),
             #[cfg(feature = "anthropic")]
             "anthropic" => Self::create_anthropic_provider(config),
+            #[cfg(feature = "anthropic")]
+            "minimax-anthropic" => Self::create_minimax_anthropic_provider(config),
             #[cfg(feature = "openai-llm")]
             "openai" => Self::create_openai_provider(config),
             #[cfg(feature = "openai-llm")]
             "xai" => Self::create_xai_provider(config),
             #[cfg(feature = "openai-compatible")]
             "openai-compatible" => Self::create_openai_compatible_provider(config),
+            #[cfg(feature = "openai-compatible")]
+            "minimax" | "minimax-openai" => Self::create_minimax_openai_provider(config),
             _ => Err(anyhow!(
                 "Unsupported LLM provider: {}. Available providers: ollama, lmstudio{}{}{}",
                 provider_name,
                 if cfg!(feature = "anthropic") {
-                    ", anthropic"
+                    ", anthropic, minimax-anthropic"
                 } else {
                     ""
                 },
@@ -53,7 +94,7 @@ impl LLMProviderFactory {
                     ""
                 },
                 if cfg!(feature = "openai-compatible") {
-                    ", openai-compatible"
+                    ", openai-compatible, minimax"
                 } else {
                     ""
                 }
@@ -155,7 +196,60 @@ impl LLMProviderFactory {
 
         let anthropic_config = AnthropicConfig {
             api_key,
+            base_url: config.anthropic_base_url.clone(),
             model: config.model.clone().unwrap_or_else(|| "claude".to_string()),
+            context_window: config.context_window,
+            timeout_secs: config.timeout_secs,
+            max_retries: 3,
+        };
+
+        Ok(Arc::new(AnthropicProvider::new(anthropic_config)?))
+    }
+
+    /// Create a MiniMax provider using its OpenAI-compatible endpoint.
+    #[cfg(feature = "openai-compatible")]
+    fn create_minimax_openai_provider(config: &LLMConfig) -> Result<Arc<dyn LLMProvider>> {
+        let api_key = config
+            .minimax_api_key
+            .clone()
+            .or_else(|| std::env::var("MINIMAX_API_KEY").ok())
+            .ok_or_else(|| {
+                anyhow!(
+                    "MiniMax API key not found. Set 'minimax_api_key' in config or MINIMAX_API_KEY environment variable"
+                )
+            })?;
+
+        let compat_config = OpenAICompatibleConfig {
+            base_url: minimax_openai_base_url(config),
+            model: minimax_model(config),
+            context_window: config.context_window,
+            timeout_secs: config.timeout_secs,
+            max_retries: 3,
+            api_key: Some(api_key),
+            provider_name: "minimax".to_string(),
+            use_responses_api: false,
+        };
+
+        Ok(Arc::new(OpenAICompatibleProvider::new(compat_config)?))
+    }
+
+    /// Create a MiniMax provider using its Anthropic-compatible endpoint.
+    #[cfg(feature = "anthropic")]
+    fn create_minimax_anthropic_provider(config: &LLMConfig) -> Result<Arc<dyn LLMProvider>> {
+        let api_key = config
+            .minimax_api_key
+            .clone()
+            .or_else(|| std::env::var("MINIMAX_API_KEY").ok())
+            .ok_or_else(|| {
+                anyhow!(
+                    "MiniMax API key not found. Set 'minimax_api_key' in config or MINIMAX_API_KEY environment variable"
+                )
+            })?;
+
+        let anthropic_config = AnthropicConfig {
+            api_key,
+            base_url: minimax_anthropic_base_url(config),
+            model: minimax_model(config),
             context_window: config.context_window,
             timeout_secs: config.timeout_secs,
             max_retries: 3,
@@ -276,8 +370,14 @@ impl LLMProviderFactory {
         #[cfg(feature = "openai-compatible")]
         providers.push("openai-compatible");
 
+        #[cfg(feature = "openai-compatible")]
+        providers.push("minimax");
+
         #[cfg(feature = "anthropic")]
         providers.push("anthropic");
+
+        #[cfg(feature = "anthropic")]
+        providers.push("minimax-anthropic");
 
         #[cfg(feature = "openai-llm")]
         providers.push("openai");
@@ -329,5 +429,47 @@ mod tests {
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert!(err.to_string().contains("LLM is not enabled"));
+    }
+
+    #[cfg(any(feature = "openai-compatible", feature = "anthropic"))]
+    #[test]
+    fn test_minimax_model_defaults() {
+        assert_eq!(MINIMAX_MODELS, ["MiniMax-M3", "MiniMax-M2.7"]);
+        assert_eq!(minimax_model(&LLMConfig::default()), "MiniMax-M3");
+    }
+
+    #[cfg(feature = "openai-compatible")]
+    #[test]
+    fn test_minimax_openai_provider_uses_cn_endpoint() {
+        let config = LLMConfig {
+            enabled: true,
+            provider: "minimax".to_string(),
+            minimax_api_key: Some("test-key".to_string()),
+            minimax_region: "cn_zh".to_string(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            minimax_openai_base_url(&config),
+            "https://api.minimaxi.com/v1"
+        );
+        assert!(LLMProviderFactory::create_from_config(&config).is_ok());
+    }
+
+    #[cfg(feature = "anthropic")]
+    #[test]
+    fn test_minimax_anthropic_provider_uses_global_endpoint() {
+        let config = LLMConfig {
+            enabled: true,
+            provider: "minimax-anthropic".to_string(),
+            minimax_api_key: Some("test-key".to_string()),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            minimax_anthropic_base_url(&config),
+            "https://api.minimax.io/anthropic"
+        );
+        assert!(LLMProviderFactory::create_from_config(&config).is_ok());
     }
 }

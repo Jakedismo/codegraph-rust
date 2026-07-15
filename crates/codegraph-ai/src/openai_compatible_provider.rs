@@ -335,9 +335,9 @@ impl OpenAICompatibleProvider {
             }
         });
 
-        // Skip reasoning_effort for Ollama - it doesn't support this parameter
-        // and may interpret it incorrectly as "think"
-        let reasoning_effort = if self.config.provider_name == "ollama" {
+        // Skip reasoning_effort for providers that use model-specific thinking defaults.
+        let reasoning_effort = if matches!(self.config.provider_name.as_str(), "ollama" | "minimax")
+        {
             None
         } else {
             config.reasoning_effort.clone()

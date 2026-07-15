@@ -10,10 +10,10 @@ use crate::agent::lats::LatsAgent;
 use crate::agent::react::AnthropicAgent;
 #[cfg(feature = "ollama")]
 use crate::agent::react::OllamaAgent;
-#[cfg(feature = "openai")]
-use crate::agent::react::OpenAIAgent;
 #[cfg(feature = "xai")]
 use crate::agent::react::XAIAgent;
+#[cfg(feature = "openai")]
+use crate::agent::react::{MiniMaxOpenAIAgent, OpenAIAgent};
 #[allow(unused_imports)]
 use crate::agent::reflexion::ReflexionAgent;
 use crate::prompts::{get_max_turns, get_tier_system_prompt, AnalysisType};
@@ -171,6 +171,10 @@ impl RigAgentBuilder {
             RigProvider::OpenAI => Ok(Box::new(self.build_openai_react()?)),
             #[cfg(feature = "anthropic")]
             RigProvider::Anthropic => Ok(Box::new(self.build_anthropic_react()?)),
+            #[cfg(feature = "anthropic")]
+            RigProvider::MiniMaxAnthropic { ref base_url } => {
+                Ok(Box::new(self.build_minimax_anthropic_react(base_url)?))
+            }
             #[cfg(feature = "ollama")]
             RigProvider::Ollama => Ok(Box::new(self.build_ollama_react()?)),
             #[cfg(feature = "xai")]
@@ -180,6 +184,10 @@ impl RigAgentBuilder {
             #[cfg(feature = "openai")]
             RigProvider::OpenAICompatible { ref base_url } => {
                 Ok(Box::new(self.build_openai_compatible_react(base_url)?))
+            }
+            #[cfg(feature = "openai")]
+            RigProvider::MiniMaxOpenAI { ref base_url } => {
+                Ok(Box::new(self.build_minimax_openai_react(base_url)?))
             }
             #[allow(unreachable_patterns)]
             _ => Err(anyhow!(
@@ -216,13 +224,38 @@ impl RigAgentBuilder {
                     tier: self.tier,
                 }))
             }
+            #[cfg(feature = "anthropic")]
+            RigProvider::MiniMaxAnthropic { ref base_url } => {
+                let client = RigLLMAdapter::minimax_anthropic_client(base_url);
+                let model = client.completion_model(&model_name);
+                Ok(Box::new(LatsAgent {
+                    model,
+                    factory,
+                    max_turns: self.max_turns,
+                    tier: self.tier,
+                }))
+            }
+            #[cfg(feature = "openai")]
+            RigProvider::MiniMaxOpenAI { ref base_url } => {
+                let client = RigLLMAdapter::minimax_openai_client(base_url);
+                let model = client.completion_model(&model_name);
+                Ok(Box::new(LatsAgent {
+                    model,
+                    factory,
+                    max_turns: self.max_turns,
+                    tier: self.tier,
+                }))
+            }
             // Add other providers as needed, mostly mimicking the above pattern
-             #[allow(unreachable_patterns)]
+            #[allow(unreachable_patterns)]
             _ => {
                 let _ = model_name;
                 let _ = factory;
-                Err(anyhow!("LATS not yet supported for provider {:?}", provider))
-            },
+                Err(anyhow!(
+                    "LATS not yet supported for provider {:?}",
+                    provider
+                ))
+            }
         }
     }
 
@@ -270,6 +303,36 @@ impl RigAgentBuilder {
     #[cfg(feature = "anthropic")]
     fn build_anthropic_react(self) -> Result<AnthropicAgent> {
         let client = RigLLMAdapter::anthropic_client();
+        let model = get_model_name();
+        let system_prompt = self.system_prompt();
+        let max_output_tokens = self.get_max_output_tokens();
+        let factory = GraphToolFactory::new(self.executor);
+
+        let agent = client
+            .agent(&model)
+            .preamble(&system_prompt)
+            .max_tokens(max_output_tokens)
+            .tool(factory.transitive_dependencies())
+            .tool(factory.circular_dependencies())
+            .tool(factory.call_chain())
+            .tool(factory.coupling_metrics())
+            .tool(factory.hub_nodes())
+            .tool(factory.reverse_dependencies())
+            .tool(factory.semantic_search())
+            .tool(factory.complexity_hotspots())
+            .build();
+
+        Ok(AnthropicAgent {
+            agent,
+            factory,
+            max_turns: self.max_turns,
+            tier: self.tier,
+        })
+    }
+
+    #[cfg(feature = "anthropic")]
+    fn build_minimax_anthropic_react(self, base_url: &str) -> Result<AnthropicAgent> {
+        let client = RigLLMAdapter::minimax_anthropic_client(base_url);
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let max_output_tokens = self.get_max_output_tokens();
@@ -408,6 +471,36 @@ impl RigAgentBuilder {
             .build();
 
         Ok(OpenAIAgent {
+            agent,
+            factory,
+            max_turns: self.max_turns,
+            tier: self.tier,
+        })
+    }
+
+    #[cfg(feature = "openai")]
+    fn build_minimax_openai_react(self, base_url: &str) -> Result<MiniMaxOpenAIAgent> {
+        let client = RigLLMAdapter::minimax_openai_client(base_url);
+        let model = get_model_name();
+        let system_prompt = self.system_prompt();
+        let max_output_tokens = self.get_max_output_tokens();
+        let factory = GraphToolFactory::new(self.executor);
+
+        let agent = client
+            .agent(&model)
+            .preamble(&system_prompt)
+            .max_tokens(max_output_tokens)
+            .tool(factory.transitive_dependencies())
+            .tool(factory.circular_dependencies())
+            .tool(factory.call_chain())
+            .tool(factory.coupling_metrics())
+            .tool(factory.hub_nodes())
+            .tool(factory.reverse_dependencies())
+            .tool(factory.semantic_search())
+            .tool(factory.complexity_hotspots())
+            .build();
+
+        Ok(MiniMaxOpenAIAgent {
             agent,
             factory,
             max_turns: self.max_turns,

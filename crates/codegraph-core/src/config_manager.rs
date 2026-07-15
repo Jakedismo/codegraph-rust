@@ -174,6 +174,34 @@ pub struct LLMConfig {
     #[serde(default = "default_xai_base_url")]
     pub xai_base_url: String,
 
+    /// Anthropic-compatible base URL (default: https://api.anthropic.com)
+    #[serde(default = "default_anthropic_base_url")]
+    pub anthropic_base_url: String,
+
+    /// MiniMax API key
+    #[serde(default)]
+    pub minimax_api_key: Option<String>,
+
+    /// MiniMax endpoint region: "global_en" or "cn_zh"
+    #[serde(default = "default_minimax_region")]
+    pub minimax_region: String,
+
+    /// MiniMax OpenAI-compatible global endpoint
+    #[serde(default = "default_minimax_openai_base_url")]
+    pub minimax_openai_base_url: String,
+
+    /// MiniMax OpenAI-compatible China endpoint
+    #[serde(default = "default_minimax_cn_openai_base_url")]
+    pub minimax_cn_openai_base_url: String,
+
+    /// MiniMax Anthropic-compatible global endpoint
+    #[serde(default = "default_minimax_anthropic_base_url")]
+    pub minimax_anthropic_base_url: String,
+
+    /// MiniMax Anthropic-compatible China endpoint
+    #[serde(default = "default_minimax_cn_anthropic_base_url")]
+    pub minimax_cn_anthropic_base_url: String,
+
     /// Context window size
     #[serde(default = "default_context_window")]
     pub context_window: usize,
@@ -230,6 +258,13 @@ impl Default for LLMConfig {
             openai_api_key: None,
             xai_api_key: None,
             xai_base_url: default_xai_base_url(),
+            anthropic_base_url: default_anthropic_base_url(),
+            minimax_api_key: None,
+            minimax_region: default_minimax_region(),
+            minimax_openai_base_url: default_minimax_openai_base_url(),
+            minimax_cn_openai_base_url: default_minimax_cn_openai_base_url(),
+            minimax_anthropic_base_url: default_minimax_anthropic_base_url(),
+            minimax_cn_anthropic_base_url: default_minimax_cn_anthropic_base_url(),
             context_window: default_context_window(),
             temperature: default_temperature(),
             insights_mode: default_insights_mode(),
@@ -522,6 +557,24 @@ fn default_llm_provider() -> String {
 fn default_xai_base_url() -> String {
     "https://api.x.ai/v1".to_string()
 }
+fn default_anthropic_base_url() -> String {
+    "https://api.anthropic.com".to_string()
+}
+fn default_minimax_region() -> String {
+    "global_en".to_string()
+}
+fn default_minimax_openai_base_url() -> String {
+    "https://api.minimax.io/v1".to_string()
+}
+fn default_minimax_cn_openai_base_url() -> String {
+    "https://api.minimaxi.com/v1".to_string()
+}
+fn default_minimax_anthropic_base_url() -> String {
+    "https://api.minimax.io/anthropic".to_string()
+}
+fn default_minimax_cn_anthropic_base_url() -> String {
+    "https://api.minimaxi.com/anthropic".to_string()
+}
 
 fn default_context_window() -> usize {
     32000
@@ -793,6 +846,28 @@ impl ConfigManager {
 
         if let Ok(effort) = std::env::var("CODEGRAPH_REASONING_EFFORT") {
             config.llm.reasoning_effort = Some(effort);
+        }
+
+        if let Ok(base_url) = std::env::var("ANTHROPIC_BASE_URL") {
+            config.llm.anthropic_base_url = base_url;
+        }
+        if let Ok(key) = std::env::var("MINIMAX_API_KEY") {
+            config.llm.minimax_api_key = Some(key);
+        }
+        if let Ok(region) = std::env::var("MINIMAX_REGION") {
+            config.llm.minimax_region = region;
+        }
+        if let Ok(base_url) = std::env::var("MINIMAX_OPENAI_BASE_URL") {
+            config.llm.minimax_openai_base_url = base_url;
+        }
+        if let Ok(base_url) = std::env::var("MINIMAX_CN_OPENAI_BASE_URL") {
+            config.llm.minimax_cn_openai_base_url = base_url;
+        }
+        if let Ok(base_url) = std::env::var("MINIMAX_ANTHROPIC_BASE_URL") {
+            config.llm.minimax_anthropic_base_url = base_url;
+        }
+        if let Ok(base_url) = std::env::var("MINIMAX_CN_ANTHROPIC_BASE_URL") {
+            config.llm.minimax_cn_anthropic_base_url = base_url;
         }
 
         if let Ok(max_output) = std::env::var("MCP_CODE_AGENT_MAX_OUTPUT_TOKENS") {

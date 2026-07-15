@@ -5,7 +5,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
-const ANTHROPIC_API_BASE: &str = "https://api.anthropic.com/v1";
+const ANTHROPIC_API_BASE: &str = "https://api.anthropic.com";
 const DEFAULT_MODEL: &str = "claude-3-5-sonnet-20241022";
 const API_VERSION: &str = "2023-06-01";
 const STRUCTURED_OUTPUTS_BETA: &str = "structured-outputs-2025-11-13";
@@ -15,6 +15,8 @@ const STRUCTURED_OUTPUTS_BETA: &str = "structured-outputs-2025-11-13";
 pub struct AnthropicConfig {
     /// API key for Anthropic
     pub api_key: String,
+    /// Base URL for the Anthropic-compatible API
+    pub base_url: String,
     /// Model to use (e.g., "claude-3-5-sonnet-20241022")
     pub model: String,
     /// Maximum context window
@@ -29,6 +31,8 @@ impl Default for AnthropicConfig {
     fn default() -> Self {
         Self {
             api_key: std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
+            base_url: std::env::var("ANTHROPIC_BASE_URL")
+                .unwrap_or_else(|_| ANTHROPIC_API_BASE.to_string()),
             model: DEFAULT_MODEL.to_string(),
             context_window: 200_000,
             timeout_secs: 120,
@@ -198,7 +202,10 @@ impl AnthropicProvider {
 
         let mut request_builder = self
             .client
-            .post(format!("{}/messages", ANTHROPIC_API_BASE))
+            .post(format!(
+                "{}/v1/messages",
+                self.config.base_url.trim_end_matches('/')
+            ))
             .header("x-api-key", &self.config.api_key)
             .header("anthropic-version", API_VERSION)
             .header("content-type", "application/json");
@@ -532,6 +539,9 @@ struct Usage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm_provider::LLMProvider;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
 
     #[test]
     fn test_config_from_env() {
@@ -547,5 +557,47 @@ mod tests {
             ..Default::default()
         };
         assert!(AnthropicProvider::new(config).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_custom_base_url_appends_v1_messages() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let address = listener.local_addr().expect("read test server address");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            let mut request = [0_u8; 4096];
+            let size = stream.read(&mut request).expect("read test request");
+            let request = String::from_utf8_lossy(&request[..size]);
+            let path = request
+                .lines()
+                .next()
+                .and_then(|line| line.split_whitespace().nth(1))
+                .unwrap_or_default()
+                .to_string();
+            let body = r#"{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"MiniMax-M3","stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write test response");
+            path
+        });
+
+        let provider = AnthropicProvider::new(AnthropicConfig {
+            api_key: "test-key".to_string(),
+            base_url: format!("http://{}/anthropic", address),
+            model: "MiniMax-M3".to_string(),
+            ..Default::default()
+        })
+        .expect("create test provider");
+
+        let response = provider.generate("hello").await.expect("generate response");
+        assert_eq!(response.content, "ok");
+        assert_eq!(
+            server.join().expect("join test server"),
+            "/anthropic/v1/messages"
+        );
     }
 }

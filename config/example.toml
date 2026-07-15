@@ -14,10 +14,16 @@ ollama_url = "http://localhost:11434"
 # skip_chunking = false
 
 [llm]
-provider = "ollama"   # or openai / anthropic / openai-compatible / xai / lmstudio
+provider = "ollama"   # or openai / anthropic / minimax / minimax-anthropic / openai-compatible / xai / lmstudio
 model = "qwen3:4b"
 context_window = 252000
 max_retries = 3
+# MiniMax supports global_en and cn_zh endpoint pairs for both protocols.
+# minimax_region = "global_en"
+# minimax_openai_base_url = "https://api.minimax.io/v1"
+# minimax_cn_openai_base_url = "https://api.minimaxi.com/v1"
+# minimax_anthropic_base_url = "https://api.minimax.io/anthropic"
+# minimax_cn_anthropic_base_url = "https://api.minimaxi.com/anthropic"
 
 [rerank]
 # Optional reranking provider: jina | lmstudio

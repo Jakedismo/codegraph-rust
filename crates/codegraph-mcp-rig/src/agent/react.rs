@@ -73,6 +73,61 @@ impl RigAgentTrait for OpenAIAgent {
     }
 }
 
+/// MiniMax OpenAI-compatible Rig agent using Chat Completions.
+#[cfg(feature = "openai")]
+pub struct MiniMaxOpenAIAgent {
+    pub(crate) agent: rig::agent::Agent<rig::providers::openai::completion::CompletionModel>,
+    pub(crate) factory: GraphToolFactory,
+    pub(crate) max_turns: usize,
+    pub(crate) tier: ContextTier,
+}
+
+#[cfg(feature = "openai")]
+#[async_trait]
+impl RigAgentTrait for MiniMaxOpenAIAgent {
+    async fn execute(&self, query: &str) -> Result<String> {
+        use rig::agent::PromptRequest;
+
+        let mut chat_history = vec![];
+        let response = PromptRequest::new(&self.agent, query)
+            .multi_turn(self.max_turns)
+            .with_history(&mut chat_history)
+            .await
+            .map_err(|e| anyhow!("Agent execution failed: {}", e))?;
+
+        Ok(response)
+    }
+
+    async fn execute_stream(
+        &self,
+        query: &str,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<AgentEvent>> + Send>>> {
+        let response = self.execute(query).await?;
+        let events = vec![
+            Ok(AgentEvent::Thinking("Agent processing...".to_string())),
+            Ok(AgentEvent::OutputChunk(response)),
+            Ok(AgentEvent::Done),
+        ];
+        Ok(Box::pin(stream::iter(events)))
+    }
+
+    fn tier(&self) -> ContextTier {
+        self.tier
+    }
+
+    fn max_turns(&self) -> usize {
+        self.max_turns
+    }
+
+    fn take_tool_call_count(&self) -> usize {
+        self.factory.take_call_count()
+    }
+
+    fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace> {
+        self.factory.take_traces()
+    }
+}
+
 /// Anthropic-based Rig agent
 #[cfg(feature = "anthropic")]
 pub struct AnthropicAgent {

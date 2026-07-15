@@ -216,6 +216,8 @@ Valid values for `llm.provider` (availability depends on build features):
 - `ollama`
 - `lmstudio`
 - `anthropic`
+- `minimax`
+- `minimax-anthropic`
 - `openai`
 - `xai`
 - `openai-compatible`
@@ -258,12 +260,54 @@ Config inputs:
 - `llm.model`
 - `llm.xai_base_url` (default `https://api.x.ai/v1`)
 
+### `llm.provider = "minimax"`
+
+Uses the MiniMax OpenAI-compatible Chat Completions endpoint. The provider keeps both regional endpoint sets in configuration and selects one with `llm.minimax_region`.
+
+```toml
+[llm]
+enabled = true
+provider = "minimax"
+model = "MiniMax-M3"
+minimax_region = "global_en"       # global_en or cn_zh
+minimax_openai_base_url = "https://api.minimax.io/v1"
+minimax_cn_openai_base_url = "https://api.minimaxi.com/v1"
+context_window = 1000000
+```
+
+Set the API key with `MINIMAX_API_KEY`. The first two supported model identifiers are `MiniMax-M3` and `MiniMax-M2.7`; an explicit `llm.model` value is preserved.
+
+### `llm.provider = "minimax-anthropic"`
+
+Uses the MiniMax Anthropic-compatible Messages endpoint. The configured Anthropic base URL is used directly, and the client appends `/v1/messages`.
+
+```toml
+[llm]
+enabled = true
+provider = "minimax-anthropic"
+model = "MiniMax-M3"
+minimax_region = "global_en"       # global_en or cn_zh
+minimax_anthropic_base_url = "https://api.minimax.io/anthropic"
+minimax_cn_anthropic_base_url = "https://api.minimaxi.com/anthropic"
+context_window = 1000000
+```
+
+MiniMax model capability reference:
+
+| Model | Context window | Input modalities | Thinking modes |
+| --- | ---: | --- | --- |
+| `MiniMax-M3` | 1,000,000 | text, image, video | adaptive, disabled |
+| `MiniMax-M2.7` | 204,800 | text | always_on |
+
+The standard-tier prices are `$0.30/$1.20` per million input/output tokens up to 512,000 input tokens and `$0.60/$2.40` above that threshold. Priority-tier prices are `$0.45/$1.80` and `$0.90/$3.60` for the same two ranges. Cache-read prices are `$0.06`, `$0.12`, `$0.09`, and `$0.18`; `MiniMax-M2.7` also has a `$0.375` per million cache-write price.
+
 ### `llm.provider = "anthropic"`
 
 Config inputs:
 
 - `ANTHROPIC_API_KEY` (or `llm.anthropic_api_key`)
 - `llm.model`
+- `ANTHROPIC_BASE_URL` (or `llm.anthropic_base_url`; defaults to `https://api.anthropic.com`)
 
 ### `llm.provider = "openai-compatible"`
 
