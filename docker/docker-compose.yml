@@ -1,0 +1,20 @@
+services:
+  codegraph-mcp:
+    build: .
+    image: colbymchenry-codegraph-mcp:latest
+    container_name: codegraph-mcp
+    restart: unless-stopped
+    ports:
+      - "8045:8045"
+    volumes:
+      # Mount the current repository (or any target repository) into the container
+      - .:/repo
+      # Persist the CodeGraph index so it doesn't rebuild on container restart
+      - codegraph-cache:/repo/.codegraph
+    environment:
+      - PORT=8045
+    hostname: codegraph-mcp
+
+volumes:
+  codegraph-cache:
+    driver: local
