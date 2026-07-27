@@ -383,21 +383,33 @@ impl FileSystemWatcher {
                             if let Ok(new_metadata) =
                                 Self::create_file_metadata_static(&path, language_registry).await
                             {
-                                if let Some(old_metadata) = file_registry.get(&file_id) {
-                                    let old_metadata = old_metadata.value().clone();
-                                    if old_metadata.content_hash != new_metadata.content_hash {
-                                        file_registry.insert(file_id.clone(), new_metadata.clone());
-                                        let _ = event_sender.send(FileChangeEvent::Modified(
-                                            file_id,
-                                            new_metadata,
-                                            old_metadata,
-                                        ));
+                                // Clone out of the registry in a single statement so the
+                                // DashMap read guard is dropped before the insert below.
+                                // Holding a `Ref` across `insert` deadlocks the task: the
+                                // insert needs a write lock on the very shard the guard is
+                                // read-locking, and nothing will ever release it.
+                                let previous = file_registry
+                                    .get(&file_id)
+                                    .map(|entry| entry.value().clone());
+
+                                match previous {
+                                    Some(old_metadata) => {
+                                        if old_metadata.content_hash != new_metadata.content_hash {
+                                            file_registry
+                                                .insert(file_id.clone(), new_metadata.clone());
+                                            let _ = event_sender.send(FileChangeEvent::Modified(
+                                                file_id,
+                                                new_metadata,
+                                                old_metadata,
+                                            ));
+                                        }
                                     }
-                                } else {
-                                    // File wasn't tracked before, treat as creation
-                                    file_registry.insert(file_id.clone(), new_metadata.clone());
-                                    let _ = event_sender
-                                        .send(FileChangeEvent::Created(file_id, new_metadata));
+                                    None => {
+                                        // File wasn't tracked before, treat as creation
+                                        file_registry.insert(file_id.clone(), new_metadata.clone());
+                                        let _ = event_sender
+                                            .send(FileChangeEvent::Created(file_id, new_metadata));
+                                    }
                                 }
                             }
                         }
