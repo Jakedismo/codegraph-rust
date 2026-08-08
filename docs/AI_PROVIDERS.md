@@ -294,12 +294,12 @@ context_window = 1000000
 
 MiniMax model capability reference:
 
-| Model | Context window | Input modalities | Thinking modes |
-| --- | ---: | --- | --- |
-| `MiniMax-M3` | 1,000,000 | text, image, video | adaptive, disabled |
-| `MiniMax-M2.7` | 204,800 | text | always_on |
+| Model | Context window | Input modalities | Thinking modes | Input / output price | Cache read / write price |
+| --- | ---: | --- | --- | ---: | ---: |
+| `MiniMax-M3` | 1,000,000 | text, image, video | adaptive, disabled | `$0.60` / `$2.40` | `$0.12` / n/a |
+| `MiniMax-M2.7` | 204,800 | text | always_on | `$0.30` / `$1.20` | `$0.06` / `$0.375` |
 
-The standard-tier prices are `$0.30/$1.20` per million input/output tokens up to 512,000 input tokens and `$0.60/$2.40` above that threshold. Priority-tier prices are `$0.45/$1.80` and `$0.90/$3.60` for the same two ranges. Cache-read prices are `$0.06`, `$0.12`, `$0.09`, and `$0.18`; `MiniMax-M2.7` also has a `$0.375` per million cache-write price.
+Prices are listed per million tokens in USD.
 
 ### `llm.provider = "anthropic"`
 
