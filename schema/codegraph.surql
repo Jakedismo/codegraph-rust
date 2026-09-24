@@ -921,7 +921,16 @@ DEFINE FIELD embedding_model ON nodes TYPE option<string> DEFAULT 'jina-embeddin
 DEFINE FIELD end_line ON nodes TYPE option<int> PERMISSIONS FULL;
 DEFINE FIELD file_path ON nodes TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD language ON nodes TYPE option<string> PERMISSIONS FULL;
-DEFINE FIELD metadata ON nodes FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+-- METADATA IS WRITTEN COMPRESSED, AS A STRING, AND THE TYPE MUST SAY SO.
+-- `node_to_surreal` (crates/codegraph-graph/src/surrealdb_storage.rs) gzips the
+-- attribute map and stores `JsonValue::String(compressed)`; `SurrealNodeRecord`
+-- documents it ("JsonValue but contains strings if compressed"), and the reader
+-- at crates/codegraph-graph/src/graph_functions.rs:52 decompresses a strand
+-- transparently. Declaring `option<object>` on a SCHEMAFULL table therefore
+-- rejected EVERY node insert: 0 of 15,959 stored on a real index, while edges
+-- -- which are not compressed -- persisted, so the graph looked populated and
+-- resolved nothing. Edges keep `option<object>` because their writer sends one.
+DEFINE FIELD metadata ON nodes FLEXIBLE TYPE option<string | object> PERMISSIONS FULL;
 DEFINE FIELD name ON nodes TYPE string PERMISSIONS FULL;
 DEFINE FIELD node_type ON nodes TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD organization_id ON nodes TYPE option<string> PERMISSIONS FULL;

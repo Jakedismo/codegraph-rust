@@ -546,6 +546,14 @@ impl SurrealDbStorage {
             records.push(self.node_to_surreal(node)?);
         }
 
+        // `.check()` IS WHAT MAKES A FAILED INSERT VISIBLE. Awaiting a query in
+        // the surrealdb 2.x SDK surfaces transport errors only; a statement that
+        // the server rejected — a type mismatch on a SCHEMAFULL field, say —
+        // comes back inside an Ok response and is silently discarded without it.
+        // That is how a schema/writer mismatch stored 0 of 15,959 nodes while the
+        // indexer reported success and printed "Ready". Every other write path in
+        // this file already checks (lines 663, 750, 774, 970, 1014, 1077, 2378);
+        // this one did not, and it is the one that matters most.
         self.db
             .query(UPSERT_NODES_QUERY)
             .bind(("data", records.clone()))
@@ -553,6 +561,14 @@ impl SurrealDbStorage {
             .map_err(|e| {
                 CodeGraphError::Database(format!(
                     "Failed to upsert node batch ({} items): {}",
+                    records.len(),
+                    truncate_surreal_error(&e)
+                ))
+            })?
+            .check()
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Node batch rejected by the server ({} items): {}",
                     records.len(),
                     truncate_surreal_error(&e)
                 ))
