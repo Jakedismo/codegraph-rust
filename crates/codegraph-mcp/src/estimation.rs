@@ -30,6 +30,7 @@ pub struct RepositoryCounts {
 #[derive(Debug, Clone, Serialize)]
 pub struct ParsingSummary {
     pub total_lines: usize,
+    pub cached_files: usize,
     pub duration_seconds: f64,
     pub files_per_second: f64,
     pub lines_per_second: f64,
@@ -39,6 +40,7 @@ impl From<&ParsingStatistics> for ParsingSummary {
     fn from(stats: &ParsingStatistics) -> Self {
         Self {
             total_lines: stats.total_lines,
+            cached_files: stats.cached_files,
             duration_seconds: stats.parsing_duration.as_secs_f64(),
             files_per_second: stats.files_per_second,
             lines_per_second: stats.lines_per_second,
@@ -181,15 +183,26 @@ pub(crate) fn source_memory_budget() -> usize {
 
 pub(crate) async fn parse_snapshots_with_unified_extraction(
     parser: &TreeSitterParser,
+    files: Vec<(PathBuf, u64)>,
+    total_files: u64,
+    snapshots: &SourceSnapshots,
+) -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, ParsingStatistics)> {
+    parse_snapshots_with_cache(parser, files, total_files, snapshots, None).await
+}
+
+pub(crate) async fn parse_snapshots_with_cache(
+    parser: &TreeSitterParser,
     mut files: Vec<(PathBuf, u64)>,
     total_files: u64,
     snapshots: &SourceSnapshots,
+    cache: Option<&codegraph_core::artifact_cache::ArtifactCache>,
 ) -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, ParsingStatistics)> {
     let mut all_nodes = Vec::new();
     let mut all_edges = Vec::new();
     let mut total_lines = 0;
     let mut parsed_files = 0;
     let mut failed_files = 0;
+    let mut cached_files = 0;
 
     let start_time = std::time::Instant::now();
 
@@ -205,6 +218,25 @@ pub(crate) async fn parse_snapshots_with_unified_extraction(
             let language = registry
                 .detect_language(&file_path.to_string_lossy())
                 .ok_or_else(|| anyhow::anyhow!("Unsupported source: {}", file_path.display()))?;
+            let policy = parser_ref.extraction_policy();
+            let cache_key = codegraph_core::artifact_cache::fingerprint(&(
+                "unified-ast-v3",
+                &file_path,
+                &snapshot.content_hash,
+                policy.uses,
+                policy.references,
+            ))?;
+            if let Some(cache) = cache {
+                let cache = cache.clone();
+                let key = cache_key.clone();
+                if let Some(extraction) = tokio::task::spawn_blocking(move || {
+                    cache.get::<codegraph_core::ExtractionResult>(&key)
+                })
+                .await?
+                {
+                    return Ok((extraction, snapshot.lines, true));
+                }
+            }
             let extraction = parser_ref
                 .parse_source_with_edges(
                     snapshot.contents_async().await?,
@@ -212,7 +244,19 @@ pub(crate) async fn parse_snapshots_with_unified_extraction(
                     language,
                 )
                 .await?;
-            Ok::<_, anyhow::Error>((extraction, snapshot.lines))
+            let extraction = if let Some(cache) = cache {
+                let cache = cache.clone();
+                tokio::task::spawn_blocking(move || {
+                    if let Err(error) = cache.put(&cache_key, &extraction) {
+                        warn!("AST cache write failed: {error}");
+                    }
+                    extraction
+                })
+                .await?
+            } else {
+                extraction
+            };
+            Ok::<_, anyhow::Error>((extraction, snapshot.lines, false))
         }
         .await;
         (file_path, result)
@@ -221,7 +265,8 @@ pub(crate) async fn parse_snapshots_with_unified_extraction(
 
     while let Some((file_path, result)) = stream.next().await {
         match result {
-            Ok((mut extraction_result, lines)) => {
+            Ok((mut extraction_result, lines, cached)) => {
+                cached_files += usize::from(cached);
                 total_lines += lines;
                 for edge in &mut extraction_result.edges {
                     edge.metadata
@@ -294,6 +339,7 @@ pub(crate) async fn parse_snapshots_with_unified_extraction(
         total_files: total_files.try_into().unwrap_or(usize::MAX),
         parsed_files,
         failed_files,
+        cached_files,
         total_lines,
         parsing_duration,
         files_per_second,
@@ -350,6 +396,46 @@ pub(crate) async fn parse_snapshots_with_unified_extraction(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn ast_cache_reuses_unchanged_files_and_invalidates_source_and_tier_changes() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("a.rs");
+        let files = vec![(file.clone(), 0)];
+        std::fs::write(&file, "fn initial() {}\n").unwrap();
+        let cache = codegraph_core::artifact_cache::ArtifactCache::new(
+            directory.path().join("cache"),
+            "test-ast",
+        );
+        let parser = TreeSitterParser::new();
+        for expected_cached in [0, 1] {
+            let sources = SourceSnapshots::capture(&files, 0, 2).await.unwrap();
+            let (nodes, _, stats) =
+                parse_snapshots_with_cache(&parser, files.clone(), 1, &sources, Some(&cache))
+                    .await
+                    .unwrap();
+            assert!(nodes.iter().any(|node| node.name.as_str() == "initial"));
+            assert_eq!(stats.cached_files, expected_cached);
+        }
+        std::fs::write(&file, "fn changed() {}\n").unwrap();
+        let sources = SourceSnapshots::capture(&files, 0, 2).await.unwrap();
+        let (nodes, _, stats) =
+            parse_snapshots_with_cache(&parser, files.clone(), 1, &sources, Some(&cache))
+                .await
+                .unwrap();
+        assert_eq!(stats.cached_files, 0);
+        assert!(nodes.iter().any(|node| node.name.as_str() == "changed"));
+        let fast = TreeSitterParser::new().with_extraction_policy(
+            codegraph_parser::languages::ExtractionPolicy {
+                uses: false,
+                references: false,
+            },
+        );
+        let (_, _, stats) = parse_snapshots_with_cache(&fast, files, 1, &sources, Some(&cache))
+            .await
+            .unwrap();
+        assert_eq!(stats.cached_files, 0);
+    }
 
     #[tokio::test]
     async fn source_lines_and_node_order_do_not_depend_on_worker_count() {

@@ -41,6 +41,7 @@ tikv-jemallocator = { workspace = true }
 hashbrown = { workspace = true }
 rustc-hash = { workspace = true }
 sha2 = { workspace = true }
+blake3 = "1.8.7"
 bincode = { workspace = true }
 zstd = "0.14.0"
 

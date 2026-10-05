@@ -35,6 +35,7 @@ pub struct ParsingStatistics {
     pub total_files: usize,
     pub parsed_files: usize,
     pub failed_files: usize,
+    pub cached_files: usize,
     pub total_lines: usize,
     pub parsing_duration: Duration,
     pub files_per_second: f64,
@@ -70,6 +71,10 @@ impl TreeSitterParser {
 
     pub fn concurrency(&self) -> usize {
         self.max_concurrent_files
+    }
+
+    pub fn extraction_policy(&self) -> crate::languages::ExtractionPolicy {
+        self.extraction_policy
     }
 
     pub fn with_extraction_policy(mut self, policy: crate::languages::ExtractionPolicy) -> Self {
@@ -163,6 +168,7 @@ impl TreeSitterParser {
             total_files,
             parsed_files,
             failed_files,
+            cached_files: 0,
             total_lines,
             parsing_duration,
             files_per_second,
@@ -301,6 +307,7 @@ impl TreeSitterParser {
             total_files,
             parsed_files,
             failed_files,
+            cached_files: 0,
             total_lines,
             parsing_duration,
             files_per_second,

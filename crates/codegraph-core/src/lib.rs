@@ -1,4 +1,5 @@
 pub mod advanced_config;
+pub mod artifact_cache;
 pub mod buffer_pool;
 pub mod cli_config;
 pub mod compression;

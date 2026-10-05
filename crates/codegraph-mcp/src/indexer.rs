@@ -721,14 +721,28 @@ impl ProjectIndexer {
 
         // REVOLUTIONARY: Use unified extraction for nodes + edges in single pass (FASTEST approach)
         // Clone files for parsing (we need them again for metadata persistence)
-        let (mut nodes, mut edges, pstats) =
-            crate::estimation::parse_snapshots_with_unified_extraction(
-                &self.parser,
-                files.clone(),
-                total_files as u64,
-                &source_snapshots,
-            )
-            .await?;
+        let ast_cache = codegraph_core::artifact_cache::ArtifactCache::new(
+            self.project_root.join(".codegraph/index-cache"),
+            "unified-ast-v3",
+        );
+        let (mut nodes, mut edges, pstats) = crate::estimation::parse_snapshots_with_cache(
+            &self.parser,
+            files.clone(),
+            total_files as u64,
+            &source_snapshots,
+            Some(&ast_cache),
+        )
+        .await?;
+        let cache_budget = std::env::var("CODEGRAPH_AST_CACHE_BYTES")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(2 * 1024 * 1024 * 1024);
+        let cache_for_prune = ast_cache.clone();
+        if let Err(error) =
+            tokio::task::spawn_blocking(move || cache_for_prune.prune(cache_budget)).await?
+        {
+            warn!("AST cache eviction failed: {error}");
+        }
         if pstats.failed_files > 0 {
             return Err(anyhow!(
                 "{} source files failed parsing; file metadata will not be marked current",

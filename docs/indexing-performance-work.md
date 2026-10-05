@@ -47,6 +47,10 @@ single-file, cross-file rename/delete, documentation/manifest changes and tier u
    follows deterministic resolution and embeds only remaining targets and candidate
    aliases. Invalid provider cardinality/dimensions fail the indexing run. Random
    placeholder source-edge IDs and per-symbol query-task fallback were removed.
+4. Shared compressed artifact cache with canonical BLAKE3 fingerprints, atomic writes,
+   corruption recovery and eviction. AST artifacts include file identity, source hash,
+   extraction policy and a parser format version. A warm run reuses unchanged parses;
+   source and tier changes invalidate them. Established SHA-256 node IDs remain intact.
 
 `CODEGRAPH_SOURCE_MEMORY_MB` controls retained snapshot bytes (default 256 MiB).
 Snapshots above the budget spill to temporary files, removed at the end of the run.
@@ -63,3 +67,6 @@ of the extraction tier (default `sync` with `ai-enhanced`).
 overlap/length gates; a positive limit is an opt-in recall/latency tradeoff. Ambiguous
 short names without a unique local scope remain unresolved. The implementation uses
 [RapidFuzz](https://docs.rs/rapidfuzz/0.5.0/rapidfuzz/distance/levenshtein/index.html).
+
+`CODEGRAPH_AST_CACHE_BYTES` bounds retained AST artifacts (default 2 GiB), with eviction
+at a run boundary. Entries larger than 64 MiB are recomputed rather than cached.
