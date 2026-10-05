@@ -18,8 +18,10 @@
 --   * Analyzers split identifiers on case and punctuation (CAMEL, PUNCT) so `parseConfigFile`
 --     matches `config`; the name index adds edge n-grams for prefix matches. The content index
 --     keeps HIGHLIGHTS so fn::search_snippets can return matched fragments.
---   * chunks.parent_node and edges.from / edges.to are REFERENCE ON DELETE CASCADE, so deleting a
---     node removes its chunks and edges without a separate orphan sweep.
+--   * chunks.parent_node is REFERENCE ON DELETE CASCADE, so deleting a node removes its chunks.
+--     Edges deliberately do not cascade: an incremental re-index deletes and re-creates a changed
+--     file's nodes under the same ids, and cascading would permanently drop the edges that other,
+--     unchanged files point at them.
 --   * Functions are DEFINE FUNCTION OVERWRITE so re-applying the file to a server updates them
 --     without touching tables or rebuilding indexes.
 
@@ -109,12 +111,12 @@ DEFINE INDEX idx_nodes_embedding_4096 ON nodes FIELDS embedding_4096 HNSW DIMENS
 -- TABLE: edges
 -- ------------------------------
 
-DEFINE TABLE edges TYPE NORMAL SCHEMAFULL COMMENT 'Code relationships between nodes; removed with either endpoint' PERMISSIONS FULL;
+DEFINE TABLE edges TYPE NORMAL SCHEMAFULL COMMENT 'Code relationships (Calls, Imports, Uses, Extends, Implements, References)' PERMISSIONS FULL;
 
 DEFINE FIELD created_at ON edges TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
 DEFINE FIELD edge_type ON edges TYPE string VALUE string::lowercase($value) PERMISSIONS FULL;
-DEFINE FIELD from ON edges TYPE record<nodes> REFERENCE ON DELETE CASCADE PERMISSIONS FULL;
-DEFINE FIELD to ON edges TYPE record<nodes> REFERENCE ON DELETE CASCADE PERMISSIONS FULL;
+DEFINE FIELD from ON edges TYPE record<nodes> PERMISSIONS FULL;
+DEFINE FIELD to ON edges TYPE record<nodes> PERMISSIONS FULL;
 DEFINE FIELD metadata ON edges TYPE option<object> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD weight ON edges TYPE float DEFAULT 1f ASSERT $value > 0f PERMISSIONS FULL;
 DEFINE FIELD project_id ON edges TYPE option<string> PERMISSIONS FULL;

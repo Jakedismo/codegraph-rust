@@ -409,7 +409,8 @@ impl SurrealDbStorage {
                 if recorded_name == name && recorded_checksum == checksum => {}
             Some((recorded_name, _)) => warn!(
                 "Embedded database was created from the {} schema at a different revision than \
-                 this binary bundles ({}). Re-index with `codegraph index --force` to rebuild it.",
+                 this binary bundles ({}). The stored schema stays in use; to switch, stop all \
+                 codegraph processes, delete <project>/.codegraph/db and run `codegraph index` again.",
                 recorded_name, name
             ),
             None => debug!("Embedded database has no bundled-schema record; skipping check"),

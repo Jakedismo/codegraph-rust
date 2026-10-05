@@ -27,6 +27,10 @@ async fn live_probe() {
         ),
         ("counts", "RETURN { r: fn::count_nodes_for_project($p) }"),
         (
+            "direct_counts",
+            "RETURN { r: { nodes: (SELECT count() AS c FROM nodes WHERE project_id = $p GROUP ALL)[0].c, edges: (SELECT count() AS c FROM edges WHERE project_id = $p GROUP ALL)[0].c } }",
+        ),
+        (
             "snippets",
             "RETURN { r: fn::search_snippets($p, 'embedding generator', 3) }",
         ),
