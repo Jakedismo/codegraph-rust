@@ -57,6 +57,37 @@ pub struct LatsAgent {
     pub(crate) tier: ContextTier,
 }
 
+/// System prompt for generating one candidate step of the search tree.
+///
+/// Expansion calls the model without tools, so the prompt says so: a candidate
+/// that claims to have run a tool or cites code it has not seen is invented.
+const EXPANSION_SYSTEM_PROMPT: &str = "\
+You are one step in a search over possible answers to a question about a codebase. \
+You are given the question and the reasoning so far, and you write the single next step.
+
+You have no tools in this step and cannot look at the code. Work only from the question \
+and the reasoning so far. Do not claim to have run a search or a tool, and do not invent \
+file paths, line numbers, or symbol names that are not already in the text you were given.
+
+If the reasoning so far is enough to answer the question, write the final answer and \
+begin it with \"Final answer:\". Otherwise write the next step: what to establish next, \
+why it moves toward an answer, and what is still unknown. Several candidates are generated \
+for the same position, so take a different angle when the candidate number is above 1. \
+Write a short paragraph of plain prose.";
+
+/// System prompt for scoring a candidate step. The caller keeps only the digits
+/// of the reply, so the reply must be a bare integer.
+const EVALUATION_SYSTEM_PROMPT: &str = "\
+You score one proposed step toward answering a question about a codebase.
+
+Score from 0 to 100. A high score means the step addresses the question asked, follows \
+from what is known, and makes only claims it can support. Score low when the step drifts \
+from the question, repeats earlier reasoning without adding to it, or states specifics \
+such as file paths, line numbers, or tool results that nothing in the step supports.
+
+Reply with a single integer between 0 and 100 and nothing else: no words, no punctuation, \
+no \"/100\".";
+
 impl LatsAgent {
     // --- Helper: Call Model ---
     async fn call_model(&self, prompt: String, system_prompt: String) -> Result<String> {
@@ -121,15 +152,12 @@ impl LatsAgent {
 
         for i in 0..n_candidates {
             let prompt = format!(
-                "Query: {}\n\nContext so far:\n{}\n\nGenerate candidate step #{} (Thought & Action or Final Answer):",
+                "Question:\n{}\n\nReasoning so far:\n{}\n\nWrite candidate next step #{}.",
                 query,
                 context,
                 i + 1
             );
-            futures.push(self.call_model(
-                prompt,
-                "You are a reasoning agent exploring possible solutions.".to_string(),
-            ));
+            futures.push(self.call_model(prompt, EXPANSION_SYSTEM_PROMPT.to_string()));
         }
 
         let results = join_all(futures).await;
@@ -164,16 +192,10 @@ impl LatsAgent {
         let content = &node.content;
 
         // Use LLM to score the content relevance/correctness (0.0 to 1.0)
-        let prompt = format!(
-            "Query: {}\n\nProposed Step:\n{}\n\nRate this step from 0 to 100 based on correctness and relevance to the query. Return ONLY the number.",
-            query, content
-        );
+        let prompt = format!("Question:\n{}\n\nProposed step:\n{}", query, content);
 
         match self
-            .call_model(
-                prompt,
-                "You are an evaluator. Rate the reasoning quality.".to_string(),
-            )
+            .call_model(prompt, EVALUATION_SYSTEM_PROMPT.to_string())
             .await
         {
             Ok(score_str) => {

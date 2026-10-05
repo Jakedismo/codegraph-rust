@@ -36,7 +36,7 @@ impl RigAgentTrait for ReflexionAgent {
                     last_error = Some(e.to_string());
                     // Reflection step: Append error context to query
                     current_query = format!(
-                        "{}\n\n[Previous Attempt Failed]: {}\nPlease reflect on this error and try a different approach.",
+                        "{}\n\nA previous attempt at this request failed with this error:\n{}\n\nWork out what caused the error and avoid it this time. If it came from running out of tool rounds, use fewer rounds and answer from less evidence. If it came from a tool call, change the arguments or use a different tool.",
                         query, e
                     );
                 }

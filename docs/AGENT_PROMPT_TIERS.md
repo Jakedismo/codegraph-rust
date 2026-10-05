@@ -31,27 +31,30 @@ Where CodeGraph reads it from:
 
 ## What changes per tier
 
-### Prompt verbosity
+### System prompt (default Rig backend)
 
-Each analysis type has 4 prompt variants, selected via:
+The default backend (`CODEGRAPH_AGENT_ARCHITECTURE=rig`) builds its system prompt in `crates/codegraph-mcp-rig/src/prompts/tier_prompts.rs`. Every tier shares one layout: identity, task, working instructions, one worked example, the limits for the run, and the answer format. The task text depends on the analysis type. The tier changes three things:
 
-- Small → **Terse**
-- Medium → **Balanced**
-- Large → **Detailed**
-- Massive → **Exploratory**
+- how far the agent is asked to investigate before answering,
+- how long and detailed the answer should be,
+- the tool-round budget stated in the prompt.
 
-This selection happens in `crates/codegraph-mcp-server/src/prompt_selector.rs`.
+The prompt does not list the graph tools. The model receives each tool's description and parameter documentation through function calling, from `crates/codegraph-mcp-rig/src/tools/graph_tools.rs`; edit tool semantics there.
 
-### Recommended max steps
+The prompts follow OpenAI's guidance for the GPT-6 family (`gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-luna`): state the goal and what a complete answer contains instead of scripting each step, tell the agent to act on the most likely reading of an ambiguous request because nobody can answer a clarifying question, avoid instructions that pull in opposite directions, and ask for plain prose with lists only for parallel items.
 
-The agent uses a base max step count by tier:
+### Max tool rounds (default Rig backend)
 
-- Small: 5
-- Medium: 10
-- Large: 15
-- Massive: 20
+- Small: 3
+- Medium: 5
+- Large: 6
+- Massive: 8
 
-Then it applies an analysis-type multiplier (e.g. architecture analysis tends to get a larger budget than code search).
+`get_max_turns` in `tier_prompts.rs` is the single source for these numbers. The tool loop enforces the value and the same value is written into the system prompt, so the two cannot drift apart.
+
+### Legacy backends
+
+The AutoAgents backends (`CODEGRAPH_AGENT_ARCHITECTURE=react|lats`) select one of four prompt variants per analysis type (Terse / Balanced / Detailed / Exploratory) in `crates/codegraph-mcp-autoagents/src/autoagents/prompt_selector.rs`, with base step budgets of 5 / 10 / 15 / 20 and a per-analysis multiplier. Those prompts predate the guidance above and have not been revised.
 
 ### Retrieval limits (and MCP-safe output)
 

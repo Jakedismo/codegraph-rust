@@ -16,7 +16,7 @@ use crate::agent::react::OpenAIAgent;
 use crate::agent::react::XAIAgent;
 #[allow(unused_imports)]
 use crate::agent::reflexion::ReflexionAgent;
-use crate::prompts::{AnalysisType, get_max_turns, get_tier_system_prompt};
+use crate::prompts::{AnalysisType, build_system_prompt, get_max_turns};
 #[allow(unused_imports)] // Used when provider features are enabled
 use crate::tools::GraphToolFactory;
 use anyhow::{Result, anyhow};
@@ -111,7 +111,7 @@ impl RigAgentBuilder {
 
     /// Get the system prompt for the current configuration
     pub fn system_prompt(&self) -> String {
-        get_tier_system_prompt(self.analysis_type, self.tier)
+        build_system_prompt(self.analysis_type, self.tier, self.max_turns)
     }
 
     /// Get max output tokens, respecting MCP_CODE_AGENT_MAX_OUTPUT_TOKENS env var

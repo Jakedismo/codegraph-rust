@@ -24,12 +24,12 @@ pub enum GraphToolError {
 /// Arguments for get_transitive_dependencies tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct TransitiveDepsArgs {
-    /// Node ID to analyze dependencies for
+    /// Node ID exactly as returned by an earlier tool result, such as semantic_code_search. A symbol name is not a node ID.
     pub node_id: String,
-    /// Type of edge to traverse (default: "Calls")
+    /// Relationship to follow: "Calls", "Imports", "Uses", "Extends", "Implements", or "References" (default: "Calls")
     #[serde(default = "default_edge_type")]
     pub edge_type: String,
-    /// Maximum depth to traverse (default: 3)
+    /// How many hops to follow, 1-10 (default: 3). Results grow quickly with depth.
     #[serde(default = "default_depth")]
     pub depth: i32,
 }
@@ -37,16 +37,16 @@ pub struct TransitiveDepsArgs {
 /// Arguments for detect_circular_dependencies tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct DetectCyclesArgs {
-    /// Type of edge to check for cycles
+    /// Relationship to check for cycles: "Calls", "Imports", "Uses", "Extends", "Implements", or "References"
     pub edge_type: String,
 }
 
 /// Arguments for trace_call_chain tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct TraceCallChainArgs {
-    /// Starting node for the trace
+    /// ID of the function the trace starts from, exactly as returned by an earlier tool result
     pub from_node: String,
-    /// Maximum depth to trace (default: 5)
+    /// How many calls deep to follow, 1-10 (default: 5)
     #[serde(default = "default_max_depth")]
     pub max_depth: i32,
 }
@@ -54,14 +54,14 @@ pub struct TraceCallChainArgs {
 /// Arguments for calculate_coupling_metrics tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct CouplingMetricsArgs {
-    /// Node ID to calculate coupling for
+    /// Node ID exactly as returned by an earlier tool result, such as semantic_code_search. A symbol name is not a node ID.
     pub node_id: String,
 }
 
 /// Arguments for get_hub_nodes tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct HubNodesArgs {
-    /// Minimum degree to consider as hub (default: 5)
+    /// Minimum number of connections a node needs to count as a hub (default: 5). Lower it to get more nodes.
     #[serde(default = "default_min_degree")]
     pub min_degree: i32,
 }
@@ -69,12 +69,12 @@ pub struct HubNodesArgs {
 /// Arguments for get_reverse_dependencies tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ReverseDepsArgs {
-    /// Node ID to find dependents for
+    /// Node ID exactly as returned by an earlier tool result, such as semantic_code_search. A symbol name is not a node ID.
     pub node_id: String,
-    /// Type of edge to traverse (default: "Calls")
+    /// Relationship to follow: "Calls", "Imports", "Uses", "Extends", "Implements", or "References" (default: "Calls")
     #[serde(default = "default_edge_type")]
     pub edge_type: String,
-    /// Maximum depth to traverse (default: 3)
+    /// How many hops to follow, 1-10 (default: 3). Depth 1 gives direct dependents only.
     #[serde(default = "default_depth")]
     pub depth: i32,
 }
@@ -82,12 +82,12 @@ pub struct ReverseDepsArgs {
 /// Arguments for semantic_code_search tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct SemanticSearchArgs {
-    /// Natural language search query
+    /// What to look for, as a description ("where HTTP requests are authenticated") or an identifier ("parse_config")
     pub query: String,
-    /// Maximum results to return (default: 10)
+    /// Maximum results to return, 1-50 (default: 10)
     #[serde(default = "default_limit")]
     pub limit: usize,
-    /// Similarity threshold 0.0-1.0 (default: 0.6)
+    /// Minimum similarity, 0.0-1.0 (default: 0.6). Lower it if a search returns nothing.
     #[serde(default = "default_threshold")]
     pub threshold: f64,
 }
@@ -95,7 +95,7 @@ pub struct SemanticSearchArgs {
 /// Arguments for find_complexity_hotspots tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ComplexityHotspotsArgs {
-    /// Minimum complexity score to include (default: 5.0)
+    /// Minimum complexity score a function needs to be included (default: 5.0)
     #[serde(default = "default_min_complexity")]
     pub min_complexity: f32,
     /// Maximum results to return (default: 20)
@@ -153,7 +153,7 @@ impl Tool for GetTransitiveDependencies {
     type Output = JsonValue;
 
     fn description(&self) -> String {
-        "Get all transitive dependencies of a node following specified edge types to a given depth"
+        "List everything a node depends on, directly and indirectly, by following one relationship type outward to a given depth. Use it to learn what a piece of code needs in order to work."
             .to_string()
     }
 
@@ -195,7 +195,8 @@ impl Tool for DetectCircularDependencies {
     type Output = JsonValue;
 
     fn description(&self) -> String {
-        "Detect circular dependencies (cycles) in the graph for a given edge type".to_string()
+        "Find dependency cycles across the whole codebase for one relationship type. Takes no node ID. Use it to check for circular imports or mutually recursive calls."
+            .to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -234,7 +235,8 @@ impl Tool for TraceCallChain {
     type Output = JsonValue;
 
     fn description(&self) -> String {
-        "Trace the call chain from a starting node to understand execution flow".to_string()
+        "Follow function calls outward from a starting function and return the call paths in order. Use it to see how execution proceeds from an entry point."
+            .to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -274,7 +276,7 @@ impl Tool for CalculateCouplingMetrics {
     type Output = JsonValue;
 
     fn description(&self) -> String {
-        "Calculate afferent and efferent coupling metrics for a node to assess its dependencies"
+        "Measure how coupled one node is. Returns afferent coupling Ca (how many nodes depend on it), efferent coupling Ce (how many it depends on), and instability I = Ce / (Ca + Ce): near 0 means many dependents and costly to change, near 1 means few dependents and cheap to change."
             .to_string()
     }
 
@@ -314,7 +316,8 @@ impl Tool for GetHubNodes {
     type Output = JsonValue;
 
     fn description(&self) -> String {
-        "Find hub nodes with high connectivity (many incoming or outgoing edges)".to_string()
+        "List the most connected nodes in the whole codebase, by incoming plus outgoing edges. Takes no node ID. Use it to find the central components of an unfamiliar codebase."
+            .to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -353,7 +356,8 @@ impl Tool for GetReverseDependencies {
     type Output = JsonValue;
 
     fn description(&self) -> String {
-        "Find all nodes that depend on the specified node (reverse dependency analysis)".to_string()
+        "List everything that depends on a node, directly and indirectly, by following one relationship type inward to a given depth. Use it to learn what a change to the node could break."
+            .to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -394,7 +398,8 @@ impl Tool for SemanticCodeSearch {
     type Output = JsonValue;
 
     fn description(&self) -> String {
-        "Search code semantically using natural language queries and vector embeddings".to_string()
+        "Search the codebase by meaning or by identifier. Returns matching nodes with their node ID, name, file path, line, and a code snippet. This is the way to obtain the node IDs the other tools require, so it is usually the first call."
+            .to_string()
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -435,7 +440,7 @@ impl Tool for FindComplexityHotspots {
     type Output = JsonValue;
 
     fn description(&self) -> String {
-        "Find functions with high complexity and coupling that may benefit from refactoring"
+        "Rank the functions in the whole codebase that combine high complexity with high coupling. Takes no node ID. Use it to find code that is risky to change or worth refactoring."
             .to_string()
     }
 

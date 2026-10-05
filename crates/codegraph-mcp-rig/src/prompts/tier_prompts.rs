@@ -6,231 +6,129 @@ use codegraph_mcp_core::context_aware_limits::ContextTier;
 
 /// Get the system prompt for a given analysis type and context tier
 pub fn get_tier_system_prompt(analysis_type: AnalysisType, tier: ContextTier) -> String {
-    let tool_instructions = get_tool_instructions(tier);
-    let analysis_instructions = get_analysis_instructions(analysis_type, tier);
-    let output_format = get_output_format(tier);
+    build_system_prompt(analysis_type, tier, get_max_turns(tier))
+}
 
+/// Build the system prompt with an explicit tool-round budget.
+///
+/// The budget is passed in rather than hardcoded so the number the model reads
+/// is always the number the tool loop enforces.
+///
+/// Layout is identity, instructions, example, then run-specific context. Tool
+/// semantics live in the tool and parameter descriptions (`tools/graph_tools.rs`),
+/// which the model receives through native function calling, so they are not
+/// repeated here.
+pub fn build_system_prompt(
+    analysis_type: AnalysisType,
+    tier: ContextTier,
+    max_turns: usize,
+) -> String {
     format!(
-        r#"You are a code intelligence agent specializing in {analysis_name}.
+        r#"You are CodeGraph's {analysis_name} agent. You answer questions about one indexed codebase by querying its code graph. Your answer goes to an AI coding assistant that acts on it and cannot see your tool calls or their results.
 
-{tool_instructions}
+# Task
 
-{analysis_instructions}
+{task}
 
-{output_format}"#,
+# How to work
+
+You run unattended, so nobody can answer a clarifying question. When a request is ambiguous, choose the most likely reading, do the work, and state the assumption in your answer.
+
+Ground every claim in tool results. Symbol names, file paths, line numbers, and node IDs come only from tool output. If the graph does not contain what was asked for, say so plainly; do not fill the gap from general knowledge of similar codebases.
+
+Tools that take a node ID need one from an earlier result. Unless the request already contains a node ID, find the relevant nodes with semantic_code_search first, then pass the returned IDs to the other tools unchanged. A symbol name or description is not a node ID.
+
+When several calls do not depend on each other, issue them in the same round.
+
+Stop calling tools as soon as you can answer the request with evidence. {depth}
+
+If a tool fails or returns nothing useful, change the query, edge type, or depth and try once more. If that also fails, answer from what you have and name what you could not establish.
+
+# Example
+
+Request: "What breaks if I change the signature of load_config?"
+
+1. semantic_code_search(query="load_config function definition") returns several nodes. One is a function named load_config in src/config.rs.
+2. get_reverse_dependencies(node_id=<that node's ID>, edge_type="Calls", depth=2) returns its direct and indirect callers.
+3. Answer: name each caller with its file and line, separate direct callers from indirect ones, and say which of them the change affects.
+
+# Limits for this run
+
+You have at most {max_turns} rounds of tool calls, and the run fails if you ask for more. Once you have used them, write the answer from the evidence you have and list any gaps.
+
+# Answer format
+
+{answer_format}"#,
         analysis_name = analysis_type.as_str().replace('_', " "),
-        tool_instructions = tool_instructions,
-        analysis_instructions = analysis_instructions,
-        output_format = output_format
+        task = get_task(analysis_type),
+        depth = get_depth_guidance(tier),
+        max_turns = max_turns,
+        answer_format = get_answer_format(tier),
     )
 }
 
-fn get_tool_instructions(tier: ContextTier) -> &'static str {
-    match tier {
-        ContextTier::Small => {
-            r#"AVAILABLE TOOLS:
-- semantic_code_search: Find code by natural language query
-- get_transitive_dependencies: Get dependencies of a node
-- get_reverse_dependencies: Find what depends on a node
-- trace_call_chain: Trace execution flow
-- calculate_coupling_metrics: Analyze coupling
-- get_hub_nodes: Find highly connected nodes
-- detect_circular_dependencies: Find cycles
-- find_complexity_hotspots: Locate complex code
-
-CRITICAL: You MUST complete your analysis in 3 tool calls or fewer.
-Use semantic_code_search FIRST to find node IDs. Be direct and efficient."#
+/// What the agent is asked to establish, and what a complete answer contains.
+fn get_task(analysis_type: AnalysisType) -> &'static str {
+    match analysis_type {
+        AnalysisType::CodeSearch => {
+            "Find the code that matches the request. A complete answer names each match with its file and line, says what it does, and says why it matches."
         }
-
-        ContextTier::Medium => {
-            r#"AVAILABLE TOOLS:
-1. semantic_code_search(query, limit, threshold) - Search code semantically. ALWAYS START HERE to find node_id values.
-2. get_transitive_dependencies(node_id, edge_type, depth) - Get forward dependencies
-3. get_reverse_dependencies(node_id, edge_type, depth) - Get reverse dependencies
-4. trace_call_chain(from_node, max_depth) - Trace call chains
-5. calculate_coupling_metrics(node_id) - Calculate Ca/Ce coupling
-6. get_hub_nodes(min_degree) - Find architectural hubs
-7. detect_circular_dependencies(edge_type) - Detect cycles
-8. find_complexity_hotspots(min_complexity, limit) - Find complex code
-
-CRITICAL: You MUST complete your analysis in 5 tool calls or fewer.
-Use semantic_code_search first to get actual node_id values before using other tools."#
+        AnalysisType::DependencyAnalysis => {
+            "Work out what the target depends on and what depends on it. A complete answer lists the dependencies and dependents that matter for a change to the target, says which are direct and which are transitive, and reports any cycle the target takes part in."
         }
-
-        ContextTier::Large => {
-            r#"AVAILABLE TOOLS:
-1. semantic_code_search(query, limit, threshold)
-   - Search code using natural language
-   - Returns results with node_id field - extract and use these exact IDs
-   - Start here to find relevant nodes
-
-2. get_transitive_dependencies(node_id, edge_type, depth)
-   - Get all forward dependencies up to specified depth
-   - edge_type: "Calls", "Imports", "Uses", "Extends", "Implements"
-
-3. get_reverse_dependencies(node_id, edge_type, depth)
-   - Find all nodes that depend on this node
-
-4. trace_call_chain(from_node, max_depth)
-   - Trace execution paths from a starting node
-
-5. calculate_coupling_metrics(node_id)
-   - Calculate afferent (Ca) and efferent (Ce) coupling
-   - Computes instability: I = Ce / (Ca + Ce)
-
-6. get_hub_nodes(min_degree)
-   - Find nodes with high connectivity
-   - These are often architectural hotspots
-
-7. detect_circular_dependencies(edge_type)
-   - Find dependency cycles for given edge type
-
-8. find_complexity_hotspots(min_complexity, limit)
-   - Find functions with high complexity and coupling
-
-CRITICAL: You MUST complete your analysis in 6 tool calls or fewer.
-WORKFLOW: semantic_code_search → extract node_id → use other tools with exact IDs"#
+        AnalysisType::CallChainAnalysis => {
+            "Trace how execution flows through the code in question. A complete answer gives the call path in order, from entry point to the calls that matter, with the file and line of each step, and marks where the path branches."
         }
-
-        ContextTier::Massive => {
-            r#"AVAILABLE TOOLS (use comprehensively):
-
-1. SEMANTIC SEARCH (required first step):
-   semantic_code_search(query, limit, threshold)
-   - Natural language code search with vector embeddings
-   - Returns: node_id, name, file_path, content, similarity_score
-   - Use higher limit (20-30) for comprehensive analysis
-   - Extract exact node_id values for subsequent queries
-
-2. DEPENDENCY ANALYSIS:
-   get_transitive_dependencies(node_id, edge_type, depth)
-   - Forward dependency traversal
-   - edge_types: "Calls", "Imports", "Uses", "Extends", "Implements", "References"
-   - Increase depth for thorough analysis
-
-   get_reverse_dependencies(node_id, edge_type, depth)
-   - Impact analysis: what depends on this node?
-   - Critical for understanding blast radius of changes
-
-3. EXECUTION FLOW:
-   trace_call_chain(from_node, max_depth)
-   - Trace how code executes from a starting point
-   - Useful for understanding request handling, data flow
-
-4. COUPLING ANALYSIS:
-   calculate_coupling_metrics(node_id)
-   - Afferent coupling (Ca): incoming dependencies
-   - Efferent coupling (Ce): outgoing dependencies
-   - Instability: I = Ce / (Ca + Ce), range [0,1]
-   - Low I = stable, high I = unstable
-
-5. ARCHITECTURAL INSIGHTS:
-   get_hub_nodes(min_degree)
-   - Find central components with many connections
-   - Low min_degree = more comprehensive results
-
-   detect_circular_dependencies(edge_type)
-   - Identify problematic dependency cycles
-
-   find_complexity_hotspots(min_complexity, limit)
-   - Locate functions needing attention
-   - Combines complexity metrics with coupling
-
-CRITICAL: You MUST complete your analysis in 8 tool calls or fewer.
-
-ANALYSIS STRATEGY:
-1. Start with broad semantic search
-2. Identify key nodes from search results
-3. Analyze dependencies and call chains
-4. Calculate coupling for critical nodes
-5. Map architectural patterns
-6. Synthesize comprehensive findings"#
+        AnalysisType::ArchitectureAnalysis => {
+            "Describe how the code in question is structured. A complete answer names the main components and their responsibilities, the direction of the dependencies between them, the most connected nodes, and any cycles or coupling problems the graph shows."
+        }
+        AnalysisType::ApiSurfaceAnalysis => {
+            "Describe the public interface of the code in question. A complete answer lists the public entry points with their file and line, says who calls them, and identifies which are most widely depended on and therefore riskiest to change."
+        }
+        AnalysisType::ContextBuilder => {
+            "Gather the context a developer needs before reading or changing the code in question. A complete answer covers where the code lives, what it calls, what calls it, and which neighbouring code a change would have to account for."
+        }
+        AnalysisType::SemanticQuestion => {
+            "Answer the question about the codebase. A complete answer states the answer first and then supports it with the specific code that shows it is true."
+        }
+        AnalysisType::ComplexityAnalysis => {
+            "Find where complexity and coupling concentrate. A complete answer ranks the hotspots, gives the file, line, and measured values for each, and says which carry the most risk because many other nodes depend on them."
         }
     }
 }
 
-fn get_analysis_instructions(analysis_type: AnalysisType, tier: ContextTier) -> String {
-    let base_instructions = match analysis_type {
-        AnalysisType::CodeSearch => "Find and analyze code matching the query.",
-        AnalysisType::DependencyAnalysis => {
-            "Analyze dependencies: what does it depend on and what depends on it."
-        }
-        AnalysisType::CallChainAnalysis => {
-            "Trace execution paths and call chains through the codebase."
-        }
-        AnalysisType::ArchitectureAnalysis => {
-            "Analyze architectural patterns, component structure, and design."
-        }
-        AnalysisType::ApiSurfaceAnalysis => "Analyze public interfaces, APIs, and contracts.",
-        AnalysisType::ContextBuilder => {
-            "Build comprehensive context about a code area for understanding or modification."
-        }
-        AnalysisType::SemanticQuestion => {
-            "Answer the question using code analysis and evidence from the codebase."
-        }
-        AnalysisType::ComplexityAnalysis => {
-            "Identify complexity hotspots and assess technical debt risk."
-        }
-    };
-
-    let detail = match tier {
-        ContextTier::Small => "Be concise. Focus on key findings only.",
-        ContextTier::Medium => "Provide balanced analysis with supporting evidence.",
-        ContextTier::Large => "Provide thorough analysis with detailed evidence and explanations.",
-        ContextTier::Massive => {
-            "Provide comprehensive analysis covering all aspects with full technical depth."
-        }
-    };
-
-    format!("{}\n\n{}", base_instructions, detail)
-}
-
-fn get_output_format(tier: ContextTier) -> &'static str {
+/// How far to take the investigation before answering.
+fn get_depth_guidance(tier: ContextTier) -> &'static str {
     match tier {
         ContextTier::Small => {
-            r#"OUTPUT: Provide a brief, direct answer focusing on the most important findings."#
+            "Your context window is small: keep search limits and traversal depths at their defaults or lower, and answer the core of the request rather than every angle of it."
         }
-
         ContextTier::Medium => {
-            r#"OUTPUT FORMAT:
-- Summary: Direct answer to the query
-- Key Findings: Main discoveries with evidence
-- Recommendations: Any actionable insights"#
+            "Cover the core of the request and check the one or two relationships most likely to change the answer."
         }
-
         ContextTier::Large => {
-            r#"OUTPUT FORMAT:
-1. Executive Summary: Clear, direct answer (2-3 sentences)
-2. Detailed Findings: Organized by theme with code references
-3. Dependencies/Relationships: Relevant connections discovered
-4. Recommendations: Actionable insights based on analysis"#
+            "Cover the request and the relationships around it: follow dependencies in both directions for the nodes that matter, and check coupling where it affects the conclusion."
         }
-
         ContextTier::Massive => {
-            r#"OUTPUT FORMAT:
-1. Executive Summary
-   - Direct answer to the query
-   - Key takeaways (bullet points)
+            "You have room for a thorough investigation: use wider search limits and deeper traversals where they add evidence, follow dependencies in both directions, and check coupling, hubs, and cycles where they bear on the request. Thorough means better evidence, and it does not mean spending the whole budget."
+        }
+    }
+}
 
-2. Detailed Analysis
-   - Organized by component/theme
-   - Code references with file:line locations
-   - Dependency relationships mapped
-
-3. Architectural Context
-   - How findings fit the broader system
-   - Coupling and cohesion insights
-   - Design patterns identified
-
-4. Technical Assessment
-   - Complexity metrics where relevant
-   - Stability analysis (Ca, Ce, I)
-   - Hub nodes and hotspots
-
-5. Recommendations
-   - Actionable improvements
-   - Risk areas requiring attention
-   - Suggested follow-up analysis"#
+/// Shape and length of the final answer.
+fn get_answer_format(tier: ContextTier) -> &'static str {
+    match tier {
+        ContextTier::Small => {
+            "Answer in a few sentences. Lead with the direct answer, then give the two or three pieces of evidence that support it, each with its file path and line number. Do not describe your tool calls."
+        }
+        ContextTier::Medium => {
+            "Lead with the direct answer in one or two sentences. Follow with the evidence in short paragraphs, giving the file path and line number for every piece of code you mention. Use a list only for parallel items such as a set of callers. Close with a recommendation only if the evidence supports one. Do not describe your tool calls or restate the request."
+        }
+        ContextTier::Large => {
+            "Lead with the direct answer in two or three sentences. Follow with the evidence, grouped by component or theme, giving the file path and line number for every piece of code you mention and describing how the pieces relate. Write in paragraphs and use a list only for parallel items such as a set of callers or a ranked set of hotspots. Close with recommendations only where the evidence supports them. Do not describe your tool calls or restate the request."
+        }
+        ContextTier::Massive => {
+            "Lead with the direct answer in two or three sentences. Follow with the evidence, grouped by component or theme, giving the file path and line number for every piece of code you mention and describing how the pieces relate. Where you measured coupling, complexity, or connectivity, report the values and say what they imply for the request. Explain how the findings fit the wider system when that changes what the reader should do. Write in paragraphs and use a list only for parallel items such as a set of callers or a ranked set of hotspots. Close with recommendations only where the evidence supports them, and name anything worth a follow-up analysis. Length should follow the evidence: do not pad, and do not describe your tool calls or restate the request."
         }
     }
 }
@@ -263,15 +161,17 @@ pub fn detect_tier(context_window: usize) -> ContextTier {
 mod tests {
     use super::*;
 
+    const TIERS: [ContextTier; 4] = [
+        ContextTier::Small,
+        ContextTier::Medium,
+        ContextTier::Large,
+        ContextTier::Massive,
+    ];
+
     #[test]
     fn test_all_analysis_types_have_prompts() {
         for analysis_type in AnalysisType::all() {
-            for tier in [
-                ContextTier::Small,
-                ContextTier::Medium,
-                ContextTier::Large,
-                ContextTier::Massive,
-            ] {
+            for tier in TIERS {
                 let prompt = get_tier_system_prompt(analysis_type, tier);
                 assert!(!prompt.is_empty());
                 assert!(prompt.contains("code"));
@@ -280,11 +180,24 @@ mod tests {
     }
 
     #[test]
-    fn test_tier_affects_verbosity() {
+    fn test_tier_affects_requested_depth() {
         let small = get_tier_system_prompt(AnalysisType::CodeSearch, ContextTier::Small);
         let massive = get_tier_system_prompt(AnalysisType::CodeSearch, ContextTier::Massive);
 
-        assert!(massive.len() > small.len() * 2);
+        assert_ne!(small, massive);
+        assert!(massive.len() > small.len());
+    }
+
+    #[test]
+    fn test_prompt_states_enforced_budget() {
+        for tier in TIERS {
+            let prompt = get_tier_system_prompt(AnalysisType::CodeSearch, tier);
+            let budget = format!("at most {} rounds of tool calls", get_max_turns(tier));
+            assert!(prompt.contains(&budget));
+        }
+
+        let overridden = build_system_prompt(AnalysisType::CodeSearch, ContextTier::Small, 7);
+        assert!(overridden.contains("at most 7 rounds of tool calls"));
     }
 
     #[test]
