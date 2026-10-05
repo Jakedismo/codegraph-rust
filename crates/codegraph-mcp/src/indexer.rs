@@ -232,6 +232,7 @@ pub struct ProjectIndexer {
     vector_dim: usize,
     embedding_column: SurrealEmbeddingColumn,
     project_root: PathBuf,
+    reconcile_lock: TokioMutex<()>,
     #[cfg(feature = "embeddings")]
     embedder: codegraph_vector::EmbeddingGenerator,
 }
@@ -351,6 +352,7 @@ impl ProjectIndexer {
         config.workers = requested.max(1).min(available.max(1));
         let parser = TreeSitterParser::new()
             .with_concurrency(config.workers)
+            .with_project_root(&config.project_root)
             .with_extraction_policy(extraction_policy_for_tier(config.indexing_tier));
         let project_root = config.project_root.clone();
         let (surreal, surreal_pool) = Self::connect_surreal(&project_root).await?;
@@ -518,13 +520,19 @@ impl ProjectIndexer {
             vector_dim,
             embedding_column,
             project_root,
+            reconcile_lock: TokioMutex::new(()),
             #[cfg(feature = "embeddings")]
             embedder,
         })
     }
 
-    pub async fn index_project(&mut self, path: impl AsRef<Path>) -> Result<IndexStats> {
-        let path = path.as_ref();
+    pub async fn index_project(&self, path: impl AsRef<Path>) -> Result<IndexStats> {
+        self.reconcile_project(path.as_ref(), self.config.force_reindex)
+            .await
+    }
+
+    pub async fn reconcile_project(&self, path: &Path, force: bool) -> Result<IndexStats> {
+        let _run = self.reconcile_lock.lock().await;
         let start = std::time::Instant::now();
         info!("Starting project indexing: {:?}", path);
         self.log_surrealdb_status("pre-parse");
@@ -540,108 +548,75 @@ impl ProjectIndexer {
         )
         .await?;
 
-        // INCREMENTAL INDEXING: Check if already indexed and has file metadata
-        let files_to_index = if !self.config.force_reindex
-            && self.is_indexed(path).await?
-            && self.has_file_metadata().await?
-        {
-            info!("📊 Project already indexed, checking for file changes...");
-
-            // Collect current files (returns Vec<(PathBuf, u64)>)
-            let files_with_sizes = &all_files;
-
-            // Extract just the paths for change detection
-            let file_paths: Vec<PathBuf> =
-                files_with_sizes.iter().map(|(p, _)| p.clone()).collect();
-
-            // Detect changes
-            let changes = self
-                .detect_snapshot_changes(&file_paths, &source_snapshots)
-                .await?;
-
-            // Categorize changes
-            let added: Vec<_> = changes
+        use codegraph_core::artifact_cache::{ArtifactCache, fingerprint};
+        let state_cache = ArtifactCache::new(
+            self.project_root.join(".codegraph/index-cache"),
+            "project-catalog-v1",
+        );
+        let root = self.project_root.clone();
+        let support =
+            tokio::task::spawn_blocking(move || crate::reconciliation::support_fingerprints(&root))
+                .await??;
+        let mut embedding_config = serde_json::to_value(&self.global_config.embedding)?;
+        embedding_config
+            .as_object_mut()
+            .unwrap()
+            .remove("openai_api_key");
+        embedding_config
+            .as_object_mut()
+            .unwrap()
+            .remove("jina_api_key");
+        let policy: std::collections::BTreeMap<String, String> = [
+            "CODEGRAPH_SEMANTIC_RESOLUTION",
+            "CODEGRAPH_SEMANTIC_CANDIDATES",
+            "CODEGRAPH_EMBEDDING_POLICY",
+            "CODEGRAPH_MODEL_REVISION",
+            "CODEGRAPH_TOKENIZER_PATH",
+            "CODEGRAPH_CHUNK_SPLITTER",
+        ]
+        .into_iter()
+        .map(|key| (key.to_owned(), std::env::var(key).unwrap_or_default()))
+        .collect();
+        let input_fingerprint = fingerprint(&(
+            "project-input-v1",
+            &self.project_id,
+            source_snapshots
                 .iter()
-                .filter(|c| matches!(c.change_type, FileChangeType::Added))
-                .collect();
-            let modified: Vec<_> = changes
-                .iter()
-                .filter(|c| matches!(c.change_type, FileChangeType::Modified))
-                .collect();
-            let deleted: Vec<_> = changes
-                .iter()
-                .filter(|c| matches!(c.change_type, FileChangeType::Deleted))
-                .collect();
-            let unchanged: Vec<_> = changes
-                .iter()
-                .filter(|c| matches!(c.change_type, FileChangeType::Unchanged))
-                .collect();
-
-            info!(
-                "📈 Change summary: {} added, {} modified, {} deleted, {} unchanged",
-                added.len(),
-                modified.len(),
-                deleted.len(),
-                unchanged.len()
-            );
-
-            // If no changes, skip indexing
-            if added.is_empty() && modified.is_empty() && deleted.is_empty() {
-                info!("✅ No changes detected, index is up to date");
-                let stats = IndexStats {
-                    skipped: unchanged.len(),
-                    ..IndexStats::default()
-                };
-                self.flush_surreal_writer().await?;
+                .map(|source| (&source.path, &source.content_hash))
+                .collect::<std::collections::BTreeMap<_, _>>(),
+            &support,
+            self.config.indexing_tier,
+            &embedding_config,
+            &policy,
+            self.config.max_seq_len,
+            cfg!(feature = "embeddings"),
+            cfg!(feature = "ai-enhanced"),
+        ))?;
+        let mut response = self.surreal.lock().await.db().query(
+            "SELECT metadata.input_fingerprint AS fingerprint FROM project_metadata WHERE project_id = $project"
+        ).bind(("project", self.project_id.clone())).await?.check()?;
+        let markers: Vec<serde_json::Value> = response.take(0)?;
+        let marker = markers
+            .first()
+            .and_then(|v| v.get("fingerprint"))
+            .and_then(|v| v.as_str());
+        let previous = state_cache
+            .get::<crate::reconciliation::Catalog>(&self.project_id)
+            .filter(|state| !force && marker == Some(state.fingerprint.as_str()));
+        if let Some(state) = &previous {
+            if state.fingerprint == input_fingerprint {
+                let mut stats = state.stats.clone();
+                stats.skipped = all_files.len();
+                stats.cached_files = all_files.len();
+                stats.index_ms = start.elapsed().as_millis() as u64;
                 return Ok(stats);
             }
-
-            // Handle deletions
-            if !deleted.is_empty() {
-                info!("🗑️  Removing data for {} deleted files", deleted.len());
-                let deleted_paths: Vec<String> =
-                    deleted.iter().map(|c| c.file_path.clone()).collect();
-                self.delete_data_for_files(&deleted_paths).await?;
-            }
-
-            // Collect files that need re-indexing (added + modified) with their sizes
-            let files_to_reindex: Vec<(PathBuf, u64)> = added
-                .iter()
-                .chain(modified.iter())
-                .filter_map(|c| {
-                    let path = PathBuf::from(&c.file_path);
-                    // Find the file size from original collection
-                    files_with_sizes.iter().find(|(p, _)| p == &path).cloned()
-                })
-                .collect();
-
-            if files_to_reindex.is_empty() {
-                info!("✅ Only deletions processed, no files to index");
-                let stats = IndexStats {
-                    skipped: unchanged.len(),
-                    ..IndexStats::default()
-                };
-                self.flush_surreal_writer().await?;
-                return Ok(stats);
-            }
-
-            info!(
-                "🔄 Incrementally indexing {} changed files (delete-then-insert semantics)",
-                files_to_reindex.len()
-            );
-
-            files_to_reindex
         }
-        // Old index without metadata - fall back to full reindex
-        else if self.is_indexed(path).await? {
-            warn!(
-                "⚠️  Project indexed without file metadata. Use --force to reindex, or continuing with full index."
-            );
-            all_files.clone()
-        }
-        // Fresh index - index all files
-        else {
-            all_files.clone()
+        // Every run has the full symbol universe. Unchanged source uses cached ASTs.
+        let files_to_index = all_files.clone();
+        let mut next_catalog = crate::reconciliation::Catalog {
+            fingerprint: input_fingerprint.clone(),
+            ..Default::default()
         };
 
         let analyzer_settings = AnalyzerSettings::for_tier(self.config.indexing_tier);
@@ -707,12 +682,6 @@ impl ProjectIndexer {
         let files = files_to_index;
         let total_files = files.len();
 
-        // PRE-DELETE for modified files to avoid dupes/stale data
-        let modified_paths: Vec<String> = files
-            .iter()
-            .map(|(p, _)| p.to_string_lossy().to_string())
-            .collect();
-
         // Single progress bar for unified AST + fast_ml extraction
         let ast_pb = self.create_progress_bar(
             total_files as u64,
@@ -723,7 +692,7 @@ impl ProjectIndexer {
         // Clone files for parsing (we need them again for metadata persistence)
         let ast_cache = codegraph_core::artifact_cache::ArtifactCache::new(
             self.project_root.join(".codegraph/index-cache"),
-            "unified-ast-v3",
+            "unified-ast-v4",
         );
         let (mut nodes, mut edges, pstats) = crate::estimation::parse_snapshots_with_cache(
             &self.parser,
@@ -797,6 +766,9 @@ impl ProjectIndexer {
                 );
             }
         }
+
+        nodes.sort_by_key(|node| node.id);
+        nodes.dedup_by_key(|node| node.id);
 
         let mut lsp_enrichment_stats = crate::analyzers::lsp::LspEnrichmentStats::default();
         if analyzer_settings.lsp_enabled() && !analyzer_languages.is_empty() {
@@ -1205,22 +1177,28 @@ impl ProjectIndexer {
         // STAGE 4: Persist nodes before embedding so SurrealDB reflects progress
         // Parsing, analyzer validation and chunk preparation must succeed before replacing
         // the last usable graph. A failed parse must never erase the previous index.
-        if self.config.force_reindex {
-            self.flush_surreal_writer().await?;
-            self.surreal
-                .lock()
-                .await
-                .clean_project_data(&self.project_id)
-                .await?;
-        } else if !modified_paths.is_empty() {
-            self.delete_data_for_files(&modified_paths).await?;
-            self.flush_surreal_writer().await?;
+        self.flush_surreal_writer().await?;
+        // Remove the ready marker before the first mutation; interrupted runs cannot skip.
+        self.surreal
+            .lock()
+            .await
+            .db()
+            .query("DELETE project_metadata WHERE project_id = $project")
+            .bind(("project", self.project_id.clone()))
+            .await?
+            .check()?;
+        for node in &nodes {
+            next_catalog.nodes.insert(
+                node.id.to_string(),
+                crate::reconciliation::node_digest(node)?,
+            );
         }
         let store_nodes_pb = self.create_progress_bar(nodes.len() as u64, "📈 Storing nodes");
         let mut stats = IndexStats {
             files: pstats.parsed_files,
             lines: pstats.total_lines,
-            skipped: pstats.total_files - pstats.parsed_files,
+            skipped: pstats.cached_files,
+            cached_files: pstats.cached_files,
             analyzers_enabled: analyzer_settings.any_enabled(),
             build_context_nodes,
             build_context_edges,
@@ -1259,7 +1237,19 @@ impl ProjectIndexer {
         }
         let storage_batch = self.config.batch_size.max(1);
         for chunk in nodes.chunks(storage_batch) {
-            self.persist_nodes_batch(chunk).await?;
+            let dirty: Vec<_> = chunk
+                .iter()
+                .filter(|node| {
+                    previous
+                        .as_ref()
+                        .and_then(|state| state.nodes.get(&node.id.to_string()))
+                        != next_catalog.nodes.get(&node.id.to_string())
+                })
+                .cloned()
+                .collect();
+            if !dirty.is_empty() {
+                self.persist_nodes_batch(&dirty).await?;
+            }
             store_nodes_pb.inc(chunk.len() as u64);
         }
         self.flush_surreal_writer().await?;
@@ -1351,25 +1341,25 @@ impl ProjectIndexer {
             while let Some((texts, metas, embs_result)) = batch_stream.next().await {
                 let embs: Vec<Vec<f32>> = embs_result?;
                 if embs.len() != metas.len() {
-                    warn!(
-                        "Chunk embedding batch size mismatch: got {} embeddings for {} metas",
+                    return Err(anyhow!(
+                        "Chunk embedding cardinality mismatch: {} vectors for {} inputs",
                         embs.len(),
                         metas.len()
-                    );
+                    ));
                 }
 
                 let mut records: Vec<ChunkEmbeddingRecord> = Vec::with_capacity(metas.len());
                 for ((meta, text), emb) in metas.iter().zip(texts.iter()).zip(embs.iter()) {
                     if let Some(node) = nodes.get(meta.node_index) {
-                        if emb.len() != self.vector_dim {
-                            warn!(
-                                "Skipping chunk embedding: dimension mismatch (got {}, expected {}) for node {} chunk {}",
-                                emb.len(),
-                                self.vector_dim,
+                        if emb.len() != self.vector_dim
+                            || emb.iter().any(|value| !value.is_finite())
+                        {
+                            return Err(anyhow!(
+                                "Invalid chunk vector for {}: dimension {}, expected {}",
                                 node.id,
-                                meta.chunk_index
-                            );
-                            continue;
+                                emb.len(),
+                                self.vector_dim
+                            ));
                         }
                         records.push(ChunkEmbeddingRecord::new(
                             &node.id.to_string(),
@@ -1383,6 +1373,9 @@ impl ProjectIndexer {
                     }
                 }
 
+                next_catalog
+                    .chunks
+                    .extend(records.iter().map(|record| record.id.clone()));
                 for batch in records.chunks(chunk_db_batch) {
                     self.enqueue_chunk_embeddings(batch.to_vec()).await?;
                 }
@@ -1605,6 +1598,14 @@ impl ProjectIndexer {
         resolved_edges.sort_by_key(|edge| edge.id);
         resolved_edges.dedup_by_key(|edge| edge.id);
         let stored_edges = resolved_edges.len();
+        next_catalog
+            .edges
+            .extend(resolved_edges.iter().map(|edge| edge.id.to_string()));
+        resolved_edges.retain(|edge| {
+            previous
+                .as_ref()
+                .is_none_or(|state| !state.edges.contains(&edge.id.to_string()))
+        });
         self.enqueue_edges(resolved_edges).await?;
         self.flush_surreal_writer().await?;
         let resolution_rate = if edges.is_empty() {
@@ -1625,11 +1626,6 @@ impl ProjectIndexer {
         // ELIMINATED: No separate edge processing phase needed - edges extracted during parsing!
         self.log_surreal_edge_count(stored_edges).await;
 
-        // Persist project metadata summary into SurrealDB
-        self.persist_project_metadata(&stats, total_nodes_extracted, total_edges_extracted)
-            .await?;
-        self.flush_surreal_writer().await?;
-
         // Task 3.3: Update file metadata for incremental indexing
         info!("💾 Updating file metadata for change tracking");
         let file_paths_only: Vec<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
@@ -1638,7 +1634,6 @@ impl ProjectIndexer {
         self.flush_surreal_writer().await?;
         self.verify_file_metadata_count(file_paths_only.len())
             .await?;
-        self.verify_project_metadata_present().await?;
 
         // COMPREHENSIVE INDEXING COMPLETION SUMMARY
         let avg_nodes_per_file = if stats.files > 0 {
@@ -1694,7 +1689,29 @@ impl ProjectIndexer {
         stats.resolution_rate = resolution_rate;
 
         self.flush_surreal_writer().await?;
-
+        self.surreal
+            .lock()
+            .await
+            .reconcile_catalog(
+                &self.project_id,
+                next_catalog.nodes.keys().cloned().collect(),
+                next_catalog.edges.iter().cloned().collect(),
+                next_catalog.chunks.iter().cloned().collect(),
+                file_paths_only
+                    .iter()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .collect(),
+            )
+            .await?;
+        stats.index_ms = start.elapsed().as_millis() as u64;
+        stats.complete = true;
+        self.persist_project_metadata(&stats, stats.nodes, stats.edges, &input_fingerprint)
+            .await?;
+        self.flush_surreal_writer().await?;
+        next_catalog.stats = stats.clone();
+        if let Err(error) = state_cache.put(&self.project_id, &next_catalog) {
+            warn!("Project catalog cache unavailable; next run will reconcile fully: {error}");
+        }
         Ok(stats)
     }
 
@@ -2232,6 +2249,7 @@ impl ProjectIndexer {
         stats: &IndexStats,
         node_count: usize,
         edge_count: usize,
+        fingerprint: &str,
     ) -> Result<()> {
         let project_name = self
             .project_root
@@ -2242,6 +2260,7 @@ impl ProjectIndexer {
         let root_path = self.project_root.to_string_lossy().to_string();
         let primary_language = self.config.languages.first().cloned();
         let record = ProjectMetadataRecord {
+            metadata: serde_json::json!({"input_fingerprint": fingerprint, "complete": stats.complete, "stats": stats}),
             project_id: self.project_id.clone(),
             name: project_name,
             root_path,
@@ -2934,159 +2953,15 @@ impl ProjectIndexer {
 
     /// Index a single file (for daemon mode incremental updates)
     /// Uses upsert semantics - no duplicate records created
-    pub async fn index_single_file(&self, path: &Path) -> Result<()> {
-        // Check if file should be indexed
-        if !self.should_index(path) {
-            debug!("Skipping file (excluded by config): {:?}", path);
-            return Ok(());
-        }
-
-        // Detect language
-        let language = self.detect_language(path);
-        if language.is_none() && self.config.languages.is_empty() {
-            debug!("Skipping file (unknown language): {:?}", path);
-            return Ok(());
-        }
-
-        let file_path_str = path.to_string_lossy().to_string();
-        info!("Indexing single file: {}", file_path_str);
-
-        // Step 1: Parse file with tree-sitter to extract nodes and edges
-        let extraction_result = self
-            .parser
-            .parse_file_with_edges(&file_path_str)
-            .await
-            .with_context(|| format!("Failed to parse file: {}", file_path_str))?;
-
-        let mut nodes = extraction_result.nodes;
-        let mut edges = extraction_result.edges;
-
-        if nodes.is_empty() {
-            debug!("No nodes extracted from file: {}", file_path_str);
-            return Ok(());
-        }
-
-        info!(
-            "Extracted {} nodes and {} edges from {}",
-            nodes.len(),
-            edges.len(),
-            file_path_str
-        );
-
-        // Step 2: Generate deterministic IDs and annotate nodes with project metadata
-        // Build old_id -> new_id mapping to update edge references
-        let mut id_mapping: std::collections::HashMap<NodeId, NodeId> =
-            std::collections::HashMap::new();
-        for node in &mut nodes {
-            let old_id = node.id;
-            node.set_deterministic_id(&self.project_id);
-            id_mapping.insert(old_id, node.id);
-            self.annotate_node(node);
-        }
-
-        // Update edge.from references to use new deterministic IDs
-        for edge in &mut edges {
-            if let Some(new_id) = id_mapping.get(&edge.from) {
-                edge.from = *new_id;
-            }
-        }
-
-        // Step 3: Generate embeddings for nodes (if embeddings feature enabled)
-        #[cfg(feature = "embeddings")]
-        {
-            match self.embedder.generate_embeddings(&nodes).await {
-                Ok(embeddings) => {
-                    // Assign embeddings to nodes
-                    for (node, embedding) in nodes.iter_mut().zip(embeddings.into_iter()) {
-                        node.embedding = Some(embedding);
-                    }
-                    debug!("Generated embeddings for {} nodes", nodes.len());
-                }
-                Err(e) => {
-                    warn!(
-                        "Failed to generate embeddings for file {}: {}",
-                        file_path_str, e
-                    );
-                    // Continue without embeddings - not a fatal error
-                }
-            }
-        }
-
-        // Step 4: Persist nodes via upsert (handles duplicates automatically)
-        self.persist_nodes_batch(&nodes)
-            .await
-            .with_context(|| format!("Failed to persist nodes for file: {}", file_path_str))?;
-
-        // Step 5: Persist node embeddings
-        #[cfg(feature = "embeddings")]
-        {
-            if let Err(e) = self.persist_node_embeddings(&nodes).await {
-                warn!(
-                    "Failed to persist embeddings for file {}: {}",
-                    file_path_str, e
-                );
-                // Continue - not a fatal error
-            }
-        }
-
-        // Step 6: Handle intra-file edges
-        // Build a set of node IDs in this file for quick lookup
-        let node_ids: std::collections::HashSet<_> =
-            nodes.iter().map(|n| n.id.to_string()).collect();
-
-        // Build symbol name to node ID map for edge resolution
-        let symbol_map: std::collections::HashMap<String, codegraph_core::NodeId> = nodes
-            .iter()
-            .map(|n| (n.name.to_string(), n.id.clone()))
-            .collect();
-
-        // Convert EdgeRelationship to CodeEdge for intra-file edges only
-        let resolved_edges: Vec<codegraph_graph::CodeEdge> = edges
-            .into_iter()
-            .filter_map(|edge_rel| {
-                // Try to resolve the target symbol to a node ID in this file
-                if let Some(target_id) = symbol_map.get(&edge_rel.to) {
-                    // Both from and to are in this file - create CodeEdge
-                    Some(
-                        codegraph_graph::CodeEdge::new(
-                            edge_rel.from,
-                            target_id.clone(),
-                            edge_rel.edge_type,
-                        )
-                        .with_project_id(self.project_id.clone()),
-                    )
-                } else {
-                    // Cross-file edge - skip for now (will be resolved on next full index)
-                    None
-                }
-            })
-            .collect();
-
-        if !resolved_edges.is_empty() {
-            info!(
-                "Persisting {} intra-file edges for {}",
-                resolved_edges.len(),
-                file_path_str
-            );
-            self.enqueue_edges(resolved_edges)
-                .await
-                .with_context(|| format!("Failed to persist edges for file: {}", file_path_str))?;
-        }
-
-        info!(
-            "Successfully indexed file: {} ({} nodes)",
-            file_path_str,
-            nodes.len()
-        );
+    pub async fn index_single_file(&self, _path: &Path) -> Result<()> {
+        self.reconcile_project(&self.project_root, false).await?;
         Ok(())
     }
 
-    /// Delete all indexed data for a file (cascade delete)
-    /// Removes nodes, edges, embeddings, and metadata for the file
-    pub async fn delete_file_data(&self, path: &Path) -> Result<()> {
-        let file_path = path.to_string_lossy().to_string();
-        info!("Deleting indexed data for file: {}", file_path);
-        self.delete_data_for_files(&[file_path]).await
+    /// Reconciliation also removes obsolete definitions and rebinds unchanged callers.
+    pub async fn delete_file_data(&self, _path: &Path) -> Result<()> {
+        self.reconcile_project(&self.project_root, false).await?;
+        Ok(())
     }
 
     /// Detect language from file extension
@@ -3114,33 +2989,51 @@ impl ProjectIndexer {
         }
     }
 
-    pub async fn watch_for_changes(&self, path: impl AsRef<Path>) -> Result<()> {
-        use notify::event::{EventKind, ModifyKind};
-        use notify::{Event, RecursiveMode, Watcher};
+    pub fn should_reconcile(&self, path: &Path) -> bool {
+        if path.components().any(|part| {
+            matches!(
+                part.as_os_str().to_str(),
+                Some(".codegraph" | ".git" | "target" | "node_modules")
+            )
+        }) {
+            return false;
+        }
+        self.should_index(path) || crate::reconciliation::support_file(path)
+    }
 
+    pub async fn watch_for_changes(&self, path: impl AsRef<Path>) -> Result<()> {
+        use notify::{Event, RecursiveMode, Watcher};
         let path = path.as_ref().to_path_buf();
         let (tx, mut rx) = mpsc::channel(100);
-        let debounce_ms: u64 = std::env::var("CODEGRAPH_WATCH_DEBOUNCE_MS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(300);
-
+        let debounce = std::time::Duration::from_millis(
+            std::env::var("CODEGRAPH_WATCH_DEBOUNCE_MS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(300),
+        );
         let mut watcher =
-            notify::recommended_watcher(move |res: std::result::Result<Event, _>| {
-                if let Ok(event) = res {
-                    let _ = tx.blocking_send(event);
-                }
+            notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
+                let _ = tx.blocking_send(res);
             })?;
-
         watcher.watch(&path, RecursiveMode::Recursive)?;
-        info!("Watching for changes in: {:?}", path);
-
-        let mut last_events: std::collections::HashMap<PathBuf, std::time::Instant> =
-            std::collections::HashMap::new();
-
-        while let Some(event) = rx.recv().await {
-            self.handle_file_event(event, &mut last_events, debounce_ms)
-                .await;
+        while let Some(first) = rx.recv().await {
+            let relevant = |event: &std::result::Result<Event, notify::Error>| {
+                event.as_ref().map_or(true, |event| {
+                    !matches!(event.kind, notify::EventKind::Access(_))
+                        && (event.need_rescan()
+                            || event.paths.iter().any(|path| self.should_reconcile(path)))
+                })
+            };
+            let mut dirty = relevant(&first);
+            // Trailing debounce retains the final save, renames, deletes and overflow rescans.
+            while let Ok(Some(event)) = tokio::time::timeout(debounce, rx.recv()).await {
+                dirty |= relevant(&event);
+            }
+            if dirty {
+                if let Err(error) = self.reconcile_project(&path, false).await {
+                    warn!("Watch reconciliation failed: {error}");
+                }
+            }
         }
         Ok(())
     }
@@ -3150,59 +3043,26 @@ impl ProjectIndexer {
     async fn handle_file_event(
         &self,
         event: notify::Event,
-        last_events: &mut std::collections::HashMap<PathBuf, std::time::Instant>,
-        debounce_ms: u64,
+        _last_events: &mut std::collections::HashMap<PathBuf, std::time::Instant>,
+        _debounce_ms: u64,
     ) {
-        use notify::event::{EventKind, ModifyKind};
-        use std::time::Instant;
-
-        match event.kind {
-            EventKind::Modify(ModifyKind::Data(_)) | EventKind::Create(_) => {
+        if !matches!(event.kind, notify::EventKind::Access(_))
+            && (event.need_rescan() || event.paths.iter().any(|path| self.should_reconcile(path)))
+        {
+            if let Err(error) = self.reconcile_project(&self.project_root, false).await {
+                warn!("Watch reconciliation failed: {error}");
+                return;
+            }
+            if let Some(tx) = WATCH_TEST_NOTIFIER
+                .get_or_init(|| Mutex::new(None))
+                .lock()
+                .unwrap()
+                .as_ref()
+            {
                 for path in event.paths {
-                    if self.should_index(&path) {
-                        let now = Instant::now();
-                        match last_events.entry(path.clone()) {
-                            std::collections::hash_map::Entry::Vacant(v) => {
-                                v.insert(now);
-                                info!("File changed: {:?}, reindexing...", path);
-                                if let Err(e) = self.index_single_file(&path).await {
-                                    warn!("Incremental reindex failed for {:?}: {}", path, e);
-                                }
-                                if let Some(tx) = WATCH_TEST_NOTIFIER
-                                    .get_or_init(|| Mutex::new(None))
-                                    .lock()
-                                    .unwrap()
-                                    .as_ref()
-                                {
-                                    let _ = tx.send(path.clone());
-                                }
-                            }
-                            std::collections::hash_map::Entry::Occupied(mut entry) => {
-                                if now.duration_since(*entry.get()).as_millis() as u64
-                                    >= debounce_ms
-                                {
-                                    *entry.get_mut() = now;
-                                    info!("File changed: {:?}, reindexing (debounced)...", path);
-                                    if let Err(e) = self.index_single_file(&path).await {
-                                        warn!("Incremental reindex failed for {:?}: {}", path, e);
-                                    }
-                                    if let Some(tx) = WATCH_TEST_NOTIFIER
-                                        .get_or_init(|| Mutex::new(None))
-                                        .lock()
-                                        .unwrap()
-                                        .as_ref()
-                                    {
-                                        let _ = tx.send(path.clone());
-                                    }
-                                } else {
-                                    debug!("Debounced change for {:?}", path);
-                                }
-                            }
-                        }
-                    }
+                    let _ = tx.send(path);
                 }
             }
-            _ => {}
         }
     }
 
@@ -3465,7 +3325,11 @@ pub fn normalize(v: &[f32]) -> Vec<f32> {
 }
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct IndexStats {
+    pub cached_files: usize,
+    pub index_ms: u64,
+    pub complete: bool,
     pub files: usize,
     pub skipped: usize,
     pub lines: usize,

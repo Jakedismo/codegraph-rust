@@ -48,8 +48,17 @@ async fn watch_updates_file_metadata_on_change() -> Result<()> {
 
     let global_config = CodeGraphConfig::default();
     let progress = MultiProgress::with_draw_target(ProgressDrawTarget::hidden());
-    let mut indexer = ProjectIndexer::new(config, &global_config, progress).await?;
+    let indexer = ProjectIndexer::new(config, &global_config, progress).await?;
 
+    indexer
+        .surreal_storage()
+        .await
+        .lock()
+        .await
+        .db()
+        .query(include_str!("../../../schema/codegraph_v2.surql"))
+        .await?
+        .check()?;
     // Baseline full index to seed file metadata
     indexer.index_project(project_dir.path()).await?;
     let indexer = Arc::new(indexer);

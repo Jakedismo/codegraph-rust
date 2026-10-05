@@ -330,6 +330,7 @@ mod tests {
 
     fn metadata() -> ProjectMetadataRecord {
         ProjectMetadataRecord {
+            metadata: serde_json::json!({}),
             project_id: "test".into(),
             name: "test".into(),
             root_path: "/test".into(),

@@ -49,6 +49,7 @@ pub struct TreeSitterParser {
     parsed_cache: Arc<dashmap::DashMap<String, ParsedFile>>,
     parser_pool: Arc<parking_lot::Mutex<HashMap<Language, Vec<Parser>>>>,
     extraction_policy: crate::languages::ExtractionPolicy,
+    project_root: Option<Arc<PathBuf>>,
 }
 
 impl TreeSitterParser {
@@ -61,6 +62,7 @@ impl TreeSitterParser {
             parsed_cache: Arc::new(dashmap::DashMap::new()),
             parser_pool: Arc::new(parking_lot::Mutex::new(HashMap::new())),
             extraction_policy: Default::default(),
+            project_root: None,
         }
     }
 
@@ -75,6 +77,15 @@ impl TreeSitterParser {
 
     pub fn extraction_policy(&self) -> crate::languages::ExtractionPolicy {
         self.extraction_policy
+    }
+
+    pub fn with_project_root(mut self, root: impl AsRef<Path>) -> Self {
+        self.project_root = Some(Arc::new(root.as_ref().to_path_buf()));
+        self
+    }
+
+    pub fn project_root(&self) -> Option<&Path> {
+        self.project_root.as_deref().map(PathBuf::as_path)
     }
 
     pub fn with_extraction_policy(mut self, policy: crate::languages::ExtractionPolicy) -> Self {
@@ -810,6 +821,7 @@ impl TreeSitterParser {
         let file_path_string = file_path.to_string();
         let parser_pool = self.parser_pool.clone();
         let policy = self.extraction_policy;
+        let project_root = self.project_root.clone();
 
         // Clone for timeout message
         let content_len = content.len();
@@ -878,7 +890,11 @@ impl TreeSitterParser {
                     // Adds pattern-based edges and resolves unmatched references (<1ms overhead)
                     let enhanced_result = crate::fast_ml::get_fast_ml_enhancer()
                         .enhance_with_policy(ast_result, &used_content, policy);
-                    Ok(Self::add_directory_nodes(enhanced_result, &file_path))
+                    Ok(Self::add_directory_nodes(
+                        enhanced_result,
+                        &file_path,
+                        project_root.as_deref().map(PathBuf::as_path),
+                    ))
                 }
                 None => Err(CodeGraphError::Parse(format!(
                     "Complete parsing failed for {}",
@@ -921,7 +937,11 @@ impl TreeSitterParser {
 }
 
 impl TreeSitterParser {
-    fn add_directory_nodes(mut result: ExtractionResult, file_path: &str) -> ExtractionResult {
+    fn add_directory_nodes(
+        mut result: ExtractionResult,
+        file_path: &str,
+        project_root: Option<&Path>,
+    ) -> ExtractionResult {
         const MAX_DEPTH: usize = 4;
         let path = Path::new(file_path);
 
@@ -930,6 +950,9 @@ impl TreeSitterParser {
         let mut depth = 0usize;
 
         while let Some(dir) = current {
+            if project_root.is_some_and(|root| !dir.starts_with(root)) {
+                break;
+            }
             if dir.as_os_str().is_empty() || depth >= MAX_DEPTH {
                 break;
             }
@@ -950,11 +973,10 @@ impl TreeSitterParser {
         dirs.reverse();
 
         let mut dir_nodes = Vec::with_capacity(dirs.len());
-        let mut dir_name_to_id = std::collections::HashMap::new();
 
         for (full_path, name, depth) in dirs {
             let location = Location {
-                file_path: file_path.to_string(),
+                file_path: full_path.clone(),
                 line: 0,
                 column: 0,
                 end_line: None,
@@ -966,19 +988,24 @@ impl TreeSitterParser {
                 .insert("full_path".into(), full_path.clone());
             node.metadata
                 .attributes
+                .insert("qualified_name".into(), full_path);
+            node.metadata
+                .attributes
                 .insert("depth".into(), depth.to_string());
-            dir_name_to_id.insert(name.clone(), node.id);
             dir_nodes.push(node);
         }
 
-        // Add contains edges between directories (child -> parent)
+        // Structural containment runs from the parent to the child.
         for window in dir_nodes.windows(2) {
-            if let [child, parent] = window {
+            if let [parent, child] = window {
                 result.edges.push(EdgeRelationship {
-                    from: child.id,
-                    to: parent.name.to_string(),
+                    from: parent.id,
+                    to: child.location.file_path.clone(),
                     edge_type: EdgeType::Contains,
-                    metadata: HashMap::new(),
+                    metadata: HashMap::from([
+                        ("source_file".into(), parent.location.file_path.clone()),
+                        ("analyzer".into(), "directory_structure".into()),
+                    ]),
                     span: None,
                 });
             }
@@ -992,6 +1019,35 @@ impl TreeSitterParser {
 #[cfg(test)]
 mod pipeline_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn directory_identity_is_shared_and_containment_stops_at_project_root() {
+        let parser = TreeSitterParser::new().with_project_root("/project");
+        let mut identities = Vec::new();
+        for file in ["/project/src/a.rs", "/project/src/b.rs"] {
+            let result = parser
+                .parse_source_with_edges(Arc::from("fn foo() {}"), file, Language::Rust)
+                .await
+                .unwrap();
+            let mut dirs: Vec<_> = result
+                .nodes
+                .into_iter()
+                .filter(|node| node.node_type == Some(NodeType::Directory))
+                .collect();
+            assert_eq!(dirs.len(), 2);
+            for node in &mut dirs {
+                node.set_deterministic_id("project");
+            }
+            identities.push(dirs.into_iter().map(|node| node.id).collect::<Vec<_>>());
+            assert!(
+                result
+                    .edges
+                    .iter()
+                    .any(|edge| edge.edge_type == EdgeType::Contains && edge.to == "/project/src")
+            );
+        }
+        assert_eq!(identities[0], identities[1]);
+    }
 
     #[tokio::test]
     async fn concurrent_parsing_preserves_pool_and_tier_policy() {

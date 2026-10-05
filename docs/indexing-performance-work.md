@@ -52,6 +52,14 @@ single-file, cross-file rename/delete, documentation/manifest changes and tier u
    extraction policy and a parser format version. A warm run reuses unchanged parses;
    source and tier changes invalidate them. Established SHA-256 node IDs remain intact.
 
+5. Complete-project reconciliation shared by full, single-file, delete and watch paths.
+   Unchanged ASTs retain callers; catalog differences remove stale identities without
+   deleting a modified file wholesale. Canonical source/support/configuration fingerprints
+   invalidate docs, manifests, tiers and model policies. Completion is acknowledged last;
+   interrupted runs lose the ready marker and repair on retry. Stable project-scoped
+   directory identities stop at the project root. Offline cold/warm/edit/delete/empty
+   source and watch tests pass against schema v2.
+
 `CODEGRAPH_SOURCE_MEMORY_MB` controls retained snapshot bytes (default 256 MiB).
 Snapshots above the budget spill to temporary files, removed at the end of the run.
 

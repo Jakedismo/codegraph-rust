@@ -201,6 +201,34 @@ pub struct OrphanCleanupStats {
 }
 
 impl SurrealDbStorage {
+    /// Reconcile stale identities against the complete prepared project catalog.
+    /// Unchanged nodes retain incoming relationships and vectors.
+    pub async fn reconcile_catalog(
+        &self,
+        project: &str,
+        nodes: Vec<String>,
+        edges: Vec<String>,
+        chunks: Vec<String>,
+        files: Vec<String>,
+    ) -> Result<()> {
+        self.db.query(r#"
+            BEGIN TRANSACTION;
+            LET $node_ids = $nodes.map(|$id| type::record('nodes', $id));
+            LET $edge_ids = $edges.map(|$id| type::record('edges', $id));
+            LET $chunk_ids = $chunks.map(|$id| type::record('chunks', $id));
+            DELETE symbol_embeddings WHERE project_id = $project AND node_id != NONE AND node_id NOT IN $node_ids;
+            DELETE edges WHERE project_id = $project AND (id NOT IN $edge_ids OR from NOT IN $node_ids OR to NOT IN $node_ids);
+            DELETE chunks WHERE project_id = $project AND (id NOT IN $chunk_ids OR parent_node NOT IN $node_ids);
+            DELETE nodes WHERE project_id = $project AND id NOT IN $node_ids;
+            DELETE file_metadata WHERE project_id = $project AND file_path NOT IN $files;
+            COMMIT TRANSACTION;
+        "#).bind(("project", project.to_string())).bind(("nodes", nodes)).bind(("edges", edges))
+            .bind(("chunks", chunks)).bind(("files", files)).await
+            .map_err(|e| CodeGraphError::Database(format!("Catalog reconciliation failed: {e}")))?
+            .check().map_err(|e| CodeGraphError::Database(format!("Catalog reconciliation statement failed: {e}")))?;
+        Ok(())
+    }
+
     pub fn disable_ingestion_cache(&mut self) {
         self.config.cache_enabled = false;
         self.node_cache.clear();
@@ -1304,7 +1332,7 @@ impl SurrealDbStorage {
             .bind(("ver", record.codegraph_version))
             .bind(("org", record.organization_id))
             .bind(("dom", record.domain))
-            .bind(("meta", json!({})))
+            .bind(("meta", record.metadata))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!("Failed to upsert project metadata: {}", e))
@@ -2008,6 +2036,7 @@ impl<'a> From<&SymbolEmbeddingUpsert<'a>> for SymbolEmbeddingRecord {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectMetadataRecord {
+    pub metadata: JsonValue,
     pub project_id: String,
     pub name: String,
     pub root_path: String,
@@ -2603,6 +2632,7 @@ mod tests {
         let project_id = "project-a".to_string();
         storage
             .upsert_project_metadata(ProjectMetadataRecord {
+                metadata: serde_json::json!({}),
                 project_id: project_id.clone(),
                 name: "Project A".to_string(),
                 root_path: "/tmp/project-a".to_string(),
