@@ -686,7 +686,7 @@ impl ProjectIndexer {
 
         let parser = TreeSitterParser::new();
         let project_root = config.project_root.clone();
-        let (surreal, surreal_pool) = Self::connect_surreal_from_env().await?;
+        let (surreal, surreal_pool) = Self::connect_surreal(&project_root).await?;
         let surreal_writer = SurrealWriterHandle::new(surreal_pool);
         let project_id = std::env::var("CODEGRAPH_PROJECT_ID")
             .unwrap_or_else(|_| project_root.display().to_string());
@@ -3765,60 +3765,39 @@ impl ProjectIndexer {
         }
     }
 
-    async fn connect_surreal_from_env() -> Result<(
+    async fn connect_surreal(
+        project_root: &Path,
+    ) -> Result<(
         Arc<TokioMutex<SurrealDbStorage>>,
         Vec<Arc<TokioMutex<SurrealDbStorage>>>,
     )> {
-        let connection = Self::surreal_env_value("CODEGRAPH_SURREALDB_URL", "SURREALDB_URL")
-            .context("CODEGRAPH_SURREALDB_URL or SURREALDB_URL must be set")?;
-        let namespace =
-            Self::surreal_env_value("CODEGRAPH_SURREALDB_NAMESPACE", "SURREALDB_NAMESPACE")
-                .unwrap_or_else(|| "codegraph".to_string());
-
-        let use_graph_db = Self::surreal_env_value("CODEGRAPH_USE_GRAPH_SCHEMA", "")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-        let graph_db = Self::surreal_env_value("CODEGRAPH_GRAPH_DB_DATABASE", "")
-            .unwrap_or_else(|| "codegraph_graph".to_string());
-
-        let database = if use_graph_db {
-            graph_db
-        } else {
-            Self::surreal_env_value("CODEGRAPH_SURREALDB_DATABASE", "SURREALDB_DATABASE")
-                .unwrap_or_else(|| "main".to_string())
-        };
-        let username =
-            Self::surreal_env_value("CODEGRAPH_SURREALDB_USERNAME", "SURREALDB_USERNAME");
-        let password =
-            Self::surreal_env_value("CODEGRAPH_SURREALDB_PASSWORD", "SURREALDB_PASSWORD");
+        let config = SurrealDbConfig::for_project(project_root);
 
         info!(
             "🗄️ Connecting to SurrealDB: {} namespace={} database={}",
-            Self::sanitize_surreal_url(&connection),
-            namespace,
-            database
+            Self::sanitize_surreal_url(&config.connection),
+            config.namespace,
+            config.database
         );
 
-        let config = SurrealDbConfig {
-            connection: connection.clone(),
-            namespace: namespace.clone(),
-            database: database.clone(),
-            username: username.clone(),
-            password: password.clone(),
-            ..SurrealDbConfig::default()
+        // An embedded store is one engine shared by the process, so a pool adds nothing.
+        let pool_size = if config.is_embedded() {
+            1
+        } else {
+            std::env::var("CODEGRAPH_SURREAL_POOL_SIZE")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|n| n.clamp(1, 4))
+                .unwrap_or(1)
         };
-
-        let pool_size = std::env::var("CODEGRAPH_SURREAL_POOL_SIZE")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .map(|n| n.clamp(1, 4))
-            .unwrap_or(1);
 
         let mut pool = Vec::with_capacity(pool_size);
         for _ in 0..pool_size {
             let storage = SurrealDbStorage::new(config.clone())
                 .await
-                .with_context(|| format!("Failed to connect to SurrealDB at {}", connection))?;
+                .with_context(|| {
+                    format!("Failed to connect to SurrealDB at {}", config.connection)
+                })?;
             pool.push(Arc::new(TokioMutex::new(storage)));
         }
 
@@ -3829,55 +3808,29 @@ impl ProjectIndexer {
 
         info!(
             "🗄️ SurrealDB connection established: {} namespace={} database={}",
-            Self::sanitize_surreal_url(&connection),
-            namespace,
-            database
+            Self::sanitize_surreal_url(&config.connection),
+            config.namespace,
+            config.database
         );
 
         Ok((storage, pool))
     }
 
     fn log_surrealdb_status(&self, phase: &str) {
-        let connection = Self::surreal_env_value("CODEGRAPH_SURREALDB_URL", "SURREALDB_URL");
-        let namespace =
-            Self::surreal_env_value("CODEGRAPH_SURREALDB_NAMESPACE", "SURREALDB_NAMESPACE")
-                .unwrap_or_else(|| "codegraph".to_string());
-        let database =
-            Self::surreal_env_value("CODEGRAPH_SURREALDB_DATABASE", "SURREALDB_DATABASE")
-                .unwrap_or_else(|| "main".to_string());
-        let username =
-            Self::surreal_env_value("CODEGRAPH_SURREALDB_USERNAME", "SURREALDB_USERNAME");
-        let auth_state = if username.is_some()
-            || Self::surreal_env_value("CODEGRAPH_SURREALDB_PASSWORD", "SURREALDB_PASSWORD")
-                .is_some()
-        {
+        let config = SurrealDbConfig::for_project(&self.project_root);
+        let auth_state = if config.username.is_some() || config.password.is_some() {
             "credentials configured"
         } else {
             "no auth"
         };
-
-        match connection {
-            Some(raw) => {
-                let sanitized = Self::sanitize_surreal_url(&raw);
-                info!(
-                    "🗄️ SurrealDB ({}): target={} namespace={} database={} auth={}",
-                    phase, sanitized, namespace, database, auth_state
-                );
-            }
-            None => {
-                info!(
-                    "🗄️ SurrealDB ({}): connection not configured (set CODEGRAPH_SURREALDB_URL or SURREALDB_URL)",
-                    phase
-                );
-            }
-        }
-    }
-
-    fn surreal_env_value(primary: &str, fallback: &str) -> Option<String> {
-        env::var(primary)
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .or_else(|| env::var(fallback).ok().filter(|v| !v.trim().is_empty()))
+        info!(
+            "🗄️ SurrealDB ({}): target={} namespace={} database={} auth={}",
+            phase,
+            Self::sanitize_surreal_url(&config.connection),
+            config.namespace,
+            config.database,
+            auth_state
+        );
     }
 
     fn sanitize_surreal_url(raw: &str) -> String {

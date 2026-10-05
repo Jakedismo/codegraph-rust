@@ -40,13 +40,10 @@ cat <<EOF
 
 Next steps
 ----------
-1. Start SurrealDB before indexing:
+1. (Optional) Use a SurrealDB server instead of the embedded per-project store:
      surreal start --log trace file://\$HOME/.codegraph/surreal.db
-   (Default URL ${SURR_URL}, namespace ${SURR_NAMESPACE}, database ${SURR_DATABASE})
+   and set CODEGRAPH_SURREALDB_URL=${SURR_URL} (namespace ${SURR_NAMESPACE}, database ${SURR_DATABASE}).
 2. Create a .env file in your repo:
-     CODEGRAPH_SURREALDB_URL=${SURR_URL}
-     CODEGRAPH_SURREALDB_NAMESPACE=${SURR_NAMESPACE}
-     CODEGRAPH_SURREALDB_DATABASE=${SURR_DATABASE}
      CODEGRAPH_EMBEDDING_PROVIDER=ollama
      CODEGRAPH_LLM_PROVIDER=ollama
 3. From your repo, run:

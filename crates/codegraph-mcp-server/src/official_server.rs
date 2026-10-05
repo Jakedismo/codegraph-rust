@@ -22,7 +22,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -625,60 +625,25 @@ impl CodeGraphMCPServer {
         let graph_functions = {
             use codegraph_graph::SurrealDbStorage;
 
-            // Use CODEGRAPH_* env if present; fall back to SURREALDB_*; else defaults
-            let connection = std::env::var("CODEGRAPH_SURREALDB_URL")
-                .or_else(|_| std::env::var("SURREALDB_URL"))
-                .unwrap_or_else(|_| "ws://localhost:3004".to_string());
-            let namespace = std::env::var("CODEGRAPH_SURREALDB_NAMESPACE")
-                .or_else(|_| std::env::var("SURREALDB_NAMESPACE"))
-                .unwrap_or_else(|_| "ouroboros".to_string());
-            let use_graph_db = std::env::var("CODEGRAPH_USE_GRAPH_SCHEMA")
-                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-            let graph_db = std::env::var("CODEGRAPH_GRAPH_DB_DATABASE")
-                .unwrap_or_else(|_| "codegraph_graph".to_string());
+            // Embedded project store under the working directory unless
+            // CODEGRAPH_SURREALDB_URL points at a server.
+            let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let surrealdb_config = codegraph_graph::SurrealDbConfig::for_project(&project_root);
 
-            let database = if use_graph_db {
-                graph_db
-            } else {
-                std::env::var("CODEGRAPH_SURREALDB_DATABASE")
-                    .or_else(|_| std::env::var("SURREALDB_DATABASE"))
-                    .unwrap_or_else(|_| "codegraph".to_string())
-            };
-            let username = std::env::var("CODEGRAPH_SURREALDB_USERNAME")
-                .or_else(|_| std::env::var("SURREALDB_USERNAME"))
-                .ok();
-            let password = std::env::var("CODEGRAPH_SURREALDB_PASSWORD")
-                .or_else(|_| std::env::var("SURREALDB_PASSWORD"))
-                .ok();
-
-            let surrealdb_config = codegraph_graph::SurrealDbConfig {
-                connection,
-                namespace,
-                database,
-                username,
-                password,
-                strict_mode: false,
-                auto_migrate: false,
-                cache_enabled: false,
-            };
-
-            let storage = SurrealDbStorage::new(surrealdb_config)
-                .await
-                .map_err(|e| {
-                    let error_msg = format!("Failed to create SurrealDB storage: {}. Ensure SurrealDB is running on ws://localhost:3004", e);
-                    let notifier = progress_notifier.clone();
-                    let error_for_spawn = error_msg.clone();
-                    tokio::spawn(async move {
-                        notifier.notify_error(&error_for_spawn).await;
-                    });
-                    DebugLogger::log_agent_finish(false, None, Some(&error_msg));
-                    McpError {
-                        code: rmcp::model::ErrorCode(-32603),
-                        message: error_msg.into(),
-                        data: None,
-                    }
-                })?;
+            let storage = SurrealDbStorage::new(surrealdb_config).await.map_err(|e| {
+                let error_msg = format!("Failed to open SurrealDB storage: {}", e);
+                let notifier = progress_notifier.clone();
+                let error_for_spawn = error_msg.clone();
+                tokio::spawn(async move {
+                    notifier.notify_error(&error_for_spawn).await;
+                });
+                DebugLogger::log_agent_finish(false, None, Some(&error_msg));
+                McpError {
+                    code: rmcp::model::ErrorCode(-32603),
+                    message: error_msg.into(),
+                    data: None,
+                }
+            })?;
 
             // Derive project_id from env or canonical working directory for consistent DB selection
             let env_project = std::env::var("CODEGRAPH_PROJECT_ID")

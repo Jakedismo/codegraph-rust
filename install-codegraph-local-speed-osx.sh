@@ -46,12 +46,10 @@ cat <<EOF
 
 Next steps
 ----------
-1. Start SurrealDB before indexing:
+1. (Optional) Use a SurrealDB server instead of the embedded per-project store:
      surreal start --log trace file://\$HOME/.codegraph/surreal.db
+   and set CODEGRAPH_SURREALDB_URL=ws://localhost:3004 (namespace ouroboros, database codegraph).
 2. Create a .env file per repository:
-     CODEGRAPH_SURREALDB_URL=ws://localhost:3004
-     CODEGRAPH_SURREALDB_NAMESPACE=ouroboros
-     CODEGRAPH_SURREALDB_DATABASE=codegraph
      CODEGRAPH_EMBEDDING_PROVIDER=ollama
      CODEGRAPH_LLM_PROVIDER=ollama
 3. Warm up your project:

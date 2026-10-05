@@ -52,12 +52,12 @@ There are no `#[ignore]` tests; DB-dependent tests are gated by env vars and sil
 ### Running locally
 
 ```bash
-surreal start --bind 0.0.0.0:3004 --user root --pass root file://$HOME/.codegraph/surreal.db
-cd schema && ./apply-schema.sh          # defaults: ns "ouroboros", db "codegraph"; schema is NOT auto-applied at runtime
-codegraph db-check                      # connectivity/schema canary
+codegraph db-check                      # opens the store, applying the bundled schema if the store is new
 codegraph index /path/to/project -r -l rust,typescript --index-tier fast|balanced|full
 codegraph start stdio --watch           # MCP server over stdio, with re-index-on-change daemon
 ```
+
+Storage defaults to an embedded SurrealKV store at `<project>/.codegraph/db` (`SurrealDbConfig::for_project` in `crates/codegraph-graph/src/surrealdb_storage.rs`), which gets `schema/codegraph.surql` applied on first open. The engine locks the directory, so one process at a time per project: stop `codegraph start` before `codegraph index` on the same project. Setting `CODEGRAPH_SURREALDB_URL` switches to a SurrealDB server (`surreal start --bind 0.0.0.0:3004 --user root --pass root file://$HOME/.codegraph/surreal.db`, then `cd schema && ./apply-schema.sh`; the schema is not applied automatically in server mode).
 
 Config resolution (`crates/codegraph-core/src/config_manager.rs`): `./.codegraph.toml`, then `~/.codegraph/config.toml`, overridden by `.env` (cwd, then `~/.codegraph.env`) and `CODEGRAPH_*` env vars. See `.env.example` and `config/example.toml`.
 

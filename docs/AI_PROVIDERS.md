@@ -22,7 +22,7 @@ If you use `.env`, it’s loaded automatically at startup (you do not need `dire
 
 ## Minimal setup checklist
 
-1. SurrealDB is running and schema is applied (see `docs/INSTALLATION_GUIDE.md`).
+1. The project has been indexed (the embedded store needs no setup; a SurrealDB server needs the schema applied, see `docs/INSTALLATION_GUIDE.md`).
 2. You have a `./.codegraph.toml` or `~/.codegraph/config.toml` with at least:
    - `[embedding] provider = ...`
    - `[llm] enabled = true` and a working LLM provider configuration (required for agentic tools)
@@ -33,7 +33,7 @@ If you use `.env`, it’s loaded automatically at startup (you do not need `dire
 ### Local (Ollama embeddings + Ollama LLM)
 
 ```bash
-# SurrealDB connection (used by indexing and agentic tools)
+# SurrealDB server (optional; omit to use the embedded per-project store)
 CODEGRAPH_SURREALDB_URL=ws://localhost:3004
 CODEGRAPH_SURREALDB_NAMESPACE=ouroboros
 CODEGRAPH_SURREALDB_DATABASE=codegraph

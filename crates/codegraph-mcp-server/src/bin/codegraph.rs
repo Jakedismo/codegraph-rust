@@ -2117,8 +2117,9 @@ async fn handle_db_check(namespace: Option<String>, database: Option<String>) ->
         config.database = db;
     }
 
+    let target = config.connection.clone();
     let _storage = SurrealDbStorage::new(config).await?;
-    println!("✓ SurrealDB connectivity verified");
+    println!("✓ SurrealDB connectivity verified ({})", target);
     Ok(())
 }
 

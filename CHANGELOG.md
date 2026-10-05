@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🗄️ **Changed - Embedded Per-Project Database**
+
+- **Storage defaults to an embedded SurrealKV store per project** at `<project>/.codegraph/db`, so no SurrealDB server is needed and projects no longer share one database. The bundled `schema/codegraph.surql` is applied automatically when the store is created and recorded in `schema_versions`; a later schema change logs a warning suggesting `codegraph index --force`. The store directory gets a `.gitignore`.
+- **Server mode is opt-in**: set `CODEGRAPH_SURREALDB_URL` to use a SurrealDB server as before. Users who relied on the implicit `ws://localhost:3004` default now get an empty project store until they re-index or set the variable.
+- **One process per project store**: the engine locks its directory. Stop `codegraph start` before `codegraph index` on the same project; a second process gets a clear error. `CODEGRAPH_SURREAL_POOL_SIZE` only applies in server mode.
+
 ### 🗑️ **Removed - AutoAgents Backend**
 
 - **`codegraph-mcp-autoagents` crate removed**: Rig is the only agent framework. The `autoagents` and `autoagents-derive` dependencies and the `autoagents-experimental`, `autoagents-lats`, and `all-agents` feature flags are gone; build with `--all-features` or `--features full`.

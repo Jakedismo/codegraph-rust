@@ -82,9 +82,13 @@ cargo install --path crates/codegraph-mcp-server --bin codegraph \
 
 ## Setting Up SurrealDB
 
-CodeGraph requires SurrealDB 3.x for graph storage and vector search. Follow SurrealDB's upgrade guide before opening an existing 2.x database with a 3.x server; updating this repository does not migrate stored databases. You have two options:
+By default no setup is needed. CodeGraph embeds SurrealDB and keeps one SurrealKV store per project at `<project>/.codegraph/db`, created with the bundled schema the first time the project is indexed. The directory is written with a `.gitignore` so the store stays out of version control.
 
-### Option 1: Local Installation (Recommended for Development)
+Only one process can hold a project's store open at a time. Stop a running `codegraph start` before running `codegraph index` on the same project, and do not point two MCP clients at the same project at once. If you need that, use a server (below).
+
+The options below apply when you set `CODEGRAPH_SURREALDB_URL`. CodeGraph then connects to that server with the `CODEGRAPH_SURREALDB_*` settings and expects the schema to be applied already (see [Creating the Database Schema](#creating-the-database-schema)). Use SurrealDB 3.x; follow SurrealDB's upgrade guide before opening an existing 2.x database with a 3.x server.
+
+### Option 1: Local Server
 
 ```bash
 # Install SurrealDB CLI
@@ -124,7 +128,7 @@ Download from [surrealdb.com/surrealist](https://surrealdb.com/surrealist) or us
 
 ## Creating the Database Schema
 
-After starting SurrealDB, apply the CodeGraph schema:
+Server mode only: the embedded store applies the schema itself. After starting SurrealDB, apply the CodeGraph schema:
 
 ### Using the Apply Script
 

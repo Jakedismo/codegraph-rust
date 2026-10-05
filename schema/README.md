@@ -6,6 +6,8 @@ This directory contains the SurrealDB schema definition for CodeGraph's code ana
 
 - `codegraph.surql` - Complete schema definition for all tables, fields, and indexes
 
+The schema is bundled into the `codegraph` binary and applied automatically to a new embedded project store (`<project>/.codegraph/db`). `apply-schema.sh` is for SurrealDB servers selected with `CODEGRAPH_SURREALDB_URL`, where the schema is not applied automatically.
+
 ## Schema Overview
 
 ### Tables
