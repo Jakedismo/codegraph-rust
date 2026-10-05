@@ -344,46 +344,19 @@ mod tests {
     #[test]
     fn test_tier_to_verbosity_prompt_content() {
         let selector = PromptSelector::new();
-
-        // Test that Small tier gets TERSE prompts with appropriate constraints
-        let terse_prompt = selector
-            .select_prompt(AnalysisType::ArchitectureAnalysis, ContextTier::Small)
-            .expect("Should have terse prompt");
-        assert!(
-            terse_prompt.contains("TERSE")
-                || terse_prompt.contains("5 STEPS")
-                || terse_prompt.contains("MAX 5")
-        );
-
-        // Test that Medium tier gets BALANCED prompts
-        let balanced_prompt = selector
-            .select_prompt(AnalysisType::ArchitectureAnalysis, ContextTier::Medium)
-            .expect("Should have balanced prompt");
-        assert!(
-            balanced_prompt.contains("BALANCED")
-                || balanced_prompt.contains("10 STEPS")
-                || balanced_prompt.contains("MAX 10")
-        );
-
-        // Test that Large tier gets DETAILED prompts
-        let detailed_prompt = selector
-            .select_prompt(AnalysisType::ArchitectureAnalysis, ContextTier::Large)
-            .expect("Should have detailed prompt");
-        assert!(
-            detailed_prompt.contains("DETAILED")
-                || detailed_prompt.contains("15 STEPS")
-                || detailed_prompt.contains("MAX 15")
-        );
-
-        // Test that Massive tier gets EXPLORATORY prompts
-        let exploratory_prompt = selector
-            .select_prompt(AnalysisType::ArchitectureAnalysis, ContextTier::Massive)
-            .expect("Should have exploratory prompt");
-        assert!(
-            exploratory_prompt.contains("EXPLORATORY")
-                || exploratory_prompt.contains("20 STEPS")
-                || exploratory_prompt.contains("MAX 20")
-        );
+        for (tier, expected) in [
+            (ContextTier::Small, ARCHITECTURE_ANALYSIS_TERSE),
+            (ContextTier::Medium, ARCHITECTURE_ANALYSIS_BALANCED),
+            (ContextTier::Large, ARCHITECTURE_ANALYSIS_DETAILED),
+            (ContextTier::Massive, ARCHITECTURE_ANALYSIS_EXPLORATORY),
+        ] {
+            assert_eq!(
+                selector
+                    .select_prompt(AnalysisType::ArchitectureAnalysis, tier)
+                    .unwrap(),
+                expected
+            );
+        }
     }
 
     #[test]
@@ -481,36 +454,54 @@ mod tests {
 
     #[test]
     fn test_max_steps_override_env_clamped() {
-        std::env::set_var("CODEGRAPH_AGENT_MAX_STEPS", "42");
+        if !test_env::run(
+            concat!(module_path!(), "::test_max_steps_override_env_clamped"),
+            &[("CODEGRAPH_AGENT_MAX_STEPS", Some("42"))],
+        ) {
+            return;
+        }
+
         let selector = PromptSelector::new();
         assert_eq!(
             selector.recommended_max_steps(ContextTier::Massive, AnalysisType::CodeSearch),
             42
         );
-        std::env::remove_var("CODEGRAPH_AGENT_MAX_STEPS");
     }
 
     #[test]
     fn test_max_steps_override_zero_becomes_cap() {
-        std::env::set_var("CODEGRAPH_AGENT_MAX_STEPS", "0");
+        if !test_env::run(
+            concat!(module_path!(), "::test_max_steps_override_zero_becomes_cap"),
+            &[("CODEGRAPH_AGENT_MAX_STEPS", Some("0"))],
+        ) {
+            return;
+        }
+
         let selector = PromptSelector::new();
         assert_eq!(
             selector.recommended_max_steps(ContextTier::Massive, AnalysisType::CodeSearch),
             50
         );
-        std::env::remove_var("CODEGRAPH_AGENT_MAX_STEPS");
     }
 
     #[test]
     fn test_max_steps_override_invalid_falls_back() {
-        std::env::set_var("CODEGRAPH_AGENT_MAX_STEPS", "not_a_number");
+        if !test_env::run(
+            concat!(
+                module_path!(),
+                "::test_max_steps_override_invalid_falls_back"
+            ),
+            &[("CODEGRAPH_AGENT_MAX_STEPS", Some("not_a_number"))],
+        ) {
+            return;
+        }
+
         let selector = PromptSelector::new();
         assert_eq!(
             selector
                 .recommended_max_steps(ContextTier::Massive, AnalysisType::ArchitectureAnalysis),
             10
         );
-        std::env::remove_var("CODEGRAPH_AGENT_MAX_STEPS");
     }
 
     #[test]
@@ -530,4 +521,12 @@ mod tests {
 
         assert_eq!(retrieved, custom_prompt);
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

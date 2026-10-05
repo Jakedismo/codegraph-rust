@@ -8,6 +8,17 @@ use uuid::Uuid;
 pub type NodeId = Uuid;
 pub type EdgeId = Uuid;
 
+/// Encode hash bytes as lowercase hexadecimal without intermediate allocations.
+pub fn hex_digest(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut text = String::with_capacity(bytes.len() * 2);
+    for &byte in bytes {
+        text.push(HEX[(byte >> 4) as usize] as char);
+        text.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    text
+}
+
 /// Generate a deterministic node ID from stable attributes.
 /// Same code entity = same ID across indexing runs, enabling proper UPSERT behavior.
 pub fn generate_node_id(

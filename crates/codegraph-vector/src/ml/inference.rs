@@ -901,8 +901,8 @@ impl InferenceEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ml::features::FeatureConfig;
     use crate::EmbeddingGenerator;
+    use crate::ml::features::FeatureConfig;
 
     #[tokio::test]
     async fn test_inference_engine_creation() {

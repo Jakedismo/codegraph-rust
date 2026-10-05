@@ -235,14 +235,20 @@ mod tests {
         assert_eq!(stats.variable_nodes_added, 2);
         assert_eq!(stats.defines_edges_added, 2);
         assert!(edges.iter().any(|e| e.edge_type == EdgeType::Defines));
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("flows_to".to_string())));
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("mutates".to_string())));
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("returns".to_string())));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("flows_to".to_string()))
+        );
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("mutates".to_string()))
+        );
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("returns".to_string()))
+        );
     }
 }

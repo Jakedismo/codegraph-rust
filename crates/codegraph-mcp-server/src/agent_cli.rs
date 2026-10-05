@@ -1,8 +1,8 @@
 // ABOUTME: One-shot CLI access to the four public agentic tools.
 // ABOUTME: Writes answers to stdout and diagnostics to stderr without an MCP server.
 
-use crate::{agent_hooks::CLI_INSTRUCTIONS, agentic_tools::AgenticTool, CodeGraphMCPServer};
-use anyhow::{bail, Context, Result};
+use crate::{CodeGraphMCPServer, agent_hooks::CLI_INSTRUCTIONS, agentic_tools::AgenticTool};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
 use serde_json::Value;
 use std::io::{self, Read, Write};
@@ -91,12 +91,24 @@ impl AgentCommand {
     }
 }
 
-pub async fn run(command: &AgentCommand, verbose: bool, config_path: Option<&Path>) -> Result<()> {
+/// Execute a CLI command, preparing process configuration before starting workers.
+///
+/// # Safety
+/// The caller must be the single-threaded process entry point; no other threads may
+/// read the environment while configuration overrides and dotenv are applied.
+pub unsafe fn run(command: &AgentCommand, verbose: bool, config_path: Option<&Path>) -> Result<()> {
     let Some((tool, request, focus)) = command.request() else {
         println!("{CLI_INSTRUCTIONS}");
         return Ok(());
     };
-    let result = execute(tool, request, focus, verbose, config_path).await;
+    let result = (|| {
+        // SAFETY: The caller guarantees this runs before any worker threads exist.
+        let query = unsafe { prepare_environment(request, config_path) }?;
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?
+            .block_on(execute(tool, request, focus, verbose, &query))
+    })();
     let mut stdout = io::stdout().lock();
     match result {
         Ok(response) => {
@@ -121,30 +133,10 @@ async fn execute(
     request: &AgentQuery,
     focus: Option<&str>,
     verbose: bool,
-    config_path: Option<&Path>,
+    query: &str,
 ) -> Result<Value> {
     if !cfg!(feature = "ai-enhanced") {
         bail!("Agentic tools require a build with --features ai-enhanced (or full)");
-    }
-    let query = read_query(request)?;
-    // Resolve relative config paths before changing to the selected project.
-    let config_path = config_path
-        .map(std::fs::canonicalize)
-        .transpose()
-        .context("Cannot resolve --config file")?;
-    if let Some(project) = &request.project {
-        std::env::set_current_dir(project)
-            .with_context(|| format!("Cannot open project {}", project.display()))?;
-    }
-    dotenv::dotenv().ok();
-    if let Some(project_id) = &request.project_id {
-        if project_id.trim().is_empty() {
-            bail!("--project-id must not be blank");
-        }
-        std::env::set_var("CODEGRAPH_PROJECT_ID", project_id);
-    }
-    if let Some(config_path) = config_path {
-        std::env::set_var("CODEGRAPH_CONFIG_PATH", config_path);
     }
     let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         tracing_subscriber::EnvFilter::new(if verbose { "info" } else { "warn" })
@@ -159,7 +151,7 @@ async fn execute(
     let server = CodeGraphMCPServer::new();
     tokio::time::timeout(
         Duration::from_secs(request.timeout_secs),
-        server.execute_agentic_tool(tool, &query, focus),
+        server.execute_agentic_tool(tool, query, focus),
     )
     .await
     .with_context(|| {
@@ -169,6 +161,33 @@ async fn execute(
         )
     })?
     .map_err(|error| anyhow::anyhow!("{}", error.message))
+}
+
+unsafe fn prepare_environment(request: &AgentQuery, config_path: Option<&Path>) -> Result<String> {
+    let query = read_query(request)?;
+    // Resolve relative config paths before changing to the selected project.
+    let config_path = config_path
+        .map(std::fs::canonicalize)
+        .transpose()
+        .context("Cannot resolve --config file")?;
+    if let Some(project) = &request.project {
+        std::env::set_current_dir(project)
+            .with_context(|| format!("Cannot open project {}", project.display()))?;
+    }
+    // SAFETY: The caller guarantees configuration precedes worker startup.
+    unsafe { codegraph_core::config_manager::ConfigManager::initialize_environment() };
+    if let Some(project_id) = &request.project_id {
+        if project_id.trim().is_empty() {
+            bail!("--project-id must not be blank");
+        }
+        // SAFETY: Called from the single-threaded CLI before creating the async runtime.
+        unsafe { std::env::set_var("CODEGRAPH_PROJECT_ID", project_id) };
+    }
+    if let Some(config_path) = config_path {
+        // SAFETY: Called from the single-threaded CLI before creating the async runtime.
+        unsafe { std::env::set_var("CODEGRAPH_CONFIG_PATH", config_path) };
+    }
+    Ok(query)
 }
 
 fn read_query(request: &AgentQuery) -> Result<String> {

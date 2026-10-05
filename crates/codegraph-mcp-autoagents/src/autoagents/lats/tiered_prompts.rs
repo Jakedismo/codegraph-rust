@@ -431,8 +431,8 @@ mod tests {
     fn test_get_expansion_prompt_by_tier() {
         assert!(get_expansion_prompt(ContextTier::Small).contains("exactly 1 action"));
         assert!(get_expansion_prompt(ContextTier::Medium).contains("1-2"));
-        assert!(get_expansion_prompt(ContextTier::Large).contains("1-3"));
-        assert!(get_expansion_prompt(ContextTier::Massive).contains("1-4"));
+        assert!(get_expansion_prompt(ContextTier::Large).contains("between 1 and 3 actions"));
+        assert!(get_expansion_prompt(ContextTier::Massive).contains("1-4 high-quality actions"));
     }
 
     #[test]

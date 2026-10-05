@@ -9,7 +9,7 @@ enum-variant-size-threshold = 200
 verbose-bit-mask-threshold = 1
 literal-representation-threshold = 10
 avoid-breaking-exported-api = true
-msrv = "1.70"
+msrv = "1.95"
 
 # Consolidated from .clippy.toml
 disallowed-names = ["foo", "baz", "quux"]

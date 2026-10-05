@@ -1,4 +1,4 @@
-use super::debug::{MemoryCategory, MEMORY_TRACKER};
+use super::debug::{MEMORY_TRACKER, MemoryCategory};
 use bumpalo::Bump;
 
 /// TempBump provides a scoped bump allocator intended for temporary

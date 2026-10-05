@@ -6,24 +6,26 @@ use futures::future::BoxFuture;
 /// Clean Official MCP SDK Implementation for CodeGraph
 /// Following exact Counter pattern from rmcp SDK documentation
 use rmcp::{
+    ErrorData as McpError, Peer, RoleServer, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        CallToolResult, Content, GetPromptRequestParam, GetPromptResult, ListPromptsResult, Meta,
-        NumberOrString, PaginatedRequestParam, ProgressNotification, ProgressNotificationParam,
-        ProgressToken, Prompt, PromptMessage, PromptMessageContent, PromptMessageRole,
-        ServerCapabilities, ServerInfo, ServerNotification,
+        CallToolResult, ContentBlock as Content, GetPromptRequestParams, GetPromptResponse,
+        GetPromptResult, ListPromptsResult, NumberOrString, PaginatedRequestParams,
+        ProgressNotification, ProgressNotificationParam, ProgressToken, Prompt, PromptMessage,
+        RequestMetaObject as Meta, Role as PromptMessageRole, ServerCapabilities, ServerConfig,
+        ServerNotification,
     },
     service::RequestContext,
-    tool, tool_handler, tool_router, ErrorData as McpError, Peer, RoleServer, ServerHandler,
+    tool, tool_handler, tool_router,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::future::Future;
 use std::path::Path;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -587,16 +589,10 @@ impl CodeGraphMCPServer {
             let progress_token = progress_token.clone();
 
             Box::pin(async move {
-                let notification = ProgressNotification {
-                    method: Default::default(),
-                    params: ProgressNotificationParam {
-                        progress_token: progress_token.clone(),
-                        progress,
-                        total: Some(1.0), // Total is always 1.0 for 3-stage progress
-                        message,
-                    },
-                    extensions: Default::default(),
-                };
+                let mut params = ProgressNotificationParam::new(progress_token.clone(), progress);
+                params.total = Some(1.0);
+                params.message = message;
+                let notification = ProgressNotification::new(params);
 
                 // Ignore notification errors (non-blocking)
                 let _ = peer
@@ -623,16 +619,10 @@ impl CodeGraphMCPServer {
             Box::pin(async move {
                 step_counter.fetch_add(1, Ordering::SeqCst);
 
-                let notification = ProgressNotification {
-                    method: Default::default(),
-                    params: ProgressNotificationParam {
-                        progress_token: progress_token.clone(),
-                        progress,
-                        total: None, // Indeterminate - we don't know total steps upfront
-                        message,
-                    },
-                    extensions: Default::default(),
-                };
+                let mut params = ProgressNotificationParam::new(progress_token.clone(), progress);
+                params.total = None;
+                params.message = message;
+                let notification = ProgressNotification::new(params);
 
                 // Ignore notification errors (non-blocking)
                 let _ = peer
@@ -793,11 +783,6 @@ impl CodeGraphMCPServer {
                 .canonicalize()
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|_| raw_project.clone());
-
-            // If env was not set, persist it so downstream tools share the same project_id
-            if env_project.is_none() {
-                std::env::set_var("CODEGRAPH_PROJECT_ID", &canonical_project);
-            }
 
             Arc::new(GraphFunctions::new_with_project_id(
                 storage.db(),
@@ -1143,60 +1128,45 @@ impl CodeGraphMCPServer {
 /// Official MCP ServerHandler implementation (following Counter pattern)
 #[tool_handler]
 impl ServerHandler for CodeGraphMCPServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            // Use the aggressive MANDATORY instructions for automatic delivery
-            // This is sent automatically in the initialize response
-            // Also available via MCP prompt INITIAL_INSTRUCTIONS_PROMPT_NAME
-            instructions: Some(INITIAL_INSTRUCTIONS.into()),
-            capabilities: ServerCapabilities::builder()
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(
+            ServerCapabilities::builder()
                 .enable_tools()
                 .enable_prompts()
-                .enable_logging()
                 .build(),
-            ..Default::default()
-        }
+        )
+        .with_instructions(INITIAL_INSTRUCTIONS)
     }
 
     fn list_prompts(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListPromptsResult, McpError>> + Send + '_ {
         async move {
             Ok(ListPromptsResult {
                 prompts: vec![initial_instructions_prompt()],
                 next_cursor: None,
-                meta: None,
+                ..Default::default()
             })
         }
     }
 
     fn get_prompt(
         &self,
-        request: GetPromptRequestParam,
+        request: GetPromptRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<GetPromptResult, McpError>> + Send + '_ {
+    ) -> impl Future<Output = Result<GetPromptResponse, McpError>> + Send + '_ {
         let name = request.name.clone();
         async move {
             match name.as_str() {
-                INITIAL_INSTRUCTIONS_PROMPT_NAME => Ok(GetPromptResult {
-                    description: Some(
-                        "MANDATORY: CodeGraph Usage Protocol - You MUST read and follow these instructions before using any CodeGraph tools".to_string()
-                    ),
-                    messages: vec![
-                        PromptMessage {
-                            role: PromptMessageRole::User,
-                            content: PromptMessageContent::text(
-                                "Please read the CodeGraph Initial Instructions below. These guidelines will help you use CodeGraph tools efficiently and avoid wasting context by reading unnecessary files."
-                            ),
-                        },
-                        PromptMessage {
-                            role: PromptMessageRole::Assistant,
-                            content: PromptMessageContent::text(INITIAL_INSTRUCTIONS),
-                        },
-                    ],
-                }),
+                INITIAL_INSTRUCTIONS_PROMPT_NAME => Ok(GetPromptResult::new(vec![
+                    PromptMessage::new_text(PromptMessageRole::User,
+                        "Please read the CodeGraph Initial Instructions below. These guidelines will help you use CodeGraph tools efficiently and avoid wasting context by reading unnecessary files."),
+                    PromptMessage::new_text(PromptMessageRole::Assistant, INITIAL_INSTRUCTIONS),
+                ]).with_description(
+                    "MANDATORY: CodeGraph Usage Protocol - You MUST read and follow these instructions before using any CodeGraph tools"
+                ).into()),
                 _ => Err(McpError::invalid_params(
                     format!("Unknown prompt: {}", name),
                     None
@@ -1207,16 +1177,11 @@ impl ServerHandler for CodeGraphMCPServer {
 }
 
 fn initial_instructions_prompt() -> Prompt {
-    Prompt {
-        name: INITIAL_INSTRUCTIONS_PROMPT_NAME.to_string(),
-        title: None,
-        description: Some(
-            "REQUIRED reading before using CodeGraph tools. Enforces context-efficient tool usage patterns. You MUST use CodeGraph agentic tools BEFORE grep/read/find. Includes tool selection decision tree, anti-patterns, and compliance checklist.".to_string()
-        ),
-        arguments: None,
-        icons: None,
-        meta: None,
-    }
+    Prompt::new(
+        INITIAL_INSTRUCTIONS_PROMPT_NAME,
+        Some("MANDATORY: CodeGraph Usage Protocol - Read before using any CodeGraph tools"),
+        None,
+    )
 }
 
 #[cfg(all(test, feature = "ai-enhanced"))]
@@ -1238,9 +1203,11 @@ mod tests {
     #[test]
     fn timeout_fallback_builds_warning_when_missing_partial() {
         let output = CodeGraphMCPServer::timeout_fallback_output(45, None, 0);
-        assert!(output
-            .answer
-            .contains("WARNING: Agent timed out after 45 seconds"));
+        assert!(
+            output
+                .answer
+                .contains("WARNING: Agent timed out after 45 seconds")
+        );
         assert_eq!(
             output.findings,
             "Timeout after 45 seconds. Result may be partial."

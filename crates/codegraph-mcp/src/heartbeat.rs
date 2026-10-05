@@ -1,8 +1,8 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::RwLock;
-use tokio::time::{interval, Instant, MissedTickBehavior};
+use tokio::time::{Instant, MissedTickBehavior, interval};
 use tracing::{debug, error, warn};
 
 #[derive(Debug, Clone)]
@@ -134,7 +134,7 @@ impl HeartbeatMonitor {
         self.missed_count.load(Ordering::SeqCst)
     }
 
-    pub fn is_healthy(&self) -> impl std::future::Future<Output = bool> + Send {
+    pub fn is_healthy(&self) -> impl std::future::Future<Output = bool> + Send + use<> {
         let state = Arc::clone(&self.state);
         async move { *state.read().await == HeartbeatState::Healthy }
     }

@@ -1,5 +1,5 @@
 use codegraph_core::{CodeGraphError, NodeId, Result};
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use dashmap::DashMap;
 use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
@@ -405,7 +405,7 @@ pub struct IncrementalUpdateManager {
     next_segment_id: Arc<RwLock<u64>>,
     _current_segment: Arc<RwLock<Option<u64>>>,
     operation_sender: Sender<IncrementalOperation>,
-    _operation_receiver: Arc<Mutex<Receiver<IncrementalOperation>>>,
+    _operation_receiver: Arc<Receiver<IncrementalOperation>>,
     stats: Arc<RwLock<IncrementalStats>>,
     wal: Option<WriteAheadLog>,
     _worker_handles: Vec<tokio::task::JoinHandle<()>>,
@@ -428,7 +428,7 @@ impl IncrementalUpdateManager {
         let next_segment_id = Arc::new(RwLock::new(0));
         let current_segment = Arc::new(RwLock::new(None));
         let stats = Arc::new(RwLock::new(IncrementalStats::default()));
-        let operation_receiver = Arc::new(Mutex::new(operation_receiver));
+        let operation_receiver = Arc::new(operation_receiver);
 
         // Start worker threads
         let mut worker_handles = Vec::new();
@@ -463,11 +463,12 @@ impl IncrementalUpdateManager {
         segments: Arc<DashMap<u64, Arc<RwLock<IndexSegment>>>>,
         next_segment_id: Arc<RwLock<u64>>,
         current_segment: Arc<RwLock<Option<u64>>>,
-        operation_receiver: Arc<Mutex<Receiver<IncrementalOperation>>>,
+        operation_receiver: Arc<Receiver<IncrementalOperation>>,
         stats: Arc<RwLock<IncrementalStats>>,
         config: IncrementalConfig,
     ) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
+        // Receiving from this synchronous channel must not block a Tokio executor.
+        tokio::task::spawn_blocking(move || {
             debug!("Starting incremental update worker {}", worker_id);
 
             let mut batch = Vec::new();
@@ -475,10 +476,7 @@ impl IncrementalUpdateManager {
 
             loop {
                 // Try to receive operations with timeout
-                let operation = {
-                    let receiver = operation_receiver.lock();
-                    receiver.recv_timeout(config.batch_timeout)
-                };
+                let operation = operation_receiver.recv_timeout(config.batch_timeout);
 
                 match operation {
                     Ok(op) => {
@@ -497,13 +495,12 @@ impl IncrementalUpdateManager {
                                 &stats,
                                 &config,
                                 std::mem::take(&mut batch),
-                            )
-                            .await;
+                            );
                             last_batch_time = SystemTime::now();
                         }
                     }
-                    Err(_) => {
-                        // Timeout - process any pending operations
+                    Err(error) => {
+                        // Flush pending operations on timeout or shutdown.
                         if !batch.is_empty() {
                             Self::process_batch(
                                 &segments,
@@ -512,9 +509,11 @@ impl IncrementalUpdateManager {
                                 &stats,
                                 &config,
                                 std::mem::take(&mut batch),
-                            )
-                            .await;
+                            );
                             last_batch_time = SystemTime::now();
+                        }
+                        if matches!(error, crossbeam_channel::RecvTimeoutError::Disconnected) {
+                            break;
                         }
                     }
                 }
@@ -522,7 +521,7 @@ impl IncrementalUpdateManager {
         })
     }
 
-    async fn process_batch(
+    fn process_batch(
         segments: &Arc<DashMap<u64, Arc<RwLock<IndexSegment>>>>,
         next_segment_id: &Arc<RwLock<u64>>,
         current_segment: &Arc<RwLock<Option<u64>>>,
@@ -663,15 +662,41 @@ impl IncrementalUpdateManager {
 
             if let Some(current_id) = *current {
                 // Check if current segment has space
-                if let Some(segment_ref) = segments.get(&current_id) {
-                    let segment = segment_ref.read();
-                    if !segment.is_sealed
-                        && segment.size_bytes + vector.len() * std::mem::size_of::<f32>()
-                            < config.max_segment_size
-                    {
-                        current_id
-                    } else {
-                        // Current segment is full, create new one
+                // Release the DashMap guard before sealing or inserting a segment.
+                match segments
+                    .get(&current_id)
+                    .map(|entry| Arc::clone(entry.value()))
+                {
+                    Some(segment_ref) => {
+                        let segment = segment_ref.read();
+                        if !segment.is_sealed
+                            && segment.size_bytes + vector.len() * std::mem::size_of::<f32>()
+                                < config.max_segment_size
+                        {
+                            current_id
+                        } else {
+                            drop(segment);
+                            // Current segment is full, create new one
+                            let new_id = {
+                                let mut next_id = next_segment_id.write();
+                                let id = *next_id;
+                                *next_id += 1;
+                                id
+                            };
+
+                            // Seal the current segment
+                            if let Some(segment_ref) = segments.get(&current_id) {
+                                segment_ref.write().seal();
+                            }
+
+                            *current = Some(new_id);
+                            segments
+                                .insert(new_id, Arc::new(RwLock::new(IndexSegment::new(new_id))));
+                            new_id
+                        }
+                    }
+                    _ => {
+                        // Current segment doesn't exist, create new one
                         let new_id = {
                             let mut next_id = next_segment_id.write();
                             let id = *next_id;
@@ -679,27 +704,10 @@ impl IncrementalUpdateManager {
                             id
                         };
 
-                        // Seal the current segment
-                        if let Some(segment_ref) = segments.get(&current_id) {
-                            segment_ref.write().seal();
-                        }
-
                         *current = Some(new_id);
                         segments.insert(new_id, Arc::new(RwLock::new(IndexSegment::new(new_id))));
                         new_id
                     }
-                } else {
-                    // Current segment doesn't exist, create new one
-                    let new_id = {
-                        let mut next_id = next_segment_id.write();
-                        let id = *next_id;
-                        *next_id += 1;
-                        id
-                    };
-
-                    *current = Some(new_id);
-                    segments.insert(new_id, Arc::new(RwLock::new(IndexSegment::new(new_id))));
-                    new_id
                 }
             } else {
                 // No current segment, create first one
@@ -952,8 +960,14 @@ mod tests {
 
         manager.submit_batch(insert_ops).unwrap();
 
-        // Wait for processing
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // Observe completion rather than assuming a fixed worker startup time.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while manager.get_stats().successful_operations == 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("incremental operations should complete");
 
         let stats = manager.get_stats();
         assert!(stats.successful_operations > 0);
@@ -983,8 +997,13 @@ mod tests {
             manager.submit_operation(op).unwrap();
         }
 
-        // Wait for processing
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while manager.get_segments().len() <= 1 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("segment rotation should complete");
 
         let segments = manager.get_segments();
         assert!(segments.len() > 1, "Should create multiple segments");

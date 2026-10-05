@@ -1,13 +1,19 @@
 use anyhow::Context;
 use serde_json::json;
-use surrealdb::{engine::remote::ws::Ws, opt::auth::Root, Surreal};
+use surrealdb::{Surreal, engine::remote::ws::Ws, opt::auth::Root};
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     dotenvy::from_filename(".env")
         .or_else(|_| dotenvy::dotenv())
         .context("Failed to load .env")?;
 
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run())
+}
+
+async fn run() -> anyhow::Result<()> {
     let url = std::env::var("CODEGRAPH_SURREALDB_URL")?;
     let namespace = std::env::var("CODEGRAPH_SURREALDB_NAMESPACE")?;
     let database = std::env::var("CODEGRAPH_SURREALDB_DATABASE")?;
@@ -20,8 +26,8 @@ async fn main() -> anyhow::Result<()> {
         .to_string();
     let db = Surreal::new::<Ws>(&endpoint).await?;
     db.signin(Root {
-        username: &username,
-        password: &password,
+        username: username.clone(),
+        password: password.clone(),
     })
     .await?;
     db.use_ns(&namespace).use_db(&database).await?;
@@ -52,11 +58,11 @@ async fn main() -> anyhow::Result<()> {
         "project_id": "smoke-project",
     });
 
-    db.query("UPSERT type::thing('nodes', $doc.id) CONTENT $doc;")
+    db.query("UPSERT type::record('nodes', $doc.id) CONTENT $doc;")
         .bind(("doc", node_one))
         .await?;
 
-    db.query("UPSERT type::thing('nodes', $doc.id) CONTENT $doc;")
+    db.query("UPSERT type::record('nodes', $doc.id) CONTENT $doc;")
         .bind(("doc", node_two))
         .await?;
 
@@ -70,10 +76,10 @@ async fn main() -> anyhow::Result<()> {
     });
 
     db.query(
-        "UPSERT type::thing('edges', $doc.id) CONTENT {
+        "UPSERT type::record('edges', $doc.id) CONTENT {
             id: $doc.id,
-            from: type::thing('nodes', $doc.from),
-            to: type::thing('nodes', $doc.to),
+            from: type::record('nodes', $doc.from),
+            to: type::record('nodes', $doc.to),
             edge_type: $doc.edge_type,
             weight: $doc.weight,
             metadata: $doc.metadata,
@@ -94,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
         "access_count": 0,
     });
 
-    db.query("UPSERT type::thing('symbol_embeddings', $doc.id) CONTENT $doc;")
+    db.query("UPSERT type::record('symbol_embeddings', $doc.id) CONTENT $doc;")
         .bind(("doc", symbol_doc))
         .await?;
 

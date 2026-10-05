@@ -8,8 +8,8 @@ use std::time::Duration;
 
 #[cfg(feature = "lmstudio")]
 use codegraph_vector::{
-    lmstudio_embedding_provider::{LmStudioEmbeddingConfig, LmStudioEmbeddingProvider},
     BatchConfig, EmbeddingProvider,
+    lmstudio_embedding_provider::{LmStudioEmbeddingConfig, LmStudioEmbeddingProvider},
 };
 
 /// Create a test CodeNode for embedding tests

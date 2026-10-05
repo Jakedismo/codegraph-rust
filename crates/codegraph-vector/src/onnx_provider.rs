@@ -7,15 +7,15 @@ use async_trait::async_trait;
 #[cfg(feature = "onnx")]
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 #[cfg(feature = "onnx")]
-use hf_hub::api::tokio::Api;
+use hf_hub::HFClient as Api;
 #[cfg(feature = "onnx")]
-use ndarray::{s, Array2, Axis};
-#[cfg(feature = "onnx")]
-use ort::execution_providers::CoreMLExecutionProvider;
-#[cfg(feature = "onnx")]
-use ort::session::builder::GraphOptimizationLevel;
+use ndarray::{Array2, Axis, s};
+#[cfg(all(feature = "onnx-coreml", target_os = "macos"))]
+use ort::ep::CoreML;
 #[cfg(feature = "onnx")]
 use ort::session::Session;
+#[cfg(feature = "onnx")]
+use ort::session::builder::GraphOptimizationLevel;
 #[cfg(feature = "onnx")]
 use ort::value::Value;
 #[cfg(feature = "onnx")]
@@ -86,9 +86,15 @@ impl OnnxEmbeddingProvider {
             (tok, model)
         } else {
             let api = Api::new().map_err(|e| CodeGraphError::External(e.to_string()))?;
-            let repo = api.model(config.model_repo.clone());
+            let (owner, name) = config
+                .model_repo
+                .split_once('/')
+                .unwrap_or(("", config.model_repo.as_str()));
+            let repo = api.model(owner, name);
             let tok = repo
-                .get("tokenizer.json")
+                .download_file()
+                .filename("tokenizer.json")
+                .send()
                 .await
                 .map_err(|e| CodeGraphError::External(e.to_string()))?;
             let candidates: Vec<String> = if let Some(mf) = &config.model_file {
@@ -107,7 +113,7 @@ impl OnnxEmbeddingProvider {
             };
             let mut model_opt = None;
             for cand in candidates {
-                match repo.get(&cand).await {
+                match repo.download_file().filename(&cand).send().await {
                     Ok(p) => {
                         model_opt = Some(p);
                         break;
@@ -136,10 +142,10 @@ impl OnnxEmbeddingProvider {
 
         // Register CoreML EP when requested, fall back to CPU if unavailable
         if ep == "coreml" {
-            #[cfg(target_os = "macos")]
+            #[cfg(all(target_os = "macos", feature = "onnx-coreml"))]
             {
                 session_builder = session_builder
-                    .with_execution_providers([CoreMLExecutionProvider::default().build()])
+                    .with_execution_providers([CoreML::default().build()])
                     .map_err(|e| CodeGraphError::External(e.to_string()))?;
                 tracing::info!("Using ONNX Runtime CoreML execution provider");
             }
@@ -314,22 +320,22 @@ impl EmbeddingProvider for OnnxEmbeddingProvider {
 
                 // Build named inputs based on session's expected names
                 let mut named: Vec<(String, ort::session::SessionInputValue<'_>)> = Vec::new();
-                for inp in &sess.inputs {
-                    let n = inp.name.to_lowercase();
+                for inp in sess.inputs() {
+                    let n = inp.name().to_lowercase();
                     if n.contains("input_ids") || n == "input" {
                         // some models use generic name
-                        named.push((inp.name.clone(), input_ids_v.clone().into()));
+                        named.push((inp.name().to_string(), input_ids_v.clone().into()));
                     } else if n.contains("attention") || n.contains("mask") {
-                        named.push((inp.name.clone(), attention_mask_v.clone().into()));
+                        named.push((inp.name().to_string(), attention_mask_v.clone().into()));
                     } else if n.contains("token_type") || n.contains("segment") {
-                        named.push((inp.name.clone(), token_type_ids_v.clone().into()));
+                        named.push((inp.name().to_string(), token_type_ids_v.clone().into()));
                     }
                 }
 
                 // Fallbacks if matching by names failed to fill all
                 if named.is_empty() {
                     // Use common defaults by arity
-                    match sess.inputs.len() {
+                    match sess.inputs().len() {
                         3 => {
                             named.push(("input_ids".into(), input_ids_v.clone().into()));
                             named.push(("attention_mask".into(), attention_mask_v.clone().into()));

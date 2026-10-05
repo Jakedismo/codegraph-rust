@@ -152,17 +152,21 @@ export default User;
             assert!(nodes.iter().any(
                 |n| &*n.name == "UserProps" && matches!(n.node_type, Some(NodeType::Interface))
             ));
-            assert!(nodes
-                .iter()
-                .any(|n| &*n.name == "User" && matches!(n.node_type, Some(NodeType::Class))));
+            assert!(
+                nodes
+                    .iter()
+                    .any(|n| &*n.name == "User" && matches!(n.node_type, Some(NodeType::Class)))
+            );
             assert!(nodes.iter().any(
                 |n| &*n.name == "createUser" && matches!(n.node_type, Some(NodeType::Function))
             ));
 
             // Verify inheritance relationship
-            assert!(edges
-                .iter()
-                .any(|e| matches!(e.edge_type, EdgeType::Extends)));
+            assert!(
+                edges
+                    .iter()
+                    .any(|e| matches!(e.edge_type, EdgeType::Extends))
+            );
 
             println!(
                 "TypeScript: Extracted {} nodes and {} edges",
@@ -228,10 +232,10 @@ def save_to_file(processor: DataProcessor, filename: str) -> None:
             ));
             assert!(nodes.iter().any(|n| &*n.name == "create_processor"
                 && matches!(n.node_type, Some(NodeType::Function))));
-            assert!(nodes
-                .iter()
-                .any(|n| &*n.name == "save_to_file"
-                    && matches!(n.node_type, Some(NodeType::Function))));
+            assert!(
+                nodes.iter().any(|n| &*n.name == "save_to_file"
+                    && matches!(n.node_type, Some(NodeType::Function)))
+            );
 
             // Verify usage of imported entities
             assert!(edges.iter().any(|e| matches!(e.edge_type, EdgeType::Uses)

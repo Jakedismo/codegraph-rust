@@ -1,8 +1,8 @@
 // ABOUTME: MCP progress notification integration for AutoAgents workflows
 // ABOUTME: Sends 3-stage progress updates: started (0.0), analyzing (0.5), complete (1.0)
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Progress notification stages for agentic workflows
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -2,25 +2,25 @@
 // ABOUTME: Coordinates parsing, embeddings, and persistence into SurrealDB.
 #![allow(dead_code, unused_variables, unused_imports)]
 
-use crate::analyzers::{find_tool_on_path, required_tools_for_languages, AnalyzerSettings};
+use crate::analyzers::{AnalyzerSettings, find_tool_on_path, required_tools_for_languages};
 use crate::estimation::{
     extend_symbol_index, parse_files_with_unified_extraction as shared_unified_parse,
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, NodeId, NodeType};
 use codegraph_graph::ChunkEmbeddingRecord;
 use codegraph_graph::{
-    edge::CodeEdge, FileMetadataRecord, NodeEmbeddingRecord, ProjectMetadataRecord,
-    SurrealDbConfig, SurrealDbStorage, SymbolEmbeddingRecord, SURR_EMBEDDING_COLUMN_1024,
-    SURR_EMBEDDING_COLUMN_1536, SURR_EMBEDDING_COLUMN_2048, SURR_EMBEDDING_COLUMN_2560,
-    SURR_EMBEDDING_COLUMN_3072, SURR_EMBEDDING_COLUMN_384, SURR_EMBEDDING_COLUMN_4096,
-    SURR_EMBEDDING_COLUMN_768,
+    FileMetadataRecord, NodeEmbeddingRecord, ProjectMetadataRecord, SURR_EMBEDDING_COLUMN_384,
+    SURR_EMBEDDING_COLUMN_768, SURR_EMBEDDING_COLUMN_1024, SURR_EMBEDDING_COLUMN_1536,
+    SURR_EMBEDDING_COLUMN_2048, SURR_EMBEDDING_COLUMN_2560, SURR_EMBEDDING_COLUMN_3072,
+    SURR_EMBEDDING_COLUMN_4096, SurrealDbConfig, SurrealDbStorage, SymbolEmbeddingRecord,
+    edge::CodeEdge,
 };
 use codegraph_parser::TreeSitterParser;
 #[cfg(feature = "embeddings")]
 use codegraph_vector::prep::chunker::ChunkPlan;
 #[cfg(feature = "ai-enhanced")]
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use num_cpus;
 use rayon::prelude::*;
@@ -37,9 +37,9 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use symbolic_demangle::demangle;
-use syn::{parse_str as parse_syn_path, Path as SynPath, PathArguments};
+use syn::{Path as SynPath, PathArguments, parse_str as parse_syn_path};
 use tokio::fs as tokio_fs;
-use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex};
+use tokio::sync::{Mutex as TokioMutex, mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 use url::Url;
@@ -203,9 +203,7 @@ pub(crate) fn filter_edges_for_tier(
             edges.retain(|edge| !matches!(edge.edge_type, EdgeType::References));
         }
         codegraph_core::config_manager::IndexingTier::Fast => {
-            edges.retain(|edge| {
-                !matches!(edge.edge_type, EdgeType::Uses | EdgeType::References)
-            });
+            edges.retain(|edge| !matches!(edge.edge_type, EdgeType::Uses | EdgeType::References));
         }
     }
     before.saturating_sub(edges.len())
@@ -652,15 +650,16 @@ impl ProjectIndexer {
         let env_workers = std::env::var("CODEGRAPH_WORKERS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok());
-        let requested = env_workers.unwrap_or(config.workers);
+        let requested = std::env::var("RAYON_NUM_THREADS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|threads| *threads > 0)
+            .or(env_workers)
+            .unwrap_or(config.workers);
         let target_threads = requested
             .max(2)
             .min(rayon::max_num_threads().max(2))
             .min(available.saturating_sub(1).max(2));
-
-        if std::env::var("RAYON_NUM_THREADS").is_err() {
-            std::env::set_var("RAYON_NUM_THREADS", target_threads.to_string());
-        }
 
         let rayon_pool_built = rayon::ThreadPoolBuilder::new()
             .num_threads(target_threads)
@@ -967,7 +966,9 @@ impl ProjectIndexer {
         }
         // Old index without metadata - fall back to full reindex
         else if self.is_indexed(path).await? {
-            warn!("⚠️  Project indexed without file metadata. Use --force to reindex, or continuing with full index.");
+            warn!(
+                "⚠️  Project indexed without file metadata. Use --force to reindex, or continuing with full index."
+            );
             codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?
         }
         // Fresh index - index all files
@@ -978,8 +979,9 @@ impl ProjectIndexer {
         let analyzer_settings = AnalyzerSettings::for_tier(self.config.indexing_tier);
         let path_env = std::env::var("PATH").unwrap_or_default();
         let mut analyzer_languages: HashSet<codegraph_core::Language> = HashSet::new();
-        let needs_language_scan =
-            analyzer_settings.lsp_enabled() || analyzer_settings.build_context || analyzer_settings.dataflow;
+        let needs_language_scan = analyzer_settings.lsp_enabled()
+            || analyzer_settings.build_context
+            || analyzer_settings.dataflow;
         if needs_language_scan {
             let registry = codegraph_parser::LanguageRegistry::new();
             for (p, _) in &files_to_index {
@@ -1106,8 +1108,7 @@ impl ProjectIndexer {
             let start = std::time::Instant::now();
             info!(
                 "🧠 Language-server analysis starting (mode: {}, languages: {:?})",
-                lsp_mode_label,
-                analyzer_languages
+                lsp_mode_label, analyzer_languages
             );
 
             let project_root = self.project_root.clone();
@@ -1280,7 +1281,8 @@ impl ProjectIndexer {
         }
 
         let mut dataflow_stats = crate::analyzers::dataflow::DataflowStats::default();
-        if analyzer_settings.dataflow && analyzer_languages.contains(&codegraph_core::Language::Rust)
+        if analyzer_settings.dataflow
+            && analyzer_languages.contains(&codegraph_core::Language::Rust)
         {
             let start = std::time::Instant::now();
             info!("🌊 Dataflow enrichment starting (local def-use)");
@@ -1465,7 +1467,12 @@ impl ProjectIndexer {
 
         let parse_completion_msg = format!(
             "🌳 Unified fast_ml + AST extraction complete: {}/{} files (✅ {:.1}% success) | 📊 {} nodes + {} edges | ⚡ {:.0} lines/s",
-            pstats.parsed_files, pstats.total_files, success_rate, total_nodes_extracted, total_edges_extracted, pstats.lines_per_second
+            pstats.parsed_files,
+            pstats.total_files,
+            success_rate,
+            total_nodes_extracted,
+            total_edges_extracted,
+            pstats.lines_per_second
         );
 
         // Enhanced parsing statistics
@@ -1781,7 +1788,9 @@ impl ProjectIndexer {
                     "Pattern matching only"
                 }
             );
-            info!("   🔍 Resolution methods: Exact match → Simple name → Case variants → AI similarity");
+            info!(
+                "   🔍 Resolution methods: Exact match → Simple name → Case variants → AI similarity"
+            );
             info!("   🚀 M4 Max optimization: Parallel processing with bulk database operations");
 
             // REVOLUTIONARY: Parallel symbol resolution optimized for M4 Max 128GB
@@ -1858,7 +1867,9 @@ impl ProjectIndexer {
                             embeddings
                         }
                         _ => {
-                            warn!("⚠️ Unresolved symbol embedding failed - AI matching will be limited");
+                            warn!(
+                                "⚠️ Unresolved symbol embedding failed - AI matching will be limited"
+                            );
                             std::collections::HashMap::new()
                         }
                     }
@@ -1883,7 +1894,9 @@ impl ProjectIndexer {
                 std::collections::HashMap<String, Vec<f32>>,
                 std::collections::HashMap<NodeId, i32>,
             ) = {
-                info!("🚀 Pattern-only resolution: AI semantic matching disabled (ai-enhanced feature not enabled)");
+                info!(
+                    "🚀 Pattern-only resolution: AI semantic matching disabled (ai-enhanced feature not enabled)"
+                );
                 (
                     std::collections::HashMap::new(),
                     std::collections::HashMap::new(),
@@ -2596,9 +2609,12 @@ impl ProjectIndexer {
                 "⚠️ No unresolved symbol embeddings were generated - AI matching will be limited"
             );
         } else {
-            info!("✅ Professional AI semantic matching ready with {:.1}% unresolved coverage ({}/{})",
-                  embeddings.len() as f64 / unresolved_symbols.len() as f64 * 100.0,
-                  embeddings.len(), unresolved_symbols.len());
+            info!(
+                "✅ Professional AI semantic matching ready with {:.1}% unresolved coverage ({}/{})",
+                embeddings.len() as f64 / unresolved_symbols.len() as f64 * 100.0,
+                embeddings.len(),
+                unresolved_symbols.len()
+            );
         }
 
         embeddings
@@ -2611,7 +2627,7 @@ impl ProjectIndexer {
         target_symbol: &str,
         symbol_map: &std::collections::HashMap<String, NodeId>,
     ) -> Option<NodeId> {
-        use codegraph_vector::{search::SemanticSearch, EmbeddingGenerator};
+        use codegraph_vector::{EmbeddingGenerator, search::SemanticSearch};
         use std::sync::Arc;
 
         // Use same config as main indexing for consistency
@@ -3179,7 +3195,11 @@ impl ProjectIndexer {
             hasher.update(&buffer[..bytes_read]);
         }
 
-        Ok(format!("{:x}", hasher.finalize()))
+        Ok(hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>())
     }
 
     /// Detect changes between current filesystem and stored file metadata
@@ -3739,10 +3759,9 @@ impl ProjectIndexer {
     }
 
     async fn shutdown_surreal_writer(&mut self) -> Result<()> {
-        if let Some(writer) = self.surreal_writer.take() {
-            writer.shutdown().await
-        } else {
-            Ok(())
+        match self.surreal_writer.take() {
+            Some(writer) => writer.shutdown().await,
+            _ => Ok(()),
         }
     }
 
@@ -4398,9 +4417,16 @@ impl ProjectIndexer {
 }
 
 fn symbol_embedding_db_batch_size() -> usize {
+    parse_symbol_embedding_db_batch_size(
+        std::env::var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE")
+            .ok()
+            .as_deref(),
+    )
+}
+
+fn parse_symbol_embedding_db_batch_size(value: Option<&str>) -> usize {
     const MAX: usize = 512;
-    std::env::var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE")
-        .ok()
+    value
         .and_then(|value| value.parse::<usize>().ok())
         .map(|parsed| parsed.clamp(1, MAX))
         .unwrap_or(SYMBOL_EMBEDDING_DB_BATCH_LIMIT)
@@ -4439,20 +4465,20 @@ mod tests {
 
     #[test]
     fn symbol_embedding_batch_size_defaults() {
-        std::env::remove_var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE");
         assert_eq!(
-            symbol_embedding_db_batch_size(),
+            parse_symbol_embedding_db_batch_size(None),
             SYMBOL_EMBEDDING_DB_BATCH_LIMIT
         );
     }
 
     #[test]
     fn symbol_embedding_batch_size_respects_env_and_clamps() {
-        std::env::set_var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE", "1024");
-        assert_eq!(symbol_embedding_db_batch_size(), 512);
-        std::env::set_var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE", "0");
-        assert_eq!(symbol_embedding_db_batch_size(), 1);
-        std::env::remove_var("CODEGRAPH_SYMBOL_DB_BATCH_SIZE");
+        assert_eq!(parse_symbol_embedding_db_batch_size(Some("1024")), 512);
+        assert_eq!(parse_symbol_embedding_db_batch_size(Some("0")), 1);
+        assert_eq!(
+            parse_symbol_embedding_db_batch_size(Some("invalid")),
+            SYMBOL_EMBEDDING_DB_BATCH_LIMIT
+        );
     }
 
     #[test]
@@ -4481,7 +4507,8 @@ mod tests {
 
     #[test]
     fn analyzer_requires_rust_analyzer_when_lsp_enabled() {
-        let settings = AnalyzerSettings::for_tier(codegraph_core::config_manager::IndexingTier::Full);
+        let settings =
+            AnalyzerSettings::for_tier(codegraph_core::config_manager::IndexingTier::Full);
 
         let err = ProjectIndexer::validate_analyzer_tools(
             &[codegraph_core::Language::Rust],
@@ -4531,7 +4558,11 @@ mod tests {
         );
         assert_eq!(removed, 2);
         assert!(edges.iter().any(|e| e.edge_type == EdgeType::Calls));
-        assert!(edges.iter().any(|e| e.edge_type == EdgeType::Other("flows_to".to_string())));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("flows_to".to_string()))
+        );
         assert!(!edges.iter().any(|e| e.edge_type == EdgeType::Uses));
         assert!(!edges.iter().any(|e| e.edge_type == EdgeType::References));
     }
@@ -4570,35 +4601,38 @@ pub fn prepare_node_text(node: &CodeNode) -> String {
             "/../codegraph-vector/tokenizers/qwen2.5-coder.json"
         ));
 
-        if let Ok(tokenizer) = tokenizers::Tokenizer::from_file(&tokenizer_path) {
-            // Proper token-based chunking with Qwen2.5-Coder tokenizer
-            let tok = std::sync::Arc::new(tokenizer);
-            let token_counter = move |s: &str| -> usize {
-                tok.encode(s, false)
-                    .map(|enc| enc.len())
-                    .unwrap_or_else(|_| (s.len() + 3) / 4)
-            };
+        match tokenizers::Tokenizer::from_file(&tokenizer_path) {
+            Ok(tokenizer) => {
+                // Proper token-based chunking with Qwen2.5-Coder tokenizer
+                let tok = std::sync::Arc::new(tokenizer);
+                let token_counter = move |s: &str| -> usize {
+                    tok.encode(s, false)
+                        .map(|enc| enc.len())
+                        .unwrap_or_else(|_| (s.len() + 3) / 4)
+                };
 
-            let chunker = semchunk_rs::Chunker::new(max_chunk_tokens, Box::new(token_counter));
-            let chunks = chunker.chunk(&text);
+                let chunker = semchunk_rs::Chunker::new(max_chunk_tokens, Box::new(token_counter));
+                let chunks = chunker.chunk(&text);
 
-            if let Some(first_chunk) = chunks.first() {
-                text = first_chunk.clone();
-            } else {
-                // Fallback to character truncation
+                if let Some(first_chunk) = chunks.first() {
+                    text = first_chunk.clone();
+                } else {
+                    // Fallback to character truncation
+                    let mut new_len = approx_max_chars.min(text.len());
+                    while new_len > 0 && !text.is_char_boundary(new_len) {
+                        new_len -= 1;
+                    }
+                    text.truncate(new_len);
+                }
+            }
+            _ => {
+                // Tokenizer not available - fallback to character truncation
                 let mut new_len = approx_max_chars.min(text.len());
                 while new_len > 0 && !text.is_char_boundary(new_len) {
                     new_len -= 1;
                 }
                 text.truncate(new_len);
             }
-        } else {
-            // Tokenizer not available - fallback to character truncation
-            let mut new_len = approx_max_chars.min(text.len());
-            while new_len > 0 && !text.is_char_boundary(new_len) {
-                new_len -= 1;
-            }
-            text.truncate(new_len);
         }
     }
     text

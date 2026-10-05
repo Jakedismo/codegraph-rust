@@ -2,6 +2,7 @@
 name = "codegraph-mcp"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 description = "Model Context Protocol implementation for CodeGraph"
@@ -13,12 +14,12 @@ futures = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = "0.9"
+serde_yaml = "0.9.34"
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tracing-appender = "0.2"
+tracing-appender = "0.2.5"
 uuid = { workspace = true }
 chrono = { workspace = true }
 url = { workspace = true }
@@ -32,25 +33,25 @@ rmcp = { workspace = true }
 schemars = { workspace = true }
 lru = { workspace = true }
 atty = { workspace = true }
-rustc-demangle = "0.1"
-symbolic-demangle = "12"
-syn = { version = "2", features = ["parsing"] }
+rustc-demangle = "0.1.28"
+symbolic-demangle = "13.9.0"
+syn = { version = "3.0.6", features = ["parsing"] }
 
 # CLI dependencies
 clap = { workspace = true }
 colored = { workspace = true }
 indicatif = { workspace = true }
-dirs = "6.0"
-dotenv = "0.15"
-nix = { version = "0.30.1", features = ["fs", "process", "signal"] }
+dirs = "7.0.0"
+dotenv = "0.15.0"
+nix = { version = "0.31.3", features = ["fs", "process", "signal"] }
 notify = "8.2.0"
-walkdir = "2.5"
+walkdir = "2.5.0"
 regex = { workspace = true }
 rayon = { workspace = true }
 num_cpus = { workspace = true }
 
 # Pattern matching for daemon mode
-glob-match = "0.2"
+glob-match = "0.2.1"
 
 # Internal dependencies
 codegraph-core = { workspace = true }
@@ -65,8 +66,8 @@ tokenizers = { workspace = true }  # Qwen2.5-Coder tokenizer for accurate token 
 ## core-rag-mcp-server intentionally not linked to keep binary lean
 
 # AutoAgents framework for agentic workflows
-autoagents = { git = "https://github.com/liquidos-ai/AutoAgents", optional = true }
-autoagents-derive = { git = "https://github.com/liquidos-ai/AutoAgents", optional = true }
+autoagents = { workspace = true, optional = true }
+autoagents-derive = { workspace = true, optional = true }
 codegraph-mcp-core = { path = "../codegraph-mcp-core" }
 codegraph-mcp-tools = { path = "../codegraph-mcp-tools", optional = true }
 unicode-bom = "2.0.3"
@@ -74,10 +75,10 @@ unicode-bom = "2.0.3"
 [dev-dependencies]
 tempfile = { workspace = true }
 anyhow = { workspace = true }
-serial_test = "3.2"
+serial_test = "4.0.1"
 rmcp = { workspace = true, features = ["client", "transport-child-process"] }
 codegraph-vector = { workspace = true, features = ["ollama"] }
-surrealdb = { version = "2.2", features = ["kv-mem"] }
+surrealdb = { version = "3.3.0", features = ["kv-mem"] }
 
 [features]
 default = []

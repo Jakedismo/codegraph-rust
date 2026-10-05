@@ -1,7 +1,7 @@
 // ABOUTME: Exercises the shipped CLI's public commands and project hook setup.
 // ABOUTME: Checks output/exit contracts in isolated projects without real providers.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
 
@@ -71,10 +71,12 @@ fn hook_binary_emits_only_context_json_and_handles_invalid_events() {
             response["hookSpecificOutput"]["hookEventName"],
             "SessionStart"
         );
-        assert!(response["hookSpecificOutput"]["additionalContext"]
-            .as_str()
-            .unwrap()
-            .contains("codegraph agent context"));
+        assert!(
+            response["hookSpecificOutput"]["additionalContext"]
+                .as_str()
+                .unwrap()
+                .contains("codegraph agent context")
+        );
     } else {
         assert_eq!(response, json!({}));
     }
@@ -123,9 +125,11 @@ fn hook_install_is_opt_in_and_preserves_project_settings() {
     .unwrap();
     assert_eq!(settings["permissions"]["deny"], json!(["Bash(rm:*)"]));
     let before = std::fs::read(project.path().join(".codex/hooks.json")).unwrap();
-    assert!(run(&["hooks", "install"], None, project.path())
-        .status
-        .success());
+    assert!(
+        run(&["hooks", "install"], None, project.path())
+            .status
+            .success()
+    );
     assert_eq!(
         std::fs::read(project.path().join(".codex/hooks.json")).unwrap(),
         before
@@ -182,24 +186,30 @@ fn explicit_config_file_and_query_file_are_used() {
     let response: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(output.status.code(), Some(1));
     // An explicit config wins over the deliberately missing environment path.
-    assert!(!response["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("missing-config"));
-    assert!(response["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("Failed to parse config"));
+    assert!(
+        !response["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("missing-config")
+    );
+    assert!(
+        response["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Failed to parse config")
+    );
     let output = run(
         &["agent", "context", "--query-file", "-"],
         Some("  \n"),
         project.path(),
     );
     let response: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert!(response["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("blank"));
+    assert!(
+        response["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("blank")
+    );
 }
 
 #[cfg(feature = "ai-enhanced")]
@@ -233,10 +243,12 @@ fn project_configuration_is_loaded_after_switching_directories() {
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
     let response: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert!(response["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("PROJECT_CONFIG_MARKER"));
+    assert!(
+        response["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("PROJECT_CONFIG_MARKER")
+    );
 }
 
 #[cfg(feature = "ai-enhanced")]
@@ -283,12 +295,12 @@ async fn deadline_cancels_stalled_database_setup_without_a_model_call() {
 #[tokio::test]
 async fn successful_command_returns_shared_workflow_json_with_a_local_mock_model() {
     use axum::{
-        routing::{get, post},
         Json, Router,
+        routing::{get, post},
     };
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     };
 
     let calls = Arc::new(AtomicUsize::new(0));

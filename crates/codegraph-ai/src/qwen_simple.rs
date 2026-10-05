@@ -104,7 +104,10 @@ impl QwenClient {
         let full_prompt = if let Some(sys_prompt) = system_prompt {
             format!("{}\n\nUser: {}\n\nAssistant:", sys_prompt, prompt)
         } else {
-            format!("You are Qwen2.5-Coder, a state-of-the-art AI specialized in comprehensive code analysis. Provide detailed, structured analysis.\n\nUser: {}\n\nAssistant:", prompt)
+            format!(
+                "You are Qwen2.5-Coder, a state-of-the-art AI specialized in comprehensive code analysis. Provide detailed, structured analysis.\n\nUser: {}\n\nAssistant:",
+                prompt
+            )
         };
 
         let request = SimpleRequest {

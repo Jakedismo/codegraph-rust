@@ -5,11 +5,11 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use dashmap::DashMap;
 use notify::{
-    event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
     Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+    event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
 };
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -259,7 +259,11 @@ impl FileSystemWatcher {
 
         let mut hasher = Sha256::new();
         hasher.update(&content);
-        let content_hash = format!("{:x}", hasher.finalize());
+        let content_hash = hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
 
         let language = self
             .language_registry
@@ -338,15 +342,16 @@ impl FileSystemWatcher {
                         let to_id = FileId::from(to.as_path());
                         // Remove old, add new
                         if let Some((_, old_meta)) = file_registry.remove(&from_id) {
-                            if let Ok(new_meta) =
-                                Self::create_file_metadata_static(to, language_registry).await
-                            {
-                                file_registry.insert(to_id.clone(), new_meta.clone());
-                                let _ = event_sender
-                                    .send(FileChangeEvent::Renamed(from_id, to_id, new_meta));
-                            } else {
-                                let _ =
-                                    event_sender.send(FileChangeEvent::Deleted(from_id, old_meta));
+                            match Self::create_file_metadata_static(to, language_registry).await {
+                                Ok(new_meta) => {
+                                    file_registry.insert(to_id.clone(), new_meta.clone());
+                                    let _ = event_sender
+                                        .send(FileChangeEvent::Renamed(from_id, to_id, new_meta));
+                                }
+                                _ => {
+                                    let _ = event_sender
+                                        .send(FileChangeEvent::Deleted(from_id, old_meta));
+                                }
                             }
                         }
                     }
@@ -383,21 +388,25 @@ impl FileSystemWatcher {
                             if let Ok(new_metadata) =
                                 Self::create_file_metadata_static(&path, language_registry).await
                             {
-                                if let Some(old_metadata) = file_registry.get(&file_id) {
-                                    let old_metadata = old_metadata.value().clone();
-                                    if old_metadata.content_hash != new_metadata.content_hash {
-                                        file_registry.insert(file_id.clone(), new_metadata.clone());
-                                        let _ = event_sender.send(FileChangeEvent::Modified(
-                                            file_id,
-                                            new_metadata,
-                                            old_metadata,
-                                        ));
+                                match file_registry.get(&file_id) {
+                                    Some(old_metadata) => {
+                                        let old_metadata = old_metadata.value().clone();
+                                        if old_metadata.content_hash != new_metadata.content_hash {
+                                            file_registry
+                                                .insert(file_id.clone(), new_metadata.clone());
+                                            let _ = event_sender.send(FileChangeEvent::Modified(
+                                                file_id,
+                                                new_metadata,
+                                                old_metadata,
+                                            ));
+                                        }
                                     }
-                                } else {
-                                    // File wasn't tracked before, treat as creation
-                                    file_registry.insert(file_id.clone(), new_metadata.clone());
-                                    let _ = event_sender
-                                        .send(FileChangeEvent::Created(file_id, new_metadata));
+                                    _ => {
+                                        // File wasn't tracked before, treat as creation
+                                        file_registry.insert(file_id.clone(), new_metadata.clone());
+                                        let _ = event_sender
+                                            .send(FileChangeEvent::Created(file_id, new_metadata));
+                                    }
                                 }
                             }
                         }
@@ -451,7 +460,11 @@ impl FileSystemWatcher {
 
         let mut hasher = Sha256::new();
         hasher.update(&content);
-        let content_hash = format!("{:x}", hasher.finalize());
+        let content_hash = hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
 
         let language = language_registry.detect_language(&path.to_string_lossy());
 

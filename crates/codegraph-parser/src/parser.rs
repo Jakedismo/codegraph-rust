@@ -18,7 +18,7 @@ use tree_sitter::{InputEdit, Parser, Point, Tree};
 
 use crate::fast_io::read_file_to_string;
 use crate::file_collect::{
-    collect_source_files, collect_source_files_with_config, FileCollectionConfig,
+    FileCollectionConfig, collect_source_files, collect_source_files_with_config,
 };
 
 #[derive(Clone)]
@@ -350,7 +350,7 @@ impl TreeSitterParser {
                     .registry
                     .detect_language(file_path)
                     .unwrap_or(Language::Other("unknown".to_string()));
-                let content_hash = format!("{:x}", sha2::Sha256::digest(&content));
+                let content_hash = codegraph_core::hex_digest(&sha2::Sha256::digest(&content));
 
                 // Enable tree caching for better performance
                 let cached_tree = if content.len() < 500_000 {

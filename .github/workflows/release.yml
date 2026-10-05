@@ -237,7 +237,7 @@ jobs:
       run: |
         cat > Dockerfile << 'EOF'
         # Multi-stage build for optimized production image
-        FROM rust:1.75 as builder
+        FROM rust:1.95-bookworm as builder
 
         WORKDIR /app
         COPY . .

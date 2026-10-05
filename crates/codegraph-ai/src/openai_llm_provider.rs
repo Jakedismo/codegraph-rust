@@ -1,5 +1,5 @@
 use crate::llm_provider::*;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -268,11 +268,7 @@ impl OpenAIProvider {
                 })
                 .collect();
 
-            if calls.is_empty() {
-                None
-            } else {
-                Some(calls)
-            }
+            if calls.is_empty() { None } else { Some(calls) }
         };
 
         Ok((parsed, tool_calls))
@@ -608,7 +604,13 @@ mod tests {
 
     #[test]
     fn test_config_from_env() {
-        std::env::set_var("OPENAI_API_KEY", "test-key");
+        if !test_env::run(
+            concat!(module_path!(), "::test_config_from_env"),
+            &[("OPENAI_API_KEY", Some("test-key"))],
+        ) {
+            return;
+        }
+
         let config = OpenAIConfig::default();
         assert_eq!(config.api_key, "test-key");
     }
@@ -652,6 +654,7 @@ mod tests {
             top_p: None,
             stop: None,
             text: None,
+            tools: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();
@@ -689,4 +692,12 @@ mod tests {
             "Should not have nested json_schema object"
         );
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

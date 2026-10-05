@@ -5,7 +5,7 @@ use anyhow::Result;
 
 use parking_lot::RwLock;
 use prometheus::{
-    register_gauge, register_histogram, register_int_counter, Gauge, Histogram, IntCounter,
+    Gauge, Histogram, IntCounter, register_gauge, register_histogram, register_int_counter,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

@@ -183,7 +183,25 @@ pub fn build_chunk_plan_with_sources(
 
         let mut raw_chunks = Vec::new();
         for segment in segments {
-            raw_chunks.extend(chunker.chunk(&segment));
+            // semchunk 0.1.1's character fallback indexes by byte count and panics
+            // on multibyte text. Keep structural boundaries and split UTF-8 safely.
+            if !segment.is_ascii() {
+                split_over_budget(
+                    segment,
+                    &tokenizer,
+                    config.max_tokens_per_text,
+                    &mut raw_chunks,
+                );
+                continue;
+            }
+            for text in chunker.chunk(&segment) {
+                split_over_budget(
+                    text,
+                    &tokenizer,
+                    config.max_tokens_per_text,
+                    &mut raw_chunks,
+                );
+            }
         }
         let mut overlap_tail: Option<String> = None;
         let mut chunk_idx = 0;
@@ -281,6 +299,33 @@ fn count_tokens(tokenizer: &Tokenizer, text: &str) -> usize {
         .encode(text, false)
         .map(|e| e.get_ids().len())
         .unwrap_or_else(|_| (text.len() + 3) / 4)
+}
+
+// Semantic merging can slightly exceed the budget when token boundaries change.
+// Recount completed chunks and split at UTF-8 boundaries without dropping text.
+fn split_over_budget(text: String, tokenizer: &Tokenizer, limit: usize, output: &mut Vec<String>) {
+    if count_tokens(tokenizer, &text) <= limit {
+        output.push(text);
+        return;
+    }
+    let mut midpoint = text.len() / 2;
+    while midpoint > 0 && !text.is_char_boundary(midpoint) {
+        midpoint -= 1;
+    }
+    if midpoint == 0 {
+        midpoint = text
+            .char_indices()
+            .nth(1)
+            .map_or(text.len(), |(index, _)| index);
+    }
+    if midpoint == text.len() {
+        // One character cannot be divided further; validated provider budgets
+        // are larger than the tokenizer's maximum tokens for a single character.
+        output.push(text);
+        return;
+    }
+    split_over_budget(text[..midpoint].to_owned(), tokenizer, limit, output);
+    split_over_budget(text[midpoint..].to_owned(), tokenizer, limit, output);
 }
 
 /// Lightweight structural split: keep blank-line and brace boundaries to align with AST structure.

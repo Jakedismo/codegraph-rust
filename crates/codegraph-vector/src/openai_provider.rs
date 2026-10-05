@@ -1,7 +1,7 @@
 #[cfg(feature = "openai")]
 use crate::{
     prep::chunker::{
-        aggregate_chunk_embeddings, build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode,
+        ChunkPlan, ChunkerConfig, SanitizeMode, aggregate_chunk_embeddings, build_chunk_plan,
     },
     providers::{
         BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
@@ -203,16 +203,19 @@ impl OpenAiEmbeddingProvider {
                         let status = response.status();
 
                         // Try to parse error response
-                        if let Ok(api_error) = response.json::<ApiError>().await {
-                            last_error = Some(CodeGraphError::External(format!(
-                                "OpenAI API error: {} ({})",
-                                api_error.error.message, api_error.error.error_type
-                            )));
-                        } else {
-                            last_error = Some(CodeGraphError::External(format!(
-                                "OpenAI API error: HTTP {}",
-                                status
-                            )));
+                        match response.json::<ApiError>().await {
+                            Ok(api_error) => {
+                                last_error = Some(CodeGraphError::External(format!(
+                                    "OpenAI API error: {} ({})",
+                                    api_error.error.message, api_error.error.error_type
+                                )));
+                            }
+                            _ => {
+                                last_error = Some(CodeGraphError::External(format!(
+                                    "OpenAI API error: HTTP {}",
+                                    status
+                                )));
+                            }
                         }
                     }
                 }

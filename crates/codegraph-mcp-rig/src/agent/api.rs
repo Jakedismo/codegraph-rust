@@ -17,10 +17,7 @@ pub enum AgentEvent {
         arguments: String,
     },
     /// Tool execution completed
-    ToolResult {
-        tool_name: String,
-        result: String,
-    },
+    ToolResult { tool_name: String, result: String },
     /// Chunk of the final answer
     OutputChunk(String),
     /// Execution error

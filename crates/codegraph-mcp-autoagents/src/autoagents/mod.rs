@@ -53,8 +53,8 @@ pub use agent_builder::{AgentHandle, CodeGraphAgentBuilder, CodeGraphChatAdapter
 pub use codegraph_agent::CodeGraphAgentOutput;
 #[cfg(feature = "autoagents-experimental")]
 pub use executor::{
-    is_context_overflow_error, transform_context_overflow, CodeGraphExecutor,
-    CodeGraphExecutorBuilder, ExecutorError,
+    CodeGraphExecutor, CodeGraphExecutorBuilder, ExecutorError, is_context_overflow_error,
+    transform_context_overflow,
 };
 #[cfg(feature = "autoagents-experimental")]
 pub use executor_factory::AgentExecutorFactory;
@@ -72,6 +72,6 @@ pub use prompt_selector::{PromptSelector, PromptSelectorStats, PromptVerbosity};
 #[cfg(feature = "autoagents-experimental")]
 pub use react_executor::ReActExecutor;
 #[cfg(feature = "autoagents-experimental")]
-pub use startup_context::{build_startup_context, StartupContext, StartupContextRender};
+pub use startup_context::{StartupContext, StartupContextRender, build_startup_context};
 #[cfg(feature = "autoagents-experimental")]
 pub use tier_plugin::TierAwarePromptPlugin;

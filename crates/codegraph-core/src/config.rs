@@ -5,10 +5,10 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use chacha20poly1305::{
-    aead::{Aead, KeyInit},
     ChaCha20Poly1305, Key, Nonce,
+    aead::{Aead, KeyInit},
 };
 use config as cfg;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -455,17 +455,17 @@ For documentation, see: https://github.com/your-repo/codegraph-rust
             key_bytes.len() == 32,
             "CONFIG_ENC_KEY must decode to 32 bytes"
         );
-        let key = Key::from_slice(&key_bytes);
-        let cipher = ChaCha20Poly1305::new(key);
+        let key = Key::try_from(key_bytes.as_slice())?;
+        let cipher = ChaCha20Poly1305::new(&key);
 
         let data = fs::read(enc_file)
             .with_context(|| format!("reading encrypted secrets file {:?}", enc_file))?;
         let decoded = general_purpose::STANDARD.decode(data)?;
         anyhow::ensure!(decoded.len() > 12, "encrypted secrets too short");
         let (nonce_bytes, ct) = decoded.split_at(12);
-        let nonce = Nonce::from_slice(nonce_bytes);
+        let nonce = Nonce::try_from(nonce_bytes)?;
         let plaintext = cipher
-            .decrypt(nonce, ct.as_ref())
+            .decrypt(&nonce, ct.as_ref())
             .context("decrypting secrets")?;
 
         let tmp = env::temp_dir().join("codegraph_secrets.toml");
@@ -477,30 +477,30 @@ For documentation, see: https://github.com/your-repo/codegraph-rust
 // Helpers for the CLI tool
 pub mod crypto {
     use super::*;
-    use rand::rngs::OsRng;
-    use rand::TryRngCore;
+    use rand::TryRng;
+    use rand::rngs::SysRng;
 
     pub fn generate_key() -> String {
         let mut key = [0u8; 32];
-        // rand 0.9 OsRng implements RngCore; use trait method on a mutable instance
-        let mut rng = OsRng;
-        // rand 0.9 switched to Result-returning try_fill_bytes
-        rng.try_fill_bytes(&mut key).expect("OsRng available");
+        let mut rng = SysRng;
+        rng.try_fill_bytes(&mut key)
+            .expect("OS randomness available");
         general_purpose::STANDARD.encode(key)
     }
 
     pub fn encrypt_bytes(key_b64: &str, plaintext: &[u8]) -> Result<Vec<u8>> {
         let key = general_purpose::STANDARD.decode(key_b64.trim())?;
         anyhow::ensure!(key.len() == 32, "key must be 32 bytes (base64)");
-        let cipher = ChaCha20Poly1305::new(Key::from_slice(&key));
+        let cipher = ChaCha20Poly1305::new(&Key::try_from(key.as_slice())?);
         let mut nonce = [0u8; 12];
-        let mut rng = OsRng;
-        rng.try_fill_bytes(&mut nonce).expect("OsRng available");
-        let nonce_obj = Nonce::from_slice(&nonce);
+        let mut rng = SysRng;
+        rng.try_fill_bytes(&mut nonce)
+            .expect("OS randomness available");
+        let nonce_obj = Nonce::from(nonce);
         let mut out = Vec::with_capacity(12 + plaintext.len() + 16);
         out.extend_from_slice(&nonce);
         let ct = cipher
-            .encrypt(nonce_obj, plaintext)
+            .encrypt(&nonce_obj, plaintext)
             .context("encryption failed")?;
         out.extend_from_slice(&ct);
         Ok(general_purpose::STANDARD.encode(out).into_bytes())
@@ -509,14 +509,36 @@ pub mod crypto {
     pub fn decrypt_bytes(key_b64: &str, ciphertext_b64: &[u8]) -> Result<Vec<u8>> {
         let key = general_purpose::STANDARD.decode(key_b64.trim())?;
         anyhow::ensure!(key.len() == 32, "key must be 32 bytes (base64)");
-        let cipher = ChaCha20Poly1305::new(Key::from_slice(&key));
+        let cipher = ChaCha20Poly1305::new(&Key::try_from(key.as_slice())?);
         let decoded = general_purpose::STANDARD.decode(ciphertext_b64)?;
         anyhow::ensure!(decoded.len() > 12, "ciphertext too short");
         let (nonce_bytes, ct) = decoded.split_at(12);
-        let nonce = Nonce::from_slice(nonce_bytes);
+        let nonce = Nonce::try_from(nonce_bytes)?;
         let pt = cipher
-            .decrypt(nonce, ct.as_ref())
+            .decrypt(&nonce, ct.as_ref())
             .context("decryption failed")?;
         Ok(pt)
+    }
+}
+
+#[cfg(test)]
+mod crypto_tests {
+    use super::{crypto, general_purpose};
+    use base64::Engine as _;
+
+    #[test]
+    fn encrypted_secret_format_roundtrips_and_rejects_tampering() {
+        let key = crypto::generate_key();
+        let secret = b"api_key = 'test-value'\n";
+        let ciphertext = crypto::encrypt_bytes(&key, secret).unwrap();
+        let mut decoded = general_purpose::STANDARD.decode(&ciphertext).unwrap();
+        assert_eq!(decoded.len(), 12 + secret.len() + 16);
+        assert_eq!(crypto::decrypt_bytes(&key, &ciphertext).unwrap(), secret);
+        assert!(crypto::decrypt_bytes(&crypto::generate_key(), &ciphertext).is_err());
+        decoded[12] ^= 1;
+        let tampered = general_purpose::STANDARD.encode(decoded);
+        assert!(crypto::decrypt_bytes(&key, tampered.as_bytes()).is_err());
+        assert!(crypto::encrypt_bytes("invalid-key", secret).is_err());
+        assert!(crypto::decrypt_bytes(&key, b"not base64").is_err());
     }
 }

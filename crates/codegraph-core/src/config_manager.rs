@@ -584,14 +584,11 @@ pub struct ConfigManager {
 
 impl ConfigManager {
     /// Load configuration with the following precedence:
-    /// 1. Environment variables (.env file)
+    /// 1. Environment variables (initialize dotenv before starting workers)
     /// 2. Config file (.codegraph.toml)
     /// 3. Sensible defaults
     pub fn load() -> Result<Self, ConfigError> {
         info!("🔧 Loading CodeGraph configuration...");
-
-        // Try to load .env file from current directory or home
-        Self::load_dotenv();
 
         // Try to find and load config file
         let (config, config_path) = Self::load_config_file()?;
@@ -627,8 +624,13 @@ impl ConfigManager {
         })
     }
 
-    /// Load .env file if it exists
-    fn load_dotenv() {
+    /// Load project `.env` or user `.codegraph.env` before starting workers.
+    /// `load()` itself only reads configuration and never mutates the environment.
+    ///
+    /// # Safety
+    /// Call only from a single-threaded process entry point, before other threads
+    /// can access the environment (including through foreign libraries).
+    pub unsafe fn initialize_environment() {
         // Try current directory first
         if Path::new(".env").exists() {
             if let Err(e) = dotenv::from_filename(".env") {
@@ -930,7 +932,7 @@ impl ConfigManager {
                 return Err(ConfigError::ValidationError(format!(
                     "Invalid embedding provider: {}. Must be one of: auto, onnx, ollama, openai, jina, lmstudio",
                     other
-                )))
+                )));
             }
         }
 
@@ -941,7 +943,7 @@ impl ConfigManager {
                 return Err(ConfigError::ValidationError(format!(
                     "Invalid insights mode: {}. Must be one of: context-only, balanced, deep",
                     other
-                )))
+                )));
             }
         }
 
@@ -961,7 +963,7 @@ impl ConfigManager {
                 return Err(ConfigError::ValidationError(format!(
                     "Invalid log level: {}. Must be one of: trace, debug, info, warn, error",
                     other
-                )))
+                )));
             }
         }
 
@@ -1065,13 +1067,15 @@ mod tests {
 
     #[test]
     fn test_indexing_tier_env_override() {
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = ENV_LOCK.lock().expect("env lock");
+        if !test_env::run(
+            concat!(module_path!(), "::test_indexing_tier_env_override"),
+            &[("CODEGRAPH_INDEX_TIER", Some("balanced"))],
+        ) {
+            return;
+        }
 
-        std::env::set_var("CODEGRAPH_INDEX_TIER", "balanced");
         let config = ConfigManager::apply_env_overrides(CodeGraphConfig::default());
         assert_eq!(config.indexing.tier, IndexingTier::Balanced);
-        std::env::remove_var("CODEGRAPH_INDEX_TIER");
     }
 
     #[test]
@@ -1144,4 +1148,12 @@ mod tests {
         assert_eq!(validate_lats_exploration_weight(10.1), None);
         assert_eq!(validate_lats_exploration_weight(100.0), None);
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

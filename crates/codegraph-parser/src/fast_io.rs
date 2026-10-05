@@ -19,8 +19,8 @@ pub async fn read_file_to_string(path: &str) -> io::Result<String> {
     #[cfg(all(feature = "io-uring", target_os = "linux"))]
     {
         const SMALL_THRESHOLD: u64 = 256 * 1024; // 256 KiB
-                                                 // For smaller files, io_uring can be faster than mapping due to
-                                                 // reduced per-op overhead and better batching. Prefer it below threshold.
+        // For smaller files, io_uring can be faster than mapping due to
+        // reduced per-op overhead and better batching. Prefer it below threshold.
         if file_len > 0 && file_len <= SMALL_THRESHOLD {
             // Run the tokio-uring runtime on a blocking thread to avoid
             // interfering with the main Tokio executor. This performs an async

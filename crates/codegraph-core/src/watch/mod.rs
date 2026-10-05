@@ -319,7 +319,7 @@ impl IntelligentFileWatcher {
                     let _ = tx.send(ChangeEvent::Modified(p.to_string_lossy().to_string()));
                     // immediate dependents
                     let mut dependents: HashSet<PathBuf> = HashSet::new();
-                    if let Some(deps) = self
+                    match self
                         .reverse_deps
                         .get(p)
                         .or_else(|| self.reverse_deps.get(&normalize_path(p)))
@@ -327,13 +327,17 @@ impl IntelligentFileWatcher {
                             fs::canonicalize(p)
                                 .ok()
                                 .and_then(|cp| self.reverse_deps.get(&cp))
-                        })
-                    {
-                        dependents.extend(deps.iter().cloned());
-                    } else if let Some(name) = p.file_name() {
-                        for entry in self.reverse_deps.iter() {
-                            if entry.key().file_name() == Some(name) {
-                                dependents.extend(entry.value().iter().cloned());
+                        }) {
+                        Some(deps) => {
+                            dependents.extend(deps.iter().cloned());
+                        }
+                        _ => {
+                            if let Some(name) = p.file_name() {
+                                for entry in self.reverse_deps.iter() {
+                                    if entry.key().file_name() == Some(name) {
+                                        dependents.extend(entry.value().iter().cloned());
+                                    }
+                                }
                             }
                         }
                     }
@@ -372,7 +376,7 @@ impl IntelligentFileWatcher {
                 let _ = tx.send(ChangeEvent::Created(p.to_string_lossy().to_string()));
                 // immediate dependents (if any pre-recorded)
                 let mut dependents: HashSet<PathBuf> = HashSet::new();
-                if let Some(deps) = self
+                match self
                     .reverse_deps
                     .get(p)
                     .or_else(|| self.reverse_deps.get(&normalize_path(p)))
@@ -380,13 +384,17 @@ impl IntelligentFileWatcher {
                         fs::canonicalize(p)
                             .ok()
                             .and_then(|cp| self.reverse_deps.get(&cp))
-                    })
-                {
-                    dependents.extend(deps.iter().cloned());
-                } else if let Some(name) = p.file_name() {
-                    for entry in self.reverse_deps.iter() {
-                        if entry.key().file_name() == Some(name) {
-                            dependents.extend(entry.value().iter().cloned());
+                    }) {
+                    Some(deps) => {
+                        dependents.extend(deps.iter().cloned());
+                    }
+                    _ => {
+                        if let Some(name) = p.file_name() {
+                            for entry in self.reverse_deps.iter() {
+                                if entry.key().file_name() == Some(name) {
+                                    dependents.extend(entry.value().iter().cloned());
+                                }
+                            }
                         }
                     }
                 }
@@ -846,7 +854,11 @@ fn summarize_file(
 fn hash_str(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()
 }
 
 fn normalize_source(src: &str, lang: &Language) -> String {
@@ -1233,7 +1245,7 @@ fn resolve_relative_js(file: &Path, spec: &str) -> Option<PathBuf> {
     let mut base = file.parent()?.to_path_buf();
     base.push(spec);
     let candidates = ["", ".ts", ".tsx", ".js", ".jsx"]; // try as file or directory index
-                                                         // If spec already has extension, just return canonicalized path
+    // If spec already has extension, just return canonicalized path
     if Path::new(&base).extension().is_some() {
         return Some(normalize_path(&base));
     }
@@ -1314,6 +1326,29 @@ fn normalize_path(p: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    fn wait_until(mut condition: impl FnMut() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !condition() {
+            assert!(Instant::now() < deadline, "watcher condition timed out");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn wait_for_event(
+        rx: &crossbeam_channel::Receiver<ChangeEvent>,
+        predicate: impl Fn(&ChangeEvent) -> bool,
+    ) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let event = rx
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .expect("watch event before deadline");
+            if predicate(&event) {
+                return;
+            }
+        }
+    }
 
     #[test]
     fn test_strip_comments_c_like() {
@@ -1411,48 +1446,41 @@ mod tests {
     #[test]
     fn test_watcher_detects_create_modify_delete_with_debounce() {
         let tmp = TempDir::new().unwrap();
+        let baseline = tmp.path().join("baseline.rs");
+        fs::write(&baseline, "fn baseline() {}\n").unwrap();
         let file = tmp.path().join("main.rs");
-        let watcher =
-            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(25));
+        let watcher = Arc::new(
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(25)),
+        );
         let (tx, rx) = crossbeam_channel::unbounded();
-
-        std::thread::spawn(move || {
-            watcher.watch(tx).unwrap();
-        });
-
-        std::thread::sleep(Duration::from_millis(120));
+        let worker = watcher.clone();
+        std::thread::spawn(move || worker.watch(tx).unwrap());
+        wait_until(|| watcher.files.contains_key(&baseline));
         fs::write(&file, "fn a(){}\n").unwrap();
-        std::thread::sleep(Duration::from_millis(120));
-        // Rapid edits
+        wait_for_event(
+            &rx,
+            |event| matches!(event, ChangeEvent::Created(path) if path.ends_with("main.rs")),
+        );
         for _ in 0..5 {
-            fs::write(&file, "fn a(){ /*x*/ }\n").unwrap();
+            fs::write(&file, "fn a(){1}\n").unwrap();
         }
-        std::thread::sleep(Duration::from_millis(120));
+        wait_for_event(
+            &rx,
+            |event| matches!(event, ChangeEvent::Modified(path) if path.ends_with("main.rs")),
+        );
         std::fs::remove_file(&file).unwrap();
-        std::thread::sleep(Duration::from_millis(120));
-
-        // Collect events
-        let mut evs: Vec<ChangeEvent> = Vec::new();
-        while let Ok(ev) = rx.try_recv() {
-            evs.push(ev);
-        }
-
-        // Expect at least one Created and one Deleted, and not too many Modified due to debounce
-        let created = evs
-            .iter()
-            .filter(|e| matches!(e, ChangeEvent::Created(_)))
+        wait_for_event(
+            &rx,
+            |event| matches!(event, ChangeEvent::Deleted(path) if path.ends_with("main.rs")),
+        );
+        let extra_modifications = rx
+            .try_iter()
+            .filter(|event| matches!(event, ChangeEvent::Modified(_)))
             .count();
-        let modified = evs
-            .iter()
-            .filter(|e| matches!(e, ChangeEvent::Modified(_)))
-            .count();
-        let deleted = evs
-            .iter()
-            .filter(|e| matches!(e, ChangeEvent::Deleted(_)))
-            .count();
-        assert!(created >= 1);
-        assert!(deleted >= 1);
-        assert!(modified <= 3, "modified too many: {}", modified);
+        assert!(
+            extra_modifications <= 2,
+            "too many extra modifications: {extra_modifications}"
+        );
     }
 
     #[test]
@@ -1533,22 +1561,22 @@ mod tests {
     fn test_incremental_symbol_changes_detected() {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("main.rs");
-        let watcher =
-            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
-        let (tx, rx) = crossbeam_channel::unbounded();
-        let wref = Arc::new(watcher);
-        let wclone = wref.clone();
-        std::thread::spawn(move || {
-            wclone.watch(tx).unwrap();
-        });
         fs::write(&file, "fn a(){}\nfn b(){}\n").unwrap();
-        std::thread::sleep(Duration::from_millis(140));
+        let watcher = Arc::new(
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20)),
+        );
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let worker = watcher.clone();
+        std::thread::spawn(move || worker.watch(tx).unwrap());
+        wait_until(|| watcher.files.contains_key(&file));
         fs::write(&file, "fn a(){1}\nfn b(){}\n").unwrap();
-        std::thread::sleep(Duration::from_millis(180));
-        let ch = wref.get_symbol_changes(&file).unwrap();
-        assert!(ch.modified.contains(&"a".to_string()));
-        assert!(!ch.modified.contains(&"b".to_string()));
-        // Drain channel to avoid leak warnings
+        wait_until(|| {
+            watcher
+                .get_symbol_changes(&file)
+                .is_some_and(|changes| changes.modified.contains(&"a".to_string()))
+        });
+        let changes = watcher.get_symbol_changes(&file).unwrap();
+        assert!(!changes.modified.contains(&"b".to_string()));
         let _ = rx.try_iter().count();
     }
 
@@ -1586,20 +1614,18 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("main.rs");
         fs::write(&file, "fn a(){}\n").unwrap();
-        let watcher =
-            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20));
+        let watcher = Arc::new(
+            IntelligentFileWatcher::new([tmp.path()]).with_debounce(Duration::from_millis(20)),
+        );
         let (tx, rx) = crossbeam_channel::unbounded();
-        std::thread::spawn(move || {
-            watcher.watch(tx).unwrap();
-        });
-        std::thread::sleep(Duration::from_millis(100));
+        let worker = watcher.clone();
+        std::thread::spawn(move || worker.watch(tx).unwrap());
+        wait_until(|| watcher.files.contains_key(&file));
         std::fs::remove_file(&file).unwrap();
-        std::thread::sleep(Duration::from_millis(160));
-        let evs: Vec<_> = rx.try_iter().collect();
-        let got_delete = evs
-            .iter()
-            .any(|e| matches!(e, ChangeEvent::Deleted(p) if p.ends_with("main.rs")));
-        assert!(got_delete);
+        wait_for_event(
+            &rx,
+            |event| matches!(event, ChangeEvent::Deleted(path) if path.ends_with("main.rs")),
+        );
     }
 
     #[test]

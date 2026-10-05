@@ -5,11 +5,11 @@ use crate::tools::GraphToolFactory;
 use anyhow::Result;
 use async_trait::async_trait;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
+use futures::Stream;
 use futures::future::join_all;
 use futures::stream;
-use futures::Stream;
-use rig::completion::{CompletionModel, CompletionRequest, Message};
-use rig::OneOrMany;
+use rig::completion::CompletionRequest;
+use rig::{DynModel, operation::Completion};
 use std::collections::HashMap;
 use std::pin::Pin;
 use tracing::{debug, info};
@@ -43,48 +43,29 @@ impl SearchNode {
             return f64::INFINITY; // Explore unvisited nodes first
         }
         let exploitation = self.value_sum / self.visits as f64;
-        let exploration = exploration_weight * ((parent_visits as f64).ln() / self.visits as f64).sqrt();
+        let exploration =
+            exploration_weight * ((parent_visits as f64).ln() / self.visits as f64).sqrt();
         exploitation + exploration
     }
 }
 
 /// LATS agent that explores multiple reasoning paths
-pub struct LatsAgent<M: CompletionModel + Send + Sync> {
-    pub(crate) model: M,
+pub struct LatsAgent {
+    pub(crate) model: DynModel<Completion>,
     pub(crate) factory: GraphToolFactory,
     pub(crate) max_turns: usize,
     pub(crate) tier: ContextTier,
 }
 
-impl<M: CompletionModel + Send + Sync> LatsAgent<M> {
+impl LatsAgent {
     // --- Helper: Call Model ---
     async fn call_model(&self, prompt: String, system_prompt: String) -> Result<String> {
-        let chat_history = vec![
-            Message::User {
-                content: OneOrMany::one(rig::message::UserContent::Text(prompt.into()))
-            }
-        ];
-
-        let req = CompletionRequest {
-            chat_history: OneOrMany::many(chat_history).expect("History not empty"),
-            preamble: Some(system_prompt),
-            documents: vec![],
-            tools: vec![],
-            temperature: Some(0.7), // Higher temp for diversity in generation
-            max_tokens: Some(1024),
-            additional_params: None,
-            tool_choice: None,
-        };
-
-        let response = self.model.completion(req).await.map_err(|e| anyhow::anyhow!(e))?;
-        
-        // Extract text from AssistantContent
-        // Simple debug format as fallback since we don't have direct access to internal enum
-        // In real impl we would match on variants
-        let text = format!("{:?}", response.choice);
-        // Clean up debug formatting if it wraps in "Text(...)"
-        let cleaned = text.trim_start_matches("Text(\"").trim_end_matches("\"").replace("\\n", "\n");
-        Ok(cleaned)
+        let request = CompletionRequest::new(prompt)
+            .preamble(system_prompt)
+            .temperature(0.7)
+            .max_tokens(1024);
+        let response = self.model.call(request).await?;
+        Ok(response.text())
     }
 
     // --- MCTS Steps ---
@@ -92,7 +73,7 @@ impl<M: CompletionModel + Send + Sync> LatsAgent<M> {
     // 1. Selection
     fn select_leaf(&self, nodes: &HashMap<usize, SearchNode>) -> usize {
         let mut current_id = 0; // Start at root
-        
+
         loop {
             let node = nodes.get(&current_id).expect("Node missing");
             if node.children.is_empty() {
@@ -101,7 +82,9 @@ impl<M: CompletionModel + Send + Sync> LatsAgent<M> {
 
             // Select child with highest UCT
             let parent_visits = node.visits;
-            let best_child = node.children.iter()
+            let best_child = node
+                .children
+                .iter()
                 .max_by(|&a, &b| {
                     let node_a = nodes.get(a).unwrap();
                     let node_b = nodes.get(b).unwrap();
@@ -110,33 +93,47 @@ impl<M: CompletionModel + Send + Sync> LatsAgent<M> {
                     uct_a.partial_cmp(&uct_b).unwrap()
                 })
                 .unwrap();
-            
+
             current_id = *best_child;
         }
     }
 
     // 2. Expansion
-    async fn expand_node(&self, leaf_id: usize, nodes: &mut HashMap<usize, SearchNode>, next_id: &mut usize, query: &str) -> Result<Vec<usize>> {
+    async fn expand_node(
+        &self,
+        leaf_id: usize,
+        nodes: &mut HashMap<usize, SearchNode>,
+        next_id: &mut usize,
+        query: &str,
+    ) -> Result<Vec<usize>> {
         let leaf = nodes.get(&leaf_id).unwrap();
         let depth = leaf.depth;
-        
+
         if depth >= self.max_turns {
             return Ok(vec![]); // Max depth reached
         }
 
         let context = &leaf.content; // In real impl, trace back to root to build full context
-        
+
         // Generate candidates (parallel)
         let n_candidates = 3;
         let mut futures = vec![];
-        
+
         for i in 0..n_candidates {
-            let prompt = format!("Query: {}\n\nContext so far:\n{}\n\nGenerate candidate step #{} (Thought & Action or Final Answer):", query, context, i+1);
-            futures.push(self.call_model(prompt, "You are a reasoning agent exploring possible solutions.".to_string()));
+            let prompt = format!(
+                "Query: {}\n\nContext so far:\n{}\n\nGenerate candidate step #{} (Thought & Action or Final Answer):",
+                query,
+                context,
+                i + 1
+            );
+            futures.push(self.call_model(
+                prompt,
+                "You are a reasoning agent exploring possible solutions.".to_string(),
+            ));
         }
 
         let results = join_all(futures).await;
-        
+
         let mut new_child_ids = vec![];
         for res in results {
             if let Ok(content) = res {
@@ -147,7 +144,7 @@ impl<M: CompletionModel + Send + Sync> LatsAgent<M> {
                 new_child_ids.push(id);
             }
         }
-        
+
         // Link to parent
         if let Some(leaf_mut) = nodes.get_mut(&leaf_id) {
             leaf_mut.children.extend(new_child_ids.clone());
@@ -157,21 +154,35 @@ impl<M: CompletionModel + Send + Sync> LatsAgent<M> {
     }
 
     // 3. Evaluation
-    async fn evaluate_node(&self, node_id: usize, nodes: &HashMap<usize, SearchNode>, query: &str) -> f64 {
+    async fn evaluate_node(
+        &self,
+        node_id: usize,
+        nodes: &HashMap<usize, SearchNode>,
+        query: &str,
+    ) -> f64 {
         let node = nodes.get(&node_id).unwrap();
         let content = &node.content;
-        
+
         // Use LLM to score the content relevance/correctness (0.0 to 1.0)
-        let prompt = format!("Query: {}\n\nProposed Step:\n{}\n\nRate this step from 0 to 100 based on correctness and relevance to the query. Return ONLY the number.", query, content);
-        
-        match self.call_model(prompt, "You are an evaluator. Rate the reasoning quality.".to_string()).await {
+        let prompt = format!(
+            "Query: {}\n\nProposed Step:\n{}\n\nRate this step from 0 to 100 based on correctness and relevance to the query. Return ONLY the number.",
+            query, content
+        );
+
+        match self
+            .call_model(
+                prompt,
+                "You are an evaluator. Rate the reasoning quality.".to_string(),
+            )
+            .await
+        {
             Ok(score_str) => {
                 // Extract number
                 let digits: String = score_str.chars().filter(|c| c.is_digit(10)).collect();
                 let score = digits.parse::<f64>().unwrap_or(50.0); // Default to neutral on parse fail
                 score / 100.0
-            },
-            Err(_) => 0.5
+            }
+            Err(_) => 0.5,
         }
     }
 
@@ -191,10 +202,10 @@ impl<M: CompletionModel + Send + Sync> LatsAgent<M> {
 }
 
 #[async_trait]
-impl<M: CompletionModel + Send + Sync> RigAgentTrait for LatsAgent<M> {
+impl RigAgentTrait for LatsAgent {
     async fn execute(&self, query: &str) -> Result<String> {
         info!("Starting LATS execution for query: {}", query);
-        
+
         // Initialize Tree
         let mut nodes = HashMap::new();
         let root = SearchNode::new(None, format!("Start Query: {}", query), 0);
@@ -203,18 +214,20 @@ impl<M: CompletionModel + Send + Sync> RigAgentTrait for LatsAgent<M> {
 
         // MCTS Loop
         let iterations = 5; // Configurable?
-        
+
         for i in 0..iterations {
-            debug!("LATS Iteration {}/{}", i+1, iterations);
-            
+            debug!("LATS Iteration {}/{}", i + 1, iterations);
+
             // 1. Selection
             let leaf_id = self.select_leaf(&nodes);
-            
+
             // 2. Expansion
             // Note: In real LATS, we would execute tools here if the node implies an action.
             // For this implementation, we simulate reasoning expansion.
-            let new_ids = self.expand_node(leaf_id, &mut nodes, &mut next_id, query).await?;
-            
+            let new_ids = self
+                .expand_node(leaf_id, &mut nodes, &mut next_id, query)
+                .await?;
+
             // 3. Evaluation & Backprop
             // Evaluate all new children (parallelizable)
             for child_id in new_ids {
@@ -224,20 +237,19 @@ impl<M: CompletionModel + Send + Sync> RigAgentTrait for LatsAgent<M> {
         }
 
         // Select best path
-        let best_child_id = nodes.get(&0).unwrap().children.iter()
-            .max_by(|&a, &b| {
-                let node_a = nodes.get(a).unwrap();
-                let node_b = nodes.get(b).unwrap();
-                // Select by visit count (robustness)
-                node_a.visits.cmp(&node_b.visits)
-            });
+        let best_child_id = nodes.get(&0).unwrap().children.iter().max_by(|&a, &b| {
+            let node_a = nodes.get(a).unwrap();
+            let node_b = nodes.get(b).unwrap();
+            // Select by visit count (robustness)
+            node_a.visits.cmp(&node_b.visits)
+        });
 
         match best_child_id {
             Some(&id) => {
                 let node = nodes.get(&id).unwrap();
                 Ok(format!("[LATS Optimized Result]\n{}", node.content))
-            },
-            None => Ok("LATS failed to generate a solution.".to_string())
+            }
+            None => Ok("LATS failed to generate a solution.".to_string()),
         }
     }
 
@@ -248,11 +260,17 @@ impl<M: CompletionModel + Send + Sync> RigAgentTrait for LatsAgent<M> {
         // LATS is inherently iterative and non-linear, hard to stream linearly.
         // We will stream status updates.
         let response = self.execute(query).await?;
-        
+
         let events = vec![
-            Ok(AgentEvent::Thinking("LATS: Building search tree...".to_string())),
-            Ok(AgentEvent::Thinking("LATS: Expanding reasoning paths...".to_string())),
-            Ok(AgentEvent::Thinking("LATS: Evaluating candidates...".to_string())),
+            Ok(AgentEvent::Thinking(
+                "LATS: Building search tree...".to_string(),
+            )),
+            Ok(AgentEvent::Thinking(
+                "LATS: Expanding reasoning paths...".to_string(),
+            )),
+            Ok(AgentEvent::Thinking(
+                "LATS: Evaluating candidates...".to_string(),
+            )),
             Ok(AgentEvent::OutputChunk(response)),
             Ok(AgentEvent::Done),
         ];

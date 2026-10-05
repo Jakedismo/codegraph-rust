@@ -1,8 +1,8 @@
 #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
 use crate::embeddings::generator::TextEmbeddingEngine;
 use crate::prep::chunker::{
-    aggregate_chunk_embeddings, build_chunk_plan, build_chunk_plan_with_sources, ChunkPlan,
-    ChunkerConfig, SanitizeMode,
+    ChunkPlan, ChunkerConfig, SanitizeMode, aggregate_chunk_embeddings, build_chunk_plan,
+    build_chunk_plan_with_sources,
 };
 #[cfg(feature = "ollama")]
 use crate::providers::EmbeddingProvider;
@@ -235,7 +235,9 @@ impl EmbeddingGenerator {
                     Err(e) => {
                         tracing::error!("❌ ONNX embedding provider failed to initialize: {}", e);
                         tracing::error!("   Model path: {}", model_repo);
-                        tracing::warn!("🔄 Attempting fallback to Ollama embeddings for AI semantic matching...");
+                        tracing::warn!(
+                            "🔄 Attempting fallback to Ollama embeddings for AI semantic matching..."
+                        );
 
                         // INTELLIGENT FALLBACK: Try Ollama if ONNX fails
                         #[cfg(feature = "ollama")]
@@ -249,19 +251,29 @@ impl EmbeddingGenerator {
 
                             match ollama_provider.check_availability().await {
                                 Ok(true) => {
-                                    tracing::info!("✅ Fallback successful: Ollama nomic-embed-code available for AI semantic matching");
+                                    tracing::info!(
+                                        "✅ Fallback successful: Ollama nomic-embed-code available for AI semantic matching"
+                                    );
                                     base.model_config.dimension =
                                         ollama_provider.embedding_dimension();
                                     base.ollama_provider = Some(ollama_provider);
                                 }
                                 Ok(false) => {
-                                    tracing::error!("❌ Ollama fallback failed: nomic-embed-code model not found");
-                                    tracing::error!("   Install with: ollama pull hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M");
-                                    tracing::error!("   Falling back to random embeddings (no semantic AI matching)");
+                                    tracing::error!(
+                                        "❌ Ollama fallback failed: nomic-embed-code model not found"
+                                    );
+                                    tracing::error!(
+                                        "   Install with: ollama pull hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M"
+                                    );
+                                    tracing::error!(
+                                        "   Falling back to random embeddings (no semantic AI matching)"
+                                    );
                                 }
                                 Err(e) => {
                                     tracing::error!("❌ Ollama fallback failed: {}", e);
-                                    tracing::error!("   Falling back to random embeddings (no semantic AI matching)");
+                                    tracing::error!(
+                                        "   Falling back to random embeddings (no semantic AI matching)"
+                                    );
                                 }
                             }
                         }
@@ -298,7 +310,9 @@ impl EmbeddingGenerator {
                         base.ollama_provider = Some(ollama_provider);
                     }
                     Ok(false) => {
-                        tracing::warn!("⚠️ nomic-embed-code model not found. Install with: ollama pull hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M");
+                        tracing::warn!(
+                            "⚠️ nomic-embed-code model not found. Install with: ollama pull hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M"
+                        );
                     }
                     Err(e) => {
                         tracing::error!("❌ Failed to connect to Ollama for embeddings: {}", e);

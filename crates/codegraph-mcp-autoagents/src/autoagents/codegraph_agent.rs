@@ -194,7 +194,7 @@ mod tests {
     fn test_fallback_on_not_done() {
         let output = ReActAgentOutput {
             done: false,
-            response: "partial answer that is long enough to pass length check".to_string(),
+            response: "partial answer that is long enough to pass length check".repeat(3),
             tool_calls: vec![],
         };
         let result: CodeGraphAgentOutput = output.into();

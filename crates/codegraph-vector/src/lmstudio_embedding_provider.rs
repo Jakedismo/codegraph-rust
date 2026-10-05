@@ -538,14 +538,27 @@ mod tests {
 
     #[test]
     fn test_config_from_env() {
-        std::env::set_var("CODEGRAPH_LMSTUDIO_MODEL", "test-model");
-        std::env::set_var("CODEGRAPH_LMSTUDIO_URL", "http://test:9000/v1");
+        if !test_env::run(
+            concat!(module_path!(), "::test_config_from_env"),
+            &[("CODEGRAPH_LMSTUDIO_MODEL", Some("test-model"))],
+        ) {
+            return;
+        }
 
-        let config = LmStudioEmbeddingConfig::from_env();
+        let core_config = codegraph_core::EmbeddingConfig {
+            lmstudio_url: "http://test:9000/v1".to_string(),
+            ..Default::default()
+        };
+        let config = LmStudioEmbeddingConfig::from(&core_config);
         assert_eq!(config.model, "test-model");
         assert_eq!(config.api_base, "http://test:9000/v1");
-
-        std::env::remove_var("CODEGRAPH_LMSTUDIO_MODEL");
-        std::env::remove_var("CODEGRAPH_LMSTUDIO_URL");
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

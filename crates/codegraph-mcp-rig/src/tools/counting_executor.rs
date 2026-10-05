@@ -5,9 +5,9 @@ use codegraph_mcp_core::error::Result;
 use codegraph_mcp_tools::GraphToolExecutor;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolTrace {

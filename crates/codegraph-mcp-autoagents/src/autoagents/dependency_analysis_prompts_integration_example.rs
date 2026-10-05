@@ -75,15 +75,15 @@ mod tests {
                 tier
             );
 
-            // Verify it contains expected content
+            // Verify it contains dependency guidance and structured context
             assert!(
                 prompt.contains("dependency"),
                 "Should mention dependency for tier {:?}",
                 tier
             );
             assert!(
-                prompt.contains("tool_call"),
-                "Should include JSON format for tier {:?}",
+                prompt.contains("CONTEXT ACCUMULATOR"),
+                "Should include structured context for tier {:?}",
                 tier
             );
         }
@@ -92,7 +92,7 @@ mod tests {
     #[test]
     fn test_tier_appropriate_depth() {
         // TERSE should limit depth
-        assert!(DEPENDENCY_ANALYSIS_TERSE.contains("depth=1 or 2 max"));
+        assert!(DEPENDENCY_ANALYSIS_TERSE.contains("depth=1-2"));
 
         // BALANCED should use moderate depth
         assert!(DEPENDENCY_ANALYSIS_BALANCED.contains("depth=2-3"));
@@ -101,7 +101,7 @@ mod tests {
         assert!(DEPENDENCY_ANALYSIS_DETAILED.contains("depth=3-5"));
 
         // EXPLORATORY should use maximum depth
-        assert!(DEPENDENCY_ANALYSIS_EXPLORATORY.contains("depth=5-10"));
+        assert!(DEPENDENCY_ANALYSIS_EXPLORATORY.contains("depth=5-7"));
     }
 
     #[test]
@@ -114,24 +114,24 @@ mod tests {
         ] {
             // All prompts should require tool calls before final analysis
             assert!(
-                prompt.contains("tool call") || prompt.contains("tool_call"),
+                prompt.contains("tool call") || prompt.contains("CONTEXT ACCUMULATOR"),
                 "Prompt should mention tool calls"
             );
         }
     }
 
     #[test]
-    fn test_zero_heuristics_requirement() {
+    fn test_prompts_require_graph_evidence_and_unknowns() {
         for prompt in [
             DEPENDENCY_ANALYSIS_TERSE,
             DEPENDENCY_ANALYSIS_BALANCED,
             DEPENDENCY_ANALYSIS_DETAILED,
             DEPENDENCY_ANALYSIS_EXPLORATORY,
         ] {
-            // All prompts should emphasize zero heuristics
+            // All prompts should use graph evidence and track unresolved questions
             assert!(
-                prompt.contains("ZERO HEURISTICS") || prompt.contains("NO HEURISTICS"),
-                "Prompt should enforce zero heuristics"
+                prompt.contains("graph tools") && prompt.contains("remaining_unknowns"),
+                "Prompt should require graph evidence and unresolved questions"
             );
         }
     }
@@ -140,7 +140,7 @@ mod tests {
     fn test_all_tools_mentioned() {
         let expected_tools = [
             "get_transitive_dependencies",
-            "detect_circular_dependencies",
+            "detect_cycles",
             "trace_call_chain",
             "calculate_coupling_metrics",
             "get_hub_nodes",
@@ -166,16 +166,16 @@ mod tests {
     #[test]
     fn test_tier_specific_guidance() {
         // TERSE should emphasize brevity
-        assert!(DEPENDENCY_ANALYSIS_TERSE.contains("Limit tool calls to 3-5 total"));
+        assert!(DEPENDENCY_ANALYSIS_TERSE.contains("Terse Tier: 3-5 steps total"));
 
         // BALANCED should emphasize systematic approach
-        assert!(DEPENDENCY_ANALYSIS_BALANCED.contains("SYSTEMATIC APPROACH"));
+        assert!(DEPENDENCY_ANALYSIS_BALANCED.contains("Balanced Tier: 5-10 steps total"));
 
         // DETAILED should emphasize comprehensiveness
-        assert!(DEPENDENCY_ANALYSIS_DETAILED.contains("COMPREHENSIVE"));
+        assert!(DEPENDENCY_ANALYSIS_DETAILED.contains("Detailed Tier: 10-15 steps total"));
 
         // EXPLORATORY should emphasize exhaustiveness
-        assert!(DEPENDENCY_ANALYSIS_EXPLORATORY.contains("EXHAUSTIVE"));
+        assert!(DEPENDENCY_ANALYSIS_EXPLORATORY.contains("Exploratory Tier: 15-20"));
     }
 }
 
@@ -194,7 +194,7 @@ mod integration_examples {
         // 1. Use minimal tool calls (3-5 max)
         // 2. Focus on immediate dependencies (depth=1-2)
         // 3. Provide direct, actionable answers
-        assert!(prompt.contains("3-5 total"));
+        assert!(prompt.contains("3-5 steps total"));
     }
 
     #[test]
@@ -207,7 +207,7 @@ mod integration_examples {
         // 1. Systematic multi-tool analysis (5-10 calls)
         // 2. Analyze both forward and reverse dependencies
         // 3. Include coupling metrics and circular dependency checks
-        assert!(prompt.contains("5-10 tool calls"));
+        assert!(prompt.contains("5-10 steps total"));
     }
 
     #[test]
@@ -220,7 +220,7 @@ mod integration_examples {
         // 1. Comprehensive multi-level mapping (10-15 calls)
         // 2. Deep dependency trees (depth=3-5)
         // 3. Complete refactoring roadmap
-        assert!(prompt.contains("10-15 tool calls"));
+        assert!(prompt.contains("10-15 steps total"));
     }
 
     #[test]

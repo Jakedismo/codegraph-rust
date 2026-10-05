@@ -1,5 +1,5 @@
 use crate::llm_provider::*;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -313,11 +313,7 @@ impl LLMProvider for AnthropicProvider {
                 })
                 .collect();
 
-            if calls.is_empty() {
-                None
-            } else {
-                Some(calls)
-            }
+            if calls.is_empty() { None } else { Some(calls) }
         };
 
         // Determine finish_reason - "tool_use" in Anthropic means tool calls
@@ -535,7 +531,13 @@ mod tests {
 
     #[test]
     fn test_config_from_env() {
-        std::env::set_var("ANTHROPIC_API_KEY", "test-key");
+        if !test_env::run(
+            concat!(module_path!(), "::test_config_from_env"),
+            &[("ANTHROPIC_API_KEY", Some("test-key"))],
+        ) {
+            return;
+        }
+
         let config = AnthropicConfig::default();
         assert_eq!(config.api_key, "test-key");
     }
@@ -548,4 +550,12 @@ mod tests {
         };
         assert!(AnthropicProvider::new(config).is_err());
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

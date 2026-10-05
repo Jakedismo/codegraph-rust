@@ -833,8 +833,7 @@ impl AgentExecutorTrait for LATSExecutor {
                 TerminationReason::IterationTimeout => {
                     output.findings = format!(
                         "WARNING: Iteration timeout ({}s) occurred. Result based on partial exploration.\n\n{}",
-                        self.config.iteration_timeout_secs,
-                        output.findings
+                        self.config.iteration_timeout_secs, output.findings
                     );
                 }
                 _ => {} // High score and solution found are success cases
@@ -894,21 +893,31 @@ mod tests {
 
     #[test]
     fn test_lats_config_from_env_timeout() {
+        if !test_env::run(
+            concat!(module_path!(), "::test_lats_config_from_env_timeout"),
+            &[("CODEGRAPH_LATS_ITERATION_TIMEOUT_SECS", Some("42"))],
+        ) {
+            return;
+        }
+
         // Use unique value unlikely to be set by other tests
-        std::env::set_var("CODEGRAPH_LATS_ITERATION_TIMEOUT_SECS", "42");
         let cg_config = CodeGraphConfig::default();
         let lats_config = LATSConfig::from_codegraph_config(&cg_config, ContextTier::Medium);
         assert_eq!(lats_config.iteration_timeout_secs, 42);
-        std::env::remove_var("CODEGRAPH_LATS_ITERATION_TIMEOUT_SECS");
     }
 
     #[test]
     fn test_lats_config_from_env_tree_nodes() {
-        std::env::set_var("CODEGRAPH_AGENT_MAX_TREE_NODES", "99");
+        if !test_env::run(
+            concat!(module_path!(), "::test_lats_config_from_env_tree_nodes"),
+            &[("CODEGRAPH_AGENT_MAX_TREE_NODES", Some("99"))],
+        ) {
+            return;
+        }
+
         let cg_config = CodeGraphConfig::default();
         let lats_config = LATSConfig::from_codegraph_config(&cg_config, ContextTier::Medium);
         assert_eq!(lats_config.max_tree_nodes, 99);
-        std::env::remove_var("CODEGRAPH_AGENT_MAX_TREE_NODES");
     }
 
     #[test]
@@ -974,4 +983,12 @@ mod tests {
     fn test_high_score_threshold() {
         assert_eq!(HIGH_SCORE_THRESHOLD, 0.9);
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

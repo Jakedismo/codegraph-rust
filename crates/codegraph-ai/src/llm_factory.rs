@@ -2,7 +2,7 @@
 // ABOUTME: Centralizes provider selection and feature-gated availability rules.
 use crate::llm_provider::*;
 use crate::qwen_simple::{QwenClient, QwenConfig};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use codegraph_core::config_manager::LLMConfig;
 use std::sync::Arc;
 

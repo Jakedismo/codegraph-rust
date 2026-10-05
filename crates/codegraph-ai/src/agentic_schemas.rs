@@ -1,7 +1,7 @@
 // ABOUTME: JSON schemas for structured agentic tool outputs enforcing file paths
 // ABOUTME: Combines freeform analysis with structured component/dependency data
 
-use schemars::{schema_for, JsonSchema};
+use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

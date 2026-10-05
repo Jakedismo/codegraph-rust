@@ -4,19 +4,28 @@
 #[cfg(feature = "ollama")]
 use codegraph_core::{OllamaRerankConfig, RerankConfig, RerankProvider};
 #[cfg(feature = "ollama")]
-use codegraph_vector::reranking::{ollama::OllamaReranker, RerankDocument, Reranker};
+use codegraph_vector::reranking::{RerankDocument, Reranker, ollama::OllamaReranker};
 
 #[cfg(not(feature = "ollama"))]
 fn main() {
-    eprintln!("This example requires the 'ollama' feature. Re-run with: cargo run -p codegraph-vector --example test_ollama_rerank --features ollama");
+    eprintln!(
+        "This example requires the 'ollama' feature. Re-run with: cargo run -p codegraph-vector --example test_ollama_rerank --features ollama"
+    );
 }
 
-#[tokio::main]
 #[cfg(feature = "ollama")]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     // Load .env file if present (for CODEGRAPH_OLLAMA_RERANK_MODEL etc)
     let _ = dotenvy::dotenv();
 
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run())
+}
+
+#[cfg(feature = "ollama")]
+async fn run() -> anyhow::Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter("info,codegraph_vector=debug")

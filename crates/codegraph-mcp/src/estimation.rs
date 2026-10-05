@@ -9,14 +9,14 @@ use std::time::Duration;
 use anyhow::Result;
 use codegraph_core::{CodeNode, EdgeRelationship, NodeId};
 use codegraph_parser::{
-    file_collect, file_collect::FileCollectionConfig, ParsingStatistics, TreeSitterParser,
+    ParsingStatistics, TreeSitterParser, file_collect, file_collect::FileCollectionConfig,
 };
 use futures::stream::{self, StreamExt};
 use serde::Serialize;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
 
-use crate::indexer::{filter_edges_for_tier, IndexerConfig};
+use crate::indexer::{IndexerConfig, filter_edges_for_tier};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RepositoryCounts {

@@ -7,7 +7,7 @@ mod semantic_search_direct_hybrid {
     use super::SurrealDbConfig;
     use super::SurrealDbStorage;
     use serde_json::Value as JsonValue;
-    use surrealdb::sql::Value as SqlValue;
+    use surrealdb::types::Value as SqlValue;
 
     fn env(name: &str, default: &str) -> String {
         std::env::var(name).unwrap_or_else(|_| default.to_string())

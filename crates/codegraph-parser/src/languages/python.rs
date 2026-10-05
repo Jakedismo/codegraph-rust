@@ -85,7 +85,7 @@ impl<'a> PythonCollector<'a> {
                     code.span = Some(self.span_for(&node));
 
                     self.current_function_id = Some(code.id);
-                    
+
                     // REVOLUTIONARY: Extract type hints as References
                     self.extract_type_hints(node, code.id);
 
@@ -103,7 +103,7 @@ impl<'a> PythonCollector<'a> {
                     code.span = Some(self.span_for(&node));
 
                     self.current_class_id = Some(code.id);
-                    
+
                     // REVOLUTIONARY: Extract base classes as References (extends)
                     self.extract_base_classes(node, code.id);
 

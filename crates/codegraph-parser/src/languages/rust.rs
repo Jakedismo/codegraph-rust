@@ -287,7 +287,7 @@ impl<'a> Collector<'a> {
                     code.metadata
                         .attributes
                         .insert("impl_for".into(), for_type.clone());
-                    
+
                     // Add reference to the 'for' type
                     if let Some(type_node) = node.child_by_field_name("type") {
                         self.edges.push(EdgeRelationship {
@@ -303,7 +303,7 @@ impl<'a> Collector<'a> {
                     code.metadata
                         .attributes
                         .insert("impl_trait".into(), trait_name.clone());
-                    
+
                     // Add reference to the trait
                     if let Some(trait_node) = node.child_by_field_name("trait") {
                         self.edges.push(EdgeRelationship {
@@ -371,7 +371,7 @@ impl<'a> Collector<'a> {
                     code.metadata
                         .attributes
                         .insert("lifetimes".into(), json!(lifetimes).to_string());
-                    
+
                     // REVOLUTIONARY: Extract references from parameters and return type
                     self.extract_references_from_signature(node, code.id);
 

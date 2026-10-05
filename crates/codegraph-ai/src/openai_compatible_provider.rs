@@ -1,5 +1,5 @@
 use crate::llm_provider::*;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -289,11 +289,7 @@ impl OpenAICompatibleProvider {
                 })
                 .collect();
 
-            if calls.is_empty() {
-                None
-            } else {
-                Some(calls)
-            }
+            if calls.is_empty() { None } else { Some(calls) }
         };
 
         Ok((parsed, tool_calls))

@@ -8,7 +8,7 @@ use std::process::{Command as StdCommand, Stdio};
 use std::time::Duration;
 use std::{path::PathBuf, sync::OnceLock};
 
-use rmcp::{transport::TokioChildProcess, ServiceExt};
+use rmcp::{ServiceExt, transport::TokioChildProcess};
 use tokio::process::Command;
 
 static CODEGRAPH_BIN: OnceLock<PathBuf> = OnceLock::new();
@@ -34,7 +34,7 @@ fn codegraph_bin_path() -> PathBuf {
     } else {
         "codegraph"
     };
-    target_dir().join("debug").join(exe)
+    target_dir().join("fast-dev").join(exe)
 }
 
 fn ensure_codegraph_bin() -> PathBuf {
@@ -45,6 +45,8 @@ fn ensure_codegraph_bin() -> PathBuf {
                 .current_dir(&workspace_root)
                 .args([
                     "build",
+                    "--profile",
+                    "fast-dev",
                     "-q",
                     "-p",
                     "codegraph-mcp-server",

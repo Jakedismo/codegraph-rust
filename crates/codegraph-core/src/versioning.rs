@@ -174,7 +174,7 @@ pub enum ChangeType {
 #[async_trait::async_trait]
 pub trait TransactionManager {
     async fn begin_transaction(&mut self, isolation_level: IsolationLevel)
-        -> Result<TransactionId>;
+    -> Result<TransactionId>;
 
     async fn commit_transaction(&mut self, transaction_id: TransactionId) -> Result<()>;
 

@@ -425,12 +425,21 @@ Use any model with dimensions 384-4096:
 - **Cloud:** Anthropic Claude, OpenAI, xAI Grok, OpenAI Compliant
 
 ### Database
-- **SurrealDB** with HNSW vector index (2-5ms queries)
+- **SurrealDB 3.x** with HNSW vector index (2-5ms queries)
 - Free cloud tier available at [surrealdb.com/cloud](https://surrealdb.com/cloud)
 
 ---
 
 ## Configuration
+
+Building requires **Rust 1.95 or newer** and uses edition **2024**. Direct registry
+dependencies target current stable releases; `Cargo.lock` records the resolved graph. Bincode stays on **2.0.1**, its last
+functional release; 3.0.0 deliberately fails compilation. ONNX Runtime bindings use
+the latest release candidate, **2.0.0-rc.13**, because no stable 2.0 release exists.
+
+The CLI loads project or user dotenv configuration before starting worker threads.
+Library callers should initialize their environment at process startup; `ConfigManager::load()`
+only reads configuration and never changes the process environment.
 
 Global config in `~/.codegraph/config.toml`:
 

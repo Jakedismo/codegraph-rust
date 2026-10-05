@@ -15,7 +15,7 @@ use tokenizers::Tokenizer;
 use tokio::time::timeout;
 use tracing::{debug, info, trace, warn};
 
-use crate::prep::chunker::{build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode};
+use crate::prep::chunker::{ChunkPlan, ChunkerConfig, SanitizeMode, build_chunk_plan};
 use crate::providers::{
     BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
 };
@@ -378,9 +378,7 @@ impl OllamaEmbeddingProvider {
                 let chars = texts[0].len();
                 Err(CodeGraphError::External(format!(
                     "Ollama embedding request exceeded context length for single input (model={}, chars={}). Consider reducing CODEGRAPH_MAX_CHUNK_TOKENS or configuring CODEGRAPH_OLLAMA_NUM_CTX if supported by your Ollama server. Root error: {}",
-                    self.config.model_name,
-                    chars,
-                    e
+                    self.config.model_name, chars, e
                 )))
             }
             Err(e) => Err(e),

@@ -1,5 +1,5 @@
-use crate::reranker::{ReRankingPipeline, RerankedResult, RerankerConfig};
 use crate::EmbeddingGenerator;
+use crate::reranker::{ReRankingPipeline, RerankedResult, RerankerConfig};
 use codegraph_core::{CodeNode, NodeId, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

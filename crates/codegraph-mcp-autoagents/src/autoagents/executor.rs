@@ -3,7 +3,7 @@
 
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
 use crate::autoagents::progress_notifier::ProgressCallback;
-use crate::autoagents::startup_context::{build_startup_context, StartupContextRender};
+use crate::autoagents::startup_context::{StartupContextRender, build_startup_context};
 use codegraph_ai::llm_provider::LLMProvider;
 use codegraph_graph::{GraphFunctions, HubNode};
 use codegraph_mcp_core::analysis::AnalysisType;
@@ -440,35 +440,62 @@ mod tests {
 
     #[test]
     fn test_read_timeout_config_default() {
+        if !test_env::run(
+            concat!(module_path!(), "::test_read_timeout_config_default"),
+            &[("CODEGRAPH_AGENT_TIMEOUT_SECS", None)],
+        ) {
+            return;
+        }
+
         // Clear env var to test default
-        std::env::remove_var("CODEGRAPH_AGENT_TIMEOUT_SECS");
         let timeout = read_timeout_config();
         assert_eq!(timeout.as_secs(), DEFAULT_TIMEOUT_SECS);
     }
 
     #[test]
     fn test_read_timeout_config_from_env() {
-        std::env::set_var("CODEGRAPH_AGENT_TIMEOUT_SECS", "60");
+        if !test_env::run(
+            concat!(module_path!(), "::test_read_timeout_config_from_env"),
+            &[("CODEGRAPH_AGENT_TIMEOUT_SECS", Some("60"))],
+        ) {
+            return;
+        }
+
         let timeout = read_timeout_config();
         assert_eq!(timeout.as_secs(), 60);
-        std::env::remove_var("CODEGRAPH_AGENT_TIMEOUT_SECS");
     }
 
     #[test]
     fn test_read_timeout_config_zero_means_unlimited() {
-        std::env::set_var("CODEGRAPH_AGENT_TIMEOUT_SECS", "0");
+        if !test_env::run(
+            concat!(
+                module_path!(),
+                "::test_read_timeout_config_zero_means_unlimited"
+            ),
+            &[("CODEGRAPH_AGENT_TIMEOUT_SECS", Some("0"))],
+        ) {
+            return;
+        }
+
         let timeout = read_timeout_config();
         // Zero means unlimited - should be very large
         assert!(timeout.as_secs() > 1_000_000);
-        std::env::remove_var("CODEGRAPH_AGENT_TIMEOUT_SECS");
     }
 
     #[test]
     fn test_read_timeout_config_invalid_fallback() {
-        std::env::set_var("CODEGRAPH_AGENT_TIMEOUT_SECS", "not_a_number");
+        if !test_env::run(
+            concat!(
+                module_path!(),
+                "::test_read_timeout_config_invalid_fallback"
+            ),
+            &[("CODEGRAPH_AGENT_TIMEOUT_SECS", Some("not_a_number"))],
+        ) {
+            return;
+        }
+
         let timeout = read_timeout_config();
         assert_eq!(timeout.as_secs(), DEFAULT_TIMEOUT_SECS);
-        std::env::remove_var("CODEGRAPH_AGENT_TIMEOUT_SECS");
     }
 
     #[test]
@@ -531,4 +558,12 @@ mod tests {
             _ => panic!("Expected BuildFailed error to pass through"),
         }
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

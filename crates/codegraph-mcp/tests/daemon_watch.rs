@@ -7,10 +7,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use codegraph_core::config_manager::CodeGraphConfig;
-use codegraph_mcp::indexer::{set_watch_test_notifier, IndexerConfig, ProjectIndexer};
+use codegraph_mcp::indexer::{IndexerConfig, ProjectIndexer, set_watch_test_notifier};
 use indicatif::{MultiProgress, ProgressDrawTarget};
-use notify::event::{DataChange, EventKind, ModifyKind};
 use notify::Event;
+use notify::event::{DataChange, EventKind, ModifyKind};
 use serde_json::Value;
 use tempfile::tempdir;
 use tokio::fs;
@@ -18,16 +18,23 @@ use tokio::time::sleep;
 
 #[tokio::test]
 async fn watch_updates_file_metadata_on_change() -> Result<()> {
-    std::env::set_var("CODEGRAPH_NO_PROGRESS", "1");
-    std::env::set_var("CODEGRAPH_ANALYZERS", "0");
-    std::env::set_var("CODEGRAPH_ANALYZERS_REQUIRE_TOOLS", "0");
+    if !test_env::run(
+        concat!(module_path!(), "::watch_updates_file_metadata_on_change"),
+        &[
+            ("CODEGRAPH_NO_PROGRESS", Some("1")),
+            ("CODEGRAPH_ANALYZERS", Some("0")),
+            ("CODEGRAPH_ANALYZERS_REQUIRE_TOOLS", Some("0")),
+            ("CODEGRAPH_SURREALDB_URL", Some("mem://")),
+            ("CODEGRAPH_SURREALDB_NAMESPACE", Some("watch_ns")),
+            ("CODEGRAPH_SURREALDB_DATABASE", Some("watch_db")),
+            ("CODEGRAPH_SURREALDB_USERNAME", None),
+            ("CODEGRAPH_SURREALDB_PASSWORD", None),
+        ],
+    ) {
+        return Ok(());
+    }
 
     // Isolated in-memory SurrealDB
-    std::env::set_var("CODEGRAPH_SURREALDB_URL", "mem://");
-    std::env::set_var("CODEGRAPH_SURREALDB_NAMESPACE", "watch_ns");
-    std::env::set_var("CODEGRAPH_SURREALDB_DATABASE", "watch_db");
-    std::env::remove_var("CODEGRAPH_SURREALDB_USERNAME");
-    std::env::remove_var("CODEGRAPH_SURREALDB_PASSWORD");
 
     let project_dir = tempdir()?;
     let file_path = project_dir.path().join("foo.rs");
@@ -97,4 +104,12 @@ async fn fetch_metadata(
         .await?;
     let rows: Vec<Value> = resp.take(0)?;
     Ok(rows.last().cloned())
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

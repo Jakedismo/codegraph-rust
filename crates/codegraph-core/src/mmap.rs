@@ -171,7 +171,7 @@ fn prefetch_range_impl(m: &MappedFile, offset: usize, len: usize) {
 #[cfg(windows)]
 fn prefetch_range_impl(m: &MappedFile, offset: usize, len: usize) {
     use core::mem::size_of;
-    use windows_sys::Win32::System::Memory::{PrefetchVirtualMemory, _WIN32_MEMORY_RANGE_ENTRY};
+    use windows_sys::Win32::System::Memory::{_WIN32_MEMORY_RANGE_ENTRY, PrefetchVirtualMemory};
 
     let end = offset.saturating_add(len).min(m.len);
     if end <= offset {

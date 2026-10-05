@@ -2,8 +2,8 @@
 // ABOUTME: Type-safe wrappers using AutoAgents derive macros with stateful executor access
 
 use crate::autoagents::tools::tool_executor_adapter::GraphToolExecutorAdapter;
-use autoagents::core::tool::{ToolCallError, ToolInputT, ToolRuntime, ToolT};
-use autoagents_derive::{tool, ToolInput};
+use autoagents::core::tool::{ToolCallError, ToolRuntime, ToolT};
+use autoagents_derive::{ToolInput, tool};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 

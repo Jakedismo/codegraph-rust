@@ -97,8 +97,14 @@ mod tests {
 
     #[test]
     fn test_parse_valid_rig() {
-        assert_eq!(AgentArchitecture::parse("rig"), Some(AgentArchitecture::Rig));
-        assert_eq!(AgentArchitecture::parse("RIG"), Some(AgentArchitecture::Rig));
+        assert_eq!(
+            AgentArchitecture::parse("rig"),
+            Some(AgentArchitecture::Rig)
+        );
+        assert_eq!(
+            AgentArchitecture::parse("RIG"),
+            Some(AgentArchitecture::Rig)
+        );
     }
 
     #[test]

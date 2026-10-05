@@ -365,7 +365,7 @@ impl ResultRanker {
         result1: &RankedResult,
         result2: &RankedResult,
     ) -> Result<bool> {
-        if let (Some(ref node1), Some(ref node2)) = (
+        if let (Some(node1), Some(node2)) = (
             &result1.retrieval_result.node,
             &result2.retrieval_result.node,
         ) {
@@ -375,7 +375,7 @@ impl ResultRanker {
             }
 
             // Check content similarity
-            if let (Some(ref content1), Some(ref content2)) = (&node1.content, &node2.content) {
+            if let (Some(content1), Some(content2)) = (&node1.content, &node2.content) {
                 let similarity = self
                     .calculate_content_similarity(content1, content2)
                     .await?;

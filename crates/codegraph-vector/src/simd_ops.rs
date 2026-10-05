@@ -13,67 +13,70 @@ impl SIMDVectorOps {
     #[target_feature(enable = "avx2")]
     #[target_feature(enable = "fma")]
     pub unsafe fn cosine_similarity_avx2(a: &[f32], b: &[f32]) -> Result<f32> {
-        if a.len() != b.len() {
-            return Err(crate::VectorError::DimensionMismatch(a.len(), b.len()).into());
-        }
+        // SAFETY: The caller guarantees AVX2/FMA support; slice bounds are checked below.
+        unsafe {
+            if a.len() != b.len() {
+                return Err(crate::VectorError::DimensionMismatch(a.len(), b.len()).into());
+            }
 
-        let len = a.len();
-        if len == 0 {
-            return Ok(0.0);
-        }
+            let len = a.len();
+            if len == 0 {
+                return Ok(0.0);
+            }
 
-        let mut dot_product = _mm256_setzero_ps();
-        let mut norm_a_squared = _mm256_setzero_ps();
-        let mut norm_b_squared = _mm256_setzero_ps();
+            let mut dot_product = _mm256_setzero_ps();
+            let mut norm_a_squared = _mm256_setzero_ps();
+            let mut norm_b_squared = _mm256_setzero_ps();
 
-        // Process 8 elements at a time
-        let chunks = len / 8;
-        for i in 0..chunks {
-            let idx = i * 8;
+            // Process 8 elements at a time
+            let chunks = len / 8;
+            for i in 0..chunks {
+                let idx = i * 8;
 
-            // Load 8 f32 values from each array
-            let va = _mm256_loadu_ps(a.as_ptr().add(idx));
-            let vb = _mm256_loadu_ps(b.as_ptr().add(idx));
+                // Load 8 f32 values from each array
+                let va = _mm256_loadu_ps(a.as_ptr().add(idx));
+                let vb = _mm256_loadu_ps(b.as_ptr().add(idx));
 
-            // Parallel operations:
-            // dot_product += va * vb (using FMA)
-            dot_product = _mm256_fmadd_ps(va, vb, dot_product);
+                // Parallel operations:
+                // dot_product += va * vb (using FMA)
+                dot_product = _mm256_fmadd_ps(va, vb, dot_product);
 
-            // norm_a_squared += va * va (using FMA)
-            norm_a_squared = _mm256_fmadd_ps(va, va, norm_a_squared);
+                // norm_a_squared += va * va (using FMA)
+                norm_a_squared = _mm256_fmadd_ps(va, va, norm_a_squared);
 
-            // norm_b_squared += vb * vb (using FMA)
-            norm_b_squared = _mm256_fmadd_ps(vb, vb, norm_b_squared);
-        }
+                // norm_b_squared += vb * vb (using FMA)
+                norm_b_squared = _mm256_fmadd_ps(vb, vb, norm_b_squared);
+            }
 
-        // Horizontal sum of the 8-element vectors
-        let dp = Self::horizontal_sum_avx2(dot_product);
-        let na_sq = Self::horizontal_sum_avx2(norm_a_squared);
-        let nb_sq = Self::horizontal_sum_avx2(norm_b_squared);
+            // Horizontal sum of the 8-element vectors
+            let dp = Self::horizontal_sum_avx2(dot_product);
+            let na_sq = Self::horizontal_sum_avx2(norm_a_squared);
+            let nb_sq = Self::horizontal_sum_avx2(norm_b_squared);
 
-        // Handle remaining elements (scalar fallback)
-        let mut dp_remainder = 0.0f32;
-        let mut na_sq_remainder = 0.0f32;
-        let mut nb_sq_remainder = 0.0f32;
+            // Handle remaining elements (scalar fallback)
+            let mut dp_remainder = 0.0f32;
+            let mut na_sq_remainder = 0.0f32;
+            let mut nb_sq_remainder = 0.0f32;
 
-        for i in (chunks * 8)..len {
-            let va = a[i];
-            let vb = b[i];
-            dp_remainder += va * vb;
-            na_sq_remainder += va * va;
-            nb_sq_remainder += vb * vb;
-        }
+            for i in (chunks * 8)..len {
+                let va = a[i];
+                let vb = b[i];
+                dp_remainder += va * vb;
+                na_sq_remainder += va * va;
+                nb_sq_remainder += vb * vb;
+            }
 
-        let final_dp = dp + dp_remainder;
-        let final_na_sq = na_sq + na_sq_remainder;
-        let final_nb_sq = nb_sq + nb_sq_remainder;
+            let final_dp = dp + dp_remainder;
+            let final_na_sq = na_sq + na_sq_remainder;
+            let final_nb_sq = nb_sq + nb_sq_remainder;
 
-        // Compute cosine similarity
-        let norm_product = (final_na_sq * final_nb_sq).sqrt();
-        if norm_product == 0.0 {
-            Ok(0.0)
-        } else {
-            Ok(final_dp / norm_product)
+            // Compute cosine similarity
+            let norm_product = (final_na_sq * final_nb_sq).sqrt();
+            if norm_product == 0.0 {
+                Ok(0.0)
+            } else {
+                Ok(final_dp / norm_product)
+            }
         }
     }
 
@@ -87,15 +90,18 @@ impl SIMDVectorOps {
         embeddings: &[&[f32]],
         results: &mut [f32],
     ) -> Result<()> {
-        if embeddings.len() != results.len() {
-            return Err(crate::VectorError::BatchSizeMismatch.into());
-        }
+        // SAFETY: The caller guarantees AVX2/FMA support; slice bounds are checked below.
+        unsafe {
+            if embeddings.len() != results.len() {
+                return Err(crate::VectorError::BatchSizeMismatch.into());
+            }
 
-        for (embedding, result) in embeddings.iter().zip(results.iter_mut()) {
-            *result = Self::cosine_similarity_avx2(query, embedding)?;
-        }
+            for (embedding, result) in embeddings.iter().zip(results.iter_mut()) {
+                *result = Self::cosine_similarity_avx2(query, embedding)?;
+            }
 
-        Ok(())
+            Ok(())
+        }
     }
 
     /// Optimized L2 distance computation using AVX2
@@ -103,43 +109,46 @@ impl SIMDVectorOps {
     #[target_feature(enable = "avx2")]
     #[target_feature(enable = "fma")]
     pub unsafe fn l2_distance_avx2(a: &[f32], b: &[f32]) -> Result<f32> {
-        if a.len() != b.len() {
-            return Err(crate::VectorError::DimensionMismatch(a.len(), b.len()).into());
+        // SAFETY: The caller guarantees AVX2/FMA support; slice bounds are checked below.
+        unsafe {
+            if a.len() != b.len() {
+                return Err(crate::VectorError::DimensionMismatch(a.len(), b.len()).into());
+            }
+
+            let len = a.len();
+            if len == 0 {
+                return Ok(0.0);
+            }
+
+            let mut sum_squared_diff = _mm256_setzero_ps();
+
+            // Process 8 elements at a time
+            let chunks = len / 8;
+            for i in 0..chunks {
+                let idx = i * 8;
+
+                let va = _mm256_loadu_ps(a.as_ptr().add(idx));
+                let vb = _mm256_loadu_ps(b.as_ptr().add(idx));
+
+                // Compute difference: va - vb
+                let diff = _mm256_sub_ps(va, vb);
+
+                // Square the differences and add to sum: sum += diff^2
+                sum_squared_diff = _mm256_fmadd_ps(diff, diff, sum_squared_diff);
+            }
+
+            // Horizontal sum
+            let sum_sq = Self::horizontal_sum_avx2(sum_squared_diff);
+
+            // Handle remaining elements
+            let mut remainder_sum = 0.0f32;
+            for i in (chunks * 8)..len {
+                let diff = a[i] - b[i];
+                remainder_sum += diff * diff;
+            }
+
+            Ok((sum_sq + remainder_sum).sqrt())
         }
-
-        let len = a.len();
-        if len == 0 {
-            return Ok(0.0);
-        }
-
-        let mut sum_squared_diff = _mm256_setzero_ps();
-
-        // Process 8 elements at a time
-        let chunks = len / 8;
-        for i in 0..chunks {
-            let idx = i * 8;
-
-            let va = _mm256_loadu_ps(a.as_ptr().add(idx));
-            let vb = _mm256_loadu_ps(b.as_ptr().add(idx));
-
-            // Compute difference: va - vb
-            let diff = _mm256_sub_ps(va, vb);
-
-            // Square the differences and add to sum: sum += diff^2
-            sum_squared_diff = _mm256_fmadd_ps(diff, diff, sum_squared_diff);
-        }
-
-        // Horizontal sum
-        let sum_sq = Self::horizontal_sum_avx2(sum_squared_diff);
-
-        // Handle remaining elements
-        let mut remainder_sum = 0.0f32;
-        for i in (chunks * 8)..len {
-            let diff = a[i] - b[i];
-            remainder_sum += diff * diff;
-        }
-
-        Ok((sum_sq + remainder_sum).sqrt())
     }
 
     /// Optimized dot product computation using AVX2
@@ -147,39 +156,42 @@ impl SIMDVectorOps {
     #[target_feature(enable = "avx2")]
     #[target_feature(enable = "fma")]
     pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> Result<f32> {
-        if a.len() != b.len() {
-            return Err(crate::VectorError::DimensionMismatch(a.len(), b.len()).into());
+        // SAFETY: The caller guarantees AVX2/FMA support; slice bounds are checked below.
+        unsafe {
+            if a.len() != b.len() {
+                return Err(crate::VectorError::DimensionMismatch(a.len(), b.len()).into());
+            }
+
+            let len = a.len();
+            if len == 0 {
+                return Ok(0.0);
+            }
+
+            let mut dot_product = _mm256_setzero_ps();
+
+            // Process 8 elements at a time
+            let chunks = len / 8;
+            for i in 0..chunks {
+                let idx = i * 8;
+
+                let va = _mm256_loadu_ps(a.as_ptr().add(idx));
+                let vb = _mm256_loadu_ps(b.as_ptr().add(idx));
+
+                // dot_product += va * vb
+                dot_product = _mm256_fmadd_ps(va, vb, dot_product);
+            }
+
+            // Horizontal sum
+            let dp = Self::horizontal_sum_avx2(dot_product);
+
+            // Handle remaining elements
+            let mut remainder = 0.0f32;
+            for i in (chunks * 8)..len {
+                remainder += a[i] * b[i];
+            }
+
+            Ok(dp + remainder)
         }
-
-        let len = a.len();
-        if len == 0 {
-            return Ok(0.0);
-        }
-
-        let mut dot_product = _mm256_setzero_ps();
-
-        // Process 8 elements at a time
-        let chunks = len / 8;
-        for i in 0..chunks {
-            let idx = i * 8;
-
-            let va = _mm256_loadu_ps(a.as_ptr().add(idx));
-            let vb = _mm256_loadu_ps(b.as_ptr().add(idx));
-
-            // dot_product += va * vb
-            dot_product = _mm256_fmadd_ps(va, vb, dot_product);
-        }
-
-        // Horizontal sum
-        let dp = Self::horizontal_sum_avx2(dot_product);
-
-        // Handle remaining elements
-        let mut remainder = 0.0f32;
-        for i in (chunks * 8)..len {
-            remainder += a[i] * b[i];
-        }
-
-        Ok(dp + remainder)
     }
 
     /// Normalize vector in-place using AVX2
@@ -187,58 +199,64 @@ impl SIMDVectorOps {
     #[target_feature(enable = "avx2")]
     #[target_feature(enable = "fma")]
     pub unsafe fn normalize_avx2(vector: &mut [f32]) -> Result<()> {
-        if vector.is_empty() {
-            return Ok(());
+        // SAFETY: The caller guarantees AVX2/FMA support; slice bounds are checked below.
+        unsafe {
+            if vector.is_empty() {
+                return Ok(());
+            }
+
+            // Compute norm
+            let norm_squared = Self::dot_product_avx2(vector, vector)?;
+            if norm_squared == 0.0 {
+                return Ok(()); // Zero vector remains zero
+            }
+
+            let norm = norm_squared.sqrt();
+            let inv_norm = 1.0 / norm;
+            let inv_norm_vec = _mm256_set1_ps(inv_norm);
+
+            // Normalize 8 elements at a time
+            let len = vector.len();
+            let chunks = len / 8;
+
+            for i in 0..chunks {
+                let idx = i * 8;
+
+                let v = _mm256_loadu_ps(vector.as_ptr().add(idx));
+                let normalized = _mm256_mul_ps(v, inv_norm_vec);
+                _mm256_storeu_ps(vector.as_mut_ptr().add(idx), normalized);
+            }
+
+            // Handle remaining elements
+            for i in (chunks * 8)..len {
+                vector[i] *= inv_norm;
+            }
+
+            Ok(())
         }
-
-        // Compute norm
-        let norm_squared = Self::dot_product_avx2(vector, vector)?;
-        if norm_squared == 0.0 {
-            return Ok(()); // Zero vector remains zero
-        }
-
-        let norm = norm_squared.sqrt();
-        let inv_norm = 1.0 / norm;
-        let inv_norm_vec = _mm256_set1_ps(inv_norm);
-
-        // Normalize 8 elements at a time
-        let len = vector.len();
-        let chunks = len / 8;
-
-        for i in 0..chunks {
-            let idx = i * 8;
-
-            let v = _mm256_loadu_ps(vector.as_ptr().add(idx));
-            let normalized = _mm256_mul_ps(v, inv_norm_vec);
-            _mm256_storeu_ps(vector.as_mut_ptr().add(idx), normalized);
-        }
-
-        // Handle remaining elements
-        for i in (chunks * 8)..len {
-            vector[i] *= inv_norm;
-        }
-
-        Ok(())
     }
 
     /// Efficient horizontal sum of 8 f32 values in AVX2 register
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn horizontal_sum_avx2(v: __m256) -> f32 {
-        // v = [a, b, c, d, e, f, g, h]
-        // Permute and add to get [e+a, f+b, g+c, h+d, a+e, b+f, c+g, d+h]
-        let v_perm = _mm256_permute2f128_ps(v, v, 0x01);
-        let v_add1 = _mm256_add_ps(v, v_perm);
+        // SAFETY: Called only from AVX2-enabled functions with a valid SIMD register.
+        unsafe {
+            // v = [a, b, c, d, e, f, g, h]
+            // Permute and add to get [e+a, f+b, g+c, h+d, a+e, b+f, c+g, d+h]
+            let v_perm = _mm256_permute2f128_ps(v, v, 0x01);
+            let v_add1 = _mm256_add_ps(v, v_perm);
 
-        // Now we have [e+a, f+b, g+c, h+d] in lower 128 bits
-        // Horizontal add to get [e+a+f+b, g+c+h+d, *, *]
-        let v_hadd1 = _mm256_hadd_ps(v_add1, v_add1);
+            // Now we have [e+a, f+b, g+c, h+d] in lower 128 bits
+            // Horizontal add to get [e+a+f+b, g+c+h+d, *, *]
+            let v_hadd1 = _mm256_hadd_ps(v_add1, v_add1);
 
-        // Final horizontal add to get sum in lowest element
-        let v_hadd2 = _mm256_hadd_ps(v_hadd1, v_hadd1);
+            // Final horizontal add to get sum in lowest element
+            let v_hadd2 = _mm256_hadd_ps(v_hadd1, v_hadd1);
 
-        // Extract lowest element
-        _mm256_cvtss_f32(v_hadd2)
+            // Extract lowest element
+            _mm256_cvtss_f32(v_hadd2)
+        }
     }
 
     /// Check if AVX2 is available at runtime

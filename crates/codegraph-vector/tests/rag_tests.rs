@@ -92,9 +92,11 @@ mod rag_integration_tests {
             .expect("Failed to retrieve context");
 
         assert!(results.len() <= 2);
-        assert!(results
-            .iter()
-            .any(|r| r.node.as_ref().unwrap().name.contains("file")));
+        assert!(
+            results
+                .iter()
+                .any(|r| r.node.as_ref().unwrap().name.contains("file"))
+        );
     }
 
     #[tokio::test]

@@ -1,9 +1,9 @@
 // ABOUTME: Rig agent executor with conversation memory
 // ABOUTME: Maintains conversation history for analysis task duration
 
+use super::RigAgentOutput;
 use super::api::{AgentEvent, RigAgentTrait};
 use super::builder::RigAgentBuilder;
-use super::RigAgentOutput;
 use anyhow::Result;
 use codegraph_mcp_core::analysis::AnalysisType;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
@@ -68,8 +68,7 @@ impl RigExecutor {
             .sum();
         let usage_ratio = estimated_history_tokens as f64 / max_tokens as f64;
 
-        let mut builder = RigAgentBuilder::new(self.executor.clone())
-            .analysis_type(analysis_type);
+        let mut builder = RigAgentBuilder::new(self.executor.clone()).analysis_type(analysis_type);
 
         if usage_ratio > 0.8 {
             info!(
@@ -101,13 +100,13 @@ impl RigExecutor {
                 let calls = agent.take_tool_call_count();
                 let traces = agent.take_tool_traces();
                 (resp, calls, traces)
-            },
+            }
             Err(e) => {
                 info!(
                     error = %e,
                     "Primary agent execution failed. Initiating Reflexion auto-recovery..."
                 );
-                
+
                 // Wrap the primary agent in ReflexionAgent for retry
                 let reflexion_agent = crate::agent::reflexion::ReflexionAgent {
                     inner: agent,
@@ -120,9 +119,12 @@ impl RigExecutor {
                         let calls = reflexion_agent.take_tool_call_count();
                         let traces = reflexion_agent.take_tool_traces();
                         (resp, calls, traces)
-                    },
+                    }
                     Err(final_err) => {
-                        return Err(anyhow::anyhow!("Agent failed after Reflexion recovery: {}", final_err));
+                        return Err(anyhow::anyhow!(
+                            "Agent failed after Reflexion recovery: {}",
+                            final_err
+                        ));
                     }
                 }
             }

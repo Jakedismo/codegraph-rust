@@ -1,7 +1,7 @@
 // ABOUTME: Builds repository startup context for agents from local files
 // ABOUTME: Collects guide docs, README, and filtered root file inventory
 
-use codegraph_parser::file_collect::{collect_source_files_with_config, FileCollectionConfig};
+use codegraph_parser::file_collect::{FileCollectionConfig, collect_source_files_with_config};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use thiserror::Error;

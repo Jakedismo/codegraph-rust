@@ -1,7 +1,8 @@
 [package]
 name = "codegraph-mcp-daemon"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 authors = ["Solita CodeGraph"]
 license = "Apache-2.0"
 
@@ -15,7 +16,7 @@ codegraph-mcp-core = { path = "../codegraph-mcp-core" }
 codegraph-core = { path = "../codegraph-core" }
 codegraph-mcp = { path = "../codegraph-mcp" }
 codegraph-parser = { path = "../codegraph-parser", features = ["watcher-experimental"] }
-glob-match = "0.2"
+glob-match = "0.2.1"
 indicatif = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

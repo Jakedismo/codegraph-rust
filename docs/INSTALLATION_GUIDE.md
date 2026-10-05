@@ -27,6 +27,11 @@ This guide covers the complete installation process for CodeGraph, from building
 
 Legacy helper commands (`code`, `test`, `perf`, `stats`, `clean`, `init`) are no longer part of the CLI.
 
+For HTTP deployments, MCP 3 validates the request's `Host` header. Loopback hosts
+and the configured bind host are accepted by default. When binding to `0.0.0.0`
+behind a proxy or serving a public hostname, set an explicit comma-separated
+allowlist, for example `CODEGRAPH_HTTP_ALLOWED_HOSTS=localhost,codegraph.example.com`.
+
 ---
 
 ## Prerequisites
@@ -34,7 +39,8 @@ Legacy helper commands (`code`, `test`, `perf`, `stats`, `clean`, `init`) are no
 Before installing CodeGraph, ensure you have:
 
 - **macOS** (the installer scripts target macOS; Linux users can adapt the commands)
-- **Rust toolchain** - Install from [rustup.rs](https://rustup.rs)
+- **Rust 1.95 or newer** - The workspace uses Rust edition 2024. Install from [rustup.rs](https://rustup.rs).
+- **SurrealDB 3.x** - The graph storage SDK is 3.3; use a compatible server for remote connections.
 - **Homebrew** - Install from [brew.sh](https://brew.sh)
 - **Ollama** (recommended) - Install from [ollama.com](https://ollama.com) for local LLM/embedding support
 
@@ -76,7 +82,7 @@ cargo install --path crates/codegraph-mcp-server --bin codegraph \
 
 ## Setting Up SurrealDB
 
-CodeGraph requires SurrealDB for graph storage and vector search. You have two options:
+CodeGraph requires SurrealDB 3.x for graph storage and vector search. Follow SurrealDB's upgrade guide before opening an existing 2.x database with a 3.x server; updating this repository does not migrate stored databases. You have two options:
 
 ### Option 1: Local Installation (Recommended for Development)
 

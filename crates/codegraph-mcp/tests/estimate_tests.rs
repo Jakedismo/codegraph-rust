@@ -2,7 +2,7 @@
 // ABOUTME: Validates symbol indexing and embedding ETA heuristics for the CLI.
 
 use codegraph_core::{CodeNode, Language, Location, NodeType};
-use codegraph_mcp::estimation::{build_symbol_index, EmbeddingThroughputConfig, TimeEstimates};
+use codegraph_mcp::estimation::{EmbeddingThroughputConfig, TimeEstimates, build_symbol_index};
 
 fn sample_location() -> Location {
     Location {

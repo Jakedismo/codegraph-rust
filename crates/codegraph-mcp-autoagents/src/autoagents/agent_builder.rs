@@ -15,8 +15,8 @@ use autoagents::llm::{FunctionCall, ToolCall};
 use codegraph_ai::llm_provider::{LLMProvider as CodeGraphLLM, Message, MessageRole};
 use codegraph_mcp_core::debug_logger::DebugLogger;
 use serde::Deserialize;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 /// Convert CodeGraph Message to AutoAgents ChatMessage
 #[cfg(test)]
@@ -163,6 +163,14 @@ impl ChatProvider for CodeGraphChatAdapter {
     async fn chat(
         &self,
         messages: &[ChatMessage],
+        json_schema: Option<autoagents::llm::chat::StructuredOutputFormat>,
+    ) -> std::result::Result<Box<dyn ChatResponse>, LLMError> {
+        self.chat_with_tools(messages, None, json_schema).await
+    }
+
+    async fn chat_with_tools(
+        &self,
+        messages: &[ChatMessage],
         tools: Option<&[Tool]>,
         json_schema: Option<autoagents::llm::chat::StructuredOutputFormat>,
     ) -> Result<Box<dyn ChatResponse>, LLMError> {
@@ -242,9 +250,7 @@ impl ChatProvider for CodeGraphChatAdapter {
             return Err(LLMError::Generic(format!(
                 "Context overflow: {} bytes exceeds {} byte limit ({:.1}x). \
                  Tool results accumulated too much data. Try reducing result limits or query scope.",
-                total_context_bytes,
-                self.max_context_bytes,
-                overflow_ratio
+                total_context_bytes, self.max_context_bytes, overflow_ratio
             )));
         }
 
@@ -351,7 +357,6 @@ impl ChatProvider for CodeGraphChatAdapter {
     async fn chat_stream(
         &self,
         _messages: &[ChatMessage],
-        _tools: Option<&[Tool]>,
         _json_schema: Option<autoagents::llm::chat::StructuredOutputFormat>,
     ) -> Result<
         std::pin::Pin<Box<dyn futures::Stream<Item = Result<String, LLMError>> + Send>>,
@@ -649,11 +654,11 @@ impl<T: AgentDeriveT + AgentHooks + Clone> TierAwareReActAgent<T> {
 impl<T: AgentDeriveT + AgentHooks + Clone> AgentDeriveT for TierAwareReActAgent<T> {
     type Output = T::Output;
 
-    fn description(&self) -> &'static str {
+    fn description(&self) -> &str {
         self.inner_derive.description()
     }
 
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         self.inner_derive.name()
     }
 
@@ -721,14 +726,14 @@ use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
 
 use crate::autoagents::codegraph_agent::CodeGraphAgentOutput;
+use autoagents::core::agent::AgentBuilder;
 use autoagents::core::agent::memory::SlidingWindowMemory;
 use autoagents::core::agent::prebuilt::executor::ReActAgent;
-use autoagents::core::agent::AgentBuilder;
 use autoagents::core::agent::{
     AgentDeriveT, AgentExecutor, AgentHooks, Context, DirectAgentHandle, ExecutorConfig,
 };
 use autoagents::core::error::Error as AutoAgentsError;
-use autoagents::core::tool::{shared_tools_to_boxes, ToolT};
+use autoagents::core::tool::{ToolT, shared_tools_to_boxes};
 
 /// Agent implementation for CodeGraph with manual tool registration
 #[derive(Debug, Clone)]
@@ -743,13 +748,11 @@ pub struct CodeGraphReActAgent {
 impl AgentDeriveT for CodeGraphReActAgent {
     type Output = CodeGraphAgentOutput;
 
-    fn description(&self) -> &'static str {
-        // Use Box::leak to convert runtime String to &'static str
-        // This is the standard AutoAgents pattern for dynamic descriptions
-        Box::leak(self.system_prompt.clone().into_boxed_str())
+    fn description(&self) -> &str {
+        &self.system_prompt
     }
 
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "codegraph_agent"
     }
 
@@ -1004,8 +1007,8 @@ mod tests {
         let tool_calls = response.tool_calls().expect("tool call not parsed");
         assert_eq!(tool_calls[0].function.name, "trace_call_chain");
         assert_eq!(
-            tool_calls[0].function.arguments,
-            "{\"node_id\":\"GraphToolExecutor\",\"max_depth\":4}"
+            serde_json::from_str::<serde_json::Value>(&tool_calls[0].function.arguments).unwrap(),
+            serde_json::json!({"node_id": "GraphToolExecutor", "max_depth": 4})
         );
     }
 
@@ -1110,7 +1113,7 @@ mod tests {
         let adapter = CodeGraphChatAdapter::new(mock_llm, ContextTier::Medium);
 
         let messages = vec![ChatMessage::user().content("Hello").build()];
-        let response = adapter.chat(&messages, None, None).await.unwrap();
+        let response = adapter.chat(&messages, None).await.unwrap();
 
         assert_eq!(response.text(), Some("Echo: Hello".to_string()));
     }
@@ -1170,8 +1173,14 @@ mod tests {
 
     #[test]
     fn test_memory_window_default_value() {
+        if !test_env::run(
+            concat!(module_path!(), "::test_memory_window_default_value"),
+            &[("CODEGRAPH_AGENT_MEMORY_WINDOW", None)],
+        ) {
+            return;
+        }
+
         // Clear env var to test default
-        std::env::remove_var("CODEGRAPH_AGENT_MEMORY_WINDOW");
         let memory_size = read_memory_window_config();
         assert_eq!(
             memory_size, 40,
@@ -1181,26 +1190,41 @@ mod tests {
 
     #[test]
     fn test_memory_window_from_env() {
-        std::env::set_var("CODEGRAPH_AGENT_MEMORY_WINDOW", "100");
+        if !test_env::run(
+            concat!(module_path!(), "::test_memory_window_from_env"),
+            &[("CODEGRAPH_AGENT_MEMORY_WINDOW", Some("100"))],
+        ) {
+            return;
+        }
+
         let memory_size = read_memory_window_config();
         assert_eq!(memory_size, 100);
-        std::env::remove_var("CODEGRAPH_AGENT_MEMORY_WINDOW");
     }
 
     #[test]
     fn test_memory_window_zero_is_unlimited() {
-        std::env::set_var("CODEGRAPH_AGENT_MEMORY_WINDOW", "0");
+        if !test_env::run(
+            concat!(module_path!(), "::test_memory_window_zero_is_unlimited"),
+            &[("CODEGRAPH_AGENT_MEMORY_WINDOW", Some("0"))],
+        ) {
+            return;
+        }
+
         let memory_size = read_memory_window_config();
         assert_eq!(memory_size, 0, "Zero should mean unlimited history");
-        std::env::remove_var("CODEGRAPH_AGENT_MEMORY_WINDOW");
     }
 
     #[test]
     fn test_memory_window_invalid_fallback() {
-        std::env::set_var("CODEGRAPH_AGENT_MEMORY_WINDOW", "not_a_number");
+        if !test_env::run(
+            concat!(module_path!(), "::test_memory_window_invalid_fallback"),
+            &[("CODEGRAPH_AGENT_MEMORY_WINDOW", Some("not_a_number"))],
+        ) {
+            return;
+        }
+
         let memory_size = read_memory_window_config();
         assert_eq!(memory_size, 40, "Invalid value should fall back to default");
-        std::env::remove_var("CODEGRAPH_AGENT_MEMORY_WINDOW");
     }
 
     #[test]
@@ -1260,4 +1284,12 @@ mod tests {
         // Object format gets serialized to JSON string
         assert_eq!(tool_calls[0].function.arguments, "{\"min_degree\":5}");
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

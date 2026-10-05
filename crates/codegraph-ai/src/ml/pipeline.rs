@@ -24,8 +24,8 @@ use arc_swap::ArcSwap;
 use parking_lot::RwLock as PLRwLock;
 
 use codegraph_core::{CodeNode, Result};
-use codegraph_vector::ml as vml;
 use codegraph_vector::EmbeddingGenerator;
+use codegraph_vector::ml as vml;
 
 /// Versioned model metadata
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

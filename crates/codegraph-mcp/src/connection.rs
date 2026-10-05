@@ -1,19 +1,19 @@
 use crate::heartbeat::HeartbeatManager;
-use crate::transport::{backoff_durations, IncomingFrame, Transport, WebSocketTransport};
+use crate::transport::{IncomingFrame, Transport, WebSocketTransport, backoff_durations};
 use codegraph_mcp_core::{
     error::{McpError, Result},
     message::*,
-    protocol::{handshake, parse_response_typed, McpProtocol},
-    version::{ProtocolVersion, VersionNegotiator, DEFAULT_VERSION},
+    protocol::{McpProtocol, handshake, parse_response_typed},
+    version::{DEFAULT_VERSION, ProtocolVersion, VersionNegotiator},
 };
 use dashmap::DashMap;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
-use serde_json::{json, Value};
-use std::sync::atomic::{AtomicU64, Ordering};
+use serde::de::DeserializeOwned;
+use serde_json::{Value, json};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
-use tokio::sync::{broadcast, oneshot, RwLock};
+use tokio::sync::{RwLock, broadcast, oneshot};
 use tracing::warn;
 use url::Url;
 
@@ -127,10 +127,13 @@ impl McpConnection {
                     Value::String(s) => s.clone(),
                     v => v.to_string(),
                 };
-                if let Some((_, tx)) = self.pending.remove(&id_str) {
-                    let _ = tx.send(JsonRpcMessage::V2(JsonRpcV2Message::Response(res)));
-                } else {
-                    warn!(id = id_str, "Response with unknown id");
+                match self.pending.remove(&id_str) {
+                    Some((_, tx)) => {
+                        let _ = tx.send(JsonRpcMessage::V2(JsonRpcV2Message::Response(res)));
+                    }
+                    _ => {
+                        warn!(id = id_str, "Response with unknown id");
+                    }
                 }
             }
             JsonRpcMessage::V2(JsonRpcV2Message::Notification(notif)) => {

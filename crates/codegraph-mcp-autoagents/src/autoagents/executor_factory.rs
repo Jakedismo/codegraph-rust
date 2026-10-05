@@ -96,9 +96,12 @@ impl AgentExecutorFactory {
                 "LATS requires 'autoagents-lats' feature. Rebuild with --features autoagents-lats"
                     .to_string(),
             )),
-            AgentArchitecture::Rig | AgentArchitecture::Reflexion => Err(ExecutorError::BuildFailed(
-                format!("{} architecture is only supported by the Rig backend. Set CODEGRAPH_AGENT_ARCHITECTURE=rig", architecture)
-            )),
+            AgentArchitecture::Rig | AgentArchitecture::Reflexion => {
+                Err(ExecutorError::BuildFailed(format!(
+                    "{} architecture is only supported by the Rig backend. Set CODEGRAPH_AGENT_ARCHITECTURE=rig",
+                    architecture
+                )))
+            }
         }
     }
 
@@ -145,32 +148,48 @@ mod tests {
 
     #[test]
     fn test_detect_architecture_default() {
+        if !test_env::run(
+            concat!(module_path!(), "::test_detect_architecture_default"),
+            &[("CODEGRAPH_AGENT_ARCHITECTURE", None)],
+        ) {
+            return;
+        }
+
         // Should default to ReAct when env var not set
-        std::env::remove_var("CODEGRAPH_AGENT_ARCHITECTURE");
         let arch = AgentExecutorFactory::detect_architecture();
         assert_eq!(arch, AgentArchitecture::ReAct);
     }
 
     #[test]
     fn test_detect_architecture_from_env() {
+        if !test_env::run(
+            concat!(module_path!(), "::test_detect_architecture_from_env"),
+            &[("CODEGRAPH_AGENT_ARCHITECTURE", Some("lats"))],
+        ) {
+            return;
+        }
+
         // Should parse from environment variable
-        std::env::set_var("CODEGRAPH_AGENT_ARCHITECTURE", "lats");
         let arch = AgentExecutorFactory::detect_architecture();
         assert_eq!(arch, AgentArchitecture::LATS);
 
         // Cleanup
-        std::env::remove_var("CODEGRAPH_AGENT_ARCHITECTURE");
     }
 
     #[test]
     fn test_detect_architecture_invalid_env() {
+        if !test_env::run(
+            concat!(module_path!(), "::test_detect_architecture_invalid_env"),
+            &[("CODEGRAPH_AGENT_ARCHITECTURE", Some("invalid"))],
+        ) {
+            return;
+        }
+
         // Should fall back to ReAct on invalid value
-        std::env::set_var("CODEGRAPH_AGENT_ARCHITECTURE", "invalid");
         let arch = AgentExecutorFactory::detect_architecture();
         assert_eq!(arch, AgentArchitecture::ReAct);
 
         // Cleanup
-        std::env::remove_var("CODEGRAPH_AGENT_ARCHITECTURE");
     }
 
     #[cfg(feature = "autoagents-lats")]
@@ -179,4 +198,12 @@ mod tests {
         // Verify LATS architecture enum format
         assert_eq!(format!("{}", AgentArchitecture::LATS), "lats");
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

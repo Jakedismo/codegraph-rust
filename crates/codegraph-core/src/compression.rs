@@ -2,7 +2,7 @@
 // ABOUTME: Uses zstd with Base64 encoding for safe storage in string fields
 
 use anyhow::Result;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde::Deserialize;
 
 /// Compression threshold: Only compress data larger than this (default 1KB)
@@ -53,7 +53,9 @@ pub fn decompress_json(data: &str) -> Result<serde_json::Value> {
 }
 
 /// Serde deserializer helper for transparent decompression of Option<String> fields
-pub fn deserialize_content_string<'de, D>(deserializer: D) -> std::result::Result<Option<String>, D::Error>
+pub fn deserialize_content_string<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {

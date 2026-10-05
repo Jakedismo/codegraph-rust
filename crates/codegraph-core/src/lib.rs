@@ -25,14 +25,14 @@ pub mod watch;
 
 pub use advanced_config::*;
 pub use buffer_pool::*;
+pub use compression::*;
 pub use config::ConfigManager as ServerConfigManager;
 pub use config::LoggingConfig as ServerLoggingConfig;
 pub use config::{
-    crypto, DatabaseBackend, DatabaseConfig, SecretsConfig, SecurityConfig, ServerConfig, Settings,
-    SurrealDbConfig, VectorConfig,
+    DatabaseBackend, DatabaseConfig, SecretsConfig, SecurityConfig, ServerConfig, Settings,
+    SurrealDbConfig, VectorConfig, crypto,
 };
 pub use config_manager::*;
-pub use compression::*;
 pub use embedding_config::*;
 pub use error::*;
 pub use incremental::*;

@@ -97,7 +97,10 @@ fn schemas_define_graph_tool_functions() {
 
     let schemas = [
         ("main", base.join("codegraph.surql")),
-        ("experimental", base.join("codegraph_graph_experimental.surql")),
+        (
+            "experimental",
+            base.join("codegraph_graph_experimental.surql"),
+        ),
     ];
 
     let required_functions = [

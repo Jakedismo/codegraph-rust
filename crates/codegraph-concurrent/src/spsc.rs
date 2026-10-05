@@ -172,7 +172,6 @@ mod tests {
     #[cfg(feature = "loom")]
     mod loom_tests {
         use super::*;
-        use loom::sync::atomic::Ordering;
         use loom::thread;
 
         // A small loom test to explore ordering; not exhaustive

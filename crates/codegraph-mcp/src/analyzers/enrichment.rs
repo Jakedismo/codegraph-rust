@@ -163,7 +163,7 @@ pub fn apply_basic_enrichment(
         if edge.metadata.get("analyzer").map(|v| v.as_str()) != Some("lsp_definition") {
             continue;
         }
-        
+
         // Count all LSP-resolved edges in the metric
         stats.uses_edges_derived += 1;
 
@@ -464,12 +464,16 @@ mod tests {
 
         assert!(stats.reexport_edges_added > 0);
         assert!(stats.feature_enables_edges_added > 0);
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("reexports".to_string())));
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("enables".to_string())));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("reexports".to_string()))
+        );
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("enables".to_string()))
+        );
     }
 
     #[test]
@@ -524,11 +528,15 @@ mod tests {
             stats.reexport_edges_added > 0,
             "expected reexport edges for pub use"
         );
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("exports".to_string())));
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("reexports".to_string())));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("exports".to_string()))
+        );
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("reexports".to_string()))
+        );
     }
 }

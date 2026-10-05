@@ -805,8 +805,8 @@ impl ModelTrainer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ml::features::FeatureConfig;
     use crate::EmbeddingGenerator;
+    use crate::ml::features::FeatureConfig;
     use codegraph_core::{Language, Location, NodeType};
 
     fn sample_location() -> Location {

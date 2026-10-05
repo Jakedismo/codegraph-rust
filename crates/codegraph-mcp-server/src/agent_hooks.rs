@@ -1,10 +1,10 @@
 // ABOUTME: Opt-in project-local Claude Code and Codex lifecycle guidance.
 // ABOUTME: Emits context without configuration loading, indexing, or provider calls.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Subcommand, ValueEnum};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -166,7 +166,7 @@ pub fn install(project: &Path, harness: Harness, dry_run: bool) -> Result<Vec<Ho
                 .with_context(|| format!("Invalid JSON in {}", path.display()))?,
             Err(error) if error.kind() == io::ErrorKind::NotFound => json!({}),
             Err(error) => {
-                return Err(error).with_context(|| format!("Cannot read {}", path.display()))
+                return Err(error).with_context(|| format!("Cannot read {}", path.display()));
             }
         };
         let settings = merge_settings(original.clone())
@@ -348,10 +348,12 @@ mod tests {
             true,
         );
         let root = project.path().canonicalize().unwrap();
-        assert!(output["hookSpecificOutput"]["additionalContext"]
-            .as_str()
-            .unwrap()
-            .contains(&format!("--project '{}'", root.display())));
+        assert!(
+            output["hookSpecificOutput"]["additionalContext"]
+                .as_str()
+                .unwrap()
+                .contains(&format!("--project '{}'", root.display()))
+        );
     }
 
     #[cfg(unix)]

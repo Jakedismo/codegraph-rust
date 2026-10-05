@@ -11,13 +11,13 @@ OPTION IMPORT;
 -- Helper function to parse record IDs from various formats
 -- Handles: record IDs, "nodes:⟨uuid⟩", "nodes:id", "⟨uuid⟩", "id"
 DEFINE FUNCTION fn::parse_record_id($table: string, $input: any) {
-IF type::is::record($input) { RETURN $input; };
+IF type::is_record($input) { RETURN $input; };
 LET $str = <string>$input;
 -- Strip table prefix if present (e.g., "nodes:" or "chunks:")
 LET $after_prefix = IF string::starts_with($str, $table + ':') THEN string::slice($str, string::len($table) + 1) ELSE $str END;
 -- Strip angle brackets ⟨⟩ if present (SurrealDB's escaping for complex IDs)
 LET $clean_id = IF string::starts_with($after_prefix, '⟨') AND string::ends_with($after_prefix, '⟩') THEN string::slice($after_prefix, 1, string::len($after_prefix) - 2) ELSE $after_prefix END;
-RETURN type::thing($table, $clean_id);
+RETURN type::record($table, $clean_id);
 } PERMISSIONS FULL;
 -- Calculate coupling metrics (afferent/efferent coupling, instability)
 -- FIXED: Added missing edge queries for dependents/dependencies
@@ -275,7 +275,7 @@ LET $raw = (SELECT fn::node_info(id) AS node, dependency_depth FROM $min_depths)
 RETURN (SELECT node.id AS id, node.name AS name, node.kind AS kind, node.location AS location, node.language AS language, node.content AS content, node.metadata AS metadata, dependency_depth, $safe_depth AS requested_depth FROM $raw WHERE node != NONE);
 } PERMISSIONS FULL;
 DEFINE FUNCTION fn::node_info($node_id: any) {
-IF $node_id = NONE OR !type::is::record($node_id) { RETURN NONE; };
+IF $node_id = NONE OR !type::is_record($node_id) { RETURN NONE; };
 LET $res = (SELECT <string>id AS id, name, node_type AS kind, language, content, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM ONLY $node_id);
 RETURN $res;
 } PERMISSIONS FULL;
@@ -755,18 +755,18 @@ DEFINE FUNCTION fn::get_complexity_hotspots($project_id: string, $min_complexity
             start_line,
             end_line,
             complexity,
-            (IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END) AS afferent_coupling,
-            (IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) AS efferent_coupling,
+            (IF type::is_number(afferent_coupling) THEN afferent_coupling ELSE 0 END) AS afferent_coupling,
+            (IF type::is_number(efferent_coupling) THEN efferent_coupling ELSE 0 END) AS efferent_coupling,
             (
                 math::floor(
                     (
-                        IF ((IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) + (IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END)) > 0 {
-                            (IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) / ((IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) + (IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END))
+                        IF ((IF type::is_number(efferent_coupling) THEN efferent_coupling ELSE 0 END) + (IF type::is_number(afferent_coupling) THEN afferent_coupling ELSE 0 END)) > 0 {
+                            (IF type::is_number(efferent_coupling) THEN efferent_coupling ELSE 0 END) / ((IF type::is_number(efferent_coupling) THEN efferent_coupling ELSE 0 END) + (IF type::is_number(afferent_coupling) THEN afferent_coupling ELSE 0 END))
                         } ELSE { 0f }
                     ) * 10000f
                 ) / 10000f
             ) AS instability,
-            complexity * ((IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END) + 1) AS risk_score
+            complexity * ((IF type::is_number(afferent_coupling) THEN afferent_coupling ELSE 0 END) + 1) AS risk_score
         FROM $with_coupling
         ORDER BY risk_score DESC
         LIMIT $safe_limit;
@@ -835,7 +835,7 @@ DEFINE TABLE edges TYPE NORMAL SCHEMAFULL COMMENT 'Code relationships (Calls, Im
 DEFINE FIELD created_at ON edges TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
 DEFINE FIELD edge_type ON edges TYPE string PERMISSIONS FULL;
 DEFINE FIELD from ON edges TYPE record<nodes> PERMISSIONS FULL;
-DEFINE FIELD metadata ON edges FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+DEFINE FIELD metadata ON edges TYPE option<object> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD to ON edges TYPE record<nodes> PERMISSIONS FULL;
 DEFINE FIELD weight ON edges TYPE float DEFAULT 1f ASSERT $value > 0f PERMISSIONS FULL;
 DEFINE FIELD project_id ON edges TYPE option<string> PERMISSIONS FULL;
@@ -881,8 +881,8 @@ DEFINE INDEX idx_file_metadata_project ON file_metadata FIELDS project_id CONCUR
 
 DEFINE TABLE metadata TYPE NORMAL SCHEMAFULL PERMISSIONS FULL;
 
-DEFINE FIELD `value` ON metadata FLEXIBLE TYPE option<string | number | bool | object | array> PERMISSIONS FULL;
-DEFINE FIELD `value`[*] ON metadata FLEXIBLE TYPE any PERMISSIONS FULL;
+DEFINE FIELD `value` ON metadata TYPE option<string | number | bool | object | array> FLEXIBLE PERMISSIONS FULL;
+DEFINE FIELD `value`[*] ON metadata TYPE any PERMISSIONS FULL;
 DEFINE FIELD key ON metadata TYPE string PERMISSIONS FULL;
 DEFINE FIELD updated_at ON metadata TYPE datetime VALUE time::now() PERMISSIONS FULL;
 
@@ -921,7 +921,7 @@ DEFINE FIELD embedding_model ON nodes TYPE option<string> DEFAULT 'jina-embeddin
 DEFINE FIELD end_line ON nodes TYPE option<int> PERMISSIONS FULL;
 DEFINE FIELD file_path ON nodes TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD language ON nodes TYPE option<string> PERMISSIONS FULL;
-DEFINE FIELD metadata ON nodes FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+DEFINE FIELD metadata ON nodes TYPE option<object> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD name ON nodes TYPE string PERMISSIONS FULL;
 DEFINE FIELD node_type ON nodes TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD organization_id ON nodes TYPE option<string> PERMISSIONS FULL;
@@ -930,7 +930,7 @@ DEFINE FIELD repository_url ON nodes TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD start_line ON nodes TYPE option<int> PERMISSIONS FULL;
 DEFINE FIELD updated_at ON nodes TYPE datetime VALUE time::now() PERMISSIONS FULL;
 
-DEFINE INDEX idx_nodes_content_search ON nodes FIELDS content SEARCH ANALYZER code_analyzer BM25(1.2,0.75) DOC_IDS_ORDER 100 DOC_LENGTHS_ORDER 100 POSTINGS_ORDER 100 TERMS_ORDER 100 DOC_IDS_CACHE 100 DOC_LENGTHS_CACHE 100 POSTINGS_CACHE 100 TERMS_CACHE 100 CONCURRENTLY;
+DEFINE INDEX idx_nodes_content_search ON nodes FIELDS content FULLTEXT ANALYZER code_analyzer BM25(1.2,0.75) CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_384 ON nodes FIELDS embedding_384 HNSW DIMENSION 384 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_768 ON nodes FIELDS embedding_768 HNSW DIMENSION 768 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
 DEFINE INDEX idx_nodes_embedding_1024 ON nodes FIELDS embedding_1024 HNSW DIMENSION 1024 DIST COSINE TYPE F32 EFC 150 M 12 CONCURRENTLY;
@@ -945,7 +945,7 @@ DEFINE INDEX idx_nodes_project_file ON nodes FIELDS project_id, file_path CONCUR
 DEFINE INDEX idx_nodes_file_type ON nodes FIELDS file_path, node_type CONCURRENTLY;
 DEFINE INDEX idx_nodes_language ON nodes FIELDS language CONCURRENTLY;
 DEFINE INDEX idx_nodes_name ON nodes FIELDS name CONCURRENTLY;
-DEFINE INDEX idx_nodes_name_search ON nodes FIELDS name SEARCH ANALYZER code_analyzer BM25(1.2,0.75) DOC_IDS_ORDER 100 DOC_LENGTHS_ORDER 100 POSTINGS_ORDER 100 TERMS_ORDER 100 DOC_IDS_CACHE 100 DOC_LENGTHS_CACHE 100 POSTINGS_CACHE 100 TERMS_CACHE 100 CONCURRENTLY;
+DEFINE INDEX idx_nodes_name_search ON nodes FIELDS name FULLTEXT ANALYZER code_analyzer BM25(1.2,0.75) CONCURRENTLY;
 DEFINE INDEX idx_nodes_project ON nodes FIELDS project_id CONCURRENTLY;
 DEFINE INDEX idx_nodes_project_type ON nodes FIELDS project_id, node_type CONCURRENTLY;
 DEFINE INDEX idx_nodes_type ON nodes FIELDS node_type CONCURRENTLY;
@@ -963,7 +963,7 @@ DEFINE FIELD domain ON project_metadata TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD edge_count ON project_metadata TYPE int DEFAULT 0 PERMISSIONS FULL;
 DEFINE FIELD file_count ON project_metadata TYPE int DEFAULT 0 PERMISSIONS FULL;
 DEFINE FIELD last_analyzed ON project_metadata TYPE option<datetime> PERMISSIONS FULL;
-DEFINE FIELD metadata ON project_metadata FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+DEFINE FIELD metadata ON project_metadata TYPE option<object> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD name ON project_metadata TYPE string PERMISSIONS FULL;
 DEFINE FIELD node_count ON project_metadata TYPE int DEFAULT 0 PERMISSIONS FULL;
 DEFINE FIELD organization_id ON project_metadata TYPE option<string> PERMISSIONS FULL;
@@ -1020,7 +1020,7 @@ DEFINE FIELD embedding_4096 ON symbol_embeddings TYPE option<array<float>> ASSER
 DEFINE FIELD embedding_4096[*] ON symbol_embeddings TYPE float PERMISSIONS FULL;
 DEFINE FIELD embedding_model ON symbol_embeddings TYPE string DEFAULT 'jina-embeddings-v4' PERMISSIONS FULL;
 DEFINE FIELD last_computed_at ON symbol_embeddings TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
-DEFINE FIELD metadata ON symbol_embeddings FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+DEFINE FIELD metadata ON symbol_embeddings TYPE option<object> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD node_id ON symbol_embeddings TYPE option<record<nodes>> PERMISSIONS FULL;
 DEFINE FIELD normalized_symbol ON symbol_embeddings TYPE string PERMISSIONS FULL;
 DEFINE FIELD organization_id ON symbol_embeddings TYPE option<string> PERMISSIONS FULL;

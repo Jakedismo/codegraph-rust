@@ -1,15 +1,15 @@
 // ABOUTME: Implements a high-performance async Language Server Protocol client
 // ABOUTME: Provides pipelined request handling and concurrent file processing
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use codegraph_core::{CodeNode, EdgeRelationship};
 use dashmap::DashMap;
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
 use serde_json::Value as JsonValue;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
@@ -122,15 +122,15 @@ impl LspClient {
             .kill_on_drop(true)
             .spawn()?;
 
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow!("missing stdin"))?;
+        let mut stdin = child.stdin.take().ok_or_else(|| anyhow!("missing stdin"))?;
         let stdout = child
             .stdout
             .take()
             .ok_or_else(|| anyhow!("missing stdout"))?;
-        let stderr = child.stderr.take().ok_or_else(|| anyhow!("missing stderr"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow!("missing stderr"))?;
 
         let (tx, mut rx) = mpsc::channel::<LspRequest>(100);
         let pending_requests = Arc::new(DashMap::<u64, oneshot::Sender<Result<JsonValue>>>::new());
@@ -180,7 +180,7 @@ impl LspClient {
                 content_length_buf.clear();
                 // Read headers
                 let mut content_length: Option<usize> = None;
-                
+
                 loop {
                     if reader.read_line(&mut content_length_buf).await.unwrap_or(0) == 0 {
                         return; // EOF
@@ -189,7 +189,7 @@ impl LspClient {
                     if line.is_empty() {
                         break; // End of headers
                     }
-                    
+
                     let lower = line.to_ascii_lowercase();
                     if let Some(rest) = lower.strip_prefix("content-length:") {
                         content_length = rest.trim().parse::<usize>().ok();
@@ -235,7 +235,9 @@ impl LspClient {
             let mut reader = BufReader::new(stderr);
             let mut line = String::new();
             while let Ok(n) = reader.read_line(&mut line).await {
-                if n == 0 { break; }
+                if n == 0 {
+                    break;
+                }
                 // debug!("LSP stderr: {}", line.trim());
                 line.clear();
             }
@@ -271,14 +273,17 @@ impl LspClient {
     pub async fn request(&self, method: &str, params: JsonValue) -> Result<JsonValue> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
-        
+
         self.pending_requests.insert(id, tx);
-        
-        self.tx.send(LspRequest::Request {
-            id,
-            method: method.to_string(),
-            params,
-        }).await.map_err(|_| anyhow!("LSP server channel closed"))?;
+
+        self.tx
+            .send(LspRequest::Request {
+                id,
+                method: method.to_string(),
+                params,
+            })
+            .await
+            .map_err(|_| anyhow!("LSP server channel closed"))?;
 
         // 30s timeout for individual requests
         match tokio::time::timeout(Duration::from_secs(30), rx).await {
@@ -291,10 +296,13 @@ impl LspClient {
     }
 
     pub async fn notify(&self, method: &str, params: JsonValue) -> Result<()> {
-        self.tx.send(LspRequest::Notify {
-            method: method.to_string(),
-            params,
-        }).await.map_err(|_| anyhow!("LSP server channel closed"))?;
+        self.tx
+            .send(LspRequest::Notify {
+                method: method.to_string(),
+                params,
+            })
+            .await
+            .map_err(|_| anyhow!("LSP server channel closed"))?;
         Ok(())
     }
 }
@@ -314,7 +322,7 @@ pub fn enrich_nodes_and_edges_with_lsp(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    
+
     rt.block_on(async {
         enrich_async(
             server_path,
@@ -342,7 +350,8 @@ async fn enrich_async(
     nodes: &mut [CodeNode],
     edges: &mut [EdgeRelationship],
 ) -> Result<LspEnrichmentStats> {
-    let project_root = std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
+    let project_root =
+        std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
     let root_uri = Url::from_directory_path(&project_root)
         .map_err(|_| anyhow::anyhow!("failed to create file URI"))?
         .to_string();
@@ -361,7 +370,9 @@ async fn enrich_async(
         let line0 = node.location.line.saturating_sub(1);
         for key in normalized_file_keys(&project_root, Path::new(&file)) {
             nodes_by_file_line_name.insert((key.clone(), line0, node.name.to_string()), idx);
-            nodes_by_file_line.entry((key.clone(), line0)).or_insert(idx);
+            nodes_by_file_line
+                .entry((key.clone(), line0))
+                .or_insert(idx);
             files_with_nodes.insert(key);
         }
     }
@@ -377,9 +388,7 @@ async fn enrich_async(
     let mut files_to_process: Vec<PathBuf> = Vec::new();
     for file_path in files {
         let file_keys = normalized_file_keys(&project_root, file_path);
-        let has_nodes = file_keys
-            .iter()
-            .any(|key| files_with_nodes.contains(key));
+        let has_nodes = file_keys.iter().any(|key| files_with_nodes.contains(key));
         let has_edges = file_keys
             .iter()
             .any(|key| def_edges_by_file.contains_key(key));
@@ -390,7 +399,10 @@ async fn enrich_async(
     }
 
     let total_files = files_to_process.len();
-    info!("🧠 LSP Analysis: Processing {} files concurrently", total_files);
+    info!(
+        "🧠 LSP Analysis: Processing {} files concurrently",
+        total_files
+    );
 
     // Pre-collect edge spans to avoid borrowing `edges` inside the async block
     let mut file_edge_spans: std::collections::HashMap<String, Vec<(usize, u32)>> =
@@ -415,35 +427,43 @@ async fn enrich_async(
             let project_root = project_root.clone();
             let language_id = language_id.to_string();
             let file_edge_spans = file_edge_spans.clone();
-            
+
             async move {
                 let abs_path = absolute_file_path(&project_root, &file_path);
-                let Ok(content) = tokio::fs::read_to_string(&abs_path).await else { return Ok(None) };
+                let Ok(content) = tokio::fs::read_to_string(&abs_path).await else {
+                    return Ok(None);
+                };
                 let file_keys = normalized_file_keys(&project_root, &file_path);
-                
-                let Ok(uri) = Url::from_file_path(&abs_path) else { return Ok(None) };
+
+                let Ok(uri) = Url::from_file_path(&abs_path) else {
+                    return Ok(None);
+                };
                 let uri_str = uri.to_string();
-                
+
                 let pos_index = LspPositionIndex::new(&content);
 
                 // Open
-                client.notify(
-                    "textDocument/didOpen",
-                    serde_json::json!({
-                        "textDocument": {
-                            "uri": uri_str,
-                            "languageId": language_id,
-                            "version": 1,
-                            "text": content
-                        }
-                    })
-                ).await?;
+                client
+                    .notify(
+                        "textDocument/didOpen",
+                        serde_json::json!({
+                            "textDocument": {
+                                "uri": uri_str,
+                                "languageId": language_id,
+                                "version": 1,
+                                "text": content
+                            }
+                        }),
+                    )
+                    .await?;
 
                 // Symbols
-                let symbols = client.request(
-                    "textDocument/documentSymbol",
-                    serde_json::json!({ "textDocument": { "uri": uri_str } }),
-                ).await?;
+                let symbols = client
+                    .request(
+                        "textDocument/documentSymbol",
+                        serde_json::json!({ "textDocument": { "uri": uri_str } }),
+                    )
+                    .await?;
 
                 // Definitions
                 let mut def_results = Vec::new();
@@ -463,7 +483,7 @@ async fn enrich_async(
                                         "position": { "line": pos.line, "character": pos.character }
                                     })
                                 ).await;
-                                
+
                                 if let Ok(def) = def_response {
                                     def_results.push((edge_idx, def));
                                 }
@@ -473,10 +493,12 @@ async fn enrich_async(
                 }
 
                 // Close (fire and forget)
-                let _ = client.notify(
-                    "textDocument/didClose",
-                    serde_json::json!({ "textDocument": { "uri": uri_str } }),
-                ).await;
+                let _ = client
+                    .notify(
+                        "textDocument/didClose",
+                        serde_json::json!({ "textDocument": { "uri": uri_str } }),
+                    )
+                    .await;
 
                 Ok::<_, anyhow::Error>(Some((file_keys, symbols, def_results)))
             }
@@ -486,7 +508,7 @@ async fn enrich_async(
     let mut stats = LspEnrichmentStats::default();
     let mut results = stream;
     let mut processed = 0;
-    
+
     // Process results as they come in and mutate state
     while let Some(res) = results.next().await {
         if let Ok(Some((file_keys, symbols, def_results))) = res {
@@ -502,17 +524,26 @@ async fn enrich_async(
                 }
                 if let Some(node_idx) = node_idx {
                     let node = &mut nodes[node_idx];
-                    node.metadata.attributes.insert("qualified_name".to_string(), sym.qualified_name.clone());
-                    node.metadata.attributes.insert("analyzer".to_string(), "lsp_symbols".to_string());
-                    node.metadata.attributes.insert("analyzer_confidence".to_string(), "1.0".to_string());
+                    node.metadata
+                        .attributes
+                        .insert("qualified_name".to_string(), sym.qualified_name.clone());
+                    node.metadata
+                        .attributes
+                        .insert("analyzer".to_string(), "lsp_symbols".to_string());
+                    node.metadata
+                        .attributes
+                        .insert("analyzer_confidence".to_string(), "1.0".to_string());
                     stats.nodes_enriched += 1;
                 }
             }
 
             // 2. Process Definitions
             for (edge_idx, def) in def_results {
-                let Some((target_file, target_line0)) = extract_first_definition_location(&def) else { continue; };
-                
+                let Some((target_file, target_line0)) = extract_first_definition_location(&def)
+                else {
+                    continue;
+                };
+
                 let target_idx = nodes_by_file_line
                     .get(&(target_file.clone(), target_line0))
                     .copied()
@@ -524,20 +555,28 @@ async fn enrich_async(
 
                 if let Some(target_idx) = target_idx {
                     let target = &nodes[target_idx];
-                    let target_name = target.metadata.attributes.get("qualified_name")
+                    let target_name = target
+                        .metadata
+                        .attributes
+                        .get("qualified_name")
                         .cloned()
                         .unwrap_or_else(|| target.name.to_string());
-                    
+
                     let edge = &mut edges[edge_idx];
                     edge.to = target_name;
-                    edge.metadata.insert("analyzer".to_string(), "lsp_definition".to_string());
-                    edge.metadata.insert("analyzer_confidence".to_string(), "1.0".to_string());
+                    edge.metadata
+                        .insert("analyzer".to_string(), "lsp_definition".to_string());
+                    edge.metadata
+                        .insert("analyzer_confidence".to_string(), "1.0".to_string());
                     stats.edges_resolved += 1;
                 }
             }
             processed += 1;
             if processed % 10 == 0 {
-                 info!("🧠 LSP progress: {}/{} files processed", processed, total_files);
+                info!(
+                    "🧠 LSP progress: {}/{} files processed",
+                    processed, total_files
+                );
             }
         }
     }
@@ -577,7 +616,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 
 fn extract_first_definition_location(def: &JsonValue) -> Option<(String, u32)> {
     let loc = if let Some(arr) = def.as_array() {
-        arr.first()? 
+        arr.first()?
     } else {
         def
     };

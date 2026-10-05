@@ -83,13 +83,18 @@ mod tests {
 
     #[test]
     fn primer_appended_for_architecture() {
-        std::env::set_var("CODEGRAPH_ARCH_PRIMER", "layers: api -> core");
+        if !test_env::run(
+            concat!(module_path!(), "::primer_appended_for_architecture"),
+            &[("CODEGRAPH_ARCH_PRIMER", Some("layers: api -> core"))],
+        ) {
+            return;
+        }
+
         let plugin =
             TierAwarePromptPlugin::new(AnalysisType::ArchitectureAnalysis, ContextTier::Massive);
         let prompt = plugin.get_system_prompt().unwrap();
         assert!(prompt.contains("[Architecture Primer]"));
         assert!(prompt.contains("layers: api -> core"));
-        std::env::remove_var("CODEGRAPH_ARCH_PRIMER");
     }
 
     #[test]
@@ -97,4 +102,12 @@ mod tests {
         let plugin = TierAwarePromptPlugin::new(AnalysisType::CodeSearch, ContextTier::Medium);
         assert_eq!(plugin.get_max_tokens(), 4096);
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

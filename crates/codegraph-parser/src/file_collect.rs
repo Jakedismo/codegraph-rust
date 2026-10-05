@@ -169,11 +169,7 @@ where
         }
     }
 
-    if added {
-        builder.build().ok()
-    } else {
-        None
-    }
+    if added { builder.build().ok() } else { None }
 }
 
 /// Get supported file extensions for specified languages

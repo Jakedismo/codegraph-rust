@@ -1,9 +1,7 @@
 // ABOUTME: Adapter for creating Rig providers from environment variables
 // ABOUTME: Maps CODEGRAPH_LLM_PROVIDER to appropriate Rig provider clients
 
-use anyhow::{anyhow, Result};
-#[allow(unused_imports)] // Used when provider features are enabled
-use rig::client::ProviderClient;
+use anyhow::{Result, anyhow};
 use std::env;
 
 /// Supported LLM providers for Rig agents
@@ -121,39 +119,40 @@ pub struct RigLLMAdapter;
 impl RigLLMAdapter {
     /// Create OpenAI client from environment
     #[cfg(feature = "openai")]
-    pub fn openai_client() -> rig::providers::openai::Client {
-        rig::providers::openai::Client::from_env()
+    pub fn openai_client() -> Result<rig::providers::openai::OpenAI> {
+        Ok(rig::providers::openai::OpenAI::from_env()?)
     }
 
     /// Create Anthropic client from environment
     #[cfg(feature = "anthropic")]
-    pub fn anthropic_client() -> rig::providers::anthropic::Client {
-        rig::providers::anthropic::Client::from_env()
+    pub fn anthropic_client() -> Result<rig::providers::anthropic::Anthropic> {
+        Ok(rig::providers::anthropic::Anthropic::from_env()?)
     }
 
     /// Create Ollama client from environment
     #[cfg(feature = "ollama")]
-    pub fn ollama_client() -> rig::providers::ollama::Client {
-        // Set OLLAMA_API_BASE_URL if not set (rig expects this specific env var)
-        if env::var("OLLAMA_API_BASE_URL").is_err() {
-            let base_url = env::var("OLLAMA_API_URL")
-                .or_else(|_| env::var("OLLAMA_HOST"))
-                .unwrap_or_else(|_| "http://localhost:11434".to_string());
-            env::set_var("OLLAMA_API_BASE_URL", &base_url);
+    pub fn ollama_client() -> Result<rig::providers::ollama::Ollama> {
+        let base_url = env::var("OLLAMA_API_BASE_URL")
+            .or_else(|_| env::var("OLLAMA_API_URL"))
+            .or_else(|_| env::var("OLLAMA_HOST"))
+            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let mut config = rig::providers::ollama::OllamaConfig::new().with_base_url(base_url);
+        if let Ok(api_key) = env::var("OLLAMA_API_KEY") {
+            config = config.with_api_key(api_key);
         }
-        rig::providers::ollama::Client::from_env()
+        Ok(config.client())
     }
 
     /// Create xAI client from environment (native rig xAI provider)
     #[cfg(feature = "xai")]
-    pub fn xai_client() -> rig::providers::xai::Client {
-        rig::providers::xai::Client::from_env()
+    pub fn xai_client() -> Result<rig::providers::openai::OpenAI> {
+        Ok(rig::providers::xai::from_env()?)
     }
 
     /// Create LM Studio client (uses OpenAI-compatible API)
-    /// Sets OPENAI_API_KEY and OPENAI_BASE_URL for rig's OpenAI client
+    /// Uses explicit client settings without changing the process environment.
     #[cfg(feature = "openai")]
-    pub fn lmstudio_client() -> rig::providers::openai::Client {
+    pub fn lmstudio_client() -> Result<rig::providers::openai::OpenAI> {
         let base_url = env::var("LMSTUDIO_URL")
             .or_else(|_| env::var("CODEGRAPH_LMSTUDIO_URL"))
             .unwrap_or_else(|_| "http://localhost:1234/v1".to_string());
@@ -161,26 +160,24 @@ impl RigLLMAdapter {
         // LM Studio doesn't require API key but OpenAI client needs something
         let api_key = env::var("LMSTUDIO_API_KEY").unwrap_or_else(|_| "lm-studio".to_string());
 
-        // Set environment variables for rig's from_env()
-        env::set_var("OPENAI_API_KEY", &api_key);
-        env::set_var("OPENAI_BASE_URL", &base_url);
-
-        rig::providers::openai::Client::from_env()
+        Ok(rig::providers::openai::OpenAIConfig::new(api_key)
+            .with_base_url(base_url)
+            .with_route(rig::providers::openai::wire::Route::Chat)
+            .client())
     }
 
     /// Create OpenAI-compatible client with custom base URL
-    /// Sets OPENAI_API_KEY and OPENAI_BASE_URL for rig's OpenAI client
+    /// Uses explicit client settings without changing the process environment.
     #[cfg(feature = "openai")]
-    pub fn openai_compatible_client(base_url: &str) -> rig::providers::openai::Client {
+    pub fn openai_compatible_client(base_url: &str) -> Result<rig::providers::openai::OpenAI> {
         let api_key = env::var("OPENAI_COMPATIBLE_API_KEY")
             .or_else(|_| env::var("OPENAI_API_KEY"))
             .unwrap_or_else(|_| "no-key".to_string());
 
-        // Set environment variables for rig's from_env()
-        env::set_var("OPENAI_API_KEY", &api_key);
-        env::set_var("OPENAI_BASE_URL", base_url);
-
-        rig::providers::openai::Client::from_env()
+        Ok(rig::providers::openai::OpenAIConfig::new(api_key)
+            .with_base_url(base_url)
+            .with_route(rig::providers::openai::wire::Route::Chat)
+            .client())
     }
 
     /// Get the detected provider
@@ -238,13 +235,34 @@ mod tests {
     #[test]
     fn test_default_max_turns() {
         // Without env var, should return 8 (conservative default)
-        std::env::remove_var("CODEGRAPH_AGENT_MAX_STEPS");
+        if !test_env::run(
+            concat!(module_path!(), "::test_default_max_turns"),
+            &[("CODEGRAPH_AGENT_MAX_STEPS", None)],
+        ) {
+            return;
+        }
         assert_eq!(get_max_turns(), 8);
     }
 
     #[test]
     fn test_default_context_window() {
-        std::env::remove_var("CODEGRAPH_LLM_CONTEXT_WINDOW");
+        if !test_env::run(
+            concat!(module_path!(), "::test_default_context_window"),
+            &[
+                ("CODEGRAPH_CONTEXT_WINDOW", None),
+                ("CODEGRAPH_LLM_CONTEXT_WINDOW", None),
+            ],
+        ) {
+            return;
+        }
         assert_eq!(get_context_window(), 128_000);
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

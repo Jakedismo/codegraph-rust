@@ -1,10 +1,10 @@
 // ABOUTME: Factory for creating reranker instances based on configuration
 // ABOUTME: Supports Jina API and Ollama chat-based reranking providers
+use super::Reranker;
 #[cfg(feature = "jina")]
 use super::jina::JinaReranker;
 #[cfg(feature = "ollama")]
 use super::ollama::OllamaReranker;
-use super::Reranker;
 #[cfg(any(feature = "jina", feature = "ollama"))]
 use anyhow::Context;
 use anyhow::Result;
@@ -131,7 +131,12 @@ mod tests {
 
     #[test]
     fn test_create_reranker_from_env() {
-        std::env::set_var("CODEGRAPH_RERANK_PROVIDER", "none");
+        if !test_env::run(
+            concat!(module_path!(), "::test_create_reranker_from_env"),
+            &[("CODEGRAPH_RERANK_PROVIDER", Some("none"))],
+        ) {
+            return;
+        }
 
         let config = RerankConfig {
             provider: RerankProvider::Jina, // Will be overridden by env var
@@ -142,7 +147,13 @@ mod tests {
 
         let result = create_reranker_from_env(&config).unwrap();
         assert!(result.is_none());
-
-        std::env::remove_var("CODEGRAPH_RERANK_PROVIDER");
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

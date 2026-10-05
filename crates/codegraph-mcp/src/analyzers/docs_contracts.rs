@@ -228,11 +228,15 @@ mod tests {
             .expect("link should succeed");
 
         assert_eq!(stats.document_nodes_added, 2);
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("documents".to_string())));
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("specifies".to_string())));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("documents".to_string()))
+        );
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("specifies".to_string()))
+        );
     }
 }

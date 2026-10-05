@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-CodeGraph is a Rust 2021 workspace that indexes code into a SurrealDB knowledge graph and exposes MCP tools. Source lives in `crates/codegraph-*/src/`: `core` holds shared types/configuration, `parser` extracts syntax, `mcp` orchestrates indexing, `graph` handles storage, and `vector` provides embeddings/search. The CLI is `crates/codegraph-mcp-server/src/bin/codegraph.rs`; agent backends live in `codegraph-mcp-rig` and `codegraph-mcp-autoagents`.
+CodeGraph is a Rust 2024 workspace (Rust 1.95 or newer) that indexes code into a SurrealDB knowledge graph and exposes MCP tools. Source lives in `crates/codegraph-*/src/`: `core` holds shared types/configuration, `parser` extracts syntax, `mcp` orchestrates indexing, `graph` handles storage, and `vector` provides embeddings/search. The CLI is `crates/codegraph-mcp-server/src/bin/codegraph.rs`; agent backends live in `codegraph-mcp-rig` and `codegraph-mcp-autoagents`.
 
 Unit tests sit alongside modules; integration tests use each crate's `tests/`. Schemas live in `schema/`, configuration examples in `config/`, documentation in `docs/`, and images in `docs/assets/`.
 

@@ -372,26 +372,38 @@ impl AdvancedEmbeddingGenerator {
         #[cfg(all(feature = "local-embeddings", feature = "openai"))]
         {
             if config.prefer_local_first {
-                if let Ok(local) = make_local(&config).await {
-                    dimension_hint = local.embedding_dimension();
-                    primary = Some(local);
-                    if let Ok(openai) = make_openai(&config) {
-                        fallbacks.push(openai);
+                match make_local(&config).await {
+                    Ok(local) => {
+                        dimension_hint = local.embedding_dimension();
+                        primary = Some(local);
+                        if let Ok(openai) = make_openai(&config) {
+                            fallbacks.push(openai);
+                        }
                     }
-                } else if let Ok(openai) = make_openai(&config) {
-                    dimension_hint = openai.embedding_dimension();
-                    primary = Some(openai);
+                    _ => match make_openai(&config) {
+                        Ok(openai) => {
+                            dimension_hint = openai.embedding_dimension();
+                            primary = Some(openai);
+                        }
+                        _ => {}
+                    },
                 }
             } else {
-                if let Ok(openai) = make_openai(&config) {
-                    dimension_hint = openai.embedding_dimension();
-                    primary = Some(openai);
-                    if let Ok(local) = make_local(&config).await {
-                        fallbacks.push(local);
+                match make_openai(&config) {
+                    Ok(openai) => {
+                        dimension_hint = openai.embedding_dimension();
+                        primary = Some(openai);
+                        if let Ok(local) = make_local(&config).await {
+                            fallbacks.push(local);
+                        }
                     }
-                } else if let Ok(local) = make_local(&config).await {
-                    dimension_hint = local.embedding_dimension();
-                    primary = Some(local);
+                    _ => match make_local(&config).await {
+                        Ok(local) => {
+                            dimension_hint = local.embedding_dimension();
+                            primary = Some(local);
+                        }
+                        _ => {}
+                    },
                 }
             }
         }

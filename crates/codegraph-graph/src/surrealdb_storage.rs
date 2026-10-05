@@ -4,15 +4,16 @@ use chrono::{DateTime, Utc};
 use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId, Result};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
+use surrealdb::types::SurrealValue;
 use surrealdb::{
+    Error as SurrealError, Surreal,
     engine::any::Any,
     opt::auth::{Database, Root},
-    Error as SurrealError, Surreal,
 };
 use tracing::{debug, info, warn};
 
@@ -118,14 +119,18 @@ impl SurrealDbStorage {
             let auth_result = if config.connection.starts_with("wss://") {
                 // Prefer database-scoped auth for hosted / cloud setups
                 db.signin(Database {
-                    namespace: &config.namespace,
-                    database: &config.database,
-                    username,
-                    password,
+                    namespace: config.namespace.clone(),
+                    database: config.database.clone(),
+                    username: username.clone(),
+                    password: password.clone(),
                 })
                 .await
             } else {
-                db.signin(Root { username, password }).await
+                db.signin(Root {
+                    username: username.clone(),
+                    password: password.clone(),
+                })
+                .await
             };
 
             auth_result
@@ -311,7 +316,7 @@ impl SurrealDbStorage {
             .await
             .map_err(|e| CodeGraphError::Database(format!("HNSW search failed: {}", e)))?;
 
-        #[derive(Deserialize)]
+        #[derive(Serialize, Deserialize, surrealdb::types::SurrealValue)]
         struct SearchResult {
             id: String,
             score: f64,
@@ -398,7 +403,7 @@ impl SurrealDbStorage {
             .await
             .map_err(|e| CodeGraphError::Database(format!("Filtered HNSW search failed: {}", e)))?;
 
-        #[derive(Deserialize)]
+        #[derive(Serialize, Deserialize, surrealdb::types::SurrealValue)]
         struct SearchResult {
             id: String,
             score: f64,
@@ -429,10 +434,13 @@ impl SurrealDbStorage {
         if self.config.cache_enabled {
             for id_str in ids {
                 if let Ok(id) = NodeId::parse_str(id_str) {
-                    if let Some(cached) = self.node_cache.get(&id) {
-                        nodes.push(cached.clone());
-                    } else {
-                        missing_ids.push(id_str.clone());
+                    match self.node_cache.get(&id) {
+                        Some(cached) => {
+                            nodes.push(cached.clone());
+                        }
+                        _ => {
+                            missing_ids.push(id_str.clone());
+                        }
                     }
                 }
             }
@@ -474,7 +482,8 @@ impl SurrealDbStorage {
         let metadata = if node.metadata.attributes.is_empty() {
             None
         } else {
-            let metadata_json = serde_json::to_value(&node.metadata.attributes).unwrap_or(JsonValue::Null);
+            let metadata_json =
+                serde_json::to_value(&node.metadata.attributes).unwrap_or(JsonValue::Null);
             let compressed = codegraph_core::compress_json(&metadata_json);
             Some(JsonValue::String(compressed))
         };
@@ -502,9 +511,10 @@ impl SurrealDbStorage {
 
         let embedding_model = node.metadata.attributes.get("embedding_model").cloned();
 
-        let content = node.content.as_ref().map(|c| {
-            codegraph_core::compress_to_string(&c)
-        });
+        let content = node
+            .content
+            .as_ref()
+            .map(|c| codegraph_core::compress_to_string(&c));
 
         Ok(SurrealNodeRecord {
             id: node.id.to_string(),
@@ -798,7 +808,7 @@ impl SurrealDbStorage {
             })?;
 
             let query = format!(
-                "UPDATE type::thing('nodes', $id) SET {} = $embedding, updated_at = time::now();",
+                "UPDATE type::record('nodes', $id) SET {} = $embedding, updated_at = time::now();",
                 column
             );
 
@@ -930,7 +940,7 @@ impl SurrealDbStorage {
 
     pub async fn upsert_project_metadata(&self, record: ProjectMetadataRecord) -> Result<()> {
         let query = r#"
-            UPSERT type::thing('project_metadata', $id) SET
+            UPSERT type::record('project_metadata', $id) SET
                 project_id = $pid,
                 name = $name,
                 root_path = $root,
@@ -978,7 +988,7 @@ impl SurrealDbStorage {
     /// Upsert single file metadata record
     pub async fn upsert_file_metadata(&self, record: &FileMetadataRecord) -> Result<()> {
         let query = r#"
-            UPSERT type::thing('file_metadata', $id) SET
+            UPSERT type::record('file_metadata', $id) SET
                 file_path = $file_path,
                 project_id = $project_id,
                 content_hash = $content_hash,
@@ -1029,7 +1039,7 @@ impl SurrealDbStorage {
         let query = r#"
             LET $batch = $data;
             FOR $doc IN $batch {
-                UPSERT type::thing('file_metadata', $doc.id) SET
+                UPSERT type::record('file_metadata', $doc.id) SET
                     file_path = $doc.file_path,
                     project_id = $doc.project_id,
                     content_hash = $doc.content_hash,
@@ -1484,8 +1494,7 @@ impl SurrealDbStorage {
         let edges_deleted = orphan_edges_from.len() + orphan_edges_to.len();
 
         // Delete symbol_embeddings where node doesn't exist
-        let orphan_symbols_query =
-            "DELETE symbol_embeddings WHERE node_id NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
+        let orphan_symbols_query = "DELETE symbol_embeddings WHERE node_id NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
         let mut result = self.db.query(orphan_symbols_query).await.map_err(|e| {
             CodeGraphError::Database(format!("Failed to delete orphan symbol embeddings: {}", e))
         })?;
@@ -1536,7 +1545,7 @@ impl GraphStore for SurrealDbStorage {
         let node_id = id.to_string();
         let result: Option<HashMap<String, JsonValue>> = self
             .db
-            .select(("nodes", &node_id))
+            .select(("nodes", node_id.as_str()))
             .await
             .map_err(|e| CodeGraphError::Database(format!("Failed to get node: {}", e)))?;
 
@@ -1563,7 +1572,7 @@ impl GraphStore for SurrealDbStorage {
 
         let _: Option<HashMap<String, JsonValue>> = self
             .db
-            .update(("nodes", &node_id))
+            .update(("nodes", node_id.as_str()))
             .content(data)
             .await
             .map_err(|e| CodeGraphError::Database(format!("Failed to update node: {}", e)))?;
@@ -1582,7 +1591,7 @@ impl GraphStore for SurrealDbStorage {
         let node_id = id.to_string();
         let _: Option<HashMap<String, JsonValue>> = self
             .db
-            .delete(("nodes", &node_id))
+            .delete(("nodes", node_id.as_str()))
             .await
             .map_err(|e| CodeGraphError::Database(format!("Failed to delete node: {}", e)))?;
 
@@ -1622,7 +1631,11 @@ fn symbol_embedding_record_id(project_id: &str, normalized_symbol: &str) -> Stri
     hasher.update(project_id.as_bytes());
     hasher.update(b":");
     hasher.update(normalized_symbol.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()
 }
 
 pub struct SymbolEmbeddingUpsert<'a> {
@@ -1638,7 +1651,7 @@ pub struct SymbolEmbeddingUpsert<'a> {
     pub metadata: Option<JsonValue>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolEmbeddingRecord {
     pub id: String,
     pub symbol: String,
@@ -1858,11 +1871,15 @@ impl FileMetadataRecord {
         hasher.update(self.project_id.as_bytes());
         hasher.update(b":");
         hasher.update(self.file_path.as_bytes());
-        format!("{:x}", hasher.finalize())
+        hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct SurrealNodeRecord {
     id: String,
     name: String,
@@ -1959,7 +1976,7 @@ pub struct NodeEmbeddingRecord {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkEmbeddingRecord {
     pub id: String,
     pub parent_node: String,
@@ -1990,7 +2007,7 @@ impl ChunkEmbeddingRecord {
         project_id: &str,
     ) -> Self {
         let embedding_vec: Vec<f64> = embedding.iter().map(|&f| f as f64).collect();
-        
+
         // Use Base64 encoding for compression to satisfy String type
         let text_val = codegraph_core::compress_to_string(&text);
 
@@ -2093,7 +2110,11 @@ impl ChunkEmbeddingRecord {
             hasher.update(parent_node.as_bytes());
             hasher.update(b":");
             hasher.update(chunk_index.to_le_bytes());
-            format!("{:x}", hasher.finalize())
+            hasher
+                .finalize()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
         };
 
         Self {
@@ -2120,7 +2141,7 @@ impl ChunkEmbeddingRecord {
 const UPSERT_NODES_QUERY: &str = r#"
 LET $batch = $data;
 FOR $doc IN $batch {
-    UPSERT type::thing('nodes', $doc.id) SET
+    UPSERT type::record('nodes', $doc.id) SET
         name = $doc.name,
         node_type = $doc.node_type,
         language = $doc.language,
@@ -2151,9 +2172,9 @@ FOR $doc IN $batch {
 const UPSERT_EDGES_QUERY: &str = r#"
 LET $batch = $data;
 FOR $doc IN $batch {
-    UPSERT type::thing('edges', $doc.id) SET
-        from = type::thing('nodes', $doc.from),
-        to = type::thing('nodes', $doc.to),
+    UPSERT type::record('edges', $doc.id) SET
+        from = type::record('nodes', $doc.from),
+        to = type::record('nodes', $doc.to),
         edge_type = $doc.edge_type,
         weight = $doc.weight,
         metadata = $doc.metadata,
@@ -2165,9 +2186,9 @@ FOR $doc IN $batch {
 const UPSERT_SYMBOL_EMBEDDINGS_QUERY: &str = r#"
 LET $batch = $data;
 FOR $doc IN $batch {
-    LET $node_rec = if $doc.node_id != NONE { type::thing('nodes', $doc.node_id) } else { NONE };
-    LET $edge_rec = if $doc.source_edge_id != NONE { type::thing('edges', $doc.source_edge_id) } else { NONE };
-    UPSERT type::thing('symbol_embeddings', $doc.id) SET
+    LET $node_rec = if $doc.node_id != NONE { type::record('nodes', $doc.node_id) } else { NONE };
+    LET $edge_rec = if $doc.source_edge_id != NONE { type::record('edges', $doc.source_edge_id) } else { NONE };
+    UPSERT type::record('symbol_embeddings', $doc.id) SET
         symbol = $doc.symbol,
         normalized_symbol = $doc.normalized_symbol,
         project_id = $doc.project_id,
@@ -2189,8 +2210,8 @@ FOR $doc IN $batch {
 const UPSERT_CHUNK_EMBEDDINGS_QUERY: &str = r#"
 LET $batch = $data;
 FOR $doc IN $batch {
-    UPSERT type::thing('chunks', $doc.id) SET
-        parent_node = type::thing('nodes', $doc.parent_node),
+    UPSERT type::record('chunks', $doc.id) SET
+        parent_node = type::record('nodes', $doc.parent_node),
         chunk_index = $doc.chunk_index,
         text = $doc.text,
         project_id = $doc.project_id,
@@ -2210,8 +2231,8 @@ FOR $doc IN $batch {
 
 const INSERT_CHUNK_EMBEDDINGS_QUERY: &str = r#"
 LET $batch = array::map($batch, |$doc| {
-    id: type::thing('chunks', $doc.id),
-    parent_node: type::thing('nodes', $doc.parent_node),
+    id: type::record('chunks', $doc.id),
+    parent_node: type::record('nodes', $doc.parent_node),
     chunk_index: $doc.chunk_index,
     text: $doc.text,
     project_id: $doc.project_id,
@@ -2246,8 +2267,8 @@ RETURN NONE;
 
 const UPSERT_CHUNK_EMBEDDING_SINGLE_QUERY: &str = r#"
 LET $doc = $doc;
-UPSERT type::thing('chunks', $doc.id) SET
-    parent_node = type::thing('nodes', $doc.parent_node),
+UPSERT type::record('chunks', $doc.id) SET
+    parent_node = type::record('nodes', $doc.parent_node),
     chunk_index = $doc.chunk_index,
     text = $doc.text,
     project_id = $doc.project_id,
@@ -2368,7 +2389,7 @@ mod tests {
                 DEFINE FIELD codegraph_version ON project_metadata TYPE option<string> PERMISSIONS FULL;
                 DEFINE FIELD organization_id ON project_metadata TYPE option<string> PERMISSIONS FULL;
                 DEFINE FIELD domain ON project_metadata TYPE option<string> PERMISSIONS FULL;
-                DEFINE FIELD metadata ON project_metadata FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+                DEFINE FIELD metadata ON project_metadata TYPE option<object> FLEXIBLE PERMISSIONS FULL;
                 DEFINE FIELD created_at ON project_metadata TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
                 DEFINE FIELD updated_at ON project_metadata TYPE datetime VALUE time::now() PERMISSIONS FULL;
             "#,
@@ -2477,3 +2498,11 @@ mod tests {
         );
     }
 }
+
+crate::impl_surreal_serde!(
+    SchemaVersion,
+    SymbolEmbeddingRecord,
+    FileMetadataRecord,
+    SurrealNodeRecord,
+    ChunkEmbeddingRecord
+);

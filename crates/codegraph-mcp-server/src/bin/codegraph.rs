@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::info;
 use tracing_subscriber::{
-    filter::EnvFilter, fmt::writer::BoxMakeWriter, layer::SubscriberExt, Registry,
+    Registry, filter::EnvFilter, fmt::writer::BoxMakeWriter, layer::SubscriberExt,
 };
 
 const DEFAULT_JINA_BATCH_SIZE: usize = 2000;
@@ -502,26 +502,37 @@ impl From<IndexTier> for codegraph_core::config_manager::IndexingTier {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
     // Guidance/hooks must work without valid provider config or any network services.
     if let Commands::Agent { ref action } = cli.command {
-        return agent_cli::run(action, cli.verbose, cli.config.as_deref()).await;
+        // SAFETY: No async runtime or application threads have been started yet.
+        return unsafe { agent_cli::run(action, cli.verbose, cli.config.as_deref()) };
     }
     if let Commands::Hooks { ref action } = cli.command {
         return agent_hooks::run(action);
     }
     if let Some(path) = &cli.config {
-        std::env::set_var(
-            "CODEGRAPH_CONFIG_PATH",
-            path.canonicalize()
-                .with_context(|| format!("Cannot resolve config {}", path.display()))?,
-        );
+        // SAFETY: Process configuration is prepared before starting worker threads.
+        unsafe {
+            std::env::set_var(
+                "CODEGRAPH_CONFIG_PATH",
+                path.canonicalize()
+                    .with_context(|| format!("Cannot resolve config {}", path.display()))?,
+            )
+        };
     }
     // Load .env file if present
-    dotenv::dotenv().ok();
+    // SAFETY: No worker threads exist before the runtime is created.
+    unsafe { codegraph_core::config_manager::ConfigManager::initialize_environment() };
 
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run_cli(cli))
+}
+
+async fn run_cli(cli: Cli) -> Result<()> {
     // Initialize debug logger (enabled with CODEGRAPH_DEBUG=1)
     DebugLogger::init();
 
@@ -833,8 +844,8 @@ async fn handle_start(
             {
                 use axum::Router;
                 use rmcp::transport::streamable_http_server::{
-                    session::local::LocalSessionManager, StreamableHttpServerConfig,
-                    StreamableHttpService,
+                    StreamableHttpServerConfig, StreamableHttpService,
+                    session::local::LocalSessionManager,
                 };
                 use std::sync::Arc;
                 use std::time::Duration;
@@ -935,11 +946,12 @@ async fn handle_start(
                 };
 
                 // Configure HTTP server with SSE streaming
-                let config = StreamableHttpServerConfig {
-                    sse_keep_alive: Some(Duration::from_secs(15)), // Send keep-alive every 15s
-                    stateful_mode: true, // Enable session management + SSE
-                    cancellation_token: tokio_util::sync::CancellationToken::new(),
-                };
+                let config = StreamableHttpServerConfig::default()
+                    .with_allowed_hosts(codegraph_mcp_server::http_config::allowed_http_hosts(
+                        &host,
+                    ))
+                    .with_sse_keep_alive(Some(Duration::from_secs(15)))
+                    .with_legacy_session_mode(true);
 
                 if atty::is(Stream::Stderr) {
                     eprintln!("📡 Configuring StreamableHTTP with SSE keep-alive (15s)");
@@ -2358,7 +2370,7 @@ mod cli_command_tests {
 
 #[cfg(feature = "daemon")]
 async fn handle_daemon_stop(path: PathBuf) -> Result<()> {
-    use nix::sys::signal::{kill, Signal};
+    use nix::sys::signal::{Signal, kill};
     use nix::unistd::Pid;
 
     let project_root = std::fs::canonicalize(&path)
