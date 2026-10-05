@@ -205,6 +205,11 @@ impl WatchSession {
             }
         }
 
+        // Never react to CodeGraph's own state (embedded store, logs, pid file)
+        if path.components().any(|c| c.as_os_str() == ".codegraph") {
+            return false;
+        }
+
         // Check exclude patterns
         for pattern in &self.config.indexer.exclude_patterns {
             if glob_match::glob_match(pattern, &path.to_string_lossy()) {

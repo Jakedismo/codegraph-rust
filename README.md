@@ -284,8 +284,9 @@ make test-llvm
 
 No database setup is needed. Each project gets its own embedded SurrealKV store at
 `<project>/.codegraph/db`, created with the bundled schema the first time you index.
-Only one process can hold a project's store open at a time, so stop a running
-`codegraph start` before running `codegraph index` on the same project.
+Only one process can hold a project's store open at a time. The MCP server opens it on
+its first tool call and keeps it until it exits, so stop a running `codegraph start`
+before running `codegraph index` on the same project, and connect one client per project.
 
 To use a SurrealDB server instead (for example to share one database or to use
 Surreal Cloud), set `CODEGRAPH_SURREALDB_URL` and apply the schema with
@@ -435,7 +436,7 @@ provider = "anthropic"
 model = "claude-sonnet-4"
 
 [database.surrealdb]
-connection = "ws://localhost:3004"   # omit CODEGRAPH_SURREALDB_URL to use the embedded per-project store
+connection = "ws://localhost:3004"   # storage is selected by CODEGRAPH_SURREALDB_URL; unset = embedded per-project store
 namespace = "ouroboros"
 database = "codegraph"
 ```
