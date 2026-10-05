@@ -238,351 +238,7 @@ pub struct ProjectIndexer {
     embedder: codegraph_vector::EmbeddingGenerator,
 }
 
-enum SurrealWriteJob {
-    Nodes(Vec<CodeNode>),
-    Edges(Vec<CodeEdge>),
-    NodeEmbeddings(Vec<NodeEmbeddingRecord>),
-    SymbolEmbeddings(Vec<SymbolEmbeddingRecord>),
-    ChunkEmbeddings(Vec<ChunkEmbeddingRecord>),
-    FileMetadata(Vec<FileMetadataRecord>),
-    DeleteNodesByFile {
-        file_paths: Vec<String>,
-        project_id: String,
-    },
-    ProjectMetadata(ProjectMetadataRecord),
-    Flush(oneshot::Sender<Result<()>>),
-    Shutdown(oneshot::Sender<Result<()>>),
-}
-
-struct SurrealWriterHandle {
-    tx: mpsc::Sender<SurrealWriteJob>,
-    join: JoinHandle<()>,
-}
-
-impl SurrealWriterHandle {
-    fn new(pool: Vec<Arc<TokioMutex<SurrealDbStorage>>>) -> Self {
-        let (tx, mut rx) = mpsc::channel(8);
-        let pool_arc = Arc::new(pool);
-        let join = tokio::spawn(async move {
-            let mut last_error: Option<anyhow::Error> = None;
-            let mut rr: usize = 0;
-            while let Some(job) = rx.recv().await {
-                let pool_len = pool_arc.len().max(1);
-                let storage = pool_arc[rr % pool_len].clone();
-                rr = rr.wrapping_add(1);
-                match job {
-                    SurrealWriteJob::Nodes(nodes) => {
-                        if nodes.is_empty() {
-                            continue;
-                        }
-                        if let Err(err) = {
-                            let mut guard = storage.lock().await;
-                            guard.upsert_nodes_batch(&nodes).await
-                        } {
-                            error!("Surreal node batch failed: {}", err);
-                            last_error = Some(anyhow!(err.to_string()));
-                        }
-                    }
-                    SurrealWriteJob::Edges(edges) => {
-                        if edges.is_empty() {
-                            continue;
-                        }
-                        if let Err(err) = {
-                            let mut guard = storage.lock().await;
-                            guard.upsert_edges_batch(&edges).await
-                        } {
-                            error!("Surreal edge batch failed: {}", err);
-                            last_error = Some(anyhow!(err.to_string()));
-                        }
-                    }
-                    SurrealWriteJob::NodeEmbeddings(records) => {
-                        if records.is_empty() {
-                            continue;
-                        }
-                        if let Err(err) = {
-                            let guard = storage.lock().await;
-                            guard.update_node_embeddings_batch(&records).await
-                        } {
-                            error!("Surreal node embedding batch failed: {}", err);
-                            last_error = Some(anyhow!(err.to_string()));
-                        }
-                    }
-                    SurrealWriteJob::SymbolEmbeddings(records) => {
-                        if records.is_empty() {
-                            continue;
-                        }
-                        if let Err(err) = {
-                            let guard = storage.lock().await;
-                            guard.upsert_symbol_embeddings_batch(&records).await
-                        } {
-                            error!("Surreal symbol embedding batch failed: {}", err);
-                            last_error = Some(anyhow!(err.to_string()));
-                        }
-                    }
-                    SurrealWriteJob::ChunkEmbeddings(records) => {
-                        if records.is_empty() {
-                            continue;
-                        }
-                        let batch_size = records.len();
-                        if let Err(err) = {
-                            let guard = storage.lock().await;
-                            guard.upsert_chunk_embeddings_resilient(&records).await
-                        } {
-                            error!(
-                                "🧩 Surreal chunk embedding batch failed ({} records): {}",
-                                batch_size, err
-                            );
-                            if last_error.is_none() {
-                                last_error = Some(anyhow!(err.to_string()));
-                            }
-                        } else {
-                            debug!("🧩 Surreal chunk batch persisted: {} records", batch_size);
-                        }
-                    }
-                    SurrealWriteJob::FileMetadata(records) => {
-                        if records.is_empty() {
-                            continue;
-                        }
-                        if let Err(err) = {
-                            let guard = storage.lock().await;
-                            guard.upsert_file_metadata_batch(&records).await
-                        } {
-                            error!("Surreal file metadata batch failed: {}", err);
-                            last_error = Some(anyhow!(err.to_string()));
-                        }
-                    }
-                    SurrealWriteJob::DeleteNodesByFile {
-                        file_paths,
-                        project_id,
-                    } => {
-                        if file_paths.is_empty() {
-                            continue;
-                        }
-                        let guard = storage.lock().await;
-                        let delete_nodes_query = "DELETE nodes WHERE project_id = $project_id AND file_path IN $file_paths RETURN BEFORE";
-                        let mut result = match guard
-                            .db()
-                            .query(delete_nodes_query)
-                            .bind(("project_id", project_id.clone()))
-                            .bind(("file_paths", file_paths.clone()))
-                            .await
-                        {
-                            Ok(res) => res,
-                            Err(e) => {
-                                error!("Failed to delete nodes for files {:?}: {}", file_paths, e);
-                                last_error = Some(anyhow!(e.to_string()));
-                                continue;
-                            }
-                        };
-
-                        let deleted_nodes: Vec<HashMap<String, serde_json::Value>> =
-                            result.take(0).unwrap_or_default();
-                        let node_ids: Vec<String> = deleted_nodes
-                            .iter()
-                            .filter_map(|n| {
-                                n.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
-                            })
-                            .collect();
-
-                        if !node_ids.is_empty() {
-                            let delete_symbols = r#"
-                        LET $node_ids = $ids;
-                        DELETE symbol_embeddings WHERE
-                            string::split(string::trim(node_id), ':')[1] IN $node_ids;
-                    "#;
-                            if let Err(e) = guard
-                                .db()
-                                .query(delete_symbols)
-                                .bind(("ids", node_ids.clone()))
-                                .await
-                            {
-                                error!(
-                                    "Failed to delete symbol_embeddings for files {:?}: {}",
-                                    file_paths, e
-                                );
-                                last_error = Some(anyhow!(e.to_string()));
-                            }
-                        }
-
-                        if !node_ids.is_empty() {
-                            let edge_query = r#"
-                        LET $node_ids = $ids;
-                        DELETE edges WHERE
-                            string::split(string::trim(from), ':')[1] IN $node_ids OR
-                            string::split(string::trim(to), ':')[1] IN $node_ids
-                    "#;
-                            if let Err(e) = guard
-                                .db()
-                                .query(edge_query)
-                                .bind(("ids", node_ids.clone()))
-                                .await
-                            {
-                                error!("Failed to delete edges for files {:?}: {}", file_paths, e);
-                                last_error = Some(anyhow!(e.to_string()));
-                            }
-
-                            // Delete chunks that reference the deleted nodes
-                            let chunks_query = r#"
-                        LET $node_ids = $ids;
-                        DELETE chunks WHERE
-                            string::split(string::trim(<string>parent_node), ':')[1] IN $node_ids
-                    "#;
-                            if let Err(e) =
-                                guard.db().query(chunks_query).bind(("ids", node_ids)).await
-                            {
-                                error!("Failed to delete chunks for files {:?}: {}", file_paths, e);
-                                last_error = Some(anyhow!(e.to_string()));
-                            }
-                        }
-
-                        if let Err(e) = guard
-                            .delete_file_metadata_for_files(&project_id, &file_paths)
-                            .await
-                        {
-                            error!(
-                                "Failed to delete file metadata for files {:?}: {}",
-                                file_paths, e
-                            );
-                            last_error = Some(anyhow!(e.to_string()));
-                        }
-                    }
-                    SurrealWriteJob::ProjectMetadata(record) => {
-                        let result = {
-                            let guard = storage.lock().await;
-                            guard.upsert_project_metadata(record).await
-                        };
-                        if let Err(err) = result {
-                            error!("Surreal project metadata write failed: {}", err);
-                            last_error = Some(anyhow!(err.to_string()));
-                        }
-                    }
-                    SurrealWriteJob::Flush(resp) => {
-                        let _ = resp.send(Self::current_error(&last_error));
-                    }
-                    SurrealWriteJob::Shutdown(resp) => {
-                        let _ = resp.send(Self::current_error(&last_error));
-                        break;
-                    }
-                }
-            }
-        });
-
-        Self { tx, join }
-    }
-
-    fn current_error(error: &Option<anyhow::Error>) -> Result<()> {
-        if let Some(err) = error {
-            Err(anyhow!(err.to_string()))
-        } else {
-            Ok(())
-        }
-    }
-
-    async fn enqueue_nodes(&self, nodes: Vec<CodeNode>) -> Result<()> {
-        if nodes.is_empty() {
-            return Ok(());
-        }
-        self.tx
-            .send(SurrealWriteJob::Nodes(nodes))
-            .await
-            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
-    }
-
-    async fn enqueue_edges(&self, edges: Vec<CodeEdge>) -> Result<()> {
-        if edges.is_empty() {
-            return Ok(());
-        }
-        self.tx
-            .send(SurrealWriteJob::Edges(edges))
-            .await
-            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
-    }
-
-    async fn enqueue_node_embeddings(&self, records: Vec<NodeEmbeddingRecord>) -> Result<()> {
-        if records.is_empty() {
-            return Ok(());
-        }
-        self.tx
-            .send(SurrealWriteJob::NodeEmbeddings(records))
-            .await
-            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
-    }
-
-    async fn enqueue_chunk_embeddings(&self, records: Vec<ChunkEmbeddingRecord>) -> Result<()> {
-        if records.is_empty() {
-            return Ok(());
-        }
-        self.tx
-            .send(SurrealWriteJob::ChunkEmbeddings(records))
-            .await
-            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
-    }
-
-    async fn enqueue_symbol_embeddings(&self, records: Vec<SymbolEmbeddingRecord>) -> Result<()> {
-        if records.is_empty() {
-            return Ok(());
-        }
-        self.tx
-            .send(SurrealWriteJob::SymbolEmbeddings(records))
-            .await
-            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
-    }
-
-    async fn enqueue_file_metadata(&self, records: Vec<FileMetadataRecord>) -> Result<()> {
-        if records.is_empty() {
-            return Ok(());
-        }
-        self.tx
-            .send(SurrealWriteJob::FileMetadata(records))
-            .await
-            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
-    }
-
-    async fn enqueue_delete_nodes_by_file(
-        &self,
-        file_paths: Vec<String>,
-        project_id: &str,
-    ) -> Result<()> {
-        if file_paths.is_empty() {
-            return Ok(());
-        }
-        self.tx
-            .send(SurrealWriteJob::DeleteNodesByFile {
-                file_paths,
-                project_id: project_id.to_string(),
-            })
-            .await
-            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
-    }
-
-    async fn enqueue_project_metadata(&self, record: ProjectMetadataRecord) -> Result<()> {
-        self.tx
-            .send(SurrealWriteJob::ProjectMetadata(record))
-            .await
-            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))
-    }
-
-    async fn flush(&self) -> Result<()> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        self.tx
-            .send(SurrealWriteJob::Flush(resp_tx))
-            .await
-            .map_err(|e| anyhow!("Surreal writer unavailable: {}", e))?;
-        resp_rx
-            .await
-            .map_err(|_| anyhow!("Surreal writer task ended unexpectedly"))?
-    }
-
-    async fn shutdown(self) -> Result<()> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        let _ = self.tx.send(SurrealWriteJob::Shutdown(resp_tx)).await;
-        let result = resp_rx
-            .await
-            .unwrap_or_else(|_| Err(anyhow!("Surreal writer task ended unexpectedly")));
-        let _ = self.join.await;
-        result
-    }
-}
+use crate::writer::SurrealWriterHandle;
 
 impl ProjectIndexer {
     #[cfg(feature = "ai-enhanced")]
@@ -1121,6 +777,12 @@ impl ProjectIndexer {
         for edge in edges.iter_mut() {
             if let Some(new_id) = id_mapping.get(&edge.from) {
                 edge.from = *new_id;
+            }
+            if let Some(span) = &edge.span {
+                edge.metadata.insert(
+                    "source_span".to_string(),
+                    format!("{}:{}", span.start_byte, span.end_byte),
+                );
             }
         }
 
@@ -2100,7 +1762,7 @@ impl ProjectIndexer {
 
             // Store resolved edges via writer
             if !all_resolved_edges.is_empty() {
-                let serializable_edges: Vec<_> = all_resolved_edges
+                let mut serializable_edges: Vec<_> = all_resolved_edges
                     .iter()
                     .map(
                         |(from, to, edge_type, metadata)| codegraph_graph::edge::CodeEdge {
@@ -2114,6 +1776,11 @@ impl ProjectIndexer {
                         },
                     )
                     .collect();
+                for edge in &mut serializable_edges {
+                    edge.set_deterministic_id(&self.project_id);
+                }
+                serializable_edges.sort_by_key(|edge| edge.id);
+                serializable_edges.dedup_by_key(|edge| edge.id);
 
                 // Accumulate degrees in-memory for tie-breaking
                 for (from, to, _, _) in all_resolved_edges.iter() {
@@ -2122,9 +1789,8 @@ impl ProjectIndexer {
                 }
 
                 stored_edges_local = serializable_edges.len();
-                if let Err(err) = self.enqueue_edges(serializable_edges).await {
-                    warn!("⚠️ Failed to store resolved edges: {}", err);
-                }
+                self.enqueue_edges(serializable_edges).await?;
+                self.flush_surreal_writer().await?;
 
                 let resolution_time = resolution_start.elapsed();
                 resolution_rate_local = (stored_edges_local as f64 / edge_count as f64) * 100.0;
@@ -3814,7 +3480,8 @@ impl ProjectIndexer {
         Arc<TokioMutex<SurrealDbStorage>>,
         Vec<Arc<TokioMutex<SurrealDbStorage>>>,
     )> {
-        let config = SurrealDbConfig::for_project(project_root);
+        let mut config = SurrealDbConfig::for_project(project_root);
+        config.cache_enabled = false;
 
         info!(
             "🗄️ Connecting to SurrealDB: {} namespace={} database={}",

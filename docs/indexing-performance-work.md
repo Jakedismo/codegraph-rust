@@ -35,6 +35,18 @@ single-file, cross-file rename/delete, documentation/manifest changes and tier u
    file-local FastML state and multiline patterns; real source line counts; delayed
    graph replacement and writer lifetime correction. Regression tests cover snapshots,
    syntax-recovery spans, tier policy, language filtering and worker-independent order.
+2. Bulk node/edge/symbol/chunk/file upserts, checked database statement errors,
+   scoped transactional cleanup with native record IDs, stable occurrence-aware edge
+   IDs, independent row/byte batching, bounded write-queue bytes and connection-level
+   concurrency with deletion/completion barriers. Ingestion no longer duplicates the
+   entire node catalog into storage caches. Offline tests exercise both main schemas,
+   repeated writes, failure recovery and metadata barriers.
 
 `CODEGRAPH_SOURCE_MEMORY_MB` controls retained snapshot bytes (default 256 MiB).
 Snapshots above the budget spill to temporary files, removed at the end of the run.
+
+Storage controls are independent of inference batches: `CODEGRAPH_DB_BATCH_ROWS`
+(512), `CODEGRAPH_DB_BATCH_BYTES` (4 MiB), `CODEGRAPH_WRITE_QUEUE_BYTES` (32 MiB)
+and `CODEGRAPH_SURREAL_POOL_SIZE` (remote only). A single oversized record fails with
+an actionable limit message rather than bypassing the budget. These bound queued
+serialized payloads; they do not represent a process RSS limit.
