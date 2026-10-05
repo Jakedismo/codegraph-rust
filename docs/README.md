@@ -34,8 +34,7 @@ Explore the interactive [Architecture Diagram](architecture-visualization.html) 
 - [codegraph-mcp-daemon](crates/codegraph-mcp-daemon/README.md): Background service and file watching.
 - [codegraph-mcp-tools](crates/codegraph-mcp-tools/README.md): Specific tool implementations.
 - [codegraph-mcp-core](crates/codegraph-mcp-core/README.md): Shared MCP traits.
-- [codegraph-mcp-autoagents](crates/codegraph-mcp-autoagents/README.md): Experimental agents.
-- [codegraph-mcp-rig](crates/codegraph-mcp-rig/README.md): Testing rig.
+- [codegraph-mcp-rig](crates/codegraph-mcp-rig/README.md): Agent backend for the agentic tools, built on the Rig framework.
 
 ## Specifications
 Detailed specs can be found in the [specifications](specifications/) directory.

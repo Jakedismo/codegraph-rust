@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🗑️ **Removed - AutoAgents Backend**
+
+- **`codegraph-mcp-autoagents` crate removed**: Rig is the only agent framework. The `autoagents` and `autoagents-derive` dependencies and the `autoagents-experimental`, `autoagents-lats`, and `all-agents` feature flags are gone; build with `--all-features` or `--features full`.
+- **`CODEGRAPH_AGENT_ARCHITECTURE` now selects the Rig agent**: `react` (default, alias `rig`), `lats`, or `reflexion`. `lats` previously selected the AutoAgents LATS backend; it now selects the Rig LATS agent, which does not call graph tools.
+- **`CODEGRAPH_LATS_*` settings and the `llm.lats` config section removed**: they configured the AutoAgents LATS backend only.
+- **`CODEGRAPH_ARCH_BOOTSTRAP` / `CODEGRAPH_ARCH_PRIMER` removed**: the startup-context bootstrap was part of the AutoAgents backend.
+- **Server prompt modules removed**: `prompt_selector.rs` and the per-analysis `*_prompts.rs` files in `codegraph-mcp-server` were not read by any agent. The agent prompt lives in `codegraph-mcp-rig/src/prompts/tier_prompts.rs`.
+- **Response `framework` field** is now always `"Rig"`.
+
 ### 🚀 **Enhanced - Rig-Based Agent System (Now Default)**
 
 #### **Default Backend Switch**

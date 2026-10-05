@@ -467,13 +467,6 @@
                             <text class="crate-subtitle" x="140" y="252" text-anchor="middle">7 agentic tools</text>
                         </g>
 
-                        <g class="crate-node" data-crate="mcp-autoagents" onclick="selectCrate('mcp-autoagents')">
-                            <rect class="crate-bg" x="250" y="190" width="160" height="80" fill="var(--layer4-bg)" stroke="var(--layer4-border)"/>
-                            <text class="crate-title" x="330" y="220" text-anchor="middle">mcp-autoagents</text>
-                            <text class="crate-subtitle" x="330" y="237" text-anchor="middle">ReAct agent</text>
-                            <text class="crate-subtitle" x="330" y="252" text-anchor="middle">tier-aware prompts</text>
-                        </g>
-
                         <g class="crate-node" data-crate="mcp-tools" onclick="selectCrate('mcp-tools')">
                             <rect class="crate-bg" x="430" y="190" width="140" height="80" fill="var(--layer4-bg)" stroke="var(--layer4-border)"/>
                             <text class="crate-title" x="500" y="220" text-anchor="middle">mcp-tools</text>
@@ -790,25 +783,18 @@
                 dependencies: ['core', 'graph', 'vector', 'mcp-core'],
                 features: ['GraphToolExecutor', '6 inner tools', 'Query execution', 'Result formatting']
             },
-            'mcp-autoagents': {
-                name: 'codegraph-mcp-autoagents',
-                layer: 'Layer 4: Integration',
-                description: 'Agentic prompts and workflows using the ReAct framework. Replaces the custom orchestrator with AutoAgents.',
-                dependencies: ['mcp-core', 'mcp-tools', 'ai'],
-                features: ['ReAct agent', 'Tier-aware prompts', 'Prompt selector', 'Multi-step reasoning']
-            },
             'mcp': {
                 name: 'codegraph-mcp',
                 layer: 'Layer 4: Integration',
                 description: 'Main MCP integration crate providing 7 agentic tools for AI-powered code intelligence.',
-                dependencies: ['core', 'parser', 'graph', 'vector', 'ai', 'mcp-autoagents', 'mcp-core', 'mcp-tools'],
+                dependencies: ['core', 'parser', 'graph', 'vector', 'ai', 'mcp-core', 'mcp-tools'],
                 features: ['7 agentic MCP tools', 'rmcp SDK v0.7.0', 'Progress notifications', 'Tool routing']
             },
             'mcp-server': {
                 name: 'codegraph-mcp-server',
                 layer: 'Layer 5: User Interfaces',
                 description: 'MCP server binary supporting both stdio and HTTP transports for integration with AI assistants.',
-                dependencies: ['mcp', 'mcp-autoagents', 'mcp-tools', 'mcp-daemon', 'ai'],
+                dependencies: ['mcp', 'mcp-rig', 'mcp-tools', 'mcp-daemon', 'ai'],
                 features: ['stdio transport', 'HTTP/SSE transport', 'Health checks', 'Session management']
             },
             'mcp-daemon': {

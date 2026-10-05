@@ -20,6 +20,7 @@ anyhow = { workspace = true }
 nix = { workspace = true, features = ["process", "signal"] }
 regex = { workspace = true }
 tokio = { workspace = true }
+futures = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 parking_lot = { workspace = true }

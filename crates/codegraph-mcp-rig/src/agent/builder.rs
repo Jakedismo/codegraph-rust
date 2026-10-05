@@ -27,28 +27,21 @@ use std::sync::Arc;
 #[allow(unused_imports)] // Used when provider features are enabled
 use tracing::info;
 
-/// Selects the agent the Rig backend runs: `react` (default), `lats`, or `reflexion`.
-///
-/// Separate from `CODEGRAPH_AGENT_ARCHITECTURE` because `lats` there selects the
-/// legacy AutoAgents backend before the Rig builder is ever reached.
-pub const RIG_ARCHITECTURE_ENV: &str = "CODEGRAPH_RIG_ARCHITECTURE";
+/// Selects the agent to run: `react` (default, alias `rig`), `lats`, or `reflexion`.
+pub const AGENT_ARCHITECTURE_ENV: &str = "CODEGRAPH_AGENT_ARCHITECTURE";
 
-/// Pick the Rig agent from the two env values, the Rig-specific one first.
-fn select_architecture(
-    rig_architecture: Option<&str>,
-    agent_architecture: Option<&str>,
-) -> Option<AgentArchitecture> {
-    if let Some(value) = rig_architecture.map(str::trim).filter(|v| !v.is_empty()) {
-        match AgentArchitecture::parse(value) {
-            Some(arch) => return Some(arch),
-            None => tracing::warn!(
-                value,
-                "Invalid {} value (expected react, lats, or reflexion); ignoring it",
-                RIG_ARCHITECTURE_ENV
-            ),
-        }
+/// Read the agent selection from its env value; unset or invalid means the default.
+fn select_architecture(value: Option<&str>) -> Option<AgentArchitecture> {
+    let value = value.map(str::trim).filter(|v| !v.is_empty())?;
+    let architecture = AgentArchitecture::parse(value);
+    if architecture.is_none() {
+        tracing::warn!(
+            value,
+            "Invalid {} value (expected react, lats, or reflexion); using react",
+            AGENT_ARCHITECTURE_ENV
+        );
     }
-    agent_architecture.and_then(AgentArchitecture::parse)
+    architecture
 }
 
 /// Builder for creating Rig-based code analysis agents
@@ -91,12 +84,7 @@ impl RigAgentBuilder {
 
     /// Detect architecture from environment only
     fn detect_architecture_from_env() -> Option<AgentArchitecture> {
-        select_architecture(
-            std::env::var(RIG_ARCHITECTURE_ENV).ok().as_deref(),
-            std::env::var("CODEGRAPH_AGENT_ARCHITECTURE")
-                .ok()
-                .as_deref(),
-        )
+        select_architecture(std::env::var(AGENT_ARCHITECTURE_ENV).ok().as_deref())
     }
 
     /// Set the analysis type for this agent
@@ -159,7 +147,7 @@ impl RigAgentBuilder {
 
     /// Resolve architecture, defaulting to ReAct when none was set explicitly.
     ///
-    /// LATS is opt-in via [`RIG_ARCHITECTURE_ENV`] or [`Self::architecture`]: its expansion step reasons
+    /// LATS is opt-in via [`AGENT_ARCHITECTURE_ENV`] or [`Self::architecture`]: its expansion step reasons
     /// without calling graph tools, so its answers are not grounded in the index.
     fn resolve_architecture(&self) -> AgentArchitecture {
         self.architecture.unwrap_or(AgentArchitecture::ReAct)
@@ -202,6 +190,10 @@ impl RigAgentBuilder {
     }
 
     fn build_lats(self, provider: RigProvider) -> Result<Box<dyn RigAgentTrait>> {
+        tracing::warn!(
+            "LATS agent selected: it searches over reasoning steps without calling graph tools, \
+             so answers are not grounded in the index. Use react for grounded answers."
+        );
         let model_name = get_model_name();
         let factory = GraphToolFactory::new(self.executor.clone());
 
@@ -430,31 +422,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_rig_architecture_env_selects_agent() {
+    fn test_architecture_env_selects_agent() {
         assert_eq!(
-            select_architecture(Some("lats"), None),
+            select_architecture(Some("lats")),
             Some(AgentArchitecture::LATS)
         );
         assert_eq!(
-            select_architecture(Some(" Reflexion "), Some("rig")),
+            select_architecture(Some(" Reflexion ")),
             Some(AgentArchitecture::Reflexion)
+        );
+        assert_eq!(
+            select_architecture(Some("react")),
+            Some(AgentArchitecture::ReAct)
+        );
+        assert_eq!(
+            select_architecture(Some("rig")),
+            Some(AgentArchitecture::Rig)
         );
     }
 
     #[test]
-    fn test_rig_architecture_env_falls_back() {
-        assert_eq!(select_architecture(None, None), None);
-        assert_eq!(
-            select_architecture(None, Some("rig")),
-            Some(AgentArchitecture::Rig)
-        );
-        assert_eq!(
-            select_architecture(Some(""), Some("reflexion")),
-            Some(AgentArchitecture::Reflexion)
-        );
-        assert_eq!(
-            select_architecture(Some("tree"), Some("rig")),
-            Some(AgentArchitecture::Rig)
-        );
+    fn test_architecture_env_unset_or_invalid_uses_default() {
+        assert_eq!(select_architecture(None), None);
+        assert_eq!(select_architecture(Some("")), None);
+        assert_eq!(select_architecture(Some("tree")), None);
     }
 }

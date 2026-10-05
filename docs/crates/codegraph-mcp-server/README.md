@@ -18,9 +18,7 @@ Collection of specific MCP tools exposed to clients.
 - **Search**: Semantic and exact search.
 - **Graph Traversal**: Tools to "walk" the graph.
 
-## `codegraph-mcp-autoagents`
-Experimental crate for autonomous agents that can use the graph to solve tasks.
-- **Agent Loop**: Observation -> Thought -> Action loop using the graph tools.
-
 ## `codegraph-mcp-rig`
-Testing rig and scaffolding for developing new MCP tools and features.
+The agent backend behind the agentic tools, built on the Rig framework.
+- **Agents**: ReAct (default), LATS, and Reflexion, selected with `CODEGRAPH_AGENT_ARCHITECTURE`.
+- **Prompts and tools**: tier-aware system prompt and the graph tool definitions the agent calls.

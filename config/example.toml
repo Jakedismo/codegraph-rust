@@ -72,12 +72,8 @@ exclude_patterns = ["**/node_modules/**", "**/target/**", "**/.git/**", "**/dist
 
 [agent]
 # Agentic tool configuration
-# Architecture options:
-#   react - ReAct single-pass reasoning (default, fast)
-#   lats  - Language Agent Tree Search (complex problems, multi-path)
-#   rig   - Rig framework native orchestration (alternative backend)
-# Override at runtime: CODEGRAPH_AGENT_ARCHITECTURE=rig
-architecture = "react"
+# The agent is selected with the CODEGRAPH_AGENT_ARCHITECTURE env var:
+#   react (default) | lats | reflexion
 timeout_secs = 300                   # Total agent execution timeout
 max_steps = 15                       # Maximum reasoning steps (tier-adjusted)
 memory_window = 40                   # Conversation memory window

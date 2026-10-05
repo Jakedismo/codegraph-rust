@@ -13,7 +13,6 @@ members = [
     "crates/codegraph-ai",
     "crates/codegraph-mcp-core",
     "crates/codegraph-mcp-tools",
-    "crates/codegraph-mcp-autoagents",
     "crates/codegraph-mcp-rig",
     "crates/codegraph-mcp-server",
     "crates/codegraph-mcp-daemon",
@@ -58,8 +57,7 @@ local-stack = [
     "embeddings-ollama",
     "embeddings-lmstudio",
     "embeddings-local",
-    "codegraph-ai/openai-compatible",
-    "autoagents-experimental"
+    "codegraph-ai/openai-compatible"
 ]
 
 # Cloud-enabled build
@@ -70,8 +68,7 @@ cloud-enabled = [
     "embeddings-jina",
     "codegraph-ai/anthropic",
     "codegraph-ai/openai-llm",
-    "server-http",
-    "autoagents-experimental"
+    "server-http"
 ]
 
 # Everything (development/testing)
@@ -88,8 +85,7 @@ full = [
     "codegraph-ai/anthropic",
     "codegraph-ai/openai-llm",
     "codegraph-ai/openai-compatible",
-    "server-http",
-    "autoagents-experimental"
+    "server-http"
 ]
 
 [workspace.dependencies]
@@ -174,14 +170,9 @@ generic-array = "1.4.5"
 matchit = "0.9.2"
 pdqselect = "0.1.1"
 
-# AutoAgents
-autoagents = "0.4.0"
-autoagents-derive = "0.4.0"
-
 # Moved MCP crate dependencies
 nix = { version = "0.31.3", features = ["process", "signal"] }
 
-# AutoAgents
 globset = "0.4.20"
 ignore = "0.4.33"
 rand = "0.10.3"

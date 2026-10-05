@@ -1,7 +1,7 @@
 // ABOUTME: Public agentic tool selection shared by MCP and the command line.
 // ABOUTME: Keeps internal graph tools behind the built-in reasoning agents.
 
-use crate::prompt_selector::AnalysisType;
+use codegraph_mcp_core::analysis::AnalysisType;
 
 /// The four client-facing tools. AnalysisType and graph tools stay internal to execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

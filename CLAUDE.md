@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-CodeGraph indexes a codebase into a SurrealDB knowledge graph (AST nodes, edges, chunk embeddings) and serves it to AI clients over MCP as four agentic tools (`agentic_context`, `agentic_impact`, `agentic_architecture`, `agentic_quality`). It is a Rust workspace of 14 crates under `crates/`; the single shipped binary is `codegraph`, built from `crates/codegraph-mcp-server/src/bin/codegraph.rs`.
+CodeGraph indexes a codebase into a SurrealDB knowledge graph (AST nodes, edges, chunk embeddings) and serves it to AI clients over MCP as four agentic tools (`agentic_context`, `agentic_impact`, `agentic_architecture`, `agentic_quality`). It is a Rust workspace of 13 crates under `crates/`; the single shipped binary is `codegraph`, built from `crates/codegraph-mcp-server/src/bin/codegraph.rs`.
 
 ## Commands
 
@@ -36,9 +36,9 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings   # what CI
 
 ### Stale references to ignore
 
-- Makefile targets `build-mcp-autoagents` / `build-mcp-http` use `-p codegraph-mcp --bin codegraph`; the binary lives in `codegraph-mcp-server`. Targets referring to `codegraph-api`, `high_perf_test/`, or `scripts/` point at things that no longer exist.
+- Makefile targets referring to `codegraph-api`, `high_perf_test/`, or `scripts/` point at things that no longer exist.
 - `docs/TESTING.md` uses feature names (`onnx`, `ollama`, `cloud-jina`, ...) and a `test_mcp_tools.py` that don't match the current tree.
-- `[workspace.metadata.cargo-features]` in the root `Cargo.toml` is documentation only; cargo does not consume it. The real feature flags are on `codegraph-mcp-server` (`ai-enhanced`, `server-http`, `daemon`, `embeddings-*`, `rig-*`, `autoagents-lats`, `legacy-agentic-tools`, `full`).
+- `[workspace.metadata.cargo-features]` in the root `Cargo.toml` is documentation only; cargo does not consume it. The real feature flags are on `codegraph-mcp-server` (`ai-enhanced`, `server-http`, `daemon`, `embeddings-*`, `rig-*`, `legacy-agentic-tools`, `full`).
 - `docs/README.md` mentions a `codegraph-cache` crate that has been removed.
 
 ### Tests that need external services
@@ -70,7 +70,7 @@ Dependencies point downward; do not add upward imports (they create cycles):
 - `codegraph-core`: types, config, `CodeNode`. Everything depends on it.
 - `codegraph-parser` (tree-sitter) and `codegraph-graph` (SurrealDB storage) depend only on core. `codegraph-vector` (embedding providers, reranking) sits on graph. `codegraph-ai` (LLM providers) sits on graph + vector.
 - `codegraph-mcp-core`: shared MCP types (`ContextTier`, `AgentArchitecture`), on core only. `codegraph-mcp-tools` (inner graph tools) adds graph + vector.
-- Side by side on top of mcp-tools / ai / graph: `codegraph-mcp-rig` and `codegraph-mcp-autoagents` (agent backends), and `codegraph-mcp` (indexer + analyzers). The agent backends do **not** depend on `codegraph-mcp`; `codegraph-mcp` optionally depends on autoagents.
+- On top of mcp-tools / ai / graph: `codegraph-mcp-rig` (the agent backend, built on the Rig framework) and `codegraph-mcp` (indexer + analyzers). Neither depends on the other.
 - `codegraph-mcp-daemon` (file watching) depends on `codegraph-mcp`.
 - `codegraph-mcp-server` (CLI, stdio/HTTP transports, MCP tool entrypoints) is the only crate that depends on everything.
 - `codegraph-concurrent` and `codegraph-zerocopy` are standalone utility crates.
@@ -94,11 +94,11 @@ The index tier controls which analyzers run and which edge types are filtered: `
 `crates/codegraph-mcp-server/src/official_server.rs` exposes the four consolidated tools via a single rmcp `#[tool_router]` (the SDK does not support multiple router blocks, so the deprecated legacy tools are feature-gated by `legacy-agentic-tools` within the same router). Each tool calls `execute_agentic_workflow`, which:
 
 1. Picks a prompt/step tier from the configured LLM context window (`CODEGRAPH_CONTEXT_WINDOW` → `ContextTier` in `codegraph-mcp-core/src/context_aware_limits.rs`); the same value bounds per-tool result size and accumulated context.
-2. Dispatches on `CODEGRAPH_AGENT_ARCHITECTURE` (default `rig`): `rig`/`reflexion` → `codegraph-mcp-rig` (runs ReAct with a Reflexion retry on failure; `CODEGRAPH_RIG_ARCHITECTURE=react|lats|reflexion` picks the Rig agent, and its LATS agent does not call graph tools); `react`/`lats` → legacy `codegraph-mcp-autoagents`.
+2. Runs the Rig backend (`codegraph-mcp-rig`), whose builder (`agent/builder.rs`) picks the agent from `CODEGRAPH_AGENT_ARCHITECTURE`: `react` (default, alias `rig`), `lats` (tree search over reasoning steps; does not call graph tools), or `reflexion`. A failed run is retried through Reflexion.
 3. The agent loops over the inner graph tools in `codegraph-mcp-tools` (`GraphToolSchemas` / `GraphToolExecutor`: transitive deps, reverse deps, cycles, call chains, coupling, hub nodes, semantic search, complexity hotspots).
 4. Those call `fn::*` SurrealQL functions defined in `schema/codegraph.surql`, wrapped by `crates/codegraph-graph/src/graph_functions.rs`.
 
-Tier prompts exist in three places: `codegraph-mcp-rig/src/prompts/tier_prompts.rs` (used by the default Rig backend), `codegraph-mcp-autoagents/src/autoagents/*_prompts.rs` (legacy backends), and `codegraph-mcp-server/src/*_prompts.rs` + `prompt_selector.rs`. When changing agent behaviour, edit the copy the target backend actually reads.
+The agent's system prompt is built in `codegraph-mcp-rig/src/prompts/tier_prompts.rs`, and tool semantics live in the tool descriptions in `codegraph-mcp-rig/src/tools/graph_tools.rs`.
 
 ### Schema
 

@@ -12,10 +12,8 @@ path = "src/lib.rs"
 [features]
 default = ["daemon"]
 ai-enhanced = [
-    "codegraph-mcp-autoagents",
     "codegraph-mcp-rig",
     "codegraph-ai",
-    "codegraph-mcp-autoagents/autoagents-experimental",
     "codegraph-ai/all-cloud-providers",
     "codegraph-mcp/ai-enhanced",
     "all-rig-providers"
@@ -23,9 +21,6 @@ ai-enhanced = [
 # Enable legacy 8 agentic tools (deprecated, use consolidated tools instead)
 legacy-agentic-tools = []
 server-http = ["dep:axum", "dep:hyper", "dep:tower", "dep:http-body-util", "dep:tokio-util"]
-autoagents-experimental = ["codegraph-mcp-autoagents/autoagents-experimental", "codegraph-mcp/autoagents-experimental"]
-autoagents-lats = ["codegraph-mcp-autoagents/autoagents-lats", "codegraph-mcp/autoagents-lats"]
-all-agents = ["autoagents-experimental", "autoagents-lats"]
 # Rig agent provider features
 rig-openai = ["codegraph-mcp-rig/openai"]
 rig-anthropic = ["codegraph-mcp-rig/anthropic"]
@@ -51,14 +46,12 @@ full = [
     "daemon",
     "ai-enhanced",
     "server-http",
-    "all-agents",
     "all-embeddings"
 ]
 
 [dependencies]
 codegraph-mcp-core = { path = "../codegraph-mcp-core" }
 codegraph-mcp-tools = { path = "../codegraph-mcp-tools" }
-codegraph-mcp-autoagents = { path = "../codegraph-mcp-autoagents", optional = true }
 codegraph-mcp-rig = { path = "../codegraph-mcp-rig", optional = true }
 codegraph-mcp-daemon = { path = "../codegraph-mcp-daemon", optional = true }
 codegraph-core = { path = "../codegraph-core" }

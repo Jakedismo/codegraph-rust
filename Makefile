@@ -23,14 +23,10 @@ build-llvm: check-llvm
 test-llvm: check-llvm
 	RUSTFLAGS="-C link-arg=-fuse-ld=lld" cargo test --workspace
 
-# Build MCP server with AutoAgents experimental feature
-build-mcp-autoagents:
-	LIBRARY_PATH=/opt/homebrew/lib:$$LIBRARY_PATH cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,embeddings-ollama,embeddings-lmstudio,codegraph-ai/anthropic,codegraph-ai/openai-llm,codegraph-ai/openai-compatible"
-
 # Build MCP HTTP server with experimental HTTP transport
 .PHONY: build-mcp-http
 build-mcp-http:
-	cargo build --release -p codegraph-mcp --bin codegraph --features "ai-enhanced,autoagents-experimental,embeddings-ollama,embeddings-lmstudio,server-http"
+	cargo build --release -p codegraph-mcp-server --bin codegraph --features "ai-enhanced,embeddings-ollama,embeddings-lmstudio,server-http"
 
 # Run HTTP server (depends on build)
 .PHONY: run-http-server

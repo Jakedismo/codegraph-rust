@@ -1,4 +1,4 @@
-// ABOUTME: MCP progress notification integration for AutoAgents workflows
+// ABOUTME: MCP progress notification integration for agentic workflows
 // ABOUTME: Sends 3-stage progress updates: started (0.0), analyzing (0.5), complete (1.0)
 
 use std::sync::Arc;

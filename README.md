@@ -123,46 +123,23 @@ Each tool runs a **reasoning agent** that plans, searches, analyzes graph relati
 ![AgenticArchitectures](docs/assets/agentic_architectures.jpeg)
 #### Agent Architectures
 
-CodeGraph implements agents using **Rig** the default and recommended choice (legacy `react` and `lats` implemented with autoagents still work). Selectable at runtime via `CODEGRAPH_AGENT_ARCHITECTURE=rig`:
+CodeGraph's agents are built on the **Rig** framework. The agent that runs is selected at runtime with `CODEGRAPH_AGENT_ARCHITECTURE` (in `.env` or the environment):
 
-**Why Rig is Default:**
-The Rig-based backend delivers the best performance with modern thinking and reasoning models. It is a native Rust implementation that supports internal sub-architectures and provides features like **True Token Streaming** and **Automatic Recovery**.
-
-**Internal Rig Sub-Architectures:**
-The `rig` backend runs one of three agents, selected with `CODEGRAPH_RIG_ARCHITECTURE` (in `.env` or the environment):
-- **`react`** (default): a tool-calling loop over the graph tools. Used for every agentic tool unless you choose otherwise.
+- **`react`** (default; `rig` is accepted as an alias): a tool-calling loop over the graph tools.
 - **`lats`**: tree search over candidate reasoning steps. It does not call the graph tools, so its answers are not grounded in the index, and it requires the OpenAI or Anthropic provider.
 - **`reflexion`**: ReAct wrapped in a retry that feeds the previous error back to the agent.
 
 Whichever agent is selected, a failed run is retried automatically with the error as context.
 
-`CODEGRAPH_AGENT_ARCHITECTURE=lats` is a different setting: it selects the legacy AutoAgents LATS backend.
-
-### Agent Bootstrap Context
-
-Agents can start with lightweight project context so their first tool calls are not blind. Enable via env:
-
-- `CODEGRAPH_ARCH_BOOTSTRAP=true` — includes a brief directory/structure bootstrap + contents of README.md and CLAUDE.md+AGENTS.md or GEMINI.md (if present) in the agent’s initial context.
-- `CODEGRAPH_ARCH_PRIMER="<primer text>"` — optional custom primer injected into startup instructions (e.g., areas to focus on).
-
-Why? Faster, more relevant early steps, fewer wasted graph/semantic queries, and better architecture answers on large repos.
-
-Notes:
-- Bootstrap is small (top directories summary), not a replacement for graph queries.
-- Uses the same project selection as indexing (`CODEGRAPH_PROJECT_ID` or current working directory).
-
 ```bash
-# Use Rig for best performance with thinking and reasoning models (recommended)
-CODEGRAPH_AGENT_ARCHITECTURE=rig ./codegraph start stdio
-
-# Use default ReAct for traditional instruction models
+# Default: ReAct
 ./codegraph start stdio
 
-# Use LATS for complex analysis
+# Tree search over reasoning steps
 CODEGRAPH_AGENT_ARCHITECTURE=lats ./codegraph start stdio
 ```
 
-All architectures use the same 4 consolidated agentic tools (backed by 6 internal graph analysis tools) and tier-aware prompting—only the reasoning strategy differs.
+All agents serve the same 4 consolidated agentic tools and use tier-aware prompting.
 
 ### 3. Tier-Aware Intelligence
 
@@ -252,11 +229,11 @@ CodeGraph shifts the *cognitive load* (search + relevance + dependency reasoning
 ```json
 {
   "analysis_type": "dependency_analysis",
-  "query": "PromptSelector",
+  "query": "RigAgentBuilder",
   "structured_output": {
-    "analysis": "…what depends on PromptSelector and why…",
+    "analysis": "…what depends on RigAgentBuilder and why…",
     "highlights": [
-      { "file_path": "crates/codegraph-mcp-server/src/prompt_selector.rs", "line_number": 42, "snippet": "pub struct PromptSelector { … }" }
+      { "file_path": "crates/codegraph-mcp-rig/src/agent/builder.rs", "line_number": 48, "snippet": "pub struct RigAgentBuilder { … }" }
     ],
     "next_steps": ["…"]
   },
@@ -357,8 +334,8 @@ Add to your MCP config:
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │                    Agentic Tools Layer                    │  │
 │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────────────┐  │  │
-│  │  │  Rig    │ │ ReAct   │ │  LATS   │ │ Tool Execution  │  │  │
-│  │  │ Agent   │ │ Agent   │ │  Agent  │ │    Pipeline     │  │  │
+│  │  │  ReAct  │ │  LATS   │ │Reflexion│ │ Tool Execution  │  │  │
+│  │  │  (Rig)  │ │  (Rig)  │ │  (Rig)  │ │    Pipeline     │  │  │
 │  │  └────┬────┘ └────┬────┘ └────┬────┘ └────────┬────────┘  │  │
 │  └───────┼───────────┼───────────┼───────────────┼───────────┘  │
 │          └───────────┴───────────┴───────────────┘              │

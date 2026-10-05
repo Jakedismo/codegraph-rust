@@ -57,7 +57,7 @@ cd /path/to/codegraph-rust
 
 This script:
 - Installs SurrealDB CLI via Homebrew if not present
-- Builds CodeGraph with all features enabled (daemon, AI-enhanced, all providers, LATS)
+- Builds CodeGraph with all features enabled (daemon, AI-enhanced, all providers)
 - Installs the binary to `~/.cargo/bin/codegraph`
 
 ### What Gets Enabled
@@ -67,7 +67,7 @@ The full-features build includes:
 - All LLM providers (Anthropic, OpenAI, xAI Grok, Ollama, LM Studio)
 - Daemon mode (file watching & auto re-indexing)
 - HTTP server with SSE streaming
-- AutoAgents framework with LATS (Language Agent Tree Search)
+- Rig agent framework with all providers
 
 ### Manual Build (Alternative)
 
@@ -75,7 +75,7 @@ If you prefer to build manually:
 
 ```bash
 cargo install --path crates/codegraph-mcp-server --bin codegraph \
-  --all-features --features autoagents-lats --force
+  --all-features --force
 ```
 
 ---
@@ -315,7 +315,7 @@ export JINA_API_KEY=jina_...
 export XAI_API_KEY=xai-...
 
 # Agent Architecture
-export CODEGRAPH_AGENT_ARCHITECTURE=react    # react | lats
+export CODEGRAPH_AGENT_ARCHITECTURE=react    # react | lats | reflexion
 
 # Debugging
 export CODEGRAPH_DEBUG=1                     # Enable debug logging
@@ -554,16 +554,21 @@ In Claude Code, simply ask questions - the agentic tools will be used automatica
 
 ### Agent Architecture Selection
 
-CodeGraph supports two reasoning architectures:
+CodeGraph's agents run on the Rig framework. Select one with `CODEGRAPH_AGENT_ARCHITECTURE`:
 
-**ReAct (Default)** - Fast, single-pass reasoning:
+**ReAct (Default)** - Tool-calling loop over the graph tools:
 ```bash
 export CODEGRAPH_AGENT_ARCHITECTURE=react
 ```
 
-**LATS** - Deeper, tree-search reasoning (slower but more thorough):
+**LATS** - Tree search over reasoning steps. It does not call the graph tools, and it requires the OpenAI or Anthropic provider:
 ```bash
 export CODEGRAPH_AGENT_ARCHITECTURE=lats
+```
+
+**Reflexion** - ReAct with a retry that feeds the previous error back to the agent:
+```bash
+export CODEGRAPH_AGENT_ARCHITECTURE=reflexion
 ```
 
 ### Tier-Aware Prompting

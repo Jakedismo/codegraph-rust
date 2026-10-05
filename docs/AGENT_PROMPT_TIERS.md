@@ -11,7 +11,7 @@ When you call an agentic MCP tool (e.g. `agentic_code_search`), CodeGraph runs a
 
 CodeGraph picks a context tier based on `llm.context_window` (or `CODEGRAPH_CONTEXT_WINDOW`) and then selects:
 
-- A tier-appropriate system prompt (Terse/Balanced/Detailed/Exploratory)
+- A tier-appropriate system prompt
 - A recommended tool/step budget per analysis type
 - Retrieval and over-retrieval limits to avoid “too much context” and MCP output caps
 
@@ -31,9 +31,9 @@ Where CodeGraph reads it from:
 
 ## What changes per tier
 
-### System prompt (default Rig backend)
+### System prompt
 
-The default backend (`CODEGRAPH_AGENT_ARCHITECTURE=rig`) builds its system prompt in `crates/codegraph-mcp-rig/src/prompts/tier_prompts.rs`. Every tier shares one layout: identity, task, working instructions, one worked example, the limits for the run, and the answer format. The task text depends on the analysis type. The tier changes three things:
+The Rig agent backend builds its system prompt in `crates/codegraph-mcp-rig/src/prompts/tier_prompts.rs`. Every tier shares one layout: identity, task, working instructions, one worked example, the limits for the run, and the answer format. The task text depends on the analysis type. The tier changes three things:
 
 - how far the agent is asked to investigate before answering,
 - how long and detailed the answer should be,
@@ -43,7 +43,7 @@ The prompt does not list the graph tools. The model receives each tool's descrip
 
 The prompts follow OpenAI's guidance for the GPT-6 family (`gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-luna`): state the goal and what a complete answer contains instead of scripting each step, tell the agent to act on the most likely reading of an ambiguous request because nobody can answer a clarifying question, avoid instructions that pull in opposite directions, and ask for plain prose with lists only for parallel items.
 
-### Max tool rounds (default Rig backend)
+### Max tool rounds
 
 - Small: 3
 - Medium: 5
@@ -51,10 +51,6 @@ The prompts follow OpenAI's guidance for the GPT-6 family (`gpt-6-astra`, `gpt-6
 - Massive: 8
 
 `get_max_turns` in `tier_prompts.rs` is the single source for these numbers. The tool loop enforces the value and the same value is written into the system prompt, so the two cannot drift apart.
-
-### Legacy backends
-
-The AutoAgents backends (`CODEGRAPH_AGENT_ARCHITECTURE=react|lats`) select one of four prompt variants per analysis type (Terse / Balanced / Detailed / Exploratory) in `crates/codegraph-mcp-autoagents/src/autoagents/prompt_selector.rs`, with base step budgets of 5 / 10 / 15 / 20 and a per-analysis multiplier. Those prompts predate the guidance above and have not been revised.
 
 ### Retrieval limits (and MCP-safe output)
 

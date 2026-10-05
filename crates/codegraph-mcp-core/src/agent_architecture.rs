@@ -1,18 +1,18 @@
-// ABOUTME: Defines agent architecture types for runtime selection between supported orchestrators.
-// ABOUTME: Supports configuration-driven architecture switching via CODEGRAPH_AGENT_ARCHITECTURE
+// ABOUTME: Defines the agents the Rig backend can run for an agentic tool call.
+// ABOUTME: Selected at runtime with CODEGRAPH_AGENT_ARCHITECTURE
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentArchitecture {
-    /// ReAct-style orchestrator
+    /// Tool-calling loop over the graph tools
     ReAct,
-    /// Language Agent Tree Search
+    /// Language Agent Tree Search over reasoning steps (does not call graph tools)
     LATS,
-    /// Self-correcting agent
+    /// ReAct wrapped in a retry that feeds the previous error back to the agent
     Reflexion,
-    /// Rig framework agent (default)
+    /// The default agent; an alias for ReAct
     #[default]
     Rig,
 }
