@@ -46,7 +46,8 @@ pub struct TreeSitterParser {
     max_concurrent_files: usize,
     chunk_size: usize,
     parsed_cache: Arc<dashmap::DashMap<String, ParsedFile>>,
-    parser_pool: Arc<parking_lot::Mutex<Vec<HashMap<Language, Parser>>>>,
+    parser_pool: Arc<parking_lot::Mutex<HashMap<Language, Vec<Parser>>>>,
+    extraction_policy: crate::languages::ExtractionPolicy,
 }
 
 impl TreeSitterParser {
@@ -57,12 +58,22 @@ impl TreeSitterParser {
             max_concurrent_files: num_cpus * 2,
             chunk_size: 50,
             parsed_cache: Arc::new(dashmap::DashMap::new()),
-            parser_pool: Arc::new(parking_lot::Mutex::new(Vec::new())),
+            parser_pool: Arc::new(parking_lot::Mutex::new(HashMap::new())),
+            extraction_policy: Default::default(),
         }
     }
 
     pub fn with_concurrency(mut self, max_concurrent_files: usize) -> Self {
-        self.max_concurrent_files = max_concurrent_files;
+        self.max_concurrent_files = max_concurrent_files.max(1);
+        self
+    }
+
+    pub fn concurrency(&self) -> usize {
+        self.max_concurrent_files
+    }
+
+    pub fn with_extraction_policy(mut self, policy: crate::languages::ExtractionPolicy) -> Self {
+        self.extraction_policy = policy;
         self
     }
 
@@ -440,22 +451,12 @@ impl TreeSitterParser {
             let file_path = file_path_string;
             // Try to get parser from pool first, create new one if pool is empty
             let mut parser = {
-                let mut pool = parser_pool.lock();
-                let mut found_parser = None;
-
-                for parser_set in pool.iter_mut() {
-                    if let Some(p) = parser_set.remove(&language) {
-                        found_parser = Some(p);
-                        break;
-                    }
-                }
-
-                found_parser.unwrap_or_else(|| {
-                    registry.create_parser(&language).unwrap_or_else(|| {
-                        // Fallback: create a default parser
-                        tree_sitter::Parser::new()
-                    })
-                })
+                let cached = parser_pool.lock().get_mut(&language).and_then(Vec::pop);
+                cached
+                    .or_else(|| registry.create_parser(&language))
+                    .ok_or_else(|| {
+                        CodeGraphError::Parse(format!("Unsupported language: {:?}", language))
+                    })?
             };
 
             // Ensure parser has correct language set
@@ -474,7 +475,7 @@ impl TreeSitterParser {
             }
 
             // First attempt: try to parse normally
-            let result = match parser.parse(&content, None) {
+            let result = match parser.parse(content.as_bytes(), None) {
                 Some(tree) => {
                     let mut tree_used = tree;
                     let mut used_content = content.clone();
@@ -569,16 +570,7 @@ impl TreeSitterParser {
             };
 
             // Return parser to pool for reuse
-            {
-                let mut pool = parser_pool.lock();
-                if let Some(parser_set) = pool.first_mut() {
-                    parser_set.insert(language, parser);
-                } else {
-                    let mut new_set = std::collections::HashMap::new();
-                    new_set.insert(language, parser);
-                    pool.push(new_set);
-                }
-            }
+            parser_pool.lock().entry(language).or_default().push(parser);
 
             result
         });
@@ -796,10 +788,21 @@ impl TreeSitterParser {
         file_path: &str,
         language: Language,
     ) -> Result<ExtractionResult> {
+        self.parse_source_with_edges(Arc::from(content), file_path, language)
+            .await
+    }
+
+    /// Consumes an immutable source without copying it into the blocking parser task.
+    pub async fn parse_source_with_edges(
+        &self,
+        content: Arc<str>,
+        file_path: &str,
+        language: Language,
+    ) -> Result<ExtractionResult> {
         let registry = self.registry.clone();
-        let content_string = content.to_string();
         let file_path_string = file_path.to_string();
         let parser_pool = self.parser_pool.clone();
+        let policy = self.extraction_policy;
 
         // Clone for timeout message
         let content_len = content.len();
@@ -807,26 +810,16 @@ impl TreeSitterParser {
 
         // Add timeout protection for problematic files
         let parsing_task = tokio::task::spawn_blocking(move || {
-            let content = content_string;
             let file_path = file_path_string;
 
             // Try to get parser from pool first, create new one if pool is empty
             let mut parser = {
-                let mut pool = parser_pool.lock();
-                let mut found_parser = None;
-
-                for parser_set in pool.iter_mut() {
-                    if let Some(p) = parser_set.remove(&language) {
-                        found_parser = Some(p);
-                        break;
-                    }
-                }
-
-                found_parser.unwrap_or_else(|| {
-                    registry
-                        .create_parser(&language)
-                        .unwrap_or_else(|| tree_sitter::Parser::new())
-                })
+                let cached = parser_pool.lock().get_mut(&language).and_then(Vec::pop);
+                cached
+                    .or_else(|| registry.create_parser(&language))
+                    .ok_or_else(|| {
+                        CodeGraphError::Parse(format!("Unsupported language: {:?}", language))
+                    })?
             };
 
             // Ensure parser has correct language set
@@ -845,35 +838,27 @@ impl TreeSitterParser {
             }
 
             // Parse with tolerance and retry
-            let result = match parser.parse(&content, None) {
+            let result = match parser.parse(content.as_bytes(), None) {
                 Some(tree) => {
-                    let mut tree_used = tree;
-                    let mut used_content = content.clone();
-                    if tree_used.root_node().has_error() {
-                        let cleaned = Self::tolerant_clean(&content);
-                        if cleaned != content {
-                            if let Some(tree2) = parser.parse(&cleaned, None) {
-                                if !tree2.root_node().has_error() {
-                                    tree_used = tree2;
-                                    used_content = cleaned;
-                                }
-                            }
-                        }
-                    }
+                    // Keep original bytes and offsets. Tree-sitter recovers syntax errors;
+                    // reparsing cleaned text shifts spans away from the hashed source.
+                    let tree_used = tree;
+                    let used_content = content;
 
                     // Use unified dispatch for all supported languages
-                    let ast_result = crate::languages::extract_for_language(
+                    let ast_result = crate::languages::extract_for_language_with_policy(
                         &language,
                         &tree_used,
                         &used_content,
                         &file_path,
+                        policy,
                     )
                     .unwrap_or_else(|| {
                         // Fallback: use AstVisitor for languages without dedicated extractors
                         let mut visitor = crate::AstVisitor::new(
                             language.clone(),
                             file_path.clone(),
-                            used_content.clone(),
+                            used_content.to_string(),
                         );
                         visitor.visit(tree_used.root_node());
                         ExtractionResult {
@@ -884,31 +869,18 @@ impl TreeSitterParser {
 
                     // Apply Fast ML enhancement for maximum graph completeness
                     // Adds pattern-based edges and resolves unmatched references (<1ms overhead)
-                    let enhanced_result =
-                        crate::fast_ml::enhance_extraction(ast_result, &used_content);
+                    let enhanced_result = crate::fast_ml::get_fast_ml_enhancer()
+                        .enhance_with_policy(ast_result, &used_content, policy);
                     Ok(Self::add_directory_nodes(enhanced_result, &file_path))
                 }
-                None => {
-                    // Fallback: return empty result
-                    warn!("Complete parsing failed for {}", file_path);
-                    Ok(ExtractionResult {
-                        nodes: Vec::new(),
-                        edges: Vec::new(),
-                    })
-                }
+                None => Err(CodeGraphError::Parse(format!(
+                    "Complete parsing failed for {}",
+                    file_path
+                ))),
             };
 
             // Return parser to pool
-            {
-                let mut pool = parser_pool.lock();
-                if let Some(parser_set) = pool.first_mut() {
-                    parser_set.insert(language, parser);
-                } else {
-                    let mut new_set = std::collections::HashMap::new();
-                    new_set.insert(language, parser);
-                    pool.push(new_set);
-                }
-            }
+            parser_pool.lock().entry(language).or_default().push(parser);
 
             result
         });
@@ -1007,6 +979,63 @@ impl TreeSitterParser {
 
         result.nodes.extend(dir_nodes);
         result
+    }
+}
+
+#[cfg(test)]
+mod pipeline_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn concurrent_parsing_preserves_pool_and_tier_policy() {
+        let parser = TreeSitterParser::new()
+            .with_concurrency(0)
+            .with_extraction_policy(crate::languages::ExtractionPolicy {
+                uses: false,
+                references: false,
+            });
+        assert_eq!(parser.concurrency(), 1);
+        let source: Arc<str> = "struct Foo; impl Foo { pub fn method(&self, x: Foo) {} }".into();
+        let results = futures::future::join_all(
+            (0..8).map(|_| parser.parse_source_with_edges(source.clone(), "a.rs", Language::Rust)),
+        )
+        .await;
+        for result in results {
+            let result = result.unwrap();
+            assert!(
+                result
+                    .nodes
+                    .iter()
+                    .any(|node| node.name.as_str() == "method")
+            );
+            assert!(
+                result
+                    .edges
+                    .iter()
+                    .all(|edge| !matches!(edge.edge_type, EdgeType::Uses | EdgeType::References))
+            );
+        }
+        let pool = parser.parser_pool.lock();
+        assert!(!pool[&Language::Rust].is_empty());
+        // Every parser left in the pool is distinct, and can be checked out together.
+        assert!(pool[&Language::Rust].len() <= 8);
+    }
+
+    #[tokio::test]
+    async fn recovered_syntax_keeps_original_source_spans() {
+        let parser = TreeSitterParser::new();
+        let source: Arc<str> = "fn broken(\n\nfn intact() {}\n".into();
+        let extraction = parser
+            .parse_source_with_edges(source.clone(), "a.rs", Language::Rust)
+            .await
+            .unwrap();
+        for node in extraction.nodes.iter().filter(|n| n.span.is_some()) {
+            let span = node.span.as_ref().unwrap();
+            assert_eq!(
+                node.content.as_ref().unwrap().as_str(),
+                &source[span.start_byte as usize..span.end_byte as usize]
+            );
+        }
     }
 }
 

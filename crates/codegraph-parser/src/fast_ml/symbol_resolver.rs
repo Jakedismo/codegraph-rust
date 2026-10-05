@@ -1,80 +1,39 @@
-// ABOUTME: LSH-based symbol resolver for fast code similarity without training
-// ABOUTME: Provides 100-500μs symbol resolution using locality-sensitive hashing
+// ABOUTME: Deterministic lexical symbol resolution without global cross-project state.
+// ABOUTME: Uses an inverted character index to shortlist similar names.
 
 use codegraph_core::{EdgeRelationship, EdgeType, ExtractionResult};
-use lsh_rs2::prelude::*;
 use std::collections::HashMap;
 use tracing::debug;
 
-/// Fast symbol resolver using Locality-Sensitive Hashing (100-500μs per query)
+/// Deterministic, file-local lexical resolver with an inverted character index.
 pub struct SymbolResolver {
-    /// LSH index for symbol similarity (optional - lazy initialized)
-    lsh: Option<LshMem<SignRandomProjections<f32>>>,
-    /// Symbols in insertion order (index → symbol name)
-    symbols: Vec<String>,
-    /// Symbol to vector mapping for lookups
-    symbol_vectors: HashMap<String, Vec<f32>>,
-    /// Configuration
+    symbols: std::collections::BTreeSet<String>,
+    candidates: HashMap<char, std::collections::BTreeSet<String>>,
     min_similarity_threshold: f32,
-    /// Vector dimensionality
-    dim: usize,
 }
 
 impl SymbolResolver {
-    /// Create new symbol resolver
     pub fn new() -> Self {
         Self {
-            lsh: None,
-            symbols: Vec::new(),
-            symbol_vectors: HashMap::new(),
+            symbols: Default::default(),
+            candidates: Default::default(),
             min_similarity_threshold: 0.7,
-            dim: 64, // Character-based hash dimension (lighter/faster)
         }
     }
 
-    /// Index symbols from extraction result for fast lookups
     pub fn index_symbols(&mut self, result: &ExtractionResult) {
-        if result.nodes.is_empty() {
-            return;
-        }
-
-        // Collect all symbol vectors
-        let mut vectors = Vec::new();
-
         for node in &result.nodes {
-            let symbol = &node.name;
-            if symbol.is_empty() {
+            let name = node.name.to_string();
+            if name.is_empty() || !self.symbols.insert(name.clone()) {
                 continue;
             }
-
-            // Create feature vector from symbol
-            let symbol_str = symbol.to_string();
-            let vec = Self::symbol_to_hash(&symbol_str);
-            self.symbol_vectors.insert(symbol_str.clone(), vec.clone());
-            self.symbols.push(symbol_str);
-            vectors.push(vec);
+            for character in name.to_lowercase().chars() {
+                self.candidates
+                    .entry(character)
+                    .or_default()
+                    .insert(name.clone());
+            }
         }
-
-        if vectors.is_empty() {
-            return;
-        }
-
-        // Initialize LSH index if not already done (leaner params)
-        if self.lsh.is_none() {
-            // LSH configuration: fewer projections/tables for speed
-            let mut lsh = LshMem::new(3, 6, self.dim)
-                .srp() // Signed Random Projections for cosine similarity
-                .expect("Failed to create LSH index");
-
-            // Store all vectors
-            let _ = lsh.store_vecs(&vectors);
-            self.lsh = Some(lsh);
-        } else if let Some(ref mut lsh) = self.lsh {
-            // Add new vectors to existing index
-            let _ = lsh.store_vecs(&vectors);
-        }
-
-        debug!("Indexed {} symbols in SymbolResolver", result.nodes.len());
     }
 
     /// Resolve similar symbols for unmatched references (100-500μs per query)
@@ -105,7 +64,7 @@ impl SymbolResolver {
                     metadata.insert("resolved_target".to_string(), similar.clone());
                     metadata.insert(
                         "fast_ml_enhancement".to_string(),
-                        "lsh_resolution".to_string(),
+                        "lexical_resolution".to_string(),
                     );
 
                     new_edges.push(EdgeRelationship {
@@ -135,66 +94,23 @@ impl SymbolResolver {
         result
     }
 
-    /// Find similar symbol using LSH (100-500μs)
     fn find_similar_symbol(&self, symbol: &str) -> Option<String> {
-        let lsh = self.lsh.as_ref()?;
-
-        let query_vec = Self::symbol_to_hash(symbol);
-
-        // Query LSH index for similar symbols (returns Result<Vec<&Vec<f32>>>)
-        let candidate_vectors = lsh.query_bucket(&query_vec).ok()?;
-
-        if candidate_vectors.is_empty() {
-            return None;
-        }
-
-        // Match candidate vectors back to symbols
-        // Since we can't directly get indices, we need to search for matching vectors
-        let mut best_match = None;
-        let mut best_score = 0.0;
-
-        for candidate_vec in candidate_vectors {
-            // Find which symbol this vector belongs to
-            for (sym, vec) in &self.symbol_vectors {
-                // Compare vectors (approximate match due to floating point)
-                if vec.len() == candidate_vec.len()
-                    && vec
-                        .iter()
-                        .zip(candidate_vec.iter())
-                        .all(|(a, b)| (a - b).abs() < 0.001)
-                {
-                    let score = Self::string_similarity(symbol, sym);
-                    if score > best_score && score >= self.min_similarity_threshold {
-                        best_score = score;
-                        best_match = Some(sym.clone());
-                    }
-                    break;
-                }
+        let mut candidates = std::collections::BTreeSet::new();
+        for character in symbol.to_lowercase().chars() {
+            if let Some(names) = self.candidates.get(&character) {
+                candidates.extend(names.iter());
             }
         }
-
-        best_match
-    }
-
-    /// Convert symbol to hash vector for LSH
-    fn symbol_to_hash(symbol: &str) -> Vec<f32> {
-        // Simple character-based hashing (can be enhanced with better features)
-        let mut hash = vec![0.0; 128];
-
-        for (i, c) in symbol.chars().enumerate() {
-            let idx = (c as usize + i) % 128;
-            hash[idx] += 1.0;
-        }
-
-        // Normalize
-        let sum: f32 = hash.iter().sum();
-        if sum > 0.0 {
-            for val in &mut hash {
-                *val /= sum;
+        let mut best = None;
+        let mut best_score = self.min_similarity_threshold;
+        for name in candidates {
+            let score = Self::string_similarity(symbol, name);
+            if score >= best_score && (score > best_score || best.is_none()) {
+                best_score = score;
+                best = Some(name.clone());
             }
         }
-
-        hash
+        best
     }
 
     /// Calculate string similarity (simple but fast)
@@ -281,9 +197,14 @@ mod tests {
         // Verify symbols were indexed
         assert_eq!(resolver.symbols.len(), 5, "All 5 symbols should be indexed");
         assert_eq!(
-            resolver.symbol_vectors.len(),
+            resolver.find_similar_symbol("HashMap"),
+            Some("HashMap".to_string())
+        );
+        resolver.index_symbols(&result);
+        assert_eq!(
+            resolver.symbols.len(),
             5,
-            "All 5 symbol vectors should be stored"
+            "Repeated indexing must not grow state"
         );
 
         // LSH lookup is probabilistic - just verify it doesn't crash

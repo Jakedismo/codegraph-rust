@@ -209,6 +209,16 @@ pub(crate) fn filter_edges_for_tier(
     before.saturating_sub(edges.len())
 }
 
+pub(crate) fn extraction_policy_for_tier(
+    tier: codegraph_core::config_manager::IndexingTier,
+) -> codegraph_parser::languages::ExtractionPolicy {
+    use codegraph_core::config_manager::IndexingTier;
+    codegraph_parser::languages::ExtractionPolicy {
+        uses: tier != IndexingTier::Fast,
+        references: tier == IndexingTier::Full,
+    }
+}
+
 pub struct ProjectIndexer {
     config: IndexerConfig,
     global_config: codegraph_core::config_manager::CodeGraphConfig,
@@ -684,7 +694,10 @@ impl ProjectIndexer {
             }
         }
 
-        let parser = TreeSitterParser::new();
+        config.workers = requested.max(1).min(available.max(1));
+        let parser = TreeSitterParser::new()
+            .with_concurrency(config.workers)
+            .with_extraction_policy(extraction_policy_for_tier(config.indexing_tier));
         let project_root = config.project_root.clone();
         let (surreal, surreal_pool) = Self::connect_surreal(&project_root).await?;
         let surreal_writer = SurrealWriterHandle::new(surreal_pool);
@@ -864,32 +877,33 @@ impl ProjectIndexer {
 
         let file_config: codegraph_parser::file_collect::FileCollectionConfig =
             (&self.config).into();
+        let all_files =
+            codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?;
+        let source_snapshots = codegraph_parser::SourceSnapshots::capture(
+            &all_files,
+            crate::estimation::source_memory_budget(),
+            self.parser.concurrency(),
+        )
+        .await?;
 
-        // FORCE REINDEX: Clean slate approach
-        if self.config.force_reindex {
-            info!("🧹 --force flag detected: Performing clean slate deletion");
-            let storage = self.surreal.lock().await;
-            storage.clean_project_data(&self.project_id).await?;
-            drop(storage);
-            info!("✅ Clean slate complete, starting fresh index");
-        }
         // INCREMENTAL INDEXING: Check if already indexed and has file metadata
-        let files_to_index = if self.is_indexed(path).await? && self.has_file_metadata().await? {
+        let files_to_index = if !self.config.force_reindex
+            && self.is_indexed(path).await?
+            && self.has_file_metadata().await?
+        {
             info!("📊 Project already indexed, checking for file changes...");
 
             // Collect current files (returns Vec<(PathBuf, u64)>)
-            let files_with_sizes =
-                codegraph_parser::file_collect::collect_source_files_with_config(
-                    path,
-                    &file_config,
-                )?;
+            let files_with_sizes = &all_files;
 
             // Extract just the paths for change detection
             let file_paths: Vec<PathBuf> =
                 files_with_sizes.iter().map(|(p, _)| p.clone()).collect();
 
             // Detect changes
-            let changes = self.detect_file_changes(&file_paths).await?;
+            let changes = self
+                .detect_snapshot_changes(&file_paths, &source_snapshots)
+                .await?;
 
             // Categorize changes
             let added: Vec<_> = changes
@@ -924,7 +938,7 @@ impl ProjectIndexer {
                     skipped: unchanged.len(),
                     ..IndexStats::default()
                 };
-                self.shutdown_surreal_writer().await?;
+                self.flush_surreal_writer().await?;
                 return Ok(stats);
             }
 
@@ -953,7 +967,7 @@ impl ProjectIndexer {
                     skipped: unchanged.len(),
                     ..IndexStats::default()
                 };
-                self.shutdown_surreal_writer().await?;
+                self.flush_surreal_writer().await?;
                 return Ok(stats);
             }
 
@@ -969,11 +983,11 @@ impl ProjectIndexer {
             warn!(
                 "⚠️  Project indexed without file metadata. Use --force to reindex, or continuing with full index."
             );
-            codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?
+            all_files.clone()
         }
         // Fresh index - index all files
         else {
-            codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?
+            all_files.clone()
         };
 
         let analyzer_settings = AnalyzerSettings::for_tier(self.config.indexing_tier);
@@ -1044,10 +1058,6 @@ impl ProjectIndexer {
             .iter()
             .map(|(p, _)| p.to_string_lossy().to_string())
             .collect();
-        if !modified_paths.is_empty() && self.has_file_metadata().await.unwrap_or(false) {
-            info!("🧹 Removing existing nodes/edges/file_metadata for changed files");
-            self.delete_data_for_files(&modified_paths).await?;
-        }
 
         // Single progress bar for unified AST + fast_ml extraction
         let ast_pb = self.create_progress_bar(
@@ -1057,9 +1067,20 @@ impl ProjectIndexer {
 
         // REVOLUTIONARY: Use unified extraction for nodes + edges in single pass (FASTEST approach)
         // Clone files for parsing (we need them again for metadata persistence)
-        let (mut nodes, mut edges, pstats) = self
-            .parse_files_with_unified_extraction(files.clone(), total_files as u64)
+        let (mut nodes, mut edges, pstats) =
+            crate::estimation::parse_snapshots_with_unified_extraction(
+                &self.parser,
+                files.clone(),
+                total_files as u64,
+                &source_snapshots,
+            )
             .await?;
+        if pstats.failed_files > 0 {
+            return Err(anyhow!(
+                "{} source files failed parsing; file metadata will not be marked current",
+                pstats.failed_files
+            ));
+        }
 
         if analyzer_settings.build_context
             && (!build_context_out.nodes.is_empty() || !build_context_out.edges.is_empty())
@@ -1406,10 +1427,13 @@ impl ProjectIndexer {
             chunk_pb.set_message("🧩 Building chunk plan (chunking nodes)");
             chunk_pb.enable_steady_tick(std::time::Duration::from_millis(120));
 
-            let file_sources = self.load_file_sources(&files);
             let chunker = || {
                 self.embedder
-                    .chunk_nodes_with_sources(&nodes, &file_sources)
+                    .chunk_nodes_with_source_lookup(&nodes, |file| {
+                        source_snapshots
+                            .get(file)
+                            .and_then(|snapshot| snapshot.contents().ok())
+                    })
             };
             let plan = {
                 let threads = std::env::var("RAYON_NUM_THREADS")
@@ -1505,9 +1529,23 @@ impl ProjectIndexer {
         }
 
         // STAGE 4: Persist nodes before embedding so SurrealDB reflects progress
+        // Parsing, analyzer validation and chunk preparation must succeed before replacing
+        // the last usable graph. A failed parse must never erase the previous index.
+        if self.config.force_reindex {
+            self.flush_surreal_writer().await?;
+            self.surreal
+                .lock()
+                .await
+                .clean_project_data(&self.project_id)
+                .await?;
+        } else if !modified_paths.is_empty() {
+            self.delete_data_for_files(&modified_paths).await?;
+            self.flush_surreal_writer().await?;
+        }
         let store_nodes_pb = self.create_progress_bar(nodes.len() as u64, "📈 Storing nodes");
         let mut stats = IndexStats {
             files: pstats.parsed_files,
+            lines: pstats.total_lines,
             skipped: pstats.total_files - pstats.parsed_files,
             analyzers_enabled: analyzer_settings.any_enabled(),
             build_context_nodes,
@@ -1546,10 +1584,6 @@ impl ProjectIndexer {
                 Some(NodeType::Trait) => stats.traits += 1,
                 _ => {}
             }
-            if let Some(ref c) = node.content {
-                stats.lines += c.lines().count();
-            }
-
             extend_symbol_index(&mut symbol_map, node);
         }
         let storage_batch = self.config.batch_size.max(1);
@@ -2178,7 +2212,7 @@ impl ProjectIndexer {
         // Task 3.3: Update file metadata for incremental indexing
         info!("💾 Updating file metadata for change tracking");
         let file_paths_only: Vec<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
-        self.persist_file_metadata(&file_paths_only, &nodes, &edges)
+        self.persist_file_metadata(&file_paths_only, &nodes, &edges, &source_snapshots)
             .await?;
         self.flush_surreal_writer().await?;
         self.verify_file_metadata_count(file_paths_only.len())
@@ -2238,7 +2272,7 @@ impl ProjectIndexer {
         stats.unresolved_edges = total_edges_extracted.saturating_sub(stored_edges);
         stats.resolution_rate = resolution_rate;
 
-        self.shutdown_surreal_writer().await?;
+        self.flush_surreal_writer().await?;
 
         Ok(stats)
     }
@@ -3204,6 +3238,22 @@ impl ProjectIndexer {
 
     /// Detect changes between current filesystem and stored file metadata
     async fn detect_file_changes(&self, current_files: &[PathBuf]) -> Result<Vec<FileChange>> {
+        let files: Vec<_> = current_files.iter().map(|p| (p.clone(), 0)).collect();
+        let snapshots = codegraph_parser::SourceSnapshots::capture(
+            &files,
+            crate::estimation::source_memory_budget(),
+            self.parser.concurrency(),
+        )
+        .await?;
+        self.detect_snapshot_changes(current_files, &snapshots)
+            .await
+    }
+
+    async fn detect_snapshot_changes(
+        &self,
+        current_files: &[PathBuf],
+        snapshots: &codegraph_parser::SourceSnapshots,
+    ) -> Result<Vec<FileChange>> {
         let storage = self.surreal.lock().await;
         let stored_metadata = storage
             .get_file_metadata_for_project(&self.project_id)
@@ -3224,7 +3274,11 @@ impl ProjectIndexer {
             let file_path_str = file_path.to_string_lossy().to_string();
             current_file_set.insert(file_path_str.clone());
 
-            let current_hash = Self::calculate_file_hash(file_path)?;
+            let current_hash = snapshots
+                .get(file_path)
+                .ok_or_else(|| anyhow!("Missing source snapshot: {}", file_path.display()))?
+                .content_hash
+                .clone();
 
             match stored_map.get(&file_path_str) {
                 Some(stored) => {
@@ -3288,6 +3342,7 @@ impl ProjectIndexer {
         files: &[PathBuf],
         nodes: &[CodeNode],
         edges: &[EdgeRelationship],
+        snapshots: &codegraph_parser::SourceSnapshots,
     ) -> Result<()> {
         let mut file_metadata_records = Vec::new();
 
@@ -3328,24 +3383,12 @@ impl ProjectIndexer {
         for file_path in files {
             let file_path_str = file_path.to_string_lossy().to_string();
 
-            // Calculate hash and get file info
-            let content_hash =
-                Self::calculate_file_hash(file_path).unwrap_or_else(|_| "error".to_string());
-
-            let metadata = fs::metadata(file_path).ok();
-            let file_size = metadata.as_ref().map(|m| m.len() as i64).unwrap_or(0);
-
-            let modified_at = metadata
-                .as_ref()
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| {
-                    let duration = t.duration_since(std::time::UNIX_EPOCH).ok()?;
-                    Some(
-                        chrono::DateTime::from_timestamp(duration.as_secs() as i64, 0)
-                            .unwrap_or_else(chrono::Utc::now),
-                    )
-                })
-                .unwrap_or_else(chrono::Utc::now);
+            let snapshot = snapshots
+                .get(file_path)
+                .ok_or_else(|| anyhow!("Missing source snapshot: {}", file_path.display()))?;
+            let content_hash = snapshot.content_hash.clone();
+            let file_size = snapshot.size as i64;
+            let modified_at = chrono::DateTime::<chrono::Utc>::from(snapshot.modified_at);
 
             // Get counts from HashMap - O(1) lookup
             let (node_count, edge_count) =

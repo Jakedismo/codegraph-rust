@@ -9,7 +9,6 @@ use tracing::debug;
 /// Fast ML enhancer that combines multiple techniques (<1ms total latency)
 pub struct FastMLEnhancer {
     pattern_matcher: Arc<PatternMatcher>,
-    symbol_resolver: Arc<Mutex<SymbolResolver>>,
 }
 
 impl FastMLEnhancer {
@@ -19,7 +18,6 @@ impl FastMLEnhancer {
 
         Self {
             pattern_matcher: Arc::new(PatternMatcher::new()),
-            symbol_resolver: Arc::new(Mutex::new(SymbolResolver::new())),
         }
     }
 
@@ -29,14 +27,28 @@ impl FastMLEnhancer {
     /// - Pattern matching: 50-500ns
     /// - Symbol resolution: 100-500μs
     pub fn enhance(&self, result: ExtractionResult, content: &str) -> ExtractionResult {
+        self.enhance_with_policy(result, content, Default::default())
+    }
+
+    pub fn enhance_with_policy(
+        &self,
+        result: ExtractionResult,
+        content: &str,
+        policy: crate::languages::ExtractionPolicy,
+    ) -> ExtractionResult {
         let original_node_count = result.nodes.len();
         let original_edge_count = result.edges.len();
 
         // Step 1: Pattern matching (nanoseconds)
-        let mut result = self.pattern_matcher.enhance_extraction(result, content);
+        let mut result = self
+            .pattern_matcher
+            .enhance_with_policy(result, content, policy);
 
         // Step 2: Symbol resolution (microseconds)
-        if let Ok(mut resolver) = self.symbol_resolver.lock() {
+        if policy.uses {
+            // Resolution state belongs to this extraction. Never retain symbols from
+            // another file, project or an earlier indexing run behind a global lock.
+            let mut resolver = SymbolResolver::new();
             resolver.index_symbols(&result);
             result = resolver.resolve_symbols(result);
         }
@@ -62,7 +74,7 @@ impl FastMLEnhancer {
 
     /// Get symbol resolver for advanced usage
     pub fn symbol_resolver(&self) -> Arc<Mutex<SymbolResolver>> {
-        Arc::clone(&self.symbol_resolver)
+        Arc::new(Mutex::new(SymbolResolver::new()))
     }
 }
 

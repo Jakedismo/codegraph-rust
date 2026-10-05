@@ -151,6 +151,19 @@ impl EmbeddingGenerator {
         )
     }
 
+    pub fn chunk_nodes_with_source_lookup(
+        &self,
+        nodes: &[CodeNode],
+        source_lookup: impl Fn(&str) -> Option<Arc<str>> + Sync,
+    ) -> ChunkPlan {
+        crate::prep::chunker::build_chunk_plan_with_source_lookup(
+            nodes,
+            source_lookup,
+            self.tokenizer.clone(),
+            self.chunker_config(),
+        )
+    }
+
     pub fn dimension(&self) -> usize {
         self.model_config.dimension
     }

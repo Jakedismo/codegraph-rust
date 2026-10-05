@@ -10,6 +10,7 @@ pub mod languages;
 pub mod parser;
 #[cfg(feature = "experimental")]
 pub mod semantic;
+pub mod source;
 pub mod visitor;
 #[cfg(feature = "watcher-experimental")]
 pub mod watcher;
@@ -30,6 +31,7 @@ pub use languages::*;
 pub use parser::*;
 #[cfg(feature = "experimental")]
 pub use semantic::*;
+pub use source::*;
 pub use visitor::*;
 #[cfg(feature = "watcher-experimental")]
 pub use watcher::*;

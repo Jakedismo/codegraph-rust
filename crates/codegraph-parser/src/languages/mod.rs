@@ -17,6 +17,31 @@ pub mod swift;
 use codegraph_core::{EdgeType, ExtractionResult, Language};
 use tree_sitter::Tree;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ExtractionPolicy {
+    pub uses: bool,
+    pub references: bool,
+}
+
+impl Default for ExtractionPolicy {
+    fn default() -> Self {
+        Self {
+            uses: true,
+            references: true,
+        }
+    }
+}
+
+impl ExtractionPolicy {
+    pub fn allows(self, edge: &EdgeType) -> bool {
+        match edge {
+            EdgeType::Uses => self.uses,
+            EdgeType::References => self.references,
+            _ => true,
+        }
+    }
+}
+
 /// Trait for language-specific AST extractors
 ///
 /// All language extractors implement this trait to provide unified
@@ -54,9 +79,19 @@ pub fn extract_for_language(
     content: &str,
     file_path: &str,
 ) -> Option<ExtractionResult> {
+    extract_for_language_with_policy(language, tree, content, file_path, Default::default())
+}
+
+pub fn extract_for_language_with_policy(
+    language: &Language,
+    tree: &Tree,
+    content: &str,
+    file_path: &str,
+    policy: ExtractionPolicy,
+) -> Option<ExtractionResult> {
     match language {
-        Language::Rust => Some(<RustExtractor as LanguageExtractor>::extract_with_edges(
-            tree, content, file_path,
+        Language::Rust => Some(RustExtractor::extract_with_policy(
+            tree, content, file_path, policy,
         )),
         Language::TypeScript => Some(
             <TypeScriptExtractor as LanguageExtractor>::extract_with_edges(
@@ -72,8 +107,8 @@ pub fn extract_for_language(
                 Language::JavaScript,
             ))
         }
-        Language::Python => Some(<PythonExtractor as LanguageExtractor>::extract_with_edges(
-            tree, content, file_path,
+        Language::Python => Some(PythonExtractor::extract_with_policy(
+            tree, content, file_path, policy,
         )),
         Language::Go => Some(<GoExtractor as LanguageExtractor>::extract_with_edges(
             tree, content, file_path,

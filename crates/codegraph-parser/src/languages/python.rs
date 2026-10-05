@@ -11,7 +11,17 @@ pub struct PythonExtractor;
 impl PythonExtractor {
     /// Extract nodes and edges in single AST traversal for maximum speed
     pub fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        Self::extract_with_policy(tree, content, file_path, Default::default())
+    }
+
+    pub fn extract_with_policy(
+        tree: &Tree,
+        content: &str,
+        file_path: &str,
+        policy: super::ExtractionPolicy,
+    ) -> ExtractionResult {
         let mut collector = PythonCollector::new(content, file_path);
+        collector.references = policy.references;
         let mut cursor = tree.walk();
         collector.walk(&mut cursor);
         collector.into_result()
@@ -39,6 +49,7 @@ struct PythonCollector<'a> {
     edges: Vec<EdgeRelationship>,
     current_function_id: Option<NodeId>,
     current_class_id: Option<NodeId>,
+    references: bool,
 }
 
 impl<'a> PythonCollector<'a> {
@@ -50,6 +61,7 @@ impl<'a> PythonCollector<'a> {
             edges: Vec::new(),
             current_function_id: None,
             current_class_id: None,
+            references: true,
         }
     }
 
@@ -277,6 +289,9 @@ impl<'a> PythonCollector<'a> {
     }
 
     fn add_reference_edge(&mut self, from_id: NodeId, node: Node, kind: &str) {
+        if !self.references {
+            return;
+        }
         let name = self.node_text(&node);
         if !name.is_empty() {
             self.edges.push(EdgeRelationship {

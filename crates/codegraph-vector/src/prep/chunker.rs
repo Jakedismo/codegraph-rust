@@ -135,6 +135,24 @@ pub fn build_chunk_plan_with_sources(
     tokenizer: Arc<Tokenizer>,
     config: ChunkerConfig,
 ) -> ChunkPlan {
+    build_chunk_plan_with_source_lookup(
+        nodes,
+        |path| {
+            file_sources
+                .get(path)
+                .map(|source| Arc::<str>::from(source.as_str()))
+        },
+        tokenizer,
+        config,
+    )
+}
+
+pub fn build_chunk_plan_with_source_lookup(
+    nodes: &[CodeNode],
+    source_lookup: impl Fn(&str) -> Option<Arc<str>> + Sync,
+    tokenizer: Arc<Tokenizer>,
+    config: ChunkerConfig,
+) -> ChunkPlan {
     let start_total = Instant::now();
     let _ = config.max_texts_per_request;
     let _ = config.cache_capacity;
@@ -147,13 +165,15 @@ pub fn build_chunk_plan_with_sources(
     stats.total_nodes = nodes.len();
 
     for (node_idx, node) in nodes.iter().enumerate() {
-        let base_text = if let (Some(span), Some(source)) = (
-            node.span.as_ref(),
-            file_sources.get(&node.location.file_path),
-        ) {
+        let source = source_lookup(&node.location.file_path);
+        let base_text = if let (Some(span), Some(source)) = (node.span.as_ref(), source.as_ref()) {
             let start = span.start_byte as usize;
             let end = span.end_byte as usize;
-            if start < end && end <= source.len() {
+            if start < end
+                && end <= source.len()
+                && source.is_char_boundary(start)
+                && source.is_char_boundary(end)
+            {
                 source[start..end].to_string()
             } else {
                 sanitize(node, config.sanitize_mode)

@@ -34,7 +34,17 @@ impl RustExtractor {
 
     /// Extract BOTH nodes and edges in single AST traversal for maximum speed
     pub fn extract_with_edges(tree: &Tree, content: &str, file_path: &str) -> ExtractionResult {
+        Self::extract_with_policy(tree, content, file_path, Default::default())
+    }
+
+    pub fn extract_with_policy(
+        tree: &Tree,
+        content: &str,
+        file_path: &str,
+        policy: super::ExtractionPolicy,
+    ) -> ExtractionResult {
         let mut collector = Collector::new(content, file_path);
+        collector.references = policy.references;
         let mut cursor = tree.walk();
         collector.walk(&mut cursor, WalkContext::default());
         collector.into_result()
@@ -66,6 +76,7 @@ struct Collector<'a> {
     nodes: Vec<CodeNode>,
     edges: Vec<EdgeRelationship>,
     current_node_id: Option<NodeId>, // Track current context for edge relationships
+    references: bool,
 }
 
 impl<'a> Collector<'a> {
@@ -76,6 +87,7 @@ impl<'a> Collector<'a> {
             nodes: Vec::new(),
             edges: Vec::new(),
             current_node_id: None,
+            references: true,
         }
     }
 
@@ -289,7 +301,9 @@ impl<'a> Collector<'a> {
                         .insert("impl_for".into(), for_type.clone());
 
                     // Add reference to the 'for' type
-                    if let Some(type_node) = node.child_by_field_name("type") {
+                    if let Some(type_node) =
+                        node.child_by_field_name("type").filter(|_| self.references)
+                    {
                         self.edges.push(EdgeRelationship {
                             from: code.id,
                             to: for_type.clone(),
@@ -305,7 +319,10 @@ impl<'a> Collector<'a> {
                         .insert("impl_trait".into(), trait_name.clone());
 
                     // Add reference to the trait
-                    if let Some(trait_node) = node.child_by_field_name("trait") {
+                    if let Some(trait_node) = node
+                        .child_by_field_name("trait")
+                        .filter(|_| self.references)
+                    {
                         self.edges.push(EdgeRelationship {
                             from: code.id,
                             to: trait_name.clone(),
@@ -679,6 +696,9 @@ impl<'a> Collector<'a> {
 
     /// Deep scan for type identifiers within a type node (handles generics, pointers, etc.)
     fn extract_type_references(&mut self, node: Node, from_id: NodeId, kind: &str) {
+        if !self.references {
+            return;
+        }
         let mut stack = vec![node];
         while let Some(n) = stack.pop() {
             match n.kind() {
