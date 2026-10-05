@@ -126,7 +126,7 @@ Each tool runs a **reasoning agent** that plans, searches, analyzes graph relati
 CodeGraph's agents are built on the **Rig** framework. The agent that runs is selected at runtime with `CODEGRAPH_AGENT_ARCHITECTURE` (in `.env` or the environment):
 
 - **`react`** (default; `rig` is accepted as an alias): a tool-calling loop over the graph tools.
-- **`lats`**: tree search over candidate reasoning steps. It does not call the graph tools, so its answers are not grounded in the index, and it requires the OpenAI or Anthropic provider.
+- **`lats`**: tree search over candidate reasoning steps. It does not call the graph tools, so its answers are not grounded in the index.
 - **`reflexion`**: ReAct wrapped in a retry that feeds the previous error back to the agent.
 
 Whichever agent is selected, a failed run is retried automatically with the error as context.

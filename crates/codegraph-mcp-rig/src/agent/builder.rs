@@ -23,6 +23,7 @@ use anyhow::{Result, anyhow};
 use codegraph_mcp_core::agent_architecture::AgentArchitecture;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
+use rig::{DynModel, operation::Completion};
 use std::sync::Arc;
 #[allow(unused_imports)] // Used when provider features are enabled
 use tracing::info;
@@ -189,48 +190,57 @@ impl RigAgentBuilder {
         }
     }
 
+    // Without any provider feature every arm returns early.
+    #[allow(unreachable_code)]
     fn build_lats(self, provider: RigProvider) -> Result<Box<dyn RigAgentTrait>> {
         tracing::warn!(
             "LATS agent selected: it searches over reasoning steps without calling graph tools, \
              so answers are not grounded in the index. Use react for grounded answers."
         );
         let model_name = get_model_name();
-        let factory = GraphToolFactory::new(self.executor.clone());
 
-        match provider {
+        // LATS only needs plain completions, so every provider with a client works.
+        let model: DynModel<Completion> = match provider {
             #[cfg(feature = "openai")]
-            RigProvider::OpenAI => {
-                let client = RigLLMAdapter::openai_client()?;
-                let model = client.completion(&model_name).into();
-                Ok(Box::new(LatsAgent {
-                    model,
-                    factory,
-                    max_turns: self.max_turns,
-                    tier: self.tier,
-                }))
-            }
+            RigProvider::OpenAI => RigLLMAdapter::openai_client()?
+                .completion(&model_name)
+                .into(),
             #[cfg(feature = "anthropic")]
-            RigProvider::Anthropic => {
-                let client = RigLLMAdapter::anthropic_client()?;
-                let model = client.completion(&model_name).into();
-                Ok(Box::new(LatsAgent {
-                    model,
-                    factory,
-                    max_turns: self.max_turns,
-                    tier: self.tier,
-                }))
+            RigProvider::Anthropic => RigLLMAdapter::anthropic_client()?
+                .completion(&model_name)
+                .into(),
+            #[cfg(feature = "ollama")]
+            RigProvider::Ollama => RigLLMAdapter::ollama_client()?
+                .completion(&model_name)
+                .into(),
+            #[cfg(feature = "xai")]
+            RigProvider::XAI => RigLLMAdapter::xai_client()?.completion(&model_name).into(),
+            #[cfg(feature = "openai")]
+            RigProvider::LMStudio => RigLLMAdapter::lmstudio_client()?
+                .completion(&model_name)
+                .into(),
+            #[cfg(feature = "openai")]
+            RigProvider::OpenAICompatible { ref base_url } => {
+                RigLLMAdapter::openai_compatible_client(base_url)?
+                    .completion(&model_name)
+                    .into()
             }
-            // Add other providers as needed, mostly mimicking the above pattern
             #[allow(unreachable_patterns)]
             _ => {
                 let _ = model_name;
-                let _ = factory;
-                Err(anyhow!(
-                    "LATS not yet supported for provider {:?}",
+                return Err(anyhow!(
+                    "Provider {:?} not enabled in build features",
                     provider
-                ))
+                ));
             }
-        }
+        };
+
+        Ok(Box::new(LatsAgent {
+            model,
+            factory: GraphToolFactory::new(self.executor.clone()),
+            max_turns: self.max_turns,
+            tier: self.tier,
+        }))
     }
 
     fn build_reflexion(self, provider: RigProvider) -> Result<Box<dyn RigAgentTrait>> {
