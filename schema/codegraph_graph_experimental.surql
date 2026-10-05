@@ -30,7 +30,7 @@ DEFINE FIELD file_path       ON TABLE nodes TYPE option<string>;      -- file pa
 DEFINE FIELD content         ON TABLE nodes TYPE option<string>;      -- optional full body / doc
 DEFINE FIELD start_line      ON TABLE nodes TYPE option<int>;
 DEFINE FIELD end_line        ON TABLE nodes TYPE option<int>;
-DEFINE FIELD metadata        ON TABLE nodes TYPE option<object>;      -- arbitrary metadata
+DEFINE FIELD metadata        ON TABLE nodes TYPE option<object | string> FLEXIBLE; -- arbitrary metadata (compressed string or object)
 DEFINE FIELD range           ON TABLE nodes TYPE option<object>;      -- {start:{line}, end:{line}}
 DEFINE FIELD chunk_count     ON TABLE nodes TYPE option<int> DEFAULT 0;
 DEFINE FIELD complexity      ON TABLE nodes TYPE option<float>;
@@ -163,6 +163,7 @@ DEFINE FIELD edge_count        ON TABLE project_metadata TYPE int DEFAULT 0;
 DEFINE FIELD last_analyzed     ON TABLE project_metadata TYPE option<datetime>;
 DEFINE FIELD organization_id   ON TABLE project_metadata TYPE option<string>;
 DEFINE FIELD domain            ON TABLE project_metadata TYPE option<string>;
+DEFINE FIELD avg_coverage_score ON TABLE project_metadata TYPE option<float>;
 DEFINE FIELD codegraph_version ON TABLE project_metadata TYPE option<string>;
 DEFINE FIELD metadata          ON TABLE project_metadata TYPE option<object>;
 DEFINE FIELD created_at        ON TABLE project_metadata TYPE datetime DEFAULT time::now() READONLY;

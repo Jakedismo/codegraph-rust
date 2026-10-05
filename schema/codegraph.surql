@@ -921,7 +921,7 @@ DEFINE FIELD embedding_model ON nodes TYPE option<string> DEFAULT 'jina-embeddin
 DEFINE FIELD end_line ON nodes TYPE option<int> PERMISSIONS FULL;
 DEFINE FIELD file_path ON nodes TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD language ON nodes TYPE option<string> PERMISSIONS FULL;
-DEFINE FIELD metadata ON nodes TYPE option<object> FLEXIBLE PERMISSIONS FULL;
+DEFINE FIELD metadata ON nodes TYPE option<object | string> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD name ON nodes TYPE string PERMISSIONS FULL;
 DEFINE FIELD node_type ON nodes TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD organization_id ON nodes TYPE option<string> PERMISSIONS FULL;
@@ -957,6 +957,7 @@ DEFINE INDEX idx_nodes_type ON nodes FIELDS node_type CONCURRENTLY;
 
 DEFINE TABLE project_metadata TYPE NORMAL SCHEMAFULL COMMENT 'Project registry with CodeGraph statistics' PERMISSIONS FULL;
 
+DEFINE FIELD avg_coverage_score ON project_metadata TYPE option<float> PERMISSIONS FULL;
 DEFINE FIELD codegraph_version ON project_metadata TYPE option<string> PERMISSIONS FULL;
 DEFINE FIELD created_at ON project_metadata TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
 DEFINE FIELD domain ON project_metadata TYPE option<string> PERMISSIONS FULL;

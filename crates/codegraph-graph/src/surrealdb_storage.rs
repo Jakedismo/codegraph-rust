@@ -56,6 +56,21 @@ fn is_persistent_embedded_connection(connection: &str) -> bool {
 static EMBEDDED_HANDLES: OnceLock<tokio::sync::Mutex<HashMap<String, Surreal<Any>>>> =
     OnceLock::new();
 
+/// Drop top-level `null` keys from batch payloads. A JSON `null` binds as
+/// SurrealQL `NULL`, which `option<T>` fields reject; a missing key reads as
+/// `NONE`, which they accept.
+fn strip_null_fields(payloads: Vec<JsonValue>) -> Vec<JsonValue> {
+    payloads
+        .into_iter()
+        .map(|mut payload| {
+            if let JsonValue::Object(map) = &mut payload {
+                map.retain(|_, v| !v.is_null());
+            }
+            payload
+        })
+        .collect()
+}
+
 fn env_flag(name: &str) -> bool {
     env::var(name)
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -808,6 +823,14 @@ impl SurrealDbStorage {
                     records.len(),
                     truncate_surreal_error(&e)
                 ))
+            })?
+            .check()
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Node batch upsert returned error ({} items): {}",
+                    records.len(),
+                    truncate_surreal_error(&e)
+                ))
             })?;
 
         if self.config.cache_enabled {
@@ -843,7 +866,7 @@ impl SurrealDbStorage {
 
         self.db
             .query(UPSERT_EDGES_QUERY)
-            .bind(("data", payloads))
+            .bind(("data", strip_null_fields(payloads)))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!(
@@ -1317,7 +1340,7 @@ impl SurrealDbStorage {
 
         self.db
             .query(query)
-            .bind(("data", payloads))
+            .bind(("data", strip_null_fields(payloads)))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!(
