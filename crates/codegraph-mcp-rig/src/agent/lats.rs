@@ -12,7 +12,7 @@ use rig::completion::CompletionRequest;
 use rig::{DynModel, operation::Completion};
 use std::collections::HashMap;
 use std::pin::Pin;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 // --- MCTS Data Structures ---
 
@@ -88,13 +88,32 @@ such as file paths, line numbers, or tool results that nothing in the step suppo
 Reply with a single integer between 0 and 100 and nothing else: no words, no punctuation, \
 no \"/100\".";
 
+/// Score given to a candidate when the evaluator produced nothing usable.
+const NEUTRAL_SCORE: f64 = 0.5;
+
+/// Read the evaluator's reply as a score in `[0.0, 1.0]`.
+///
+/// Takes the first integer in the reply, so "85/100" reads as 85, and returns
+/// `None` when the reply holds no integer or one above 100.
+fn parse_score(reply: &str) -> Option<f64> {
+    let digits: String = reply
+        .chars()
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    let score = digits.parse::<u32>().ok().filter(|s| *s <= 100)?;
+    Some(f64::from(score) / 100.0)
+}
+
 impl LatsAgent {
     // --- Helper: Call Model ---
     async fn call_model(&self, prompt: String, system_prompt: String) -> Result<String> {
+        // No temperature: reasoning models reject the parameter. The output cap
+        // follows the tier because reasoning tokens count against it, and a
+        // tight cap can use up the budget before any visible text is produced.
         let request = CompletionRequest::new(prompt)
             .preamble(system_prompt)
-            .temperature(0.7)
-            .max_tokens(1024);
+            .max_tokens(self.tier.max_output_tokens());
         let response = self.model.call(request).await?;
         Ok(response.text())
     }
@@ -198,13 +217,14 @@ impl LatsAgent {
             .call_model(prompt, EVALUATION_SYSTEM_PROMPT.to_string())
             .await
         {
-            Ok(score_str) => {
-                // Extract number
-                let digits: String = score_str.chars().filter(|c| c.is_digit(10)).collect();
-                let score = digits.parse::<f64>().unwrap_or(50.0); // Default to neutral on parse fail
-                score / 100.0
+            Ok(score_str) => parse_score(&score_str).unwrap_or_else(|| {
+                warn!(reply = %score_str, "LATS evaluator returned no score; using neutral");
+                NEUTRAL_SCORE
+            }),
+            Err(e) => {
+                warn!(error = %e, "LATS evaluator call failed; using neutral score");
+                NEUTRAL_SCORE
             }
-            Err(_) => 0.5,
         }
     }
 
@@ -313,5 +333,20 @@ impl RigAgentTrait for LatsAgent {
 
     fn take_tool_traces(&self) -> Vec<crate::tools::ToolTrace> {
         self.factory.take_traces()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_score() {
+        assert_eq!(parse_score("85"), Some(0.85));
+        assert_eq!(parse_score(" 0\n"), Some(0.0));
+        assert_eq!(parse_score("Score: 85/100"), Some(0.85));
+        assert_eq!(parse_score("no score"), None);
+        assert_eq!(parse_score(""), None);
+        assert_eq!(parse_score("250"), None);
     }
 }

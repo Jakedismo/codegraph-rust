@@ -94,7 +94,7 @@ The index tier controls which analyzers run and which edge types are filtered: `
 `crates/codegraph-mcp-server/src/official_server.rs` exposes the four consolidated tools via a single rmcp `#[tool_router]` (the SDK does not support multiple router blocks, so the deprecated legacy tools are feature-gated by `legacy-agentic-tools` within the same router). Each tool calls `execute_agentic_workflow`, which:
 
 1. Picks a prompt/step tier from the configured LLM context window (`CODEGRAPH_CONTEXT_WINDOW` → `ContextTier` in `codegraph-mcp-core/src/context_aware_limits.rs`); the same value bounds per-tool result size and accumulated context.
-2. Dispatches on `CODEGRAPH_AGENT_ARCHITECTURE` (default `rig`): `rig`/`reflexion` → `codegraph-mcp-rig` (internally chooses ReAct, LATS, or Reflexion fallback per tool/focus in `agent/builder.rs`); `react`/`lats` → legacy `codegraph-mcp-autoagents`.
+2. Dispatches on `CODEGRAPH_AGENT_ARCHITECTURE` (default `rig`): `rig`/`reflexion` → `codegraph-mcp-rig` (runs ReAct with a Reflexion retry on failure; its tool-less LATS agent is opt-in via `RigAgentBuilder::architecture`); `react`/`lats` → legacy `codegraph-mcp-autoagents`.
 3. The agent loops over the inner graph tools in `codegraph-mcp-tools` (`GraphToolSchemas` / `GraphToolExecutor`: transitive deps, reverse deps, cycles, call chains, coupling, hub nodes, semantic search, complexity hotspots).
 4. Those call `fn::*` SurrealQL functions defined in `schema/codegraph.surql`, wrapped by `crates/codegraph-graph/src/graph_functions.rs`.
 

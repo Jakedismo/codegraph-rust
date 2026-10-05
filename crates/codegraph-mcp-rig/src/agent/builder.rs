@@ -133,25 +133,12 @@ impl RigAgentBuilder {
         self.tier.max_output_tokens()
     }
 
-    /// Resolve architecture using heuristic if not explicitly set
+    /// Resolve architecture, defaulting to ReAct when none was set explicitly.
+    ///
+    /// LATS is opt-in via [`Self::architecture`]: its expansion step reasons
+    /// without calling graph tools, so its answers are not grounded in the index.
     fn resolve_architecture(&self) -> AgentArchitecture {
-        if let Some(arch) = self.architecture {
-            return arch;
-        }
-
-        // Heuristic: Use LATS for complex/deep analysis types
-        match self.analysis_type {
-            AnalysisType::ArchitectureAnalysis
-            | AnalysisType::ComplexityAnalysis
-            | AnalysisType::SemanticQuestion => {
-                info!(
-                    "Selecting LATS architecture for complex analysis: {:?}",
-                    self.analysis_type
-                );
-                AgentArchitecture::LATS
-            }
-            _ => AgentArchitecture::ReAct,
-        }
+        self.architecture.unwrap_or(AgentArchitecture::ReAct)
     }
 
     /// Build agent for the detected provider and architecture
