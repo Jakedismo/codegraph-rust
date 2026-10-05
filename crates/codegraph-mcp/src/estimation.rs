@@ -158,41 +158,7 @@ impl RepositoryEstimator {
 }
 
 pub fn build_symbol_index(nodes: &[CodeNode]) -> HashMap<String, NodeId> {
-    let mut symbol_map = HashMap::with_capacity(nodes.len().saturating_mul(4));
-    for node in nodes {
-        extend_symbol_index(&mut symbol_map, node);
-    }
-    symbol_map
-}
-
-pub(crate) fn extend_symbol_index(target: &mut HashMap<String, NodeId>, node: &CodeNode) {
-    let base_name = node.name.to_string();
-    target.insert(base_name.clone(), node.id);
-
-    if let Some(qname) = node.metadata.attributes.get("qualified_name") {
-        target.insert(qname.clone(), node.id);
-    }
-
-    if let Some(node_type) = &node.node_type {
-        target.insert(format!("{:?}::{}", node_type, base_name), node.id);
-    }
-
-    target.insert(
-        format!("{}::{}", node.location.file_path, base_name),
-        node.id,
-    );
-
-    if let Some(short_name) = base_name.split("::").last() {
-        target.insert(short_name.to_string(), node.id);
-    }
-
-    if let Some(method_of) = node.metadata.attributes.get("method_of") {
-        target.insert(format!("{}::{}", method_of, base_name), node.id);
-    }
-
-    if let Some(trait_impl) = node.metadata.attributes.get("implements_trait") {
-        target.insert(format!("{}::{}", trait_impl, base_name), node.id);
-    }
+    crate::resolution::SymbolCatalog::new(nodes).unique_aliases()
 }
 
 pub(crate) async fn parse_files_with_unified_extraction(

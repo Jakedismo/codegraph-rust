@@ -47,6 +47,7 @@ nix = { version = "0.31.3", features = ["fs", "process", "signal"] }
 notify = "8.2.0"
 walkdir = "2.5.0"
 regex = { workspace = true }
+rapidfuzz = "0.5.0"
 rayon = { workspace = true }
 num_cpus = { workspace = true }
 

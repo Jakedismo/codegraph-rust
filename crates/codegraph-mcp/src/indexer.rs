@@ -3,9 +3,7 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 
 use crate::analyzers::{AnalyzerSettings, find_tool_on_path, required_tools_for_languages};
-use crate::estimation::{
-    extend_symbol_index, parse_files_with_unified_extraction as shared_unified_parse,
-};
+use crate::estimation::parse_files_with_unified_extraction as shared_unified_parse;
 use anyhow::{Context, Result, anyhow};
 use codegraph_core::{CodeNode, EdgeRelationship, EdgeType, NodeId, NodeType};
 use codegraph_graph::ChunkEmbeddingRecord;
@@ -1235,8 +1233,6 @@ impl ProjectIndexer {
             boundary_violations_added: architecture_stats.boundary_violations_added,
             ..Default::default()
         };
-        let mut symbol_map: std::collections::HashMap<String, NodeId> =
-            std::collections::HashMap::new();
 
         for node in nodes.iter() {
             match node.node_type {
@@ -1246,7 +1242,6 @@ impl ProjectIndexer {
                 Some(NodeType::Trait) => stats.traits += 1,
                 _ => {}
             }
-            extend_symbol_index(&mut symbol_map, node);
         }
         let storage_batch = self.config.batch_size.max(1);
         for chunk in nodes.chunks(storage_batch) {
@@ -1458,414 +1453,160 @@ impl ProjectIndexer {
             "Vector indexing handled by SurrealDB; local FAISS generation removed"
         );
 
-        // REVOLUTIONARY: Store edges extracted during unified parsing (MAXIMUM SPEED)
-        let stored_edges;
-        let edge_count = edges.len();
-        let resolution_rate;
-        {
-            let edge_pb =
-                self.create_progress_bar(edges.len() as u64, "🔗 Resolving & Storing Dependencies");
-            let edge_count = edges.len();
-
-            info!("🔗 Starting dependency relationship storage:");
-            info!(
-                "   📊 Raw relationships extracted: {} (calls, imports, dependencies)",
-                edge_count
-            );
-            info!(
-                "   🎯 Symbol resolution map: {} unique symbols available",
-                symbol_map.len()
-            );
-            info!(
-                "   🧠 AI-enhanced resolution: {} feature active",
-                if cfg!(feature = "ai-enhanced") {
-                    "Semantic similarity"
-                } else {
-                    "Pattern matching only"
-                }
-            );
-            info!(
-                "   🔍 Resolution methods: Exact match → Simple name → Case variants → AI similarity"
-            );
-            info!("   🚀 M4 Max optimization: Parallel processing with bulk database operations");
-
-            // REVOLUTIONARY: Parallel symbol resolution optimized for M4 Max 128GB
-            let chunk_size = (edges.len() / 12).max(100).min(1000); // Optimal for 12+ cores
-            let chunks: Vec<_> = edges.chunks(chunk_size).collect();
-            let total_chunks = chunks.len();
-
-            info!(
-                "⚡ Parallel processing: {} edge chunks across {} cores",
-                total_chunks,
-                num_cpus::get()
-            );
-
-            // REVOLUTIONARY: Pre-generate AI embeddings for BOTH known symbols AND unresolved edge targets
-            #[cfg(feature = "ai-enhanced")]
-            let (symbol_embeddings, unresolved_embeddings, node_degrees) = {
-                info!("🚀 INITIALIZING REVOLUTIONARY 2-PHASE AI SEMANTIC MATCHING");
-                info!(
-                    "🔧 Phase 1: Pre-computing embeddings for {} known symbols",
-                    symbol_map.len()
-                );
-
-                // Phase 1: Known symbol embeddings
-                let known_embeddings = match self.precompute_symbol_embeddings(&symbol_map).await {
-                    embeddings if !embeddings.is_empty() => {
-                        info!(
-                            "✅ Known symbol embeddings ready: {} pre-computed",
-                            embeddings.len()
-                        );
-                        embeddings
-                    }
-                    _ => {
-                        warn!(
-                            "⚠️ Known symbol embedding failed - falling back to empty embeddings"
-                        );
-                        std::collections::HashMap::new()
-                    }
-                };
-
-                // Phase 2: Pre-compute embeddings for ALL unresolved edge targets
-                info!("🔧 Phase 2: Pre-computing embeddings for unresolved edge targets");
-                let mut unresolved_symbols: std::collections::HashSet<String> =
-                    std::collections::HashSet::new();
-                let mut unresolved_symbol_edge_ids: std::collections::HashMap<String, uuid::Uuid> =
-                    std::collections::HashMap::new();
-
-                for edge in edges.iter() {
-                    if !symbol_map.contains_key(&edge.to) {
-                        unresolved_symbols.insert(edge.to.clone());
-                        unresolved_symbol_edge_ids
-                            .entry(edge.to.clone())
-                            .or_insert_with(uuid::Uuid::new_v4);
-                    }
-                }
-
-                info!(
-                    "📊 Discovered {} unique unresolved symbols for AI embedding",
-                    unresolved_symbols.len()
-                );
-                let unresolved_embeddings = if !unresolved_symbols.is_empty() {
-                    // PROFESSIONAL: Direct embedding generation for unresolved symbols (no fake NodeIds needed)
-                    match self
-                        .precompute_unresolved_symbol_embeddings(
-                            &unresolved_symbols,
-                            &unresolved_symbol_edge_ids,
-                        )
-                        .await
+        // Resolve exact/contextual targets once before any semantic inference.
+        let resolution_start = std::time::Instant::now();
+        let catalog = crate::resolution::SymbolCatalog::new(&nodes);
+        let symbol_map = catalog.unique_aliases();
+        let mut normalized = HashMap::new();
+        let mut targets = Vec::with_capacity(edges.len());
+        let mut exact_count = 0;
+        let mut lexical_count = 0;
+        let mut lexical_cache = HashMap::new();
+        for edge in &edges {
+            let mut target = catalog.exact(edge, &[]);
+            if target.is_none() {
+                let variants = normalized.entry(edge.to.clone()).or_insert_with(|| {
+                    let mut variants = Self::normalize_symbol_target(&edge.to);
+                    if edge.to.starts_with("_R")
+                        || edge.to.starts_with("_ZN")
+                        || edge.to.contains('<')
                     {
-                        embeddings if !embeddings.is_empty() => {
-                            info!(
-                                "✅ Unresolved symbol embeddings ready: {} pre-computed",
-                                embeddings.len()
-                            );
-                            embeddings
-                        }
-                        _ => {
-                            warn!(
-                                "⚠️ Unresolved symbol embedding failed - AI matching will be limited"
-                            );
-                            std::collections::HashMap::new()
-                        }
+                        variants.extend(Self::normalize_rust_symbol(&edge.to));
+                        variants.sort();
+                        variants.dedup();
                     }
-                } else {
-                    std::collections::HashMap::new()
-                };
-
-                info!(
-                    "symbol resolver: embeddings prepared (known={}, unresolved={}, total={})",
-                    known_embeddings.len(),
-                    unresolved_embeddings.len(),
-                    known_embeddings.len() + unresolved_embeddings.len()
-                );
-
-                let node_degrees = self.compute_node_degrees().await.unwrap_or_default();
-
-                (known_embeddings, unresolved_embeddings, node_degrees)
-            };
-            #[cfg(not(feature = "ai-enhanced"))]
-            let (symbol_embeddings, unresolved_embeddings, node_degrees): (
-                std::collections::HashMap<String, Vec<f32>>,
-                std::collections::HashMap<String, Vec<f32>>,
-                std::collections::HashMap<NodeId, i32>,
-            ) = {
-                info!(
-                    "🚀 Pattern-only resolution: AI semantic matching disabled (ai-enhanced feature not enabled)"
-                );
-                (
-                    std::collections::HashMap::new(),
-                    std::collections::HashMap::new(),
-                    std::collections::HashMap::new(),
-                )
-            };
-
-            // Flush symbol embeddings to database before edge resolution
-            self.flush_surreal_writer().await?;
-
-            let mut unresolved_edges = 0;
-            let mut exact_matches = 0;
-            let mut pattern_matches = 0;
-            #[cfg(feature = "ai-enhanced")]
-            let mut ai_matches = 0;
-            let resolution_start = std::time::Instant::now();
-
-            // REVOLUTIONARY: Parallel symbol resolution for M4 Max performance
-            use std::sync::atomic::{AtomicUsize, Ordering};
-
-            let processed_chunks = AtomicUsize::new(0);
-            let total_resolved = AtomicUsize::new(0);
-
-            // Process all chunks in parallel using M4 Max cores
-            let unresolved_samples: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-
-            let chunk_results: Vec<_> = chunks
-                .par_iter()
-                .enumerate()
-                .map(|(chunk_idx, chunk)| {
-                    let unresolved_samples = unresolved_samples.clone();
-                    let mut chunk_resolved = Vec::new();
-                    let mut chunk_stats = (0, 0, 0, 0); // (exact, pattern, ai, unresolved)
-
-                    for edge_rel in chunk.iter() {
-                        let mut target_id = None;
-                        let mut resolution_type = "unresolved";
-
-                        // Rust-first normalization
-                        for variant in Self::normalize_rust_symbol(&edge_rel.to) {
-                            if let Some(&id) = symbol_map.get(&variant) {
-                                target_id = Some(id);
-                                resolution_type = "normalized";
-                                break;
-                            }
-                        }
-
-                        // Python normalization (fallback to string-based)
-                        if target_id.is_none() {
-                            for variant in Self::normalize_python_symbol(&edge_rel.to) {
-                                if let Some(&id) = symbol_map.get(&variant) {
-                                    target_id = Some(id);
-                                    resolution_type = "normalized";
-                                    break;
-                                }
-                            }
-                        }
-
-                        if target_id.is_none() {
-                            for variant in Self::normalize_symbol_target(&edge_rel.to) {
-                                if let Some(&id) = symbol_map.get(&variant) {
-                                    target_id = Some(id);
-                                    resolution_type = "normalized";
-                                    break;
-                                }
-                            }
-                        }
-
-                        if target_id.is_none() {
-                            if let Some(simple_name) = edge_rel.to.split("::").last() {
-                                if let Some(&id) = symbol_map.get(simple_name) {
-                                    target_id = Some(id);
-                                    resolution_type = "simple_name";
-                                }
-                            }
-                        }
-
-                        if let Some(target_id) = target_id {
-                            // Track resolution method for statistics
-                            match resolution_type {
-                                "normalized" | "exact" => chunk_stats.0 += 1,
-                                "simple_name" => chunk_stats.1 += 1,
-                                _ => {}
-                            }
-
-                            // Collect resolved edge for bulk storage
-                            chunk_resolved.push((
-                                edge_rel.from,
-                                target_id,
-                                edge_rel.edge_type.clone(),
-                                edge_rel.metadata.clone(),
-                            ));
-                        } else {
-                            // REVOLUTIONARY: Real AI semantic matching using BOTH known + unresolved embeddings
-                            #[cfg(feature = "ai-enhanced")]
-                            {
-                                if let Some(best_match) = Self::ai_semantic_match_sync(
-                                    &edge_rel.to,
-                                    &symbol_map,
-                                    &symbol_embeddings,
-                                    &unresolved_embeddings,
-                                    &node_degrees,
-                                ) {
-                                    chunk_stats.2 += 1; // AI match count
-                                    chunk_resolved.push((
-                                        edge_rel.from,
-                                        best_match,
-                                        edge_rel.edge_type.clone(),
-                                        edge_rel.metadata.clone(),
-                                    ));
-                                } else {
-                                    chunk_stats.3 += 1; // Unresolved count
-                                }
-                            }
-                            #[cfg(not(feature = "ai-enhanced"))]
-                            {
-                                chunk_stats.3 += 1; // Unresolved count
-                            }
-                        }
-                    }
-
-                    // Enhanced progress tracking with ETA for M4 Max visibility
-                    let chunks_done = processed_chunks.fetch_add(1, Ordering::Relaxed) + 1;
-                    if chunks_done % 3 == 0 || chunks_done == total_chunks {
-                        let resolved_so_far =
-                            total_resolved.fetch_add(chunk_resolved.len(), Ordering::Relaxed);
-                        edge_pb.set_position(resolved_so_far as u64);
-
-                        if chunks_done % 5 == 0 {
-                            let elapsed = resolution_start.elapsed().as_secs_f64();
-                            let rate = resolved_so_far as f64 / elapsed;
-                            let remaining = edge_count - resolved_so_far;
-                            let eta = if rate > 0.0 {
-                                remaining as f64 / rate
-                            } else {
-                                0.0
-                            };
-
-                            info!(
-                                "⚡ M4 Max parallel: {}/{} chunks | {} edges/s | ETA: {:.1}s",
-                                chunks_done, total_chunks, rate as usize, eta
-                            );
-                        }
-                    }
-
-                    (chunk_resolved, chunk_stats)
-                })
-                .collect();
-
-            // Aggregate statistics and resolved edges
-            let mut all_resolved_edges = Vec::new();
-            for (chunk_edges, (exact, pattern, ai, unresolved)) in chunk_results {
-                exact_matches += exact;
-                pattern_matches += pattern;
-                #[cfg(feature = "ai-enhanced")]
-                {
-                    ai_matches += ai;
-                }
-                unresolved_edges += unresolved;
-                all_resolved_edges.extend(chunk_edges);
+                    variants
+                });
+                target = catalog.exact(edge, variants);
             }
-
-            let mut stored_edges_local = 0usize;
-            let mut resolution_rate_local = 0.0;
-            let mut degree_map: std::collections::HashMap<NodeId, i32> =
-                std::collections::HashMap::new();
-
-            // Store resolved edges via writer
-            if !all_resolved_edges.is_empty() {
-                let mut serializable_edges: Vec<_> = all_resolved_edges
-                    .iter()
-                    .map(
-                        |(from, to, edge_type, metadata)| codegraph_graph::edge::CodeEdge {
-                            id: uuid::Uuid::new_v4(),
-                            from: *from,
-                            to: *to,
-                            edge_type: edge_type.clone(),
-                            weight: 1.0,
-                            metadata: metadata.clone(),
-                            project_id: Some(self.project_id.clone()),
-                        },
-                    )
-                    .collect();
-                for edge in &mut serializable_edges {
-                    edge.set_deterministic_id(&self.project_id);
-                }
-                serializable_edges.sort_by_key(|edge| edge.id);
-                serializable_edges.dedup_by_key(|edge| edge.id);
-
-                // Accumulate degrees in-memory for tie-breaking
-                for (from, to, _, _) in all_resolved_edges.iter() {
-                    *degree_map.entry(*from).or_insert(0) += 1;
-                    *degree_map.entry(*to).or_insert(0) += 1;
-                }
-
-                stored_edges_local = serializable_edges.len();
-                self.enqueue_edges(serializable_edges).await?;
-                self.flush_surreal_writer().await?;
-
-                let resolution_time = resolution_start.elapsed();
-                resolution_rate_local = (stored_edges_local as f64 / edge_count as f64) * 100.0;
-
-                let edge_msg = format!(
-                    "🔗 Dependencies resolved: {}/{} relationships ({:.1}% success) | ⚡ {:.1}s",
-                    stored_edges_local,
-                    edge_count,
-                    resolution_rate_local,
-                    resolution_time.as_secs_f64()
-                );
-                self.finish_bar(edge_pb, edge_msg)?;
-
-                info!("🔗 M4 MAX PARALLEL PROCESSING RESULTS:");
-                info!(
-                    "   ✅ Successfully stored: {} edges ({:.1}% of extracted relationships)",
-                    stored_edges_local, resolution_rate_local
-                );
-                info!(
-                    "   🎯 Exact matches: {} (direct symbol found)",
-                    exact_matches
-                );
-                info!(
-                    "   🔄 Pattern matches: {} (simplified/cleaned symbols)",
-                    pattern_matches
-                );
-                #[cfg(feature = "ai-enhanced")]
-                info!(
-                    "   🧠 AI semantic matches: {} (similarity-based resolution)",
-                    ai_matches
-                );
-                info!(
-                    "   ❌ Unresolved: {} (external dependencies/dynamic calls)",
-                    unresolved_edges
-                );
-                if let Ok(samples) = unresolved_samples.lock() {
-                    if !samples.is_empty() && std::env::var("CODEGRAPH_DEBUG").is_ok() {
-                        info!("   🔍 Sample unresolved targets: {:?}", *samples);
-                    }
-                }
-                info!(
-                    "   ⚡ M4 Max performance: {:.0} edges/s ({} cores utilized)",
-                    edge_count as f64 / resolution_time.as_secs_f64(),
-                    num_cpus::get()
-                );
-                info!(
-                    "   🚀 Parallel efficiency: {} chunks processed across {} cores",
-                    total_chunks,
-                    num_cpus::get()
-                );
-
-                if resolution_rate_local >= 80.0 {
-                    info!(
-                        "🎉 EXCELLENT: {:.1}% resolution rate achieved!",
-                        resolution_rate_local
-                    );
-                } else if resolution_rate_local >= 60.0 {
-                    info!(
-                        "👍 GOOD: {:.1}% resolution rate. Consider enabling ai-enhanced or improving symbol normalization.",
-                        resolution_rate_local
-                    );
-                } else {
-                    warn!(
-                        "⚠️ LOW resolution rate: {:.1}%. Check normalization and embeddings.",
-                        resolution_rate_local
-                    );
-                }
-            } else {
-                self.finish_bar(edge_pb, "No resolved edges to store")?;
+            if target.is_some() {
+                exact_count += 1;
             }
-
-            // Assign values for use outside the block
-            stored_edges = stored_edges_local;
-            resolution_rate = resolution_rate_local;
+            if target.is_none() && !catalog.ambiguous(&edge.to) {
+                target = *lexical_cache
+                    .entry((edge.from, edge.to.clone()))
+                    .or_insert_with(|| catalog.fuzzy(edge));
+                if target.is_some() {
+                    lexical_count += 1;
+                }
+            }
+            targets.push(target);
         }
+        #[cfg(feature = "ai-enhanced")]
+        {
+            let policy =
+                std::env::var("CODEGRAPH_SEMANTIC_RESOLUTION").unwrap_or_else(|_| "sync".into());
+            if !matches!(policy.as_str(), "sync" | "off") {
+                return Err(anyhow!("CODEGRAPH_SEMANTIC_RESOLUTION must be sync or off"));
+            }
+            if policy == "sync" {
+                let limit = std::env::var("CODEGRAPH_SEMANTIC_CANDIDATES")
+                    .ok()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(0);
+                let mut candidates_by_target = HashMap::new();
+                let mut candidate_symbols = HashMap::new();
+                for (edge, target) in edges.iter().zip(&targets) {
+                    if target.is_some()
+                        || catalog.ambiguous(&edge.to)
+                        || Self::semantic_stop_symbol(&edge.to)
+                    {
+                        continue;
+                    }
+                    let candidates = candidates_by_target
+                        .entry(edge.to.clone())
+                        .or_insert_with(|| catalog.semantic_candidates(&edge.to, limit));
+                    for alias in candidates {
+                        candidate_symbols.insert(alias.clone(), symbol_map[alias]);
+                    }
+                }
+                let unresolved: Vec<_> = candidates_by_target
+                    .iter()
+                    .filter(|(_, candidates)| !candidates.is_empty())
+                    .map(|(target, _)| target.clone())
+                    .collect();
+                if !unresolved.is_empty() {
+                    let known = self
+                        .embed_symbol_texts(
+                            candidate_symbols.keys().cloned().collect(),
+                            &candidate_symbols,
+                        )
+                        .await?;
+                    let unknown = self.embed_symbol_texts(unresolved, &HashMap::new()).await?;
+                    let mut semantic_targets = HashMap::new();
+                    for (target, candidates) in candidates_by_target {
+                        let Some(query) = unknown.get(&target) else {
+                            continue;
+                        };
+                        let mut best = 0.75f32;
+                        let mut winner = None;
+                        let mut tied = false;
+                        for alias in candidates {
+                            let Some(vector) = known.get(&alias) else {
+                                continue;
+                            };
+                            let score = Self::cosine_similarity_static(query, vector);
+                            let id = candidate_symbols[&alias];
+                            if score > best + 1e-6 {
+                                best = score;
+                                winner = Some(id);
+                                tied = false;
+                            } else if (score - best).abs() <= 1e-6
+                                && winner.is_some_and(|winner| winner != id)
+                            {
+                                tied = true;
+                            }
+                        }
+                        if !tied {
+                            if let Some(id) = winner {
+                                semantic_targets.insert(target, id);
+                            }
+                        }
+                    }
+                    for (edge, target) in edges.iter().zip(&mut targets) {
+                        if target.is_none() {
+                            *target = semantic_targets.get(&edge.to).copied();
+                        }
+                    }
+                    self.flush_surreal_writer().await?;
+                }
+            }
+        }
+        let resolved_count = targets.iter().filter(|target| target.is_some()).count();
+        let mut resolved_edges = Vec::with_capacity(resolved_count);
+        for (edge, target) in edges.iter().zip(targets) {
+            if let Some(target) = target {
+                let mut record = CodeEdge::new(edge.from, target, edge.edge_type.clone());
+                record.metadata = edge.metadata.clone();
+                if let Some(span) = &edge.span {
+                    record.metadata.insert(
+                        "source_span".into(),
+                        format!("{}:{}", span.start_byte, span.end_byte),
+                    );
+                }
+                record.set_deterministic_id(&self.project_id);
+                resolved_edges.push(record);
+            }
+        }
+        resolved_edges.sort_by_key(|edge| edge.id);
+        resolved_edges.dedup_by_key(|edge| edge.id);
+        let stored_edges = resolved_edges.len();
+        self.enqueue_edges(resolved_edges).await?;
+        self.flush_surreal_writer().await?;
+        let resolution_rate = if edges.is_empty() {
+            100.0
+        } else {
+            100.0 * resolved_count as f64 / edges.len() as f64
+        };
+        info!(
+            "Resolved {} of {} relationships (exact/contextual={}, lexical={}, semantic={}) in {:?}",
+            resolved_count,
+            edges.len(),
+            exact_count,
+            lexical_count,
+            resolved_count.saturating_sub(exact_count + lexical_count),
+            resolution_start.elapsed()
+        );
 
         // ELIMINATED: No separate edge processing phase needed - edges extracted during parsing!
         self.log_surreal_edge_count(stored_edges).await;
@@ -1934,8 +1675,8 @@ impl ProjectIndexer {
         stats.chunks = stats.embeddings; // chunks == embeddings in current impl
         stats.embedding_dimension = self.vector_dim;
         stats.embedding_provider = provider.clone();
-        stats.resolved_edges = stored_edges;
-        stats.unresolved_edges = total_edges_extracted.saturating_sub(stored_edges);
+        stats.resolved_edges = resolved_count;
+        stats.unresolved_edges = total_edges_extracted.saturating_sub(resolved_count);
         stats.resolution_rate = resolution_rate;
 
         self.flush_surreal_writer().await?;
@@ -1990,690 +1731,73 @@ impl ProjectIndexer {
         "Unknown".to_string()
     }
 
-    /// Pre-compute embeddings for all symbols for M4 Max performance optimization
+    fn semantic_stop_symbol(symbol: &str) -> bool {
+        matches!(
+            symbol.to_lowercase().as_str(),
+            "into"
+                | "unwrap"
+                | "ok"
+                | "err"
+                | "some"
+                | "none"
+                | "new"
+                | "from"
+                | "default"
+                | "clone"
+                | "drop"
+                | "len"
+                | "push"
+                | "pop"
+                | "to_string"
+                | "println"
+                | "debug"
+                | "info"
+                | "warn"
+                | "error"
+                | "fmt"
+                | "str"
+        )
+    }
+
     #[cfg(feature = "ai-enhanced")]
-    async fn precompute_symbol_embeddings(
+    async fn embed_symbol_texts(
         &self,
-        symbol_map: &std::collections::HashMap<String, NodeId>,
-    ) -> std::collections::HashMap<String, Vec<f32>> {
-        info!("🧠 Pre-computing symbol embeddings for M4 Max AI optimization");
-        info!(
-            "🔧 DEBUG: precompute_symbol_embeddings called with {} symbols",
-            symbol_map.len()
-        );
-        let mut embeddings = std::collections::HashMap::new();
-
-        // Early validation
-        if symbol_map.is_empty() {
-            warn!("⚠️ Empty symbol map - skipping AI embedding pre-computation");
-            return embeddings;
-        }
-
-        // Get ALL symbols for maximum AI resolution coverage (M4 Max can handle it)
-        let top_symbols: Vec<_> = symbol_map.keys().cloned().collect();
-        info!(
-            "📊 Selected {} top symbols for AI embedding pre-computation",
-            top_symbols.len()
-        );
-
-        // ARCHITECTURAL IMPROVEMENT: Use existing working embedder instead of creating fresh one
-        // This avoids re-initialization issues that could cause random hash fallback
-        info!(
-            "🤖 Using configured embedder ({}) for AI semantic matching",
-            self.global_config.embedding.provider
-        );
-        let embedder = &self.embedder;
-        info!("✅ Using working embedder session (guaranteed real embeddings)");
-        let (batch_size, max_concurrent) = self.symbol_embedding_batch_settings();
-        let total_batches = (top_symbols.len() + batch_size - 1) / batch_size;
-        info!(
-            "⚡ Embedding batch size: {} symbols ({} batches, max {} concurrent)",
-            batch_size,
-            total_batches.max(1),
-            max_concurrent
-        );
-
-        // Create progress bar for symbol embedding generation
-        let symbol_pb = self.create_batch_progress_bar(
-            top_symbols.len() as u64,
-            batch_size,
-            "🧩 Symbol embeddings",
-        );
-
-        let batches: Vec<Vec<String>> = top_symbols
-            .chunks(batch_size)
-            .map(|chunk| chunk.iter().cloned().collect())
-            .collect();
-
-        let mut processed = 0usize;
-
-        let mut batch_stream = stream::iter(batches.into_iter().map(|batch| {
-            let embedder = embedder;
-            async move {
-                let result = embedder.embed_texts_batched(&batch).await;
-                (batch, result)
-            }
-        }))
-        .buffer_unordered(max_concurrent);
-
-        while let Some((batch, result)) = batch_stream.next().await {
-            match result {
-                Ok(batch_embeddings) => {
-                    let mut records = Vec::with_capacity(batch.len());
-                    for (symbol, embedding) in
-                        batch.iter().cloned().zip(batch_embeddings.into_iter())
-                    {
-                        records.push(self.build_symbol_embedding_record(
-                            &symbol,
-                            symbol_map.get(&symbol).cloned(),
-                            None,
-                            &embedding,
-                        ));
-                        embeddings.insert(symbol, embedding);
-                        processed += 1;
-                    }
-                    if let Err(err) = self.persist_symbol_embedding_records(records).await {
-                        warn!("⚠️ Failed to persist batch symbol embeddings: {}", err);
-                    }
-                    symbol_pb.set_position(processed as u64);
-                }
-                Err(e) => {
-                    warn!(
-                        "⚠️ Batch embedding failed for {} symbols: {}. Falling back to individual processing.",
-                        batch.len(),
-                        e
-                    );
-                    for symbol in batch.into_iter() {
-                        match embedder.generate_text_embedding(&symbol).await {
-                            Ok(embedding) => {
-                                let record = self.build_symbol_embedding_record(
-                                    &symbol,
-                                    symbol_map.get(&symbol).cloned(),
-                                    None,
-                                    &embedding,
-                                );
-                                if let Err(err) =
-                                    self.persist_symbol_embedding_records(vec![record]).await
-                                {
-                                    warn!(
-                                        "⚠️ Failed to persist symbol embedding for '{}': {}",
-                                        symbol, err
-                                    );
-                                }
-                                embeddings.insert(symbol, embedding);
-                                processed += 1;
-                                symbol_pb.set_position(processed as u64);
-                            }
-                            Err(err) => {
-                                warn!(
-                                    "⚠️ Failed to generate embedding for symbol '{}': {}",
-                                    symbol, err
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Finish progress bar with summary
-        let provider = &self.global_config.embedding.provider;
-        let success_rate = if top_symbols.len() > 0 {
-            embeddings.len() as f64 / top_symbols.len() as f64 * 100.0
-        } else {
-            100.0
-        };
-        let completion_msg = format!(
-            "🧠 Symbol embeddings complete: {}/{} symbols (✅ {:.1}% success) | 🤖 {} | 🔗 AI semantic matching ready",
-            embeddings.len(),
-            top_symbols.len(),
-            success_rate,
-            provider
-        );
-        if let Err(err) = self.finish_bar(symbol_pb, completion_msg) {
-            warn!("Failed to print symbol embedding summary: {}", err);
-        }
-
-        info!(
-            "🧠 Pre-computed {} symbol embeddings for fast AI resolution",
-            embeddings.len()
-        );
-        if embeddings.is_empty() {
-            warn!("⚠️ No symbol embeddings were generated - AI matching will be disabled");
-            warn!(
-                "🔍 Debug: top_symbols.len()={}, batches attempted={}",
-                top_symbols.len(),
-                (top_symbols.len() + batch_size - 1) / batch_size
-            );
-        } else {
-            info!(
-                "✅ AI semantic matching ready with {:.1}% coverage ({}/{})",
-                embeddings.len() as f64 / symbol_map.len() as f64 * 100.0,
-                embeddings.len(),
-                symbol_map.len()
-            );
-            info!(
-                "🤖 AI SEMANTIC MATCHING ACTIVATED: First call with {} pre-computed embeddings",
-                embeddings.len()
-            );
-        }
-        embeddings
-    }
-
-    /// REVOLUTIONARY: Pre-compute embeddings directly for unresolved symbols (professional batching)
-    #[cfg(feature = "ai-enhanced")]
-    async fn precompute_unresolved_symbol_embeddings(
-        &self,
-        unresolved_symbols: &std::collections::HashSet<String>,
-        symbol_edge_ids: &std::collections::HashMap<String, uuid::Uuid>,
-    ) -> std::collections::HashMap<String, Vec<f32>> {
-        use codegraph_vector::EmbeddingGenerator;
-
-        info!("🧠 Pre-computing unresolved symbol embeddings for professional-grade AI");
-        info!(
-            "🔧 Processing {} unique unresolved symbols",
-            unresolved_symbols.len()
-        );
-        let mut embeddings = std::collections::HashMap::new();
-
-        if unresolved_symbols.is_empty() {
-            return embeddings;
-        }
-
-        let symbols_vec: Vec<_> = unresolved_symbols.iter().cloned().collect();
-        let embedder = &self.embedder;
-        let (batch_size, max_concurrent) = self.symbol_embedding_batch_settings();
-
-        let total_batches = (symbols_vec.len() + batch_size - 1) / batch_size;
-        info!(
-            "⚡ Unresolved embedding batch size: {} symbols ({} batches, max {} concurrent)",
-            batch_size,
-            total_batches.max(1),
-            max_concurrent
-        );
-
-        // Create progress bar for unresolved symbol embedding generation
-        let unresolved_pb = self.create_batch_progress_bar(
-            symbols_vec.len() as u64,
-            batch_size,
-            "🧩 Unresolved symbol embeddings",
-        );
-
-        let batches: Vec<Vec<String>> = symbols_vec
-            .chunks(batch_size)
-            .map(|chunk| chunk.iter().cloned().collect())
-            .collect();
-
-        let mut batch_stream = stream::iter(batches.into_iter().map(|batch| {
-            let embedder = embedder;
-            async move {
-                let result = embedder.embed_texts_batched(&batch).await;
-                (batch, result)
-            }
-        }))
-        .buffer_unordered(max_concurrent);
-
-        while let Some((batch, result)) = batch_stream.next().await {
-            match result {
-                Ok(batch_embeddings) => {
-                    let mut records = Vec::with_capacity(batch.len());
-                    for (symbol, embedding) in
-                        batch.iter().cloned().zip(batch_embeddings.into_iter())
-                    {
-                        let edge_id_ref = symbol_edge_ids.get(&symbol).map(|id| id.to_string());
-                        let edge_id_ref = edge_id_ref.as_deref();
-                        records.push(self.build_symbol_embedding_record(
-                            &symbol,
-                            None,
-                            edge_id_ref,
-                            &embedding,
-                        ));
-                        embeddings.insert(symbol, embedding);
-                    }
-                    if let Err(err) = self.persist_symbol_embedding_records(records).await {
-                        warn!(
-                            "⚠️ Failed to persist unresolved symbol embeddings batch: {}",
-                            err
-                        );
-                    }
-                    unresolved_pb.set_position(embeddings.len() as u64);
-                }
-                Err(e) => {
-                    warn!(
-                        "⚠️ Batch embedding failed for {} unresolved symbols: {}. Falling back to individual processing.",
-                        batch.len(),
-                        e
-                    );
-                    for symbol in batch.into_iter() {
-                        match embedder.generate_text_embedding(&symbol).await {
-                            Ok(embedding) => {
-                                let edge_id_ref =
-                                    symbol_edge_ids.get(&symbol).map(|id| id.to_string());
-                                let edge_id_ref = edge_id_ref.as_deref();
-                                let record = self.build_symbol_embedding_record(
-                                    &symbol,
-                                    None,
-                                    edge_id_ref,
-                                    &embedding,
-                                );
-                                if let Err(err) =
-                                    self.persist_symbol_embedding_records(vec![record]).await
-                                {
-                                    warn!(
-                                        "⚠️ Failed to persist unresolved symbol embedding '{}': {}",
-                                        symbol, err
-                                    );
-                                }
-                                embeddings.insert(symbol, embedding);
-                                unresolved_pb.set_position(embeddings.len() as u64);
-                            }
-                            Err(err) => {
-                                warn!(
-                                    "⚠️ Failed to generate embedding for unresolved symbol '{}': {}",
-                                    symbol, err
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Finish progress bar with summary
-        let provider = &self.global_config.embedding.provider;
-        let success_rate = if symbols_vec.len() > 0 {
-            embeddings.len() as f64 / symbols_vec.len() as f64 * 100.0
-        } else {
-            100.0
-        };
-        let completion_msg = format!(
-            "🔗 Unresolved symbol embeddings complete: {}/{} symbols (✅ {:.1}% success) | 🤖 {} | ⚡ AI matching enhanced",
-            embeddings.len(),
-            symbols_vec.len(),
-            success_rate,
-            provider
-        );
-        if let Err(err) = self.finish_bar(unresolved_pb, completion_msg) {
-            warn!(
-                "Failed to print unresolved symbol embedding summary: {}",
-                err
-            );
-        }
-
-        info!(
-            "🧠 Pre-computed {} unresolved symbol embeddings for professional AI matching",
-            embeddings.len()
-        );
-        if embeddings.is_empty() {
-            warn!(
-                "⚠️ No unresolved symbol embeddings were generated - AI matching will be limited"
-            );
-        } else {
-            info!(
-                "✅ Professional AI semantic matching ready with {:.1}% unresolved coverage ({}/{})",
-                embeddings.len() as f64 / unresolved_symbols.len() as f64 * 100.0,
-                embeddings.len(),
-                unresolved_symbols.len()
-            );
-        }
-
-        embeddings
-    }
-
-    /// REVOLUTIONARY: AI-powered symbol resolution using semantic similarity
-    #[cfg(feature = "ai-enhanced")]
-    async fn ai_resolve_symbol(
-        &self,
-        target_symbol: &str,
-        symbol_map: &std::collections::HashMap<String, NodeId>,
-    ) -> Option<NodeId> {
-        use codegraph_vector::{EmbeddingGenerator, search::SemanticSearch};
-        use std::sync::Arc;
-
-        // Use same config as main indexing for consistency
-        let embedder = EmbeddingGenerator::with_config(&self.global_config).await;
-        if let Ok(target_embedding) = embedder.generate_text_embedding(target_symbol).await {
-            // Find the most similar symbol in our symbol map using cosine similarity
-            let mut best_match: Option<(NodeId, f32)> = None;
-
-            for (symbol_name, &node_id) in symbol_map.iter() {
-                if let Ok(symbol_embedding) = embedder.generate_text_embedding(symbol_name).await {
-                    let similarity = self.cosine_similarity(&target_embedding, &symbol_embedding);
-
-                    // Use a threshold for semantic similarity (0.7 = quite similar)
-                    if similarity > 0.7 {
-                        if let Some((_, best_score)) = best_match {
-                            if similarity > best_score {
-                                best_match = Some((node_id, similarity));
-                            }
-                        } else {
-                            best_match = Some((node_id, similarity));
-                        }
-                    }
-                }
-            }
-
-            if let Some((node_id, score)) = best_match {
-                info!(
-                    "AI resolved '{}' with {:.1}% confidence",
-                    target_symbol,
-                    score * 100.0
-                );
-                return Some(node_id);
-            }
-        }
-
-        None
-    }
-
-    /// Calculate cosine similarity between two embeddings
-    #[cfg(feature = "ai-enhanced")]
-    fn cosine_similarity(&self, a: &[f32], b: &[f32]) -> f32 {
-        if a.len() != b.len() {
-            return 0.0;
-        }
-
-        let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if norm_a == 0.0 || norm_b == 0.0 {
-            0.0
-        } else {
-            dot_product / (norm_a * norm_b)
-        }
-    }
-
-    /// REVOLUTIONARY: AI semantic matching with hybrid fuzzy + real AI embeddings (batched)
-    #[cfg(feature = "ai-enhanced")]
-    fn ai_semantic_match_sync(
-        target_symbol: &str,
-        symbol_map: &std::collections::HashMap<String, NodeId>,
-        symbol_embeddings: &std::collections::HashMap<String, Vec<f32>>,
-        unresolved_embeddings: &std::collections::HashMap<String, Vec<f32>>,
-        node_degrees: &std::collections::HashMap<NodeId, i32>,
-    ) -> Option<NodeId> {
-        const STOP_SYMBOLS: &[&str] = &[
-            "into",
-            "unwrap",
-            "ok",
-            "err",
-            "some",
-            "none",
-            "new",
-            "from",
-            "default",
-            "clone",
-            "drop",
-            "len",
-            "push",
-            "pop",
-            "to_string",
-            "println",
-            "debug",
-            "info",
-            "warn",
-            "error",
-            "fmt",
-            "str",
-        ];
-
-        let target_lower = target_symbol.to_lowercase();
-        if STOP_SYMBOLS.contains(&target_lower.as_str()) {
-            return None;
-        }
-
-        // DIAGNOSTIC: Track AI matching usage
-        static AI_MATCH_COUNTER: std::sync::atomic::AtomicUsize =
-            std::sync::atomic::AtomicUsize::new(0);
-        let call_count = AI_MATCH_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        if call_count == 0 {
-            debug!(
-                "symbol resolver: semantic matching enabled (embeddings={})",
-                symbol_embeddings.len()
-            );
-        }
-
-        if symbol_embeddings.is_empty() {
-            if call_count < 3 {
-                // Log first few failures
-                warn!(
-                    "❌ AI MATCH SKIPPED: No pre-computed embeddings available for '{}'",
-                    target_symbol
-                );
-            }
-            return None;
-        }
-
-        if call_count < 3 {
-            debug!(
-                "symbol resolver: embedding+heuristic match attempt for '{}'",
-                target_symbol
-            );
-        }
-
-        let mut best_match: Option<(NodeId, f32)> = None;
-        let fuzzy_threshold = 0.5;
-
-        // PHASE 1: Fast fuzzy string similarity matching
-        for (symbol_name, _) in symbol_embeddings.iter() {
-            if let Some(&node_id) = symbol_map.get(symbol_name) {
-                let target_lower = target_symbol.to_lowercase();
-                let symbol_lower = symbol_name.to_lowercase();
-
-                let fuzzy_score = if target_lower.contains(&symbol_lower)
-                    || symbol_lower.contains(&target_lower)
-                {
-                    0.85 // High confidence for substring matches
-                } else if target_lower.ends_with(&symbol_lower)
-                    || symbol_lower.ends_with(&target_lower)
-                {
-                    0.75 // Good confidence for suffix matches
-                } else if Self::levenshtein_similarity(&target_lower, &symbol_lower) > 0.7 {
-                    0.65 // Decent confidence for edit distance similarity
-                } else {
-                    continue;
-                };
-
-                if fuzzy_score > fuzzy_threshold {
-                    if let Some((_, best_score)) = best_match {
-                        if fuzzy_score > best_score {
-                            best_match = Some((node_id, fuzzy_score));
-                        }
-                    } else {
-                        best_match = Some((node_id, fuzzy_score));
-                    }
-                }
-            }
-        }
-
-        // If fuzzy matching found a good match, return it
-        if let Some((node_id, confidence)) = best_match {
-            if confidence > 0.75 {
-                // High confidence fuzzy match
-                if call_count < 10 {
-                    info!(
-                        "🎯 AI FUZZY MATCH: '{}' → known symbol with {:.1}% confidence",
-                        target_symbol,
-                        confidence * 100.0
-                    );
-                }
-                return Some(node_id);
-            }
-        }
-
-        // PHASE 2: Real AI embedding semantic similarity using pre-computed unresolved embeddings
-        let mut ai_best_match: Option<(NodeId, f32)> = None;
-        if let Some(target_embedding) = unresolved_embeddings.get(target_symbol) {
-            if call_count < 3 {
-                debug!(
-                    "symbol resolver: embedding search for '{}' ({} candidates)",
-                    target_symbol,
-                    symbol_embeddings.len()
-                );
-            }
-
-            let ai_threshold = 0.75; // Higher threshold for real AI embeddings
-
-            let target_trigrams = Self::char_trigrams(&target_lower);
-
-            // Preselect candidates by n-gram overlap to avoid full cosine on unrelated symbols
-            let filtered: Vec<(&String, &Vec<f32>)> = symbol_embeddings
-                .iter()
-                .filter(|(name, _)| {
-                    let name_lower = name.to_lowercase();
-                    // quick length ratio guard
-                    let len_ok = {
-                        let a = target_lower.len() as f32;
-                        let b = name_lower.len() as f32;
-                        (a / b).min(b / a) >= 0.5
-                    };
-                    if !len_ok {
-                        return false;
-                    }
-
-                    let name_trigrams = Self::char_trigrams(&name_lower);
-                    let overlap = Self::jaccard(&target_trigrams, &name_trigrams);
-                    overlap >= 0.2
+        mut texts: Vec<String>,
+        node_ids: &HashMap<String, NodeId>,
+    ) -> Result<HashMap<String, Vec<f32>>> {
+        texts.sort();
+        texts.dedup();
+        let (batch_size, concurrency) = self.symbol_embedding_batch_settings();
+        let mut results = HashMap::new();
+        let mut batches = stream::iter(texts.chunks(batch_size).map(|batch| async move {
+            let vectors = self.embedder.embed_texts_batched(batch).await?;
+            if vectors.len() != batch.len()
+                || vectors.iter().any(|vector| {
+                    vector.len() != self.vector_dim || vector.iter().any(|value| !value.is_finite())
                 })
-                .collect();
-
-            // Compare target embedding with filtered symbol embeddings
-            for (symbol_name, symbol_embedding) in filtered.into_iter() {
-                if let Some(&node_id) = symbol_map.get(symbol_name) {
-                    let similarity =
-                        Self::cosine_similarity_static(target_embedding, symbol_embedding);
-
-                    if similarity > ai_threshold {
-                        if let Some((_, best_score)) = ai_best_match {
-                            if similarity > best_score {
-                                ai_best_match = Some((node_id, similarity));
-                            }
-                        } else {
-                            ai_best_match = Some((node_id, similarity));
-                        }
-                    }
-                }
+            {
+                return Err(anyhow!(
+                    "Symbol provider returned invalid cardinality, dimensions or values"
+                ));
             }
-        }
-
-        // REVOLUTIONARY: Choose the best match between fuzzy and real AI embeddings
-        let final_match = match (best_match, ai_best_match) {
-            (Some((fuzzy_node, fuzzy_score)), Some((ai_node, ai_score))) => {
-                // Prefer higher confidence; break ties with degree
-                let fuzzy_degree = *node_degrees.get(&fuzzy_node).unwrap_or(&0) as f32;
-                let ai_degree = *node_degrees.get(&ai_node).unwrap_or(&0) as f32;
-
-                if ai_score > 0.8
-                    || (ai_score > fuzzy_score && ai_score > 0.7)
-                    || (ai_score == fuzzy_score && ai_degree > fuzzy_degree)
-                {
-                    Some((ai_node, ai_score, "AI EMBEDDING"))
-                } else {
-                    Some((fuzzy_node, fuzzy_score, "FUZZY"))
-                }
+            Ok::<_, anyhow::Error>((batch, vectors))
+        }))
+        .buffer_unordered(concurrency);
+        while let Some(result) = batches.next().await {
+            let (batch, vectors) = result?;
+            let mut records = Vec::with_capacity(batch.len());
+            for (text, vector) in batch.iter().zip(vectors) {
+                records.push(self.build_symbol_embedding_record(
+                    text,
+                    node_ids.get(text).copied(),
+                    None,
+                    &vector,
+                ));
+                results.insert(text.clone(), vector);
             }
-            (Some((fuzzy_node, fuzzy_score)), None) => Some((fuzzy_node, fuzzy_score, "FUZZY")),
-            (None, Some((ai_node, ai_score))) => Some((ai_node, ai_score, "AI EMBEDDING")),
-            (None, None) => None,
-        };
-
-        if let Some((node_id, confidence, match_type)) = final_match {
-            if call_count < 10 {
-                info!(
-                    "🎯 {} MATCH: '{}' → known symbol with {:.1}% confidence",
-                    match_type,
-                    target_symbol,
-                    confidence * 100.0
-                );
-            }
-            return Some(node_id);
+            self.persist_symbol_embedding_records(records).await?;
         }
-
-        None // No semantic match found
-    }
-
-    /// Calculate Levenshtein similarity score between two strings (0.0 to 1.0)
-    #[cfg(feature = "ai-enhanced")]
-    fn levenshtein_similarity(s1: &str, s2: &str) -> f32 {
-        let len1 = s1.chars().count();
-        let len2 = s2.chars().count();
-
-        if len1 == 0 && len2 == 0 {
-            return 1.0;
-        }
-        if len1 == 0 || len2 == 0 {
-            return 0.0;
-        }
-
-        let max_len = len1.max(len2);
-        let distance = Self::levenshtein_distance(s1, s2);
-
-        1.0 - (distance as f32 / max_len as f32)
-    }
-
-    #[cfg(feature = "ai-enhanced")]
-    fn char_trigrams(s: &str) -> std::collections::HashSet<String> {
-        let chars: Vec<char> = s.chars().collect();
-        let mut set = std::collections::HashSet::new();
-        if chars.len() < 3 {
-            if !s.is_empty() {
-                set.insert(s.to_string());
-            }
-            return set;
-        }
-        for w in chars.windows(3) {
-            let tri: String = w.iter().collect();
-            set.insert(tri);
-        }
-        set
-    }
-
-    #[cfg(feature = "ai-enhanced")]
-    fn jaccard(
-        a: &std::collections::HashSet<String>,
-        b: &std::collections::HashSet<String>,
-    ) -> f32 {
-        if a.is_empty() || b.is_empty() {
-            return 0.0;
-        }
-        let intersection = a.intersection(b).count() as f32;
-        let union = (a.len() + b.len()) as f32 - intersection;
-        if union == 0.0 {
-            0.0
-        } else {
-            intersection / union
-        }
-    }
-
-    /// Calculate Levenshtein distance between two strings
-    #[cfg(feature = "ai-enhanced")]
-    fn levenshtein_distance(s1: &str, s2: &str) -> usize {
-        let v1: Vec<char> = s1.chars().collect();
-        let v2: Vec<char> = s2.chars().collect();
-        let len1 = v1.len();
-        let len2 = v2.len();
-
-        let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
-
-        for i in 0..=len1 {
-            matrix[i][0] = i;
-        }
-        for j in 0..=len2 {
-            matrix[0][j] = j;
-        }
-
-        for i in 1..=len1 {
-            for j in 1..=len2 {
-                let cost = if v1[i - 1] == v2[j - 1] { 0 } else { 1 };
-                matrix[i][j] = (matrix[i - 1][j] + 1)
-                    .min(matrix[i][j - 1] + 1)
-                    .min(matrix[i - 1][j - 1] + cost);
-            }
-        }
-
-        matrix[len1][len2]
+        Ok(results)
     }
 
     /// Static cosine similarity calculation for parallel processing

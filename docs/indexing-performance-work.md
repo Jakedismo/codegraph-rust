@@ -41,6 +41,12 @@ single-file, cross-file rename/delete, documentation/manifest changes and tier u
    concurrency with deletion/completion barriers. Ingestion no longer duplicates the
    entire node catalog into storage caches. Offline tests exercise both main schemas,
    repeated writes, failure recovery and metadata barriers.
+3. Ambiguity-preserving symbol catalog, file/scope-aware exact resolution, direct
+   definition IDs, cached target normalization and lexical results, trigram candidate
+   indexing and RapidFuzz batch comparison with score cutoffs. Semantic inference now
+   follows deterministic resolution and embeds only remaining targets and candidate
+   aliases. Invalid provider cardinality/dimensions fail the indexing run. Random
+   placeholder source-edge IDs and per-symbol query-task fallback were removed.
 
 `CODEGRAPH_SOURCE_MEMORY_MB` controls retained snapshot bytes (default 256 MiB).
 Snapshots above the budget spill to temporary files, removed at the end of the run.
@@ -50,3 +56,10 @@ Storage controls are independent of inference batches: `CODEGRAPH_DB_BATCH_ROWS`
 and `CODEGRAPH_SURREAL_POOL_SIZE` (remote only). A single oversized record fails with
 an actionable limit message rather than bypassing the budget. These bound queued
 serialized payloads; they do not represent a process RSS limit.
+
+`CODEGRAPH_SEMANTIC_RESOLUTION=off` skips optional semantic resolution independently
+of the extraction tier (default `sync` with `ai-enhanced`).
+`CODEGRAPH_SEMANTIC_CANDIDATES=0` retains all candidates meeting the existing lexical
+overlap/length gates; a positive limit is an opt-in recall/latency tradeoff. Ambiguous
+short names without a unique local scope remain unresolved. The implementation uses
+[RapidFuzz](https://docs.rs/rapidfuzz/0.5.0/rapidfuzz/distance/levenshtein/index.html).

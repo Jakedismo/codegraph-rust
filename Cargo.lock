@@ -1086,6 +1086,7 @@ dependencies = [
  "notify",
  "num_cpus",
  "parking_lot",
+ "rapidfuzz",
  "rayon",
  "regex",
  "reqwest 0.13.5",
@@ -5784,6 +5785,12 @@ checksum = "caa0f4137e1c0a72f4c651489402276c8e8e1cf081f3b0ba156d2cbeef09e86a"
 dependencies = [
  "rand_core 0.10.1",
 ]
+
+[[package]]
+name = "rapidfuzz"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "270e04e5ea61d40841942bb15e451c29ee1618637bcf97fc7ede5dd4a9b1601b"
 
 [[package]]
 name = "raw-cpuid"

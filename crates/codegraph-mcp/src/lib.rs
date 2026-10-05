@@ -3,6 +3,7 @@ pub mod connection;
 pub mod estimation;
 pub mod heartbeat;
 pub mod indexer;
+mod resolution;
 pub mod transport;
 pub mod utils;
 mod writer;
