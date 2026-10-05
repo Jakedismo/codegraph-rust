@@ -19,7 +19,7 @@ chrono = { workspace = true }
 sha2 = { workspace = true }
 
 # SurrealDB support (optional, default on via feature flag)
-surrealdb = { version = "3.3.0", optional = true, features = ["kv-mem"] }
+surrealdb = { version = "3.3.0", optional = true, features = ["kv-mem", "kv-surrealkv"] }
 dotenvy = { version = "0.15.7", optional = true }
 tokio = { workspace = true, optional = true, features = ["macros", "rt-multi-thread"] }
 
@@ -31,3 +31,6 @@ surrealdb = ["dep:surrealdb", "dep:dotenvy", "dep:tokio"]
 name = "surreal_smoke_test"
 path = "src/bin/surreal_smoke_test.rs"
 required-features = ["surrealdb"]
+
+[dev-dependencies]
+tempfile = { workspace = true }

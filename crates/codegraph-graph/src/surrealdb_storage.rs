@@ -8,7 +8,8 @@ use serde_json::{Value as JsonValue, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::env;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 use surrealdb::types::SurrealValue;
 use surrealdb::{
     Error as SurrealError, Surreal,
@@ -16,6 +17,54 @@ use surrealdb::{
     opt::auth::{Database, Root},
 };
 use tracing::{debug, info, warn};
+
+/// Bundled schemas, applied automatically to a fresh embedded store.
+const BUNDLED_SCHEMA_MAIN: &str = include_str!("../../../schema/codegraph.surql");
+const BUNDLED_SCHEMA_EXPERIMENTAL: &str =
+    include_str!("../../../schema/codegraph_graph_experimental.surql");
+
+/// Directory under the project root that holds the embedded store.
+pub const EMBEDDED_DB_DIR: &str = ".codegraph";
+/// Name of the embedded store inside [`EMBEDDED_DB_DIR`].
+pub const EMBEDDED_DB_NAME: &str = "db";
+
+/// Namespace and database used for embedded stores (one store per project,
+/// so these never need to vary).
+const EMBEDDED_NAMESPACE: &str = "codegraph";
+const EMBEDDED_DATABASE: &str = "codegraph";
+const EMBEDDED_GRAPH_DATABASE: &str = "codegraph_graph";
+
+/// Connection schemes handled by an in-process engine rather than a server.
+const EMBEDDED_SCHEMES: [&str; 4] = ["surrealkv://", "file://", "rocksdb://", "mem://"];
+
+/// True when the connection string opens an in-process engine.
+pub fn is_embedded_connection(connection: &str) -> bool {
+    EMBEDDED_SCHEMES
+        .iter()
+        .any(|scheme| connection.starts_with(scheme))
+}
+
+/// True for in-process engines backed by a directory. These lock the
+/// directory, so a process must share one handle per store, and they get
+/// the bundled schema on first open. `mem://` is excluded: every open is a
+/// fresh, empty database, which tests rely on.
+fn is_persistent_embedded_connection(connection: &str) -> bool {
+    is_embedded_connection(connection) && !connection.starts_with("mem://")
+}
+
+/// Handles to embedded stores already opened by this process, keyed by connection string.
+static EMBEDDED_HANDLES: OnceLock<tokio::sync::Mutex<HashMap<String, Surreal<Any>>>> =
+    OnceLock::new();
+
+fn env_flag(name: &str) -> bool {
+    env::var(name)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn env_value(name: &str) -> Option<String> {
+    env::var(name).ok().filter(|v| !v.trim().is_empty())
+}
 
 /// SurrealDB storage implementation with flexible schema support
 #[derive(Clone)]
@@ -39,42 +88,82 @@ pub struct SurrealDbConfig {
     pub cache_enabled: bool,
 }
 
-impl Default for SurrealDbConfig {
-    fn default() -> Self {
-        let connection = env::var("CODEGRAPH_SURREALDB_URL")
-            .unwrap_or_else(|_| "ws://localhost:3004".to_string());
+impl SurrealDbConfig {
+    /// Connection settings for a project.
+    ///
+    /// With `CODEGRAPH_SURREALDB_URL` set, this targets that server using the
+    /// `CODEGRAPH_SURREALDB_*` settings. Otherwise it opens the project's own
+    /// embedded SurrealKV store at `<project_root>/.codegraph/db`.
+    pub fn for_project(project_root: &Path) -> Self {
+        match env_value("CODEGRAPH_SURREALDB_URL") {
+            Some(connection) => Self::remote(connection),
+            None => Self::embedded(project_root),
+        }
+    }
+
+    /// Settings for the embedded store under `project_root`.
+    pub fn embedded(project_root: &Path) -> Self {
+        let root = project_root
+            .canonicalize()
+            .unwrap_or_else(|_| project_root.to_path_buf());
+        Self {
+            connection: format!("surrealkv://{}", Self::embedded_db_path(&root).display()),
+            namespace: EMBEDDED_NAMESPACE.to_string(),
+            database: if env_flag("CODEGRAPH_USE_GRAPH_SCHEMA") {
+                EMBEDDED_GRAPH_DATABASE.to_string()
+            } else {
+                EMBEDDED_DATABASE.to_string()
+            },
+            username: None,
+            password: None,
+            strict_mode: false,
+            auto_migrate: true,
+            cache_enabled: true,
+        }
+    }
+
+    /// Where the embedded store for `project_root` lives.
+    pub fn embedded_db_path(project_root: &Path) -> PathBuf {
+        project_root.join(EMBEDDED_DB_DIR).join(EMBEDDED_DB_NAME)
+    }
+
+    /// Settings for a SurrealDB server, with namespace, database and
+    /// credentials taken from the `CODEGRAPH_SURREALDB_*` variables.
+    pub fn remote(connection: String) -> Self {
         let namespace =
-            env::var("CODEGRAPH_SURREALDB_NAMESPACE").unwrap_or_else(|_| "ouroboros".to_string());
+            env_value("CODEGRAPH_SURREALDB_NAMESPACE").unwrap_or_else(|| "ouroboros".to_string());
 
         // Optional toggle to point at experimental graph schema DB without changing table names.
-        let use_graph_db = env::var("CODEGRAPH_USE_GRAPH_SCHEMA")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-        let graph_db = env::var("CODEGRAPH_GRAPH_DB_DATABASE")
-            .unwrap_or_else(|_| "codegraph_graph".to_string());
-
-        let database = if use_graph_db {
-            graph_db
+        let database = if env_flag("CODEGRAPH_USE_GRAPH_SCHEMA") {
+            env_value("CODEGRAPH_GRAPH_DB_DATABASE")
+                .unwrap_or_else(|| EMBEDDED_GRAPH_DATABASE.to_string())
         } else {
-            env::var("CODEGRAPH_SURREALDB_DATABASE").unwrap_or_else(|_| "codegraph".to_string())
+            env_value("CODEGRAPH_SURREALDB_DATABASE").unwrap_or_else(|| "codegraph".to_string())
         };
-        let username = env::var("CODEGRAPH_SURREALDB_USERNAME")
-            .ok()
-            .filter(|value| !value.trim().is_empty());
-        let password = env::var("CODEGRAPH_SURREALDB_PASSWORD")
-            .ok()
-            .filter(|value| !value.trim().is_empty());
 
         Self {
             connection,
             namespace,
             database,
-            username,
-            password,
+            username: env_value("CODEGRAPH_SURREALDB_USERNAME"),
+            password: env_value("CODEGRAPH_SURREALDB_PASSWORD"),
             strict_mode: false,
             auto_migrate: true,
             cache_enabled: true,
         }
+    }
+
+    /// True when this configuration opens an in-process engine.
+    pub fn is_embedded(&self) -> bool {
+        is_embedded_connection(&self.connection)
+    }
+}
+
+impl Default for SurrealDbConfig {
+    /// Settings for the project in the current working directory (see [`Self::for_project`]).
+    fn default() -> Self {
+        let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        Self::for_project(&cwd)
     }
 }
 
@@ -108,13 +197,43 @@ impl SurrealDbStorage {
             config.connection
         );
 
-        // Connect to SurrealDB
+        let persistent_embedded = is_persistent_embedded_connection(&config.connection);
+        let db = if persistent_embedded {
+            Self::open_embedded(&config).await?
+        } else {
+            Self::connect_remote(&config).await?
+        };
+
+        // Select namespace and database
+        db.use_ns(&config.namespace)
+            .use_db(&config.database)
+            .await
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Failed to select namespace/database: {}", e))
+            })?;
+
+        if persistent_embedded && config.auto_migrate {
+            Self::ensure_bundled_schema(&db).await?;
+        }
+
+        let storage = Self {
+            db: Arc::new(db),
+            config: config.clone(),
+            node_cache: Arc::new(DashMap::new()),
+            schema_version: Arc::new(std::sync::RwLock::new(0)),
+        };
+
+        info!("SurrealDB storage initialized successfully");
+        Ok(storage)
+    }
+
+    /// Connect to a SurrealDB server (or a fresh `mem://` engine) and authenticate if credentials are set.
+    async fn connect_remote(config: &SurrealDbConfig) -> Result<Surreal<Any>> {
         let db: Surreal<Any> = Surreal::init();
         db.connect(&config.connection)
             .await
             .map_err(|e| CodeGraphError::Database(format!("Failed to connect: {}", e)))?;
 
-        // Authenticate if credentials provided
         if let (Some(username), Some(password)) = (&config.username, &config.password) {
             let auth_result = if config.connection.starts_with("wss://") {
                 // Prefer database-scoped auth for hosted / cloud setups
@@ -137,23 +256,146 @@ impl SurrealDbStorage {
                 .map_err(|e| CodeGraphError::Database(format!("Authentication failed: {}", e)))?;
         }
 
-        // Select namespace and database
-        db.use_ns(&config.namespace)
-            .use_db(&config.database)
-            .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!("Failed to select namespace/database: {}", e))
-            })?;
+        Ok(db)
+    }
 
-        let storage = Self {
-            db: Arc::new(db),
-            config: config.clone(),
-            node_cache: Arc::new(DashMap::new()),
-            schema_version: Arc::new(std::sync::RwLock::new(0)),
+    /// Open an embedded store, reusing the handle if this process already has it open.
+    ///
+    /// The engine locks its directory, so a second open of the same path from
+    /// this process would fail; a second open from another process does fail.
+    async fn open_embedded(config: &SurrealDbConfig) -> Result<Surreal<Any>> {
+        let handles = EMBEDDED_HANDLES.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()));
+        let mut handles = handles.lock().await;
+
+        if let Some(db) = handles.get(&config.connection) {
+            debug!(
+                "Reusing embedded SurrealDB handle for {}",
+                config.connection
+            );
+            return Ok(db.clone());
+        }
+
+        if let Some(path) = config.connection.strip_prefix("surrealkv://") {
+            if let Some(parent) = Path::new(path).parent() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    CodeGraphError::Database(format!(
+                        "Failed to create {}: {}",
+                        parent.display(),
+                        e
+                    ))
+                })?;
+                Self::write_gitignore(parent);
+            }
+        }
+
+        let db: Surreal<Any> = Surreal::init();
+        db.connect(&config.connection).await.map_err(|e| {
+            let message = e.to_string();
+            if message.contains("already locked") {
+                CodeGraphError::Database(format!(
+                    "The embedded database {} is open in another process. Stop the other \
+                     codegraph process (for example a running `codegraph start`) or set \
+                     CODEGRAPH_SURREALDB_URL to use a shared SurrealDB server. ({})",
+                    config.connection, message
+                ))
+            } else {
+                CodeGraphError::Database(format!("Failed to open embedded database: {}", message))
+            }
+        })?;
+
+        handles.insert(config.connection.clone(), db.clone());
+        Ok(db)
+    }
+
+    /// Keep the store out of version control: `.codegraph/.gitignore` ignoring everything.
+    fn write_gitignore(dir: &Path) {
+        let gitignore = dir.join(".gitignore");
+        if gitignore.exists() {
+            return;
+        }
+        if let Err(e) = std::fs::write(&gitignore, "*\n") {
+            warn!("Could not write {}: {}", gitignore.display(), e);
+        }
+    }
+
+    /// Apply the bundled schema to a store that has none, and warn when the
+    /// store was created from a different schema revision.
+    async fn ensure_bundled_schema(db: &Surreal<Any>) -> Result<()> {
+        let (name, schema) = if env_flag("CODEGRAPH_USE_GRAPH_SCHEMA") {
+            ("experimental", BUNDLED_SCHEMA_EXPERIMENTAL)
+        } else {
+            ("main", BUNDLED_SCHEMA_MAIN)
         };
+        let checksum = Sha256::digest(schema.as_bytes())
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>();
 
-        info!("SurrealDB storage initialized successfully (schema management disabled)");
-        Ok(storage)
+        if Self::has_table(db, "nodes").await? {
+            Self::check_schema_checksum(db, name, &checksum).await;
+            return Ok(());
+        }
+
+        info!("Applying bundled {} schema to new embedded database", name);
+        db.query(schema)
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("Schema parsing failed: {}", e)))?
+            .check()
+            .map_err(|e| CodeGraphError::Database(format!("Schema application failed: {}", e)))?;
+
+        db.query(
+            "CREATE schema_versions:bundled SET version = 0, name = $name, checksum = $checksum, \
+             description = 'Bundled schema applied on first open';",
+        )
+        .bind(("name", name.to_string()))
+        .bind(("checksum", checksum))
+        .await
+        .map_err(|e| CodeGraphError::Database(format!("Failed to record schema: {}", e)))?
+        .check()
+        .map_err(|e| CodeGraphError::Database(format!("Failed to record schema: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn has_table(db: &Surreal<Any>, table: &str) -> Result<bool> {
+        let mut response = db
+            .query("INFO FOR DB")
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("INFO FOR DB failed: {}", e)))?;
+        let info: Option<JsonValue> = response
+            .take(0)
+            .map_err(|e| CodeGraphError::Database(format!("INFO FOR DB unreadable: {}", e)))?;
+        Ok(info
+            .and_then(|v| v.get("tables").cloned())
+            .and_then(|t| t.get(table).cloned())
+            .is_some())
+    }
+
+    async fn check_schema_checksum(db: &Surreal<Any>, name: &str, checksum: &str) {
+        let recorded = async {
+            let mut response = db
+                .query("SELECT name, checksum FROM schema_versions:bundled")
+                .await
+                .ok()?;
+            let rows: Vec<JsonValue> = response.take(0).ok()?;
+            let row = rows.into_iter().next()?;
+            Some((
+                row.get("name")?.as_str()?.to_string(),
+                row.get("checksum")?.as_str()?.to_string(),
+            ))
+        }
+        .await;
+
+        match recorded {
+            Some((recorded_name, recorded_checksum))
+                if recorded_name == name && recorded_checksum == checksum => {}
+            Some((recorded_name, _)) => warn!(
+                "Embedded database was created from the {} schema at a different revision than \
+                 this binary bundles ({}). Re-index with `codegraph index --force` to rebuild it.",
+                recorded_name, name
+            ),
+            None => debug!("Embedded database has no bundled-schema record; skipping check"),
+        }
     }
 
     /// Initialize database schema with flexible design (unused when schema managed externally)
