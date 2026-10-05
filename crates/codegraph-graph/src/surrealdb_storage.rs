@@ -22,6 +22,7 @@ use tracing::{debug, info, warn};
 const BUNDLED_SCHEMA_MAIN: &str = include_str!("../../../schema/codegraph.surql");
 const BUNDLED_SCHEMA_EXPERIMENTAL: &str =
     include_str!("../../../schema/codegraph_graph_experimental.surql");
+const BUNDLED_SCHEMA_V2: &str = include_str!("../../../schema/codegraph_v2.surql");
 
 /// Directory under the project root that holds the embedded store.
 pub const EMBEDDED_DB_DIR: &str = ".codegraph";
@@ -338,6 +339,8 @@ impl SurrealDbStorage {
     async fn ensure_bundled_schema(db: &Surreal<Any>) -> Result<()> {
         let (name, schema) = if env_flag("CODEGRAPH_USE_GRAPH_SCHEMA") {
             ("experimental", BUNDLED_SCHEMA_EXPERIMENTAL)
+        } else if env_value("CODEGRAPH_SCHEMA").is_some_and(|v| v.eq_ignore_ascii_case("v2")) {
+            ("v2", BUNDLED_SCHEMA_V2)
         } else {
             ("main", BUNDLED_SCHEMA_MAIN)
         };

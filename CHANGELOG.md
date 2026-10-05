@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ **Added - Schema v2 for SurrealDB 3.x**
+
+- **`schema/codegraph_v2.surql`** (`CODEGRAPH_SCHEMA=v2`, or `apply-schema.sh -s codegraph_v2.surql`): drop-in schema with the same tables and function signatures. Graph functions filter edges by their own `project_id` through compound `(project_id, edge_type, from|to)` indexes instead of dereferencing node records per edge; dependency and call-chain walks use `array::fold` with frontier/visited sets (depth up to 10, call paths returned); hybrid search fuses chunk KNN and BM25 lists with `search::rrf`; analyzers split identifiers on case and punctuation with edge n-grams on names; `chunks.parent_node` and `edges.from/to` cascade on node delete. New helpers: `fn::search_snippets` (BM25 with highlights), `fn::knn_nodes`, `fn::kmeans`.
+- **Record ids with backticks** (what `<string>id` produces under SurrealDB 3.x) are accepted by v2's `fn::parse_record_id`; `codegraph.surql` only strips `⟨⟩`, so its node-scoped functions return nothing for such ids.
+
 ### 🗄️ **Changed - Embedded Per-Project Database**
 
 - **Storage defaults to an embedded SurrealKV store per project** at `<project>/.codegraph/db`, so no SurrealDB server is needed and projects no longer share one database. The bundled `schema/codegraph.surql` is applied automatically when the store is created and recorded in `schema_versions`; a later schema change logs a warning suggesting `codegraph index --force`. The store directory gets a `.gitignore`.

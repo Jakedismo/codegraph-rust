@@ -102,7 +102,7 @@ The agent's system prompt is built in `codegraph-mcp-rig/src/prompts/tier_prompt
 
 ### Schema
 
-Two SurrealDB schemas must stay in sync with the storage layer and with each other: `schema/codegraph.surql` (default) and `schema/codegraph_graph_experimental.surql` (selected with `CODEGRAPH_USE_GRAPH_SCHEMA=true` + `CODEGRAPH_GRAPH_DB_DATABASE`). `crates/codegraph-graph/tests/schema_indexes_test.rs` statically validates both files (project-scoped indexes, required `fn::*` functions, SurrealQL parsing constraints); run it after any schema edit. A new graph function generally needs: the `fn::` definition in both schemas, a wrapper in `graph_functions.rs`, and a schema + executor entry in `codegraph-mcp-tools`.
+Three SurrealDB schemas must stay in sync with the storage layer and with each other: `schema/codegraph.surql` (default), `schema/codegraph_v2.surql` (`CODEGRAPH_SCHEMA=v2`; same tables, SurrealDB 3.x-optimised functions, tested end to end by `crates/codegraph-graph/tests/schema_v2_test.rs`), and `schema/codegraph_graph_experimental.surql` (selected with `CODEGRAPH_USE_GRAPH_SCHEMA=true` + `CODEGRAPH_GRAPH_DB_DATABASE`). `crates/codegraph-graph/tests/schema_indexes_test.rs` statically validates them (project-scoped indexes, required `fn::*` functions, SurrealQL parsing constraints) and `schema_runtime_test.rs` applies each to an in-memory engine; run both after any schema edit. A new graph function generally needs: the `fn::` definition in each schema, a wrapper in `graph_functions.rs`, and a schema + executor entry in `codegraph-mcp-tools`. SurrealQL gotcha: `LET` inside a `FOR` body is block-scoped in 3.x, so iterative walks use `array::fold` (see `fn::expand` in v2).
 
 ## Conventions
 
