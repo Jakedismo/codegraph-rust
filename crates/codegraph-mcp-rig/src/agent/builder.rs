@@ -27,6 +27,30 @@ use std::sync::Arc;
 #[allow(unused_imports)] // Used when provider features are enabled
 use tracing::info;
 
+/// Selects the agent the Rig backend runs: `react` (default), `lats`, or `reflexion`.
+///
+/// Separate from `CODEGRAPH_AGENT_ARCHITECTURE` because `lats` there selects the
+/// legacy AutoAgents backend before the Rig builder is ever reached.
+pub const RIG_ARCHITECTURE_ENV: &str = "CODEGRAPH_RIG_ARCHITECTURE";
+
+/// Pick the Rig agent from the two env values, the Rig-specific one first.
+fn select_architecture(
+    rig_architecture: Option<&str>,
+    agent_architecture: Option<&str>,
+) -> Option<AgentArchitecture> {
+    if let Some(value) = rig_architecture.map(str::trim).filter(|v| !v.is_empty()) {
+        match AgentArchitecture::parse(value) {
+            Some(arch) => return Some(arch),
+            None => tracing::warn!(
+                value,
+                "Invalid {} value (expected react, lats, or reflexion); ignoring it",
+                RIG_ARCHITECTURE_ENV
+            ),
+        }
+    }
+    agent_architecture.and_then(AgentArchitecture::parse)
+}
+
 /// Builder for creating Rig-based code analysis agents
 pub struct RigAgentBuilder {
     #[allow(dead_code)] // Used when provider features are enabled
@@ -67,12 +91,12 @@ impl RigAgentBuilder {
 
     /// Detect architecture from environment only
     fn detect_architecture_from_env() -> Option<AgentArchitecture> {
-        if let Ok(arch_str) = std::env::var("CODEGRAPH_AGENT_ARCHITECTURE") {
-            if let Some(arch) = AgentArchitecture::parse(&arch_str) {
-                return Some(arch);
-            }
-        }
-        None
+        select_architecture(
+            std::env::var(RIG_ARCHITECTURE_ENV).ok().as_deref(),
+            std::env::var("CODEGRAPH_AGENT_ARCHITECTURE")
+                .ok()
+                .as_deref(),
+        )
     }
 
     /// Set the analysis type for this agent
@@ -135,7 +159,7 @@ impl RigAgentBuilder {
 
     /// Resolve architecture, defaulting to ReAct when none was set explicitly.
     ///
-    /// LATS is opt-in via [`Self::architecture`]: its expansion step reasons
+    /// LATS is opt-in via [`RIG_ARCHITECTURE_ENV`] or [`Self::architecture`]: its expansion step reasons
     /// without calling graph tools, so its answers are not grounded in the index.
     fn resolve_architecture(&self) -> AgentArchitecture {
         self.architecture.unwrap_or(AgentArchitecture::ReAct)
@@ -398,5 +422,39 @@ impl RigAgentBuilder {
             max_turns: self.max_turns,
             tier: self.tier,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rig_architecture_env_selects_agent() {
+        assert_eq!(
+            select_architecture(Some("lats"), None),
+            Some(AgentArchitecture::LATS)
+        );
+        assert_eq!(
+            select_architecture(Some(" Reflexion "), Some("rig")),
+            Some(AgentArchitecture::Reflexion)
+        );
+    }
+
+    #[test]
+    fn test_rig_architecture_env_falls_back() {
+        assert_eq!(select_architecture(None, None), None);
+        assert_eq!(
+            select_architecture(None, Some("rig")),
+            Some(AgentArchitecture::Rig)
+        );
+        assert_eq!(
+            select_architecture(Some(""), Some("reflexion")),
+            Some(AgentArchitecture::Reflexion)
+        );
+        assert_eq!(
+            select_architecture(Some("tree"), Some("rig")),
+            Some(AgentArchitecture::Rig)
+        );
     }
 }

@@ -129,12 +129,14 @@ CodeGraph implements agents using **Rig** the default and recommended choice (le
 The Rig-based backend delivers the best performance with modern thinking and reasoning models. It is a native Rust implementation that supports internal sub-architectures and provides features like **True Token Streaming** and **Automatic Recovery**.
 
 **Internal Rig Sub-Architectures:**
-When using the `rig` backend, the system automatically maps the **consolidated agentic tools** to the most effective reasoning strategy:
-- **LATS (Tree Search)**: Deep multi-path exploration for complex, non-linear tasks.
-  - Automatically used for: `agentic_architecture` (structure), `agentic_quality`, and `agentic_context` (question).
-- **ReAct (Linear)**: High-speed, focused reasoning for direct data lookups.
-  - Automatically used for: `agentic_context` (search/builder), `agentic_impact`, and `agentic_architecture` (api_surface).
-- **Reflexion (Auto-Recovery)**: A self-correcting fallback that kicks in automatically if the primary strategy fails to find an answer. It analyzes the failure and retries with a refined plan.
+The `rig` backend runs one of three agents, selected with `CODEGRAPH_RIG_ARCHITECTURE` (in `.env` or the environment):
+- **`react`** (default): a tool-calling loop over the graph tools. Used for every agentic tool unless you choose otherwise.
+- **`lats`**: tree search over candidate reasoning steps. It does not call the graph tools, so its answers are not grounded in the index, and it requires the OpenAI or Anthropic provider.
+- **`reflexion`**: ReAct wrapped in a retry that feeds the previous error back to the agent.
+
+Whichever agent is selected, a failed run is retried automatically with the error as context.
+
+`CODEGRAPH_AGENT_ARCHITECTURE=lats` is a different setting: it selects the legacy AutoAgents LATS backend.
 
 ### Agent Bootstrap Context
 
