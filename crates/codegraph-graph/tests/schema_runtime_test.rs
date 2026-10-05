@@ -12,6 +12,7 @@ async fn shipped_schemas_apply_to_current_surrealdb() {
             "experimental",
             include_str!("../../../schema/codegraph_graph_experimental.surql"),
         ),
+        ("v2", include_str!("../../../schema/codegraph_v2.surql")),
     ] {
         let db = Surreal::new::<Mem>(()).await.unwrap();
         db.use_ns("schema_test").use_db(name).await.unwrap();
