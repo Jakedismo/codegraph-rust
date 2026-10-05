@@ -654,10 +654,17 @@ impl ConfigManager {
 
     /// Find and load config file
     /// Search order:
-    /// 1. ./.codegraph.toml (current directory)
-    /// 2. ~/.codegraph/config.toml (user config)
-    /// 3. Use defaults
+    /// 1. CODEGRAPH_CONFIG_PATH (explicit CLI/environment selection)
+    /// 2. ./.codegraph.toml (current directory)
+    /// 3. ~/.codegraph/config.toml (user config)
+    /// 4. Use defaults
     fn load_config_file() -> Result<(CodeGraphConfig, Option<PathBuf>), ConfigError> {
+        // Explicit CLI/environment selection precedes project and user defaults.
+        if let Some(path) = std::env::var_os("CODEGRAPH_CONFIG_PATH") {
+            let path = PathBuf::from(path);
+            let config = Self::read_toml_file(&path)?;
+            return Ok((config, Some(path)));
+        }
         // Try current directory
         let local_config = Path::new(".codegraph.toml");
         if local_config.exists() {

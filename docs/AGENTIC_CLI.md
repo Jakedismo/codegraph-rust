@@ -1,0 +1,150 @@
+# Agentic CLI and code-agent hooks
+
+CodeGraph exposes the same four public agentic tools through MCP and one-shot CLI
+commands. The built-in agents gather graph evidence, reason over it, and synthesize
+answers. The CLI does not expose their internal graph analysis tools.
+
+## Build and prerequisites
+
+```sh
+cargo build -p codegraph-mcp-server --bin codegraph --features full
+./target/debug/codegraph agent --help
+```
+
+`ai-enhanced` is the required feature for agentic execution; `full` also includes
+embedding providers, HTTP transport, and all agent backends. Select the embedding
+features appropriate to your existing setup if using a smaller build. Plain builds
+can show help/instructions and install hooks; executing an agentic command fails
+with an actionable feature error, and the hook emitter supplies no context.
+
+Use the same SurrealDB schema, indexed project, embedding provider, LLM settings,
+and `CODEGRAPH_AGENT_ARCHITECTURE` as for MCP. See [installation](INSTALLATION_GUIDE.md)
+and [provider configuration](AI_PROVIDERS.md). No MCP server or transport is started
+by an agentic CLI call. Each call runs a fresh agent workflow and may incur the
+configured provider's costs.
+
+## Public commands
+
+| MCP tool | CLI command | Accepted `--focus` | Default |
+| --- | --- | --- | --- |
+| `agentic_context` | `codegraph agent context` | `search`, `builder`, `question` | `builder` |
+| `agentic_impact` | `codegraph agent impact` | `dependencies`, `call_chain` | `dependencies` |
+| `agentic_architecture` | `codegraph agent architecture` | `structure`, `api_surface` | `structure` |
+| `agentic_quality` | `codegraph agent quality` | `complexity`, `coupling`, `hotspots` | quality workflow |
+
+These defaults mirror the MCP implementation. Quality focuses are accepted aliases
+for the same quality workflow, as they are over MCP. CLI focuses are validated
+against their tool; an invalid focus is rejected before configuration or networking.
+The MCP request's existing `limit` field is unused by these workflows and has no
+CLI counterpart.
+
+```sh
+codegraph agent context "Where is configuration loaded?" --focus search
+codegraph agent context "How does provider selection work?" --focus question
+codegraph agent impact "What breaks if configuration precedence changes?" --focus call_chain
+codegraph agent architecture "Describe the indexing interfaces" --focus api_surface
+codegraph agent quality "Coupling risks in the parser" --focus coupling
+```
+
+Run from the indexed project root, or select it explicitly:
+
+```sh
+codegraph agent context "Understand the parser" --project /path/to/project
+codegraph agent impact "Changing parser output" --project /path/to/project --project-id custom-id
+codegraph --config /path/to/providers.toml agent context "Find embedding setup"
+codegraph agent context --query-file question.txt --timeout-secs 600
+printf '%s\n' 'Explain configuration loading' | codegraph agent context --query-file -
+```
+
+`--project` changes the working directory before loading `.env` and `.codegraph.toml`.
+It retains an existing `CODEGRAPH_PROJECT_ID`; use `--project-id` to override it when
+needed. Without a configured identifier, the shared workflow uses the canonical
+working directory, matching indexing. Query-file and explicit config paths are
+resolved relative to the invoking directory. `--config` selects a TOML file via
+`CODEGRAPH_CONFIG_PATH`, ahead of the project/user TOML defaults; environment
+variables still override TOML fields. Guidance and hook commands do not load either
+provider configuration or `.env`.
+
+## Output and failures
+
+Default stdout is a single JSON object containing the same response data as the MCP
+tool's text content: `analysis_type`, `query`, `tier`, `framework`, `answer`,
+`findings`, `steps_taken`, `tool_use_count`, and `structured_output` when available.
+Logs and diagnostics go to stderr; `--verbose` increases log detail. Source locations
+and confidence depend on the evidence returned by the agent, just as over MCP.
+
+`--format text` prints only `answer`. JSON is preferable for agents because it
+preserves metadata and partial-result warnings. An internal backend timeout may
+return a partial answer with warnings and exit successfully, preserving MCP behavior.
+Check `findings` and the answer before treating a result as complete.
+
+| Exit | Meaning |
+| --- | --- |
+| `0` | Workflow returned a response, possibly partial as described above |
+| `1` | Execution, configuration, input-file, or deadline failure |
+| `2` | CLI argument error, such as an unsupported focus |
+
+JSON-mode execution failures print `{"error":{"tool":"agentic_context","message":"..."}}`
+and a diagnostic on stderr. Text-mode failures leave stdout empty. Clap argument
+errors use stderr. `--timeout-secs` sets a whole-workflow deadline (default 300
+seconds) and expires with exit 1, without claiming a complete answer.
+
+## Harness guidance and hooks
+
+`codegraph agent instructions` prints standalone guidance for any harness or a
+manually maintained instruction file. It explains tool selection, focus options,
+project selection, output, costs, evidence verification, and fallbacks. It works
+without database access or provider credentials.
+
+For Claude Code and Codex, preview and then install project-local hooks:
+
+```sh
+codegraph hooks install --harness both --project /path/to/project --dry-run
+codegraph hooks install --harness both --project /path/to/project
+# Or select one harness: --harness claude / --harness codex
+```
+
+The installer merges into `.claude/settings.json` and `.codex/hooks.json`, preserving
+existing hooks, permissions, and unrelated settings. Repeating installation leaves
+the files unchanged. Invalid settings abort before either file is written. Symlinked
+settings/directories and the user home directory are rejected so installation stays
+project-local. No user configuration, shared `AGENTS.md`, or binaries are installed.
+`--dry-run` prints proposed settings and writes nothing.
+
+Hooks invoke `codegraph hooks emit` only if `codegraph` is on the harness's PATH.
+They use a POSIX shell, suitable for macOS/Linux and Claude's Bash environment on
+Windows; Windows-native harnesses need an equivalent shell command. Ensure the
+built binary is available through your existing installation or PATH. Reload/restart
+the harness after installing, and review/trust hooks through the harness's normal
+controls. Codex may warn if the project also defines inline hooks in `config.toml`;
+both sources are loaded. The installer preserves that configuration.
+
+- `SessionStart` on startup, resume, clear, and compact restores the full CLI guide.
+- `SubagentStart` supplies the same guide to newly started code agents.
+- No per-tool or per-prompt hook is installed, avoiding repeated context injection.
+
+The emitter reads the event JSON from stdin and writes
+`hookSpecificOutput.hookEventName` plus `additionalContext`. It finds the nearest
+Git project root from event `cwd`, including Git worktrees, and adds an explicit
+project-selection reminder for sessions started in subdirectories. Malformed,
+oversized, or unsupported events return `{}`. Missing binaries emit nothing. Hooks
+never block tool use, grant permissions, inspect transcripts, index code, contact
+providers, or run an agentic query.
+
+To remove the integration, delete handlers containing `codegraph hooks emit` from
+the two project files, preserving other handlers. For other harnesses, invoke
+`codegraph agent instructions` at the lifecycle points where context is restored,
+or adapt the emitter's JSON to that harness's context protocol.
+
+Hook formats follow the official [Claude Code hooks reference](https://code.claude.com/docs/en/hooks)
+and [Codex hooks documentation](https://learn.chatgpt.com/docs/hooks).
+
+## Implementation boundary
+
+`AgenticTool` owns the common focus-to-workflow selection. MCP handlers and CLI
+commands both call `CodeGraphMCPServer`'s shared agentic workflow; only MCP attaches
+peer-based progress notifications. The workflow produces a transport-independent
+JSON value, which MCP wraps in tool text and the CLI writes directly. Configuration,
+backend selection, prompts, graph evidence gathering, and result synthesis are
+therefore shared. The hooks and instructions are separate from execution and work
+without loading application configuration.

@@ -95,3 +95,4 @@ nix = { version = "0.30.1", features = ["process", "signal"] }
 
 [dev-dependencies]
 serial_test = "3.2"
+tempfile = { workspace = true }

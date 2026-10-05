@@ -10,6 +10,7 @@ use codegraph_mcp_core::debug_logger::DebugLogger;
 #[cfg(feature = "daemon")]
 use codegraph_mcp_daemon::{DaemonManager, PidFile, WatchConfig, WatchDaemon};
 use codegraph_mcp_server::CodeGraphMCPServer;
+use codegraph_mcp_server::{agent_cli, agent_hooks};
 use colored::Colorize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rmcp::ServiceExt;
@@ -32,8 +33,8 @@ const DEFAULT_LOCAL_EMBEDDINGS_PER_WORKER_PER_MINUTE: f64 = 3600.0;
     name = "codegraph",
     version,
     author,
-    about = "CodeGraph CLI - MCP server management and project indexing",
-    long_about = "CodeGraph provides a unified interface for managing MCP servers and indexing projects with the codegraph system."
+    about = "CodeGraph CLI - agentic tools, MCP server management, and project indexing",
+    long_about = "Run CodeGraph's four agentic tools directly, configure harness hooks, manage MCP servers, and index projects."
 )]
 #[command(propagate_version = true)]
 struct Cli {
@@ -56,6 +57,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    #[command(about = "Run client-facing agentic tools without an MCP transport")]
+    Agent {
+        #[command(subcommand)]
+        action: agent_cli::AgentCommand,
+    },
+
+    #[command(about = "Emit agent guidance or install project-local harness hooks")]
+    Hooks {
+        #[command(subcommand)]
+        action: agent_hooks::HookCommand,
+    },
+
     #[command(about = "Start MCP server with specified transport")]
     Start {
         #[command(subcommand)]
@@ -491,25 +504,36 @@ impl From<IndexTier> for codegraph_core::config_manager::IndexingTier {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+    // Guidance/hooks must work without valid provider config or any network services.
+    if let Commands::Agent { ref action } = cli.command {
+        return agent_cli::run(action, cli.verbose, cli.config.as_deref()).await;
+    }
+    if let Commands::Hooks { ref action } = cli.command {
+        return agent_hooks::run(action);
+    }
+    if let Some(path) = &cli.config {
+        std::env::set_var(
+            "CODEGRAPH_CONFIG_PATH",
+            path.canonicalize()
+                .with_context(|| format!("Cannot resolve config {}", path.display()))?,
+        );
+    }
     // Load .env file if present
     dotenv::dotenv().ok();
 
     // Initialize debug logger (enabled with CODEGRAPH_DEBUG=1)
     DebugLogger::init();
 
-    let cli = Cli::parse();
-
     // Load configuration once at startup
     use codegraph_core::config_manager::ConfigManager;
     let config_mgr = ConfigManager::load().context("Failed to load configuration")?;
     let config = config_mgr.config();
 
-    // TODO: Override with CLI config path if provided
-    if let Some(_config_path) = &cli.config {
-        // Future: merge CLI-specified config file
-    }
-
     match cli.command {
+        Commands::Agent { .. } | Commands::Hooks { .. } => {
+            unreachable!("handled before configuration")
+        }
         Commands::Start {
             transport,
             config,

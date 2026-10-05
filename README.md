@@ -9,6 +9,9 @@ CodeGraph transforms your entire codebase into a semantically searchable knowled
 > **Ready to get started?** Jump to the [Installation Guide](docs/INSTALLATION_GUIDE.md) for step-by-step setup instructions.
 >
 > **Already set up?** See the [Usage Guide](docs/USAGE_GUIDE.md) for tips on getting the most out of CodeGraph with your AI assistant.
+>
+> **Prefer shell commands?** Run `codegraph agent context "your question"`. The same four
+> agentic tools are available through the [CLI, with project-local Claude Code/Codex hooks](docs/AGENTIC_CLI.md).
 
 ---
 

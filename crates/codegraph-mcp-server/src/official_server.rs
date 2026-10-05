@@ -28,6 +28,7 @@ use std::sync::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::agentic_tools::AgenticTool;
 use crate::prompt_selector::AnalysisType;
 use crate::prompts::{INITIAL_INSTRUCTIONS, INITIAL_INSTRUCTIONS_PROMPT_NAME};
 #[cfg(feature = "ai-enhanced")]
@@ -303,13 +304,7 @@ impl CodeGraphMCPServer {
         params: Parameters<ConsolidatedSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        let analysis_type = match request.focus.as_deref() {
-            Some("search") => AnalysisType::CodeSearch,
-            Some("builder") => AnalysisType::ContextBuilder,
-            Some("question") => AnalysisType::SemanticQuestion,
-            _ => AnalysisType::ContextBuilder, // Default for context
-        };
-        self.execute_agentic_workflow(analysis_type, &request.query, peer, meta)
+        self.execute_mcp_agentic_tool(AgenticTool::Context, request, peer, meta)
             .await
     }
 
@@ -324,12 +319,7 @@ impl CodeGraphMCPServer {
         params: Parameters<ConsolidatedSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        let analysis_type = match request.focus.as_deref() {
-            Some("dependencies") => AnalysisType::DependencyAnalysis,
-            Some("call_chain") => AnalysisType::CallChainAnalysis,
-            _ => AnalysisType::DependencyAnalysis, // Default for impact
-        };
-        self.execute_agentic_workflow(analysis_type, &request.query, peer, meta)
+        self.execute_mcp_agentic_tool(AgenticTool::Impact, request, peer, meta)
             .await
     }
 
@@ -344,12 +334,7 @@ impl CodeGraphMCPServer {
         params: Parameters<ConsolidatedSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        let analysis_type = match request.focus.as_deref() {
-            Some("structure") => AnalysisType::ArchitectureAnalysis,
-            Some("api_surface") => AnalysisType::ApiSurfaceAnalysis,
-            _ => AnalysisType::ArchitectureAnalysis, // Default for architecture
-        };
-        self.execute_agentic_workflow(analysis_type, &request.query, peer, meta)
+        self.execute_mcp_agentic_tool(AgenticTool::Architecture, request, peer, meta)
             .await
     }
 
@@ -364,9 +349,39 @@ impl CodeGraphMCPServer {
         params: Parameters<ConsolidatedSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
         let request = params.0;
-        // All quality focuses use ComplexityAnalysis internally
-        let analysis_type = AnalysisType::ComplexityAnalysis;
-        self.execute_agentic_workflow(analysis_type, &request.query, peer, meta)
+        self.execute_mcp_agentic_tool(AgenticTool::Quality, request, peer, meta)
+            .await
+    }
+
+    async fn execute_mcp_agentic_tool(
+        &self,
+        tool: AgenticTool,
+        request: ConsolidatedSearchRequest,
+        peer: Peer<RoleServer>,
+        meta: Meta,
+    ) -> Result<CallToolResult, McpError> {
+        let response = self
+            .execute_agentic_workflow(
+                tool.analysis_type(request.focus.as_deref()),
+                &request.query,
+                Some(peer),
+                meta,
+            )
+            .await?;
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&response)
+                .unwrap_or_else(|_| "Error formatting AutoAgents result".to_string()),
+        )]))
+    }
+
+    /// Execute the same agentic workflow without starting an MCP transport.
+    pub async fn execute_agentic_tool(
+        &self,
+        tool: AgenticTool,
+        query: &str,
+        focus: Option<&str>,
+    ) -> Result<Value, McpError> {
+        self.execute_agentic_workflow(tool.analysis_type(focus), query, None, Meta::default())
             .await
     }
 }
@@ -450,7 +465,9 @@ impl CodeGraphMCPServer {
     }
 
     #[cfg(feature = "ai-enhanced")]
-    fn extract_pinpoint(item: &serde_json::Value) -> (Option<String>, Option<usize>, Option<String>) {
+    fn extract_pinpoint(
+        item: &serde_json::Value,
+    ) -> (Option<String>, Option<usize>, Option<String>) {
         let file_path = item
             .get("file_path")
             .and_then(|v| v.as_str())
@@ -473,7 +490,11 @@ impl CodeGraphMCPServer {
             .get("line_number")
             .and_then(|v| v.as_u64())
             .map(|n| n as usize)
-            .or_else(|| item.get("start_line").and_then(|v| v.as_u64()).map(|n| n as usize))
+            .or_else(|| {
+                item.get("start_line")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize)
+            })
             .or_else(|| {
                 item.get("location")
                     .and_then(|loc| loc.get("start_line"))
@@ -632,9 +653,9 @@ impl CodeGraphMCPServer {
         &self,
         analysis_type: AnalysisType,
         query: &str,
-        peer: Peer<RoleServer>,
+        peer: Option<Peer<RoleServer>>,
         meta: Meta,
-    ) -> Result<CallToolResult, McpError> {
+    ) -> Result<Value, McpError> {
         use codegraph_ai::llm_factory::LLMProviderFactory;
         use codegraph_graph::GraphFunctions;
         use codegraph_mcp_autoagents::{
@@ -650,7 +671,9 @@ impl CodeGraphMCPServer {
         DebugLogger::log_agent_start(query, analysis_type.as_str(), &format!("{:?}", tier));
 
         // Create progress notifier for 3-stage notifications
-        let progress_notifier = if let Some(progress_token) = meta.get_progress_token() {
+        let progress_notifier = if let (Some(peer), Some(progress_token)) =
+            (peer.as_ref(), meta.get_progress_token())
+        {
             let callback =
                 Self::create_progress_callback_with_message(peer.clone(), progress_token);
             ProgressNotifier::new(callback, analysis_type.as_str())
@@ -820,8 +843,10 @@ impl CodeGraphMCPServer {
         progress_notifier.notify_analyzing().await;
 
         // Detect agent architecture from environment (defaults to Rig)
-        let architecture = AgentArchitecture::parse(&std::env::var("CODEGRAPH_AGENT_ARCHITECTURE").unwrap_or_else(|_| "rig".to_string()))
-            .unwrap_or(AgentArchitecture::Rig);
+        let architecture = AgentArchitecture::parse(
+            &std::env::var("CODEGRAPH_AGENT_ARCHITECTURE").unwrap_or_else(|_| "rig".to_string()),
+        )
+        .unwrap_or(AgentArchitecture::Rig);
         tracing::info!("Using agent architecture: {:?}", architecture);
 
         let step_counter = Arc::new(AtomicUsize::new(0));
@@ -868,7 +893,9 @@ impl CodeGraphMCPServer {
                         .tool_executor(tool_executor);
 
                     // Add step progress callback if progress token is available
-                    if let Some(progress_token) = meta.get_progress_token() {
+                    if let (Some(peer), Some(progress_token)) =
+                        (peer.as_ref(), meta.get_progress_token())
+                    {
                         let step_callback = Self::create_step_progress_callback(
                             peer.clone(),
                             progress_token,
@@ -1056,9 +1083,9 @@ impl CodeGraphMCPServer {
         };
 
         let synthesized = structured_output.or_else(|| {
-            rig_traces
-                .as_deref()
-                .and_then(|t| Self::synthesize_structured_output_from_traces(analysis_type, &result.answer, t))
+            rig_traces.as_deref().and_then(|t| {
+                Self::synthesize_structured_output_from_traces(analysis_type, &result.answer, t)
+            })
         });
 
         // Format result as JSON with structured output if available
@@ -1093,10 +1120,7 @@ impl CodeGraphMCPServer {
         // Stage 3: Agent complete (progress: 1.0)
         progress_notifier.notify_complete().await;
 
-        Ok(CallToolResult::success(vec![Content::text(
-            serde_json::to_string_pretty(&response_json)
-                .unwrap_or_else(|_| "Error formatting AutoAgents result".to_string()),
-        )]))
+        Ok(response_json)
     }
 
     /// Stub when ai-enhanced feature is disabled
@@ -1105,9 +1129,9 @@ impl CodeGraphMCPServer {
         &self,
         analysis_type: AnalysisType,
         query: &str,
-        _peer: Peer<RoleServer>,
+        _peer: Option<Peer<RoleServer>>,
         _meta: Meta,
-    ) -> Result<CallToolResult, McpError> {
+    ) -> Result<Value, McpError> {
         let _ = (analysis_type, query);
         Err(McpError::invalid_request(
             "Agentic tools require the `ai-enhanced` feature to be enabled",

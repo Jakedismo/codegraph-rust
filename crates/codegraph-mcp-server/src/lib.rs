@@ -1,7 +1,10 @@
 // ABOUTME: MCP server entry (stdio/http) using core, tools, and autoagents crates
 // ABOUTME: Thin runtime layer wiring transports and handlers
 
+pub mod agent_cli;
+pub mod agent_hooks;
 pub mod agentic_api_surface_prompts;
+pub mod agentic_tools;
 pub mod architecture_analysis_prompts;
 pub mod call_chain_prompts;
 pub mod code_search_prompts;
