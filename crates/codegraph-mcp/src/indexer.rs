@@ -234,6 +234,8 @@ pub struct ProjectIndexer {
     project_root: PathBuf,
     reconcile_lock: TokioMutex<()>,
     #[cfg(feature = "embeddings")]
+    chunk_pool: rayon::ThreadPool,
+    #[cfg(feature = "embeddings")]
     embedder: codegraph_vector::EmbeddingGenerator,
 }
 
@@ -321,26 +323,10 @@ impl ProjectIndexer {
             .filter(|threads| *threads > 0)
             .or(env_workers)
             .unwrap_or(config.workers);
-        let target_threads = requested
-            .max(2)
-            .min(rayon::max_num_threads().max(2))
-            .min(available.saturating_sub(1).max(2));
-
-        let rayon_pool_built = rayon::ThreadPoolBuilder::new()
-            .num_threads(target_threads)
-            .build_global()
-            .is_ok();
-        if rayon_pool_built {
-            info!(
-                "🔧 Rayon threads capped to {} (workers/env)",
-                target_threads
-            );
-        } else {
-            warn!(
-                "Rayon global pool already set elsewhere. Using local pool for chunking. Current RAYON_NUM_THREADS={:?}.",
-                std::env::var("RAYON_NUM_THREADS").ok()
-            );
-        }
+        #[cfg(feature = "embeddings")]
+        let chunk_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(requested.max(1).min(available.max(1)))
+            .build()?;
 
         // Allow runtime override for embedding batch size
         if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
@@ -505,6 +491,34 @@ impl ProjectIndexer {
             );
         }
 
+        #[cfg(feature = "embeddings")]
+        let embedder = {
+            let mut embedder = embedder;
+            let mut identity = serde_json::to_value(&global_config.embedding)?;
+            identity.as_object_mut().unwrap().remove("openai_api_key");
+            identity.as_object_mut().unwrap().remove("jina_api_key");
+            identity.as_object_mut().unwrap().insert(
+                "active_model".into(),
+                serde_json::json!(embedding_model_name),
+            );
+            identity.as_object_mut().unwrap().insert(
+                "runtime".into(),
+                serde_json::json!([
+                    std::env::var("CODEGRAPH_LOCAL_DTYPE").unwrap_or_default(),
+                    std::env::var("CODEGRAPH_ONNX_MODEL_FILE").unwrap_or_default(),
+                    std::env::var("CODEGRAPH_ONNX_EP").unwrap_or_default(),
+                    std::env::var("CODEGRAPH_COREML_LOW_PRECISION").unwrap_or_default(),
+                ]),
+            );
+            embedder.configure_index_cache(
+                project_root.join(".codegraph/index-cache"),
+                &identity,
+                vector_dim,
+                &global_config.embedding.provider,
+                config.batch_size,
+            )?;
+            embedder
+        };
         Ok(Self {
             config,
             global_config: global_config.clone(),
@@ -522,6 +536,8 @@ impl ProjectIndexer {
             project_root,
             reconcile_lock: TokioMutex::new(()),
             #[cfg(feature = "embeddings")]
+            chunk_pool,
+            #[cfg(feature = "embeddings")]
             embedder,
         })
     }
@@ -534,6 +550,8 @@ impl ProjectIndexer {
     pub async fn reconcile_project(&self, path: &Path, force: bool) -> Result<IndexStats> {
         let _run = self.reconcile_lock.lock().await;
         let start = std::time::Instant::now();
+        #[cfg(feature = "embeddings")]
+        let inference_before = self.embedder.inference_stats();
         info!("Starting project indexing: {:?}", path);
         self.log_surrealdb_status("pre-parse");
 
@@ -570,6 +588,10 @@ impl ProjectIndexer {
             "CODEGRAPH_SEMANTIC_RESOLUTION",
             "CODEGRAPH_SEMANTIC_CANDIDATES",
             "CODEGRAPH_EMBEDDING_POLICY",
+            "CODEGRAPH_LOCAL_DTYPE",
+            "CODEGRAPH_ONNX_MODEL_FILE",
+            "CODEGRAPH_ONNX_EP",
+            "CODEGRAPH_COREML_LOW_PRECISION",
             "CODEGRAPH_MODEL_REVISION",
             "CODEGRAPH_TOKENIZER_PATH",
             "CODEGRAPH_CHUNK_SPLITTER",
@@ -1081,17 +1103,7 @@ impl ProjectIndexer {
                             .and_then(|snapshot| snapshot.contents().ok())
                     })
             };
-            let plan = {
-                let threads = std::env::var("RAYON_NUM_THREADS")
-                    .ok()
-                    .and_then(|v| v.parse::<usize>().ok())
-                    .unwrap_or_else(|| self.config.workers.max(2));
-                let pool = rayon::ThreadPoolBuilder::new()
-                    .num_threads(threads)
-                    .build()
-                    .expect("failed to build local rayon pool for chunking");
-                pool.install(chunker)
-            };
+            let plan = self.chunk_pool.install(chunker);
             let elapsed = start.elapsed();
             self.finish_bar(
                 chunk_pb,
@@ -1310,20 +1322,44 @@ impl ProjectIndexer {
             // To avoid giant DB payloads, tie chunk grouping to the DB batch size (which may be lower
             // than the embedding batch size). This keeps both embedding and DB writes in smaller slices.
             // Also ensure we never exceed the embedding batch size, so the embedder isn’t overfed.
-            let chunk_batch_size = chunk_embedding_db_batch_size(batch).min(batch);
+            let chunk_batch_size = batch.max(1);
 
-            let chunk_batches: Vec<(Vec<String>, Vec<ChunkMeta>)> = {
-                let mut batches = Vec::new();
-                let mut chunk_iter = chunk_plan.chunks.chunks(chunk_batch_size);
-                let mut meta_iter = chunk_plan.metas.chunks(chunk_batch_size);
-                while let (Some(chunk_batch), Some(meta_batch)) =
-                    (chunk_iter.next(), meta_iter.next())
+            let mut pending_chunks = Vec::new();
+            for (index, (chunk, meta)) in
+                chunk_plan.chunks.iter().zip(&chunk_plan.metas).enumerate()
+            {
+                let node = &nodes[meta.node_index];
+                let id = ChunkEmbeddingRecord::identity(&node.id.to_string(), meta.chunk_index);
+                let hash = fingerprint(&(
+                    &chunk.text,
+                    &embedding_config,
+                    &policy,
+                    &self.embedding_model,
+                    self.vector_dim,
+                ))?;
+                if previous
+                    .as_ref()
+                    .and_then(|state| state.chunk_hashes.get(&id))
+                    != Some(&hash)
                 {
-                    let texts: Vec<String> = chunk_batch.iter().map(|c| c.text.clone()).collect();
-                    batches.push((texts, meta_batch.to_vec()));
+                    pending_chunks.push(index);
                 }
-                batches
-            };
+                next_catalog.chunks.insert(id.clone());
+                next_catalog.chunk_hashes.insert(id, hash);
+            }
+            let reused_chunks = chunk_plan.chunks.len() - pending_chunks.len();
+            let chunk_batches = pending_chunks.chunks(chunk_batch_size).map(|indices| {
+                (
+                    indices
+                        .iter()
+                        .map(|index| chunk_plan.chunks[*index].text.clone())
+                        .collect::<Vec<_>>(),
+                    indices
+                        .iter()
+                        .map(|index| chunk_plan.metas[*index].clone())
+                        .collect::<Vec<_>>(),
+                )
+            });
 
             let processed_atomic = Arc::new(AtomicU64::new(0));
             let max_concurrent = self.config.max_concurrent.max(1);
@@ -1331,12 +1367,11 @@ impl ProjectIndexer {
             let chunk_db_batch = chunk_embedding_db_batch_size(batch);
             let embedder = &self.embedder;
 
-            let mut batch_stream =
-                stream::iter(chunk_batches.into_iter().map(|(texts, metas)| async move {
-                    let embs = embedder.embed_texts_batched(&texts).await;
-                    (texts, metas, embs)
-                }))
-                .buffer_unordered(max_concurrent);
+            let mut batch_stream = stream::iter(chunk_batches.map(|(texts, metas)| async move {
+                let embs = embedder.embed_texts_batched(&texts).await;
+                (texts, metas, embs)
+            }))
+            .buffer_unordered(max_concurrent);
 
             while let Some((texts, metas, embs_result)) = batch_stream.next().await {
                 let embs: Vec<Vec<f32>> = embs_result?;
@@ -1386,7 +1421,7 @@ impl ProjectIndexer {
                 chunk_store_pb.set_position(done.min(total_chunks));
             }
 
-            processed = processed_atomic.load(Ordering::Relaxed);
+            processed = processed_atomic.load(Ordering::Relaxed) + reused_chunks as u64;
         }
         #[cfg(not(feature = "embeddings"))]
         let processed: u64 = 0;
@@ -1705,6 +1740,13 @@ impl ProjectIndexer {
             .await?;
         stats.index_ms = start.elapsed().as_millis() as u64;
         stats.complete = true;
+        #[cfg(feature = "embeddings")]
+        {
+            let after = self.embedder.inference_stats();
+            stats.embedding_cache_hits = after.0.saturating_sub(inference_before.0);
+            stats.inference_texts = after.1.saturating_sub(inference_before.1);
+            stats.inference_tokens = after.2.saturating_sub(inference_before.2);
+        }
         self.persist_project_metadata(&stats, stats.nodes, stats.edges, &input_fingerprint)
             .await?;
         self.flush_surreal_writer().await?;
@@ -3330,6 +3372,9 @@ pub struct IndexStats {
     pub cached_files: usize,
     pub index_ms: u64,
     pub complete: bool,
+    pub inference_texts: u64,
+    pub inference_tokens: u64,
+    pub embedding_cache_hits: u64,
     pub files: usize,
     pub skipped: usize,
     pub lines: usize,

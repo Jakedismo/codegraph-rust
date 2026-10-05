@@ -293,6 +293,29 @@ impl OpenAiEmbeddingProvider {
 #[cfg(feature = "openai")]
 #[async_trait]
 impl EmbeddingProvider for OpenAiEmbeddingProvider {
+    async fn generate_prepared_texts(
+        &self,
+        texts: &[String],
+        config: &BatchConfig,
+    ) -> Result<Vec<Vec<f32>>> {
+        let mut output = Vec::with_capacity(texts.len());
+        for batch in texts.chunks(config.batch_size.max(1)) {
+            let mut data = self.call_api(batch.to_vec()).await?.data;
+            data.sort_by_key(|item| item.index);
+            if data.len() != batch.len()
+                || data
+                    .iter()
+                    .enumerate()
+                    .any(|(index, item)| item.index != index)
+            {
+                return Err(CodeGraphError::Vector(
+                    "OpenAI returned missing or duplicate embedding indices".into(),
+                ));
+            }
+            output.extend(data.into_iter().map(|item| item.embedding));
+        }
+        Ok(output)
+    }
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
         let config = BatchConfig::default();
         let (mut embeddings, _) = self

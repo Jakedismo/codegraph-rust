@@ -21,6 +21,8 @@ pub struct EmbeddingGenerator {
     #[cfg(feature = "lmstudio")]
     lmstudio_provider: Option<crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider>,
     tokenizer: Arc<Tokenizer>,
+    submitted_cache: Option<crate::submitted_cache::SubmittedCache>,
+    chunk_cache_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +72,8 @@ impl EmbeddingGenerator {
             #[cfg(feature = "lmstudio")]
             lmstudio_provider: None,
             tokenizer: Arc::new(tokenizer),
+            submitted_cache: None,
+            chunk_cache_dir: None,
         }
     }
 
@@ -78,6 +82,9 @@ impl EmbeddingGenerator {
         &mut self,
         engine: Arc<crate::embeddings::generator::AdvancedEmbeddingGenerator>,
     ) {
+        if let Some(tokenizer) = engine.tokenizer() {
+            self.tokenizer = tokenizer;
+        }
         self.advanced = Some(engine);
     }
 
@@ -147,7 +154,8 @@ impl EmbeddingGenerator {
             nodes,
             file_sources,
             Arc::clone(&self.tokenizer),
-            self.chunker_config(),
+            self.chunker_config()
+                .cache_dir(self.chunk_cache_dir.clone()),
         )
     }
 
@@ -160,7 +168,8 @@ impl EmbeddingGenerator {
             nodes,
             source_lookup,
             self.tokenizer.clone(),
-            self.chunker_config(),
+            self.chunker_config()
+                .cache_dir(self.chunk_cache_dir.clone()),
         )
     }
 
@@ -217,7 +226,7 @@ impl EmbeddingGenerator {
                     });
                 }
                 if let Ok(engine) = AdvancedEmbeddingGenerator::new(cfg).await {
-                    base.advanced = Some(Arc::new(engine));
+                    base.set_advanced_engine(Arc::new(engine));
                 }
             }
         } else if provider == "onnx" {
@@ -243,7 +252,7 @@ impl EmbeddingGenerator {
                 match AdvancedEmbeddingGenerator::new(cfg).await {
                     Ok(engine) => {
                         tracing::info!("✅ ONNX embedding provider initialized successfully");
-                        base.advanced = Some(Arc::new(engine));
+                        base.set_advanced_engine(Arc::new(engine));
                     }
                     Err(e) => {
                         tracing::error!("❌ ONNX embedding provider failed to initialize: {}", e);
@@ -651,7 +660,72 @@ impl EmbeddingGenerator {
 
     /// Generate embeddings for multiple texts in batches for GPU optimization.
     /// This method processes texts in batches to maximize GPU utilization.
+    pub fn configure_index_cache(
+        &mut self,
+        root: PathBuf,
+        identity: &serde_json::Value,
+        dimension: usize,
+        provider: &str,
+        rows: usize,
+    ) -> Result<()> {
+        if let Some(path) = std::env::var_os("CODEGRAPH_TOKENIZER_PATH") {
+            self.tokenizer =
+                Arc::new(Tokenizer::from_file(path).map_err(|e| {
+                    CodeGraphError::Vector(format!("Invalid provider tokenizer: {e}"))
+                })?);
+        }
+        let namespace = codegraph_core::artifact_cache::fingerprint(&(
+            "prepared-v2",
+            identity,
+            dimension,
+            self.tokenizer
+                .to_string(false)
+                .map_err(|e| CodeGraphError::Vector(e.to_string()))?,
+            std::env::var("CODEGRAPH_MODEL_REVISION").unwrap_or_default(),
+        ))
+        .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+        self.submitted_cache = Some(crate::submitted_cache::SubmittedCache::new(
+            namespace,
+            dimension,
+            Some(root.clone()),
+            matches!(provider, "local" | "onnx" | "ollama" | "lmstudio"),
+            rows,
+        ));
+        self.chunk_cache_dir = Some(root);
+        Ok(())
+    }
+
+    pub fn inference_stats(&self) -> (u64, u64, u64) {
+        use std::sync::atomic::Ordering;
+        self.submitted_cache.as_ref().map_or((0, 0, 0), |cache| {
+            (
+                cache.hits.load(Ordering::Relaxed),
+                cache.inferred.load(Ordering::Relaxed),
+                cache.submitted_tokens.load(Ordering::Relaxed),
+            )
+        })
+    }
+
     pub async fn embed_texts_batched(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        if let Some(cache) = &self.submitted_cache {
+            cache
+                .embed(
+                    texts,
+                    |text| {
+                        self.tokenizer
+                            .encode(text, false)
+                            .map_or(text.len(), |tokens| tokens.len())
+                    },
+                    |batch| Box::pin(async move { self.embed_prepared_uncached(&batch).await }),
+                )
+                .await
+        } else {
+            self.embed_prepared_uncached(texts).await
+        }
+    }
+
+    #[allow(unused_variables)]
+    async fn embed_prepared_uncached(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
         // Use advanced engine's batching capabilities when available
         #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
         if let Some(engine) = &self.advanced {
@@ -675,13 +749,9 @@ impl EmbeddingGenerator {
             return provider.process_in_batches(texts.to_vec()).await;
         }
 
-        // Fallback: process texts sequentially
-        let mut embeddings = Vec::with_capacity(texts.len());
-        for text in texts {
-            let embedding = self.encode_text(text).await?;
-            embeddings.push(embedding);
-        }
-        Ok(embeddings)
+        Err(CodeGraphError::Vector(
+            "No semantic embedding provider configured for prepared text indexing".into(),
+        ))
     }
 
     async fn encode_text(&self, text: &str) -> Result<Vec<f32>> {

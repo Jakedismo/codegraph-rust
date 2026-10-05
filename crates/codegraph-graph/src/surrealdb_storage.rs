@@ -2198,6 +2198,17 @@ pub struct ChunkEmbeddingRecord {
 }
 
 impl ChunkEmbeddingRecord {
+    pub fn identity(parent_node: &str, chunk_index: usize) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(parent_node.as_bytes());
+        hasher.update(b":");
+        hasher.update(chunk_index.to_le_bytes());
+        hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
     pub fn new(
         parent_node: &str,
         chunk_index: usize,
@@ -2306,17 +2317,7 @@ impl ChunkEmbeddingRecord {
             _ => (None, None, None, None, None, None, None, None),
         };
 
-        let id = {
-            let mut hasher = Sha256::new();
-            hasher.update(parent_node.as_bytes());
-            hasher.update(b":");
-            hasher.update(chunk_index.to_le_bytes());
-            hasher
-                .finalize()
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>()
-        };
+        let id = Self::identity(parent_node, chunk_index);
 
         Self {
             id,

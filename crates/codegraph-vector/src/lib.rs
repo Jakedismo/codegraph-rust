@@ -3,6 +3,7 @@ pub mod embeddings;
 pub mod error;
 pub mod providers;
 pub mod search;
+mod submitted_cache;
 
 pub mod cache;
 pub mod gpu;

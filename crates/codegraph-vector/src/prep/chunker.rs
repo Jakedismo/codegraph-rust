@@ -1,4 +1,6 @@
+// ABOUTME: Parallel, deterministic chunk planning with Unicode-safe token budgets.
 use codegraph_core::{CodeNode, Language};
+use rayon::prelude::*;
 use semchunk_rs::Chunker as SemanticChunker;
 use std::{sync::Arc, time::Instant};
 use tokenizers::Tokenizer;
@@ -16,6 +18,7 @@ pub struct ChunkerConfig {
     pub max_texts_per_request: usize,
     pub overlap_tokens: usize,
     pub smart_split: bool,
+    pub cache_dir: Option<std::path::PathBuf>,
 }
 
 impl ChunkerConfig {
@@ -27,7 +30,13 @@ impl ChunkerConfig {
             max_texts_per_request: DEFAULT_MAX_TEXTS_PER_REQUEST,
             overlap_tokens: DEFAULT_OVERLAP_TOKENS,
             smart_split: true,
+            cache_dir: None,
         }
+    }
+
+    pub fn cache_dir(mut self, root: Option<std::path::PathBuf>) -> Self {
+        self.cache_dir = root;
+        self
     }
 
     pub fn sanitize_mode(mut self, mode: SanitizeMode) -> Self {
@@ -65,7 +74,7 @@ impl ChunkerConfig {
 pub enum SanitizeMode {
     /// Skip Unicode normalization for ASCII-only strings (fast path).
     AsciiFastPath,
-    /// Always normalize via NFC and remove emojis/control chars.
+    /// Always normalize via NFC and remove non-whitespace controls.
     Strict,
 }
 
@@ -82,7 +91,7 @@ impl ChunkPlan {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct TextChunk {
     pub text: String,
     pub tokens: usize,
@@ -153,130 +162,183 @@ pub fn build_chunk_plan_with_source_lookup(
     tokenizer: Arc<Tokenizer>,
     config: ChunkerConfig,
 ) -> ChunkPlan {
-    let start_total = Instant::now();
-    let _ = config.max_texts_per_request;
-    let _ = config.cache_capacity;
+    let tokenizer_key = codegraph_core::artifact_cache::fingerprint(
+        &tokenizer.to_string(false).unwrap_or_default(),
+    )
+    .unwrap();
+    let artifacts = config
+        .cache_dir
+        .clone()
+        .map(|path| path.into_os_string())
+        .map(|root| codegraph_core::artifact_cache::ArtifactCache::new(root, "chunks-v2"));
+    type Entry = Arc<parking_lot::Mutex<Option<Vec<TextChunk>>>>;
+    let cache = parking_lot::Mutex::new(lru::LruCache::<String, Entry>::new(
+        std::num::NonZeroUsize::new(config.cache_capacity.max(1)).unwrap(),
+    ));
+    let plans: Vec<_> = nodes
+        .par_iter()
+        .enumerate()
+        .map(|(node_idx, node)| {
+            let sanitize_start = Instant::now();
+            let source = source_lookup(&node.location.file_path);
+            let base_text =
+                if let (Some(span), Some(source)) = (node.span.as_ref(), source.as_ref()) {
+                    let start = span.start_byte as usize;
+                    let end = span.end_byte as usize;
+                    if start < end
+                        && end <= source.len()
+                        && source.is_char_boundary(start)
+                        && source.is_char_boundary(end)
+                    {
+                        source[start..end].to_string()
+                    } else {
+                        sanitize(node, config.sanitize_mode)
+                    }
+                } else if let Some(content) = node.content.as_ref() {
+                    content.to_string()
+                } else {
+                    sanitize(node, config.sanitize_mode)
+                };
 
-    // Upper bound estimate: assume ~2 chunks per node as a guard
-    let estimate = nodes.len().saturating_mul(2).max(16);
-    let mut all_chunks = Vec::with_capacity(estimate);
-    let mut all_metas = Vec::with_capacity(estimate);
+            let sanitized = match config.sanitize_mode {
+                SanitizeMode::AsciiFastPath if base_text.is_ascii() => base_text,
+                _ => super_sanitize(&base_text),
+            };
+            let sanitize_ms = sanitize_start.elapsed().as_millis();
+            let key = codegraph_core::artifact_cache::fingerprint(&(
+                "chunks-v2",
+                &tokenizer_key,
+                &sanitized,
+                config.max_tokens_per_text,
+                config.overlap_tokens,
+                config.smart_split,
+                std::env::var("CODEGRAPH_CHUNK_SPLITTER").unwrap_or_default(),
+            ))
+            .unwrap();
+            let entry = {
+                let mut cache = cache.lock();
+                if let Some(entry) = cache.get(&key) {
+                    entry.clone()
+                } else {
+                    let entry = Arc::new(parking_lot::Mutex::new(None));
+                    cache.put(key.clone(), entry.clone());
+                    entry
+                }
+            };
+            let mut cached = entry.lock();
+            if cached.is_none() {
+                *cached = artifacts.as_ref().and_then(|cache| cache.get(&key));
+            }
+            let hit = cached.is_some();
+            let chunk_start = Instant::now();
+            let chunks = cached
+                .get_or_insert_with(|| {
+                    let mut all_chunks = Vec::new();
+                    let segments: Vec<String> = if config.smart_split {
+                        smart_split(&sanitized)
+                    } else {
+                        vec![sanitized.clone()]
+                    };
+                    let chunker = SemanticChunker::new(
+                        config.max_tokens_per_text,
+                        Box::new({
+                            let tok = tokenizer.clone();
+                            move |s: &str| count_tokens(&tok, s)
+                        }),
+                    );
+
+                    let mut raw_chunks = Vec::new();
+                    for segment in segments {
+                        // semchunk 0.1.1's character fallback indexes by byte count and panics
+                        // on multibyte text. Keep structural boundaries and split UTF-8 safely.
+                        if !segment.is_ascii() {
+                            split_over_budget(
+                                segment,
+                                &tokenizer,
+                                config.max_tokens_per_text,
+                                &mut raw_chunks,
+                            );
+                            continue;
+                        }
+                        for text in chunker.chunk(&segment) {
+                            split_over_budget(
+                                text,
+                                &tokenizer,
+                                config.max_tokens_per_text,
+                                &mut raw_chunks,
+                            );
+                        }
+                    }
+                    let mut overlap_tail: Option<String> = None;
+
+                    for chunk_text in raw_chunks {
+                        let mut text = chunk_text;
+
+                        if let Some(tail) = &overlap_tail {
+                            if config.overlap_tokens > 0 {
+                                // Prepend overlap tail if within budget
+                                let candidate = format!("{}{}", tail, text);
+                                if count_tokens(&tokenizer, &candidate)
+                                    <= config.max_tokens_per_text
+                                {
+                                    text = candidate;
+                                }
+                            }
+                        }
+
+                        let tokens = count_tokens(&tokenizer, &text);
+                        all_chunks.push(TextChunk {
+                            text: text.clone(),
+                            tokens,
+                        });
+                        // Capture tail for next chunk (approximate overlap using chars, UTF-8 safe)
+                        if config.overlap_tokens > 0 {
+                            let approx_chars = config.overlap_tokens * 4;
+                            overlap_tail = Some(take_tail_utf8(&text, approx_chars));
+                        }
+                    }
+
+                    if let Some(cache) = &artifacts {
+                        if let Err(error) = cache.put(&key, &all_chunks) {
+                            tracing::debug!("Chunk cache write failed: {error}");
+                        }
+                    }
+                    all_chunks
+                })
+                .clone();
+            let metas = chunks
+                .iter()
+                .enumerate()
+                .map(|(chunk_index, _)| ChunkMeta {
+                    node_index: node_idx,
+                    chunk_index,
+                    language: node.language.clone(),
+                    file_path: node.location.file_path.clone(),
+                    node_name: node.name.to_string(),
+                })
+                .collect::<Vec<_>>();
+            (
+                chunks,
+                metas,
+                sanitize_ms,
+                chunk_start.elapsed().as_millis(),
+                hit,
+            )
+        })
+        .collect();
     let mut stats = ChunkStats::empty();
     stats.total_nodes = nodes.len();
-
-    for (node_idx, node) in nodes.iter().enumerate() {
-        let source = source_lookup(&node.location.file_path);
-        let base_text = if let (Some(span), Some(source)) = (node.span.as_ref(), source.as_ref()) {
-            let start = span.start_byte as usize;
-            let end = span.end_byte as usize;
-            if start < end
-                && end <= source.len()
-                && source.is_char_boundary(start)
-                && source.is_char_boundary(end)
-            {
-                source[start..end].to_string()
-            } else {
-                sanitize(node, config.sanitize_mode)
-            }
-        } else if let Some(content) = node.content.as_ref() {
-            content.to_string()
-        } else {
-            sanitize(node, config.sanitize_mode)
-        };
-
-        let sanitized = match config.smart_split {
-            true => super_sanitize(&base_text),
-            false => sanitize(node, config.sanitize_mode),
-        };
-        let segments: Vec<String> = if config.smart_split {
-            smart_split(&sanitized)
-        } else {
-            vec![sanitized.clone()]
-        };
-        let chunker = SemanticChunker::new(
-            config.max_tokens_per_text,
-            Box::new({
-                let tok = tokenizer.clone();
-                move |s: &str| count_tokens(&tok, s)
-            }),
-        );
-
-        let mut raw_chunks = Vec::new();
-        for segment in segments {
-            // semchunk 0.1.1's character fallback indexes by byte count and panics
-            // on multibyte text. Keep structural boundaries and split UTF-8 safely.
-            if !segment.is_ascii() {
-                split_over_budget(
-                    segment,
-                    &tokenizer,
-                    config.max_tokens_per_text,
-                    &mut raw_chunks,
-                );
-                continue;
-            }
-            for text in chunker.chunk(&segment) {
-                split_over_budget(
-                    text,
-                    &tokenizer,
-                    config.max_tokens_per_text,
-                    &mut raw_chunks,
-                );
-            }
-        }
-        let mut overlap_tail: Option<String> = None;
-        let mut chunk_idx = 0;
-
-        for chunk_text in raw_chunks {
-            let mut text = chunk_text;
-
-            if let Some(tail) = &overlap_tail {
-                if config.overlap_tokens > 0 {
-                    // Prepend overlap tail if within budget
-                    let candidate = format!("{}{}", tail, text);
-                    if count_tokens(&tokenizer, &candidate) <= config.max_tokens_per_text {
-                        text = candidate;
-                    }
-                }
-            }
-
-            let tokens = count_tokens(&tokenizer, &text);
-            all_chunks.push(TextChunk {
-                text: text.clone(),
-                tokens,
-            });
-            all_metas.push(ChunkMeta {
-                node_index: node_idx,
-                chunk_index: chunk_idx,
-                language: node.language.clone(),
-                file_path: node.location.file_path.clone(),
-                node_name: node.name.to_string(),
-            });
-
-            chunk_idx += 1;
-
-            // Capture tail for next chunk (approximate overlap using chars, UTF-8 safe)
-            if config.overlap_tokens > 0 {
-                let approx_chars = config.overlap_tokens * 4;
-                overlap_tail = Some(take_tail_utf8(&text, approx_chars));
-            }
-        }
-
-        stats.chunk_ms += 0; // semchunk internally does the work; keep zeroed to avoid misleading metrics
+    let mut all_chunks = Vec::new();
+    let mut all_metas = Vec::new();
+    for (chunks, metas, sanitize_ms, chunk_ms, hit) in plans {
+        all_chunks.extend(chunks);
+        all_metas.extend(metas);
+        stats.sanitize_ms += sanitize_ms;
+        stats.chunk_ms += chunk_ms;
+        stats.cache_hits += usize::from(hit);
+        stats.cache_misses += usize::from(!hit);
     }
-
     stats.total_chunks = all_chunks.len();
-
-    tracing::debug!(
-        "Chunk plan built in {:?}: {} nodes -> {} chunks (sanitize {}ms, chunk {}ms, cache hit {} / miss {})",
-        start_total.elapsed(),
-        stats.total_nodes,
-        stats.total_chunks,
-        stats.sanitize_ms,
-        stats.chunk_ms,
-        stats.cache_hits,
-        stats.cache_misses
-    );
-
     ChunkPlan {
         chunks: all_chunks,
         metas: all_metas,
@@ -301,17 +363,8 @@ fn super_sanitize(text: &str) -> String {
     let normalized: String = text.nfc().collect();
     normalized
         .chars()
-        .filter(|c| !c.is_control() && *c != '\0')
-        .filter(|c| !is_emoji(*c))
+        .filter(|c| !c.is_control() || matches!(*c, '\n' | '\r' | '\t'))
         .collect()
-}
-
-fn is_emoji(c: char) -> bool {
-    let code = c as u32;
-    (0x1F600..=0x1F64F).contains(&code)
-        || (0x1F300..=0x1F5FF).contains(&code)
-        || (0x1F680..=0x1F6FF).contains(&code)
-        || (0x2600..=0x26FF).contains(&code)
 }
 
 fn count_tokens(tokenizer: &Tokenizer, text: &str) -> usize {
@@ -436,4 +489,61 @@ pub fn aggregate_chunk_embeddings(
     }
 
     node_embeddings
+}
+
+#[cfg(test)]
+mod pipeline_tests {
+    use super::*;
+    #[test]
+    fn normalization_preserves_structural_whitespace_and_unicode() {
+        assert_eq!(
+            super_sanitize("fn café() {\n\tlet x = \"🚀\";\n}\0"),
+            "fn café() {\n\tlet x = \"🚀\";\n}"
+        );
+    }
+    #[test]
+    fn parallel_plans_keep_source_order_and_provider_token_budget() {
+        use codegraph_core::{Location, NodeType};
+        let tokenizer = Arc::new(
+            Tokenizer::from_file(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tokenizers/qwen2.5-coder.json"
+            ))
+            .unwrap(),
+        );
+        let nodes: Vec<_> = (0..16)
+            .map(|index| {
+                CodeNode::new(
+                    format!("n{index}"),
+                    Some(NodeType::Function),
+                    Some(Language::Rust),
+                    Location {
+                        file_path: "a.rs".into(),
+                        line: 1,
+                        column: 0,
+                        end_line: None,
+                        end_column: None,
+                    },
+                )
+                .with_content("fn café() {\n let 🚀 = café();\n}\n".repeat(12))
+            })
+            .collect();
+        let plan = build_chunk_plan(
+            &nodes,
+            tokenizer.clone(),
+            ChunkerConfig::new(32).overlap_tokens(0),
+        );
+        assert!(
+            plan.metas
+                .windows(2)
+                .all(|pair| pair[0].node_index <= pair[1].node_index)
+        );
+        assert!(
+            plan.chunks
+                .iter()
+                .all(|chunk| count_tokens(&tokenizer, &chunk.text) <= 32)
+        );
+        assert!(plan.stats.cache_hits > 0);
+        assert!(plan.chunks.iter().any(|chunk| chunk.text.contains('🚀')));
+    }
 }

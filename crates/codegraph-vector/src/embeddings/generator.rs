@@ -536,15 +536,20 @@ impl AdvancedEmbeddingGenerator {
 
     /// Wrapper that ensures 1000+ text batches are processed in chunks efficiently.
     pub async fn embed_texts_batched(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        if texts.len() <= self.config.batch_size {
-            return self.embed_texts(texts).await;
-        }
-        let mut result = Vec::with_capacity(texts.len());
-        for chunk in texts.chunks(self.config.batch_size) {
-            let emb = self.embed_texts(chunk).await?;
-            result.extend(emb);
-        }
-        Ok(result)
+        let pipeline = self.pipeline.as_ref().ok_or_else(|| {
+            codegraph_core::CodeGraphError::Vector(
+                "No semantic embedding provider configured".into(),
+            )
+        })?;
+        pipeline
+            .generate_prepared_texts(texts, &self.provider_batch_config())
+            .await
+    }
+
+    pub fn tokenizer(&self) -> Option<Arc<tokenizers::Tokenizer>> {
+        self.pipeline
+            .as_ref()
+            .and_then(|pipeline| pipeline.tokenizer())
     }
 
     /// Quality validation: compute cosine similarity across pairs and return average.

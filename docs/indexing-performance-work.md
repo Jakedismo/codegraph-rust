@@ -78,3 +78,22 @@ short names without a unique local scope remain unresolved. The implementation u
 
 `CODEGRAPH_AST_CACHE_BYTES` bounds retained AST artifacts (default 2 GiB), with eviction
 at a run boundary. Entries larger than 64 MiB are recomputed rather than cached.
+
+6. Parallel deterministic Unicode-safe chunk plans preserve newlines/tabs/emoji and
+   reuse tokenized artifacts. Prepared-text APIs bypass node wrapping and repeated
+   provider chunking. Exact submitted-text caches include model/task/tokenizer/runtime
+   identity; duplicate and concurrent misses share inference. Row/token/byte and provider
+   concurrency limits, finite vector validation and real inference/cache counters are
+   enforced. Unchanged chunk records avoid inference and database writes. ONNX work
+   runs on blocking workers with explicit intra/inter-op limits; CoreML compiled-model
+   cache and low-precision accumulation and Candle dtype experiments are opt-in.
+
+Inference controls: `CODEGRAPH_PROVIDER_CONCURRENCY` (local 1, remote 4),
+`CODEGRAPH_EMBEDDING_BATCH_TOKENS` (local 8192, remote 32768),
+`CODEGRAPH_EMBEDDING_BATCH_BYTES` (1 MiB), `CODEGRAPH_EMBEDDING_CACHE_TTL_SECONDS`
+(3600 for mutable model aliases). `CODEGRAPH_MODEL_REVISION` declares an immutable
+revision and disables TTL expiration. `CODEGRAPH_TOKENIZER_PATH` selects the provider's
+actual tokenizer; local engines expose their loaded tokenizer automatically.
+`CODEGRAPH_ONNX_INTRA_THREADS`, `CODEGRAPH_COREML_CACHE_DIR`,
+`CODEGRAPH_COREML_LOW_PRECISION=1`, and `CODEGRAPH_LOCAL_DTYPE=f16|bf16` are independent
+runtime experiments. Reduced precision requires retrieval-quality measurements.

@@ -172,7 +172,17 @@ impl LocalEmbeddingProvider {
 
         // Build model
         info!("Building BERT model...");
-        let vs = VarBuilder::from_tensors(weights, DType::F32, &device);
+        let dtype = match std::env::var("CODEGRAPH_LOCAL_DTYPE").as_deref() {
+            Ok("f16") => DType::F16,
+            Ok("bf16") => DType::BF16,
+            _ => DType::F32,
+        };
+        let weights = weights
+            .into_iter()
+            .map(|(name, tensor)| tensor.to_dtype(dtype).map(|tensor| (name, tensor)))
+            .collect::<candle_core::Result<std::collections::HashMap<_, _>>>()
+            .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+        let vs = VarBuilder::from_tensors(weights, dtype, &device);
         let model = BertModel::load(vs, &bert_config)
             .map_err(|e| CodeGraphError::External(format!("Failed to load BERT model: {}", e)))?;
 
@@ -574,6 +584,20 @@ impl LocalEmbeddingProvider {
 #[cfg(feature = "local-embeddings")]
 #[async_trait]
 impl EmbeddingProvider for LocalEmbeddingProvider {
+    fn tokenizer(&self) -> Option<Arc<Tokenizer>> {
+        Some(self.tokenizer.clone())
+    }
+    async fn generate_prepared_texts(
+        &self,
+        texts: &[String],
+        config: &BatchConfig,
+    ) -> Result<Vec<Vec<f32>>> {
+        let mut output = Vec::with_capacity(texts.len());
+        for batch in texts.chunks(config.batch_size.max(1)) {
+            output.extend(self.process_batch(batch.to_vec()).await?);
+        }
+        Ok(output)
+    }
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
         let config = BatchConfig::default();
         let (mut embeddings, _) = self
