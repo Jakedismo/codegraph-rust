@@ -4,10 +4,10 @@ This directory contains the SurrealDB schema definition for CodeGraph's code ana
 
 ## Files
 
-- `codegraph.surql` - Complete schema definition for all tables, fields, and indexes (default)
-- `codegraph_v2.surql` - Same tables and fields, rewritten for SurrealDB 3.x: index-backed graph functions, `search::rrf` hybrid search, cascading references, code-aware analyzers, `fn::search_snippets` and `fn::kmeans`. Select with `CODEGRAPH_SCHEMA=v2` (embedded store, applied on first open) or `./apply-schema.sh -s codegraph_v2.surql` (server). The header of the file lists what changed and why.
+- `codegraph_v2.surql` - The default schema, written for SurrealDB 3.x: index-backed graph functions, `search::rrf` hybrid search, cascading chunk references, code-aware analyzers, `fn::search_snippets` and `fn::kmeans`. Applied automatically to a new embedded store and by `./apply-schema.sh` for servers. The header of the file lists what changed from v1 and why.
+- `codegraph.surql` - The original (v1) schema. Select with `CODEGRAPH_SCHEMA=v1` (embedded store) or `./apply-schema.sh -s codegraph.surql` (server).
 
-The schema is bundled into the `codegraph` binary and applied automatically to a new embedded project store (`<project>/.codegraph/db`). `apply-schema.sh` is for SurrealDB servers selected with `CODEGRAPH_SURREALDB_URL`, where the schema is not applied automatically.
+The schemas are bundled into the `codegraph` binary and the selected one is applied automatically to a new embedded project store (`<project>/.codegraph/db`). `apply-schema.sh` is for SurrealDB servers selected with `CODEGRAPH_SURREALDB_URL`, where the schema is not applied automatically. An existing store keeps the schema it was created with; to switch, delete `.codegraph/db` and re-index.
 
 ## Schema Overview
 
@@ -62,13 +62,13 @@ Tracks applied schema migrations for version control.
 surreal sql --endpoint http://localhost:8000 --namespace your_namespace --database codegraph
 
 # Apply the schema
-< schema/codegraph.surql
+< schema/codegraph_v2.surql
 ```
 
 ### Option 2: Apply via SurrealDB SQL Command
 
 ```bash
-# Using surrealist or web interface, paste the contents of codegraph.surql
+# Using surrealist or web interface, paste the contents of codegraph_v2.surql
 # Or use the SQL command directly:
 surreal sql --endpoint http://localhost:8000 \
   --namespace your_namespace \
@@ -76,7 +76,7 @@ surreal sql --endpoint http://localhost:8000 \
   --auth-level root \
   --username root \
   --password root \
-  < schema/codegraph.surql
+  < schema/codegraph_v2.surql
 ```
 
 ### Option 3: Apply via Rust Code
@@ -101,7 +101,7 @@ manager.apply_schemas().await?;
 
 Before applying the schema, you may want to customize:
 
-1. **Namespace and Database**: Edit the USE statements at the top of `codegraph.surql`
+1. **Namespace and Database**: Edit the USE statements at the top of `codegraph_v2.surql`
    ```surrealql
    USE NS your_namespace;
    USE DB codegraph;

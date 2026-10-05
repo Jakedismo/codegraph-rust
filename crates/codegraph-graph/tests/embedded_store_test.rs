@@ -27,7 +27,7 @@ async fn embedded_store_applies_schema_once_and_shares_handle() {
         .unwrap();
     let rows: Vec<Value> = response.take(0).unwrap();
     assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0]["name"], "main");
+    assert_eq!(rows[0]["name"], "v2");
     assert_eq!(rows[0]["version"], 0);
 
     // A second open of the same store from this process reuses the engine

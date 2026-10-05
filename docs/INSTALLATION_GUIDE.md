@@ -156,14 +156,14 @@ surreal sql \
   --database codegraph \
   --username root \
   --password root \
-  < schema/codegraph.surql
+  < schema/codegraph_v2.surql
 ```
 
 ### Using Surrealist IDE
 
 1. Open Surrealist and connect to your database
 2. Navigate to the Query tab
-3. Open `schema/codegraph.surql`
+3. Open `schema/codegraph_v2.surql`
 4. Execute the schema
 
 ### Verify Schema Installation

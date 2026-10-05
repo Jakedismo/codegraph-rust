@@ -18,7 +18,8 @@ use surrealdb::{
 };
 use tracing::{debug, info, warn};
 
-/// Bundled schemas, applied automatically to a fresh embedded store.
+/// Bundled schemas, applied automatically to a fresh embedded store. v2 is the default;
+/// CODEGRAPH_SCHEMA=v1 selects the original file.
 const BUNDLED_SCHEMA_MAIN: &str = include_str!("../../../schema/codegraph.surql");
 const BUNDLED_SCHEMA_EXPERIMENTAL: &str =
     include_str!("../../../schema/codegraph_graph_experimental.surql");
@@ -339,10 +340,10 @@ impl SurrealDbStorage {
     async fn ensure_bundled_schema(db: &Surreal<Any>) -> Result<()> {
         let (name, schema) = if env_flag("CODEGRAPH_USE_GRAPH_SCHEMA") {
             ("experimental", BUNDLED_SCHEMA_EXPERIMENTAL)
-        } else if env_value("CODEGRAPH_SCHEMA").is_some_and(|v| v.eq_ignore_ascii_case("v2")) {
-            ("v2", BUNDLED_SCHEMA_V2)
-        } else {
+        } else if env_value("CODEGRAPH_SCHEMA").is_some_and(|v| v.eq_ignore_ascii_case("v1")) {
             ("main", BUNDLED_SCHEMA_MAIN)
+        } else {
+            ("v2", BUNDLED_SCHEMA_V2)
         };
         let checksum = Sha256::digest(schema.as_bytes())
             .iter()
