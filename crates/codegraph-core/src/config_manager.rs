@@ -414,9 +414,55 @@ fn default_xai_base_url() -> String {
     "https://api.x.ai/v1".to_string()
 }
 
+/// Context window assumed when none is configured.
+pub const DEFAULT_CONTEXT_WINDOW: usize = 128_000;
+
 fn default_context_window() -> usize {
-    32000
-} // DeepSeek Coder v2 Lite
+    DEFAULT_CONTEXT_WINDOW
+}
+
+/// `[llm]` settings exactly as written in a config file; `None` means the key is absent.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExplicitLlmSettings {
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub context_window: Option<usize>,
+    pub ollama_url: Option<String>,
+    pub lmstudio_url: Option<String>,
+    pub openai_compatible_url: Option<String>,
+}
+
+impl ExplicitLlmSettings {
+    /// Extract the `[llm]` keys present in a TOML document. Invalid TOML and keys of
+    /// the wrong type are treated as absent; full validation is `ConfigManager::load`'s job.
+    pub fn from_toml_str(content: &str) -> Self {
+        let Ok(document) = content.parse::<toml::Table>() else {
+            return Self::default();
+        };
+        let Some(llm) = document.get("llm").and_then(|v| v.as_table()) else {
+            return Self::default();
+        };
+        let text = |key: &str| {
+            llm.get(key)
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+        };
+        Self {
+            provider: text("provider"),
+            model: text("model"),
+            context_window: llm
+                .get("context_window")
+                .and_then(|v| v.as_integer())
+                .and_then(|v| usize::try_from(v).ok())
+                .filter(|v| *v > 0),
+            ollama_url: text("ollama_url"),
+            lmstudio_url: text("lmstudio_url"),
+            openai_compatible_url: text("openai_compatible_url"),
+        }
+    }
+}
 fn default_temperature() -> f32 {
     0.1
 }
@@ -551,35 +597,69 @@ impl ConfigManager {
     /// 2. ./.codegraph.toml (current directory)
     /// 3. ~/.codegraph/config.toml (user config)
     /// 4. Use defaults
-    fn load_config_file() -> Result<(CodeGraphConfig, Option<PathBuf>), ConfigError> {
-        // Explicit CLI/environment selection precedes project and user defaults.
+    /// Locate the configuration file: an explicit CLI/environment selection, then the
+    /// project file in the working directory, then the user file.
+    fn config_file_path() -> Option<PathBuf> {
         if let Some(path) = std::env::var_os("CODEGRAPH_CONFIG_PATH") {
-            let path = PathBuf::from(path);
-            let config = Self::read_toml_file(&path)?;
-            return Ok((config, Some(path)));
+            return Some(PathBuf::from(path));
         }
-        // Try current directory
         let local_config = Path::new(".codegraph.toml");
         if local_config.exists() {
-            let config = Self::read_toml_file(local_config)?;
-            return Ok((config, Some(local_config.to_path_buf())));
+            return Some(local_config.to_path_buf());
         }
-
-        // Try user config directory
-        if let Some(home) = dirs::home_dir() {
-            let user_config = home.join(".codegraph").join("config.toml");
-            if user_config.exists() {
-                let config = Self::read_toml_file(&user_config)?;
-                return Ok((config, Some(user_config)));
-            }
-        }
-
-        // Use defaults
-        info!("📋 No config file found, using defaults");
-        Ok((CodeGraphConfig::default(), None))
+        dirs::home_dir()
+            .map(|home| home.join(".codegraph").join("config.toml"))
+            .filter(|user_config| user_config.exists())
     }
 
-    /// Read TOML config file
+    fn load_config_file() -> Result<(CodeGraphConfig, Option<PathBuf>), ConfigError> {
+        match Self::config_file_path() {
+            Some(path) => {
+                let config = Self::read_toml_file(&path)?;
+                Ok((config, Some(path)))
+            }
+            None => {
+                info!("📋 No config file found, using defaults");
+                Ok((CodeGraphConfig::default(), None))
+            }
+        }
+    }
+
+    /// The `[llm]` keys the user actually wrote in the config file, without defaults.
+    ///
+    /// The agent backend layers these under its environment variables. Reading only
+    /// explicit keys matters because `LLMConfig` fills unset fields with defaults (for
+    /// example `provider = "lmstudio"`), which must not override provider detection
+    /// from API keys. A missing or unreadable file yields empty settings.
+    pub fn explicit_llm_settings() -> ExplicitLlmSettings {
+        let Some(path) = Self::config_file_path() else {
+            return ExplicitLlmSettings::default();
+        };
+        match std::fs::read_to_string(&path) {
+            Ok(content) => ExplicitLlmSettings::from_toml_str(&content),
+            Err(e) => {
+                warn!(
+                    "Could not read {} for [llm] settings: {}",
+                    path.display(),
+                    e
+                );
+                ExplicitLlmSettings::default()
+            }
+        }
+    }
+
+    /// Context window the agent and its tool-result limits are sized for:
+    /// `CODEGRAPH_CONTEXT_WINDOW`, then `CODEGRAPH_LLM_CONTEXT_WINDOW`, then
+    /// `[llm] context_window` in the config file, then the default.
+    pub fn agent_context_window() -> usize {
+        std::env::var("CODEGRAPH_CONTEXT_WINDOW")
+            .or_else(|_| std::env::var("CODEGRAPH_LLM_CONTEXT_WINDOW"))
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .or_else(|| Self::explicit_llm_settings().context_window)
+            .unwrap_or(DEFAULT_CONTEXT_WINDOW)
+    }
+
     fn read_toml_file(path: &Path) -> Result<CodeGraphConfig, ConfigError> {
         let content =
             std::fs::read_to_string(path).map_err(|e| ConfigError::ReadError(e.to_string()))?;
@@ -685,7 +765,11 @@ impl ConfigManager {
         {
             config.llm.provider = provider;
         }
-        if let Ok(model) = std::env::var("CODEGRAPH_MODEL") {
+        // Same precedence the agent backend uses, so status output names the model it requests.
+        if let Ok(model) = std::env::var("CODEGRAPH_LLM_MODEL")
+            .or_else(|_| std::env::var("CODEGRAPH_AGENT_MODEL"))
+            .or_else(|_| std::env::var("CODEGRAPH_MODEL"))
+        {
             config.llm.model = Some(model);
             config.llm.enabled = true; // Enable if model specified
         }
@@ -904,6 +988,42 @@ mod tests {
 
         let config = ConfigManager::apply_env_overrides(CodeGraphConfig::default());
         assert_eq!(config.indexing.tier, IndexingTier::Balanced);
+    }
+
+    #[test]
+    fn test_explicit_llm_settings_reads_only_present_keys() {
+        let settings = ExplicitLlmSettings::from_toml_str(
+            r#"
+            [embedding]
+            provider = "ollama"
+
+            [llm]
+            provider = "anthropic"
+            model = "claude-sonnet-4"
+            context_window = 200000
+            ollama_url = "  "
+            "#,
+        );
+        assert_eq!(settings.provider.as_deref(), Some("anthropic"));
+        assert_eq!(settings.model.as_deref(), Some("claude-sonnet-4"));
+        assert_eq!(settings.context_window, Some(200_000));
+        assert_eq!(settings.ollama_url, None);
+        assert_eq!(settings.lmstudio_url, None);
+    }
+
+    #[test]
+    fn test_explicit_llm_settings_absent_or_invalid() {
+        assert_eq!(
+            ExplicitLlmSettings::from_toml_str("[embedding]\nprovider = \"ollama\"\n"),
+            ExplicitLlmSettings::default()
+        );
+        assert_eq!(
+            ExplicitLlmSettings::from_toml_str("not = [valid"),
+            ExplicitLlmSettings::default()
+        );
+        let wrong_types =
+            ExplicitLlmSettings::from_toml_str("[llm]\nprovider = 3\ncontext_window = \"big\"\n");
+        assert_eq!(wrong_types, ExplicitLlmSettings::default());
     }
 
     #[test]

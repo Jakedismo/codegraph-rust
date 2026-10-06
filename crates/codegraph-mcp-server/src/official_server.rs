@@ -520,28 +520,13 @@ impl CodeGraphMCPServer {
         (file_path, line_number, snippet)
     }
 
-    /// Auto-detect context tier from environment or config
+    /// Context tier for the agent: the same context window the Rig backend resolves
+    /// (environment, then `[llm] context_window`, then the default).
     #[cfg(feature = "ai-enhanced")]
     fn detect_context_tier() -> ContextTier {
-        // Try CODEGRAPH_CONTEXT_WINDOW env var first
-        if let Ok(context_window_str) = std::env::var("CODEGRAPH_CONTEXT_WINDOW") {
-            if let Ok(context_window) = context_window_str.parse::<usize>() {
-                return ContextTier::from_context_window(context_window);
-            }
-        }
-
-        // Fall back to config
-        match codegraph_core::config_manager::ConfigManager::load() {
-            Ok(config_manager) => {
-                let config = config_manager.config();
-                ContextTier::from_context_window(config.llm.context_window)
-            }
-            Err(_) => {
-                // Default to Medium tier if config can't be loaded
-                tracing::warn!("Failed to load config, defaulting to Medium context tier");
-                ContextTier::Medium
-            }
-        }
+        ContextTier::from_context_window(
+            codegraph_core::config_manager::ConfigManager::agent_context_window(),
+        )
     }
 
     /// Creates a progress notification callback that sends MCP protocol notifications
