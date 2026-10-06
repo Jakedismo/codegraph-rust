@@ -28,7 +28,7 @@ formatting, crate/workspace compilation and applicable tests. Provider- or servi
 checks are reported separately from offline checks. Benchmarks cover cold, warm, no-change,
 single-file, cross-file rename/delete, documentation/manifest changes and tier upgrades.
 
-## Completed commits
+## Implemented slices
 
 1. Shared immutable source snapshots, worker-controlled parsing and stable extraction
    order; early reference/Uses gating; parser reuse; generated-directory pruning;
@@ -158,3 +158,46 @@ bounded by worker permits even if its timeout expires.
     work counters instead of repeating previous inference totals. CLI wall timing now
     includes startup. Explicit Send future boundaries keep feature-enabled daemon
     integration compiling without materializing all inference batches.
+
+12. Final regressions correct backend selection and actual model dimensions, honor
+    disabled analyzers across tier upgrades, propagate language-server closure without
+    waiting for request timeouts, compare definition columns in UTF-16, and preserve
+    ambiguous same-line symbols. Missing external manifests invalidate cached build
+    inputs instead of preventing a rebuild. Sync/deferred scheduling shares output
+    identity, while pending status still forces synchronous completion; completed
+    outputs are reused by subsequent deferred commands. Mutable model epochs also
+    invalidate chunk records. Aggregate artifact eviction protects durable pending jobs.
+
+`CODEGRAPH_INDEX_CACHE_BYTES` bounds all derived artifact namespaces together (default
+4 GiB), checked at run boundaries. Pending inference jobs are excluded from eviction.
+`CODEGRAPH_ANALYZERS=0|false|off` disables analyzers independently of extraction tier;
+`CODEGRAPH_ANALYZERS_REQUIRE_TOOLS=0|false|off` relaxes tool availability checks.
+Explicit embedding backends cannot silently fall back to different model weights.
+
+13. [Reproducible benchmark instructions](indexing-benchmarks.md) cover ten indexing
+    scenarios with actual embedded graph writes and forced-index equivalence checks.
+    Same-model runtime probes export real vectors and identity metadata; labeled
+    retrieval comparisons reject mismatched inputs and enforce recall/overlap gates.
+    These experiments require explicitly selected model weights.
+
+## Final verification record
+
+Workspace and full-feature CLI compilation passed. Offline parser, indexing, vector,
+artifact-cache, reconciliation/watch, tokenizer, text-cache and SCIP regression suites
+passed. Embedded storage tests exercised both schemas, ingestion acknowledgements,
+failure recovery and selected HNSW readiness. Deferred-policy tests verified persisted
+jobs without provider initialization; a completed-catalog fixture separately verifies
+scheduling reuse, without claiming actual provider completion. Python quality-probe
+regressions passed.
+
+A debug benchmark with 100 Rust files and three repeats completed all ten scenarios.
+No-change runs reused all 100 ASTs and acknowledged zero writer rows or inference
+texts. Its timings validate the harness, not a speedup against the original code.
+See the benchmark instructions for measured samples and their limits.
+
+Strict workspace Clippy (`--all-targets --all-features -- -D warnings`) remains blocked
+by existing diagnostics in untouched core configuration/watch/memory/updater code and
+zerocopy buffers/shared memory. Targeted Clippy for parser/indexing/vector/graph completed
+with existing warnings; it is not a strict-lint pass. No live language-server benchmark,
+remote provider run, real-model quality comparison or persistent-disk benchmark was
+performed. Optional precision, compiler-index and splitter choices remain opt-in.
