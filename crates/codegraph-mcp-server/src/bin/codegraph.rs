@@ -2009,9 +2009,34 @@ async fn handle_agent_status(json: bool) -> Result<()> {
     let config_mgr = ConfigManager::load().context("Failed to load configuration")?;
     let config = config_mgr.config();
 
-    // Determine context tier
-    let context_window = config.llm.context_window;
+    // Report what the agent will actually use: environment, then [llm] keys, then defaults.
+    let context_window = ConfigManager::agent_context_window();
     let tier = ContextTier::from_context_window(context_window);
+    #[cfg(feature = "ai-enhanced")]
+    let (agent_provider, agent_model) = {
+        use codegraph_mcp_rig::adapter::{RigProvider, get_model_name};
+        let provider = match RigProvider::from_env() {
+            Ok(RigProvider::OpenAI) => "openai".to_string(),
+            Ok(RigProvider::Anthropic) => "anthropic".to_string(),
+            Ok(RigProvider::Ollama) => "ollama".to_string(),
+            Ok(RigProvider::XAI) => "xai".to_string(),
+            Ok(RigProvider::LMStudio) => "lmstudio".to_string(),
+            Ok(RigProvider::OpenAICompatible { base_url }) => {
+                format!("openai-compatible ({base_url})")
+            }
+            Err(_) => "not configured".to_string(),
+        };
+        (provider, get_model_name())
+    };
+    #[cfg(not(feature = "ai-enhanced"))]
+    let (agent_provider, agent_model) = (
+        config.llm.provider.clone(),
+        config
+            .llm
+            .model
+            .clone()
+            .unwrap_or_else(|| "auto-detected".to_string()),
+    );
 
     // Determine prompt verbosity based on tier
     let prompt_verbosity = match tier {
@@ -2023,10 +2048,10 @@ async fn handle_agent_status(json: bool) -> Result<()> {
 
     // Get tier-specific parameters
     let (max_steps, base_limit, default_max_tokens) = match tier {
-        ContextTier::Small => (5, 10, 2048),
-        ContextTier::Medium => (10, 25, 4096),
-        ContextTier::Large => (15, 50, 8192),
-        ContextTier::Massive => (20, 100, 16384),
+        ContextTier::Small => (3, 10, 2048),
+        ContextTier::Medium => (5, 25, 4096),
+        ContextTier::Large => (6, 50, 8192),
+        ContextTier::Massive => (8, 100, 16384),
     };
 
     // Get max output tokens (config override or tier default)
@@ -2076,8 +2101,8 @@ async fn handle_agent_status(json: bool) -> Result<()> {
         // JSON output
         let output = serde_json::json!({
             "llm": {
-                "provider": config.llm.provider,
-                "model": config.llm.model.as_deref().unwrap_or("auto-detected"),
+                "provider": agent_provider,
+                "model": agent_model,
                 "enabled": config.llm.enabled,
             },
             "context": {
@@ -2136,16 +2161,8 @@ async fn handle_agent_status(json: bool) -> Result<()> {
 
         // LLM Configuration
         println!("{}", "🤖 LLM Configuration".green().bold());
-        println!("   Provider: {}", config.llm.provider.yellow());
-        println!(
-            "   Model: {}",
-            config
-                .llm
-                .model
-                .as_deref()
-                .unwrap_or("auto-detected")
-                .yellow()
-        );
+        println!("   Provider: {}", agent_provider.yellow());
+        println!("   Model: {}", agent_model.yellow());
         println!(
             "   Status: {}",
             if config.llm.enabled {
