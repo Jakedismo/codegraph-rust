@@ -1,6 +1,6 @@
 ![CodeGraph](docs/assets/banner.png)
 
-# CodeGraph
+# CodeGraph (with updates)
 
 **Your codebase, understood.**
 
@@ -203,9 +203,9 @@ Here's something clever: CodeGraph automatically adjusts its behavior based on t
 
 Running a small local model? Get focused, efficient queries.
 
-Using GPT-5.1 or Claude with 200K context? Get comprehensive, exploratory analysis.
+Using a model with 200K context? Get comprehensive, exploratory analysis.
 
-Using grok-4-1-fast-reasoning with 2M context? Get detailed analysis with intelligent result management.
+Using gpt-6, Opus-5.5 or Grok-4.7 with 1-2M context? Get detailed analysis with intelligent result management.
 
 The Agent only uses the amount of steps that it requires to produce the answer so tool execution times vary based on the query and amount of data indexed in the database.
 
@@ -218,7 +218,7 @@ The Agent is stateless it only has conversational memory for the span of tool ex
 | < 50K tokens | Terse prompts, max 3 steps |
 | 50K-150K | Balanced analysis, max 5 steps |
 | 150K-500K | Detailed exploration, max 6 steps |
-| > 500K (Grok, etc.) | Comprehensive analysis, max 8 steps |
+| > 500K (gpt-6, etc.) | Comprehensive analysis, max 8 steps |
 
 **Hard cap:** Maximum 8 steps regardless of tier (10 with env override). This prevents runaway costs and context overflow while still allowing thorough analysis.
 

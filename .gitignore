@@ -187,3 +187,5 @@ idd-state.graphson
 todo.md
 *.spec.md
 journal.md
+.codex/
+.ruff_cache/
