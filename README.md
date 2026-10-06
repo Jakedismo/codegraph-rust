@@ -402,19 +402,21 @@ make test-llvm
 
 ### 2. Database
 
-No database setup is needed. Each project gets its own embedded SurrealKV store at
-`<project>/.codegraph/db`, created with the bundled schema the first time you index.
-Only one process can hold a project's store open at a time. The MCP server opens it on
-its first tool call and keeps it until it exits, so stop a running `codegraph start`
-before running `codegraph index` on the same project, and connect one client per project.
+There is nothing to start. SurrealDB runs embedded inside `codegraph`, and each project gets
+its own SurrealKV store at `<project>/.codegraph/db`, created with the bundled schema
+(`schema/codegraph_v2.surql`) the first time you index. The directory is written with a
+`.gitignore`, so it stays out of version control.
 
-To use a SurrealDB server instead (for example to share one database or to use
-Surreal Cloud), set `CODEGRAPH_SURREALDB_URL` and apply the schema with
-`cd schema && ./apply-schema.sh`:
+Because the store is per project, one project's data never mixes with another's, and removing
+a project's index is `rm -rf <project>/.codegraph/db`.
 
-```bash
-surreal start --bind 0.0.0.0:3004 --user root --pass root file://$HOME/.codegraph/surreal.db
-```
+Only one process can hold a project's store open at a time. The MCP server opens it on its
+first tool call and keeps it until it exits, so stop a running `codegraph start` before
+running `codegraph index` on the same project, and connect one client per project.
+
+A shared SurrealDB server (self-hosted or Surreal Cloud) is still supported for teams that want
+one database: set `CODEGRAPH_SURREALDB_URL` and apply the schema yourself. See
+[Setting Up SurrealDB](docs/INSTALLATION_GUIDE.md#setting-up-surrealdb).
 
 ### 3. Initialize and Index Your Project
 
@@ -667,8 +669,8 @@ Use any model with dimensions 384-4096:
 - **Cloud:** Anthropic Claude, OpenAI, xAI Grok, OpenAI Compliant
 
 ### Database
-- **SurrealDB 3.x** with HNSW vector index (2-5ms queries)
-- Free cloud tier available at [surrealdb.com/cloud](https://surrealdb.com/cloud)
+- **SurrealDB 3.x embedded** (SurrealKV, one store per project, no server to run) with HNSW vector indexes
+- Optional: a shared SurrealDB server or [Surreal Cloud](https://surrealdb.com/cloud) via `CODEGRAPH_SURREALDB_URL`
 
 ---
 
@@ -699,11 +701,11 @@ dimension = 1024
 provider = "anthropic"
 model = "claude-sonnet-4"
 
-[database.surrealdb]
-connection = "ws://localhost:3004"   # storage is selected by CODEGRAPH_SURREALDB_URL; unset = embedded per-project store
-namespace = "ouroboros"
-database = "codegraph"
 ```
+
+Storage needs no configuration: the embedded per-project store is used unless
+`CODEGRAPH_SURREALDB_URL` (plus the other `CODEGRAPH_SURREALDB_*` variables) points at a
+server. `CODEGRAPH_SCHEMA=v1` selects the original `schema/codegraph.surql` for new stores.
 
 See [INSTALLATION_GUIDE.md](docs/INSTALLATION_GUIDE.md) for complete configuration options.
 
@@ -711,28 +713,27 @@ See [INSTALLATION_GUIDE.md](docs/INSTALLATION_GUIDE.md) for complete configurati
 
 CodeGraph can run against an experimental SurrealDB **graphdb-style schema** (`schema/codegraph_graph_experimental.surql`) that is interoperable with the existing CodeGraph tools and indexing pipeline.
 
-Compared to the relational/vanilla schema (`schema/codegraph.surql`), the experimental schema is designed for faster and more efficient graph-query operations (traversals, neighborhood expansion, and tool-driven graph analytics) on large codebases.
+Compared to the default schema (`schema/codegraph_v2.surql`), the experimental schema is designed for faster and more efficient graph-query operations (traversals, neighborhood expansion, and tool-driven graph analytics) on large codebases.
 
-To use it:
-
-1) Load the schema into a dedicated database (once):
+To use it with the embedded store, set the flag before the project's store is first created
+(or delete `<project>/.codegraph/db` and re-index):
 
 ```bash
-# Example (SurrealDB CLI)
-surreal sql --conn ws://localhost:3004 --ns ouroboros --db codegraph_experimental < schema/codegraph_graph_experimental.surql
+CODEGRAPH_USE_GRAPH_SCHEMA=true
 ```
 
-2) Point CodeGraph at that database:
+With a SurrealDB server, load the schema into a dedicated database once and point CodeGraph at it:
 
 ```bash
+surreal sql --conn ws://localhost:3004 --ns ouroboros --db codegraph_experimental < schema/codegraph_graph_experimental.surql
 CODEGRAPH_USE_GRAPH_SCHEMA=true
 CODEGRAPH_GRAPH_DB_DATABASE=codegraph_experimental
 ```
 
 Notes:
 - The schema file defines HNSW indexes for multiple embedding dimensions (384–4096) so you can switch embedding models without reworking the DB.
-- Schema loading is not currently performed automatically at runtime; you must apply the `.surql` file to the target database before indexing.
-- `CODEGRAPH_GRAPH_DB_DATABASE` controls which Surreal database indexing/tools use when `CODEGRAPH_USE_GRAPH_SCHEMA=true`.
+- An existing store keeps the schema it was created with; switching schemas means a fresh store.
+- `CODEGRAPH_GRAPH_DB_DATABASE` only applies in server mode.
 
 ---
 
