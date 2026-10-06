@@ -61,7 +61,7 @@ Tier behavior details:
 - `full`: enables all analyzers and LSP definitions; no edge filtering.
 
 Configure the tier:
-- CLI: `codegraph index --index-tier balanced`
+- CLI: `codegraph index /path/to/project --index-tier balanced`
 - Env: `CODEGRAPH_INDEX_TIER=balanced`
 - Config: `[indexing] tier = "balanced"`
 
@@ -77,9 +77,46 @@ Required tools by language:
 - Java: `jdtls`
 - C/C++: `clangd`
 
-If indexing appears to stall during LSP resolution, you can adjust the per-request timeout:
+Warm language-server sessions retain versioned documents and deduplicate/pipeline
+definition requests. Requests fail after 30 seconds; `CODEGRAPH_LSP_REQUESTS` bounds
+outstanding requests per server (default 32). `CODEGRAPH_ANALYZERS=0` disables analyzers
+independently of tier. `CODEGRAPH_SCIP_INDEX=/path/index.scip` can substitute a compiler
+index for LSP; source validation and sidecar requirements are described in the
+[indexing implementation guide](docs/indexing-performance-work.md).
 
-- `CODEGRAPH_LSP_REQUEST_TIMEOUT_SECS` (default `600`, minimum `5`)
+#### Incremental indexing and inference policies
+
+Full, single-file and watch indexing share complete-project reconciliation. Unchanged
+sources reuse cached AST/analyzer artifacts while the full catalog retains callers
+across edits, renames and deletions. Only changed graph records and file metadata are
+written. Source snapshots, parsing, inference and writer queues have independent
+resource bounds; completion follows durable acknowledgements and final input checks.
+`--force` prepares and reconciles again without trusting the previous catalog.
+
+Embedding and semantic-resolution work is independent of extraction tier. Each accepts
+`sync` (default when its feature is compiled), `deferred` or `off`:
+
+```bash
+CODEGRAPH_EMBEDDING_POLICY=deferred CODEGRAPH_SEMANTIC_RESOLUTION=off \
+  codegraph index /path/to/project --index-tier fast --stats-json indexing.json
+codegraph index /path/to/project --complete-deferred --stats-json completed.json
+```
+
+Deferred runs persist a resumable job and distinguish graph readiness from pending
+inference. Prepared-text embedding caches include model/task/tokenizer/runtime identity;
+chunking preserves Unicode and enforces provider token budgets. Mutable model aliases
+expire; `CODEGRAPH_MODEL_REVISION` declares an immutable revision.
+
+`CODEGRAPH_VECTOR_INDEX_MODE=all|selected|deferred|off` controls HNSW construction for
+fresh embedded stores. The default retains all schema dimensions; selected builds the
+active dimension, deferred builds after durable ingestion, and off reports vector
+readiness false. Existing shared indexes are preserved. Alternate splitters, candidate
+caps and runtime/precision choices remain opt-in.
+
+See [configuration and invariants](docs/indexing-performance-work.md) and
+[reproducible speed/quality benchmarks](docs/indexing-benchmarks.md). The offline debug
+fixture results verify behavior; production throughput and model quality require
+representative measurements.
 
 If LSP resolution fails immediately and the error includes something like `Unknown binary 'rust-analyzer' in official toolchain ...`, your `rust-analyzer` is a rustup shim without an installed binary. Install a runnable `rust-analyzer` (e.g. via `brew install rust-analyzer` or by switching to a toolchain that provides it).
 
