@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 **Fixed - LATS graph grounding**
+
+- Rig LATS candidates now execute native graph-tool loops through the same
+  eight-tool registration as ReAct, using the shared project-scoped executor,
+  cache, result-size budget and tool counts/traces. Previously LATS used only
+  plain completions and never queried the index.
+- Each tree node retains its own conversation and ancestor observations. The
+  evaluator sees that branch's actual tool results; candidate prose, failed calls
+  and exhausted-budget notes do not establish grounding. Runs without a successful
+  graph observation fail, and all-candidate model failures propagate.
+- Answer selection now returns a grounded final answer from the explored tree,
+  rather than its most-visited first step. An unfinished grounded branch receives
+  a tool-enabled synthesis pass. Completed branches are not expanded again.
+- Search expansions/depth now honor the tier's turn budget, replacing the fixed
+  five iterations; each candidate loop has the same budget. LATS also honors the
+  configured output-token cap. Three candidates per expansion and evaluator calls
+  can make it more expensive than ReAct.
+- Offline mock-model and temporary-graph regressions cover native tool calls,
+  source observations, branch isolation, deeper answer selection, synthesis,
+  failure handling and CLI tool-use reporting. Live evaluation results remain
+  tied to their recorded implementation; this fix has not been live scored.
+
 ### 🐛 **Fixed - Jina task configuration and v5 requests**
 
 - Indexing now honors `JINA_API_TASK`, ahead of legacy `JINA_TASK` and TOML
@@ -182,7 +204,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🗑️ **Removed - AutoAgents Backend**
 
 - **`codegraph-mcp-autoagents` crate removed**: Rig is the only agent framework. The `autoagents` and `autoagents-derive` dependencies and the `autoagents-experimental`, `autoagents-lats`, and `all-agents` feature flags are gone; build with `--all-features` or `--features full`.
-- **`CODEGRAPH_AGENT_ARCHITECTURE` now selects the Rig agent**: `react` (default, alias `rig`), `lats`, or `reflexion`. `lats` previously selected the AutoAgents LATS backend; it now selects the Rig LATS agent, which does not call graph tools.
+- **`CODEGRAPH_AGENT_ARCHITECTURE` now selects the Rig agent**: `react` (default, alias `rig`), `lats`, or `reflexion`. `lats` previously selected the AutoAgents LATS backend; it now selects Rig LATS with the same graph tools as ReAct.
 - **`CODEGRAPH_LATS_*` settings and the `llm.lats` config section removed**: they configured the AutoAgents LATS backend only.
 - **`CODEGRAPH_ARCH_BOOTSTRAP` / `CODEGRAPH_ARCH_PRIMER` removed**: the startup-context bootstrap was part of the AutoAgents backend.
 - **Server prompt modules removed**: `prompt_selector.rs` and the per-analysis `*_prompts.rs` files in `codegraph-mcp-server` were not read by any agent. The agent prompt lives in `codegraph-mcp-rig/src/prompts/tier_prompts.rs`.

@@ -52,6 +52,13 @@ The prompts follow OpenAI's guidance for the GPT-6 family (`gpt-6-astra`, `gpt-6
 
 `get_max_turns` in `tier_prompts.rs` is the single source for these numbers. The tool loop enforces the value and the same value is written into the system prompt, so the two cannot drift apart.
 
+For LATS, each candidate and final synthesis uses that tool-loop budget. The same
+number also bounds tree depth and search expansions, with three candidates per
+expansion plus evaluator calls. It does not bound total model calls across the
+tree. Candidates share the graph-tool registration, run-level result-size budget
+and tool-use tracking with ReAct, while keeping their observations in separate
+branch histories. See [agent architectures](AGENTIC_CLI.md#agent-architectures).
+
 ### Retrieval limits (and MCP-safe output)
 
 CodeGraph also scales how much it retrieves:

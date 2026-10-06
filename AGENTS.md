@@ -78,6 +78,17 @@ Use `.env.example` and `config/example.toml` as references. Keep credentials in 
 
 The four CLI agent commands have a 600-second whole-workflow deadline, including setup, graph calls and model responses; preserve explicit `--timeout-secs` overrides. CLI/HTTP evaluation cases share that budget, and the HTTP stream-read limit must accommodate it. Keep historical accuracy entries tied to their recorded deadlines; offline fixtures do not establish live answer accuracy.
 
+ReAct and LATS share the eight-tool registration in
+`codegraph-mcp-rig/src/tools/factory.rs`. LATS candidates execute native tool loops,
+retain branch-local transcripts and supply actual observations to the critic.
+Never treat candidate prose, failed tools or exhausted-budget notes as graph
+grounding, or return a root-level intermediate step in place of the selected
+answer. Preserve shared result budgets, project-scoped caching, tool counts and
+traces across candidates. The tier's turn budget bounds search expansions/depth
+and each candidate loop, rather than the whole tree's model-call count. Verify
+with `cargo test -p codegraph-mcp-rig --all-features --lib` and the full-feature
+`agent_cli_integration` mock tests before making runtime accuracy claims.
+
 <!-- codegraph:begin -->
 # codegraph
 

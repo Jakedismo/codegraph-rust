@@ -138,11 +138,20 @@ Targeted offline checks include reconciliation/watch tests, `cargo test -p codeg
 `crates/codegraph-mcp-server/src/official_server.rs` exposes the four consolidated tools via a single rmcp `#[tool_router]` (the SDK does not support multiple router blocks, so the deprecated legacy tools are feature-gated by `legacy-agentic-tools` within the same router). Each tool calls `execute_agentic_workflow`, which:
 
 1. Picks a prompt/step tier from the configured LLM context window (`CODEGRAPH_CONTEXT_WINDOW` → `ContextTier` in `codegraph-mcp-core/src/context_aware_limits.rs`); the same value bounds per-tool result size and accumulated context.
-2. Runs the Rig backend (`codegraph-mcp-rig`), whose builder (`agent/builder.rs`) picks the agent from `CODEGRAPH_AGENT_ARCHITECTURE`: `react` (default, alias `rig`), `lats` (tree search over reasoning steps; does not call graph tools), or `reflexion`. A failed run is retried through Reflexion.
+2. Runs the Rig backend (`codegraph-mcp-rig`), whose builder (`agent/builder.rs`) picks the agent from `CODEGRAPH_AGENT_ARCHITECTURE`: `react` (default, alias `rig`), `lats` (tree search with graph-tool candidate loops and branch-local evidence), or `reflexion`. A failed run is retried through Reflexion.
 3. The agent loops over the inner graph tools in `codegraph-mcp-tools` (`GraphToolSchemas` / `GraphToolExecutor`: transitive deps, reverse deps, cycles, call chains, coupling, hub nodes, semantic search, complexity hotspots).
 4. Those call `fn::*` SurrealQL functions defined in `schema/codegraph.surql`, wrapped by `crates/codegraph-graph/src/graph_functions.rs`.
 
 The agent's system prompt is built in `codegraph-mcp-rig/src/prompts/tier_prompts.rs`, and tool semantics live in the tool descriptions in `codegraph-mcp-rig/src/tools/graph_tools.rs`.
+
+ReAct and LATS register the same eight tools through `GraphToolFactory::agent_builder`.
+LATS retains complete branch transcripts, passes actual observations to its critic,
+and selects a grounded final answer or synthesizes from a grounded leaf. Candidate
+prose, failed calls and exhausted-budget notes cannot establish grounding. Tool
+counts/traces cover all explored branches. Three candidates run per expansion;
+the tier's turn budget bounds expansions/depth and each candidate tool loop, while
+the result-size budget is shared. Offline LATS tests use loopback model mocks and
+temporary graphs; they do not establish live answer accuracy.
 
 The four `codegraph agent` commands in `agent_cli.rs` use a 600-second whole-workflow deadline by default; `--timeout-secs` overrides it. Shared CLI/HTTP evaluation cases in `agentic_test_cases.py` also use 600 seconds, with a longer HTTP stream-read allowance. Historical accuracy reports retain their original budgets. Distinguish model-response stalls from graph-call failures when diagnosing timeouts.
 

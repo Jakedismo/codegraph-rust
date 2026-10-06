@@ -19,6 +19,22 @@ impl GraphToolFactory {
         }
     }
 
+    /// Register the same graph tools for ReAct and LATS over the shared counted executor.
+    pub(crate) fn agent_builder(
+        &self,
+        model: impl Into<rig::DynModel<rig::operation::Completion>>,
+    ) -> rig_agent::AgentBuilder<rig_agent::agent::WithBuilderTools> {
+        rig_agent::AgentBuilder::new(model)
+            .tool(self.transitive_dependencies())
+            .tool(self.circular_dependencies())
+            .tool(self.call_chain())
+            .tool(self.coupling_metrics())
+            .tool(self.hub_nodes())
+            .tool(self.reverse_dependencies())
+            .tool(self.semantic_search())
+            .tool(self.complexity_hotspots())
+    }
+
     /// Create the transitive dependencies tool
     pub fn transitive_dependencies(&self) -> GetTransitiveDependencies {
         GetTransitiveDependencies::new(self.executor.clone())
