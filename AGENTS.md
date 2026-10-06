@@ -67,6 +67,8 @@ Use `.env.example` and `config/example.toml` as references. Keep credentials in 
 
 `codegraph init [project]` selects project-local Claude/Codex hooks before merging both agent instruction files and indexing. `--hooks claude|codex|both|none` supports scripts; `--no-index` performs provider-independent setup. Keep user-level settings untouched, preserve unrelated hooks/instructions, and retain idempotent managed blocks. See [init and CLI usage](docs/AGENTIC_CLI.md).
 
+The four CLI agent commands have a 600-second whole-workflow deadline, including setup, graph calls and model responses; preserve explicit `--timeout-secs` overrides. CLI/HTTP evaluation cases share that budget, and the HTTP stream-read limit must accommodate it. Keep historical accuracy entries tied to their recorded deadlines; offline fixtures do not establish live answer accuracy.
+
 <!-- codegraph:begin -->
 # codegraph
 

@@ -591,6 +591,12 @@ documentation analyzer output. Embedding settings match the balanced run.
 [Full answers, run details and source review](docs/evaluations/full-cli-2026-10-06.md)
 are retained separately.
 
+After this evaluation, the default whole-agent CLI deadline and the shared CLI/HTTP
+test-case deadlines increased from 300 to **600 seconds**. `--timeout-secs` still
+overrides the CLI budget. The table records the original 300-second run; no accuracy
+or response-success improvement is claimed until a new evaluation is run. The
+recorded stall occurred while awaiting a model response after graph calls returned.
+
 Source review of the full-tier answers found:
 
 - **Configuration, cache, call chain and public API (cases 1, 3, 5, 7): source-aligned,

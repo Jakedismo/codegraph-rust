@@ -133,6 +133,8 @@ Targeted offline checks include reconciliation/watch tests, `cargo test -p codeg
 
 The agent's system prompt is built in `codegraph-mcp-rig/src/prompts/tier_prompts.rs`, and tool semantics live in the tool descriptions in `codegraph-mcp-rig/src/tools/graph_tools.rs`.
 
+The four `codegraph agent` commands in `agent_cli.rs` use a 600-second whole-workflow deadline by default; `--timeout-secs` overrides it. Shared CLI/HTTP evaluation cases in `agentic_test_cases.py` also use 600 seconds, with a longer HTTP stream-read allowance. Historical accuracy reports retain their original budgets. Distinguish model-response stalls from graph-call failures when diagnosing timeouts.
+
 ### Schema
 
 Three SurrealDB schemas must stay in sync with the storage layer and with each other: `schema/codegraph_v2.surql` (default; SurrealDB 3.x-optimised functions, tested end to end by `crates/codegraph-graph/tests/schema_v2_test.rs`), `schema/codegraph.surql` (the original, `CODEGRAPH_SCHEMA=v1`), and `schema/codegraph_graph_experimental.surql` (selected with `CODEGRAPH_USE_GRAPH_SCHEMA=true` + `CODEGRAPH_GRAPH_DB_DATABASE`). `crates/codegraph-graph/tests/schema_indexes_test.rs` statically validates them (project-scoped indexes, required `fn::*` functions, SurrealQL parsing constraints) and `schema_runtime_test.rs` applies each to an in-memory engine; run both after any schema edit. A new graph function generally needs: the `fn::` definition in each schema, a wrapper in `graph_functions.rs`, and a schema + executor entry in `codegraph-mcp-tools`. SurrealQL gotcha: `LET` inside a `FOR` body is block-scoped in 3.x, so iterative walks use `array::fold` (see `fn::expand` in v2).

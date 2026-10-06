@@ -58,7 +58,7 @@ pub struct AgentQuery {
     #[arg(long)]
     project_id: Option<String>,
     /// Whole-command deadline in seconds, including provider/database setup.
-    #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..))]
+    #[arg(long, default_value_t = 600, value_parser = clap::value_parser!(u64).range(1..))]
     timeout_secs: u64,
     /// JSON preserves the complete MCP response; text prints its answer field.
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
@@ -286,6 +286,23 @@ mod tests {
         );
         let parsed = TestCli::try_parse_from(["agent", "context", "   "]).unwrap();
         assert!(read_query(parsed.command.request().unwrap().1).is_err());
+    }
+
+    #[test]
+    fn workflow_deadline_is_ten_minutes_and_explicit_overrides_are_preserved() {
+        for tool in ["context", "impact", "architecture", "quality"] {
+            let parsed = TestCli::try_parse_from(["agent", tool, "question"]).unwrap();
+            assert_eq!(parsed.command.request().unwrap().1.timeout_secs, 600);
+            for seconds in ["60", "900"] {
+                let parsed =
+                    TestCli::try_parse_from(["agent", tool, "question", "--timeout-secs", seconds])
+                        .unwrap();
+                assert_eq!(
+                    parsed.command.request().unwrap().1.timeout_secs,
+                    seconds.parse::<u64>().unwrap()
+                );
+            }
+        }
     }
 
     #[test]

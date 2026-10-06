@@ -2,53 +2,55 @@
 # ABOUTME: Keeps transport comparisons aligned without loading configuration or providers.
 
 # Each tuple: (public MCP tool, query, optional focus, deadline in seconds).
+DEFAULT_AGENT_TIMEOUT_SECS = 600
+
 AGENTIC_TESTS = [
     (
         "agentic_context",
         "How is configuration loaded in this codebase? Find all config loading mechanisms.",
         None,
-        300,
+        DEFAULT_AGENT_TIMEOUT_SECS,
     ),
     (
         "agentic_context",
         "Gather comprehensive context about the tier-aware prompt selection system",
         "builder",
-        300,
+        DEFAULT_AGENT_TIMEOUT_SECS,
     ),
     (
         "agentic_context",
         "How does the LRU cache work in GraphToolExecutor? What gets cached and when?",
         "question",
-        300,
+        DEFAULT_AGENT_TIMEOUT_SECS,
     ),
     (
         "agentic_impact",
         "Analyze the dependency chain for the PromptSelector. What does it depend on?",
         "dependencies",
-        300,
+        DEFAULT_AGENT_TIMEOUT_SECS,
     ),
     (
         "agentic_impact",
         "Trace the call chain from execute_agentic_workflow to the graph analysis tools",
         "call_chain",
-        300,
+        DEFAULT_AGENT_TIMEOUT_SECS,
     ),
     (
         "agentic_architecture",
         "Analyze the architecture of the MCP server. Find coupling metrics and hub nodes.",
         "structure",
-        300,
+        DEFAULT_AGENT_TIMEOUT_SECS,
     ),
     (
         "agentic_architecture",
         "What is the public API surface of the GraphToolExecutor?",
         "api_surface",
-        300,
+        DEFAULT_AGENT_TIMEOUT_SECS,
     ),
     (
         "agentic_quality",
         "Find the highest complexity hotspots in the codebase. Which functions have the highest risk scores?",
         None,
-        300,
+        DEFAULT_AGENT_TIMEOUT_SECS,
     ),
 ]
