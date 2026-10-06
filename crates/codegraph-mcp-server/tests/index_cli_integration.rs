@@ -96,6 +96,107 @@ fn root_only_index_requires_explicit_no_recursive_flag() {
     assert_eq!(index_files(Some("--no-recursive"), true), 1);
 }
 
+#[cfg(all(feature = "embeddings-jina", feature = "server-http"))]
+#[tokio::test]
+async fn jina_index_requests_honor_dotenv_task_precedence_and_v5_defaults() {
+    use axum::{Json, Router, routing::post};
+    use std::sync::{Arc, Mutex};
+
+    let requests = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captured = requests.clone();
+    let app = Router::new().route(
+        "/v1/embeddings",
+        post(move |Json(body): Json<Value>| {
+            let count = body["input"].as_array().unwrap().len();
+            captured.lock().unwrap().push(body);
+            async move {
+                Json(serde_json::json!({
+                    "model": "jina-embeddings-v5-text-small", "usage": {"total_tokens": count},
+                    "data": (0..count).map(|index| serde_json::json!({
+                        "index": index, "embedding": vec![1.0_f32; 1024]
+                    })).collect::<Vec<_>>()
+                }))
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/v1", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    for (dotenv, toml_task, expected_task, normalized) in [
+        // Canonical env beats both the legacy alias and an explicit TOML value.
+        (
+            "JINA_API_TASK=retrieval.query\nJINA_TASK=code.query\n",
+            Some("clustering"),
+            "retrieval.query",
+            true,
+        ),
+        (
+            "JINA_TASK=text-matching\n",
+            Some("clustering"),
+            "text-matching",
+            true,
+        ),
+        (
+            "JINA_NORMALIZED=false\n",
+            Some("classification"),
+            "classification",
+            false,
+        ),
+        ("", None, "retrieval.passage", true),
+    ] {
+        requests.lock().unwrap().clear();
+        let url = url.clone();
+        let output = tokio::task::spawn_blocking(move || {
+            let project = tempfile::tempdir().unwrap();
+            let root = project.path();
+            let config = root.join("providers.toml");
+            let task = toml_task.map_or(String::new(), |task| format!("jina_task = {task:?}\n"));
+            std::fs::write(&config, format!(
+                "[embedding]\nprovider = \"jina\"\nmodel = \"jina-embeddings-v5-text-small\"\ndimension = 1024\n{task}"
+            )).unwrap();
+            std::fs::write(root.join(".env"), dotenv).unwrap();
+            std::fs::write(root.join("lib.rs"), "pub fn fixture() {}\n").unwrap();
+            offline_index_command(root, &config)
+                .args(["index", "--languages", "Rust", "--index-tier", "fast", "."])
+                .env("CODEGRAPH_ANALYZERS", "0")
+                .env("CODEGRAPH_EMBEDDING_POLICY", "sync")
+                .env("CODEGRAPH_EMBEDDING_PROVIDER", "jina")
+                .env("CODEGRAPH_EMBEDDING_MODEL", "jina-embeddings-v5-text-small")
+                .env("CODEGRAPH_EMBEDDING_DIMENSION", "1024")
+                .env("JINA_API_KEY", "test-key")
+                .env("JINA_API_BASE", url)
+                .env("JINA_ENABLE_RERANKING", "false")
+                .env("JINA_TRUNCATE", "true")
+                .env("JINA_LATE_CHUNKING", "false")
+                .env("JINA_REQUEST_DELAY_MS", "0")
+                .env_remove("JINA_API_TASK")
+                .env_remove("JINA_TASK")
+                .env_remove("JINA_NORMALIZED")
+                .output().unwrap()
+        }).await.unwrap();
+        let logs = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.status.success(), "{logs}");
+        let bodies = requests.lock().unwrap().clone();
+        assert!(
+            !bodies.is_empty(),
+            "expected real indexing requests to the mock: {logs}"
+        );
+        for body in bodies {
+            assert_eq!(body["model"], "jina-embeddings-v5-text-small");
+            assert_eq!(body["task"], expected_task);
+            assert_eq!(body["normalized"], normalized);
+            assert_eq!(body["truncate"], true);
+            assert_eq!(body["late_chunking"], false);
+        }
+    }
+    server.abort();
+}
+
 #[cfg(unix)]
 #[test]
 fn broken_rustup_shim_is_reported_before_parsing_even_for_another_project() {

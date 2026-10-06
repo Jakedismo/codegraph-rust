@@ -94,7 +94,7 @@ pub struct EmbeddingConfig {
     #[serde(default)]
     pub jina_late_chunking: bool,
 
-    /// Jina task type
+    /// Jina task type; "auto" selects a passage task supported by the model.
     #[serde(default = "default_jina_task")]
     pub jina_task: String,
 
@@ -399,7 +399,7 @@ fn default_jina_api_base() -> String {
     "https://api.jina.ai/v1".to_string()
 }
 fn default_jina_task() -> String {
-    "code.query".to_string()
+    "auto".to_string()
 }
 fn default_embedding_dimension() -> usize {
     2048
@@ -762,7 +762,7 @@ impl ConfigManager {
         if let Ok(chunking) = std::env::var("JINA_LATE_CHUNKING") {
             config.embedding.jina_late_chunking = chunking.to_lowercase() == "true";
         }
-        if let Ok(task) = std::env::var("JINA_TASK") {
+        if let Ok(task) = std::env::var("JINA_API_TASK").or_else(|_| std::env::var("JINA_TASK")) {
             config.embedding.jina_task = task;
         }
 
