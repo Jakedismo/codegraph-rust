@@ -7,14 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Indexing controls and agent workflows
+
+- `codegraph init` offers project-local Claude Code hooks, Codex hooks, both or none
+  before indexing. `--hooks claude|codex|both|none` supports scripts, and `--no-index`
+  performs setup without providers. Init merges managed `# codegraph` guidance into
+  both `AGENTS.md` and `CLAUDE.md`, preserving unrelated instructions and hooks.
+- The four MCP agent workflows are also available through `codegraph agent context`,
+  `impact`, `architecture` and `quality`, with JSON output, focus selection, project
+  selection and execution deadlines. `test_cli_agentic.py` runs the same eight
+  questions as the HTTP evaluation, prints full answers and saves responses for
+  source review; `--replay` inspects saved results without contacting providers.
+- Independent `sync|deferred|off` embedding and semantic-resolution policies,
+  resumable `--complete-deferred` jobs, `--stats-json` phase/counter/stage reporting,
+  and `all|selected|deferred|off` vector-index construction policies. Completion
+  distinguishes graph readiness, pending inference and vector-index readiness.
+- Optional SCIP compiler-index import with source-identity validation, and an
+  optional text-splitter comparison path. Reproducible indexing, semantic-scoring
+  and retrieval-quality probes are documented in
+  [indexing benchmarks](docs/indexing-benchmarks.md).
+
+### Changed - Indexing pipeline and embedding inputs
+
+- Capture immutable source snapshots once, bound retained bytes and parser workers,
+  reuse parsers and versioned AST artifacts, prune generated directories, and gate
+  extraction/analyzers by tier before doing their work. Build context overlaps
+  parsing; analyzer artifacts and language-server sessions are reused when valid.
+- Full, incremental, single-file, deletion and watch paths reconcile against the
+  complete project catalog. Unchanged metadata, chunks and graph records avoid
+  redundant writes; source, build, documentation, tier and model-policy changes
+  invalidate relevant artifacts and readiness.
+- Resolve exact/contextual and lexical relationships before semantic inference,
+  preserve ambiguous targets, and retain resolution method and similarity score.
+  Candidate features and raw-vector norms are cached; semantic scoring runs on the
+  bounded CPU pool while preserving scalar score bits and tie rules. Structured
+  timings separate matching, inference, scoring and writes. The isolated scoring
+  benchmark is not an end-to-end indexing speedup measurement.
+- Bulk graph writes use independent row/byte budgets, bounded queued payloads and
+  checked durable acknowledgements. Scoped cleanup, stable relationship identities,
+  final input validation and completion barriers make interrupted runs repairable.
+- Prepared embedding inputs are deduplicated and cached by model/task/tokenizer/runtime
+  identity, with row/token/byte budgets and bounded provider concurrency. Mutable
+  model aliases expire cached results; explicit revisions can retain them.
+- `--batch-size` now controls the embedding inference row limit. Precedence is
+  explicit CLI value, `CODEGRAPH_EMBEDDINGS_BATCH_SIZE`, legacy
+  `CODEGRAPH_EMBEDDING_BATCH_SIZE`, TOML `[embedding] batch_size`, then 64.
+  Positive explicit values, including 100, are preserved, and Ollama/LM Studio no
+  longer silently cap them at 256. Token/byte/provider and database limits remain
+  independent; verbose output distinguishes these limits and counts chunks correctly.
+- Ollama resolves the selected model/tag, model and serving context, matching
+  publisher tokenizer, retrieval prefixes and special-token overhead. Recognized
+  Qwen3 embedding models use a 32K model limit; Nomic Text v2 MoE uses 512 tokens,
+  subject to a lower serving context. Requests set `num_ctx` and `truncate=false`.
+  Unknown tokenizers require an explicit path/repository; overflow and malformed
+  vectors fail visibly instead of silently changing or dropping inputs.
+- Chunking keeps fitting AST units intact and splits oversized units at syntax
+  boundaries, with lossless line/UTF-8 fallback for oversized leaves. Complete-input
+  budgets include task prefixes, special tokens and token-counted overlap.
+  `CODEGRAPH_EMBEDDING_SKIP_CHUNKING=1` rejects oversized inputs. Input-policy
+  changes invalidate prepared-vector, chunk and reconciliation caches; **reindex
+  after upgrading to replace embeddings generated with the previous policy**.
+
+### Fixed - Indexing correctness and diagnostics
+
+- Directory indexing recurses by default, matching init; `--no-recursive` selects
+  a shallow scan and the existing `-r` option remains accepted.
+- Rust LSP preflight detects broken rustup `rust-analyzer` shims before analysis.
+  Servers start in the project directory, report a bounded stderr tail on failure,
+  replace stopped pooled sessions and use UTF-16 definition positions.
+- Database statement/flush failures and language-server output closure propagate
+  instead of leaving a successful completion marker. Backend/dimension selection,
+  disabled analyzers, pending-stage resumption and mutable-model invalidation retain
+  their identities across warm runs and tier changes.
+- Chunk deletion cascades from its parent node; edge endpoints do not cascade on
+  node replacement, preserving relationships during incremental reconciliation.
+
+### Documentation
+
+- Contributor guidance, configuration examples and README now cover the indexing
+  controls, model-aware chunking and agent CLI workflows. The README records
+  source-reviewed tier evaluations separately from command/response success.
+- Added an [agent memory design proposal](docs/architecture/agent-memory-design.md),
+  including project/user scopes, retrieval, TTL, update and delete paths. This is a
+  design document; memory tools and storage are not implemented.
+
 ### ✨ **Added - Schema v2 for SurrealDB 3.x**
 
-- **`schema/codegraph_v2.surql` is the default schema** for new embedded stores and for `apply-schema.sh`; `CODEGRAPH_SCHEMA=v1` (or `apply-schema.sh -s codegraph.surql`) selects the original. Drop-in schema with the same tables and function signatures. Graph functions filter edges by their own `project_id` through compound `(project_id, edge_type, from|to)` indexes instead of dereferencing node records per edge; dependency and call-chain walks use `array::fold` with frontier/visited sets (depth up to 10, call paths returned); hybrid search fuses chunk KNN and BM25 lists with `search::rrf`; analyzers split identifiers on case and punctuation with edge n-grams on names; `chunks.parent_node` and `edges.from/to` cascade on node delete. New helpers: `fn::search_snippets` (BM25 with highlights), `fn::knn_nodes`, `fn::kmeans`.
+- **`schema/codegraph_v2.surql` is the default schema** for new embedded stores and for `apply-schema.sh`; `CODEGRAPH_SCHEMA=v1` (or `apply-schema.sh -s codegraph.surql`) selects the original. Drop-in schema with the same tables and function signatures. Graph functions filter edges by their own `project_id` through compound `(project_id, edge_type, from|to)` indexes instead of dereferencing node records per edge; dependency and call-chain walks use `array::fold` with frontier/visited sets (depth up to 10, call paths returned); hybrid search fuses chunk KNN and BM25 lists with `search::rrf`; analyzers split identifiers on case and punctuation with edge n-grams on names; `chunks.parent_node` cascades on node delete while edge endpoints remain non-cascading. New helpers: `fn::search_snippets` (BM25 with highlights), `fn::knn_nodes`, `fn::kmeans`.
 - **Record ids with backticks** (what `<string>id` produces under SurrealDB 3.x) are accepted by v2's `fn::parse_record_id`; `codegraph.surql` only strips `⟨⟩`, so its node-scoped functions return nothing for such ids.
 
 ### 🗄️ **Changed - Embedded Per-Project Database**
 
-- **Storage defaults to an embedded SurrealKV store per project** at `<project>/.codegraph/db`, so no SurrealDB server is needed and projects no longer share one database. The bundled `schema/codegraph.surql` is applied automatically when the store is created and recorded in `schema_versions`; a later schema change logs a warning suggesting `codegraph index --force`. The store directory gets a `.gitignore`.
+- **Storage defaults to an embedded SurrealKV store per project** at `<project>/.codegraph/db`, so no SurrealDB server is needed and projects no longer share one database. The selected bundled schema (v2 by default) is applied automatically when the store is created and recorded in `schema_versions`; a later schema change logs a warning suggesting `codegraph index --force`. The store directory gets a `.gitignore`.
 - **Server mode is opt-in**: set `CODEGRAPH_SURREALDB_URL` to use a SurrealDB server as before. Users who relied on the implicit `ws://localhost:3004` default now get an empty project store until they re-index or set the variable.
 - **One process per project store**: the engine locks its directory. Stop `codegraph start` before `codegraph index` on the same project; a second process gets a clear error. `CODEGRAPH_SURREAL_POOL_SIZE` only applies in server mode.
 
