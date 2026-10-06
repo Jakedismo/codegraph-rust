@@ -138,23 +138,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added an [agent memory design proposal](docs/architecture/agent-memory-design.md),
   including project/user scopes, retrieval, TTL, update and delete paths. This is a
   design document; memory tools and storage are not implemented.
-- Recorded the [balanced CLI evaluation](docs/evaluations/balanced-cli-2026-10-06.md)
+- Recorded the original [balanced CLI evaluation](docs/evaluations/balanced-cli-2026-10-06.md)
   with the explicit `gpt-6-luna` request model: 8/8 response checks passed in 462.8s.
   Full answers and source checks distinguish useful explanations, caller mistakes,
   incomplete hub results and metric limitations from command success. The historical
   fast model label is now qualified because its request model was not captured.
+- Added the [refreshed balanced evaluation and all eight full answers](docs/evaluations/balanced-cli-2026-10-06.md#refreshed-balanced-run-1519-utc):
+  explicit `gpt-6-luna`, Jina v5 embeddings, 8/8 response checks in 1,053.3s.
+  Source review confirms successful hub ranking, correct reported instability
+  arithmetic and the executor-wrapper explanation, while preserving remaining
+  completeness gaps and the 587.5s public-API response. Original answers remain intact.
+- The [full-tier evaluation](docs/evaluations/full-cli-2026-10-06.md) retains its
+  original 7/8 responses and 300s timeout, plus isolated verification of the prompt
+  and architecture fixes. A complete refreshed full-tier evaluation is pending.
 
 ### Known issues observed during CLI evaluation
 
-- Rig selects the request model from `CODEGRAPH_LLM_MODEL` or `CODEGRAPH_AGENT_MODEL`,
-  independently of the core config's `CODEGRAPH_MODEL`. Set the Rig model explicitly
-  when evaluating; the core setting alone does not select it.
-- Hub queries on the evaluated balanced graph exceed SurrealDB's 1 MiB
-  `array::concat()` limit. Reported coupling values can also be inconsistent with
-  the intended instability ratio or show zero counts for connected structs/impls.
-- Plain-text agent answers trigger typed-output parse warnings and use synthesized
-  structured evidence. Valid JSON/`OK` responses can contain incomplete analysis
-  or incorrect caller relationships; source review remains necessary.
+- Refreshed balanced answers omit prompt budgets/builder details, cache insertion
+  and lifecycle details, the later agent-to-graph dispatch path and one public API
+  method. Valid JSON/`OK` responses still require source review for completeness.
+- Agent latency is not resolved generally: the refreshed public-API case takes
+  587.5s, including a 510.6s logged gap between tool calls during an agent/model turn.
+  The provider-side cause is unestablished despite all eight commands returning `OK`.
+- Struct/impl coupling can show zero counts despite visible consumers. The corrected
+  instability arithmetic does not establish exhaustive graph connectivity coverage.
+- Prose answers use synthesized structured evidence from tool traces; typed-answer
+  parse fallback now logs at `DEBUG`, rather than producing the earlier warnings.
+- Previous evaluation answers were retrieved from the refreshed index. These runs
+  are source-reviewed smoke tests, not held-out accuracy benchmarks; changed
+  embedding/chunk/deadline settings also prevent controlled tier-only comparisons.
 
 ### ✨ **Added - Schema v2 for SurrealDB 3.x**
 
