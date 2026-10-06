@@ -53,7 +53,7 @@ impl SubmittedCache {
                 .filter(|v| *v > 0)
                 .unwrap_or(default)
         };
-        Self {
+        let cache = Self {
             namespace,
             dimension,
             artifacts: root.map(|root| ArtifactCache::new(root, "submitted-v1")),
@@ -82,7 +82,15 @@ impl SubmittedCache {
             hits: AtomicU64::new(0),
             inferred: AtomicU64::new(0),
             submitted_tokens: AtomicU64::new(0),
-        }
+        };
+        tracing::info!(
+            "Embedding inference limits: {} rows, {} tokens, {} bytes per request; {} concurrent requests",
+            cache.rows,
+            cache.tokens,
+            cache.bytes,
+            cache.inference.available_permits()
+        );
+        cache
     }
     fn valid(&self, entry: &Entry) -> bool {
         entry.vector.len() == self.dimension

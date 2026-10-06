@@ -56,7 +56,7 @@ impl From<&codegraph_core::EmbeddingConfig> for OllamaEmbeddingConfig {
             .unwrap_or_else(|| "nomic-embed-code".to_string());
 
         // Use batch_size from config (already has env var fallback in config loading)
-        let batch_size = config.batch_size.clamp(1, 256);
+        let batch_size = config.batch_size.max(1);
 
         let max_tokens_per_text = std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS")
             .ok()
@@ -478,6 +478,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_batch_sizes_above_256_are_preserved() {
+        let config = codegraph_core::EmbeddingConfig {
+            batch_size: 4096,
+            ..Default::default()
+        };
+        assert_eq!(OllamaEmbeddingConfig::from(&config).batch_size, 4096);
+    }
 
     #[test]
     fn detects_context_overflow_messages() {

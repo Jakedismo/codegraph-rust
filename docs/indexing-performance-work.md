@@ -117,6 +117,19 @@ actual tokenizer; local engines expose their loaded tokenizer automatically.
 `CODEGRAPH_COREML_LOW_PRECISION=1`, and `CODEGRAPH_LOCAL_DTYPE=f16|bf16` are independent
 runtime experiments. Reduced precision requires retrieval-quality measurements.
 
+Embedding row-limit precedence for `codegraph index` is explicit `--batch-size` >
+`CODEGRAPH_EMBEDDINGS_BATCH_SIZE` > legacy `CODEGRAPH_EMBEDDING_BATCH_SIZE` >
+`[embedding] batch_size` > 64. CLI values must be positive and are not memory-tuned,
+even when the value is 100. Configuration resolves environment aliases once; the
+indexer passes its final batch into the provider engine and submitted-text cache.
+Ollama/LM Studio no longer silently cap that value at 256; provider-specific API
+limits and independent token/byte budgets still apply. Chunk DB writes remain
+independent (`CODEGRAPH_CHUNK_DB_BATCH_SIZE`, default at most 32, maximum 512).
+Progress labels and logs distinguish inference row limits, token/byte budgets and
+DB write batches; persisted chunk counts are labeled as chunks rather than batches.
+`index_cli_integration` uses a loopback mock Ollama endpoint to assert actual request
+sizes for CLI overrides (100/512), conflicting dotenv aliases and TOML fallback.
+
 7. Cargo metadata is cached by manifests/locks/configuration and checked external path
    manifests, overlapped with AST parsing; resolver package identities retain distinct
    versions. Shared source snapshots feed enrichment and LSP. Warm language servers

@@ -270,7 +270,7 @@ impl ProjectIndexer {
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(config_batch)
-            .clamp(1, 2048);
+            .max(1);
 
         let max_concurrent = std::env::var("CODEGRAPH_SYMBOL_MAX_CONCURRENT")
             .ok()
@@ -359,12 +359,11 @@ impl ProjectIndexer {
                     .build()?,
             );
 
-            // Allow runtime override for embedding batch size
-            if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE")
-                && let Ok(parsed) = val.parse::<usize>()
-            {
-                config.batch_size = parsed.clamp(1, 2048);
-            }
+            // Environment defaults are resolved by ConfigManager. Keep the caller's
+            // batch authoritative and pass the same value into every provider.
+            config.batch_size = config.batch_size.max(1);
+            let mut global_config = global_config.clone();
+            global_config.embedding.batch_size = config.batch_size;
 
             config.workers = requested.max(1).min(available.max(1));
             let parser = TreeSitterParser::new()
@@ -395,6 +394,7 @@ impl ProjectIndexer {
                             };
                             let mut cfg = EmbeddingEngineConfig {
                                 prefer_local_first: true,
+                                batch_size: config.batch_size,
                                 ..Default::default()
                             };
                             let device = match config
@@ -467,7 +467,7 @@ impl ProjectIndexer {
                         }
                     } else {
                         #[allow(unused_mut)]
-                        let mut g = EmbeddingGenerator::with_config(global_config).await;
+                        let mut g = EmbeddingGenerator::with_config(&global_config).await;
                         // Set batch_size and max_concurrent for Jina provider if applicable
                         #[cfg(feature = "embeddings-jina")]
                         {
@@ -1583,13 +1583,14 @@ impl ProjectIndexer {
             );
             let chunk_store_pb = self.create_batch_progress_bar(
                 total_chunks,
-                self.config.batch_size,
+                chunk_embedding_db_batch_size(self.config.batch_size),
                 "🧩 Persisting chunk embeddings",
             );
             let batch = self.config.batch_size.max(1);
             info!(
-                "   ⚙️ Effective embedding batch size: {} (CODEGRAPH_EMBEDDINGS_BATCH_SIZE clamped to 512 for DB writes)",
-                batch
+                "   ⚙️ Embedding batch row limit: {} | Chunk DB write row limit: {} (inference token/byte and provider limits may split requests)",
+                batch,
+                chunk_embedding_db_batch_size(batch)
             );
             #[allow(unused_mut)]
             #[cfg(feature = "embeddings")]
@@ -1612,7 +1613,7 @@ impl ProjectIndexer {
             let total_nodes = nodes.len() as u64;
             info!("   📊 Nodes to embed: {} semantic entities", total_nodes);
             info!(
-                "   ⚡ Batch size: {} (optimized for {} system)",
+                "   ⚡ Embedding row limit: {} (estimated system memory: {})",
                 batch,
                 self.estimate_system_memory()
             );
@@ -1628,9 +1629,7 @@ impl ProjectIndexer {
                 use futures::stream::{self, StreamExt};
                 use std::sync::atomic::{AtomicU64, Ordering};
 
-                // To avoid giant DB payloads, tie chunk grouping to the DB batch size (which may be lower
-                // than the embedding batch size). This keeps both embedding and DB writes in smaller slices.
-                // Also ensure we never exceed the embedding batch size, so the embedder isn’t overfed.
+                // Inference row limits are independent of the smaller database write batches.
                 let chunk_batch_size = batch.max(1);
 
                 let mut pending_chunks = Vec::new();
@@ -1749,7 +1748,7 @@ impl ProjectIndexer {
 
             let provider = &self.global_config.embedding.provider;
             let embed_completion_msg = format!(
-                "💾 Semantic embeddings complete: {}/{} chunks (✅ {:.1}% success) | 🤖 {} | 📐 {}-dim | 🚀 Batch: {}",
+                "💾 Semantic embeddings complete: {}/{} chunks (✅ {:.1}% success) | 🤖 {} | 📐 {}-dim | 🚀 Row limit: {}",
                 processed,
                 total_chunks,
                 embedding_rate,
@@ -1761,7 +1760,7 @@ impl ProjectIndexer {
             self.finish_bar(
                 chunk_store_pb,
                 format!(
-                    "🧩 Chunk embeddings queued for persistence: {}/{} batches",
+                    "🧩 Chunk embeddings queued for persistence: {}/{} chunks",
                     total_chunks, total_chunks
                 ),
             )?;
@@ -3423,15 +3422,7 @@ impl ProjectIndexer {
     fn create_batch_progress_bar(&self, total: u64, batch_size: usize, label: &str) -> ProgressBar {
         let pb = self.progress.add(ProgressBar::new(total));
         pb.set_draw_target(Self::progress_draw_target());
-        let batch_info = if batch_size >= 10000 {
-            format!("🚀 Ultra-High Performance ({}K batch)", batch_size / 1000)
-        } else if batch_size >= 5000 {
-            format!("⚡ High Performance ({}K batch)", batch_size / 1000)
-        } else if batch_size >= 1000 {
-            format!("🔥 Optimized ({} batch)", batch_size)
-        } else {
-            format!("Standard ({} batch)", batch_size)
-        };
+        let batch_info = format!("row limit: {}", batch_size);
 
         pb.set_style(
             ProgressStyle::default_bar()

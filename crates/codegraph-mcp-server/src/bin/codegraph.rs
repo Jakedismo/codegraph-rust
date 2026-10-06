@@ -179,10 +179,10 @@ enum Commands {
 
         #[arg(
             long,
-            help = "Embedding batch size (both modes; cloud mode uses API batching, local uses local processing batches)",
-            default_value = "100"
+            help = "Maximum embedding texts per batch; overrides environment/config (token, byte and provider limits may split requests)",
+            value_parser = parse_positive_batch_size
         )]
-        batch_size: usize,
+        batch_size: Option<usize>,
 
         #[arg(
             long,
@@ -585,7 +585,7 @@ fn main() -> Result<()> {
             force: false,
             watch: false,
             workers,
-            batch_size: 100,
+            batch_size: None,
             max_concurrent: 10,
             device: None,
             max_seq_len: 512,
@@ -1199,7 +1199,7 @@ async fn handle_index(
     force: bool,
     watch: bool,
     workers: usize,
-    batch_size: usize,
+    batch_size: Option<usize>,
     max_concurrent: usize,
     device: Option<String>,
     max_seq_len: usize,
@@ -1247,10 +1247,10 @@ async fn handle_index(
     header_pb.set_style(h_style);
     header_pb.set_message(format!("Indexing project: {}", path.to_string_lossy()));
 
-    // Memory-aware optimization for high-memory systems
+    // Explicit embedding batches override configuration; only workers are memory-tuned.
     let available_memory_gb = estimate_available_memory_gb();
-    let (optimized_batch_size, optimized_workers) =
-        optimize_for_memory(available_memory_gb, batch_size, workers);
+    let embedding_batch_size = batch_size.unwrap_or(config.embedding.batch_size).max(1);
+    let optimized_workers = optimize_workers_for_memory(available_memory_gb, workers);
 
     if available_memory_gb >= 64 {
         multi_progress.println(format!(
@@ -1287,7 +1287,7 @@ async fn handle_index(
         force_reindex: force,
         watch,
         workers: optimized_workers,
-        batch_size: optimized_batch_size,
+        batch_size: embedding_batch_size,
         max_concurrent,
         device,
         max_seq_len,
@@ -1435,9 +1435,9 @@ async fn handle_index(
     println!();
     println!("{}", "⚙️  Configuration Summary".cyan().bold());
     println!(
-        "Workers: {} | Batch Size: {} | Languages: {}",
+        "Workers: {} | Embedding batch row limit: {} | Languages: {}",
         optimized_workers,
-        optimized_batch_size,
+        embedding_batch_size,
         languages_list.join(", ")
     );
     if !stats.embedding_provider.is_empty() {
@@ -2286,41 +2286,16 @@ fn estimate_available_memory_gb() -> usize {
     16 // Default assumption if detection fails
 }
 
-/// Optimize batch size and workers based on available memory and embedding provider
-fn optimize_for_memory(
-    memory_gb: usize,
-    default_batch_size: usize,
-    default_workers: usize,
-) -> (usize, usize) {
-    let embedding_provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or_default();
+fn parse_positive_batch_size(value: &str) -> std::result::Result<usize, String> {
+    value
+        .parse::<std::num::NonZeroUsize>()
+        .map(std::num::NonZeroUsize::get)
+        .map_err(|error| error.to_string())
+}
 
-    let optimized_batch_size = if default_batch_size == 100 {
-        // Default value
-        if embedding_provider == "ollama" {
-            // Ollama models work better with smaller batches for stability
-            match memory_gb {
-                128.. => 64,    // 128GB+: Even high-memory boxes benefit from modest batches with Ollama
-                96..=127 => 64, // 96-127GB: Keep batches capped for GPU/CPU stability
-                64..=95 => 48,  // 64-95GB: Slightly leaner batch for steady throughput
-                32..=63 => 32,  // 32-63GB: Conservative batch to prevent throttling
-                16..=31 => 24,  // 16-31GB: Small batch keeps latency predictable
-                _ => 16,        // <16GB: Minimal batch on constrained systems
-            }
-        } else {
-            // ONNX/OpenAI/LM Studio: Reasonable batches to avoid throttling
-            match memory_gb {
-                128.. => 256,    // 128GB+: Maximum safe batch size
-                64..=127 => 128, // 64-127GB: Large batch for good throughput
-                32..=63 => 64,   // 32-63GB: Medium batch size
-                16..=31 => 32,   // 16-31GB: Conservative batch size
-                _ => 16,         // <16GB: Minimal batch to avoid memory pressure
-            }
-        }
-    } else {
-        default_batch_size // User specified - respect their choice
-    };
-
-    let optimized_workers = if default_workers == 4 {
+/// Optimize worker count based on available memory.
+fn optimize_workers_for_memory(memory_gb: usize, default_workers: usize) -> usize {
+    if default_workers == 4 {
         // Default value
         match memory_gb {
             128.. => 16,    // 128GB+: Maximum parallelism
@@ -2333,9 +2308,7 @@ fn optimize_for_memory(
         }
     } else {
         default_workers // User specified - respect their choice
-    };
-
-    (optimized_batch_size, optimized_workers)
+    }
 }
 
 #[derive(Clone)]
@@ -2467,6 +2440,27 @@ async fn handle_daemon_start(
 mod cli_command_tests {
     use super::*;
     use clap::CommandFactory;
+
+    #[test]
+    fn indexing_batch_size_preserves_explicit_values_and_rejects_zero() {
+        let cli = Cli::try_parse_from(["codegraph", "index", "."]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Index {
+                batch_size: None,
+                ..
+            }
+        ));
+        for size in [100, 512, 4096] {
+            let value = size.to_string();
+            let cli =
+                Cli::try_parse_from(["codegraph", "index", "--batch-size", &value, "."]).unwrap();
+            assert!(
+                matches!(cli.command, Commands::Index { batch_size: Some(actual), .. } if actual == size)
+            );
+        }
+        assert!(Cli::try_parse_from(["codegraph", "index", "--batch-size", "0", "."]).is_err());
+    }
 
     #[test]
     fn removed_subcommands_are_absent() {

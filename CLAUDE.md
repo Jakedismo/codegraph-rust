@@ -83,6 +83,8 @@ Provider and backend code is heavily `#[cfg(feature = ...)]`-gated, so a change 
 
 ### Flow 1: indexing (`codegraph index`)
 
+Explicit `--batch-size` wins over `CODEGRAPH_EMBEDDINGS_BATCH_SIZE`, legacy `CODEGRAPH_EMBEDDING_BATCH_SIZE`, TOML `[embedding] batch_size`, then default 64. Environment aliases resolve in `ConfigManager`; explicit positive values are not memory-tuned, and the indexer passes its final row limit to provider engines and the submitted-text cache. Ollama/LM Studio have no extra 256-text cap. Token/byte/provider limits can split inference requests; DB writes use separate bounds (chunk writes default to at most 32 rows). Logs distinguish those limits. The full-feature `index_cli_integration` mock verifies actual request sizes and precedence without live providers.
+
 `bin/codegraph.rs` `handle_index` → `ProjectIndexer::index_project` in `crates/codegraph-mcp/src/indexer.rs`:
 
 1. Collect/prune files and capture immutable, hashed source snapshots with bounded retained bytes and temporary spill files. Fingerprint sources, build/doc inputs and output policy. All entry points (full, single-file, delete and watch) use complete-project reconciliation. `--force` ignores the prior catalog; preparation does not wipe live records.

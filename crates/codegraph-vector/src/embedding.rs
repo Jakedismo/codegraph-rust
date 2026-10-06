@@ -449,13 +449,9 @@ impl EmbeddingGenerator {
         config: &codegraph_core::CodeGraphConfig,
     ) -> futures::future::BoxFuture<'_, Self> {
         Box::pin(async move {
-            // Allow env override for batch size (applies across providers)
-            let mut embedding_config = config.embedding.clone();
-            if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE")
-                && let Ok(parsed) = val.parse::<usize>()
-            {
-                embedding_config.batch_size = parsed.clamp(1, 2048);
-            }
+            // ConfigManager resolves environment defaults; callers may then override
+            // them (e.g. --batch-size). Do not reapply environment values here.
+            let embedding_config = config.embedding.clone();
             let model_name = embedding_config
                 .model
                 .clone()

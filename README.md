@@ -99,6 +99,23 @@ index for LSP; source validation and sidecar requirements are described in the
 
 #### Incremental indexing and inference policies
 
+`--batch-size` sets the maximum number of embedding texts per batch for both local
+and cloud providers. An explicit value wins over `CODEGRAPH_EMBEDDINGS_BATCH_SIZE`,
+its legacy alias `CODEGRAPH_EMBEDDING_BATCH_SIZE`, and `[embedding] batch_size` in
+TOML, in that order; the default is 64. Memory-based tuning does not change explicit
+values, including `--batch-size 100`.
+
+```bash
+codegraph index --languages Rust --index-tier balanced --batch-size 512 .
+```
+
+Token/byte budgets, cache hits and provider API limits can produce smaller actual
+requests. For larger requests, adjust `CODEGRAPH_EMBEDDING_BATCH_TOKENS` (local default
+8192, remote 32768) and `CODEGRAPH_EMBEDDING_BATCH_BYTES` (default 1 MiB) as needed.
+Logs show these inference limits separately from database write batches;
+`CODEGRAPH_CHUNK_DB_BATCH_SIZE` defaults to at most 32 rows and is capped at 512.
+Ollama and LM Studio have no extra fixed 256-text cap.
+
 Full, single-file and watch indexing share complete-project reconciliation. Unchanged
 sources reuse cached AST/analyzer artifacts while the full catalog retains callers
 across edits, renames and deletions. Only changed graph records and file metadata are

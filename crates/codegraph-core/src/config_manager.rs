@@ -614,10 +614,19 @@ impl ConfigManager {
                 config.embedding.dimension = dim;
             }
         }
-        if let Ok(batch) = std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE") {
-            if let Ok(size) = batch.parse() {
-                config.embedding.batch_size = size;
-            }
+        // Resolve batch aliases once, before explicit CLI overrides are applied.
+        if let Some(size) = [
+            "CODEGRAPH_EMBEDDINGS_BATCH_SIZE",
+            "CODEGRAPH_EMBEDDING_BATCH_SIZE",
+        ]
+        .iter()
+        .find_map(|name| {
+            std::env::var(name)
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+                .filter(|size| *size > 0)
+        }) {
+            config.embedding.batch_size = size;
         }
 
         // Jina configuration

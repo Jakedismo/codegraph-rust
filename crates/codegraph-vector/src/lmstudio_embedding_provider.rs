@@ -60,7 +60,7 @@ impl From<&codegraph_core::EmbeddingConfig> for LmStudioEmbeddingConfig {
         );
 
         // Batch size from config (central config already loaded from env)
-        let batch_size = config.batch_size.clamp(1, 256);
+        let batch_size = config.batch_size.max(1);
 
         // Max retries from env var or default
         let max_retries = std::env::var("CODEGRAPH_LMSTUDIO_MAX_RETRIES")
@@ -486,6 +486,15 @@ struct EmbeddingData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_batch_sizes_above_256_are_preserved() {
+        let config = codegraph_core::EmbeddingConfig {
+            batch_size: 4096,
+            ..Default::default()
+        };
+        assert_eq!(LmStudioEmbeddingConfig::from(&config).batch_size, 4096);
+    }
 
     #[test]
     fn test_dimension_inference() {

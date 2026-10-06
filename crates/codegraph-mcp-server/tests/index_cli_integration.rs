@@ -1,5 +1,5 @@
-// ABOUTME: Verifies directory indexing finds nested Rust sources without requiring --recursive.
-// ABOUTME: Exercises shipped CLI traversal flags in isolated embedded stores without live services.
+// ABOUTME: Verifies directory traversal, analyzer failures and embedding batch overrides.
+// ABOUTME: Exercises the shipped CLI in isolated embedded stores with offline mock providers.
 
 use serde_json::Value;
 use std::{
@@ -146,4 +146,115 @@ fn broken_rustup_shim_is_reported_before_parsing_even_for_another_project() {
         "{logs}"
     );
     assert!(!invocation_root.join("stats.json").exists());
+}
+
+#[cfg(all(feature = "embeddings-ollama", feature = "server-http"))]
+#[tokio::test]
+async fn embedding_requests_honor_cli_env_and_config_batch_precedence() {
+    use axum::{
+        Json, Router,
+        routing::{get, post},
+    };
+    use std::sync::{Arc, Mutex};
+
+    let requests = Arc::new(Mutex::new(Vec::<usize>::new()));
+    let handler_requests = requests.clone();
+    let app =
+        Router::new()
+            .route(
+                "/api/tags",
+                get(|| async {
+                    Json(serde_json::json!({"models": [{"name": "mock-batch-model"}]}))
+                }),
+            )
+            .route(
+                "/api/embed",
+                post(move |Json(body): Json<Value>| {
+                    let count = body["input"].as_array().unwrap().len();
+                    handler_requests.lock().unwrap().push(count);
+                    async move {
+                        Json(serde_json::json!({"embeddings": vec![vec![1.0_f32; 384]; count]}))
+                    }
+                }),
+            );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    // Conflicting dotenv/config values must not override explicit CLI values,
+    // including the old magic default (100) and batches above the old provider cap (256).
+    for (cli_size, dotenv, expected) in [
+        (Some(512), "CODEGRAPH_EMBEDDINGS_BATCH_SIZE=64\n", 512),
+        (Some(100), "CODEGRAPH_EMBEDDINGS_BATCH_SIZE=64\n", 100),
+        (None, "CODEGRAPH_EMBEDDINGS_BATCH_SIZE=64\n", 64),
+        (None, "", 96),
+        (None, "", 32),
+    ] {
+        requests.lock().unwrap().clear();
+        let url = url.clone();
+        let output = tokio::task::spawn_blocking(move || {
+            let project = tempfile::tempdir().unwrap();
+            let root = project.path();
+            let config = root.join("providers.toml");
+            std::fs::write(&config, format!(
+                "[embedding]\nprovider = \"ollama\"\nmodel = \"mock-batch-model\"\ndimension = 384\nbatch_size = 32\nollama_url = {url:?}\n"
+            )).unwrap();
+            std::fs::write(root.join(".env"), dotenv).unwrap();
+            std::fs::create_dir(root.join("src")).unwrap();
+            let source: String = (0..520)
+                .map(|index| format!("pub fn fixture_{index:04}() {{}}\n"))
+                .collect();
+            std::fs::write(root.join("src/lib.rs"), source).unwrap();
+            let mut command = offline_index_command(root, &config);
+            command
+                .args(["index", "--languages", "Rust", "--index-tier", "fast"])
+                .env("CODEGRAPH_ANALYZERS", "0")
+                .env("CODEGRAPH_EMBEDDING_POLICY", "sync")
+                .env("CODEGRAPH_EMBEDDING_PROVIDER", "ollama")
+                .env("CODEGRAPH_EMBEDDING_MODEL", "mock-batch-model")
+                .env("CODEGRAPH_EMBEDDING_DIMENSION", "384")
+                .env("CODEGRAPH_OLLAMA_URL", url)
+                .env_remove("CODEGRAPH_EMBEDDINGS_BATCH_SIZE")
+                .env_remove("CODEGRAPH_EMBEDDING_BATCH_SIZE")
+                .env("CODEGRAPH_EMBEDDING_BATCH_TOKENS", "1000000")
+                .env("CODEGRAPH_EMBEDDING_BATCH_BYTES", "8388608")
+                .env("CODEGRAPH_CHUNK_DB_BATCH_SIZE", "32");
+            if expected != 32 {
+                command.env("CODEGRAPH_EMBEDDING_BATCH_SIZE", "96");
+            }
+            if let Some(size) = cli_size {
+                command.args(["--batch-size", &size.to_string()]);
+            }
+            command.arg(".").output().unwrap()
+        }).await.unwrap();
+        let logs = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.status.success(), "{logs}");
+        let sizes = requests.lock().unwrap().clone();
+        assert_eq!(
+            sizes.iter().max().copied(),
+            Some(expected),
+            "requests: {sizes:?}\n{logs}"
+        );
+        assert!(sizes.iter().all(|size| *size > 0 && *size <= expected));
+        assert!(
+            logs.contains(&format!("Embedding batch row limit: {expected}")),
+            "{logs}"
+        );
+        assert!(logs.contains("Chunk DB write row limit: 32"), "{logs}");
+        assert!(
+            logs.contains(&format!("Embedding inference limits: {expected} rows")),
+            "{logs}"
+        );
+        assert!(
+            logs.contains(&format!(
+                "Embedding batch row limit: {expected} | Languages:"
+            )),
+            "{logs}"
+        );
+    }
+    server.abort();
 }

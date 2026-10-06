@@ -5,7 +5,7 @@
 provider = "ollama"
 model = "qwen3-embedding:0.6b"
 dimension = 1024
-batch_size = 32
+batch_size = 32   # max embedding texts/batch; env overrides this, --batch-size overrides env
 normalize_embeddings = true
 cache_enabled = true
 ollama_url = "http://localhost:11434"
@@ -44,7 +44,7 @@ port = 3003
 
 [performance]
 # Global knobs for indexing/embedding
-batch_size = 64           # embedding batch size (overrides via CODEGRAPH_EMBEDDINGS_BATCH_SIZE)
+# Set embedding batch size in [embedding] above, not in this section.
 workers = 4               # caps Rayon threads (leave one core free by default)
 max_concurrent = 4        # concurrent embedding requests
 max_texts_per_request = 256
