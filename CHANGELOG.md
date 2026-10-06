@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source observations, branch isolation, deeper answer selection, synthesis,
   failure handling and CLI tool-use reporting. Live evaluation results remain
   tied to their recorded implementation; this fix has not been live scored.
+- Corrected stale no-tool LATS descriptions in the architecture enum, environment
+  example and installation guide. The refreshed ReAct evaluation retrieved the
+  enum comment and repeated it despite the tool-enabled implementation.
 
 ### 🐛 **Fixed - Jina task configuration and v5 requests**
 
@@ -170,18 +173,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Source review confirms successful hub ranking, correct reported instability
   arithmetic and the executor-wrapper explanation, while preserving remaining
   completeness gaps and the 587.5s public-API response. Original answers remain intact.
-- The [full-tier evaluation](docs/evaluations/full-cli-2026-10-06.md) retains its
-  original 7/8 responses and 300s timeout, plus isolated verification of the prompt
-  and architecture fixes. A complete refreshed full-tier evaluation is pending.
+- Added the [complete refreshed full-tier evaluation and all eight answers](docs/evaluations/full-cli-2026-10-06.md#refreshed-full-run-1629-utc):
+  explicit `gpt-6-luna`, Jina v5 embeddings, 8/8 response checks in 901.8s, 99 tool
+  calls. Prompt coverage, hub ranking and eight displayed instability ratios now
+  work; remaining cache/API omissions, stale LATS evidence and the 546.4s
+  architecture response are recorded. Original 7/8 results and answers remain
+  historical. This ReAct run uses the previous installed binary and does not
+  live-validate the LATS fix.
 
 ### Known issues observed during CLI evaluation
 
 - Refreshed balanced answers omit prompt budgets/builder details, cache insertion
   and lifecycle details, the later agent-to-graph dispatch path and one public API
   method. Valid JSON/`OK` responses still require source review for completeness.
-- Agent latency is not resolved generally: the refreshed public-API case takes
+- Agent latency is not resolved generally: the refreshed balanced public-API case takes
   587.5s, including a 510.6s logged gap between tool calls during an agent/model turn.
   The provider-side cause is unestablished despite all eight commands returning `OK`.
+- Refreshed full answers still omit cache insertion/eviction and two public API
+  methods (`graph_functions`, `clear_cache`). Architecture takes 546.4s, including
+  a 479.6s gap between tool calls; its eight correct instability ratios and successful
+  hub query do not establish that latency or exhaustive answer coverage is resolved.
+- Coupling metrics count distinct neighboring graph nodes; hub degrees and hotspot
+  risk count dependency-edge rows. Dataflow relationships affect both, so these
+  metrics are not call-only consumer counts. The refreshed report documents the
+  distinction and the bounded candidate sets used for hub/risk rankings.
 - Struct/impl coupling can show zero counts despite visible consumers. The corrected
   instability arithmetic does not establish exhaustive graph connectivity coverage.
 - Prose answers use synthesized structured evidence from tool traces; typed-answer

@@ -544,7 +544,8 @@ the historical entry remains a record of that run.
 | `fast` | `gpt-6-luna` (confirmed by the project owner; not captured by the runner) | 2026-10-06 | 8/8 `OK` | Mixed: useful findings, incomplete answers and at least two source-confirmed incorrect answers; no overall accuracy score assigned |
 | `balanced` (original) | `gpt-6-luna` (explicit request model) | 2026-10-06 | 8/8 `OK` | Useful configuration/cache/call-chain answers and public-method list; incorrect direct-caller classification, incomplete hub results and metric caveats; no overall accuracy score assigned |
 | `balanced` (refreshed) | `gpt-6-luna` (explicit request model) | 2026-10-06 | 8/8 `OK` | Hub ranking, ratio arithmetic and wrapper explanation fixed; prompt/cache/call-chain coverage incomplete, one API method omitted; API case takes 587.5 seconds; no overall accuracy score assigned |
-| `full` | `gpt-6-luna` (explicit request model) | 2026-10-06 | 7/8 `OK`, 1 `TIMEOUT` | Source-aligned configuration, cache, call-chain and public-API answers with verified locations; weak substitute for the missing symbol; hub ranking unavailable and instability values unreliable; the tier-aware prompt case timed out twice; no overall accuracy score assigned |
+| `full` (original) | `gpt-6-luna` (explicit request model) | 2026-10-06 | 7/8 `OK`, 1 `TIMEOUT` | Source-aligned configuration, cache, call-chain and public-API answers with verified locations; weak substitute for the missing symbol; hub ranking unavailable and instability values unreliable; the tier-aware prompt case timed out twice; no overall accuracy score assigned |
+| `full` (refreshed) | `gpt-6-luna` (explicit request model) | 2026-10-06 | 8/8 `OK` | Prompt answer, hub ranking and instability arithmetic now work; cache details incomplete, two API methods omitted, stale LATS comment repeated; architecture case takes 546.4 seconds; no overall accuracy score assigned |
 
 **`OK` measures command/response success, not factual correctness.** It means the
 command returned a valid JSON answer without a reported timeout or partial-result
@@ -558,14 +559,14 @@ Source review of the fast-tier answers found:
 - **Call chain (case 5): incorrect active implementation.** The answer selected
   the `#[cfg(not(feature = "ai-enhanced"))]` error stub for `execute_agentic_workflow`
   and concluded the workflow did not reach graph tools. The
-  [AI-enabled implementation](crates/codegraph-mcp-server/src/official_server.rs#L574)
+  [AI-enabled implementation](crates/codegraph-mcp-server/src/official_server.rs#L559)
   creates `GraphToolExecutor` and invokes the Rig agent executor. The answer did not
   distinguish the two conditional implementations.
 - **Public API (case 7): incomplete API and incorrect usage conclusion.** The answer
   described `GraphToolExecutor` as having no direct usage and suggested changes were
-  isolated and low-risk. Its [public methods](crates/codegraph-mcp-tools/src/graph_tool_executor.rs#L73)
+  isolated and low-risk. Its [public methods](crates/codegraph-mcp-tools/src/graph_tool_executor.rs#L130)
   include constructors, `execute`, cache controls and tool metadata accessors; it is
-  used by both the [server workflow](crates/codegraph-mcp-server/src/official_server.rs#L697)
+  used by both the [server workflow](crates/codegraph-mcp-server/src/official_server.rs#L691)
   and the [Rig tool factory](crates/codegraph-mcp-rig/src/tools/factory.rs#L16).
 - **LRU cache (case 3): useful but incomplete.** The answer correctly identified
   tool-result caching by function and parameters, but did not explain the cache-hit,
@@ -601,7 +602,7 @@ Source review of the original explicit-model balanced answers found:
   The answer listed all ten public inherent methods and recognized real consumers.
   However, it called the eight Rig tool adapters *direct* callers of
   `GraphToolExecutor::execute`. They call
-  [`CountingExecutor::execute`](crates/codegraph-mcp-rig/src/tools/counting_executor.rs#L39),
+  [`CountingExecutor::execute`](crates/codegraph-mcp-rig/src/tools/counting_executor.rs#L118),
   which then delegates to `GraphToolExecutor`; those adapters are indirect callers.
 - **Architecture/metrics (cases 6–7): incomplete evidence despite `OK`.** Hub queries
   failed five times across these cases with SurrealDB's `array::concat()`
@@ -611,7 +612,7 @@ Source review of the original explicit-model balanced answers found:
   Ce/(Ca+Ce) ratio. These metrics cannot support a reliable stability conclusion.
 - **Complexity (case 8): useful reported ranking with measurement limits.** The
   answer ranked `reconcile_project` first at complexity 108/risk 1,404. The
-  [query](schema/codegraph_v2.surql#L529) computes risk as complexity × (incoming
+  [query](schema/codegraph_v2.surql#L555) computes risk as complexity × (incoming
   dependency-edge count + 1), after preselecting high-complexity candidates. It is
   a heuristic, not a calibrated failure probability or a guaranteed global risk
   ranking; incoming edge counts also need not equal distinct caller counts.
@@ -646,8 +647,8 @@ are preserved alongside the original run.
   smoke test with source review, not a held-out accuracy benchmark or a controlled
   measurement of tier effects.
 
-The full run `20261006_060847_378162` also selected `gpt-6-luna` explicitly. Seven
-commands returned answers and case 2 (tier-aware prompts) hit the 300-second deadline;
+The original full run `20261006_060847_378162` also selected `gpt-6-luna` explicitly.
+Seven commands returned answers and case 2 (tier-aware prompts) hit the 300-second deadline;
 the run took **648.4 seconds** including that timeout. The stored index reported
 238 files, 34,494 nodes, 104,224 edges and 34,494 chunks, marked complete with
 embedding and semantic stages ready, and includes dataflow, LSP, module and
@@ -658,11 +659,10 @@ are retained separately.
 After this evaluation, the default whole-agent CLI deadline and the shared CLI/HTTP
 test-case deadlines increased from 300 to **600 seconds**. `--timeout-secs` still
 overrides the CLI budget. The original full-tier table entry retains that 300-second
-deadline; a complete full-tier rerun is still pending. The refreshed balanced results
-above use 600 seconds. The recorded stall occurred while awaiting a model response
-after graph calls returned.
+deadline; both complete refreshed runs use 600 seconds. The original recorded stall
+occurred while awaiting a model response after graph calls returned.
 
-Source review of the full-tier answers found:
+Source review of the original full-tier answers found:
 
 - **Configuration, cache, call chain and public API (cases 1, 3, 5, 7): source-aligned,
   with every checked location matching.** The configuration answer inventories the
@@ -674,7 +674,7 @@ Source review of the full-tier answers found:
   the feature-disabled stub. The API answer lists all ten public methods and, unlike
   the original balanced answer, correctly describes the Rig adapters as indirect
   callers
-  through [`CountingExecutor`](crates/codegraph-mcp-rig/src/tools/counting_executor.rs#L39).
+  through [`CountingExecutor`](crates/codegraph-mcp-rig/src/tools/counting_executor.rs#L118).
 - **Tier-aware prompts (case 2): no answer.** The command timed out in the run and in
   a single-case rerun. In both, the agent finished its tool calls within a minute and
   the remaining time was spent waiting for a model response. The cause was not
@@ -687,10 +687,10 @@ Source review of the full-tier answers found:
 - **Architecture (case 6): accurate structure, no hub ranking.** Both hub queries
   failed with the same `array::concat()` 1,048,576-byte limit as in the balanced run,
   and the failure reproduces when the
-  [function](schema/codegraph_v2.surql#L497) is called directly on this index. The
+  [function](schema/codegraph_v2.surql#L513) is called directly on this index. The
   answer discloses the gap and flags that instability is reported as `0.0` for nodes
   with outgoing dependencies. Direct calls for five sampled nodes all returned
-  `0.0`: the [expression](schema/codegraph_v2.surql#L458) divides two integer counts,
+  `0.0`: the expression (now [corrected](schema/codegraph_v2.surql#L470)) divided two integer counts,
   and integer division truncates the ratio.
   Coupling counts are unaffected, but stability conclusions cannot be drawn.
 - **Complexity (case 8): consistent arithmetic, different ranking.** All 20 risk
@@ -707,12 +707,45 @@ the fixes returned `OK` in 79 and 106 seconds, with a hub ranking and non-zero
 instability; the other cases were not re-run. See the
 [follow-up section](docs/evaluations/full-cli-2026-10-06.md#follow-up-causes-found-and-fixed).
 
+The refreshed full run `20261006_162918_871171` explicitly requested `gpt-6-luna`.
+All eight cases returned `OK` in **901.8 seconds**, with **99 tool calls** and
+**172 summed locations**. The catalog records 239 files, 34,998 nodes, 100,107 edges
+and 36,600 chunks, including LSP definitions and dataflow output. It uses the same
+installed binary, Jina v5 embedding/chunk policy and agent settings as refreshed
+balanced. [Full refreshed review and all eight answers](docs/evaluations/full-cli-2026-10-06.md#refreshed-full-run-1629-utc)
+remain alongside the original full run.
+
+- **Verified improvements:** The prompt case returns in 82.9 seconds and now
+  covers prompt composition, builder wiring and the 3/5/6/8 default round budgets.
+  Hub ranking succeeds, and all eight displayed architecture instability ratios
+  match Ce/(Ca+Ce). No graph-tool failures or Jina 422 errors are logged. The
+  absent-symbol answer explicitly refuses to substitute the unrelated hook prompt.
+- **Remaining accuracy/coverage gaps:** Cache insertion/eviction and post-truncation
+  storage remain unestablished. The API list omits `graph_functions` and
+  `clear_cache`. The call chain reaches graph dispatch but repeats a stale enum
+  comment saying LATS cannot use tools; the current implementation does. That
+  comment, environment example and installation guide were corrected after the
+  run; the saved answer is unchanged and the index still contains the stale text.
+- **Metric qualifications:** Coupling deduplicates neighboring graph nodes; hub
+  degrees and hotspot risk count dependency-edge rows. Both include dataflow
+  relationships rather than only calls. All twenty displayed risk calculations
+  and declaration starts check out, but risk is a heuristic over a high-complexity
+  candidate set, not a guaranteed global risk ranking or distinct-caller count.
+- **Remaining latency:** Architecture takes **546.4 seconds**, including a
+  **479.6-second** gap between completed search and the next tool call during an
+  agent/model turn. The provider-side cause is unestablished. The API case returns
+  in 69.4 seconds; latency has shifted between cases, not been resolved generally.
+- **Comparison limits:** Checkout, graph contents and file count still differ,
+  and model reasoning/cache warmth are uncontrolled. Prior evaluation documents
+  were retrieved in cases 1–3, so this is not a held-out accuracy benchmark. This
+  ReAct run uses a binary predating the LATS fix and does not live-validate LATS.
+
 All seven completed original full-tier cases and all eight original balanced cases
 logged typed-answer parse warnings; the server synthesized structured evidence from
 tool traces instead. The runner accepted the resulting JSON responses. The refreshed
-balanced run also uses synthesized highlights for prose answers; the fallback now
-logs at `DEBUG`. Neither those fallbacks nor inner-tool errors are a factual accuracy
-score. The initial balanced diagnostic run `20261006_041408_086869` is retained
+balanced and full runs also use synthesized highlights for prose answers; the
+fallback now logs at `DEBUG`. Neither those fallbacks nor inner-tool errors are a
+factual accuracy score. The initial balanced diagnostic run `20261006_041408_086869` is retained
 separately because it did not explicitly select the intended request model.
 
 The fast baseline is local run `20261006_013512_392882`. Its indexing tier comes from

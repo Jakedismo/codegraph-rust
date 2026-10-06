@@ -430,7 +430,7 @@ CodeGraph's agents run on the Rig framework. Select one with `CODEGRAPH_AGENT_AR
 export CODEGRAPH_AGENT_ARCHITECTURE=react
 ```
 
-**LATS** - Tree search over reasoning steps. It does not call the graph tools:
+**LATS** - Tree search with candidates grounded through the same graph tools as ReAct:
 ```bash
 export CODEGRAPH_AGENT_ARCHITECTURE=lats
 ```
