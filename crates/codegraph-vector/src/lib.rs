@@ -1,6 +1,7 @@
 pub mod embedding;
 pub mod embeddings;
 pub mod error;
+pub mod input_policy;
 pub mod providers;
 pub mod search;
 mod submitted_cache;

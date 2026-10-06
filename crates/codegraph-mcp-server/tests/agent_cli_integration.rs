@@ -309,6 +309,9 @@ async fn successful_command_returns_shared_workflow_json_with_a_local_mock_model
         .route("/api/tags", get(|| async {
             Json(json!({"models": [{"name": "test-embedding-model"}]}))
         }))
+        .route("/api/show", post(|| async {
+            Json(json!({"model_info": {"mock.context_length": 512}, "capabilities": ["embedding"]}))
+        }))
         .route("/api/chat", post(move || {
             calls_for_handler.fetch_add(1, Ordering::SeqCst);
             async {
@@ -350,6 +353,13 @@ async fn successful_command_returns_shared_workflow_json_with_a_local_mock_model
             .env("CODEGRAPH_LLM_MODEL", "test-model")
             .env("CODEGRAPH_EMBEDDING_PROVIDER", "ollama")
             .env("CODEGRAPH_EMBEDDING_MODEL", "test-embedding-model")
+            .env(
+                "CODEGRAPH_TOKENIZER_PATH",
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../codegraph-vector/tokenizers/qwen2.5-coder.json"
+                ),
+            )
             .env("CODEGRAPH_OLLAMA_URL", format!("http://{address}"))
             .env("OLLAMA_API_BASE_URL", format!("http://{address}"))
             .env("CODEGRAPH_SURREALDB_URL", "mem://")

@@ -168,6 +168,10 @@ async fn embedding_requests_honor_cli_env_and_config_batch_precedence() {
                 }),
             )
             .route(
+                "/api/show",
+                post(|| async { Json(serde_json::json!({"model_info": {"mock.context_length": 512}, "capabilities": ["embedding"]})) }),
+            )
+            .route(
                 "/api/embed",
                 post(move |Json(body): Json<Value>| {
                     let count = body["input"].as_array().unwrap().len();
@@ -219,6 +223,7 @@ async fn embedding_requests_honor_cli_env_and_config_batch_precedence() {
                 .env("CODEGRAPH_EMBEDDING_BATCH_TOKENS", "1000000")
                 .env("CODEGRAPH_EMBEDDING_BATCH_BYTES", "8388608")
                 .env("CODEGRAPH_CHUNK_DB_BATCH_SIZE", "32");
+            command.env("CODEGRAPH_TOKENIZER_PATH", concat!(env!("CARGO_MANIFEST_DIR"), "/../codegraph-vector/tokenizers/qwen2.5-coder.json"));
             if expected != 32 {
                 command.env("CODEGRAPH_EMBEDDING_BATCH_SIZE", "96");
             }
@@ -253,6 +258,141 @@ async fn embedding_requests_honor_cli_env_and_config_batch_precedence() {
             logs.contains(&format!(
                 "Embedding batch row limit: {expected} | Languages:"
             )),
+            "{logs}"
+        );
+    }
+    server.abort();
+}
+
+#[cfg(all(feature = "embeddings-ollama", feature = "server-http"))]
+#[tokio::test]
+async fn model_contexts_prefixes_and_strict_truncation_reach_actual_requests() {
+    use axum::{
+        Json, Router,
+        routing::{get, post},
+    };
+    use std::sync::{Arc, Mutex};
+    let requests = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let recorded = requests.clone();
+    let app = Router::new()
+        .route(
+            "/api/tags",
+            get(|| async {
+                Json(serde_json::json!({"models": [
+                    {"name": "qwen3-embedding:0.6b"}, {"name": "nomic-embed-text-v2-moe:latest"}
+                ]}))
+            }),
+        )
+        .route(
+            "/api/show",
+            post(|Json(body): Json<Value>| async move {
+                let qwen = body["model"].as_str().unwrap().contains("qwen");
+                Json(
+                    serde_json::json!({"capabilities": ["embedding"], "model_info": {
+                        "mock.context_length": if qwen {32768} else {512},
+                        "tokenizer.ggml.add_bos_token": false, "tokenizer.ggml.add_eos_token": true
+                    }}),
+                )
+            }),
+        )
+        .route(
+            "/api/ps",
+            get(|| async { Json(serde_json::json!({"models": []})) }),
+        )
+        .route(
+            "/api/embed",
+            post(move |Json(body): Json<Value>| {
+                let count = body["input"].as_array().unwrap().len();
+                let dimension = if body["model"].as_str().unwrap().contains("qwen") {
+                    1024
+                } else {
+                    768
+                };
+                recorded.lock().unwrap().push(body);
+                async move {
+                    Json(serde_json::json!({"embeddings": vec![vec![1.0_f32; dimension]; count]}))
+                }
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    for (model, dimension, serving) in [
+        ("qwen3-embedding:0.6b", 1024, 32768),
+        ("nomic-embed-text-v2-moe:latest", 768, 512),
+        ("qwen3-embedding:0.6b", 1024, 256),
+    ] {
+        requests.lock().unwrap().clear();
+        let url = url.clone();
+        let output = tokio::task::spawn_blocking(move || {
+            let project = tempfile::tempdir().unwrap();
+            let root = project.path();
+            let config = root.join("providers.toml");
+            std::fs::write(&config, format!("[embedding]\nprovider = \"ollama\"\nmodel = {model:?}\ndimension = {dimension}\nollama_url = {url:?}\n")).unwrap();
+            std::fs::write(root.join(".env"), "").unwrap();
+            std::fs::create_dir(root.join("src")).unwrap();
+            let mut source = String::from("pub fn substantial_unit() {\n");
+            for index in 0..180 { source.push_str(&format!("    let value_{index} = \"café 🚀\";\n")); }
+            source.push_str("}\n");
+            std::fs::write(root.join("src/lib.rs"), source).unwrap();
+            offline_index_command(root, &config)
+                .args(["index", "--languages", "Rust", "--index-tier", "fast", "."])
+                .env("CODEGRAPH_ANALYZERS", "0")
+                .env("CODEGRAPH_EMBEDDING_POLICY", "sync")
+                .env("CODEGRAPH_EMBEDDING_PROVIDER", "ollama")
+                .env("CODEGRAPH_EMBEDDING_MODEL", model)
+                .env("CODEGRAPH_EMBEDDING_DIMENSION", dimension.to_string())
+                .env("CODEGRAPH_OLLAMA_URL", url)
+                .env("CODEGRAPH_OLLAMA_NUM_CTX", serving.to_string())
+                .env("CODEGRAPH_TOKENIZER_PATH", concat!(env!("CARGO_MANIFEST_DIR"), "/../codegraph-vector/tokenizers/qwen2.5-coder.json"))
+                .env("CODEGRAPH_CHUNK_OVERLAP_TOKENS", "0")
+                .env("CODEGRAPH_CHUNK_SMART_SPLIT", "0")
+                .env_remove("CODEGRAPH_CHUNK_MAX_TOKENS")
+                .env_remove("CODEGRAPH_MAX_CHUNK_TOKENS")
+                .output().unwrap()
+        }).await.unwrap();
+        let logs = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.status.success(), "{logs}");
+        let bodies = requests.lock().unwrap().clone();
+        assert!(!bodies.is_empty());
+        let tokenizer = tokenizers::Tokenizer::from_file(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../codegraph-vector/tokenizers/qwen2.5-coder.json"
+        ))
+        .unwrap();
+        let inputs: Vec<&str> = bodies
+            .iter()
+            .flat_map(|body| {
+                body["input"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|text| text.as_str().unwrap())
+            })
+            .collect();
+        for body in &bodies {
+            assert_eq!(body["truncate"], false);
+            assert_eq!(body["options"]["num_ctx"], serving);
+        }
+        for input in &inputs {
+            assert!(tokenizer.encode(*input, true).unwrap().len() + 1 <= serving);
+            if model.contains("nomic") {
+                assert!(input.starts_with("search_document: "));
+            }
+        }
+        if serving == 32768 {
+            assert!(
+                inputs
+                    .iter()
+                    .any(|input| tokenizer.encode(*input, false).unwrap().len() > 512)
+            );
+        }
+        assert!(
+            logs.contains(&format!("serving_context={serving}")),
             "{logs}"
         );
     }

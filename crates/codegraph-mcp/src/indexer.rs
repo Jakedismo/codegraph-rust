@@ -456,7 +456,7 @@ impl ProjectIndexer {
                                 target: "codegraph_mcp::indexer",
                                 "CODEGRAPH_EMBEDDING_PROVIDER=local requested but the 'embeddings-local' feature is not enabled; using auto provider"
                             );
-                            let g = EmbeddingGenerator::with_auto_from_env().await;
+                            let g = EmbeddingGenerator::with_auto_from_env().await?;
                             // Set batch_size and max_concurrent for Jina provider if applicable
                             #[cfg(feature = "embeddings-jina")]
                             {
@@ -467,7 +467,7 @@ impl ProjectIndexer {
                         }
                     } else {
                         #[allow(unused_mut)]
-                        let mut g = EmbeddingGenerator::with_config(&global_config).await;
+                        let mut g = EmbeddingGenerator::with_config(&global_config).await?;
                         // Set batch_size and max_concurrent for Jina provider if applicable
                         #[cfg(feature = "embeddings-jina")]
                         {
@@ -702,6 +702,13 @@ impl ProjectIndexer {
             })
             .await??;
             let mut embedding_config = serde_json::to_value(&self.global_config.embedding)?;
+            #[cfg(feature = "embeddings")]
+            if let Some(embedder) = &self.embedder {
+                embedding_config.as_object_mut().unwrap().insert(
+                    "input_policy".into(),
+                    serde_json::json!(embedder.input_identity()?),
+                );
+            }
             embedding_config
                 .as_object_mut()
                 .unwrap()
@@ -720,6 +727,13 @@ impl ProjectIndexer {
                 "CODEGRAPH_TOKENIZER_PATH",
                 "CODEGRAPH_CHUNK_SPLITTER",
                 "CODEGRAPH_CHUNK_MAX_TOKENS",
+                "CODEGRAPH_MAX_CHUNK_TOKENS",
+                "CODEGRAPH_MODEL_MAX_TOKENS",
+                "CODEGRAPH_OLLAMA_NUM_CTX",
+                "CODEGRAPH_TOKENIZER_REPO",
+                "CODEGRAPH_TOKENIZER_REVISION",
+                "CODEGRAPH_EMBEDDING_DOCUMENT_PREFIX",
+                "CODEGRAPH_EMBEDDING_QUERY_PREFIX",
                 "CODEGRAPH_CHUNK_OVERLAP_TOKENS",
                 "CODEGRAPH_CHUNK_SMART_SPLIT",
                 "CODEGRAPH_EMBEDDING_SKIP_CHUNKING",

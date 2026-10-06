@@ -686,8 +686,16 @@ impl CodeGraphMCPServer {
         }
 
         // Create shared EmbeddingGenerator (once for entire server lifecycle)
-        let embedding_generator: Arc<EmbeddingGenerator> =
-            Arc::new(EmbeddingGenerator::with_config(&config).await);
+        let embedding_generator: Arc<EmbeddingGenerator> = Arc::new(
+            EmbeddingGenerator::with_config(&config)
+                .await
+                .map_err(|error| {
+                    rmcp::ErrorData::internal_error(
+                        format!("Embedding input policy initialization failed: {error}"),
+                        None,
+                    )
+                })?,
+        );
         tracing::info!(
             "✅ Shared EmbeddingGenerator initialized (dimension: {}, provider: {})",
             embedding_generator.dimension(),

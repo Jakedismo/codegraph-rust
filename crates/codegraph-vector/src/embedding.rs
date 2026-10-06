@@ -23,6 +23,7 @@ pub struct EmbeddingGenerator {
     tokenizer: Arc<Tokenizer>,
     submitted_cache: Option<crate::submitted_cache::SubmittedCache>,
     chunk_cache_dir: Option<PathBuf>,
+    input_policy: Option<crate::input_policy::InputPolicy>,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +50,39 @@ impl Default for EmbeddingGenerator {
 }
 
 impl EmbeddingGenerator {
+    async fn initialize_input_policy(&mut self) -> Result<()> {
+        #[cfg(feature = "ollama")]
+        if let Some(provider) = &self.ollama_provider {
+            let policy = provider.input_policy().await?.clone();
+            self.tokenizer = policy.tokenizer.clone();
+            self.model_config.max_tokens = policy.context_tokens;
+            self.input_policy = Some(policy);
+        }
+        for key in [
+            "CODEGRAPH_CHUNK_MAX_TOKENS",
+            "CODEGRAPH_MAX_CHUNK_TOKENS",
+            "CODEGRAPH_OLLAMA_NUM_CTX",
+        ] {
+            crate::input_policy::env_positive(key)?;
+        }
+        Ok(())
+    }
+
+    pub fn input_identity(&self) -> Result<String> {
+        if let Some(policy) = &self.input_policy {
+            return Ok(policy.identity.clone());
+        }
+        codegraph_core::artifact_cache::fingerprint(&(
+            "input-policy-v1",
+            &self.model_config.model_name,
+            self.model_config.max_tokens,
+            self.tokenizer
+                .to_string(false)
+                .map_err(|e| CodeGraphError::Vector(e.to_string()))?,
+        ))
+        .map_err(|e| CodeGraphError::Vector(e.to_string()))
+    }
+
     pub fn new(config: ModelConfig) -> Self {
         let tokenizer_path = PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -74,6 +108,7 @@ impl EmbeddingGenerator {
             tokenizer: Arc::new(tokenizer),
             submitted_cache: None,
             chunk_cache_dir: None,
+            input_policy: None,
         }
     }
 
@@ -108,7 +143,15 @@ impl EmbeddingGenerator {
     }
 
     fn chunker_config(&self) -> ChunkerConfig {
-        let config = self.base_chunker_config();
+        let mut config = self.base_chunker_config();
+        if let Some(policy) = &self.input_policy {
+            let policy = policy.clone();
+            config.token_counter = Some((
+                policy.identity.clone(),
+                Arc::new(move |text| policy.document_tokens(text)),
+            ));
+            return config;
+        }
         #[cfg(feature = "openai")]
         if self.model_config.model_name.starts_with("text-embedding-")
             && let Ok(bpe) = tiktoken_rs::bpe_for_model(&self.model_config.model_name)
@@ -130,6 +173,7 @@ impl EmbeddingGenerator {
             .unwrap_or(false);
 
         let max_tokens_env = std::env::var("CODEGRAPH_CHUNK_MAX_TOKENS")
+            .or_else(|_| std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS"))
             .ok()
             .and_then(|v| v.parse::<usize>().ok());
         let max_tokens = max_tokens_env
@@ -225,25 +269,9 @@ impl EmbeddingGenerator {
 
     /// Construct an EmbeddingGenerator that optionally wraps the advanced engine based on env.
     /// If CODEGRAPH_EMBEDDING_PROVIDER=local, tries to initialize a local-first engine.
-    pub async fn with_auto_from_env() -> Self {
-        #[cfg(any(
-            feature = "local-embeddings",
-            feature = "openai",
-            feature = "onnx",
-            feature = "ollama",
-            feature = "jina",
-            feature = "lmstudio"
-        ))]
+    pub async fn with_auto_from_env() -> Result<Self> {
+        #[allow(unused_mut)]
         let mut base = Self::new(ModelConfig::default());
-        #[cfg(not(any(
-            feature = "local-embeddings",
-            feature = "openai",
-            feature = "onnx",
-            feature = "ollama",
-            feature = "jina",
-            feature = "lmstudio"
-        )))]
-        let base = Self::new(ModelConfig::default());
         let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
             .unwrap_or_default()
             .to_lowercase();
@@ -440,14 +468,15 @@ impl EmbeddingGenerator {
                 );
             }
         }
-        base
+        base.initialize_input_policy().await?;
+        Ok(base)
     }
 
     /// Construct an EmbeddingGenerator from a CodeGraphConfig
     /// This enables TOML configuration file support in addition to environment variables
     pub fn with_config(
         config: &codegraph_core::CodeGraphConfig,
-    ) -> futures::future::BoxFuture<'_, Self> {
+    ) -> futures::future::BoxFuture<'_, Result<Self>> {
         Box::pin(async move {
             // ConfigManager resolves environment defaults; callers may then override
             // them (e.g. --batch-size). Do not reapply environment values here.
@@ -624,7 +653,8 @@ impl EmbeddingGenerator {
             }
             // Other unsupported providers fail the indexing startup guard.
 
-            base
+            base.initialize_input_policy().await?;
+            Ok(base)
         })
     }
 
@@ -765,7 +795,9 @@ impl EmbeddingGenerator {
         provider: &str,
         rows: usize,
     ) -> Result<()> {
-        if let Some(path) = std::env::var_os("CODEGRAPH_TOKENIZER_PATH") {
+        if self.input_policy.is_none()
+            && let Some(path) = std::env::var_os("CODEGRAPH_TOKENIZER_PATH")
+        {
             self.tokenizer =
                 Arc::new(Tokenizer::from_file(path).map_err(|e| {
                     CodeGraphError::Vector(format!("Invalid provider tokenizer: {e}"))
@@ -778,8 +810,9 @@ impl EmbeddingGenerator {
         tokenizer.with_padding(None);
         self.tokenizer = Arc::new(tokenizer);
         let namespace = codegraph_core::artifact_cache::fingerprint(&(
-            "prepared-v2",
+            "prepared-v3",
             identity,
+            self.input_identity()?,
             dimension,
             self.tokenizer
                 .to_string(false)
@@ -810,11 +843,24 @@ impl EmbeddingGenerator {
     }
 
     pub async fn embed_texts_batched(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        let prepared;
+        let texts = if let Some(policy) = &self.input_policy {
+            prepared = texts
+                .iter()
+                .map(|text| policy.prepare(text, false))
+                .collect::<Result<Vec<_>>>()?;
+            prepared.as_slice()
+        } else {
+            texts
+        };
         if let Some(cache) = &self.submitted_cache {
             cache
                 .embed(
                     texts,
                     |text| {
+                        if let Some(policy) = &self.input_policy {
+                            return policy.tokens(text).unwrap_or(usize::MAX);
+                        }
                         #[cfg(feature = "openai")]
                         if self.model_config.model_name.starts_with("text-embedding-")
                             && let Ok(bpe) =
@@ -823,7 +869,7 @@ impl EmbeddingGenerator {
                             return bpe.encode_ordinary(text).len();
                         }
                         self.tokenizer
-                            .encode(text, false)
+                            .encode(text, true)
                             .map_or(text.len(), |tokens| tokens.len())
                     },
                     |batch| Box::pin(async move { self.embed_prepared_uncached(&batch).await }),
@@ -850,7 +896,7 @@ impl EmbeddingGenerator {
         #[cfg(feature = "ollama")]
         if let Some(provider) = &self.ollama_provider {
             return provider
-                .generate_embeddings_for_texts(texts, provider.max_batch_size())
+                .generate_prepared_embeddings(texts, provider.max_batch_size())
                 .await;
         }
 

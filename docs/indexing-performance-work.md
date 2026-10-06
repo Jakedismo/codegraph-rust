@@ -95,6 +95,31 @@ blocking-job scheduling; the edge phase includes record construction and dedupli
 Subphases overlap their parent total and must not be added to that total again. Verbose
 logs report scoring workers, comparison count, cached norm count and elapsed time.
 
+Ollama input preparation resolves `/api/show` model context, Modelfile `num_ctx`
+and (when no explicit override is supplied) `/api/ps` serving context. An explicit
+`CODEGRAPH_OLLAMA_NUM_CTX` selects the request context, bounded by the model maximum.
+Every `/api/embed` request supplies that resolved context and `truncate=false`.
+Context overflow, invalid tokenization or invalid vectors fail the run; input text is
+never silently dropped. Availability requires the selected model and tag.
+
+Recognized Qwen3 embedding and Nomic embedding models load their publisher's
+`tokenizer.json` through the tokenizer cache, downloading only that resource when
+absent. `CODEGRAPH_TOKENIZER_PATH` selects an offline/custom tokenizer;
+`CODEGRAPH_TOKENIZER_REPO` and `CODEGRAPH_TOKENIZER_REVISION` select a different
+publisher resource. Unknown models require an explicit tokenizer. Missing context
+metadata requires `CODEGRAPH_MODEL_MAX_TOKENS`, which can also lower an advertised
+limit. Tokenizer padding/truncation are disabled during counting.
+
+Complete input counts include HF postprocessing, additional GGUF BOS/EOS tokens and
+retrieval prefixes. Nomic text models use `search_document: ` and `search_query: `;
+Qwen3 queries use an instruction while documents remain unprefixed. Custom models
+can set `CODEGRAPH_EMBEDDING_DOCUMENT_PREFIX` and `CODEGRAPH_EMBEDDING_QUERY_PREFIX`.
+The resolved context, tokenizer contents/revision, model metadata/digest and task
+prefixes participate in cache/reconciliation identity. Reindex after upgrading to
+replace embeddings generated with the previous input policy. Offline CLI mocks
+verify 32K/512-token models, a reduced serving context, task prefixes, strict
+truncation and preserved batch-size precedence; they do not measure model quality.
+
 `CODEGRAPH_AST_CACHE_BYTES` bounds retained AST artifacts (default 2 GiB), with eviction
 at a run boundary. Entries larger than 64 MiB are recomputed rather than cached.
 

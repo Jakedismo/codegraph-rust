@@ -89,5 +89,6 @@ dotenv = "0.15.0"
 nix = { version = "0.31.3", features = ["process", "signal"] }
 
 [dev-dependencies]
+tokenizers = { workspace = true }
 serial_test = "4.0.1"
 tempfile = { workspace = true }
