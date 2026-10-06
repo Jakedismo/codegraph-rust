@@ -91,9 +91,41 @@ pub struct LspClient {
     tx: mpsc::Sender<LspRequest>,
     pending_requests: Arc<DashMap<u64, oneshot::Sender<Result<JsonValue>>>>,
     next_id: Arc<AtomicU64>,
+    requests: Arc<tokio::sync::Semaphore>,
+    documents: Arc<DashMap<String, (String, i64)>>,
+    _tasks: Arc<SessionTasks>,
+}
+
+struct SessionTasks(Vec<tokio::task::AbortHandle>);
+impl Drop for SessionTasks {
+    fn drop(&mut self) {
+        for task in &self.0 {
+            task.abort();
+        }
+    }
+}
+#[derive(Default)]
+pub struct LspPool {
+    clients: tokio::sync::Mutex<std::collections::BTreeMap<String, LspClient>>,
+}
+impl LspPool {
+    async fn client(&self, command: &Path, args: &[&str], root: &str) -> Result<LspClient> {
+        let key = codegraph_core::artifact_cache::fingerprint(&(command, args, root))?;
+        let mut clients = self.clients.lock().await;
+        if let Some(client) = clients.get(&key).filter(|client| !client.tx.is_closed()) {
+            return Ok(client.clone());
+        }
+        let client = LspClient::start(command, args, root).await?;
+        clients.insert(key, client.clone());
+        Ok(client)
+    }
+    pub async fn clear(&self) {
+        self.clients.lock().await.clear();
+    }
 }
 
 enum LspRequest {
+    ServerResponse(JsonValue),
     Request {
         id: u64,
         method: String,
@@ -137,10 +169,11 @@ impl LspClient {
         let pending_requests_read = pending_requests.clone();
 
         // Writer task
-        tokio::spawn(async move {
+        let writer = tokio::spawn(async move {
             let _child_guard = child; // Keep child alive as long as this task runs
             while let Some(msg) = rx.recv().await {
                 let json = match msg {
+                    LspRequest::ServerResponse(json) => json,
                     LspRequest::Request { id, method, params } => {
                         serde_json::json!({
                             "jsonrpc": "2.0",
@@ -172,7 +205,9 @@ impl LspClient {
         });
 
         // Reader task
-        tokio::spawn(async move {
+        let response_tx = tx.clone();
+        let server_root = root_uri.to_owned();
+        let reader = tokio::spawn(async move {
             let mut reader = BufReader::new(stdout);
             let mut content_length_buf = String::new();
 
@@ -215,15 +250,39 @@ impl LspClient {
                     continue;
                 };
 
-                // Handle response
-                if let Some(id) = json.get("id").and_then(|id| id.as_u64()) {
-                    if let Some((_, tx)) = pending_requests_read.remove(&id) {
-                        if let Some(error) = json.get("error") {
-                            let _ = tx.send(Err(anyhow!("LSP error: {}", error)));
-                        } else {
-                            let result = json.get("result").cloned().unwrap_or(JsonValue::Null);
-                            let _ = tx.send(Ok(result));
+                if let (Some(id), Some(method)) =
+                    (json.get("id"), json.get("method").and_then(|v| v.as_str()))
+                {
+                    let result = match method {
+                        "workspace/configuration" => serde_json::json!(
+                            json["params"]["items"]
+                                .as_array()
+                                .map_or(vec![], |items| vec![JsonValue::Null; items.len()])
+                        ),
+                        "workspace/workspaceFolders" => {
+                            serde_json::json!([{"uri": server_root, "name": "project"}])
                         }
+                        "workspace/applyEdit" => serde_json::json!({"applied": false}),
+                        "client/registerCapability"
+                        | "client/unregisterCapability"
+                        | "window/workDoneProgress/create" => JsonValue::Null,
+                        _ => {
+                            let _ = response_tx.send(LspRequest::ServerResponse(serde_json::json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": "Unsupported client request"}}))).await;
+                            continue;
+                        }
+                    };
+                    let _ = response_tx
+                        .send(LspRequest::ServerResponse(
+                            serde_json::json!({"jsonrpc": "2.0", "id": id, "result": result}),
+                        ))
+                        .await;
+                } else if let Some(id) = json.get("id").and_then(|id| id.as_u64()) {
+                    if let Some((_, tx)) = pending_requests_read.remove(&id) {
+                        let result = json.get("error").map_or_else(
+                            || Ok(json.get("result").cloned().unwrap_or(JsonValue::Null)),
+                            |error| Err(anyhow!("LSP error: {error}")),
+                        );
+                        let _ = tx.send(result);
                     }
                 }
                 // We ignore notifications from server for now
@@ -231,7 +290,7 @@ impl LspClient {
         });
 
         // Stderr logger
-        tokio::spawn(async move {
+        let stderr_task = tokio::spawn(async move {
             let mut reader = BufReader::new(stderr);
             let mut line = String::new();
             while let Ok(n) = reader.read_line(&mut line).await {
@@ -247,6 +306,19 @@ impl LspClient {
             tx,
             pending_requests,
             next_id: Arc::new(AtomicU64::new(1)),
+            requests: Arc::new(tokio::sync::Semaphore::new(
+                std::env::var("CODEGRAPH_LSP_REQUESTS")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(32)
+                    .clamp(1, 128),
+            )),
+            documents: Arc::new(DashMap::new()),
+            _tasks: Arc::new(SessionTasks(vec![
+                writer.abort_handle(),
+                reader.abort_handle(),
+                stderr_task.abort_handle(),
+            ])),
         };
 
         // Initialize
@@ -271,10 +343,24 @@ impl LspClient {
     }
 
     pub async fn request(&self, method: &str, params: JsonValue) -> Result<JsonValue> {
+        let _permit = self.requests.acquire().await?;
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
 
         self.pending_requests.insert(id, tx);
+        struct PendingGuard {
+            map: Arc<DashMap<u64, oneshot::Sender<Result<JsonValue>>>>,
+            id: u64,
+        }
+        impl Drop for PendingGuard {
+            fn drop(&mut self) {
+                self.map.remove(&self.id);
+            }
+        }
+        let _pending_guard = PendingGuard {
+            map: self.pending_requests.clone(),
+            id,
+        };
 
         self.tx
             .send(LspRequest::Request {
@@ -325,6 +411,8 @@ pub fn enrich_nodes_and_edges_with_lsp(
 
     rt.block_on(async {
         enrich_async(
+            &LspPool::default(),
+            None,
             server_path,
             server_args,
             language_id,
@@ -339,7 +427,9 @@ pub fn enrich_nodes_and_edges_with_lsp(
     })
 }
 
-async fn enrich_async(
+pub async fn enrich_async(
+    pool: &LspPool,
+    sources: Option<&codegraph_parser::SourceSnapshots>,
     server_path: &Path,
     server_args: &[&str],
     language_id: &str,
@@ -356,12 +446,35 @@ async fn enrich_async(
         .map_err(|_| anyhow::anyhow!("failed to create file URI"))?
         .to_string();
 
-    let client = LspClient::start(server_path, server_args, &root_uri).await?;
+    let client = pool.client(server_path, server_args, &root_uri).await?;
 
+    if let Some(sources) = sources {
+        let current: std::collections::HashSet<_> = sources
+            .iter()
+            .map(|source| absolute_file_path(&project_root, &source.path))
+            .collect();
+        let deleted: Vec<_> = client
+            .documents
+            .iter()
+            .filter_map(|entry| {
+                let path = Url::parse(entry.key()).ok()?.to_file_path().ok()?;
+                (!current.contains(&path)).then(|| entry.key().clone())
+            })
+            .collect();
+        for uri in deleted {
+            client
+                .notify(
+                    "textDocument/didClose",
+                    serde_json::json!({"textDocument": {"uri": uri}}),
+                )
+                .await?;
+            client.documents.remove(&uri);
+        }
+    }
     // Build lookup maps (same as before)
     let mut nodes_by_file_line_name: std::collections::HashMap<(String, u32, String), usize> =
         std::collections::HashMap::new();
-    let mut nodes_by_file_line: std::collections::HashMap<(String, u32), usize> =
+    let mut nodes_by_file_line: std::collections::HashMap<(String, u32), Vec<usize>> =
         std::collections::HashMap::new();
     let mut files_with_nodes: std::collections::HashSet<String> = std::collections::HashSet::new();
 
@@ -372,7 +485,8 @@ async fn enrich_async(
             nodes_by_file_line_name.insert((key.clone(), line0, node.name.to_string()), idx);
             nodes_by_file_line
                 .entry((key.clone(), line0))
-                .or_insert(idx);
+                .or_default()
+                .push(idx);
             files_with_nodes.insert(key);
         }
     }
@@ -425,37 +539,35 @@ async fn enrich_async(
         .map(|file_path| {
             let client = client.clone();
             let project_root = project_root.clone();
-            let language_id = language_id.to_string();
+            let language_id = match file_path.extension().and_then(|ext| ext.to_str()) {
+                Some("js" | "mjs" | "cjs") => "javascript", Some("jsx") => "javascriptreact", Some("tsx") => "typescriptreact", _ => language_id,
+            }.to_string();
             let file_edge_spans = file_edge_spans.clone();
 
             async move {
                 let abs_path = absolute_file_path(&project_root, &file_path);
-                let Ok(content) = tokio::fs::read_to_string(&abs_path).await else {
-                    return Ok(None);
+                let content = match sources.and_then(|sources| sources.get(&abs_path).or_else(|| sources.get(&file_path))) {
+                    Some(source) => source.contents_async().await?,
+                    None => std::sync::Arc::<str>::from(tokio::fs::read_to_string(&abs_path).await?),
                 };
                 let file_keys = normalized_file_keys(&project_root, &file_path);
 
-                let Ok(uri) = Url::from_file_path(&abs_path) else {
-                    return Ok(None);
-                };
+                let uri = Url::from_file_path(&abs_path).map_err(|_| anyhow!("Invalid source URI: {}", abs_path.display()))?;
                 let uri_str = uri.to_string();
 
                 let pos_index = LspPositionIndex::new(&content);
 
-                // Open
-                client
-                    .notify(
-                        "textDocument/didOpen",
-                        serde_json::json!({
-                            "textDocument": {
-                                "uri": uri_str,
-                                "languageId": language_id,
-                                "version": 1,
-                                "text": content
-                            }
-                        }),
-                    )
-                    .await?;
+                let source_hash = codegraph_core::artifact_cache::fingerprint(&content.as_ref())?;
+                let previous = client.documents.get(&uri_str).map(|entry| entry.clone());
+                if let Some((hash, version)) = previous {
+                    if hash != source_hash {
+                        client.notify("textDocument/didChange", serde_json::json!({"textDocument": {"uri": uri_str, "version": version + 1}, "contentChanges": [{"text": content.as_ref()}]})).await?;
+                        client.documents.insert(uri_str.clone(), (source_hash, version + 1));
+                    }
+                } else {
+                    client.notify("textDocument/didOpen", serde_json::json!({"textDocument": {"uri": uri_str, "languageId": language_id, "version": 1, "text": content.as_ref()}})).await?;
+                    client.documents.insert(uri_str.clone(), (source_hash, 1));
+                }
 
                 // Symbols
                 let symbols = client
@@ -468,37 +580,21 @@ async fn enrich_async(
                 // Definitions
                 let mut def_results = Vec::new();
                 if resolve_definitions && !file_keys.is_empty() {
+                    let mut positions = std::collections::BTreeMap::<(u32,u32), Vec<usize>>::new();
                     let mut seen_edges = std::collections::HashSet::new();
-                    for key in &file_keys {
-                        if let Some(spans) = file_edge_spans.get(key) {
-                            for &(edge_idx, byte_offset) in spans {
-                                if !seen_edges.insert(edge_idx) {
-                                    continue;
-                                }
-                                let pos = pos_index.position_for_byte_offset(byte_offset);
-                                let def_response = client.request(
-                                    "textDocument/definition",
-                                    serde_json::json!({
-                                        "textDocument": { "uri": uri_str },
-                                        "position": { "line": pos.line, "character": pos.character }
-                                    })
-                                ).await;
-
-                                if let Ok(def) = def_response {
-                                    def_results.push((edge_idx, def));
-                                }
-                            }
-                        }
-                    }
+                    for key in &file_keys { if let Some(spans) = file_edge_spans.get(key) {
+                        for &(edge_idx, byte_offset) in spans { if seen_edges.insert(edge_idx) {
+                            let pos = pos_index.position_for_byte_offset(byte_offset);
+                            positions.entry((pos.line, pos.character)).or_default().push(edge_idx);
+                        } }
+                    } }
+                    let mut definitions = stream::iter(positions.into_iter().map(|((line, character), indices)| {
+                        let client = client.clone(); let uri = uri_str.clone();
+                        async move { let definition = client.request("textDocument/definition", serde_json::json!({"textDocument": {"uri": uri}, "position": {"line": line, "character": character}})).await?;
+                            Ok::<_,anyhow::Error>((indices, definition)) }
+                    })).buffer_unordered(32);
+                    while let Some(result) = definitions.next().await { let (indices, definition) = result?; for index in indices { def_results.push((index, definition.clone())); } }
                 }
-
-                // Close (fire and forget)
-                let _ = client
-                    .notify(
-                        "textDocument/didClose",
-                        serde_json::json!({ "textDocument": { "uri": uri_str } }),
-                    )
-                    .await;
 
                 Ok::<_, anyhow::Error>(Some((file_keys, symbols, def_results)))
             }
@@ -511,7 +607,7 @@ async fn enrich_async(
 
     // Process results as they come in and mutate state
     while let Some(res) = results.next().await {
-        if let Ok(Some((file_keys, symbols, def_results))) = res {
+        if let Some((file_keys, symbols, def_results)) = res? {
             // 1. Process Symbols
             for sym in collect_document_symbols(&symbols, name_joiner) {
                 let mut node_idx: Option<usize> = None;
@@ -539,19 +635,53 @@ async fn enrich_async(
 
             // 2. Process Definitions
             for (edge_idx, def) in def_results {
-                let Some((target_file, target_line0)) = extract_first_definition_location(&def)
+                let Some((target_file, target_line0, target_column)) =
+                    extract_first_definition_location(&def)
                 else {
                     continue;
                 };
 
-                let target_idx = nodes_by_file_line
+                let candidates = nodes_by_file_line
                     .get(&(target_file.clone(), target_line0))
-                    .copied()
                     .or_else(|| {
-                        let rel_target = Path::new(&target_file);
-                        let rel_key = relative_file_key(&project_root, rel_target)?;
-                        nodes_by_file_line.get(&(rel_key, target_line0)).copied()
+                        let relative = relative_file_key(&project_root, Path::new(&target_file))?;
+                        nodes_by_file_line.get(&(relative, target_line0))
                     });
+                let target_idx = candidates.and_then(|indices| {
+                    let mut ranked: Vec<_> = indices
+                        .iter()
+                        .copied()
+                        .filter(|index| {
+                            let node = &nodes[*index];
+                            let start = node.location.column;
+                            let end = node.location.end_column.unwrap_or(u32::MAX);
+                            start <= target_column
+                                && (node.location.end_line != Some(node.location.line)
+                                    || target_column <= end)
+                        })
+                        .collect();
+                    ranked.sort_by_key(|index| {
+                        nodes[*index].span.as_ref().map_or(u32::MAX, |span| {
+                            span.end_byte.saturating_sub(span.start_byte)
+                        })
+                    });
+                    match ranked.as_slice() {
+                        [index] => Some(*index),
+                        [first, second, ..]
+                            if nodes[*first]
+                                .span
+                                .as_ref()
+                                .map(|span| span.end_byte - span.start_byte)
+                                != nodes[*second]
+                                    .span
+                                    .as_ref()
+                                    .map(|span| span.end_byte - span.start_byte) =>
+                        {
+                            Some(*first)
+                        }
+                        _ => None,
+                    }
+                });
 
                 if let Some(target_idx) = target_idx {
                     let target = &nodes[target_idx];
@@ -564,6 +694,8 @@ async fn enrich_async(
 
                     let edge = &mut edges[edge_idx];
                     edge.to = target_name;
+                    edge.metadata
+                        .insert("target_node_id".into(), target.id.to_string());
                     edge.metadata
                         .insert("analyzer".to_string(), "lsp_definition".to_string());
                     edge.metadata
@@ -590,7 +722,7 @@ fn absolute_file_path(project_root: &Path, file_path: &Path) -> PathBuf {
     } else {
         project_root.join(file_path)
     };
-    normalize_path(&combined)
+    std::fs::canonicalize(&combined).unwrap_or_else(|_| normalize_path(&combined))
 }
 
 fn relative_file_key(project_root: &Path, file_path: &Path) -> Option<String> {
@@ -614,7 +746,7 @@ fn normalize_path(path: &Path) -> PathBuf {
     out
 }
 
-fn extract_first_definition_location(def: &JsonValue) -> Option<(String, u32)> {
+fn extract_first_definition_location(def: &JsonValue) -> Option<(String, u32, u32)> {
     let loc = if let Some(arr) = def.as_array() {
         arr.first()?
     } else {
@@ -625,13 +757,17 @@ fn extract_first_definition_location(def: &JsonValue) -> Option<(String, u32)> {
         .get("uri")
         .or_else(|| loc.get("targetUri"))
         .and_then(|v| v.as_str())?;
-    let range = loc.get("range").or_else(|| loc.get("targetRange"))?;
+    let range = loc
+        .get("targetSelectionRange")
+        .or_else(|| loc.get("range"))
+        .or_else(|| loc.get("targetRange"))?;
     let start = range.get("start")?;
     let line = start.get("line")?.as_u64()? as u32;
 
     let url = Url::parse(uri).ok()?;
     let path = url.to_file_path().ok()?;
-    Some((path.to_string_lossy().to_string(), line))
+    let column = start.get("character")?.as_u64()? as u32;
+    Some((path.to_string_lossy().to_string(), line, column))
 }
 
 pub fn byte_offset_to_utf16_position(text: &str, byte_offset: u32) -> LspPosition {
@@ -703,7 +839,7 @@ impl<'a> LspPositionIndex<'a> {
 
 fn normalized_file_keys(project_root: &Path, file_path: &Path) -> Vec<String> {
     let mut keys = Vec::new();
-    let normalized = normalize_path(file_path);
+    let normalized = absolute_file_path(project_root, file_path);
     let normalized_str = normalized.to_string_lossy().to_string();
     keys.push(normalized_str.clone());
 
@@ -786,6 +922,133 @@ pub fn decode_one_lsp_message(buffer: &[u8]) -> Result<Option<(String, usize)>> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn warm_server_answers_client_requests_and_deduplicates_definition_positions() {
+        use codegraph_core::{EdgeType, Language, Location, NodeType, Span};
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("server.py");
+        std::fs::write(&script, r#"
+import sys,json
+def send(value):
+    body=json.dumps(value).encode()
+    sys.stdout.buffer.write(('Content-Length: %d\r\n\r\n'%len(body)).encode()+body)
+    sys.stdout.buffer.flush()
+counts={'definitions':0,'opens':0,'changes':0}
+parallel=[]
+while True:
+    line=sys.stdin.buffer.readline()
+    if not line: break
+    length=int(line.decode().split(':')[1]); sys.stdin.buffer.readline()
+    msg=json.loads(sys.stdin.buffer.read(length)); method=msg.get('method')
+    if method=='initialize':
+        initialize=msg['id']; root=msg['params']['rootUri']
+        send({'jsonrpc':'2.0','id':'configuration','method':'workspace/configuration','params':{'items':[{}]}})
+    elif msg.get('id')=='configuration':
+        assert msg['result']==[None]
+        send({'jsonrpc':'2.0','id':initialize,'result':{'capabilities':{}}})
+    elif method=='textDocument/didOpen': counts['opens']+=1
+    elif method=='textDocument/didChange': counts['changes']+=1
+    elif method=='textDocument/documentSymbol': send({'jsonrpc':'2.0','id':msg['id'],'result':[]})
+    elif method=='textDocument/definition':
+        counts['definitions']+=1
+        send({'jsonrpc':'2.0','id':msg['id'],'result':{'uri':root.rstrip('/')+'/target.rs','range':{'start':{'line':0,'character':3},'end':{'line':0,'character':9}}}})
+    elif method=='test/counts': send({'jsonrpc':'2.0','id':msg['id'],'result':counts})
+    elif method=='test/parallel':
+        parallel.append(msg['id'])
+        if len(parallel)==2:
+            for id in parallel: send({'jsonrpc':'2.0','id':id,'result':True})
+            parallel=[]
+"#).unwrap();
+        let caller = dir.path().join("caller.rs");
+        let target = dir.path().join("target.rs");
+        std::fs::write(&caller, "fn caller() { target(); }").unwrap();
+        std::fs::write(&target, "fn target() {}").unwrap();
+        let files = vec![caller.clone(), target.clone()];
+        let make_node = |name: &str, path: &Path| {
+            CodeNode::new(
+                name.to_owned(),
+                Some(NodeType::Function),
+                Some(Language::Rust),
+                Location {
+                    file_path: path.to_string_lossy().into_owned(),
+                    line: 1,
+                    column: 0,
+                    end_line: Some(1),
+                    end_column: Some(30),
+                },
+            )
+            .with_deterministic_id("project")
+        };
+        let mut nodes = vec![make_node("caller", &caller), make_node("target", &target)];
+        let mut edges = vec![
+            EdgeRelationship {
+                from: nodes[0].id,
+                to: "target".into(),
+                edge_type: EdgeType::Calls,
+                metadata: Default::default(),
+                span: Some(Span {
+                    start_byte: 14,
+                    end_byte: 20
+                })
+            };
+            2
+        ];
+        let sources = codegraph_parser::SourceSnapshots::capture(
+            &files
+                .iter()
+                .map(|path| (path.clone(), std::fs::metadata(path).unwrap().len()))
+                .collect::<Vec<_>>(),
+            1024 * 1024,
+            2,
+        )
+        .await
+        .unwrap();
+        let pool = LspPool::default();
+        let args = ["-u", script.to_str().unwrap()];
+        for _ in 0..2 {
+            enrich_async(
+                &pool,
+                Some(&sources),
+                Path::new("python3"),
+                &args,
+                "rust",
+                "::",
+                true,
+                dir.path(),
+                &files,
+                &mut nodes,
+                &mut edges,
+            )
+            .await
+            .unwrap();
+        }
+        assert!(
+            edges
+                .iter()
+                .all(|edge| edge.metadata["target_node_id"] == nodes[1].id.to_string())
+        );
+        let uri = Url::from_directory_path(std::fs::canonicalize(dir.path()).unwrap())
+            .unwrap()
+            .to_string();
+        let client = pool
+            .client(Path::new("python3"), &args, &uri)
+            .await
+            .unwrap();
+        let counts = client
+            .request("test/counts", JsonValue::Null)
+            .await
+            .unwrap();
+        assert_eq!(counts["definitions"], 2);
+        assert_eq!(counts["opens"], 2);
+        let (a, b) = tokio::join!(
+            client.request("test/parallel", JsonValue::Null),
+            client.request("test/parallel", JsonValue::Null)
+        );
+        assert_eq!(a.unwrap(), true);
+        assert_eq!(b.unwrap(), true);
+        pool.clear().await;
+    }
 
     #[test]
     fn lsp_message_round_trips_through_framing() {

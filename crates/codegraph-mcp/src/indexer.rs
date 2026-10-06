@@ -233,6 +233,7 @@ pub struct ProjectIndexer {
     embedding_column: SurrealEmbeddingColumn,
     project_root: PathBuf,
     reconcile_lock: TokioMutex<()>,
+    lsp_pool: crate::analyzers::lsp::LspPool,
     #[cfg(feature = "embeddings")]
     chunk_pool: rayon::ThreadPool,
     #[cfg(feature = "embeddings")]
@@ -535,6 +536,7 @@ impl ProjectIndexer {
             embedding_column,
             project_root,
             reconcile_lock: TokioMutex::new(()),
+            lsp_pool: Default::default(),
             #[cfg(feature = "embeddings")]
             chunk_pool,
             #[cfg(feature = "embeddings")]
@@ -600,7 +602,7 @@ impl ProjectIndexer {
         .map(|key| (key.to_owned(), std::env::var(key).unwrap_or_default()))
         .collect();
         let input_fingerprint = fingerprint(&(
-            "project-input-v1",
+            "project-input-v2",
             &self.project_id,
             source_snapshots
                 .iter()
@@ -676,28 +678,18 @@ impl ProjectIndexer {
             analyzer_settings.architecture
         );
 
-        let mut build_context_nodes = 0usize;
-        let mut build_context_edges = 0usize;
-        let build_context_out = if analyzer_settings.build_context
+        let build_context_nodes;
+        let build_context_edges;
+        let build_context_task = if analyzer_settings.build_context
             && analyzer_languages.contains(&codegraph_core::Language::Rust)
         {
-            let start = std::time::Instant::now();
-            info!("🧩 Build context analysis (Cargo metadata) starting");
-            let out = crate::analyzers::build_context::analyze_cargo_workspace(
-                &self.project_root,
-                &self.project_id,
-            )?;
-            build_context_nodes = out.nodes.len();
-            build_context_edges = out.edges.len();
-            info!(
-                "🧩 Build context analysis complete: {} nodes + {} edges in {:.1?}",
-                build_context_nodes,
-                build_context_edges,
-                start.elapsed()
-            );
-            out
+            let root = self.project_root.clone();
+            let project = self.project_id.clone();
+            Some(tokio::task::spawn_blocking(move || {
+                crate::analyzers::build_context::analyze_cargo_workspace(&root, &project)
+            }))
         } else {
-            Default::default()
+            None
         };
 
         // STAGE 1: File Collection & Parsing
@@ -741,6 +733,12 @@ impl ProjectIndexer {
             ));
         }
 
+        let build_context_out = match build_context_task {
+            Some(task) => task.await??,
+            None => Default::default(),
+        };
+        build_context_nodes = build_context_out.nodes.len();
+        build_context_edges = build_context_out.edges.len();
         if analyzer_settings.build_context
             && (!build_context_out.nodes.is_empty() || !build_context_out.edges.is_empty())
         {
@@ -769,9 +767,55 @@ impl ProjectIndexer {
         // Generate deterministic IDs and build old_id -> new_id mapping to update edge references
         let mut id_mapping: std::collections::HashMap<NodeId, NodeId> =
             std::collections::HashMap::with_capacity(nodes.len());
+        let mut identities: std::collections::HashMap<NodeId, std::collections::BTreeSet<String>> =
+            std::collections::HashMap::new();
+        for node in &nodes {
+            let id = codegraph_core::generate_node_id(
+                &self.project_id,
+                &node.location.file_path,
+                node.name.as_str(),
+                &node
+                    .node_type
+                    .as_ref()
+                    .map(|kind| format!("{kind:?}"))
+                    .unwrap_or_else(|| "Unknown".into()),
+                node.location.line,
+            );
+            identities.entry(id).or_default().insert(fingerprint(&(
+                &node.location,
+                &node.span,
+                node.metadata.attributes.get("qualified_name"),
+            ))?);
+        }
         for node in nodes.iter_mut() {
             let old_id = node.id;
             node.set_deterministic_id(&self.project_id);
+            if identities
+                .get(&node.id)
+                .is_some_and(|identities| identities.len() > 1)
+            {
+                let identity = format!(
+                    "{}#{}:{}",
+                    node.name,
+                    node.location.column,
+                    node.metadata
+                        .attributes
+                        .get("qualified_name")
+                        .map(String::as_str)
+                        .unwrap_or("")
+                );
+                node.id = codegraph_core::generate_node_id(
+                    &self.project_id,
+                    &node.location.file_path,
+                    &identity,
+                    &node
+                        .node_type
+                        .as_ref()
+                        .map(|kind| format!("{kind:?}"))
+                        .unwrap_or_else(|| "Unknown".into()),
+                    node.location.line,
+                );
+            }
             id_mapping.insert(old_id, node.id);
             self.annotate_node(node);
         }
@@ -780,6 +824,15 @@ impl ProjectIndexer {
         for edge in edges.iter_mut() {
             if let Some(new_id) = id_mapping.get(&edge.from) {
                 edge.from = *new_id;
+            }
+            if let Some(target) = edge
+                .metadata
+                .get("target_node_id")
+                .and_then(|id| id.parse::<NodeId>().ok())
+                .and_then(|id| id_mapping.get(&id))
+            {
+                edge.metadata
+                    .insert("target_node_id".into(), target.to_string());
             }
             if let Some(span) = &edge.span {
                 edge.metadata.insert(
@@ -814,72 +867,67 @@ impl ProjectIndexer {
                 }
             }
 
-            let mut nodes_moved = Vec::new();
-            std::mem::swap(&mut nodes_moved, &mut nodes);
-            let mut edges_moved = Vec::new();
-            std::mem::swap(&mut edges_moved, &mut edges);
-
-            let (mut nodes_updated, mut edges_updated, total_stats) =
-                tokio::task::spawn_blocking(move || -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, crate::analyzers::lsp::LspEnrichmentStats)> {
-                    let mut nodes = nodes_moved;
-                    let mut edges = edges_moved;
-                    let mut total = crate::analyzers::lsp::LspEnrichmentStats::default();
-
-                    for (lang, files) in language_files {
-                        let Some(spec) = crate::analyzers::lsp_server_for_language(&lang) else {
-                            continue;
-                        };
-                        let candidates =
-                            crate::analyzers::find_tool_candidates_on_path(spec.tool_name, &path_env);
-                        if candidates.is_empty() {
-                            return Err(anyhow!(
-                                "Missing required analyzer tool: {}",
-                                spec.tool_name
-                            ));
+            let mut grouped: std::collections::BTreeMap<
+                String,
+                (crate::analyzers::LspServerSpec, Vec<PathBuf>),
+            > = std::collections::BTreeMap::new();
+            for (language, files) in language_files {
+                if let Some(spec) = crate::analyzers::lsp_server_for_language(&language) {
+                    grouped
+                        .entry(spec.tool_name.to_owned())
+                        .or_insert_with(|| (spec.clone(), Vec::new()))
+                        .1
+                        .extend(files);
+                }
+            }
+            let mut total_stats = crate::analyzers::lsp::LspEnrichmentStats::default();
+            for (_, (spec, mut files)) in grouped {
+                files.sort();
+                files.dedup();
+                let candidates =
+                    crate::analyzers::find_tool_candidates_on_path(spec.tool_name, &path_env);
+                if candidates.is_empty() {
+                    return Err(anyhow!(
+                        "Missing required analyzer tool: {}",
+                        spec.tool_name
+                    ));
+                }
+                let mut success = false;
+                let mut last_error = None;
+                for tool in candidates {
+                    match crate::analyzers::lsp::enrich_async(
+                        &self.lsp_pool,
+                        Some(&source_snapshots),
+                        &tool,
+                        spec.args,
+                        spec.language_id,
+                        spec.name_joiner,
+                        analyzer_settings.lsp_definitions_enabled(),
+                        &project_root,
+                        &files,
+                        &mut nodes,
+                        &mut edges,
+                    )
+                    .await
+                    {
+                        Ok(stats) => {
+                            total_stats.nodes_enriched += stats.nodes_enriched;
+                            total_stats.edges_resolved += stats.edges_resolved;
+                            success = true;
+                            break;
                         }
-
-                        let mut last_err: Option<anyhow::Error> = None;
-                        for tool_path in candidates {
-                            match crate::analyzers::lsp::enrich_nodes_and_edges_with_lsp(
-                                &tool_path,
-                                spec.args,
-                                spec.language_id,
-                                spec.name_joiner,
-                                analyzer_settings.lsp_definitions_enabled(),
-                                &project_root,
-                                &files,
-                                &mut nodes,
-                                &mut edges,
-                            ) {
-                                Ok(stats) => {
-                                    total.nodes_enriched += stats.nodes_enriched;
-                                    total.edges_resolved += stats.edges_resolved;
-                                    last_err = None;
-                                    break;
-                                }
-                                Err(e) => {
-                                    last_err = Some(e.context(format!(
-                                        "LSP server candidate failed: {}",
-                                        tool_path.display()
-                                    )));
-                                }
-                            }
-                        }
-
-                        if let Some(e) = last_err {
-                            return Err(e.context(format!(
-                                "All LSP server candidates failed for tool: {}",
-                                spec.tool_name
-                            )));
+                        Err(error) => {
+                            self.lsp_pool.clear().await;
+                            last_error = Some(error);
                         }
                     }
-
-                    Ok((nodes, edges, total))
-                })
-                .await??;
-
-            std::mem::swap(&mut nodes, &mut nodes_updated);
-            std::mem::swap(&mut edges, &mut edges_updated);
+                }
+                if !success {
+                    return Err(
+                        last_error.unwrap_or_else(|| anyhow!("No LSP server candidate succeeded"))
+                    );
+                }
+            }
 
             lsp_enrichment_stats = total_stats;
             info!(
@@ -901,12 +949,13 @@ impl ProjectIndexer {
             let mut edges_moved = Vec::new();
             std::mem::swap(&mut edges_moved, &mut edges);
 
+            let sources = source_snapshots.clone();
             let (mut nodes_updated, mut edges_updated, enrich_stats) =
                 tokio::task::spawn_blocking(move || -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, crate::analyzers::enrichment::EnrichmentStats)> {
                     let mut nodes = nodes_moved;
                     let mut edges = edges_moved;
                     let stats =
-                        crate::analyzers::enrichment::apply_basic_enrichment(&project_root, &mut nodes, &mut edges)?;
+                        crate::analyzers::enrichment::apply_basic_enrichment_with_sources(&project_root, &mut nodes, &mut edges, Some(&sources))?;
                     Ok((nodes, edges, stats))
                 })
                 .await??;

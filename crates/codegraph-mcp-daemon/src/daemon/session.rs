@@ -6,7 +6,7 @@ use chrono::Utc;
 use codegraph_parser::{BatchedChanges, FileChangeEvent, FileSystemWatcher};
 use std::path::PathBuf;
 use std::time::Duration;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use super::config::WatchConfig;
 use super::status::SessionMetrics;

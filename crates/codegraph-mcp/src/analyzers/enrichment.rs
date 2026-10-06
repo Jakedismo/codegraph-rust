@@ -20,6 +20,15 @@ pub fn apply_basic_enrichment(
     nodes: &mut Vec<CodeNode>,
     edges: &mut Vec<EdgeRelationship>,
 ) -> Result<EnrichmentStats> {
+    apply_basic_enrichment_with_sources(project_root, nodes, edges, None)
+}
+
+pub fn apply_basic_enrichment_with_sources(
+    project_root: &Path,
+    nodes: &mut Vec<CodeNode>,
+    edges: &mut Vec<EdgeRelationship>,
+    sources: Option<&codegraph_parser::SourceSnapshots>,
+) -> Result<EnrichmentStats> {
     let mut stats = EnrichmentStats::default();
 
     let package_roots = package_roots(project_root, nodes);
@@ -39,7 +48,13 @@ pub fn apply_basic_enrichment(
 
         let lines = file_cache
             .entry(node.location.file_path.clone())
-            .or_insert_with(|| read_lines(project_root, &node.location.file_path));
+            .or_insert_with(|| {
+                sources
+                    .and_then(|sources| sources.get(&node.location.file_path))
+                    .and_then(|source| source.contents().ok())
+                    .map(|source| source.lines().map(str::to_owned).collect())
+                    .unwrap_or_else(|| read_lines(project_root, &node.location.file_path))
+            });
 
         if let Some(doc) = rust_doc_comment_block(lines, node.location.line) {
             node.metadata.attributes.insert("doc".to_string(), doc);

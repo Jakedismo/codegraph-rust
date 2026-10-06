@@ -97,3 +97,22 @@ actual tokenizer; local engines expose their loaded tokenizer automatically.
 `CODEGRAPH_ONNX_INTRA_THREADS`, `CODEGRAPH_COREML_CACHE_DIR`,
 `CODEGRAPH_COREML_LOW_PRECISION=1`, and `CODEGRAPH_LOCAL_DTYPE=f16|bf16` are independent
 runtime experiments. Reduced precision requires retrieval-quality measurements.
+
+7. Cargo metadata is cached by manifests/locks/configuration and checked external path
+   manifests, overlapped with AST parsing; resolver package identities retain distinct
+   versions. Shared source snapshots feed enrichment and LSP. Warm language servers
+   share TS/JS sessions, handle server requests, retain versioned documents, bound all
+   requests and deduplicate/pipeline definition positions. Failures propagate and
+   direct node identities survive symbol aliases. Documentation token/line artifacts
+   rebind against the current catalog; document contents are indexed. Scope-aware AST
+   dataflow replaces per-variable regex scans, handles shadowing and caches function
+   artifacts. Architecture patches cache package/boundary results; invalid boundary
+   files fail visibly. Parser timeouts cooperatively cancel AST parsing and retain
+   worker permits until blocking work ends. Legacy node-only parsing shares recovery
+   without rewriting source spans. Same-line colliding identities are distinguished
+   while existing non-colliding SHA node IDs remain unchanged.
+
+`CODEGRAPH_LSP_REQUESTS` bounds outstanding requests per server (default 32).
+`CODEGRAPH_PARSER_TIMEOUT_SECS` sets the small-file timeout (default 10 seconds),
+scaled by three/six for medium/large files. AST extraction after parsing remains
+bounded by worker permits even if its timeout expires.
