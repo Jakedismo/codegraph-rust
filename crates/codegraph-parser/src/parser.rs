@@ -824,6 +824,26 @@ impl TreeSitterParser {
     }
 }
 
+#[async_trait]
+impl CodeParser for TreeSitterParser {
+    async fn parse_file(&self, file_path: &str) -> Result<Vec<CodeNode>> {
+        let (nodes, _) = self.parse_file_with_caching(file_path).await?;
+        Ok(nodes)
+    }
+
+    fn supported_languages(&self) -> Vec<Language> {
+        vec![
+            Language::Rust,
+            Language::TypeScript,
+            Language::JavaScript,
+            Language::Python,
+            Language::Go,
+            Language::Java,
+            Language::Cpp,
+        ]
+    }
+}
+
 #[cfg(test)]
 mod pipeline_tests {
     use super::*;
@@ -907,25 +927,5 @@ mod pipeline_tests {
                 &source[span.start_byte as usize..span.end_byte as usize]
             );
         }
-    }
-}
-
-#[async_trait]
-impl CodeParser for TreeSitterParser {
-    async fn parse_file(&self, file_path: &str) -> Result<Vec<CodeNode>> {
-        let (nodes, _) = self.parse_file_with_caching(file_path).await?;
-        Ok(nodes)
-    }
-
-    fn supported_languages(&self) -> Vec<Language> {
-        vec![
-            Language::Rust,
-            Language::TypeScript,
-            Language::JavaScript,
-            Language::Python,
-            Language::Go,
-            Language::Java,
-            Language::Cpp,
-        ]
     }
 }

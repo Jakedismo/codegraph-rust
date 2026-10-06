@@ -8,6 +8,7 @@ use unicode_normalization::UnicodeNormalization;
 
 const DEFAULT_MAX_TEXTS_PER_REQUEST: usize = 256;
 const DEFAULT_OVERLAP_TOKENS: usize = 64;
+pub type TokenCounter = Arc<dyn Fn(&str) -> usize + Send + Sync>;
 
 /// Configuration knobs for the fast chunker.
 #[derive(Clone)]
@@ -20,7 +21,7 @@ pub struct ChunkerConfig {
     pub smart_split: bool,
     pub cache_dir: Option<std::path::PathBuf>,
     pub use_text_splitter: bool,
-    pub token_counter: Option<(String, Arc<dyn Fn(&str) -> usize + Send + Sync>)>,
+    pub token_counter: Option<(String, TokenCounter)>,
 }
 
 impl ChunkerConfig {
@@ -336,13 +337,13 @@ pub fn build_chunk_plan_with_source_lookup(
                         for chunk_text in raw_chunks {
                             let mut text = chunk_text;
 
-                            if let Some(tail) = &overlap_tail {
-                                if config.overlap_tokens > 0 {
-                                    // Prepend overlap tail if within budget
-                                    let candidate = format!("{}{}", tail, text);
-                                    if count(&candidate) <= config.max_tokens_per_text {
-                                        text = candidate;
-                                    }
+                            if let Some(tail) = &overlap_tail
+                                && config.overlap_tokens > 0
+                            {
+                                // Prepend overlap tail if within budget
+                                let candidate = format!("{}{}", tail, text);
+                                if count(&candidate) <= config.max_tokens_per_text {
+                                    text = candidate;
                                 }
                             }
 
@@ -358,10 +359,10 @@ pub fn build_chunk_plan_with_source_lookup(
                             }
                         }
 
-                        if let Some(cache) = &artifacts {
-                            if let Err(error) = cache.put(&key, &all_chunks) {
-                                tracing::debug!("Chunk cache write failed: {error}");
-                            }
+                        if let Some(cache) = &artifacts
+                            && let Err(error) = cache.put(&key, &all_chunks)
+                        {
+                            tracing::debug!("Chunk cache write failed: {error}");
                         }
                         all_chunks
                     })

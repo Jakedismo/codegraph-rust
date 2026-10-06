@@ -231,13 +231,13 @@ pub fn import(
                     .metadata
                     .attributes
                     .insert("scip_symbol".into(), occurrence.symbol.clone());
-                if let Some(documentation) = docs.get(occurrence.symbol.as_str()) {
-                    if !documentation.is_empty() {
-                        nodes[index]
-                            .metadata
-                            .attributes
-                            .insert("doc".into(), documentation.join("\n\n"));
-                    }
+                if let Some(documentation) = docs.get(occurrence.symbol.as_str())
+                    && !documentation.is_empty()
+                {
+                    nodes[index]
+                        .metadata
+                        .attributes
+                        .insert("doc".into(), documentation.join("\n\n"));
                 }
             }
         }

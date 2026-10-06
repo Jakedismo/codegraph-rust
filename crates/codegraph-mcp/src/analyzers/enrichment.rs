@@ -25,7 +25,7 @@ pub fn apply_basic_enrichment(
 
 pub fn apply_basic_enrichment_with_sources(
     project_root: &Path,
-    nodes: &mut Vec<CodeNode>,
+    nodes: &mut [CodeNode],
     edges: &mut Vec<EdgeRelationship>,
     sources: Option<&codegraph_parser::SourceSnapshots>,
 ) -> Result<EnrichmentStats> {

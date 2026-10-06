@@ -211,14 +211,14 @@ impl LspClient {
             let mut reader = BufReader::new(stdout);
             let mut content_length_buf = String::new();
 
-            loop {
+            'messages: loop {
                 content_length_buf.clear();
                 // Read headers
                 let mut content_length: Option<usize> = None;
 
                 loop {
                     if reader.read_line(&mut content_length_buf).await.unwrap_or(0) == 0 {
-                        return; // EOF
+                        break 'messages; // EOF
                     }
                     let line = content_length_buf.trim();
                     if line.is_empty() {
@@ -276,16 +276,25 @@ impl LspClient {
                             serde_json::json!({"jsonrpc": "2.0", "id": id, "result": result}),
                         ))
                         .await;
-                } else if let Some(id) = json.get("id").and_then(|id| id.as_u64()) {
-                    if let Some((_, tx)) = pending_requests_read.remove(&id) {
-                        let result = json.get("error").map_or_else(
-                            || Ok(json.get("result").cloned().unwrap_or(JsonValue::Null)),
-                            |error| Err(anyhow!("LSP error: {error}")),
-                        );
-                        let _ = tx.send(result);
-                    }
+                } else if let Some(id) = json.get("id").and_then(|id| id.as_u64())
+                    && let Some((_, tx)) = pending_requests_read.remove(&id)
+                {
+                    let result = json.get("error").map_or_else(
+                        || Ok(json.get("result").cloned().unwrap_or(JsonValue::Null)),
+                        |error| Err(anyhow!("LSP error: {error}")),
+                    );
+                    let _ = tx.send(result);
                 }
                 // We ignore notifications from server for now
+            }
+            let pending: Vec<_> = pending_requests_read
+                .iter()
+                .map(|entry| *entry.key())
+                .collect();
+            for id in pending {
+                if let Some((_, response)) = pending_requests_read.remove(&id) {
+                    let _ = response.send(Err(anyhow!("Language server closed its output stream")));
+                }
             }
         });
 
@@ -427,6 +436,8 @@ pub fn enrich_nodes_and_edges_with_lsp(
     })
 }
 
+// Keep the shared batch interface explicit across language-specific adapters.
+#[allow(clippy::too_many_arguments)]
 pub async fn enrich_async(
     pool: &LspPool,
     sources: Option<&codegraph_parser::SourceSnapshots>,
@@ -472,7 +483,7 @@ pub async fn enrich_async(
         }
     }
     // Build lookup maps (same as before)
-    let mut nodes_by_file_line_name: std::collections::HashMap<(String, u32, String), usize> =
+    let mut nodes_by_file_line_name: std::collections::HashMap<(String, u32, String), Vec<usize>> =
         std::collections::HashMap::new();
     let mut nodes_by_file_line: std::collections::HashMap<(String, u32), Vec<usize>> =
         std::collections::HashMap::new();
@@ -482,12 +493,60 @@ pub async fn enrich_async(
         let file = node.location.file_path.clone();
         let line0 = node.location.line.saturating_sub(1);
         for key in normalized_file_keys(&project_root, Path::new(&file)) {
-            nodes_by_file_line_name.insert((key.clone(), line0, node.name.to_string()), idx);
+            nodes_by_file_line_name
+                .entry((key.clone(), line0, node.name.to_string()))
+                .or_default()
+                .push(idx);
             nodes_by_file_line
                 .entry((key.clone(), line0))
                 .or_default()
                 .push(idx);
             files_with_nodes.insert(key);
+        }
+    }
+
+    let mut utf16_columns: Vec<_> = nodes
+        .iter()
+        .map(|node| {
+            (
+                node.location.column,
+                node.location.end_column.unwrap_or(u32::MAX),
+            )
+        })
+        .collect();
+    if let Some(sources) = sources {
+        let mut by_file = std::collections::BTreeMap::<&str, Vec<usize>>::new();
+        for (index, node) in nodes.iter().enumerate() {
+            by_file
+                .entry(&node.location.file_path)
+                .or_default()
+                .push(index);
+        }
+        for snapshot in sources.iter() {
+            let Some(indices) = by_file.get(snapshot.path.to_string_lossy().as_ref()) else {
+                continue;
+            };
+            let text = snapshot.contents()?;
+            let lines: Vec<_> = text.split('\n').collect();
+            for &index in indices {
+                let node = &nodes[index];
+                let column = |line: u32, bytes: u32| -> u32 {
+                    lines
+                        .get(line.saturating_sub(1) as usize)
+                        .and_then(|text| text.get(..bytes as usize))
+                        .map(|prefix| prefix.encode_utf16().count() as u32)
+                        .unwrap_or(bytes)
+                };
+                utf16_columns[index] = (
+                    column(node.location.line, node.location.column),
+                    node.location
+                        .end_column
+                        .map(|bytes| {
+                            column(node.location.end_line.unwrap_or(node.location.line), bytes)
+                        })
+                        .unwrap_or(u32::MAX),
+                );
+            }
         }
     }
 
@@ -613,8 +672,9 @@ pub async fn enrich_async(
                 let mut node_idx: Option<usize> = None;
                 for key in &file_keys {
                     let key_tuple = (key.clone(), sym.start_line, sym.name.clone());
-                    if let Some(idx) = nodes_by_file_line_name.get(&key_tuple).copied() {
-                        node_idx = Some(idx);
+                    if let Some(indices) = nodes_by_file_line_name.get(&key_tuple) {
+                        // A name and line alone cannot distinguish same-line definitions.
+                        node_idx = unique_symbol_index(indices);
                         break;
                     }
                 }
@@ -653,8 +713,7 @@ pub async fn enrich_async(
                         .copied()
                         .filter(|index| {
                             let node = &nodes[*index];
-                            let start = node.location.column;
-                            let end = node.location.end_column.unwrap_or(u32::MAX);
+                            let (start, end) = utf16_columns[*index];
                             start <= target_column
                                 && (node.location.end_line != Some(node.location.line)
                                     || target_column <= end)
@@ -746,9 +805,20 @@ fn normalize_path(path: &Path) -> PathBuf {
     out
 }
 
+fn unique_symbol_index(indices: &[usize]) -> Option<usize> {
+    match indices {
+        [index] => Some(*index),
+        _ => None,
+    }
+}
+
 fn extract_first_definition_location(def: &JsonValue) -> Option<(String, u32, u32)> {
     let loc = if let Some(arr) = def.as_array() {
-        arr.first()?
+        let first = arr.first()?;
+        if arr.iter().any(|location| location != first) {
+            return None;
+        }
+        first
     } else {
         def
     };
@@ -923,6 +993,23 @@ pub fn decode_one_lsp_message(buffer: &[u8]) -> Result<Option<(String, usize)>> 
 mod tests {
     use super::*;
 
+    #[test]
+    fn ambiguous_symbol_and_definition_results_remain_unresolved() {
+        assert_eq!(unique_symbol_index(&[1]), Some(1));
+        assert_eq!(unique_symbol_index(&[1, 2]), None);
+        let first = serde_json::json!({"uri":"file:///tmp/a.rs", "range":{"start":{"line":0,"character":3}}});
+        let second = serde_json::json!({"uri":"file:///tmp/b.rs", "range":{"start":{"line":0,"character":3}}});
+        assert!(extract_first_definition_location(&serde_json::json!([first, second])).is_none());
+        assert!(extract_first_definition_location(&serde_json::json!([first, first])).is_some());
+    }
+
+    #[tokio::test]
+    async fn closed_server_fails_initialization_without_waiting_for_timeout() {
+        let started = Instant::now();
+        let result = LspClient::start(Path::new("/usr/bin/true"), &[], "file:///tmp").await;
+        assert!(result.is_err());
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
     #[tokio::test]
     async fn warm_server_answers_client_requests_and_deduplicates_definition_positions() {
         use codegraph_core::{EdgeType, Language, Location, NodeType, Span};

@@ -96,7 +96,8 @@ impl SymbolCatalog {
     pub(crate) fn unique_aliases(&self) -> HashMap<String, NodeId> {
         self.aliases
             .iter()
-            .filter_map(|(alias, ids)| (ids.len() == 1).then(|| (alias.clone(), ids[0])))
+            .filter(|(_, ids)| ids.len() == 1)
+            .map(|(alias, ids)| (alias.clone(), ids[0]))
             .collect()
     }
 
@@ -156,16 +157,15 @@ impl SymbolCatalog {
             .metadata
             .get("target_node_id")
             .and_then(|id| NodeId::parse_str(id).ok())
+            && self.symbols.contains_key(&id)
         {
-            if self.symbols.contains_key(&id) {
-                return Some(id);
-            }
+            return Some(id);
         }
         for alias in std::iter::once(edge.to.as_str()).chain(variants.iter().map(String::as_str)) {
-            if let Some(ids) = self.aliases.get(alias) {
-                if let Some(id) = self.choose(ids, edge.from) {
-                    return Some(id);
-                }
+            if let Some(ids) = self.aliases.get(alias)
+                && let Some(id) = self.choose(ids, edge.from)
+            {
+                return Some(id);
             }
         }
         None

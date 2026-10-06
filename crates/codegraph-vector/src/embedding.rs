@@ -82,6 +82,10 @@ impl EmbeddingGenerator {
         &mut self,
         engine: Arc<crate::embeddings::generator::AdvancedEmbeddingGenerator>,
     ) {
+        self.model_config.dimension = engine.dimension();
+        if let Some(model) = engine.model_name() {
+            self.model_config.model_name = model.to_owned();
+        }
         if let Some(tokenizer) = engine.tokenizer() {
             self.tokenizer = tokenizer;
         }
@@ -106,15 +110,15 @@ impl EmbeddingGenerator {
     fn chunker_config(&self) -> ChunkerConfig {
         let config = self.base_chunker_config();
         #[cfg(feature = "openai")]
-        if self.model_config.model_name.starts_with("text-embedding-") {
-            if let Ok(bpe) = tiktoken_rs::bpe_for_model(&self.model_config.model_name) {
-                let mut config = config;
-                config.token_counter = Some((
-                    format!("tiktoken-0.12:{}", self.model_config.model_name),
-                    Arc::new(move |text| bpe.encode_ordinary(text).len()),
-                ));
-                return config;
-            }
+        if self.model_config.model_name.starts_with("text-embedding-")
+            && let Ok(bpe) = tiktoken_rs::bpe_for_model(&self.model_config.model_name)
+        {
+            let mut config = config;
+            config.token_counter = Some((
+                format!("tiktoken-0.12:{}", self.model_config.model_name),
+                Arc::new(move |text| bpe.encode_ordinary(text).len()),
+            ));
+            return config;
         }
         config
     }
@@ -192,6 +196,29 @@ impl EmbeddingGenerator {
         )
     }
 
+    pub fn has_provider(&self) -> bool {
+        #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
+        if self
+            .advanced
+            .as_ref()
+            .is_some_and(|engine| engine.has_provider())
+        {
+            return true;
+        }
+        #[cfg(feature = "jina")]
+        if self.jina_provider.is_some() {
+            return true;
+        }
+        #[cfg(feature = "ollama")]
+        if self.ollama_provider.is_some() {
+            return true;
+        }
+        #[cfg(feature = "lmstudio")]
+        if self.lmstudio_provider.is_some() {
+            return true;
+        }
+        false
+    }
     pub fn dimension(&self) -> usize {
         self.model_config.dimension
     }
@@ -424,10 +451,10 @@ impl EmbeddingGenerator {
         Box::pin(async move {
             // Allow env override for batch size (applies across providers)
             let mut embedding_config = config.embedding.clone();
-            if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
-                if let Ok(parsed) = val.parse::<usize>() {
-                    embedding_config.batch_size = parsed.clamp(1, 2048);
-                }
+            if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE")
+                && let Ok(parsed) = val.parse::<usize>()
+            {
+                embedding_config.batch_size = parsed.clamp(1, 2048);
             }
             let model_name = embedding_config
                 .model
@@ -559,7 +586,47 @@ impl EmbeddingGenerator {
                     );
                 }
             }
-            // Add other providers (ONNX, local, etc.) as needed following the same pattern
+            #[cfg(any(feature = "openai", feature = "onnx", feature = "local-embeddings"))]
+            if provider == "onnx" || provider == "openai" {
+                use crate::embeddings::generator::{
+                    AdvancedEmbeddingGenerator, EmbeddingEngineConfig, OnnxConfigCompat,
+                    OpenAiConfigCompat,
+                };
+                let mut engine = EmbeddingEngineConfig {
+                    batch_size: embedding_config.batch_size,
+                    dimension_hint: Some(embedding_config.dimension),
+                    ..Default::default()
+                };
+                if provider == "onnx" {
+                    engine.onnx = Some(OnnxConfigCompat {
+                        model_repo: base.model_config.model_name.clone(),
+                        model_file: std::env::var("CODEGRAPH_ONNX_MODEL_FILE").ok(),
+                        max_sequence_length: 512,
+                        pooling: "mean".into(),
+                    });
+                } else {
+                    engine.openai = Some(OpenAiConfigCompat {
+                        api_key: embedding_config
+                            .openai_api_key
+                            .clone()
+                            .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+                            .unwrap_or_default(),
+                        model: base.model_config.model_name.clone(),
+                        api_base: std::env::var("OPENAI_API_BASE")
+                            .unwrap_or_else(|_| "https://api.openai.com/v1".into()),
+                        max_retries: 3,
+                        timeout: std::time::Duration::from_secs(30),
+                        max_tokens_per_request: 8191,
+                    });
+                }
+                match AdvancedEmbeddingGenerator::new(engine).await {
+                    Ok(engine) => base.set_advanced_engine(Arc::new(engine)),
+                    Err(error) => tracing::error!(
+                        "Failed to initialize {provider} embedding backend: {error}"
+                    ),
+                }
+            }
+            // Other unsupported providers fail the indexing startup guard.
 
             base
         })
@@ -753,12 +820,11 @@ impl EmbeddingGenerator {
                     texts,
                     |text| {
                         #[cfg(feature = "openai")]
-                        if self.model_config.model_name.starts_with("text-embedding-") {
-                            if let Ok(bpe) =
+                        if self.model_config.model_name.starts_with("text-embedding-")
+                            && let Ok(bpe) =
                                 tiktoken_rs::bpe_for_model(&self.model_config.model_name)
-                            {
-                                return bpe.encode_ordinary(text).len();
-                            }
+                        {
+                            return bpe.encode_ordinary(text).len();
                         }
                         self.tokenizer
                             .encode(text, false)

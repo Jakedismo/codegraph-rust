@@ -345,10 +345,10 @@ impl ProjectIndexer {
                 .build()?;
 
             // Allow runtime override for embedding batch size
-            if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
-                if let Ok(parsed) = val.parse::<usize>() {
-                    config.batch_size = parsed.clamp(1, 2048);
-                }
+            if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE")
+                && let Ok(parsed) = val.parse::<usize>()
+            {
+                config.batch_size = parsed.clamp(1, 2048);
             }
 
             config.workers = requested.max(1).min(available.max(1));
@@ -378,8 +378,10 @@ impl ProjectIndexer {
                                 LocalDeviceTypeCompat, LocalEmbeddingConfigCompat,
                                 LocalPoolingCompat,
                             };
-                            let mut cfg = EmbeddingEngineConfig::default();
-                            cfg.prefer_local_first = true;
+                            let mut cfg = EmbeddingEngineConfig {
+                                prefer_local_first: true,
+                                ..Default::default()
+                            };
                             let device = match config
                                 .device
                                 .as_deref()
@@ -467,6 +469,12 @@ impl ProjectIndexer {
                         g
                     }
                 };
+                if !embedder.has_provider() {
+                    return Err(anyhow!(
+                        "No embedding backend initialized for provider {}. Configure a supported provider or set both inference policies to off/deferred.",
+                        global_config.embedding.provider
+                    ));
+                }
                 Some(embedder)
             } else {
                 None
@@ -584,6 +592,13 @@ impl ProjectIndexer {
         })
     }
 
+    pub fn set_indexing_tier(&mut self, tier: codegraph_core::config_manager::IndexingTier) {
+        self.config.indexing_tier = tier;
+        self.parser = TreeSitterParser::new()
+            .with_concurrency(self.config.workers)
+            .with_project_root(&self.project_root)
+            .with_extraction_policy(extraction_policy_for_tier(tier));
+    }
     fn vector_tables(policies: crate::policy::InferencePolicies) -> Vec<&'static str> {
         let mut tables = Vec::new();
         if policies.embeddings == crate::policy::StagePolicy::Sync {
@@ -607,7 +622,27 @@ impl ProjectIndexer {
         Box::pin(async move {
             let _run = self.reconcile_lock.lock().await;
             let start = std::time::Instant::now();
+            let cache_root = self.project_root.join(".codegraph/index-cache");
+            let cache_budget = std::env::var("CODEGRAPH_INDEX_CACHE_BYTES")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(4 * 1024 * 1024 * 1024);
+            if let Err(error) = tokio::task::spawn_blocking(move || {
+                codegraph_core::artifact_cache::ArtifactCache::prune_tree(
+                    &cache_root,
+                    cache_budget,
+                    &["pending-inference-v1"],
+                )
+            })
+            .await?
+            {
+                warn!("Index artifact eviction failed: {error}");
+            }
             let mut phase_ms = std::collections::BTreeMap::new();
+            phase_ms.insert(
+                "cache_eviction".to_owned(),
+                start.elapsed().as_millis() as u64,
+            );
             let writer_before = self
                 .surreal_writer
                 .as_ref()
@@ -622,6 +657,7 @@ impl ProjectIndexer {
             info!("Starting project indexing: {:?}", path);
             self.log_surrealdb_status("pre-parse");
 
+            let capture_start = std::time::Instant::now();
             let file_config: codegraph_parser::file_collect::FileCollectionConfig =
                 (&self.config).into();
             let all_files = codegraph_parser::file_collect::collect_source_files_with_config(
@@ -637,7 +673,7 @@ impl ProjectIndexer {
 
             phase_ms.insert(
                 "source_capture".to_owned(),
-                start.elapsed().as_millis() as u64,
+                capture_start.elapsed().as_millis() as u64,
             );
             let inputs_start = std::time::Instant::now();
             use codegraph_core::artifact_cache::{ArtifactCache, fingerprint};
@@ -660,9 +696,7 @@ impl ProjectIndexer {
                 .unwrap()
                 .remove("jina_api_key");
             let policy: std::collections::BTreeMap<String, String> = [
-                "CODEGRAPH_SEMANTIC_RESOLUTION",
                 "CODEGRAPH_SEMANTIC_CANDIDATES",
-                "CODEGRAPH_EMBEDDING_POLICY",
                 "CODEGRAPH_LOCAL_DTYPE",
                 "CODEGRAPH_ONNX_MODEL_FILE",
                 "CODEGRAPH_ONNX_EP",
@@ -690,21 +724,16 @@ impl ProjectIndexer {
             .collect();
             let mut external_support =
                 crate::analyzers::build_context::external_input_fingerprints(&self.project_root)?;
-            let mutable_model_epoch = if self.policies.needs_provider()
-                && std::env::var_os("CODEGRAPH_MODEL_REVISION").is_none()
-            {
-                let ttl = std::env::var("CODEGRAPH_EMBEDDING_CACHE_TTL_SECONDS")
-                    .ok()
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .unwrap_or(3600)
-                    .max(1);
+            let mutable_model_epoch = self.policies.model_epoch(
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)?
-                    .as_secs()
-                    / ttl
-            } else {
-                0
-            };
+                    .as_secs(),
+                std::env::var("CODEGRAPH_EMBEDDING_CACHE_TTL_SECONDS")
+                    .ok()
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .unwrap_or(3600),
+                std::env::var_os("CODEGRAPH_MODEL_REVISION").is_some(),
+            );
             let tokenizer_fingerprint = std::env::var_os("CODEGRAPH_TOKENIZER_PATH")
                 .map(PathBuf::from)
                 .map(|path| crate::reconciliation::file_fingerprint(&path))
@@ -728,7 +757,7 @@ impl ProjectIndexer {
             let make_fingerprint =
                 |external_support: &std::collections::BTreeMap<String, String>| {
                     fingerprint(&(
-                        "project-input-v3",
+                        "project-input-v5",
                         &self.project_id,
                         source_snapshots
                             .iter()
@@ -742,7 +771,7 @@ impl ProjectIndexer {
                         self.config.indexing_tier,
                         &embedding_config,
                         &policy,
-                        self.policies,
+                        self.policies.enabled_identity(),
                         self.config.max_seq_len,
                         cfg!(feature = "embeddings"),
                         cfg!(feature = "ai-enhanced"),
@@ -760,29 +789,32 @@ impl ProjectIndexer {
             let previous = state_cache
                 .get::<crate::reconciliation::Catalog>(&self.project_id)
                 .filter(|state| !force && marker == Some(state.fingerprint.as_str()));
-            if let Some(state) = &previous {
-                if state.fingerprint == input_fingerprint {
-                    source_snapshots.validate_current().await?;
-                    let mut stats = state.stats.clone();
-                    stats.skipped = all_files.len();
-                    stats.cached_files = all_files.len();
-                    stats.index_ms = start.elapsed().as_millis() as u64;
-                    stats.startup_ms = self.startup_ms;
-                    stats.inference_texts = 0;
-                    stats.inference_tokens = 0;
-                    stats.embedding_cache_hits = 0;
-                    stats.source_read_operations = source_snapshots.read_operations;
-                    stats.source_read_bytes = source_snapshots.read_bytes;
-                    stats.writer_jobs_acked = 0;
-                    stats.writer_rows_acked = 0;
-                    stats.writer_payload_bytes_acked = 0;
-                    phase_ms.insert(
-                        "input_validation".into(),
-                        inputs_start.elapsed().as_millis() as u64,
-                    );
-                    stats.phase_ms = phase_ms;
-                    return Ok(stats);
-                }
+            if let Some(state) = &previous
+                && state.fingerprint == input_fingerprint
+                && self
+                    .policies
+                    .satisfied_by(&state.stats.embedding_status, &state.stats.semantic_status)
+            {
+                source_snapshots.validate_current().await?;
+                let mut stats = state.stats.clone();
+                stats.skipped = all_files.len();
+                stats.cached_files = all_files.len();
+                stats.index_ms = start.elapsed().as_millis() as u64;
+                stats.startup_ms = self.startup_ms;
+                stats.inference_texts = 0;
+                stats.inference_tokens = 0;
+                stats.embedding_cache_hits = 0;
+                stats.source_read_operations = source_snapshots.read_operations;
+                stats.source_read_bytes = source_snapshots.read_bytes;
+                stats.writer_jobs_acked = 0;
+                stats.writer_rows_acked = 0;
+                stats.writer_payload_bytes_acked = 0;
+                phase_ms.insert(
+                    "input_validation".into(),
+                    inputs_start.elapsed().as_millis() as u64,
+                );
+                stats.phase_ms = phase_ms;
+                return Ok(stats);
             }
             phase_ms.insert(
                 "input_validation".into(),
@@ -803,7 +835,7 @@ impl ProjectIndexer {
                     *previous_support = Some(support_fingerprint);
                 }
             }
-            let analyzer_settings = AnalyzerSettings::for_tier(self.config.indexing_tier);
+            let analyzer_settings = AnalyzerSettings::from_env(self.config.indexing_tier);
             let path_env = std::env::var("PATH").unwrap_or_default();
             let mut analyzer_languages: HashSet<codegraph_core::Language> = HashSet::new();
             let needs_language_scan = analyzer_settings.lsp_enabled()
@@ -841,8 +873,6 @@ impl ProjectIndexer {
                 analyzer_settings.architecture
             );
 
-            let build_context_nodes;
-            let build_context_edges;
             let build_context_task = if analyzer_settings.build_context
                 && analyzer_languages.contains(&codegraph_core::Language::Rust)
             {
@@ -907,8 +937,8 @@ impl ProjectIndexer {
                 crate::analyzers::build_context::external_input_fingerprints(&self.project_root)?;
             input_fingerprint = make_fingerprint(&external_support)?;
             next_catalog.fingerprint = input_fingerprint.clone();
-            build_context_nodes = build_context_out.nodes.len();
-            build_context_edges = build_context_out.edges.len();
+            let build_context_nodes = build_context_out.nodes.len();
+            let build_context_edges = build_context_out.edges.len();
             if analyzer_settings.build_context
                 && (!build_context_out.nodes.is_empty() || !build_context_out.edges.is_empty())
             {
@@ -1112,17 +1142,17 @@ impl ProjectIndexer {
                 );
             }
 
-            if let Some(path) = &scip_path {
-                if analyzer_settings.lsp_enabled() {
-                    lsp_enrichment_stats.edges_resolved = crate::analyzers::scip::import(
-                        path,
-                        &self.project_root,
-                        &source_snapshots,
-                        &mut nodes,
-                        &mut edges,
-                        analyzer_settings.lsp_definitions_enabled(),
-                    )?;
-                }
+            if let Some(path) = &scip_path
+                && analyzer_settings.lsp_enabled()
+            {
+                lsp_enrichment_stats.edges_resolved = crate::analyzers::scip::import(
+                    path,
+                    &self.project_root,
+                    &source_snapshots,
+                    &mut nodes,
+                    &mut edges,
+                    analyzer_settings.lsp_definitions_enabled(),
+                )?;
             }
             let mut enrichment_stats = crate::analyzers::enrichment::EnrichmentStats::default();
             if analyzer_settings.enrichment {
@@ -1594,6 +1624,7 @@ impl ProjectIndexer {
                         &policy,
                         &self.embedding_model,
                         self.vector_dim,
+                        mutable_model_epoch,
                     ))?;
                     if previous
                         .as_ref()
@@ -1866,10 +1897,8 @@ impl ProjectIndexer {
                                     tied = true;
                                 }
                             }
-                            if !tied {
-                                if let Some(id) = winner {
-                                    semantic_targets.insert(target, id);
-                                }
+                            if !tied && let Some(id) = winner {
+                                semantic_targets.insert(target, id);
                             }
                         }
                         for (edge, target) in edges.iter().zip(&mut targets) {
@@ -2106,13 +2135,11 @@ impl ProjectIndexer {
             if let Ok(output) = std::process::Command::new("sysctl")
                 .args(["-n", "hw.memsize"])
                 .output()
+                && let Ok(memsize_str) = String::from_utf8(output.stdout)
+                && let Ok(memsize) = memsize_str.trim().parse::<u64>()
             {
-                if let Ok(memsize_str) = String::from_utf8(output.stdout) {
-                    if let Ok(memsize) = memsize_str.trim().parse::<u64>() {
-                        let gb = memsize / 1024 / 1024 / 1024;
-                        return format!("{}GB", gb);
-                    }
-                }
+                let gb = memsize / 1024 / 1024 / 1024;
+                return format!("{}GB", gb);
             }
         }
 
@@ -3410,10 +3437,8 @@ impl ProjectIndexer {
             while let Ok(Some(event)) = tokio::time::timeout(debounce, rx.recv()).await {
                 dirty |= relevant(&event);
             }
-            if dirty {
-                if let Err(error) = self.reconcile_project(&path, false).await {
-                    warn!("Watch reconciliation failed: {error}");
-                }
+            if dirty && let Err(error) = self.reconcile_project(&path, false).await {
+                warn!("Watch reconciliation failed: {error}");
             }
         }
         Ok(())

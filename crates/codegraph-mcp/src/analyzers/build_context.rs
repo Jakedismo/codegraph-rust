@@ -42,15 +42,14 @@ pub fn analyze_cargo_workspace(
         ["RUSTFLAGS", "CARGO_BUILD_TARGET", "RUSTUP_TOOLCHAIN"]
             .map(|name| std::env::var(name).unwrap_or_default()),
     ))?;
-    if let Some(artifact) = cache.get::<MetadataArtifact>(&key) {
-        if artifact
+    if let Some(artifact) = cache.get::<MetadataArtifact>(&key)
+        && artifact
             .external
             .iter()
             .all(|(path, hash)| file_hash(Path::new(path)).as_ref() == Some(hash))
-        {
-            cache.put("external-inputs", &artifact.external)?;
-            return parse_cargo_metadata_json(&artifact.json, project_id);
-        }
+    {
+        cache.put("external-inputs", &artifact.external)?;
+        return parse_cargo_metadata_json(&artifact.json, project_id);
     }
     let output = Command::new("cargo")
         .args(["metadata", "--format-version", "1"])
@@ -109,7 +108,17 @@ pub(crate) fn external_input_fingerprints(
         .map(|path| {
             Ok((
                 path.clone(),
-                crate::reconciliation::file_fingerprint(Path::new(path))?,
+                match crate::reconciliation::file_fingerprint(Path::new(path)) {
+                    Ok(hash) => hash,
+                    Err(error)
+                        if error
+                            .downcast_ref::<std::io::Error>()
+                            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+                    {
+                        "<missing>".into()
+                    }
+                    Err(error) => return Err(error),
+                },
             ))
         })
         .collect()

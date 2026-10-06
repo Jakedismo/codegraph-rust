@@ -103,6 +103,50 @@ impl ArtifactCache {
         }
     }
 
+    /// Bound all derived namespaces together; pending jobs are durable work, not artifacts.
+    pub fn prune_tree(root: &Path, maximum_bytes: u64, protected: &[&str]) -> std::io::Result<()> {
+        let excluded: Vec<_> = protected
+            .iter()
+            .map(|name| Self::new(root, name).root)
+            .collect();
+        let namespaces = match std::fs::read_dir(root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let mut files = Vec::new();
+        let mut total = 0u64;
+        for namespace in namespaces {
+            let namespace = namespace?;
+            if !namespace.file_type()?.is_dir() || excluded.contains(&namespace.path()) {
+                continue;
+            }
+            for entry in std::fs::read_dir(namespace.path())? {
+                let entry = entry?;
+                if !entry.file_type()?.is_file()
+                    || entry.path().extension().and_then(|value| value.to_str()) != Some("zst")
+                {
+                    continue;
+                }
+                let metadata = entry.metadata()?;
+                total = total.saturating_add(metadata.len());
+                files.push((metadata.modified()?, entry.path(), metadata.len()));
+            }
+        }
+        files.sort();
+        for (_, path, size) in files {
+            if total <= maximum_bytes {
+                break;
+            }
+            match std::fs::remove_file(path) {
+                Ok(()) => total = total.saturating_sub(size),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    }
+
     /// Evict oldest artifacts at a run boundary, avoiding directory scans per write.
     pub fn prune(&self, maximum_bytes: u64) -> std::io::Result<()> {
         let entries = match std::fs::read_dir(&self.root) {
@@ -161,6 +205,17 @@ mod tests {
         assert!(cache.get::<Vec<String>>("key").is_none());
     }
 
+    #[test]
+    fn aggregate_eviction_preserves_pending_work() {
+        let root = tempfile::tempdir().unwrap();
+        let artifact = ArtifactCache::new(root.path(), "derived");
+        let job = ArtifactCache::new(root.path(), "pending-inference-v1");
+        artifact.put("a", &"bytes").unwrap();
+        job.put("job", &"resume").unwrap();
+        ArtifactCache::prune_tree(root.path(), 0, &["pending-inference-v1"]).unwrap();
+        assert!(artifact.get::<String>("a").is_none());
+        assert_eq!(job.get::<String>("job").unwrap(), "resume");
+    }
     #[test]
     fn fingerprints_include_task_identity_and_ignore_map_insertion_order() {
         let fingerprint = fingerprint(&("parser-v1", "model", "task", 384)).unwrap();

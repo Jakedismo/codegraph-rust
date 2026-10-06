@@ -182,13 +182,12 @@ impl SurrealWriterHandle {
                         }
                         job => {
                             // Completion metadata must never mark a failed write set current.
-                            if error.is_none() {
-                                if let Err(err) =
+                            if error.is_none()
+                                && let Err(err) =
                                     execute(job, pool[0].clone(), &worker_metrics, envelope.bytes)
                                         .await
-                                {
-                                    error = Some(err.to_string());
-                                }
+                            {
+                                error = Some(err.to_string());
                             }
                         }
                     }

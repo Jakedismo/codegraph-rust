@@ -53,11 +53,29 @@ impl InferencePolicies {
             )?,
         })
     }
+    pub fn enabled_identity(self) -> (bool, bool) {
+        (
+            self.embeddings != StagePolicy::Off,
+            self.semantic != StagePolicy::Off,
+        )
+    }
+    pub fn satisfied_by(self, embeddings: &str, semantic: &str) -> bool {
+        (self.embeddings != StagePolicy::Sync || embeddings == "ready")
+            && (self.semantic != StagePolicy::Sync || semantic == "ready")
+    }
     pub fn pending(self) -> bool {
         self.embeddings == StagePolicy::Deferred || self.semantic == StagePolicy::Deferred
     }
     pub fn needs_provider(self) -> bool {
         self.embeddings == StagePolicy::Sync || self.semantic == StagePolicy::Sync
+    }
+    /// Scheduling changes must not invalidate the identity of enabled model outputs.
+    pub fn model_epoch(self, now_seconds: u64, ttl_seconds: u64, immutable: bool) -> u64 {
+        if immutable || self.enabled_identity() == (false, false) {
+            0
+        } else {
+            now_seconds / ttl_seconds.max(1)
+        }
     }
     pub fn finish(self) -> Self {
         let sync = |policy| {
@@ -105,6 +123,19 @@ mod tests {
             embeddings: StagePolicy::Deferred,
             semantic: StagePolicy::Off,
         };
+        assert_eq!(
+            policies.enabled_identity(),
+            policies.finish().enabled_identity()
+        );
+        assert_eq!(policies.model_epoch(7200, 3600, false), 2);
+        assert_eq!(
+            policies.model_epoch(7200, 3600, false),
+            policies.finish().model_epoch(7200, 3600, false)
+        );
+        assert_eq!(policies.model_epoch(7200, 3600, true), 0);
+        assert!(policies.satisfied_by("ready", "off"));
+        assert!(!policies.finish().satisfied_by("pending", "off"));
+        assert!(policies.finish().satisfied_by("ready", "off"));
         assert!(!policies.needs_provider());
         assert!(policies.pending());
         pending_cache(root.path())
