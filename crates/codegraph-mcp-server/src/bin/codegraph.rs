@@ -10,7 +10,7 @@ use codegraph_mcp_core::debug_logger::DebugLogger;
 #[cfg(feature = "daemon")]
 use codegraph_mcp_daemon::{DaemonManager, PidFile, WatchConfig, WatchDaemon};
 use codegraph_mcp_server::CodeGraphMCPServer;
-use codegraph_mcp_server::{agent_cli, agent_hooks};
+use codegraph_mcp_server::{agent_cli, agent_hooks, project_init};
 use colored::Colorize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rmcp::ServiceExt;
@@ -57,6 +57,27 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    #[command(about = "Choose project hooks, add agent instructions, then index the project")]
+    Init {
+        #[arg(default_value = ".", help = "Project directory")]
+        path: PathBuf,
+        #[arg(
+            long,
+            value_enum,
+            help = "Project-local hooks; prompts interactively when absent"
+        )]
+        hooks: Option<project_init::HookSelection>,
+        #[arg(
+            long,
+            help = "Set up hooks/instructions without loading providers or indexing"
+        )]
+        no_index: bool,
+        #[arg(long, value_enum, help = "Indexing tier: fast | balanced | full")]
+        index_tier: Option<IndexTier>,
+        #[arg(long, default_value_t = 4, help = "Parallel parser workers")]
+        workers: usize,
+    },
+
     #[command(about = "Run client-facing agentic tools without an MCP transport")]
     Agent {
         #[command(subcommand)]
@@ -509,7 +530,7 @@ impl From<IndexTier> for codegraph_core::config_manager::IndexingTier {
 }
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
     // Guidance/hooks must work without valid provider config or any network services.
     if let Commands::Agent { ref action } = cli.command {
         // SAFETY: No async runtime or application threads have been started yet.
@@ -517,6 +538,44 @@ fn main() -> Result<()> {
     }
     if let Commands::Hooks { ref action } = cli.command {
         return agent_hooks::run(action);
+    }
+    if let Commands::Init {
+        ref path,
+        hooks,
+        no_index,
+        index_tier,
+        workers,
+    } = cli.command
+    {
+        let invoking_directory = std::env::current_dir()?;
+        let project = project_init::prepare(path, hooks)?;
+        if no_index {
+            eprintln!("Project setup complete; indexing skipped (--no-index).");
+            return Ok(());
+        }
+        // Resolve an explicit config against the invoking cwd before loading project env/config.
+        cli.config = cli.config.map(|path| invoking_directory.join(path));
+        std::env::set_current_dir(&project)?;
+        eprintln!("Step 3: Indexing project {}", project.display());
+        cli.command = Commands::Index {
+            path: project,
+            languages: None,
+            exclude: Vec::new(),
+            include: Vec::new(),
+            recursive: true,
+            force: false,
+            watch: false,
+            workers,
+            batch_size: 100,
+            max_concurrent: 10,
+            device: None,
+            max_seq_len: 512,
+            symbol_batch_size: None,
+            symbol_max_concurrent: None,
+            index_tier,
+            complete_deferred: false,
+            stats_json: None,
+        };
     }
     if let Some(path) = &cli.config {
         // SAFETY: Process configuration is prepared before starting worker threads.
@@ -548,7 +607,7 @@ async fn run_cli(cli: Cli) -> Result<()> {
     let config = config_mgr.config();
 
     match cli.command {
-        Commands::Agent { .. } | Commands::Hooks { .. } => {
+        Commands::Init { .. } | Commands::Agent { .. } | Commands::Hooks { .. } => {
             unreachable!("handled before configuration")
         }
         Commands::Start {

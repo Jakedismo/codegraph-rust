@@ -14,6 +14,7 @@ Bare Cargo commands target only `codegraph-core`; specify `--workspace` or `-p <
 - `cargo build -p codegraph-mcp-server --bin codegraph --features full`: build the CLI with agent, embedding, and HTTP features; add `--release` for optimized builds.
 - `./target/debug/codegraph start stdio`: run the built MCP server after configuring providers. New embedded stores apply the bundled v2 schema automatically; remote stores require `schema/apply-schema.sh`. Respect `CARGO_TARGET_DIR` when locating binaries.
 - `cargo test -p codegraph-mcp`: test the indexing crate; use `cargo test --workspace` for all crates.
+- `cargo test -p codegraph-mcp-server --lib` and `cargo test -p codegraph-mcp-server --test project_init_integration --test agent_cli_integration`: verify project setup, hook preservation and CLI contracts without live providers.
 - `cargo fmt --all -- --check`: verify formatting; omit `-- --check` to format.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: run CI-style linting. `make lint` checks only core and suppresses warnings.
 
@@ -46,3 +47,38 @@ Follow the history's Conventional Commit pattern, e.g. `fix(lsp): prevent premat
 ## Security & Configuration
 
 Use `.env.example` and `config/example.toml` as references. Keep credentials in ignored local configuration; never commit API keys or database passwords.
+
+`codegraph init [project]` selects project-local Claude/Codex hooks before merging both agent instruction files and indexing. `--hooks claude|codex|both|none` supports scripts; `--no-index` performs provider-independent setup. Keep user-level settings untouched, preserve unrelated hooks/instructions, and retain idempotent managed blocks. See [init and CLI usage](docs/AGENTIC_CLI.md).
+
+<!-- codegraph:begin -->
+# codegraph
+
+When `codegraph` is available, start code exploration with its agent tools. Ask a
+specific question about the task, relevant symbols or paths instead of starting
+with broad grep/rg searches:
+
+- `codegraph agent context "Find the implementation and callers for <task>" --focus search`
+  locates code; use `--focus builder` to gather implementation context or `question`
+  to explain behavior.
+- `codegraph agent impact "What depends on <symbol> and what would <change> affect?"`
+  checks dependencies before editing; `--focus call_chain` follows call flows.
+- `codegraph agent architecture "Describe <area> and its interfaces"`
+  maps structure; `--focus api_surface` inspects public interfaces.
+- `codegraph agent quality "Assess coupling, complexity and risks in <area>"`
+  supports refactoring decisions and targeted follow-up checks.
+
+Run from the indexed project root, or append `--project /path/to/project`; retain
+the indexed `--project-id` if one was configured. Prefer the default JSON output:
+inspect source locations, findings and partial-result warnings, then read the
+specific files/lines before editing. Reuse useful findings and narrow follow-up
+questions rather than repeating broad queries. After changes, verify against
+current source and run relevant tests; the index may lag uncommitted work.
+
+If CodeGraph is unavailable, the project is not indexed, a command fails or returns
+insufficient evidence, fall back to targeted source reads and rg/grep. Known file
+locations and exact-string verification also warrant direct reads/searches.
+Do not install CodeGraph, download models or reindex solely to satisfy these
+instructions. Agent queries use the configured model and may incur provider costs.
+Use the four public agent commands; internal graph tools belong to CodeGraph's
+built-in agents. Reload usage details with `codegraph agent instructions`.
+<!-- codegraph:end -->

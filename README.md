@@ -12,6 +12,7 @@ CodeGraph transforms your entire codebase into a semantically searchable knowled
 >
 > **Prefer shell commands?** Run `codegraph agent context "your question"`. The same four
 > agentic tools are available through the [CLI, with project-local Claude Code/Codex hooks](docs/AGENTIC_CLI.md).
+> `codegraph init` offers hook setup and adds agent instructions before indexing.
 
 ---
 
@@ -333,11 +334,32 @@ Surreal Cloud), set `CODEGRAPH_SURREALDB_URL` and apply the schema with
 surreal start --bind 0.0.0.0:3004 --user root --pass root file://$HOME/.codegraph/surreal.db
 ```
 
-### 3. Index Your Code
+### 3. Initialize and Index Your Project
 
 ```bash
+codegraph init /path/to/project
+```
+
+Init first offers **Claude Code, Codex, both, or none** for project-local hooks.
+It preserves existing settings and skips the prompt when CodeGraph hooks are already
+configured. Next it adds a managed `# codegraph` section to both `AGENTS.md` and
+`CLAUDE.md`, preserving other instructions, then recursively indexes the project.
+The guidance directs agents to start exploration with CodeGraph's context, impact,
+architecture and quality CLI tools and verify findings against current source.
+
+For scripts, pass the hook choice explicitly; setup can also run without indexing:
+
+```bash
+codegraph init /path/to/project --hooks both --index-tier balanced
+codegraph init /path/to/project --hooks none --no-index
+# Existing index-only workflow, with explicit language filters:
 codegraph index /path/to/project -r -l rust,typescript,python
 ```
+
+`--hooks none` leaves existing hooks in place and still updates both instruction
+files. Setup never modifies user-level harness configuration. Ensure `codegraph`
+is on the harness's PATH and reload/review the project hooks after setup; see
+[init and hook details](docs/AGENTIC_CLI.md#project-initialization).
 
 > **🔒 Security Note:** Indexing automatically respects `.gitignore` and filters out common secrets patterns (`.env`, `credentials.json`, `*.pem`, API keys, etc.). Your secrets won't be embedded or exposed to the agent.
 
@@ -459,6 +481,10 @@ the latest release candidate, **2.0.0-rc.13**, because no stable 2.0 release exi
 The CLI loads project or user dotenv configuration before starting worker threads.
 Library callers should initialize their environment at process startup; `ConfigManager::load()`
 only reads configuration and never changes the process environment.
+
+`codegraph init` configures the selected project and loads its environment before
+indexing. `codegraph config init` is the separate command for creating global
+application configuration; project init does not configure model providers.
 
 Global config in `~/.codegraph/config.toml`:
 

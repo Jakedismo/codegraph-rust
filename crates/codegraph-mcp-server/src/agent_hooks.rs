@@ -130,13 +130,12 @@ fn project_root(cwd: &Path) -> Option<PathBuf> {
 
 #[derive(serde::Serialize)]
 pub struct HookChange {
-    path: PathBuf,
-    changed: bool,
+    pub(crate) path: PathBuf,
+    pub(crate) changed: bool,
     settings: Value,
 }
 
-/// Read and validate both configurations before writing either one.
-pub fn install(project: &Path, harness: Harness, dry_run: bool) -> Result<Vec<HookChange>> {
+pub(crate) fn project_directory(project: &Path) -> Result<PathBuf> {
     let project = project
         .canonicalize()
         .context("Cannot resolve hook project directory")?;
@@ -150,6 +149,12 @@ pub fn install(project: &Path, harness: Harness, dry_run: bool) -> Result<Vec<Ho
     {
         bail!("Hooks must be installed in a project directory, not the user home directory");
     }
+    Ok(project)
+}
+
+/// Read and validate both configurations before writing either one.
+pub fn install(project: &Path, harness: Harness, dry_run: bool) -> Result<Vec<HookChange>> {
+    let project = project_directory(project)?;
     let paths: &[(&str, &str)] = match harness {
         Harness::Claude => &[(".claude", "settings.json")],
         Harness::Codex => &[(".codex", "hooks.json")],
@@ -169,7 +174,23 @@ pub fn install(project: &Path, harness: Harness, dry_run: bool) -> Result<Vec<Ho
                 return Err(error).with_context(|| format!("Cannot read {}", path.display()));
             }
         };
-        let settings = merge_settings(original.clone())
+        let inline = if directory.ends_with(".codex") {
+            let config = directory.join("config.toml");
+            reject_symlink(&config)?;
+            match fs::read_to_string(&config) {
+                Ok(contents) => Some(serde_json::to_value(
+                    toml::from_str::<toml::Value>(&contents)
+                        .with_context(|| format!("Invalid TOML in {}", config.display()))?,
+                )?),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+                Err(error) => {
+                    return Err(error).with_context(|| format!("Cannot read {}", config.display()));
+                }
+            }
+        } else {
+            None
+        };
+        let settings = merge_settings(original.clone(), inline.as_ref())
             .with_context(|| format!("Cannot merge {}", path.display()))?;
         changes.push(HookChange {
             path,
@@ -178,16 +199,12 @@ pub fn install(project: &Path, harness: Harness, dry_run: bool) -> Result<Vec<Ho
         });
     }
     if !dry_run {
-        for change in &changes {
-            if change.changed {
-                write_settings(&change.path, &change.settings)?;
-            }
-        }
+        apply_changes(&changes)?;
     }
     Ok(changes)
 }
 
-fn reject_symlink(path: &Path) -> Result<()> {
+pub(crate) fn reject_symlink(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             bail!(
@@ -201,7 +218,59 @@ fn reject_symlink(path: &Path) -> Result<()> {
     }
 }
 
-fn merge_settings(mut settings: Value) -> Result<Value> {
+fn configured_event(settings: &Value, event: &str) -> bool {
+    settings
+        .get("hooks")
+        .and_then(|hooks| hooks.get(event))
+        .and_then(Value::as_array)
+        .is_some_and(|groups| {
+            groups.iter().any(|group| {
+                group
+                    .get("hooks")
+                    .and_then(Value::as_array)
+                    .is_some_and(|handlers| {
+                        handlers.iter().any(|handler| {
+                            handler.get("command").and_then(Value::as_str) == Some(HOOK_COMMAND)
+                        })
+                    })
+            })
+        })
+}
+
+fn merge_settings(mut settings: Value, inline: Option<&Value>) -> Result<Value> {
+    // Validate the existing JSON even when both events are configured in inline TOML.
+    settings
+        .as_object()
+        .context("Settings must be a JSON object")?;
+    if let Some(hooks) = settings.get("hooks") {
+        hooks.as_object().context("hooks must be a JSON object")?;
+        for event in ["SessionStart", "SubagentStart"] {
+            if let Some(groups) = hooks.get(event) {
+                for group in groups
+                    .as_array()
+                    .with_context(|| format!("{event} must be an array"))?
+                {
+                    group
+                        .get("hooks")
+                        .and_then(Value::as_array)
+                        .with_context(|| {
+                            format!("{event} matcher group must have a hooks array")
+                        })?;
+                }
+            }
+        }
+    }
+    let installed = |event| {
+        configured_event(&settings, event)
+            || inline.is_some_and(|inline| configured_event(inline, event))
+    };
+    let missing: Vec<_> = ["SessionStart", "SubagentStart"]
+        .into_iter()
+        .filter(|event| !installed(event))
+        .collect();
+    if missing.is_empty() {
+        return Ok(settings);
+    }
     let object = settings
         .as_object_mut()
         .context("Settings must be a JSON object")?;
@@ -210,36 +279,35 @@ fn merge_settings(mut settings: Value) -> Result<Value> {
         .or_insert_with(|| json!({}))
         .as_object_mut()
         .context("hooks must be a JSON object")?;
-    for event in ["SessionStart", "SubagentStart"] {
+    for event in missing {
         let groups = hooks
             .entry(event)
             .or_insert_with(|| json!([]))
             .as_array_mut()
             .with_context(|| format!("{event} must be an array"))?;
-        let mut already_installed = false;
-        for group in groups.iter() {
-            let handlers = group
-                .get("hooks")
-                .and_then(Value::as_array)
-                .with_context(|| format!("{event} matcher group must have a hooks array"))?;
-            already_installed |= handlers.iter().any(|handler| {
-                handler.get("command").and_then(Value::as_str) == Some(HOOK_COMMAND)
-            });
+        let mut group = json!({"hooks": [{
+            "type": "command", "command": HOOK_COMMAND, "timeout": 5
+        }]});
+        if event == "SessionStart" {
+            group["matcher"] = json!("^(startup|resume|clear|compact)$");
         }
-        if !already_installed {
-            let mut group = json!({"hooks": [{
-                "type": "command", "command": HOOK_COMMAND, "timeout": 5
-            }]});
-            if event == "SessionStart" {
-                group["matcher"] = json!("^(startup|resume|clear|compact)$");
-            }
-            groups.push(group);
-        }
+        groups.push(group);
     }
     Ok(settings)
 }
 
-fn write_settings(path: &Path, settings: &Value) -> Result<()> {
+pub(crate) fn apply_changes(changes: &[HookChange]) -> Result<()> {
+    for change in changes {
+        if change.changed {
+            let mut contents = serde_json::to_vec_pretty(&change.settings)?;
+            contents.push(b'\n');
+            write_project_file(&change.path, &contents)?;
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn write_project_file(path: &Path, contents: &[u8]) -> Result<()> {
     let parent = path.parent().context("Settings have no parent directory")?;
     fs::create_dir_all(parent)?;
     let temporary = parent.join(format!(".codegraph-hooks-{}.tmp", uuid::Uuid::new_v4()));
@@ -251,8 +319,7 @@ fn write_settings(path: &Path, settings: &Value) -> Result<()> {
         if let Ok(metadata) = fs::metadata(path) {
             file.set_permissions(metadata.permissions())?;
         }
-        serde_json::to_writer_pretty(&mut file, settings)?;
-        writeln!(file)?;
+        file.write_all(contents)?;
         file.sync_all()?;
         fs::rename(&temporary, path)?;
         Ok(())
@@ -266,6 +333,30 @@ fn write_settings(path: &Path, settings: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_inline_hooks_are_reused_and_only_missing_events_are_installed() {
+        let project = tempfile::tempdir().unwrap();
+        let directory = project.path().join(".codex");
+        fs::create_dir(&directory).unwrap();
+        let mut inline = json!({"model": "custom-model", "hooks": {
+            "SessionStart": [{"hooks": [{"type": "command", "command": HOOK_COMMAND}]}]
+        }});
+        let config = directory.join("config.toml");
+        fs::write(&config, toml::to_string(&inline).unwrap()).unwrap();
+        let changes = install(project.path(), Harness::Codex, false).unwrap();
+        assert!(changes[0].settings["hooks"].get("SessionStart").is_none());
+        assert!(changes[0].settings["hooks"].get("SubagentStart").is_some());
+        assert!(!install(project.path(), Harness::Codex, true).unwrap()[0].changed);
+        fs::remove_file(directory.join("hooks.json")).unwrap();
+        inline["hooks"]["SubagentStart"] =
+            json!([{"hooks": [{"type": "command", "command": HOOK_COMMAND}]}]);
+        let contents = toml::to_string(&inline).unwrap();
+        fs::write(&config, &contents).unwrap();
+        assert!(!install(project.path(), Harness::Codex, false).unwrap()[0].changed);
+        assert!(!directory.join("hooks.json").exists());
+        assert_eq!(fs::read_to_string(config).unwrap(), contents);
+    }
 
     #[test]
     fn guidance_is_restored_for_sessions_and_subagents_without_blocking() {
@@ -297,7 +388,7 @@ mod tests {
             "env": {"CUSTOM_SETTING": "keep"},
             "hooks": {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "echo existing"}]}]}
         });
-        let merged = merge_settings(existing.clone()).unwrap();
+        let merged = merge_settings(existing.clone(), None).unwrap();
         assert_eq!(merged["permissions"], existing["permissions"]);
         assert_eq!(merged["env"], existing["env"]);
         assert_eq!(
@@ -308,7 +399,7 @@ mod tests {
             merged["hooks"]["SessionStart"][1]["matcher"],
             "^(startup|resume|clear|compact)$"
         );
-        assert_eq!(merge_settings(merged.clone()).unwrap(), merged);
+        assert_eq!(merge_settings(merged.clone(), None).unwrap(), merged);
     }
 
     #[test]

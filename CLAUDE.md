@@ -53,6 +53,8 @@ There are no `#[ignore]` tests; DB-dependent tests are gated by env vars and sil
 
 ```bash
 codegraph db-check                      # opens the store, applying the bundled schema if the store is new
+codegraph init /path/to/project         # choose project hooks, merge agent instructions, then index recursively
+codegraph init . --hooks none --no-index # instruction setup only; no providers or database
 codegraph index /path/to/project -r -l rust,typescript --index-tier fast|balanced|full
 codegraph start stdio --watch           # MCP server over stdio, with re-index-on-change daemon
 ```
@@ -60,6 +62,8 @@ codegraph start stdio --watch           # MCP server over stdio, with re-index-o
 Storage defaults to an embedded SurrealKV store at `<project>/.codegraph/db` (`SurrealDbConfig::for_project` in `crates/codegraph-graph/src/surrealdb_storage.rs`), which gets `schema/codegraph_v2.surql` applied on first open. The engine locks the directory, so one process at a time per project: stop `codegraph start` before `codegraph index` on the same project. Setting `CODEGRAPH_SURREALDB_URL` switches to a SurrealDB server (`surreal start --bind 0.0.0.0:3004 --user root --pass root file://$HOME/.codegraph/surreal.db`, then `cd schema && ./apply-schema.sh`; the schema is not applied automatically in server mode).
 
 Config resolution (`crates/codegraph-core/src/config_manager.rs`): `./.codegraph.toml`, then `~/.codegraph/config.toml`, overridden by `.env` (cwd, then `~/.codegraph.env`) and `CODEGRAPH_*` env vars. See `.env.example` and `config/example.toml`.
+
+Project init runs before application configuration or the async runtime. `project_init.rs` offers Claude/Codex/both/none, reuses existing CodeGraph hooks, validates both guide files and selected settings, then merges owned instruction blocks. `agent_hooks.rs` preserves unrelated project settings and reuses Codex inline TOML hooks without rewriting TOML. `--no-index` stops after setup; otherwise init loads the selected project's `.env` and configuration and uses the normal index command. Explicit `--config` paths stay relative to the invoking directory. This is separate from global `codegraph config init`; no user-level hooks are created. Test with `cargo test -p codegraph-mcp-server --lib` and `cargo test -p codegraph-mcp-server --test project_init_integration --test agent_cli_integration`.
 
 ## Architecture
 
@@ -116,3 +120,36 @@ Three SurrealDB schemas must stay in sync with the storage layer and with each o
 - Adding a language touches three layers: the enum in `codegraph-core/src/types.rs`, grammar registration in `codegraph-parser/src/language.rs`, and an extractor in `codegraph-parser/src/languages/`; then update `docs/SUPPORTED_LANGUAGES.md`.
 - User-facing changes to configuration, providers, or tiers should update `docs/AI_PROVIDERS.md` / `docs/AGENT_PROMPT_TIERS.md`. `CONTRIBUTING.md` has the full "what to change where" map.
 - `rules-for-claude-code/codegraph_rule.md` is guidance for *consumers* of the CodeGraph MCP server, not for developing this repo.
+
+<!-- codegraph:begin -->
+# codegraph
+
+When `codegraph` is available, start code exploration with its agent tools. Ask a
+specific question about the task, relevant symbols or paths instead of starting
+with broad grep/rg searches:
+
+- `codegraph agent context "Find the implementation and callers for <task>" --focus search`
+  locates code; use `--focus builder` to gather implementation context or `question`
+  to explain behavior.
+- `codegraph agent impact "What depends on <symbol> and what would <change> affect?"`
+  checks dependencies before editing; `--focus call_chain` follows call flows.
+- `codegraph agent architecture "Describe <area> and its interfaces"`
+  maps structure; `--focus api_surface` inspects public interfaces.
+- `codegraph agent quality "Assess coupling, complexity and risks in <area>"`
+  supports refactoring decisions and targeted follow-up checks.
+
+Run from the indexed project root, or append `--project /path/to/project`; retain
+the indexed `--project-id` if one was configured. Prefer the default JSON output:
+inspect source locations, findings and partial-result warnings, then read the
+specific files/lines before editing. Reuse useful findings and narrow follow-up
+questions rather than repeating broad queries. After changes, verify against
+current source and run relevant tests; the index may lag uncommitted work.
+
+If CodeGraph is unavailable, the project is not indexed, a command fails or returns
+insufficient evidence, fall back to targeted source reads and rg/grep. Known file
+locations and exact-string verification also warrant direct reads/searches.
+Do not install CodeGraph, download models or reindex solely to satisfy these
+instructions. Agent queries use the configured model and may incur provider costs.
+Use the four public agent commands; internal graph tools belong to CodeGraph's
+built-in agents. Reload usage details with `codegraph agent instructions`.
+<!-- codegraph:end -->

@@ -89,6 +89,47 @@ and a diagnostic on stderr. Text-mode failures leave stdout empty. Clap argument
 errors use stderr. `--timeout-secs` sets a whole-workflow deadline (default 300
 seconds) and expires with exit 1, without claiming a complete answer.
 
+## Project initialization
+
+```sh
+codegraph init /path/to/project
+codegraph init /path/to/project --hooks both --index-tier balanced --workers 4
+codegraph init /path/to/project --hooks none --no-index
+```
+
+Init runs these steps in order:
+
+1. Offer project-local guidance hooks for **Claude Code, Codex, both, or none**.
+   Enter a number or name; Enter defaults to none. If either harness already has
+   CodeGraph's session and subagent hooks, init skips this prompt. Use
+   `--hooks claude|codex|both|none` to choose explicitly or add the other harness. Noninteractive
+   runs require this flag when CodeGraph hooks are absent. None leaves existing hooks
+   untouched; unrelated hooks do not count as CodeGraph integration.
+2. Add or refresh a `# codegraph` section in both project `AGENTS.md` and `CLAUDE.md`,
+   even with no hooks selected. The guidance starts exploration with specific agent
+   queries, recommends impact checks before editing, and covers source verification,
+   output, project selection and fallbacks. Other content and custom CodeGraph rules
+   are preserved; only the block between `<!-- codegraph:begin -->` and
+   `<!-- codegraph:end -->` is owned by init. Both files are created if absent.
+3. Load the selected project's environment/configuration and recursively index it
+   using the existing indexing pipeline and tier/inference policies. Explicit
+   `--config` paths remain relative to the invoking directory. Indexing failures
+   return nonzero while leaving completed setup available for the next attempt.
+
+`--no-index` finishes after setup without loading application/provider configuration,
+creating a database or contacting services. It works in plain builds too. Init is
+separate from `codegraph config init`, which creates global application configuration.
+The default indexing tier is fast; select balanced/full only after satisfying their
+language-server prerequisites. Model providers must already be configured for any
+enabled inference stages.
+
+Repeating the same setup leaves files unchanged. Selected hook settings and both
+guidance files are validated before writing; malformed settings, broken ownership
+markers, unclosed Markdown fences and symlinks fail before setup writes begin.
+Writes replace individual files atomically and retain existing file permissions.
+User-level harness settings are never modified. Reload the harness to load updated
+instructions, and review/trust hooks through its normal controls.
+
 ## Harness guidance and hooks
 
 `codegraph agent instructions` prints standalone guidance for any harness or a
@@ -116,8 +157,10 @@ They use a POSIX shell, suitable for macOS/Linux and Claude's Bash environment o
 Windows; Windows-native harnesses need an equivalent shell command. Ensure the
 built binary is available through your existing installation or PATH. Reload/restart
 the harness after installing, and review/trust hooks through the harness's normal
-controls. Codex may warn if the project also defines inline hooks in `config.toml`;
-both sources are loaded. The installer preserves that configuration.
+controls. Codex loads both `.codex/hooks.json` and inline hooks in
+`.codex/config.toml` and may warn when both are present. The installer reuses existing
+CodeGraph handlers from either source, adds only missing lifecycle events, and leaves
+the TOML file unchanged.
 
 - `SessionStart` on startup, resume, clear, and compact restores the full CLI guide.
 - `SubagentStart` supplies the same guide to newly started code agents.

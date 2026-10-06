@@ -19,13 +19,22 @@ This guide covers the complete installation process for CodeGraph, from building
 ## Supported CLI Commands
 
 - `start` / `stop` / `status` — manage the MCP server transports (stdio/http)
+- `init` — choose project-local Claude/Codex hooks, merge agent instructions, then index
 - `index` — index a project (supports `--force`, language filters, watch mode)
+- `agent` — run context/impact/architecture/quality tools or print CLI instructions
+- `hooks` — install project-local guidance hooks or emit lifecycle context
 - `estimate` — estimate indexing time/cost without persisting
 - `config` — init/show/set/get/validate configuration; agent-status/db-check live here
-- `dbcheck` — quick Surreal connectivity/schema canary
+- `db-check` — quick Surreal connectivity/schema canary
 - `daemon` — (feature-gated) file-watch daemon control
 
-Legacy helper commands (`code`, `test`, `perf`, `stats`, `clean`, `init`) are no longer part of the CLI.
+Legacy helper commands (`code`, `test`, `perf`, `stats`, `clean`) are no longer part of the CLI.
+
+For first-time project setup, run `codegraph init /path/to/project`. It offers Claude,
+Codex, both or none before updating project `AGENTS.md`/`CLAUDE.md` and indexing.
+Scripts should pass `--hooks claude|codex|both|none`; `--no-index` performs setup only.
+See [project initialization](AGENTIC_CLI.md#project-initialization) for preservation,
+existing-hook detection and provider prerequisites.
 
 For HTTP deployments, MCP 3 validates the request's `Host` header. Loopback hosts
 and the configured bind host are accepted by default. When binding to `0.0.0.0`

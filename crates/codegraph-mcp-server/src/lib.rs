@@ -9,6 +9,7 @@ pub mod http_config;
 #[cfg(feature = "server-http")]
 pub mod http_server;
 pub mod official_server;
+pub mod project_init;
 pub mod prompts;
 
 pub use codegraph_mcp_core::analysis::AnalysisType;

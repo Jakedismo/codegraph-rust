@@ -33,13 +33,14 @@ checking warnings and partial results. Logs go to stderr. Runtime failures emit
 is 300 seconds; override with `--timeout-secs N`. Use `--query-file FILE` instead of
 a positional query for long questions, or `--query-file -` to read stdin.
 
-Start with a specific question including relevant symbols, paths, or the intended
-change. Follow returned file:line locations with targeted reads before editing.
+When CodeGraph is available, start code discovery with a specific agentic question
+including relevant symbols, paths, or the intended change before broad grep/rg searches.
+Check impact before editing. Follow returned file:line locations with targeted reads.
 Verify the answer against current code: an index can lag behind uncommitted work,
 and a successful response can contain a timeout/partial-result warning. If the
 index or service is unavailable, results lack evidence, or a location is already
-known, use ordinary repository tools. Do not install, configure, reindex, or call
-models merely because this guidance was injected. Internal graph analysis tools
+known, use ordinary repository tools. Do not install, configure, download models or
+reindex merely because this guidance was injected. Internal graph analysis tools
 are for CodeGraph's built-in agents; use only the four agentic commands above.
 
 Reload this guidance with `codegraph agent instructions` after context loss.

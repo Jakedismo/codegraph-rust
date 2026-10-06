@@ -64,6 +64,7 @@ schemars = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
