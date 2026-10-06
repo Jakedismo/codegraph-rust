@@ -617,8 +617,9 @@ Source review of the full-tier answers found:
   and the failure reproduces when the
   [function](schema/codegraph_v2.surql#L497) is called directly on this index. The
   answer discloses the gap and flags that instability is reported as `0.0` for nodes
-  with outgoing dependencies. Direct calls confirm that every instability value is
-  `0.0`: the [expression](schema/codegraph_v2.surql#L458) divides two integer counts.
+  with outgoing dependencies. Direct calls for five sampled nodes all returned
+  `0.0`: the [expression](schema/codegraph_v2.surql#L458) divides two integer counts,
+  and integer division truncates the ratio.
   Coupling counts are unaffected, but stability conclusions cannot be drawn.
 - **Complexity (case 8): consistent arithmetic, different ranking.** All 20 risk
   scores match complexity × (incoming dependency-edge count + 1). Parser `walk`
