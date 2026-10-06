@@ -148,8 +148,8 @@ impl RigAgentBuilder {
 
     /// Resolve architecture, defaulting to ReAct when none was set explicitly.
     ///
-    /// LATS is opt-in via [`AGENT_ARCHITECTURE_ENV`] or [`Self::architecture`]: its expansion step reasons
-    /// without calling graph tools, so its answers are not grounded in the index.
+    /// LATS is opt-in via [`AGENT_ARCHITECTURE_ENV`] or [`Self::architecture`]. Its
+    /// candidate tool loops use the same graph tools as ReAct.
     fn resolve_architecture(&self) -> AgentArchitecture {
         self.architecture.unwrap_or(AgentArchitecture::ReAct)
     }
@@ -193,13 +193,9 @@ impl RigAgentBuilder {
     // Without any provider feature every arm returns early.
     #[allow(unreachable_code)]
     fn build_lats(self, provider: RigProvider) -> Result<Box<dyn RigAgentTrait>> {
-        tracing::warn!(
-            "LATS agent selected: it searches over reasoning steps without calling graph tools, \
-             so answers are not grounded in the index. Use react for grounded answers."
-        );
         let model_name = get_model_name();
 
-        // LATS only needs plain completions, so every provider with a client works.
+        // The dynamic model supports both candidate tool loops and evaluator completions.
         let model: DynModel<Completion> = match provider {
             #[cfg(feature = "openai")]
             RigProvider::OpenAI => RigLLMAdapter::openai_client()?
@@ -235,12 +231,14 @@ impl RigAgentBuilder {
             }
         };
 
-        Ok(Box::new(LatsAgent {
+        Ok(Box::new(LatsAgent::new(
             model,
-            factory: GraphToolFactory::new(self.executor.clone()),
-            max_turns: self.max_turns,
-            tier: self.tier,
-        }))
+            GraphToolFactory::new(self.executor.clone()),
+            self.max_turns,
+            self.tier,
+            self.get_max_output_tokens(),
+            self.system_prompt(),
+        )))
     }
 
     fn build_reflexion(self, provider: RigProvider) -> Result<Box<dyn RigAgentTrait>> {
@@ -262,17 +260,10 @@ impl RigAgentBuilder {
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
+        let agent = factory
+            .agent_builder(client.completion(&model))
             .preamble(&system_prompt)
             .max_tokens(max_output_tokens)
-            .tool(factory.transitive_dependencies())
-            .tool(factory.circular_dependencies())
-            .tool(factory.call_chain())
-            .tool(factory.coupling_metrics())
-            .tool(factory.hub_nodes())
-            .tool(factory.reverse_dependencies())
-            .tool(factory.semantic_search())
-            .tool(factory.complexity_hotspots())
             .build();
 
         Ok(OpenAIAgent {
@@ -291,17 +282,10 @@ impl RigAgentBuilder {
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
+        let agent = factory
+            .agent_builder(client.completion(&model))
             .preamble(&system_prompt)
             .max_tokens(max_output_tokens)
-            .tool(factory.transitive_dependencies())
-            .tool(factory.circular_dependencies())
-            .tool(factory.call_chain())
-            .tool(factory.coupling_metrics())
-            .tool(factory.hub_nodes())
-            .tool(factory.reverse_dependencies())
-            .tool(factory.semantic_search())
-            .tool(factory.complexity_hotspots())
             .build();
 
         Ok(AnthropicAgent {
@@ -319,16 +303,9 @@ impl RigAgentBuilder {
         let system_prompt = self.system_prompt();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
+        let agent = factory
+            .agent_builder(client.completion(&model))
             .preamble(&system_prompt)
-            .tool(factory.transitive_dependencies())
-            .tool(factory.circular_dependencies())
-            .tool(factory.call_chain())
-            .tool(factory.coupling_metrics())
-            .tool(factory.hub_nodes())
-            .tool(factory.reverse_dependencies())
-            .tool(factory.semantic_search())
-            .tool(factory.complexity_hotspots())
             .build();
 
         Ok(OllamaAgent {
@@ -347,17 +324,10 @@ impl RigAgentBuilder {
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
+        let agent = factory
+            .agent_builder(client.completion(&model))
             .preamble(&system_prompt)
             .max_tokens(max_output_tokens)
-            .tool(factory.transitive_dependencies())
-            .tool(factory.circular_dependencies())
-            .tool(factory.call_chain())
-            .tool(factory.coupling_metrics())
-            .tool(factory.hub_nodes())
-            .tool(factory.reverse_dependencies())
-            .tool(factory.semantic_search())
-            .tool(factory.complexity_hotspots())
             .build();
 
         Ok(XAIAgent {
@@ -376,17 +346,10 @@ impl RigAgentBuilder {
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
+        let agent = factory
+            .agent_builder(client.completion(&model))
             .preamble(&system_prompt)
             .max_tokens(max_output_tokens)
-            .tool(factory.transitive_dependencies())
-            .tool(factory.circular_dependencies())
-            .tool(factory.call_chain())
-            .tool(factory.coupling_metrics())
-            .tool(factory.hub_nodes())
-            .tool(factory.reverse_dependencies())
-            .tool(factory.semantic_search())
-            .tool(factory.complexity_hotspots())
             .build();
 
         Ok(OpenAIAgent {
@@ -405,17 +368,10 @@ impl RigAgentBuilder {
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
+        let agent = factory
+            .agent_builder(client.completion(&model))
             .preamble(&system_prompt)
             .max_tokens(max_output_tokens)
-            .tool(factory.transitive_dependencies())
-            .tool(factory.circular_dependencies())
-            .tool(factory.call_chain())
-            .tool(factory.coupling_metrics())
-            .tool(factory.hub_nodes())
-            .tool(factory.reverse_dependencies())
-            .tool(factory.semantic_search())
-            .tool(factory.complexity_hotspots())
             .build();
 
         Ok(OpenAIAgent {

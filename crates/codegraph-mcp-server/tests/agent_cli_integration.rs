@@ -301,6 +301,17 @@ async fn deadline_cancels_stalled_database_setup_without_a_model_call() {
 #[cfg(all(feature = "ai-enhanced", feature = "server-http"))]
 #[tokio::test]
 async fn successful_command_returns_shared_workflow_json_with_a_local_mock_model() {
+    successful_mock_workflow("rig").await;
+}
+
+#[cfg(all(feature = "ai-enhanced", feature = "server-http"))]
+#[tokio::test]
+async fn lats_command_executes_graph_tools_and_reports_their_count() {
+    successful_mock_workflow("lats").await;
+}
+
+#[cfg(all(feature = "ai-enhanced", feature = "server-http"))]
+async fn successful_mock_workflow(architecture: &'static str) {
     use axum::{
         Json, Router,
         routing::{get, post},
@@ -319,12 +330,27 @@ async fn successful_command_returns_shared_workflow_json_with_a_local_mock_model
         .route("/api/show", post(|| async {
             Json(json!({"model_info": {"mock.context_length": 512}, "capabilities": ["embedding"]}))
         }))
-        .route("/api/chat", post(move || {
+        .route("/api/chat", post(move |Json(request): Json<Value>| {
             calls_for_handler.fetch_add(1, Ordering::SeqCst);
-            async {
+            async move {
+                let messages = request["messages"].as_array().unwrap();
+                let critic = messages.iter().any(|message| message["role"] == "system"
+                    && message["content"].as_str().unwrap_or_default().starts_with("You score one proposed step"));
+                let observed = messages.iter().any(|message| message["role"] == "tool");
+                let message = if architecture == "lats" && critic {
+                    json!({"role": "assistant", "content": "95"})
+                } else if architecture == "lats" && !observed {
+                    json!({"role": "assistant", "content": "", "tool_calls": [{
+                        "function": {"name": "get_hub_nodes", "arguments": {"min_degree": 1}}
+                    }]})
+                } else if architecture == "lats" {
+                    json!({"role": "assistant", "content": "Final answer: No hub nodes found in this lookup."})
+                } else {
+                    json!({"role": "assistant", "content": "Mock agent answer with source location src/lib.rs:12."})
+                };
                 Json(json!({
                     "model": "test-model", "created_at": "2026-01-01T00:00:00Z",
-                    "message": {"role": "assistant", "content": "Mock agent answer with source location src/lib.rs:12."},
+                    "message": message,
                     "done": true
                 }))
             }
@@ -340,6 +366,16 @@ async fn successful_command_returns_shared_workflow_json_with_a_local_mock_model
         std::fs::write(&config, "").unwrap();
         // Prevent fallback to any user dotenv configuration.
         std::fs::write(project.path().join(".env"), "").unwrap();
+        // Fresh disk stores receive the bundled graph functions; mem:// intentionally
+        // does not. Keep the LATS fixture entirely inside this temporary project.
+        let database = if architecture == "lats" {
+            format!(
+                "surrealkv://{}",
+                project.path().join("fixture-db").display()
+            )
+        } else {
+            "mem://".to_string()
+        };
         let mut command = Command::new(env!("CARGO_BIN_EXE_codegraph"));
         command
             .args([
@@ -354,7 +390,7 @@ async fn successful_command_returns_shared_workflow_json_with_a_local_mock_model
             .current_dir(project.path())
             .env("CODEGRAPH_CONFIG_PATH", config)
             .env("CODEGRAPH_DEBUG", "0")
-            .env("CODEGRAPH_AGENT_ARCHITECTURE", "rig")
+            .env("CODEGRAPH_AGENT_ARCHITECTURE", architecture)
             .env("CODEGRAPH_LLM_PROVIDER", "ollama")
             .env("CODEGRAPH_MODEL", "test-model")
             .env("CODEGRAPH_LLM_MODEL", "test-model")
@@ -369,7 +405,7 @@ async fn successful_command_returns_shared_workflow_json_with_a_local_mock_model
             )
             .env("CODEGRAPH_OLLAMA_URL", format!("http://{address}"))
             .env("OLLAMA_API_BASE_URL", format!("http://{address}"))
-            .env("CODEGRAPH_SURREALDB_URL", "mem://")
+            .env("CODEGRAPH_SURREALDB_URL", database)
             .env("CODEGRAPH_USE_GRAPH_SCHEMA", "false")
             .env("CODEGRAPH_PROJECT_ID", "mock-cli-project");
         for key in [
@@ -394,11 +430,17 @@ async fn successful_command_returns_shared_workflow_json_with_a_local_mock_model
     assert_eq!(response["query"], "Find request handling");
     assert_eq!(response["analysis_type"], "code_search");
     assert_eq!(response["framework"], "Rig");
-    assert_eq!(
-        response["answer"],
-        "Mock agent answer with source location src/lib.rs:12."
-    );
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    if architecture == "lats" {
+        assert_eq!(response["answer"], "No hub nodes found in this lookup.");
+        assert_eq!(response["tool_use_count"], 3);
+        assert_eq!(calls.load(Ordering::SeqCst), 9);
+    } else {
+        assert_eq!(
+            response["answer"],
+            "Mock agent answer with source location src/lib.rs:12."
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
     assert!(response.get("tool_use_count").is_some());
     assert!(response.get("error").is_none());
 }
