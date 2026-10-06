@@ -74,6 +74,11 @@ Directory indexing scans subdirectories by default, so
 #### Indexing prerequisites (LSP-enabled tiers)
 
 When the tier enables LSP (`balanced`/`full`), indexing **fails fast** if required external tools are missing.
+Rust indexing also runs `rust-analyzer --version` from the target project before parsing:
+an existing rustup shim does not guarantee that its active toolchain has the component.
+With rustup, run `rustup component add rust-analyzer` from that project directory,
+then verify `rust-analyzer --version`. Language-server failures retain the final 4 KiB
+of stderr so startup and runtime errors include the server's diagnostic.
 
 Required tools by language:
 - Rust: `rust-analyzer`

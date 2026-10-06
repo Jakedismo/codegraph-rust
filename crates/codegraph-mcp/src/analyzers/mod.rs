@@ -243,6 +243,9 @@ pub fn find_tool_candidates_on_path(tool: &str, path_env: &str) -> Vec<PathBuf> 
     for dir in std::env::split_paths(path_env) {
         let candidate = dir.join(tool);
         if candidate.is_file() {
+            // Keep the shim's filename while resolving relative PATH entries before
+            // language servers change their working directory to the indexed project.
+            let candidate = std::path::absolute(&candidate).unwrap_or(candidate);
             if !out.contains(&candidate) {
                 out.push(candidate);
             }
@@ -251,6 +254,7 @@ pub fn find_tool_candidates_on_path(tool: &str, path_env: &str) -> Vec<PathBuf> 
         {
             let candidate = dir.join(format!("{}.exe", tool));
             if candidate.is_file() {
+                let candidate = std::path::absolute(&candidate).unwrap_or(candidate);
                 if !out.contains(&candidate) {
                     out.push(candidate);
                 }

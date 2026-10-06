@@ -281,10 +281,11 @@ impl ProjectIndexer {
         (batch_size, max_concurrent)
     }
 
-    fn validate_analyzer_tools(
+    async fn validate_analyzer_tools(
         languages: &[codegraph_core::Language],
         settings: AnalyzerSettings,
         path_env: &str,
+        project_root: &Path,
     ) -> Result<()> {
         if !settings.lsp_enabled() {
             return Ok(());
@@ -294,21 +295,33 @@ impl ProjectIndexer {
         }
 
         let required = required_tools_for_languages(languages);
-        let mut missing: Vec<String> = Vec::new();
+        let mut problems: Vec<String> = Vec::new();
 
         for tool in required {
             if find_tool_on_path(tool.name, path_env).is_none() {
-                missing.push(format!("{} (for {:?})", tool.name, tool.language));
+                problems.push(format!("Missing {} (for {:?})", tool.name, tool.language));
+            } else if tool.name == "rust-analyzer" {
+                let mut failures = Vec::new();
+                for command in crate::analyzers::find_tool_candidates_on_path(tool.name, path_env) {
+                    match crate::analyzers::lsp::probe_rust_analyzer(&command, project_root).await {
+                        Ok(()) => {
+                            failures.clear();
+                            break;
+                        }
+                        Err(error) => failures.push(error.to_string()),
+                    }
+                }
+                problems.extend(failures);
             }
         }
 
-        if missing.is_empty() {
+        if problems.is_empty() {
             return Ok(());
         }
 
         Err(anyhow!(
-            "Missing required analyzer tools: {}. Install the tools or choose a tier without LSP (e.g. --index-tier fast or CODEGRAPH_INDEX_TIER=fast).",
-            missing.join(", ")
+            "Required analyzer tools are unavailable: {}. Install the tools or choose a tier without LSP (e.g. --index-tier fast or CODEGRAPH_INDEX_TIER=fast).",
+            problems.join("\n")
         ))
     }
 
@@ -853,7 +866,13 @@ impl ProjectIndexer {
                 analyzer_languages.into_iter().collect();
             let scip_path = std::env::var_os("CODEGRAPH_SCIP_INDEX").map(PathBuf::from);
             if scip_path.is_none() {
-                Self::validate_analyzer_tools(&analyzer_languages, analyzer_settings, &path_env)?;
+                Self::validate_analyzer_tools(
+                    &analyzer_languages,
+                    analyzer_settings,
+                    &path_env,
+                    &self.project_root,
+                )
+                .await?;
             }
 
             let lsp_mode_label = match analyzer_settings.lsp_mode {
@@ -3623,8 +3642,8 @@ mod tests {
         assert_eq!(column.dimension(), 3072);
     }
 
-    #[test]
-    fn analyzer_requires_rust_analyzer_when_lsp_enabled() {
+    #[tokio::test]
+    async fn analyzer_requires_rust_analyzer_when_lsp_enabled() {
         let settings =
             AnalyzerSettings::for_tier(codegraph_core::config_manager::IndexingTier::Full);
 
@@ -3632,9 +3651,80 @@ mod tests {
             &[codegraph_core::Language::Rust],
             settings,
             "",
+            Path::new("."),
         )
+        .await
         .expect_err("should fail when required tools are missing");
-        let _ = err;
+        assert!(err.to_string().contains("Missing rust-analyzer"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn analyzer_rejects_broken_rustup_shims_and_accepts_working_fallbacks() {
+        use std::os::unix::fs::PermissionsExt;
+        let project = tempfile::tempdir().unwrap();
+        let broken = project.path().join("broken");
+        let working = project.path().join("working");
+        for directory in [&broken, &working] {
+            std::fs::create_dir(directory).unwrap();
+        }
+        std::fs::write(project.path().join("rust-toolchain.toml"), "sentinel").unwrap();
+        for (directory, script) in [
+            (
+                &broken,
+                "#!/bin/sh\nprintf \"Unknown binary 'rust-analyzer' in official toolchain 'stable'\\n\" >&2\nexit 1\n",
+            ),
+            (
+                &working,
+                "#!/bin/sh\n[ \"$1\" = --version ] && [ -f rust-toolchain.toml ] || exit 2\nprintf 'rust-analyzer test\\n'\n",
+            ),
+        ] {
+            let path = directory.join("rust-analyzer");
+            std::fs::write(&path, script).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let settings =
+            AnalyzerSettings::for_tier(codegraph_core::config_manager::IndexingTier::Balanced);
+        let error = ProjectIndexer::validate_analyzer_tools(
+            &[codegraph_core::Language::Rust],
+            settings,
+            broken.to_str().unwrap(),
+            project.path(),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("Unknown binary 'rust-analyzer'"), "{error}");
+        assert!(error.contains("rustup component add rust-analyzer"));
+        assert!(error.contains(broken.to_str().unwrap()));
+        let path = std::env::join_paths([&broken, &working]).unwrap();
+        ProjectIndexer::validate_analyzer_tools(
+            &[codegraph_core::Language::Rust],
+            settings,
+            path.to_str().unwrap(),
+            project.path(),
+        )
+        .await
+        .unwrap();
+        ProjectIndexer::validate_analyzer_tools(
+            &[codegraph_core::Language::Rust],
+            AnalyzerSettings::for_tier(codegraph_core::config_manager::IndexingTier::Fast),
+            broken.to_str().unwrap(),
+            project.path(),
+        )
+        .await
+        .unwrap();
+        ProjectIndexer::validate_analyzer_tools(
+            &[codegraph_core::Language::Rust],
+            AnalyzerSettings {
+                require_tools: false,
+                ..settings
+            },
+            broken.to_str().unwrap(),
+            project.path(),
+        )
+        .await
+        .unwrap();
     }
 
     #[test]

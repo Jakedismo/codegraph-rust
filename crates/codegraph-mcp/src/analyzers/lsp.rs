@@ -1,7 +1,7 @@
 // ABOUTME: Implements a high-performance async Language Server Protocol client
 // ABOUTME: Provides pipelined request handling and concurrent file processing
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use codegraph_core::{CodeNode, EdgeRelationship};
 use dashmap::DashMap;
 use futures::{StreamExt, stream};
@@ -9,11 +9,11 @@ use serde_json::Value as JsonValue;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{error, info};
 use url::Url;
 
@@ -93,7 +93,98 @@ pub struct LspClient {
     next_id: Arc<AtomicU64>,
     requests: Arc<tokio::sync::Semaphore>,
     documents: Arc<DashMap<String, (String, i64)>>,
+    diagnostics: Arc<LspDiagnostics>,
     _tasks: Arc<SessionTasks>,
+}
+
+const STDERR_TAIL_BYTES: usize = 4096;
+
+struct LspDiagnostics {
+    command: PathBuf,
+    stderr: parking_lot::Mutex<Vec<u8>>,
+    stderr_done: watch::Receiver<bool>,
+    stopped: AtomicBool,
+}
+
+impl LspDiagnostics {
+    fn record_stderr(&self, bytes: &[u8]) {
+        let mut tail = self.stderr.lock();
+        tail.extend_from_slice(bytes);
+        let excess = tail.len().saturating_sub(STDERR_TAIL_BYTES);
+        tail.drain(..excess);
+    }
+
+    async fn failure(&self, reason: &str) -> anyhow::Error {
+        // stdout can close before the stderr task has consumed the final diagnostic.
+        // Bound the wait: a server may close stdout while keeping stderr open.
+        let mut done = self.stderr_done.clone();
+        let _ = tokio::time::timeout(Duration::from_millis(250), async {
+            while !*done.borrow_and_update() {
+                if done.changed().await.is_err() {
+                    break;
+                }
+            }
+        })
+        .await;
+        let stderr = String::from_utf8_lossy(&self.stderr.lock())
+            .trim()
+            .to_owned();
+        if stderr.is_empty() {
+            anyhow!("{}: {}", self.command.display(), reason)
+        } else {
+            anyhow!(
+                "{}: {}\nServer stderr: {}",
+                self.command.display(),
+                reason,
+                stderr
+            )
+        }
+    }
+}
+
+async fn fail_pending_requests(
+    pending: &DashMap<u64, oneshot::Sender<Result<JsonValue>>>,
+    diagnostics: &LspDiagnostics,
+    reason: &str,
+) {
+    diagnostics.stopped.store(true, Ordering::Release);
+    let error = diagnostics.failure(reason).await.to_string();
+    let ids: Vec<_> = pending.iter().map(|entry| *entry.key()).collect();
+    for id in ids {
+        if let Some((_, response)) = pending.remove(&id) {
+            let _ = response.send(Err(anyhow!(error.clone())));
+        }
+    }
+}
+
+/// Check rustup shims as well as standalone binaries before spending time parsing.
+pub async fn probe_rust_analyzer(command: &Path, project_root: &Path) -> Result<()> {
+    let mut probe = Command::new(command);
+    probe
+        .arg("--version")
+        .current_dir(project_root)
+        .stdin(Stdio::null())
+        .kill_on_drop(true);
+    let result = tokio::time::timeout(Duration::from_secs(5), probe.output()).await;
+    let problem = match result {
+        Ok(Ok(output)) if output.status.success() => return Ok(()),
+        Ok(Ok(output)) => {
+            let start = output.stderr.len().saturating_sub(STDERR_TAIL_BYTES);
+            format!(
+                "{}\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr[start..]).trim()
+            )
+        }
+        Ok(Err(error)) => error.to_string(),
+        Err(_) => "--version timed out after 5 seconds".to_owned(),
+    };
+    Err(anyhow!(
+        "rust-analyzer at {} cannot run for project {}: {}. If using rustup, run `rustup component add rust-analyzer` from the project directory for its active toolchain. Otherwise install a working rust-analyzer on PATH, or choose --index-tier fast.",
+        command.display(),
+        project_root.display(),
+        problem
+    ))
 }
 
 struct SessionTasks(Vec<tokio::task::AbortHandle>);
@@ -112,7 +203,9 @@ impl LspPool {
     async fn client(&self, command: &Path, args: &[&str], root: &str) -> Result<LspClient> {
         let key = codegraph_core::artifact_cache::fingerprint(&(command, args, root))?;
         let mut clients = self.clients.lock().await;
-        if let Some(client) = clients.get(&key).filter(|client| !client.tx.is_closed()) {
+        if let Some(client) = clients.get(&key).filter(|client| {
+            !client.tx.is_closed() && !client.diagnostics.stopped.load(Ordering::Acquire)
+        }) {
             return Ok(client.clone());
         }
         let client = LspClient::start(command, args, root).await?;
@@ -146,13 +239,21 @@ impl LspClient {
             root_uri
         );
 
-        let mut child = Command::new(command)
+        let mut process = Command::new(command);
+        if let Some(root) = Url::parse(root_uri)
+            .ok()
+            .and_then(|uri| uri.to_file_path().ok())
+        {
+            process.current_dir(root);
+        }
+        let mut child = process
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
-            .spawn()?;
+            .spawn()
+            .with_context(|| format!("Failed to start LSP server {}", command.display()))?;
 
         let mut stdin = child.stdin.take().ok_or_else(|| anyhow!("missing stdin"))?;
         let stdout = child
@@ -167,6 +268,15 @@ impl LspClient {
         let (tx, mut rx) = mpsc::channel::<LspRequest>(100);
         let pending_requests = Arc::new(DashMap::<u64, oneshot::Sender<Result<JsonValue>>>::new());
         let pending_requests_read = pending_requests.clone();
+        let pending_requests_write = pending_requests.clone();
+        let (stderr_done_tx, stderr_done) = watch::channel(false);
+        let diagnostics = Arc::new(LspDiagnostics {
+            command: command.to_path_buf(),
+            stderr: parking_lot::Mutex::new(Vec::new()),
+            stderr_done,
+            stopped: AtomicBool::new(false),
+        });
+        let diagnostics_write = diagnostics.clone();
 
         // Writer task
         let writer = tokio::spawn(async move {
@@ -195,10 +305,22 @@ impl LspClient {
                 let framed = encode_lsp_message(&body);
                 if let Err(e) = stdin.write_all(&framed).await {
                     error!("LSP stdin write failed: {}", e);
+                    fail_pending_requests(
+                        &pending_requests_write,
+                        &diagnostics_write,
+                        &format!("Language server stdin write failed: {e}"),
+                    )
+                    .await;
                     break;
                 }
                 if let Err(e) = stdin.flush().await {
                     error!("LSP stdin flush failed: {}", e);
+                    fail_pending_requests(
+                        &pending_requests_write,
+                        &diagnostics_write,
+                        &format!("Language server stdin flush failed: {e}"),
+                    )
+                    .await;
                     break;
                 }
             }
@@ -207,6 +329,7 @@ impl LspClient {
         // Reader task
         let response_tx = tx.clone();
         let server_root = root_uri.to_owned();
+        let diagnostics_read = diagnostics.clone();
         let reader = tokio::spawn(async move {
             let mut reader = BufReader::new(stdout);
             let mut content_length_buf = String::new();
@@ -287,28 +410,26 @@ impl LspClient {
                 }
                 // We ignore notifications from server for now
             }
-            let pending: Vec<_> = pending_requests_read
-                .iter()
-                .map(|entry| *entry.key())
-                .collect();
-            for id in pending {
-                if let Some((_, response)) = pending_requests_read.remove(&id) {
-                    let _ = response.send(Err(anyhow!("Language server closed its output stream")));
-                }
-            }
+            fail_pending_requests(
+                &pending_requests_read,
+                &diagnostics_read,
+                "Language server closed its output stream",
+            )
+            .await;
         });
 
-        // Stderr logger
+        // Retain a bounded tail even when verbose logging is disabled.
+        let diagnostics_stderr = diagnostics.clone();
         let stderr_task = tokio::spawn(async move {
-            let mut reader = BufReader::new(stderr);
-            let mut line = String::new();
-            while let Ok(n) = reader.read_line(&mut line).await {
+            let mut reader = stderr;
+            let mut bytes = [0u8; 1024];
+            while let Ok(n) = reader.read(&mut bytes).await {
                 if n == 0 {
                     break;
                 }
-                // debug!("LSP stderr: {}", line.trim());
-                line.clear();
+                diagnostics_stderr.record_stderr(&bytes[..n]);
             }
+            let _ = stderr_done_tx.send(true);
         });
 
         let client = Self {
@@ -323,6 +444,7 @@ impl LspClient {
                     .clamp(1, 128),
             )),
             documents: Arc::new(DashMap::new()),
+            diagnostics,
             _tasks: Arc::new(SessionTasks(vec![
                 writer.abort_handle(),
                 reader.abort_handle(),
@@ -353,6 +475,12 @@ impl LspClient {
 
     pub async fn request(&self, method: &str, params: JsonValue) -> Result<JsonValue> {
         let _permit = self.requests.acquire().await?;
+        if self.diagnostics.stopped.load(Ordering::Acquire) {
+            return Err(self
+                .diagnostics
+                .failure("Language server has stopped")
+                .await);
+        }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
 
@@ -371,14 +499,24 @@ impl LspClient {
             id,
         };
 
-        self.tx
+        if self
+            .tx
             .send(LspRequest::Request {
                 id,
                 method: method.to_string(),
                 params,
             })
             .await
-            .map_err(|_| anyhow!("LSP server channel closed"))?;
+            .is_err()
+        {
+            return Err(self.diagnostics.failure("LSP server channel closed").await);
+        }
+        if self.diagnostics.stopped.load(Ordering::Acquire) {
+            return Err(self
+                .diagnostics
+                .failure("Language server has stopped")
+                .await);
+        }
 
         // 30s timeout for individual requests
         match tokio::time::timeout(Duration::from_secs(30), rx).await {
@@ -391,13 +529,23 @@ impl LspClient {
     }
 
     pub async fn notify(&self, method: &str, params: JsonValue) -> Result<()> {
-        self.tx
+        if self.diagnostics.stopped.load(Ordering::Acquire) {
+            return Err(self
+                .diagnostics
+                .failure("Language server has stopped")
+                .await);
+        }
+        if self
+            .tx
             .send(LspRequest::Notify {
                 method: method.to_string(),
                 params,
             })
             .await
-            .map_err(|_| anyhow!("LSP server channel closed"))?;
+            .is_err()
+        {
+            return Err(self.diagnostics.failure("LSP server channel closed").await);
+        }
         Ok(())
     }
 }
@@ -1010,6 +1158,88 @@ mod tests {
         assert!(result.is_err());
         assert!(started.elapsed() < Duration::from_secs(5));
     }
+
+    #[tokio::test]
+    async fn startup_failure_retains_bounded_stderr_without_a_trailing_newline() {
+        let project = tempfile::Builder::new()
+            .prefix("lsp project ")
+            .tempdir()
+            .unwrap();
+        let root = std::fs::canonicalize(project.path()).unwrap();
+        let uri = Url::from_directory_path(&root).unwrap().to_string();
+        let started = Instant::now();
+        let result = LspClient::start(Path::new("python3"), &[
+            "-c",
+            "import os,sys,time; assert os.getcwd()==sys.argv[1]; sys.stderr.write('x'*16384+\"Unknown binary 'rust-analyzer'\"); sys.stderr.flush(); os.close(1); time.sleep(0.02)",
+            root.to_str().unwrap(),
+        ], &uri).await;
+        let error = result.err().expect("server should fail").to_string();
+        assert!(error.contains("Unknown binary 'rust-analyzer'"), "{error}");
+        assert!(error.contains("python3"));
+        assert!(error.len() < STDERR_TAIL_BYTES + 256);
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn crashed_servers_fail_pending_requests_and_are_replaced_in_the_pool() {
+        let project = tempfile::tempdir().unwrap();
+        let script = project.path().join("crashing_server.py");
+        std::fs::write(
+            &script,
+            r#"
+import sys,json
+def send(value):
+    body=json.dumps(value).encode()
+    sys.stdout.buffer.write(('Content-Length: %d\r\n\r\n'%len(body)).encode()+body)
+    sys.stdout.buffer.flush()
+while True:
+    line=sys.stdin.buffer.readline()
+    if not line: break
+    length=int(line.decode().split(':')[1]); sys.stdin.buffer.readline()
+    msg=json.loads(sys.stdin.buffer.read(length)); method=msg.get('method')
+    if method=='initialize': send({'jsonrpc':'2.0','id':msg['id'],'result':{'capabilities':{}}})
+    elif method=='test/ping': send({'jsonrpc':'2.0','id':msg['id'],'result':True})
+    elif method=='test/crash':
+        sys.stderr.write('fatal: test language server crashed'); sys.stderr.flush(); sys.exit(7)
+"#,
+        )
+        .unwrap();
+        let uri = Url::from_directory_path(std::fs::canonicalize(project.path()).unwrap())
+            .unwrap()
+            .to_string();
+        let pool = LspPool::default();
+        let args = ["-u", script.to_str().unwrap()];
+        let first = pool
+            .client(Path::new("python3"), &args, &uri)
+            .await
+            .unwrap();
+        let started = Instant::now();
+        let error = first
+            .request("test/crash", JsonValue::Null)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("fatal: test language server crashed"),
+            "{error}"
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(first.request("test/ping", JsonValue::Null).await.is_err());
+        let replacement = pool
+            .client(Path::new("python3"), &args, &uri)
+            .await
+            .unwrap();
+        assert!(!Arc::ptr_eq(&first.next_id, &replacement.next_id));
+        assert_eq!(
+            replacement
+                .request("test/ping", JsonValue::Null)
+                .await
+                .unwrap(),
+            true
+        );
+        pool.clear().await;
+    }
+
     #[tokio::test]
     async fn warm_server_answers_client_requests_and_deduplicates_definition_positions() {
         use codegraph_core::{EdgeType, Language, Location, NodeType, Span};
