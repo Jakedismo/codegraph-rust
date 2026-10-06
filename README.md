@@ -4,6 +4,17 @@
 
 **Your codebase, understood.**
 
+> [!TIP]
+> **Give your coding agents lasting project memory.**
+>
+> Meet [**CodeGraph Agent Memory**](https://github.com/Jakedismo/codegraph-code-agent-memory-rust),
+> our sibling project that builds on CodeGraph with persistent memory for architectural
+> decisions, findings, failed approaches, and reusable procedures. Enable memory
+> retrieval to bring that knowledge into agent workflows alongside current code
+> evidence across sessions.
+>
+> [Explore the agent memory guide →](https://github.com/Jakedismo/codegraph-code-agent-memory-rust/blob/main/docs/AGENT_MEMORY.md)
+
 CodeGraph transforms your entire codebase into a semantically searchable knowledge graph that AI agents can actually *reason* about—not just grep through.
 
 > **Ready to get started?** Jump to the [Installation Guide](docs/INSTALLATION_GUIDE.md) for step-by-step setup instructions.
