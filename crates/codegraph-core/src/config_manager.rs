@@ -422,6 +422,7 @@ fn default_context_window() -> usize {
 }
 
 /// `[llm]` settings exactly as written in a config file; `None` means the key is absent.
+/// All fields are `None` when the section sets `enabled = false`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExplicitLlmSettings {
     pub provider: Option<String>,
@@ -442,6 +443,12 @@ impl ExplicitLlmSettings {
         let Some(llm) = document.get("llm").and_then(|v| v.as_table()) else {
             return Self::default();
         };
+        // `enabled = false` switches the section off. `codegraph config init` writes every
+        // default explicitly (including provider = "lmstudio") with enabled = false, and
+        // that generated file must not count as the user's choice of provider.
+        if llm.get("enabled").and_then(|v| v.as_bool()) == Some(false) {
+            return Self::default();
+        }
         let text = |key: &str| {
             llm.get(key)
                 .and_then(|v| v.as_str())
@@ -1009,6 +1016,26 @@ mod tests {
         assert_eq!(settings.context_window, Some(200_000));
         assert_eq!(settings.ollama_url, None);
         assert_eq!(settings.lmstudio_url, None);
+    }
+
+    #[test]
+    fn test_explicit_llm_settings_ignores_disabled_and_generated_defaults() {
+        let disabled = ExplicitLlmSettings::from_toml_str(
+            "[llm]\nenabled = false\nprovider = \"lmstudio\"\nmodel = \"m\"\n",
+        );
+        assert_eq!(disabled, ExplicitLlmSettings::default());
+
+        // What `codegraph config init` writes: every default spelled out, enabled = false.
+        let generated = toml::to_string_pretty(&CodeGraphConfig::default()).unwrap();
+        assert!(generated.contains("provider = \"lmstudio\""));
+        assert_eq!(
+            ExplicitLlmSettings::from_toml_str(&generated),
+            ExplicitLlmSettings::default()
+        );
+
+        let enabled =
+            ExplicitLlmSettings::from_toml_str("[llm]\nenabled = true\nprovider = \"ollama\"\n");
+        assert_eq!(enabled.provider.as_deref(), Some("ollama"));
     }
 
     #[test]

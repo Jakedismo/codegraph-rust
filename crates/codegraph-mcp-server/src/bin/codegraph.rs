@@ -1853,13 +1853,13 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
 # CODEGRAPH_EMBEDDING_DIMENSION=2048
 
 # ============================================================================
-# LLM PROVIDER (for insights, optional)
+# LLM PROVIDER (for the agentic tools)
 # ============================================================================
 # LLM Provider: "ollama", "lmstudio", "anthropic", "openai"
 # CODEGRAPH_LLM_PROVIDER=lmstudio
 
 # LLM Model
-# CODEGRAPH_MODEL=qwen2.5-coder:14b
+# CODEGRAPH_LLM_MODEL=qwen2.5-coder:14b
 
 # Enable LLM insights (context-only mode if disabled)
 # CODEGRAPH_LLM_ENABLED=false
