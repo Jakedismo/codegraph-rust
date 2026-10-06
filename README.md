@@ -284,7 +284,7 @@ The Agent is stateless it only has conversational memory for the span of tool ex
 | 150K-500K | Detailed exploration, max 6 steps |
 | > 500K (gpt-6, etc.) | Comprehensive analysis, max 8 steps |
 
-**Hard cap:** Maximum 8 steps regardless of tier (10 with env override). This prevents runaway costs and context overflow while still allowing thorough analysis.
+**Hard cap:** Maximum 8 steps regardless of tier. This prevents runaway costs and context overflow while still allowing thorough analysis.
 
 **Same tool, automatically optimized for your setup.**
 
@@ -382,7 +382,7 @@ With CodeGraph, the agent gets *pinpointed locations and relationships* (plus bo
 
 ```bash
 # Clone and build with all features
-git clone https://github.com/yourorg/codegraph-rust
+git clone https://github.com/Jakedismo/codegraph-rust
 cd codegraph-rust
 ./install-codegraph-full-features.sh
 ```
@@ -400,7 +400,29 @@ make build-llvm
 make test-llvm
 ```
 
-### 2. Database
+### 2. Configure Your Providers
+
+CodeGraph needs an embedding model for indexing and an LLM for the agentic tools. Put the
+settings in a `.env` file in your project (or export them); `codegraph init` loads it.
+
+```bash
+# Embeddings
+CODEGRAPH_EMBEDDING_PROVIDER=ollama          # ollama | lmstudio | jina | openai | onnx
+CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b
+CODEGRAPH_EMBEDDING_DIMENSION=1024
+
+# Agent LLM
+CODEGRAPH_LLM_PROVIDER=anthropic             # ollama | lmstudio | anthropic | openai | xai | openai-compatible
+CODEGRAPH_LLM_MODEL=claude-sonnet-4
+CODEGRAPH_CONTEXT_WINDOW=200000              # your model's real limit; selects the prompt tier
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Set `CODEGRAPH_LLM_MODEL` explicitly: without it the agent requests its provider's built-in
+default model. `.env.example` lists every supported variable, and
+[AI_PROVIDERS.md](docs/AI_PROVIDERS.md) has per-provider examples.
+
+### 3. Database
 
 There is nothing to start. SurrealDB runs embedded inside `codegraph`, and each project gets
 its own SurrealKV store at `<project>/.codegraph/db`, created with the bundled schema
@@ -418,7 +440,7 @@ A shared SurrealDB server (self-hosted or Surreal Cloud) is still supported for 
 one database: set `CODEGRAPH_SURREALDB_URL` and apply the schema yourself. See
 [Setting Up SurrealDB](docs/INSTALLATION_GUIDE.md#setting-up-surrealdb).
 
-### 3. Initialize and Index Your Project
+### 4. Initialize and Index Your Project
 
 ```bash
 codegraph init /path/to/project
@@ -453,7 +475,7 @@ with `python3 test_cli_agentic.py --replay test_output_cli`. See
 
 > **🔒 Security Note:** Indexing automatically respects `.gitignore` and filters out common secrets patterns (`.env`, `credentials.json`, `*.pem`, API keys, etc.). Your secrets won't be embedded or exposed to the agent.
 
-### 4. Connect to Claude Code
+### 5. Connect to Claude Code
 
 Add to your MCP config:
 ```json
@@ -689,7 +711,9 @@ only reads configuration and never changes the process environment.
 indexing. `codegraph config init` is the separate command for creating global
 application configuration; project init does not configure model providers.
 
-Global config in `~/.codegraph/config.toml`:
+Config files are read from `./.codegraph.toml` (project) and then `~/.codegraph/config.toml`
+(user); a `.env` in the working directory and `CODEGRAPH_*` environment variables override
+them. Indexing settings can live in the config file:
 
 ```toml
 [embedding]
@@ -697,11 +721,11 @@ provider = "ollama"
 model = "qwen3-embedding:0.6b"
 dimension = 1024
 
-[llm]
-provider = "anthropic"
-model = "claude-sonnet-4"
-
+[indexing]
+tier = "fast"
 ```
+
+The built-in agent reads its settings from the environment (a project `.env` counts), not from the `[llm]` section of the config file: `CODEGRAPH_LLM_PROVIDER`, `CODEGRAPH_LLM_MODEL` (falling back to `CODEGRAPH_AGENT_MODEL`), `CODEGRAPH_CONTEXT_WINDOW`, and the provider's API key. `CODEGRAPH_MODEL` is not read by the agent; with only that set, the agent requests its provider's built-in default model.
 
 Storage needs no configuration: the embedded per-project store is used unless
 `CODEGRAPH_SURREALDB_URL` (plus the other `CODEGRAPH_SURREALDB_*` variables) points at a
@@ -750,6 +774,11 @@ codegraph daemon start /path/to/project --languages rust,typescript
 ```
 
 Changes are detected, debounced, and re-indexed in the background.
+
+With the embedded per-project store, use `--watch`: the watcher then runs inside the MCP
+server process. A standalone daemon is a separate process and cannot share a project's store
+with a running server, so use it only when no server is running for that project or when you
+use a SurrealDB server.
 
 ---
 

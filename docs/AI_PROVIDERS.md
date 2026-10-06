@@ -25,7 +25,7 @@ If you use `.env`, it’s loaded automatically at startup (you do not need `dire
 1. The project has been indexed (the embedded store needs no setup; a SurrealDB server needs the schema applied, see `docs/INSTALLATION_GUIDE.md`).
 2. You have a `./.codegraph.toml` or `~/.codegraph/config.toml` with at least:
    - `[embedding] provider = ...`
-   - `[llm] enabled = true` and a working LLM provider configuration (required for agentic tools)
+   - `CODEGRAPH_LLM_PROVIDER`, `CODEGRAPH_LLM_MODEL` and the provider's API key in the environment or `.env` (required for agentic tools; the agent does not read `[llm]` from the config file)
 3. Secrets are present via `.env` or your shell environment (recommended).
 
 ## `.env` examples
@@ -47,7 +47,7 @@ CODEGRAPH_EMBEDDING_MODEL=hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M
 
 # Built-in agent LLM
 CODEGRAPH_LLM_PROVIDER=ollama
-CODEGRAPH_MODEL=qwen2.5-coder:14b
+CODEGRAPH_LLM_MODEL=qwen2.5-coder:14b
 ```
 
 ### Local (LM Studio embeddings + LM Studio LLM)
@@ -57,7 +57,7 @@ CODEGRAPH_EMBEDDING_PROVIDER=lmstudio
 CODEGRAPH_EMBEDDING_MODEL=jinaai/jina-embeddings-v3
 
 CODEGRAPH_LLM_PROVIDER=lmstudio
-CODEGRAPH_MODEL=local-model
+CODEGRAPH_LLM_MODEL=local-model
 ```
 
 Note: `lmstudio_url` is configured via TOML (`embedding.lmstudio_url` / `llm.lmstudio_url`); there is no `CODEGRAPH_LMSTUDIO_URL` env override today.
@@ -72,7 +72,7 @@ JINA_API_BASE=https://api.jina.ai/v1
 
 CODEGRAPH_LLM_PROVIDER=openai
 OPENAI_API_KEY=...
-CODEGRAPH_MODEL=gpt-5.1-codex
+CODEGRAPH_LLM_MODEL=gpt-5.1-codex
 ```
 
 Notes:
@@ -204,14 +204,9 @@ If you change embedding dimensions/models, ensure your SurrealDB schema supports
 
 The agentic MCP tools run a built-in agent server-side. That agent needs an LLM provider.
 
-Important: the LLM provider factory requires `llm.enabled = true`. If it is `false`, agentic tools fail with “LLM is not enabled in configuration”.
+The agent reads its settings from the environment (a project `.env` counts), not from the `[llm]` section of the config file: `CODEGRAPH_LLM_PROVIDER`, `CODEGRAPH_LLM_MODEL` (falling back to `CODEGRAPH_AGENT_MODEL`), `CODEGRAPH_CONTEXT_WINDOW`, and the provider's API key. Set `CODEGRAPH_LLM_MODEL` explicitly; without it the agent requests its provider's built-in default model.
 
-You can enable it by:
-
-- setting `llm.enabled = true` in your TOML config, or
-- setting `CODEGRAPH_MODEL=...` (this env var implicitly enables the LLM configuration)
-
-Valid values for `llm.provider` (availability depends on build features):
+Valid values for `CODEGRAPH_LLM_PROVIDER` (availability depends on build features):
 
 - `ollama`
 - `lmstudio`
