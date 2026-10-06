@@ -39,6 +39,10 @@ fn guidance_and_help_do_not_load_provider_configuration() {
         String::from_utf8_lossy(&output.stderr)
     );
     let instructions = String::from_utf8(output.stdout).unwrap();
+    assert!(instructions.contains("CodeGraph is a CLI tool available through Bash"));
+    assert!(instructions.contains("using your Bash or shell execution tool"));
+    assert!(instructions.contains("`command -v codegraph`"));
+    assert!(instructions.contains("is 600 seconds"));
     for tool in ["context", "impact", "architecture", "quality"] {
         assert!(instructions.contains(&format!("codegraph agent {tool}")));
     }

@@ -1,8 +1,12 @@
 # codegraph
 
-When `codegraph` is available, start code exploration with its agent tools. Ask a
-specific question about the task, relevant symbols or paths instead of starting
-with broad grep/rg searches:
+CodeGraph is a CLI tool available through Bash as the `codegraph` command. Run the
+commands below using your Bash or shell execution tool. Check that CodeGraph is
+on PATH with `command -v codegraph`.
+
+When CodeGraph is available and the project is indexed, start code exploration
+with its CLI agent commands. Ask a specific question about the task, relevant
+symbols or paths instead of starting with broad grep/rg searches:
 
 - `codegraph agent context "Find the implementation and callers for <task>" --focus search`
   locates code; use `--focus builder` to gather implementation context or `question`

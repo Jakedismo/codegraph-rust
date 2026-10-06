@@ -1,5 +1,9 @@
 # CodeGraph agentic CLI
 
+CodeGraph is a CLI tool available through Bash as the `codegraph` command. Run the
+commands below using your Bash or shell execution tool. Check that CodeGraph is
+on PATH with `command -v codegraph`.
+
 Use CodeGraph's built-in reasoning agents for code discovery, change impact,
 architecture, and quality questions. They gather evidence with internal graph tools
 and return synthesized answers with source locations. Call these public commands:
@@ -30,7 +34,7 @@ Stdout is one JSON response with `answer`, `findings`, workflow metadata, and
 notes from this evidence. `--format text` prints just the answer; use JSON when
 checking warnings and partial results. Logs go to stderr. Runtime failures emit
 `{"error": {...}}` and exit 1; argument errors exit 2. The default command deadline
-is 300 seconds; override with `--timeout-secs N`. Use `--query-file FILE` instead of
+is 600 seconds; override with `--timeout-secs N`. Use `--query-file FILE` instead of
 a positional query for long questions, or `--query-file -` to read stdin.
 
 When CodeGraph is available, start code discovery with a specific agentic question

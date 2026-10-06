@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Project agent guidance
+
+- `codegraph init` now explicitly describes CodeGraph as a CLI tool available
+  through Bash in the managed `AGENTS.md` and `CLAUDE.md` instructions. Agents are
+  directed to use their Bash/shell execution tool and check `command -v codegraph`
+  before starting the existing CLI agent workflows. Rerunning init refreshes the
+  managed block while preserving unrelated instructions.
+- The standalone `codegraph agent instructions` and lifecycle-hook guidance use
+  the same Bash explanation, and their stale 300-second deadline description now
+  matches the existing 600-second default.
+
 ### Fixed - Reranker configuration
 
 - Selecting Jina or Ollama now supplies the provider's default configuration when
