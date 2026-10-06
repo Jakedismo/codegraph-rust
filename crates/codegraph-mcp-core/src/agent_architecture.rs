@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub enum AgentArchitecture {
     /// Tool-calling loop over the graph tools
     ReAct,
-    /// Language Agent Tree Search over reasoning steps (does not call graph tools)
+    /// Language Agent Tree Search with graph-tool-grounded candidate steps
     LATS,
     /// ReAct wrapped in a retry that feeds the previous error back to the agent
     Reflexion,

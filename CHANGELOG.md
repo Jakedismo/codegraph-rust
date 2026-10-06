@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source observations, branch isolation, deeper answer selection, synthesis,
   failure handling and CLI tool-use reporting. Live evaluation results remain
   tied to their recorded implementation; this fix has not been live scored.
+- Corrected stale no-tool LATS descriptions in the architecture enum, environment
+  example and installation guide. The refreshed ReAct evaluation retrieved the
+  enum comment and repeated it despite the tool-enabled implementation.
 
 ### 🐛 **Fixed - Jina task configuration and v5 requests**
 
