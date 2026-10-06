@@ -1814,7 +1814,7 @@ async fn handle_config(action: ConfigAction) -> Result<()> {
 # - local: ONNX local embeddings (fastest, no API needed)
 # - ollama: Ollama embeddings (good balance, requires Ollama running)
 # - openai: OpenAI embeddings (cloud, requires API key)
-# - jina: Jina embeddings with reranking (best quality, requires API key)
+# - jina: Jina embeddings (requires API key)
 # - auto: Auto-detect best available provider
 CODEGRAPH_EMBEDDING_PROVIDER=auto
 
@@ -1824,11 +1824,16 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
 # OpenAI API Key (if using OpenAI embeddings)
 # OPENAI_API_KEY=sk-...
 
-# Jina API Key (if using Jina embeddings + reranking)
+# Jina API Key (if using Jina embeddings or Jina reranking)
 # JINA_API_KEY=jina_...
 
-# Enable Jina reranking (improves search quality, requires Jina provider)
-# JINA_ENABLE_RERANKING=true
+# Optional query-time reranking (independent of the embedding provider)
+# CODEGRAPH_RERANK_PROVIDER=jina  # jina | ollama | none; default none
+# JINA_RERANKING_MODEL=jina-reranker-v3  # optional default
+# JINA_RERANKING_TOP_N=10
+# CODEGRAPH_OLLAMA_RERANK_MODEL=dengcao/Qwen3-Reranker-8B:Q3_K_M
+# CODEGRAPH_ENABLE_RERANKING=false  # master disable
+# JINA_ENABLE_RERANKING=true  # legacy Jina enable alias
 
 # ============================================================================
 # LOCAL PROVIDERS (Ollama, Local)

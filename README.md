@@ -456,6 +456,40 @@ Permanent embedding API errors such as HTTP 422 fail immediately with their deta
 transient failures retain retries. Reindex after changing task or request options
 to replace vectors generated with the previous policy.
 
+Optional reranking refines semantic-search results at query time and can use a
+different provider from your embeddings. For Jina, put this in `.env`:
+
+```bash
+CODEGRAPH_RERANK_PROVIDER=jina
+JINA_API_KEY=...
+# JINA_RERANKING_MODEL=jina-reranker-v3  # default; no model setting required
+# JINA_RERANKING_TOP_N=10
+```
+
+Or select the provider in `.codegraph.toml`; its nested configuration is optional:
+
+```toml
+[rerank]
+provider = "jina"  # jina | ollama | none
+top_n = 10
+
+# [rerank.jina]
+# model = "jina-reranker-v3"
+# api_key_env = "JINA_API_KEY"
+# api_base = "https://api.jina.ai/v1"
+```
+
+For Ollama, use `CODEGRAPH_RERANK_PROVIDER=ollama` and optionally
+`CODEGRAPH_OLLAMA_RERANK_MODEL` and `CODEGRAPH_OLLAMA_URL`. Jina's `JINA_API_BASE`
+also overrides its reranking endpoint. Environment settings override TOML;
+`CODEGRAPH_RERANK_PROVIDER` overrides the legacy `JINA_ENABLE_RERANKING` toggle,
+and `CODEGRAPH_ENABLE_RERANKING=false` disables all reranking. The legacy
+`CODEGRAPH_RERANKING_CANDIDATES` overrides `top_n`, which controls results retained
+after reranking. Check the resolved provider/model with `codegraph config show --json`.
+Use `--config codegraph.toml` or `CODEGRAPH_CONFIG_PATH=codegraph.toml` for a file
+without the leading dot. Reranker changes take effect after restarting the CLI or
+server and do not require reindexing.
+
 ### 3. Database
 
 There is nothing to start. SurrealDB runs embedded inside `codegraph`, and each project gets

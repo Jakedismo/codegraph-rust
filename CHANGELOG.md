@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Reranker configuration
+
+- Selecting Jina or Ollama now supplies the provider's default configuration when
+  its nested TOML block is absent. Partial `[rerank.jina]` blocks also receive field
+  defaults, so enabling Jina no longer requires an explicit model/key-variable name.
+- The main config loader now honors `CODEGRAPH_RERANK_PROVIDER`. Both factory entry
+  points share environment resolution; explicit provider selection overrides the
+  legacy Jina toggle, and `CODEGRAPH_ENABLE_RERANKING=false` remains a master disable.
+- Jina's endpoint and Ollama's model/endpoint environment overrides now apply to
+  reranking as well as explicit TOML settings. Custom credential-variable names,
+  timeouts and retry limits are preserved. Remaining initialization errors are
+  logged by graph tools rather than silently disabling reranking.
+- Offline regressions cover the reported missing-config error, provider precedence,
+  request bodies/source metadata through a mock Jina API, and dotenv/TOML loading
+  through the shipped CLI with indexing inference disabled. Examples now document
+  query-time reranking independently of the embedding provider.
+
 ### 🐛 **Fixed - LATS graph grounding**
 
 - Rig LATS candidates now execute native graph-tool loops through the same
