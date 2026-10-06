@@ -478,17 +478,18 @@ The fast entry below predates the current model-aware tokenizer/context/chunk po
 Future tier comparisons should use the same current input policy and model settings;
 the historical entry remains a record of that run.
 
-| Indexing tier | LLM | Evaluation date | CLI response checks | Manual accuracy findings |
+| Indexing tier | LLM / request model | Evaluation date | CLI response checks | Manual accuracy findings |
 |---------------|-----|-----------------|---------------------|--------------------------|
-| `fast` | `gpt-6-luna` | 2026-10-06 | 8/8 `OK` | Mixed: useful findings, incomplete answers and at least two source-confirmed incorrect answers; no overall accuracy score assigned |
-| `balanced` | Pending | Pending | Pending | Awaiting evaluation after balanced indexing |
+| `fast` | `gpt-6-luna` (session-reported; request model unverified) | 2026-10-06 | 8/8 `OK` | Mixed: useful findings, incomplete answers and at least two source-confirmed incorrect answers; no overall accuracy score assigned |
+| `balanced` | `gpt-6-luna` (explicit request model) | 2026-10-06 | 8/8 `OK` | Useful configuration/cache/call-chain answers and public-method list; incorrect direct-caller classification, incomplete hub results and metric caveats; no overall accuracy score assigned |
 | `full` | Pending | Not evaluated | — | No accuracy results yet |
 
 **`OK` measures command/response success, not factual correctness.** It means the
 command returned a valid JSON answer without a reported timeout or partial-result
-marker. All eight fast-tier responses passed this check despite factual mistakes.
-The response field `tier: Massive` in this run describes the agent's context-window
-budget, independently of the `fast` indexing tier.
+marker. It does not require every inner graph tool to succeed. All eight fast-tier
+responses passed this check despite factual mistakes. The response field
+`tier: Massive` describes the agent's context-window budget, independently of the
+indexing tier.
 
 Source review of the fast-tier answers found:
 
@@ -512,10 +513,65 @@ Source review of the fast-tier answers found:
   Rust definition with that name exists in the reviewed source; this question needs
   that caveat when interpreting the results.
 
-This is a qualitative baseline from local run `20261006_013512_392882`, with the
-model and indexing tier recorded from the test session. The runner does not yet
-capture those settings automatically. These observations do not isolate the effect
-of indexing tier from model reasoning or establish a numerical accuracy rate.
+The balanced run `20261006_041913_884481` explicitly selected `gpt-6-luna` through
+`CODEGRAPH_LLM_MODEL`. All eight commands returned answers in **462.8 seconds**.
+The stored index reported 250 files, 22,496 nodes, 48,224 edges and 22,496 chunks,
+with embedding and semantic stages ready. It used Ollama `qwen3-embedding:0.6b`
+with 1,024-dimensional vectors and a resolved 32,768-token serving context.
+[Full balanced answers, run details and source review](docs/evaluations/balanced-cli-2026-10-06.md)
+are retained separately from the README summary.
+
+Source review of the explicit-model balanced answers found:
+
+- **Configuration, prompts and cache (cases 1–3): useful source-aligned explanations.**
+  The answers covered multiple configuration systems, dotenv/TOML precedence, the
+  active Rig prompt builder, and cache hits/misses, successful-result insertion,
+  eviction, clearing and lack of TTL. The prompt answer also identified separate
+  server/Rig tier-resolution paths. Its claim of an eight-round "hard cap" needs
+  qualification: [the public builder override](crates/codegraph-mcp-rig/src/agent/builder.rs#L104)
+  accepts other values.
+- **Missing symbol and call chain (cases 4–5): appropriate caveats and active flow.**
+  The answer did not invent `PromptSelector`, stated its alternate target, and
+  distinguished the AI-enabled workflow from the feature-disabled stub. It traced
+  the active path through Rig tools, `CountingExecutor`, `GraphToolExecutor` and
+  `GraphFunctions` to SurrealDB.
+- **Public API (case 7): complete method names, incorrect caller classification.**
+  The answer listed all ten public inherent methods and recognized real consumers.
+  However, it called the eight Rig tool adapters *direct* callers of
+  `GraphToolExecutor::execute`. They call
+  [`CountingExecutor::execute`](crates/codegraph-mcp-rig/src/tools/counting_executor.rs#L39),
+  which then delegates to `GraphToolExecutor`; those adapters are indirect callers.
+- **Architecture/metrics (cases 6–7): incomplete evidence despite `OK`.** Hub queries
+  failed five times across these cases with SurrealDB's `array::concat()`
+  1,048,576-byte limit. The architecture answer disclosed the missing hub ranking
+  and flagged inconsistent coupling values and misleading zero struct-level counts.
+  For example, reported Ca=19/Ce=66 with instability=0.0 does not match the intended
+  Ce/(Ca+Ce) ratio. These metrics cannot support a reliable stability conclusion.
+- **Complexity (case 8): useful reported ranking with measurement limits.** The
+  answer ranked `reconcile_project` first at complexity 108/risk 1,404. The
+  [query](schema/codegraph_v2.surql#L529) computes risk as complexity × (incoming
+  dependency-edge count + 1), after preselecting high-complexity candidates. It is
+  a heuristic, not a calibrated failure probability or a guaranteed global risk
+  ranking; incoming edge counts also need not equal distinct caller counts.
+
+All eight balanced cases logged typed-answer parse warnings; the server synthesized
+structured evidence from tool traces instead. The runner accepted the resulting
+JSON responses. Neither those fallbacks nor inner-tool errors are a factual accuracy
+score. The initial balanced diagnostic run `20261006_041408_086869` is retained
+separately because it did not explicitly select the intended request model.
+
+The fast baseline is local run `20261006_013512_392882`, with the model and indexing
+tier recorded from the test session. The runner does not capture those settings
+automatically. During balanced evaluation, source review found that the Rig adapter
+selects its model from `CODEGRAPH_LLM_MODEL`, then `CODEGRAPH_AGENT_MODEL`; it does
+not read the core configuration's `CODEGRAPH_MODEL`. With only the latter set, the
+OpenAI Rig path defaults to requesting `gpt-4o`. The historical fast request model
+cannot be confirmed from its saved responses, so its model label remains qualified.
+Set `CODEGRAPH_LLM_MODEL` explicitly for reproducible agent comparisons. These labels
+identify configured/requested models; the runner does not attest provider-side routing.
+
+These observations do not isolate the effect of indexing tier from model reasoning
+or establish a numerical accuracy rate.
 For subsequent comparisons, keep questions, model, agent context budget and inference
 settings consistent; record the source revision and index configuration, and disclose
 changes between runs. Review source locations, active conditional code, completeness

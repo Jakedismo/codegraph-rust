@@ -90,6 +90,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added an [agent memory design proposal](docs/architecture/agent-memory-design.md),
   including project/user scopes, retrieval, TTL, update and delete paths. This is a
   design document; memory tools and storage are not implemented.
+- Recorded the [balanced CLI evaluation](docs/evaluations/balanced-cli-2026-10-06.md)
+  with the explicit `gpt-6-luna` request model: 8/8 response checks passed in 462.8s.
+  Full answers and source checks distinguish useful explanations, caller mistakes,
+  incomplete hub results and metric limitations from command success. The historical
+  fast model label is now qualified because its request model was not captured.
+
+### Known issues observed during CLI evaluation
+
+- Rig selects the request model from `CODEGRAPH_LLM_MODEL` or `CODEGRAPH_AGENT_MODEL`,
+  independently of the core config's `CODEGRAPH_MODEL`. Set the Rig model explicitly
+  when evaluating; the core setting alone does not select it.
+- Hub queries on the evaluated balanced graph exceed SurrealDB's 1 MiB
+  `array::concat()` limit. Reported coupling values can also be inconsistent with
+  the intended instability ratio or show zero counts for connected structs/impls.
+- Plain-text agent answers trigger typed-output parse warnings and use synthesized
+  structured evidence. Valid JSON/`OK` responses can contain incomplete analysis
+  or incorrect caller relationships; source review remains necessary.
 
 ### ✨ **Added - Schema v2 for SurrealDB 3.x**
 
