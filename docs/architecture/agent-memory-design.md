@@ -19,7 +19,8 @@ never injects them into answers unless asked.
 | Deciding what is worth storing | The using agent | It has the conversation history and knows what it did and why. CodeGraph's internal agent answers one question at a time with no history and cannot judge novelty. |
 | Phrasing the memory | The using agent | Memories are insights ("the batch-size precedence lives in `ConfigManager`"), not records of inputs. Raw queries, answers and transcripts are never stored. |
 | Anchoring a memory to code | CodeGraph | The writer knows nothing about the schema. CodeGraph resolves identifiers in the sentence to `nodes` records and creates the links. |
-| Storage, embedding, deduplication, retrieval, staleness | CodeGraph | These need the graph, the vector index and the project scope that already exist in the store. |
+| Storage, embedding, deduplication, retrieval, staleness, expiry | CodeGraph | These need the graph, the vector index and the project scope that already exist in the store. |
+| Updating and deleting memories | The using agent, through tools | Memories are the writer's claims; the writer corrects or retracts them. CodeGraph only expires or flags, never rewrites. |
 | Deciding when to write | Guidance to the using agent (`rules-for-claude-code/codegraph_rule.md`, hooks installed by `codegraph init`) | The discipline lives in the writer, not in the store. |
 
 Consequences:
@@ -72,6 +73,8 @@ memories
   updated_at      datetime
   status          'active' | 'superseded'
   stale           bool            -- true when any linked node was replaced or removed since created_at
+  expires_at      option<datetime> -- NONE means no expiry; see "Time to live"
+  confirmed_at    datetime        -- last time the writer confirmed or updated it; starts at created_at
   project_id      option<string>  -- NONE for user scope
   written_by      option<string>  -- client-reported agent name, informational only
 
@@ -89,7 +92,8 @@ memory_supersedes                 -- new memory -> the one it replaces
 ```
 
 Indexes: HNSW on each `embedding_<dim>` column of `memories`; FULLTEXT on `statement` with the
-`code_text` analyzer; `(project_id, status)`; `(memory)` and `(node)` on `memory_links`.
+`code_text` analyzer; `(project_id, status)`; `(status, expires_at)` for the expiry pass;
+`(memory)` and `(node)` on `memory_links`.
 Memories reuse the `knn_*` dimension dispatch pattern from `codegraph_v2.surql`.
 
 Why links are not `REFERENCE ON DELETE CASCADE`: the indexer deletes and re-creates a changed
@@ -101,8 +105,12 @@ the memory stale (see `bcc8154` for the same lesson with edges).
 Input from the agent:
 
 ```
-{ "statement": "...", "scope": "project" | "user", "tags": [..]?, "replace": "<memory id>"? }
+{ "statement": "...", "scope": "project" | "user", "tags": [..]?, "replace": "<memory id>"?,
+  "ttl": "<duration>"? }
 ```
+
+`ttl` is a duration such as `30d`, `6m` (months) or `none`. When omitted the scope default
+applies (see "Time to live"); `expires_at = now + ttl`.
 
 Steps, all inside CodeGraph:
 
@@ -117,8 +125,9 @@ Steps, all inside CodeGraph:
    `fn::find_nodes_by_name`, then a semantic search over nodes for the full sentence for up to
    three more anchors. Record each link with its method and confidence. Unresolved identifiers
    stay as text only.
-4. Insert the memory; if `replace` was given, mark the old memory `superseded` and add a
-   `memory_supersedes` edge. The old statement is kept for history, never returned by default.
+4. Insert the memory with `expires_at` and `confirmed_at`; if `replace` was given, mark the old
+   memory `superseded` and add a `memory_supersedes` edge. The old statement is kept for
+   history, never returned by default.
 5. Return `{ "id", "links": [{ "symbol", "file_path", "start_line", "method" }] }` so the agent
    sees what the memory was anchored to and can correct a bad anchor by rewriting.
 
@@ -143,11 +152,68 @@ Three ranked lists, fused with `search::rrf` (the same mechanism `fn::semantic_s
    those words but is anchored next to `load_config`.
 
 `symbol` short-circuits list 3 to the memories linked to that node and its neighbours.
-`since` filters on `created_at`. Stale memories are excluded unless requested.
+`since` filters on `created_at`. Stale and expired memories are excluded unless requested
+(`include_stale`, `include_expired`).
 
-Each result carries: `statement`, `created_at`, `stale`, `tags`, and `links` with current
-file:line locations resolved through the node, so the reader can verify before relying on it.
-Superseded memories are not returned; their successor is.
+Each result carries: `id`, `statement`, `created_at`, `confirmed_at`, `expires_at`, `stale`,
+`tags`, and `links` with current file:line locations resolved through the node, so the reader
+can verify before relying on it. The `id` is what the writer passes to update, confirm or
+delete. Superseded memories are not returned; their successor is.
+
+Reading does not extend a memory's life. A memory that is retrieved often but wrong would
+otherwise never expire; only an explicit confirm or update from a writer does that.
+
+## Update path: `memory_update`
+
+Input from the agent:
+
+```
+{ "id": "<memory id>", "statement": "..."?, "tags": [..]?, "ttl": "<duration>"? }
+```
+
+Corrects a memory in place and keeps its id. A changed `statement` is re-embedded and
+re-anchored (old links dropped, new ones created, `stale` reset to false); a changed `tags`
+replaces the tag list; a `ttl` sets a new `expires_at` from now. Any call, including one with
+only the `id`, sets `confirmed_at = now` and, if the memory had a TTL, extends `expires_at`
+by the scope default; that is how a writer confirms a stale or ageing memory it has re-verified.
+
+Update is for corrections and confirmations. When the new statement is a different claim rather
+than a fix, write a new memory with `replace` instead, so the `memory_supersedes` history
+records that the understanding changed.
+
+Returns the same shape as `memory_write`.
+
+## Delete path: `memory_delete`
+
+Input from the agent:
+
+```
+{ "id": "<memory id>" }
+```
+
+Hard-deletes the memory and its `memory_links` and `memory_supersedes` edges. Predecessors that
+it superseded are not restored; they stay `superseded`. Delete is for memories that were wrong
+or should never have been written. For memories that have merely aged, let the TTL expire them.
+
+## Time to live
+
+Every memory can expire. Defaults by scope, overridable per memory with `ttl` and changeable
+with `memory_update`:
+
+| Scope | Default TTL | Rationale |
+| --- | --- | --- |
+| `project` | 90 days | Codebase knowledge ages with the code; a quarter without reconfirmation is a reasonable horizon. |
+| `user` | none | Preferences change rarely and have no code anchor to detect drift; the writer replaces them. |
+
+The expiry pass runs at store open and after each re-index, alongside the staleness pass:
+memories with `expires_at < now` get `status = 'expired'` (add that value to the status
+enum). Expired memories are excluded from `memory_read` unless `include_expired` is set, so a
+writer can still see and confirm one it meets again. After a grace period (start with 30 days
+past expiry) they are deleted together with their links; superseded chains are deleted when
+their last active successor is deleted.
+
+Staleness and expiry are independent signals: stale means "the code this points at changed",
+expired means "nobody has confirmed this recently". Both are visible in read results.
 
 ## Staleness
 
@@ -161,13 +227,15 @@ replaced by the writer.
 
 ## MCP surface
 
-Two tools in `official_server.rs`, in the same `#[tool_router]` as the agentic tools:
+Four tools in `official_server.rs`, in the same `#[tool_router]` as the agentic tools:
 
 - `memory_write` — see write path.
 - `memory_read` — see read path.
+- `memory_update` — correct, retag, confirm or re-TTL a memory by id.
+- `memory_delete` — remove a memory by id.
 
-Both available on the `codegraph agent` CLI as `codegraph memory write` / `codegraph memory read`
-for scripts and hooks. Neither requires the LLM feature; they need embeddings only.
+All four are available on the CLI as `codegraph memory write|read|update|delete` for scripts
+and hooks. None requires the LLM feature; they need embeddings only.
 
 ## Guidance for writing agents (goes in `codegraph_rule.md`)
 
@@ -175,15 +243,20 @@ Write a memory when: a task is finished (what changed and why, one or two senten
 surprised you or contradicted documentation; a decision was made that a future session would
 otherwise re-litigate; a user preference became clear (user scope). Do not write restatements of
 code that the graph already answers, and do not write progress notes. Read memories at the start
-of a task and before changing an area you have not touched this session.
+of a task and before changing an area you have not touched this session. When a memory you read
+is marked stale or expired, verify it against the code and then either update it (confirm or
+correct) or delete it; do not leave a wrong memory for the next session. Use `ttl` for
+knowledge you know is temporary ("the parser feature flag is off until the grammar upgrade
+lands").
 
 ## Implementation order
 
 1. Schema: `memories`, `memory_links`, `memory_supersedes` in `codegraph_v2.surql`, plus
-   `fn::memory_search` (the three-list RRF) and `fn::memories_for_nodes`. Unit test on `mem://`
-   in the style of `schema_v2_test.rs`.
-2. Storage: write path (embed, dedupe, anchor, insert) and the staleness pass hooked into the
-   end of `index_project` in `codegraph-graph` / `codegraph-mcp`.
+   `fn::memory_search` (the three-list RRF), `fn::memories_for_nodes` and `fn::expire_memories`.
+   Unit test on `mem://` in the style of `schema_v2_test.rs`.
+2. Storage: write, update and delete paths (embed, dedupe, anchor, insert, re-anchor, remove)
+   and the staleness and expiry passes hooked into store open and the end of `index_project`
+   in `codegraph-graph` / `codegraph-mcp`.
 3. User store: `SurrealDbConfig::user_store()` under `~/.codegraph/`, opened lazily, same
    bootstrap and lock handling as the project store.
 4. MCP tools and CLI subcommands.
@@ -197,5 +270,9 @@ of a task and before changing an area you have not touched this session.
 - Whether `memory_read` should accept a node id directly, for callers that already have one
   from an agentic answer.
 - Retention for superseded memories (keep forever, or drop after N successors).
+- Whether the default project TTL should depend on tags (for example a `decision` tag with no
+  expiry), or stay a single number until usage shows a pattern.
+- Whether a confirm should extend by the full default TTL or by a shorter step, so that a
+  memory confirmed once in passing does not live another full quarter.
 - Multi-agent attribution: `written_by` is informational now; whether it should become a
   filter depends on how teams use shared project stores.
