@@ -66,6 +66,11 @@ Configure the tier:
 - Env: `CODEGRAPH_INDEX_TIER=balanced`
 - Config: `[indexing] tier = "balanced"`
 
+Directory indexing scans subdirectories by default, so
+`codegraph index --languages Rust --index-tier balanced .` finds Rust sources in workspace crates. Use
+`--no-recursive` for an intentional root-only scan; `-r`/`--recursive` remain accepted.
+`codegraph estimate` uses the same traversal defaults.
+
 #### Indexing prerequisites (LSP-enabled tiers)
 
 When the tier enables LSP (`balanced`/`full`), indexing **fails fast** if required external tools are missing.

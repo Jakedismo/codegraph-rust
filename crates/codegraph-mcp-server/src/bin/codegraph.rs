@@ -152,8 +152,17 @@ enum Commands {
         #[arg(long, help = "Include only these patterns")]
         include: Vec<String>,
 
-        #[arg(short, long, help = "Recursively index subdirectories")]
+        #[arg(
+            short,
+            long,
+            default_value_t = true,
+            conflicts_with = "no_recursive",
+            help = "Recursively index subdirectories (default)"
+        )]
         recursive: bool,
+
+        #[arg(long, help = "Index only files directly in the project directory")]
+        no_recursive: bool,
 
         #[arg(long, help = "Force reindex even if already indexed")]
         force: bool,
@@ -234,8 +243,17 @@ enum Commands {
         #[arg(long, help = "Include only these patterns")]
         include: Vec<String>,
 
-        #[arg(short, long, help = "Recursively walk subdirectories")]
+        #[arg(
+            short,
+            long,
+            default_value_t = true,
+            conflicts_with = "no_recursive",
+            help = "Recursively walk subdirectories (default)"
+        )]
         recursive: bool,
+
+        #[arg(long, help = "Estimate only files directly in the project directory")]
+        no_recursive: bool,
 
         #[arg(
             long,
@@ -563,6 +581,7 @@ fn main() -> Result<()> {
             exclude: Vec::new(),
             include: Vec::new(),
             recursive: true,
+            no_recursive: false,
             force: false,
             watch: false,
             workers,
@@ -630,6 +649,7 @@ async fn run_cli(cli: Cli) -> Result<()> {
             exclude,
             include,
             recursive,
+            no_recursive,
             force,
             watch,
             workers,
@@ -649,7 +669,7 @@ async fn run_cli(cli: Cli) -> Result<()> {
                 languages,
                 exclude,
                 include,
-                recursive,
+                recursive && !no_recursive,
                 force,
                 watch,
                 workers,
@@ -672,6 +692,7 @@ async fn run_cli(cli: Cli) -> Result<()> {
             exclude,
             include,
             recursive,
+            no_recursive,
             workers,
             batch_size,
             jina_batch_size,
@@ -686,7 +707,7 @@ async fn run_cli(cli: Cli) -> Result<()> {
                 languages,
                 exclude,
                 include,
-                recursive,
+                recursive && !no_recursive,
                 workers,
                 batch_size,
                 jina_batch_size,
@@ -2454,10 +2475,50 @@ mod cli_command_tests {
             .get_subcommands()
             .map(|s| s.get_name().to_string())
             .collect();
-        for removed in ["stats", "clean", "perf", "code", "test", "init"] {
+        for removed in ["stats", "clean", "perf", "code", "test"] {
             assert!(
                 !names.iter().any(|n| n == removed),
                 "unexpected subcommand still present: {removed}"
+            );
+        }
+        for added in ["init", "agent", "hooks"] {
+            assert!(names.iter().any(|name| name == added));
+        }
+    }
+
+    #[test]
+    fn directory_commands_recurse_by_default_and_accept_explicit_root_only_scans() {
+        for command in ["index", "estimate"] {
+            for (flag, expected) in [
+                (None, true),
+                (Some("-r"), true),
+                (Some("--recursive"), true),
+                (Some("--no-recursive"), false),
+            ] {
+                let mut arguments = vec!["codegraph", command, "--languages", "Rust"];
+                if let Some(flag) = flag {
+                    arguments.push(flag);
+                }
+                arguments.push(".");
+                let cli = Cli::try_parse_from(arguments).unwrap();
+                let (recursive, no_recursive) = match cli.command {
+                    Commands::Index {
+                        recursive,
+                        no_recursive,
+                        ..
+                    }
+                    | Commands::Estimate {
+                        recursive,
+                        no_recursive,
+                        ..
+                    } => (recursive, no_recursive),
+                    _ => unreachable!(),
+                };
+                assert_eq!(recursive && !no_recursive, expected, "{command}: {flag:?}");
+            }
+            assert!(
+                Cli::try_parse_from(["codegraph", command, "--recursive", "--no-recursive", ".",])
+                    .is_err()
             );
         }
     }

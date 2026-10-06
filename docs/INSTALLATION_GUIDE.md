@@ -370,7 +370,8 @@ codegraph index /path/to/codebase -r -l rust
 codegraph index <PATH> [OPTIONS]
 
 Options:
-  -r, --recursive           Recursively index subdirectories
+  -r, --recursive           Recursively index subdirectories (default)
+      --no-recursive        Index only files directly in the project directory
   -l, --languages <LANGS>   Comma-separated list of languages to index
                             (rust, python, typescript, javascript, go, java,
                              cpp, c, swift, kotlin, csharp, ruby, php, dart)
