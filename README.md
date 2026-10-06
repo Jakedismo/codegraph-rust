@@ -53,8 +53,10 @@ Indexing is tiered so you can choose between speed/storage and graph richness. T
 | Tier | What it enables | Typical use |
 |------|-----------------|-------------|
 | `fast` | AST nodes + core edges only (no LSP or enrichment) | Quick indexing, low storage |
-| `balanced` | LSP symbols + docs/enrichment + module linking | Good agentic results without full cost |
-| `full` | All analyzers + LSP definitions + dataflow + architecture | Maximum accuracy/richness |
+| `balanced` | LSP symbols + docs/enrichment + module linking | Richer navigation and documentation with moderate analyzer cost |
+| `full` | All analyzers + LSP definitions + dataflow + architecture | Maximum graph richness and analyzer coverage |
+
+Agent answer accuracy is evaluated separately; see the [CLI accuracy results](#agent-cli-accuracy-by-indexing-tier).
 
 Tier behavior details:
 - `fast`: disables build context, LSP, enrichment, module linking, dataflow, docs/contracts, and architecture; filters out `Uses`/`References` edges.
@@ -400,6 +402,59 @@ Add to your MCP config:
 ```
 
 **That's it.** Your AI now understands your codebase.
+
+---
+
+## Agent CLI accuracy by indexing tier
+
+The CLI evaluation uses the same eight questions as the HTTP MCP test, defined in
+[agentic_test_cases.py](agentic_test_cases.py). They cover configuration loading,
+prompt selection, caching, dependencies, call chains, architecture, public APIs and
+complexity across all four agent tools. [test_cli_agentic.py](test_cli_agentic.py)
+saves full responses for manual comparison with source.
+
+| Indexing tier | LLM | Evaluation date | CLI response checks | Manual accuracy findings |
+|---------------|-----|-----------------|---------------------|--------------------------|
+| `fast` | `gpt-6-luna` | 2026-10-06 | 8/8 `OK` | Mixed: useful findings, incomplete answers and at least two source-confirmed incorrect answers; no overall accuracy score assigned |
+| `balanced` | Pending | Pending | Pending | Awaiting evaluation after balanced indexing |
+| `full` | Pending | Not evaluated | — | No accuracy results yet |
+
+**`OK` measures command/response success, not factual correctness.** It means the
+command returned a valid JSON answer without a reported timeout or partial-result
+marker. All eight fast-tier responses passed this check despite factual mistakes.
+The response field `tier: Massive` in this run describes the agent's context-window
+budget, independently of the `fast` indexing tier.
+
+Source review of the fast-tier answers found:
+
+- **Call chain (case 5): incorrect active implementation.** The answer selected
+  the `#[cfg(not(feature = "ai-enhanced"))]` error stub for `execute_agentic_workflow`
+  and concluded the workflow did not reach graph tools. The
+  [AI-enabled implementation](crates/codegraph-mcp-server/src/official_server.rs#L574)
+  creates `GraphToolExecutor` and invokes the Rig agent executor. The answer did not
+  distinguish the two conditional implementations.
+- **Public API (case 7): incomplete API and incorrect usage conclusion.** The answer
+  described `GraphToolExecutor` as having no direct usage and suggested changes were
+  isolated and low-risk. Its [public methods](crates/codegraph-mcp-tools/src/graph_tool_executor.rs#L73)
+  include constructors, `execute`, cache controls and tool metadata accessors; it is
+  used by both the [server workflow](crates/codegraph-mcp-server/src/official_server.rs#L697)
+  and the [Rig tool factory](crates/codegraph-mcp-rig/src/tools/factory.rs#L16).
+- **LRU cache (case 3): useful but incomplete.** The answer correctly identified
+  tool-result caching by function and parameters, but did not explain the cache-hit,
+  miss, eviction or clearing behavior requested by the question.
+- **Missing symbol (case 4): appropriately uncertain.** The answer reported that
+  `PromptSelector` could not be found rather than inventing its dependencies. No
+  Rust definition with that name exists in the reviewed source; this question needs
+  that caveat when interpreting the results.
+
+This is a qualitative baseline from local run `20261006_013512_392882`, with the
+model and indexing tier recorded from the test session. The runner does not yet
+capture those settings automatically. These observations do not isolate the effect
+of indexing tier from model reasoning or establish a numerical accuracy rate.
+For subsequent comparisons, keep questions, model, agent context budget and inference
+settings consistent; record the source revision and index configuration, and disclose
+changes between runs. Review source locations, active conditional code, completeness
+and unsupported conclusions before assigning accuracy scores.
 
 ---
 
