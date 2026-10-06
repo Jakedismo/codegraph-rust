@@ -96,6 +96,114 @@ fn root_only_index_requires_explicit_no_recursive_flag() {
     assert_eq!(index_files(Some("--no-recursive"), true), 1);
 }
 
+#[test]
+fn rerank_dotenv_and_toml_settings_resolve_without_breaking_offline_indexing() {
+    for (toml, dotenv, provider, model) in [
+        (
+            "",
+            "JINA_ENABLE_RERANKING=true\n",
+            "jina",
+            "jina-reranker-v3",
+        ),
+        (
+            "[rerank]\nprovider = 'jina'\n",
+            "",
+            "jina",
+            "jina-reranker-v3",
+        ),
+        (
+            "[rerank]\nprovider = 'jina'\n[rerank.jina]\nmodel = 'custom-reranker'\n",
+            "",
+            "jina",
+            "custom-reranker",
+        ),
+        (
+            "[rerank]\nprovider = 'ollama'\n",
+            "CODEGRAPH_OLLAMA_RERANK_MODEL=env-reranker\n",
+            "ollama",
+            "env-reranker",
+        ),
+        (
+            "",
+            "JINA_ENABLE_RERANKING=true\nCODEGRAPH_RERANK_PROVIDER=ollama\nCODEGRAPH_OLLAMA_RERANK_MODEL=env-reranker\n",
+            "ollama",
+            "env-reranker",
+        ),
+        (
+            "[rerank]\nprovider = 'jina'\n",
+            "CODEGRAPH_ENABLE_RERANKING=false\n",
+            "none",
+            "",
+        ),
+    ] {
+        let project = tempfile::tempdir().unwrap();
+        let root = project.path();
+        let config = root.join("codegraph.toml");
+        std::fs::write(&config, toml).unwrap();
+        std::fs::write(root.join(".env"), dotenv).unwrap();
+        std::fs::write(root.join("lib.rs"), "pub fn fixture() {}\n").unwrap();
+        let command = || {
+            let mut command = offline_index_command(root, &config);
+            for variable in [
+                "CODEGRAPH_RERANK_PROVIDER",
+                "CODEGRAPH_ENABLE_RERANKING",
+                "JINA_ENABLE_RERANKING",
+                "JINA_RERANKING_MODEL",
+                "JINA_API_KEY",
+                "JINA_API_BASE",
+                "JINA_RERANKING_TOP_N",
+                "CODEGRAPH_RERANKING_CANDIDATES",
+                "CODEGRAPH_OLLAMA_RERANK_MODEL",
+                "OLLAMA_RERANK_MODEL",
+                "CODEGRAPH_OLLAMA_URL",
+                "OLLAMA_URL",
+            ] {
+                command.env_remove(variable);
+            }
+            command
+        };
+        let output = command()
+            .args(["config", "show", "--json"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let resolved: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(resolved["rerank"]["provider"], provider);
+        if provider != "none" {
+            assert_eq!(resolved["rerank"][format!("{provider}_model")], model);
+        }
+        // Indexing needs no reranker API call or key: reranking runs at query time.
+        let output = command()
+            .args([
+                "index",
+                "--languages",
+                "Rust",
+                "--index-tier",
+                "fast",
+                "--stats-json",
+                "stats.json",
+                ".",
+            ])
+            .env("CODEGRAPH_ANALYZERS", "0")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stats: Value =
+            serde_json::from_slice(&std::fs::read(root.join("stats.json")).unwrap()).unwrap();
+        assert_eq!(stats["complete"], true);
+        assert_eq!(stats["files"], 1);
+        assert_eq!(stats["inference_texts"], 0);
+    }
+}
+
 #[cfg(all(feature = "embeddings-jina", feature = "server-http"))]
 #[tokio::test]
 async fn jina_index_requests_honor_dotenv_task_precedence_and_v5_defaults() {

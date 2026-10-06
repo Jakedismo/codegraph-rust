@@ -186,7 +186,13 @@ impl GraphToolExecutor {
         }));
 
         // Initialize reranker from config
-        let reranker = create_reranker(&config.rerank).ok().flatten();
+        let reranker = match create_reranker(&config.rerank) {
+            Ok(reranker) => reranker,
+            Err(error) => {
+                warn!("Configured reranker could not initialize; reranking disabled: {error:#}");
+                None
+            }
+        };
 
         if let Some(ref reranker) = reranker {
             info!(

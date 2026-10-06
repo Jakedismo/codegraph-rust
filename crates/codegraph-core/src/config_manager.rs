@@ -723,42 +723,7 @@ impl ConfigManager {
         if let Ok(base) = std::env::var("JINA_API_BASE") {
             config.embedding.jina_api_base = base;
         }
-        if let Ok(enable) = std::env::var("JINA_ENABLE_RERANKING") {
-            if enable.to_lowercase() == "true" {
-                config.rerank.provider = crate::RerankProvider::Jina;
-            }
-        }
-        if let Ok(model) = std::env::var("JINA_RERANKING_MODEL") {
-            if config.rerank.jina.is_none() {
-                config.rerank.jina = Some(crate::JinaRerankConfig::default());
-            }
-            if let Some(ref mut jina) = config.rerank.jina {
-                jina.model = model;
-            }
-        }
-        if let Ok(top_n) = std::env::var("JINA_RERANKING_TOP_N") {
-            if let Ok(n) = top_n.parse() {
-                config.rerank.top_n = n;
-            }
-        }
-
-        // Generic rerank toggles (CODEGRAPH_*), higher priority than JINA_ENABLE_RERANKING
-        if let Ok(enable) = std::env::var("CODEGRAPH_ENABLE_RERANKING") {
-            if enable.to_lowercase() == "true" {
-                // Default to Jina unless a provider is explicitly set elsewhere
-                if matches!(config.rerank.provider, crate::RerankProvider::None) {
-                    config.rerank.provider = crate::RerankProvider::Jina;
-                }
-            } else {
-                config.rerank.provider = crate::RerankProvider::None;
-            }
-        }
-
-        if let Ok(top_n) = std::env::var("CODEGRAPH_RERANKING_CANDIDATES") {
-            if let Ok(n) = top_n.parse() {
-                config.rerank.top_n = n;
-            }
-        }
+        config.rerank = config.rerank.with_env_overrides();
         if let Ok(chunking) = std::env::var("JINA_LATE_CHUNKING") {
             config.embedding.jina_late_chunking = chunking.to_lowercase() == "true";
         }
@@ -844,6 +809,11 @@ impl ConfigManager {
 
     /// Validate configuration
     fn validate_config(config: &CodeGraphConfig) -> Result<(), ConfigError> {
+        config
+            .rerank
+            .validate()
+            .map_err(|error| ConfigError::ValidationError(error.to_string()))?;
+
         // Validate embedding provider
         match config.embedding.provider.as_str() {
             "auto" | "onnx" | "ollama" | "openai" | "jina" | "lmstudio" => {}
@@ -995,6 +965,52 @@ mod tests {
 
         let config = ConfigManager::apply_env_overrides(CodeGraphConfig::default());
         assert_eq!(config.indexing.tier, IndexingTier::Balanced);
+    }
+
+    #[test]
+    fn rerank_enable_without_model_supplies_jina_defaults() {
+        if !test_env::run(
+            concat!(
+                module_path!(),
+                "::rerank_enable_without_model_supplies_jina_defaults"
+            ),
+            &[
+                ("JINA_ENABLE_RERANKING", Some("true")),
+                ("JINA_RERANKING_MODEL", None),
+                ("CODEGRAPH_ENABLE_RERANKING", None),
+                ("CODEGRAPH_RERANK_PROVIDER", None),
+            ],
+        ) {
+            return;
+        }
+        let config = ConfigManager::apply_env_overrides(CodeGraphConfig::default());
+        assert_eq!(config.rerank.provider, crate::RerankProvider::Jina);
+        assert!(config.rerank.validate().is_ok());
+        assert_eq!(config.rerank.jina.unwrap().model, "jina-reranker-v3");
+    }
+
+    #[test]
+    fn rerank_provider_env_selects_ollama_without_jina_configuration() {
+        if !test_env::run(
+            concat!(
+                module_path!(),
+                "::rerank_provider_env_selects_ollama_without_jina_configuration"
+            ),
+            &[
+                ("CODEGRAPH_RERANK_PROVIDER", Some("ollama")),
+                ("JINA_ENABLE_RERANKING", Some("true")),
+                ("JINA_RERANKING_MODEL", None),
+                ("CODEGRAPH_ENABLE_RERANKING", None),
+                ("CODEGRAPH_OLLAMA_RERANK_MODEL", Some("fixture-reranker")),
+            ],
+        ) {
+            return;
+        }
+        let config = ConfigManager::apply_env_overrides(CodeGraphConfig::default());
+        assert_eq!(config.rerank.provider, crate::RerankProvider::Ollama);
+        assert!(config.rerank.validate().is_ok());
+        assert_eq!(config.rerank.ollama.unwrap().model, "fixture-reranker");
+        assert!(config.rerank.jina.is_none());
     }
 
     #[test]
