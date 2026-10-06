@@ -34,6 +34,17 @@ Full, single-file, delete and watch paths share complete-project reconciliation.
 
 Keep SHA node identities compatible, distinguish real same-line collisions and retain stable occurrence-aware edge IDs. Resolve definitions/exact/contextual and lexical targets before semantic inference; leave ambiguity unresolved and retain resolution provenance. Chunking must preserve Unicode/structural whitespace and enforce the provider's actual tokenizer budget. Cache keys must include source, extraction policy, model/task/revision/tokenizer/runtime identity and relevant build/doc inputs.
 
+Keep fitting AST embedding units intact; split oversized units at real syntax
+boundaries and use UTF-8-safe fallback cuts for oversized leaves. Recheck complete
+inputs, including task prefixes and special tokens; count overlap with the actual
+tokenizer. `CODEGRAPH_EMBEDDING_SKIP_CHUNKING=1` must reject oversized nodes, not
+silently split/truncate them. Ollama resolves model/serving context and matching
+publisher tokenizers in `codegraph-vector::input_policy`; every request disables
+truncation. Unknown tokenizers require an explicit path/repository. Changes to this
+policy must invalidate chunk, prepared-vector and reconciliation caches. Provider
+initialization/chunk-planning APIs return `Result`; preserve error propagation.
+Use isolated fixtures and mock HTTP services to validate these contracts.
+
 Semantic scoring caches raw-vector norms and parallelizes independent targets in the shared worker-limited CPU pool through `spawn_blocking`. Preserve candidate order, scalar floating-point summation/division, the 0.75 threshold and 1e-6 tie rule; vector normalization or parallel dot-product reductions can change decisions. `semantic_scoring` tests and the offline `semantic_scoring_benchmark` compare node IDs and score bits against the frozen scalar reference. Resolution timings in `phase_ms` separate matching, inference, scoring and writes.
 
 Bound parser workers, retained source bytes, queued writer payloads and provider concurrency independently. Database errors and flush acknowledgements must propagate. Reconcile stale project-scoped records and validate final inputs before persisting readiness. Graph completion, pending/off inference and vector-index readiness are separate states; do not mark a failed or deferred stage complete.

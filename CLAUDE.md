@@ -85,12 +85,34 @@ Provider and backend code is heavily `#[cfg(feature = ...)]`-gated, so a change 
 
 Explicit `--batch-size` wins over `CODEGRAPH_EMBEDDINGS_BATCH_SIZE`, legacy `CODEGRAPH_EMBEDDING_BATCH_SIZE`, TOML `[embedding] batch_size`, then default 64. Environment aliases resolve in `ConfigManager`; explicit positive values are not memory-tuned, and the indexer passes its final row limit to provider engines and the submitted-text cache. Ollama/LM Studio have no extra 256-text cap. Token/byte/provider limits can split inference requests; DB writes use separate bounds (chunk writes default to at most 32 rows). Logs distinguish those limits. The full-feature `index_cli_integration` mock verifies actual request sizes and precedence without live providers.
 
+Embedding preparation is model-aware for Ollama: `/api/show` and `/api/ps` resolve
+context; `CODEGRAPH_OLLAMA_NUM_CTX` selects a bounded request context. Recognized
+models load matching publisher tokenizers (tokenizer-only download/cache); unknown
+models require `CODEGRAPH_TOKENIZER_PATH` or `CODEGRAPH_TOKENIZER_REPO`. Complete
+counts include retrieval prefixes and special tokens, with truncation/padding
+removed. Nomic text uses document/query prefixes; Qwen3/Nomic Code queries use
+retrieval instructions. Requests use `truncate=false` and reject context overflow.
+
+Fitting AST node spans stay intact. Oversized units use syntax boundaries from
+`codegraph-parser::chunk_boundaries`, then lossless line/UTF-8 fallback for oversized
+leaves; adjacent pieces merge within budget. `CODEGRAPH_CHUNK_MAX_TOKENS` lowers the
+complete-input target (legacy `CODEGRAPH_MAX_CHUNK_TOKENS` has lower precedence),
+`CODEGRAPH_CHUNK_SMART_SPLIT=0` disables AST cuts, and overlap is token-counted/shrunk
+to fit. `CODEGRAPH_EMBEDDING_SKIP_CHUNKING=1` keeps units whole and errors before
+inference if oversized. The default request token budget grows to at least the
+resolved input context; explicit token/byte bounds remain authoritative. Chunk,
+input-policy and catalog identities invalidate prior preparation artifacts.
+`EmbeddingGenerator::with_config`, `with_auto_from_env` and chunk-planning APIs
+return `Result`. Changing the advanced backend clears its old provider policy/cache.
+No semchunk paths remain. Mock/unit regressions cover actual request limits/prefixes,
+strict overflow, unknown models, warm-cache skip errors and Unicode/source recovery.
+
 `bin/codegraph.rs` `handle_index` → `ProjectIndexer::index_project` in `crates/codegraph-mcp/src/indexer.rs`:
 
 1. Collect/prune files and capture immutable, hashed source snapshots with bounded retained bytes and temporary spill files. Fingerprint sources, build/doc inputs and output policy. All entry points (full, single-file, delete and watch) use complete-project reconciliation. `--force` ignores the prior catalog; preparation does not wipe live records.
 2. Reuse versioned compressed AST artifacts; pooled tree-sitter parsers honor worker limits, cancellation and early tier gating. FastML state is file-local. Cargo metadata preparation overlaps parsing.
 3. Run cached analyzer stages in `crates/codegraph-mcp/src/analyzers/`: Cargo build context, shared/versioned LSP sessions, rustdoc/API enrichment, module linking, scope-aware AST dataflow, docs/contracts and architecture. Optional validated SCIP imports substitute compiler definitions/references for LSP. Preserve direct target IDs and ambiguity.
-4. Plan Unicode-safe chunks in parallel with the actual tokenizer budget. Exact submitted-text caches deduplicate persistent and concurrent inference. Provider-wide permits, row/token/byte budgets and blocking local-runtime scheduling bound work. Independent `sync|deferred|off` embedding/semantic policies control inference without changing extraction tier.
+4. Keep fitting AST units whole and plan oversized chunks in parallel with the complete provider token budget. Exact submitted-text caches deduplicate persistent and concurrent inference. Provider-wide permits, row/token/byte budgets and blocking local-runtime scheduling bound work. Independent `sync|deferred|off` embedding/semantic policies control inference without changing extraction tier.
 5. Upsert only changed nodes/chunks/file metadata and new stable edges through bounded durable writers. Resolve exact/contextual/normalized targets, then indexed lexical candidates, then only genuinely unresolved semantic candidates. Semantic scoring in `semantic_scoring.rs` caches vector norms and runs independent targets in the shared worker-limited CPU pool through `spawn_blocking`. It retains scalar arithmetic, candidate order, threshold/tie rules and bit-identical scores against the frozen reference. Resolution `phase_ms` separates exact/lexical, candidates, symbol embeddings, scoring and writes. Persist method/similarity provenance; scores are not calibrated probabilities.
 6. Flush acknowledged writes, remove stale project-scoped records, verify requested vector indexes and revalidate final inputs. Persist the project ready marker last. Graph readiness, pending/off inference and vector-index readiness remain separate. Deferred jobs survive restart; `codegraph index <root> --complete-deferred` reconciles current inputs before completing them.
 

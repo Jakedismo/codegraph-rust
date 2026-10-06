@@ -9,9 +9,10 @@ batch_size = 32   # max embedding texts/batch; env overrides this, --batch-size 
 normalize_embeddings = true
 cache_enabled = true
 ollama_url = "http://localhost:11434"
-# Optional: override chunk size for longer-context models
+# Optional: lower the complete-input target (capped by the resolved serving context)
 # env: CODEGRAPH_CHUNK_MAX_TOKENS=2048
-# skip_chunking = false
+# env: CODEGRAPH_EMBEDDING_SKIP_CHUNKING=1  # keep nodes whole; error if oversized
+# env: CODEGRAPH_TOKENIZER_PATH=/path/to/tokenizer.json # matching offline/custom tokenizer
 
 [llm]
 provider = "ollama"   # or openai / anthropic / openai-compatible / xai / lmstudio

@@ -110,8 +110,9 @@ codegraph index --languages Rust --index-tier balanced --batch-size 512 .
 ```
 
 Token/byte budgets, cache hits and provider API limits can produce smaller actual
-requests. For larger requests, adjust `CODEGRAPH_EMBEDDING_BATCH_TOKENS` (local default
-8192, remote 32768) and `CODEGRAPH_EMBEDDING_BATCH_BYTES` (default 1 MiB) as needed.
+requests. For larger requests, adjust `CODEGRAPH_EMBEDDING_BATCH_TOKENS` (default at
+least the resolved input context, with local/remote floors of 8192/32768) and
+`CODEGRAPH_EMBEDDING_BATCH_BYTES` (default 1 MiB) as needed.
 Logs show these inference limits separately from database write batches;
 `CODEGRAPH_CHUNK_DB_BATCH_SIZE` defaults to at most 32 rows and is capped at 512.
 Ollama and LM Studio have no extra fixed 256-text cap.
@@ -136,6 +137,49 @@ Deferred runs persist a resumable job and distinguish graph readiness from pendi
 inference. Prepared-text embedding caches include model/task/tokenizer/runtime identity;
 chunking preserves Unicode and enforces provider token budgets. Mutable model aliases
 expire; `CODEGRAPH_MODEL_REVISION` declares an immutable revision.
+
+### Embedding inputs and chunking
+
+Chunk planning starts from AST node source spans, such as functions and classes.
+A unit that fits the complete input budget stays intact. Oversized units split at
+Tree-sitter statement/block boundaries, then merge adjacent pieces while they fit.
+Oversized leaves and unsupported syntax use UTF-8-safe line/token splitting.
+Unicode and structural whitespace are preserved; overlap uses token counts.
+
+For Ollama, the budget follows model metadata and serving context. Qwen3 embedding
+models support [32K inputs](https://github.com/QwenLM/Qwen3-Embedding#model-overview);
+[nomic-embed-text-v2-moe](https://huggingface.co/nomic-ai/nomic-embed-text-v2-moe)
+supports 512 tokens. Counting includes document/query prefixes and special tokens.
+Nomic text models receive `search_document: ` / `search_query: `; Qwen3 queries
+receive a retrieval instruction. Every Ollama request uses `truncate=false`:
+context mismatch fails visibly instead of silently dropping source.
+
+Recognized models automatically load their matching publisher tokenizer, caching
+`tokenizer.json` and downloading it on first use if absent. Model weights are not
+downloaded. Custom/offline models can supply `CODEGRAPH_TOKENIZER_PATH`; an unknown
+model requires that path or `CODEGRAPH_TOKENIZER_REPO`.
+
+| Control | Behavior |
+|---------|----------|
+| `CODEGRAPH_CHUNK_MAX_TOKENS` | Lower the complete-input target; capped by serving context. Legacy `CODEGRAPH_MAX_CHUNK_TOKENS` has lower precedence. |
+| `CODEGRAPH_CHUNK_SMART_SPLIT=0` | Use token splitting instead of AST boundaries for oversized units. Default: AST splitting. |
+| `CODEGRAPH_CHUNK_OVERLAP_TOKENS` | Maximum suffix overlap in tokens; default 64, zero disables. Shrunk to fit the next input. |
+| `CODEGRAPH_EMBEDDING_SKIP_CHUNKING=1` | Keep nodes intact; fail before inference if any exceeds the configured input limit. |
+| `CODEGRAPH_OLLAMA_NUM_CTX` | Set request context, bounded by the model maximum. Otherwise use Modelfile/running context when reported. |
+| `CODEGRAPH_MODEL_MAX_TOKENS` | Supply missing model context metadata or lower the advertised maximum. |
+| `CODEGRAPH_TOKENIZER_PATH` | Use a matching local `tokenizer.json`, without downloading it. |
+| `CODEGRAPH_TOKENIZER_REPO`, `CODEGRAPH_TOKENIZER_REVISION` | Override publisher tokenizer repository/revision; default revision `main`. |
+| `CODEGRAPH_EMBEDDING_DOCUMENT_PREFIX`, `CODEGRAPH_EMBEDDING_QUERY_PREFIX` | Override retrieval prefixes for custom models. |
+
+`--batch-size` controls texts per inference request, independently of chunk length.
+Default request token budgets grow to accommodate the resolved input context
+(local floor 8192; remote floor 32768). Explicit `CODEGRAPH_EMBEDDING_BATCH_TOKENS`
+and `CODEGRAPH_EMBEDDING_BATCH_BYTES` remain separate bounds; an input exceeding
+one fails with advice to raise that bound or lower the chunk target.
+
+Reindex after upgrading: tokenizer/task/context and chunk-policy changes invalidate
+old artifacts and embeddings. Offline mocks verify preparation and request limits;
+retrieval quality and indexing speed still need measurements on your project.
 
 `CODEGRAPH_VECTOR_INDEX_MODE=all|selected|deferred|off` controls HNSW construction for
 fresh embedded stores. The default retains all schema dimensions; selected builds the
@@ -429,6 +473,10 @@ The CLI evaluation uses the same eight questions as the HTTP MCP test, defined i
 prompt selection, caching, dependencies, call chains, architecture, public APIs and
 complexity across all four agent tools. [test_cli_agentic.py](test_cli_agentic.py)
 saves full responses for manual comparison with source.
+
+The fast entry below predates the current model-aware tokenizer/context/chunk policy.
+Future tier comparisons should use the same current input policy and model settings;
+the historical entry remains a record of that run.
 
 | Indexing tier | LLM | Evaluation date | CLI response checks | Manual accuracy findings |
 |---------------|-----|-----------------|---------------------|--------------------------|
