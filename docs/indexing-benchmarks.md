@@ -50,6 +50,54 @@ Forced runs deliberately rewrite the catalog and are not an incremental speed ta
 Three samples are insufficient for percentile estimates. This is a harness baseline,
 not a comparison against the original implementation or a production throughput claim.
 
+## Semantic relationship scoring
+
+The offline scorer benchmark compares the frozen scalar resolver, cached norms with
+one worker, and the production scorer with a selected worker count. It reuses the same
+vectors/candidate lists, checks winning node IDs and exact score bits on every sample,
+includes norm preparation, and rotates method order between repetitions. It performs
+no provider calls, database access or project indexing.
+
+```sh
+cargo build -p codegraph-mcp --example semantic_scoring_benchmark --release
+<cargo-target-dir>/release/examples/semantic_scoring_benchmark \
+  --workers 10 --queries 1024 --aliases 4096 --candidates 128 \
+  --dimension 1024 --repeats 7 > /tmp/semantic-scoring.json
+```
+
+For a quick optimized-kernel comparison using existing development-profile dependencies:
+
+```sh
+cargo rustc -p codegraph-mcp --example semantic_scoring_benchmark \
+  --profile dev -- -C opt-level=3
+<cargo-target-dir>/debug/examples/semantic_scoring_benchmark \
+  --workers 10 --repeats 7 > /tmp/semantic-scoring.json
+```
+
+The second command was used on macOS ARM64 with Rust 1.99.0 on 2026-10-06. Scoring and
+reference code were optimized at level 3; dependency crates retained the development
+profile. The machine was not guaranteed idle. Seven samples compared 131,072 pairs of
+1024-dimensional vectors, reusing 4,096 candidate vectors and 1,024 queries:
+
+| Implementation | Median (ms) | Maximum of seven (ms) | Median speedup |
+| --- | ---: | ---: | ---: |
+| Serial scalar reference | 163.83 | 165.31 | 1.00x |
+| Cached norms, one worker | 59.13 | 60.49 | 2.77x |
+| Cached norms, ten workers | 7.65 | 7.74 | 21.43x |
+
+All 1,024 winning node IDs and score bits matched in every sample. The production path
+computed 5,120 norms rather than recalculating two norms for each pair. Raw samples,
+build/source/binary fingerprints and fixture settings are retained in
+[the measurement artifact](benchmarks/semantic-scoring-2026-10-06.json).
+
+These results measure the CPU scoring kernel, excluding inference, candidate selection,
+database writes and indexing startup. They do not establish an indexing speedup because
+relationship resolution also includes inference and writes. Use the new resolution
+`phase_ms` subphases and scoring
+logs during a representative run to establish the end-to-end impact. An unchanged
+project can reuse its catalog and skip resolution; use a disposable database and
+`--force` when measuring that stage rather than a no-change run.
+
 ## Same-model runtime and precision probes
 
 Prepare a labeled corpus with short complete texts (each within the 512-token probe

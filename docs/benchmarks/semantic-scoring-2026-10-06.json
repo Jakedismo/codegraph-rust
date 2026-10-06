@@ -1,0 +1,71 @@
+{
+  "bit_identical": true,
+  "build": {
+    "binary_sha256": "7b6d913a206c3603ee4f5ecc87b845b742f3de33af55754125ae8e7fcf4efeea",
+    "command": "cargo rustc -p codegraph-mcp --example semantic_scoring_benchmark --profile dev -- -C opt-level=3",
+    "note": "Scoring and reference compiled at opt-level 3; dependencies use the development profile. No guarantee the machine was idle.",
+    "rustc": "1.99.0 (b940084d7 2026-09-28)",
+    "source_sha256": {
+      "crates/codegraph-mcp/examples/semantic_scoring_benchmark.rs": "a5a7c93369075879c1db58e05a250e586407b5f8d9c7fcb576a2bdfbb975bb5b",
+      "crates/codegraph-mcp/src/semantic_scoring.rs": "d31ebc0ec1e7f9391efba5d8a30de953e2c14ab426c858ab2860aff76e82db61",
+      "crates/codegraph-mcp/tests/support/semantic_scoring_reference.rs": "ec6f83f4aa0fe3e7453d53810d93f953a84a074d66d0a36bd2c3b1693e7f68c0"
+    }
+  },
+  "cached_vector_norms": 5120,
+  "comparisons": 131072,
+  "debug_assertions": false,
+  "fixture": {
+    "aliases": 4096,
+    "candidates_per_query": 128,
+    "dimension": 1024,
+    "queries": 1024,
+    "seed": 1311768467463790320
+  },
+  "matches": 1024,
+  "measurement_date": "2026-10-06",
+  "median_ms": {
+    "cached_norms_one_worker": 59.126584,
+    "cached_norms_parallel": 7.646624999999999,
+    "serial_reference": 163.833083
+  },
+  "median_speedup": {
+    "cached_norms_one_worker": 2.770887000676379,
+    "cached_norms_parallel": 21.425541725924838
+  },
+  "platform": {
+    "arch": "aarch64",
+    "os": "macos"
+  },
+  "result_fingerprint": "4c2239c2c7372a7158270634d0763288533da81c57110ae048106cbca7b616aa",
+  "samples_ms": {
+    "cached_norms_one_worker": [
+      58.973375000000004,
+      60.488167000000004,
+      59.534083,
+      59.126584,
+      60.175540999999996,
+      59.025,
+      58.97925
+    ],
+    "cached_norms_parallel": [
+      7.635542,
+      7.7135,
+      7.5874999999999995,
+      7.741416,
+      7.62725,
+      7.721292,
+      7.646624999999999
+    ],
+    "serial_reference": [
+      162.52466700000002,
+      163.16875,
+      165.31283399999998,
+      163.855458,
+      164.380417,
+      163.833083,
+      163.507667
+    ]
+  },
+  "scope": "Synthetic CPU scoring only; excludes inference, candidate selection, database and indexing startup",
+  "workers": 10
+}

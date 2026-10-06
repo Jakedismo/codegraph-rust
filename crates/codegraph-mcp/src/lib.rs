@@ -6,6 +6,8 @@ pub mod indexer;
 pub mod policy;
 mod reconciliation;
 mod resolution;
+#[cfg(any(test, feature = "ai-enhanced"))]
+mod semantic_scoring;
 pub mod transport;
 pub mod utils;
 mod writer;

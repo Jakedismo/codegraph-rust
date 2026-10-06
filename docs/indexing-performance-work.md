@@ -76,6 +76,25 @@ overlap/length gates; a positive limit is an opt-in recall/latency tradeoff. Amb
 short names without a unique local scope remain unresolved. The implementation uses
 [RapidFuzz](https://docs.rs/rapidfuzz/0.5.0/rapidfuzz/distance/levenshtein/index.html).
 
+Semantic cosine scoring caches each candidate norm once and each unresolved query
+norm once, then evaluates independent targets in the shared bounded Rayon CPU pool.
+`RAYON_NUM_THREADS`, `CODEGRAPH_WORKERS` or CLI worker configuration determine its
+existing worker limit, capped at available parallelism. The job runs through
+`spawn_blocking`, so CPU scoring does not occupy an async runtime worker. Raw vectors
+are borrowed, without copying/rescaling them or changing per-target candidate order.
+The original scalar sum/division order, 0.75 threshold and 1e-6 tie rule are retained.
+Offline regression and benchmark comparisons check exact node IDs and score bits.
+
+Relationship timing retains the existing `resolve_and_enqueue_edges` total and adds
+subphases in `--stats-json`'s `phase_ms`: `resolution_exact_lexical`,
+`resolution_semantic_candidates`, `resolution_symbol_embeddings`,
+`resolution_semantic_scoring`, `resolution_symbol_writes_flush` and
+`resolution_edge_preparation_and_writes`. Symbol embedding includes enqueue/backpressure;
+its final writer flush is measured separately. Scoring includes norm preparation and
+blocking-job scheduling; the edge phase includes record construction and deduplication.
+Subphases overlap their parent total and must not be added to that total again. Verbose
+logs report scoring workers, comparison count, cached norm count and elapsed time.
+
 `CODEGRAPH_AST_CACHE_BYTES` bounds retained AST artifacts (default 2 GiB), with eviction
 at a run boundary. Entries larger than 64 MiB are recomputed rather than cached.
 

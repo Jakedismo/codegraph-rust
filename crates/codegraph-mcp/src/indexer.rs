@@ -241,7 +241,7 @@ pub struct ProjectIndexer {
     startup_ms: u64,
     lsp_support: TokioMutex<Option<String>>,
     #[cfg(feature = "embeddings")]
-    chunk_pool: rayon::ThreadPool,
+    cpu_pool: Arc<rayon::ThreadPool>,
     #[cfg(feature = "embeddings")]
     embedder: Option<codegraph_vector::EmbeddingGenerator>,
 }
@@ -353,9 +353,11 @@ impl ProjectIndexer {
                 .or(env_workers)
                 .unwrap_or(config.workers);
             #[cfg(feature = "embeddings")]
-            let chunk_pool = rayon::ThreadPoolBuilder::new()
-                .num_threads(requested.max(1).min(available.max(1)))
-                .build()?;
+            let cpu_pool = Arc::new(
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(requested.max(1).min(available.max(1)))
+                    .build()?,
+            );
 
             // Allow runtime override for embedding batch size
             if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE")
@@ -598,7 +600,7 @@ impl ProjectIndexer {
                 startup_ms: startup.elapsed().as_millis() as u64,
                 lsp_support: TokioMutex::new(None),
                 #[cfg(feature = "embeddings")]
-                chunk_pool,
+                cpu_pool,
                 #[cfg(feature = "embeddings")]
                 embedder,
             })
@@ -1398,7 +1400,7 @@ impl ProjectIndexer {
                                 .and_then(|snapshot| snapshot.contents().ok())
                         })
                 };
-                let plan = self.chunk_pool.install(chunker);
+                let plan = self.cpu_pool.install(chunker);
                 let elapsed = start.elapsed();
                 self.finish_bar(
                     chunk_pb,
@@ -1871,9 +1873,14 @@ impl ProjectIndexer {
                 targets.push(target);
                 resolution_provenance.push(provenance);
             }
+            phase_ms.insert(
+                "resolution_exact_lexical".into(),
+                resolution_start.elapsed().as_millis() as u64,
+            );
             #[cfg(feature = "ai-enhanced")]
             {
                 if self.policies.semantic == crate::policy::StagePolicy::Sync {
+                    let candidates_start = std::time::Instant::now();
                     let limit = std::env::var("CODEGRAPH_SEMANTIC_CANDIDATES")
                         .ok()
                         .and_then(|value| value.parse().ok())
@@ -1899,7 +1906,17 @@ impl ProjectIndexer {
                         .filter(|(_, candidates)| !candidates.is_empty())
                         .map(|(target, _)| target.clone())
                         .collect();
+                    phase_ms.insert(
+                        "resolution_semantic_candidates".into(),
+                        candidates_start.elapsed().as_millis() as u64,
+                    );
                     if !unresolved.is_empty() {
+                        info!(
+                            "🧠 Relationship symbol embeddings starting: {} candidate names, {} unresolved names",
+                            candidate_symbols.len(),
+                            unresolved.len()
+                        );
+                        let symbol_embedding_start = std::time::Instant::now();
                         let known = self
                             .embed_symbol_texts(
                                 candidate_symbols.keys().cloned().collect(),
@@ -1907,34 +1924,47 @@ impl ProjectIndexer {
                             )
                             .await?;
                         let unknown = self.embed_symbol_texts(unresolved, &HashMap::new()).await?;
-                        let mut semantic_targets = HashMap::new();
-                        for (target, candidates) in candidates_by_target {
-                            let Some(query) = unknown.get(&target) else {
-                                continue;
-                            };
-                            let mut best = 0.75f32;
-                            let mut winner = None;
-                            let mut tied = false;
-                            for alias in candidates {
-                                let Some(vector) = known.get(&alias) else {
-                                    continue;
-                                };
-                                let score = Self::cosine_similarity_static(query, vector);
-                                let id = candidate_symbols[&alias];
-                                if score > best + 1e-6 {
-                                    best = score;
-                                    winner = Some(id);
-                                    tied = false;
-                                } else if (score - best).abs() <= 1e-6
-                                    && winner.is_some_and(|winner| winner != id)
-                                {
-                                    tied = true;
-                                }
-                            }
-                            if !tied && let Some(id) = winner {
-                                semantic_targets.insert(target, (id, best));
-                            }
-                        }
+                        info!(
+                            "🧠 Relationship symbol embeddings complete in {:?}",
+                            symbol_embedding_start.elapsed()
+                        );
+                        phase_ms.insert(
+                            "resolution_symbol_embeddings".into(),
+                            symbol_embedding_start.elapsed().as_millis() as u64,
+                        );
+                        info!(
+                            "🔎 Semantic scoring starting: {} unresolved names, {} candidate vectors, {} workers",
+                            unknown.len(),
+                            known.len(),
+                            self.cpu_pool.current_num_threads()
+                        );
+                        let scoring_start = std::time::Instant::now();
+                        let pool = Arc::clone(&self.cpu_pool);
+                        let scoring = tokio::task::spawn_blocking(move || {
+                            pool.install(|| {
+                                crate::semantic_scoring::resolve_targets(
+                                    &candidates_by_target,
+                                    &candidate_symbols,
+                                    &known,
+                                    &unknown,
+                                )
+                            })
+                        })
+                        .await
+                        .context("Semantic scoring task failed")?;
+                        let scoring_elapsed = scoring_start.elapsed();
+                        phase_ms.insert(
+                            "resolution_semantic_scoring".into(),
+                            scoring_elapsed.as_millis() as u64,
+                        );
+                        info!(
+                            "🔎 Semantic scoring complete: {} matches, {} comparisons, {} cached vector norms in {:?}",
+                            scoring.targets.len(),
+                            scoring.comparisons,
+                            scoring.vector_norms,
+                            scoring_elapsed
+                        );
+                        let semantic_targets = scoring.targets;
                         for (index, (edge, target)) in edges.iter().zip(&mut targets).enumerate() {
                             if target.is_none()
                                 && let Some((id, score)) = semantic_targets.get(&edge.to).copied()
@@ -1943,10 +1973,16 @@ impl ProjectIndexer {
                                 resolution_provenance[index] = ("semantic", score as f64);
                             }
                         }
+                        let symbol_flush_start = std::time::Instant::now();
                         self.flush_surreal_writer().await?;
+                        phase_ms.insert(
+                            "resolution_symbol_writes_flush".into(),
+                            symbol_flush_start.elapsed().as_millis() as u64,
+                        );
                     }
                 }
             }
+            let edge_persistence_start = std::time::Instant::now();
             let resolved_count = targets.iter().filter(|target| target.is_some()).count();
             let mut resolved_edges = Vec::with_capacity(resolved_count);
             for ((edge, target), (method, score)) in
@@ -1984,6 +2020,10 @@ impl ProjectIndexer {
             });
             self.enqueue_edges(resolved_edges).await?;
             self.flush_surreal_writer().await?;
+            phase_ms.insert(
+                "resolution_edge_preparation_and_writes".into(),
+                edge_persistence_start.elapsed().as_millis() as u64,
+            );
             let resolution_rate = if edges.is_empty() {
                 100.0
             } else {
@@ -2289,24 +2329,6 @@ impl ProjectIndexer {
             self.persist_symbol_embedding_records(records).await?;
         }
         Ok(results)
-    }
-
-    /// Static cosine similarity calculation for parallel processing
-    #[cfg(feature = "ai-enhanced")]
-    fn cosine_similarity_static(a: &[f32], b: &[f32]) -> f32 {
-        if a.len() != b.len() {
-            return 0.0;
-        }
-
-        let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if norm_a == 0.0 || norm_b == 0.0 {
-            0.0
-        } else {
-            dot_product / (norm_a * norm_b)
-        }
     }
 
     async fn index_file(

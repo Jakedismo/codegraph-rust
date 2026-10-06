@@ -129,6 +129,12 @@ See [configuration and invariants](docs/indexing-performance-work.md) and
 fixture results verify behavior; production throughput and model quality require
 representative measurements.
 
+Semantic relationship scoring caches vector norms and scores independent unresolved
+names in the existing worker-limited CPU pool, outside async runtime workers. Candidate
+order, the cosine threshold and ambiguous-tie handling remain unchanged. `--stats-json`
+now separates exact/lexical matching, semantic candidate selection, symbol embedding,
+CPU scoring, and edge preparation/writes within relationship resolution.
+
 If LSP resolution fails immediately and the error includes something like `Unknown binary 'rust-analyzer' in official toolchain ...`, your `rust-analyzer` is a rustup shim without an installed binary. Install a runnable `rust-analyzer` (e.g. via `brew install rust-analyzer` or by switching to a toolchain that provides it).
 
 #### Optional architecture boundary rules
