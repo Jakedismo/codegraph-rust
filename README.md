@@ -246,7 +246,7 @@ Each tool runs a **reasoning agent** that plans, searches, analyzes graph relati
 CodeGraph's agents are built on the **Rig** framework. The agent that runs is selected at runtime with `CODEGRAPH_AGENT_ARCHITECTURE` (in `.env` or the environment):
 
 - **`react`** (default; `rig` is accepted as an alias): a tool-calling loop over the graph tools.
-- **`lats`**: tree search over candidate reasoning steps. It does not call the graph tools, so its answers are not grounded in the index.
+- **`lats`**: tree search over candidates that call the same graph tools as ReAct. Each branch retains its own observations; the evaluator scores it against that evidence, and the selected branch supplies the answer. Runs with no successful graph observation fail.
 - **`reflexion`**: ReAct wrapped in a retry that feeds the previous error back to the agent.
 
 Whichever agent is selected, a failed run is retried automatically with the error as context.
@@ -255,11 +255,15 @@ Whichever agent is selected, a failed run is retried automatically with the erro
 # Default: ReAct
 ./codegraph start stdio
 
-# Tree search over reasoning steps
+# Tree search with graph-tool grounding
 CODEGRAPH_AGENT_ARCHITECTURE=lats ./codegraph start stdio
 ```
 
 All agents serve the same 4 consolidated agentic tools and use tier-aware prompting.
+LATS explores three candidates per expansion and makes evaluator calls, so it can
+cost more and take longer than ReAct. Its tier budget bounds search expansions,
+depth and each candidate's tool loop; candidates share the run's result-size budget.
+The CLI's whole-workflow deadline still applies. See [architecture and limits](docs/AGENTIC_CLI.md#agent-architectures).
 
 ### 3. Tier-Aware Intelligence
 

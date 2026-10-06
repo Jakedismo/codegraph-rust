@@ -23,6 +23,34 @@ and [provider configuration](AI_PROVIDERS.md). No MCP server or transport is sta
 by an agentic CLI call. Each call runs a fresh agent workflow and may incur the
 configured provider's costs.
 
+## Agent architectures
+
+`CODEGRAPH_AGENT_ARCHITECTURE` selects `react` (default, alias `rig`), `lats`, or
+`reflexion` for both CLI and MCP workflows. ReAct runs a graph-tool loop; Reflexion
+retries it with error feedback. LATS searches over candidate answers using the
+same eight graph tools and project-scoped executor:
+
+```sh
+CODEGRAPH_AGENT_ARCHITECTURE=lats codegraph agent context "Explain provider selection" --focus question
+```
+
+Each LATS expansion runs three candidate tool loops with separate branch histories.
+The critic scores candidates against their actual graph observations. A final
+answer is selected from the explored tree; if only an intermediate grounded leaf
+is available, a tool-enabled synthesis pass turns it into an answer. LATS rejects
+a run with no successful graph observation. Empty lookups can support a report of
+missing evidence; they do not establish that code cannot exist. Failed calls and
+exhausted-budget notes do not count as observations.
+
+The context tier's turn budget limits search expansions, tree depth and each
+candidate/synthesis tool loop. It is not a model-call cap for the whole tree:
+candidate loops and evaluator calls can make LATS slower and more expensive than
+ReAct. All branches share the workflow's tool-result size budget, cache and
+tool-use tracking. The CLI's 600-second deadline still covers the entire workflow,
+including recovery retries. Tool counts/traces include all explored candidates.
+Offline mock tests verify this integration; factual accuracy still requires a
+live evaluation against the intended index and model.
+
 ## Public commands
 
 | MCP tool | CLI command | Accepted `--focus` | Default |
