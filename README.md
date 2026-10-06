@@ -290,29 +290,37 @@ The Agent is stateless it only has conversational memory for the span of tool ex
 
 ### 4. Context Overflow Protection
 
-CodeGraph includes multi-layer protection against context overflow—preventing expensive failures when tool results exceed your model's limits.
+Every tool result the agent receives is resent to the model on each later round, so
+CodeGraph bounds what a run can put in the model's context at three levels:
 
-**Per-Tool Result Truncation:**
-- Each tool result is limited based on your configured context window
-- Large results (e.g., dependency trees with 1000+ nodes) are intelligently truncated
-- Truncated results include `_truncated: true` metadata so the agent knows data was cut
-- Array results keep the most relevant items that fit within limits
+**Content snippets.** Long `content` in a result row (a whole document, an `impl` block)
+is cut to a leading snippet, 2,000 characters by default, and marked
+`content_truncated` with its original length. The row keeps its file path and line range,
+so the client can read the rest.
 
-**Context Accumulation Guard:**
-- Monitors total accumulated context across multi-step reasoning
-- Fails fast with clear error message if accumulated tool results exceed safe threshold
-- Threshold: 80% of context window × 4 (conservative estimate for token overhead)
+**Per-result limit.** One tool result is limited to `context_window × 2` bytes, capped at
+200 KB however large the window is. Oversized array results keep their leading items and
+carry `_truncated` metadata.
+
+**Per-run budget.** All tool results in one agent run share a budget of about a third of
+the context window (at 4 bytes per token), between 48 KB and 600 KB. A result that would
+exceed the remainder is trimmed to fit and carries a `_budget` note; once the budget is
+used up, further calls return a note telling the agent to answer from the evidence it
+has.
 
 **Configure via environment:**
 ```bash
-# CRITICAL: Set this to match your agent's LLM context window
-CODEGRAPH_CONTEXT_WINDOW=128000  # Default: 128K
+# Set this to match your agent LLM's real context window
+CODEGRAPH_CONTEXT_WINDOW=128000            # default: 128K
 
-# Per-tool result limit derived automatically: context_window × 2 bytes
-# Accumulation limit derived automatically: context_window × 4 × 0.8 bytes
+# Optional overrides
+CODEGRAPH_TOOL_CONTENT_CHARS=2000          # snippet length per row; 0 disables shortening
+CODEGRAPH_AGENT_RESULT_BUDGET_BYTES=400000 # per-run tool-result budget
 ```
 
-**Why this matters:** Without these guards, a single `agentic_impact` query on a large codebase could return 6M+ tokens—far exceeding most models' limits and causing expensive failures.
+**Why this matters:** on a full-tier index of this repository, one semantic search could
+return 228 KB before these limits, and a dozen searches in one run put megabytes into
+every model request until the model call stalled.
 
 ### 5. Hybrid Search That Actually Works
 
@@ -423,6 +431,27 @@ The same settings can live in the `[llm]` section of a config file instead (see
 [Configuration](#configuration)); environment variables win. `.env.example` lists every
 supported variable, and [AI_PROVIDERS.md](docs/AI_PROVIDERS.md) has per-provider examples.
 
+For Jina v5 embeddings, use the supported retrieval tasks:
+
+```bash
+CODEGRAPH_EMBEDDING_PROVIDER=jina
+CODEGRAPH_EMBEDDING_MODEL=jina-embeddings-v5-text-small
+CODEGRAPH_EMBEDDING_DIMENSION=1024
+JINA_API_KEY=...
+JINA_API_TASK=retrieval.passage
+JINA_TRUNCATE=true
+JINA_NORMALIZED=true
+```
+
+An explicit `JINA_API_TASK=retrieval.query` is honored too. `JINA_API_TASK` takes
+precedence over legacy `JINA_TASK` and TOML `[embedding] jina_task`. Unset tasks
+default to `retrieval.passage` for v3/v5 and `code.passage` for v4; searches use the
+matching query task. V5 supports retrieval, text-matching, classification and
+clustering tasks, as described in [Jina's API schemas](https://github.com/jina-ai/meta-prompt/blob/main/v12.txt).
+Permanent embedding API errors such as HTTP 422 fail immediately with their details;
+transient failures retain retries. Reindex after changing task or request options
+to replace vectors generated with the previous policy.
+
 ### 3. Database
 
 There is nothing to start. SurrealDB runs embedded inside `codegraph`, and each project gets
@@ -509,7 +538,8 @@ the historical entry remains a record of that run.
 | Indexing tier | LLM / request model | Evaluation date | CLI response checks | Manual accuracy findings |
 |---------------|-----|-----------------|---------------------|--------------------------|
 | `fast` | `gpt-6-luna` (confirmed by the project owner; not captured by the runner) | 2026-10-06 | 8/8 `OK` | Mixed: useful findings, incomplete answers and at least two source-confirmed incorrect answers; no overall accuracy score assigned |
-| `balanced` | `gpt-6-luna` (explicit request model) | 2026-10-06 | 8/8 `OK` | Useful configuration/cache/call-chain answers and public-method list; incorrect direct-caller classification, incomplete hub results and metric caveats; no overall accuracy score assigned |
+| `balanced` (original) | `gpt-6-luna` (explicit request model) | 2026-10-06 | 8/8 `OK` | Useful configuration/cache/call-chain answers and public-method list; incorrect direct-caller classification, incomplete hub results and metric caveats; no overall accuracy score assigned |
+| `balanced` (refreshed) | `gpt-6-luna` (explicit request model) | 2026-10-06 | 8/8 `OK` | Hub ranking, ratio arithmetic and wrapper explanation fixed; prompt/cache/call-chain coverage incomplete, one API method omitted; API case takes 587.5 seconds; no overall accuracy score assigned |
 | `full` | `gpt-6-luna` (explicit request model) | 2026-10-06 | 7/8 `OK`, 1 `TIMEOUT` | Source-aligned configuration, cache, call-chain and public-API answers with verified locations; weak substitute for the missing symbol; hub ranking unavailable and instability values unreliable; the tier-aware prompt case timed out twice; no overall accuracy score assigned |
 
 **`OK` measures command/response success, not factual correctness.** It means the
@@ -549,7 +579,7 @@ with 1,024-dimensional vectors and a resolved 32,768-token serving context.
 [Full balanced answers, run details and source review](docs/evaluations/balanced-cli-2026-10-06.md)
 are retained separately from the README summary.
 
-Source review of the explicit-model balanced answers found:
+Source review of the original explicit-model balanced answers found:
 
 - **Configuration, prompts and cache (cases 1–3): useful source-aligned explanations.**
   The answers covered multiple configuration systems, dotenv/TOML precedence, the
@@ -582,14 +612,51 @@ Source review of the explicit-model balanced answers found:
   a heuristic, not a calibrated failure probability or a guaranteed global risk
   ranking; incoming edge counts also need not equal distinct caller counts.
 
+The refreshed balanced run `20261006_151920_418410` again explicitly requested
+`gpt-6-luna`. All eight cases returned `OK` in **1,053.3 seconds**, with **131 tool
+calls** and **177 summed locations**. It used the newly ingested index (238 files,
+21,832 nodes, 43,266 edges, 23,387 chunks), Jina `jina-embeddings-v5-text-small`
+(1,024 dimensions), a 512-token AST chunk policy and the current 600-second deadline.
+[The refreshed review and all eight new answers](docs/evaluations/balanced-cli-2026-10-06.md#refreshed-balanced-run-1519-utc)
+are preserved alongside the original run.
+
+- **Verified improvements:** The architecture case returns hub rankings without
+  the former `array::concat` failure; all seven displayed instability ratios match
+  Ce/(Ca+Ce) after rounding. The API answer correctly describes Rig adapters as
+  indirect consumers through `CountingExecutor`. No graph-tool failures or Jina
+  422 errors are logged in the eight commands.
+- **Remaining accuracy/coverage gaps:** The prompt answer omits default round
+  budgets and prompt-builder details; the cache answer cannot establish successful
+  insertion/truncation and omits eviction/clearing; the call chain stops at
+  `RigExecutor::new` before tool dispatch. These details were covered by the original
+  balanced answers. The API list omits `graph_functions`, and the absent-symbol
+  answer has one incorrect import line. Hotspot arithmetic checks out, but the
+  answer omits the candidate-scope and incoming-edge-row qualifications.
+- **Remaining latency:** The API command takes **587.5 seconds**. A **510.6-second**
+  logged gap after its first completed search occurs before the next tool call,
+  during the agent/model turn. The provider-side cause is unestablished. Eight
+  successful responses do not establish that latency is resolved.
+- **Comparison limits:** This run changes embeddings, chunk policy, binary, index
+  contents, result limits and deadline. Earlier evaluation documents containing
+  answers to these same questions were retrieved in cases 1–4. It is an operational
+  smoke test with source review, not a held-out accuracy benchmark or a controlled
+  measurement of tier effects.
+
 The full run `20261006_060847_378162` also selected `gpt-6-luna` explicitly. Seven
 commands returned answers and case 2 (tier-aware prompts) hit the 300-second deadline;
 the run took **648.4 seconds** including that timeout. The stored index reported
 238 files, 34,494 nodes, 104,224 edges and 34,494 chunks, marked complete with
 embedding and semantic stages ready, and includes dataflow, LSP, module and
-documentation analyzer output. Embedding settings match the balanced run.
+documentation analyzer output. Embedding settings match the original balanced run.
 [Full answers, run details and source review](docs/evaluations/full-cli-2026-10-06.md)
 are retained separately.
+
+After this evaluation, the default whole-agent CLI deadline and the shared CLI/HTTP
+test-case deadlines increased from 300 to **600 seconds**. `--timeout-secs` still
+overrides the CLI budget. The original full-tier table entry retains that 300-second
+deadline; a complete full-tier rerun is still pending. The refreshed balanced results
+above use 600 seconds. The recorded stall occurred while awaiting a model response
+after graph calls returned.
 
 Source review of the full-tier answers found:
 
@@ -601,7 +668,8 @@ Source review of the full-tier answers found:
   misses, post-truncation insertion, eviction and clearing, with one line range off
   by a function. The call-chain answer follows the AI-enabled workflow rather than
   the feature-disabled stub. The API answer lists all ten public methods and, unlike
-  the balanced answer, correctly describes the Rig adapters as indirect callers
+  the original balanced answer, correctly describes the Rig adapters as indirect
+  callers
   through [`CountingExecutor`](crates/codegraph-mcp-rig/src/tools/counting_executor.rs#L39).
 - **Tier-aware prompts (case 2): no answer.** The command timed out in the run and in
   a single-case rerun. In both, the agent finished its tool calls within a minute and
@@ -627,9 +695,19 @@ Source review of the full-tier answers found:
   edges) and `reconcile_project` drops to eighth, because the full index has more
   than twice the edges and the query counts edge rows, not distinct callers.
 
-All seven completed full-tier cases and all eight balanced cases logged typed-answer parse warnings; the server synthesized
-structured evidence from tool traces instead. The runner accepted the resulting
-JSON responses. Neither those fallbacks nor inner-tool errors are a factual accuracy
+The case 2 timeouts, the hub failures and the `0.0` instability values were traced to
+defects that are now fixed: tool results were unbounded (one search could return 228 KB
+and a run had no total limit), the hub query exceeded an `array::concat` size limit, and
+the instability ratio divided integers. Re-running cases 2 and 6 on the same index with
+the fixes returned `OK` in 79 and 106 seconds, with a hub ranking and non-zero
+instability; the other cases were not re-run. See the
+[follow-up section](docs/evaluations/full-cli-2026-10-06.md#follow-up-causes-found-and-fixed).
+
+All seven completed original full-tier cases and all eight original balanced cases
+logged typed-answer parse warnings; the server synthesized structured evidence from
+tool traces instead. The runner accepted the resulting JSON responses. The refreshed
+balanced run also uses synthesized highlights for prose answers; the fallback now
+logs at `DEBUG`. Neither those fallbacks nor inner-tool errors are a factual accuracy
 score. The initial balanced diagnostic run `20261006_041408_086869` is retained
 separately because it did not explicitly select the intended request model.
 
@@ -645,8 +723,8 @@ Set `CODEGRAPH_LLM_MODEL` explicitly for reproducible agent comparisons. These l
 identify configured/requested models; the runner does not attest provider-side routing.
 
 These observations do not isolate the effect of indexing tier from model reasoning
-or establish a numerical accuracy rate. The three runs also differ in checkout,
-installed binary and file count.
+or establish a numerical accuracy rate. The runs also differ in checkout,
+installed binary, file count, embedding/input policies, result limits and deadlines.
 For subsequent comparisons, keep questions, model, agent context budget and inference
 settings consistent; record the source revision and index configuration, and disclose
 changes between runs. Review source locations, active conditional code, completeness

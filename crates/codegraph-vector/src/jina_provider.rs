@@ -30,6 +30,7 @@ pub struct JinaConfig {
     pub task: String,
     pub late_chunking: bool,
     pub truncate: bool,
+    pub normalized: bool,
     pub enable_reranking: bool,
     pub reranking_model: String,
     pub reranking_top_n: usize,
@@ -44,22 +45,28 @@ pub struct JinaConfig {
 
 impl Default for JinaConfig {
     fn default() -> Self {
+        let model = std::env::var("CODEGRAPH_EMBEDDING_MODEL")
+            .or_else(|_| std::env::var("JINA_EMBEDDINGS_MODEL"))
+            .unwrap_or_else(|_| "jina-embeddings-v4".to_string());
+        let task = std::env::var("JINA_API_TASK")
+            .or_else(|_| std::env::var("JINA_TASK"))
+            .unwrap_or_else(|_| "auto".to_string());
         Self {
             api_key: std::env::var("JINA_API_KEY").unwrap_or_default(),
-            // Support both CODEGRAPH_EMBEDDING_MODEL and JINA_EMBEDDINGS_MODEL
-            model: std::env::var("CODEGRAPH_EMBEDDING_MODEL")
-                .or_else(|_| std::env::var("JINA_EMBEDDINGS_MODEL"))
-                .unwrap_or_else(|_| "jina-embeddings-v4".to_string()),
+            task: resolve_task(&model, &task).to_string(),
+            model,
             api_base: std::env::var("JINA_API_BASE")
                 .unwrap_or_else(|_| "https://api.jina.ai/v1".to_string()),
             max_retries: 3,
             timeout: Duration::from_secs(30),
-            task: std::env::var("JINA_API_TASK").unwrap_or_else(|_| "code.passage".to_string()),
             late_chunking: std::env::var("JINA_LATE_CHUNKING")
                 .map(|v| v != "false")
                 .unwrap_or(true),
-            // Truncate: false by default (matches working curl), configurable via JINA_TRUNCATE=true
+            // Provider-side truncation is configurable; the client still chunks inputs.
             truncate: std::env::var("JINA_TRUNCATE")
+                .map(|v| v != "false")
+                .unwrap_or(true),
+            normalized: std::env::var("JINA_NORMALIZED")
                 .map(|v| v != "false")
                 .unwrap_or(true),
             enable_reranking: std::env::var("JINA_ENABLE_RERANKING")
@@ -120,13 +127,16 @@ impl From<&codegraph_core::EmbeddingConfig> for JinaConfig {
 
         Self {
             api_key,
+            task: resolve_task(&model, &config.jina_task).to_string(),
             model,
             api_base: config.jina_api_base.clone(),
             max_retries: 3,
             timeout: Duration::from_secs(30),
-            task: config.jina_task.clone(),
             late_chunking: config.jina_late_chunking,
             truncate: std::env::var("JINA_TRUNCATE")
+                .map(|v| v != "false")
+                .unwrap_or(true),
+            normalized: std::env::var("JINA_NORMALIZED")
                 .map(|v| v != "false")
                 .unwrap_or(true),
             enable_reranking: std::env::var("JINA_ENABLE_RERANKING")
@@ -168,12 +178,63 @@ impl From<&codegraph_core::EmbeddingConfig> for JinaConfig {
     }
 }
 
+fn resolve_task<'a>(model: &str, task: &'a str) -> &'a str {
+    if task != "auto" {
+        return task;
+    }
+    if model.starts_with("jina-embeddings-v4") {
+        "code.passage"
+    } else {
+        "retrieval.passage"
+    }
+}
+
+fn validate_task(model: &str, task: &str) -> Result<()> {
+    let allowed: &[&str] = if model.starts_with("jina-embeddings-v5-text-") {
+        &[
+            "retrieval.query",
+            "retrieval.passage",
+            "text-matching",
+            "clustering",
+            "classification",
+        ]
+    } else if model.starts_with("jina-embeddings-v4") {
+        &[
+            "retrieval.query",
+            "retrieval.passage",
+            "text-matching",
+            "code.query",
+            "code.passage",
+        ]
+    } else if model == "jina-embeddings-v3" || model == "jina-clip-v2" {
+        &[
+            "retrieval.query",
+            "retrieval.passage",
+            "text-matching",
+            "classification",
+            "separation",
+        ]
+    } else {
+        // Do not assume that future/custom models share these task enums.
+        return Ok(());
+    };
+    if !allowed.contains(&task) {
+        return Err(CodeGraphError::Configuration(format!(
+            "Jina model {model} does not support task '{task}'. Set JINA_API_TASK or [embedding] jina_task to one of: {}",
+            allowed.join(", ")
+        )));
+    }
+    Ok(())
+}
+
 /// Jina API request structure for embeddings
 #[derive(Debug, Serialize)]
 struct EmbeddingRequest {
     model: String,
     task: String,
     truncate: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    normalized: Option<bool>,
     late_chunking: bool,
     input: Vec<String>,
 }
@@ -371,12 +432,14 @@ impl JinaRateLimiter {
 
 #[cfg(feature = "jina")]
 impl JinaEmbeddingProvider {
-    pub fn new(config: JinaConfig) -> Result<Self> {
+    pub fn new(mut config: JinaConfig) -> Result<Self> {
         if config.api_key.is_empty() {
             return Err(CodeGraphError::Configuration(
                 "Jina API key is required. Set JINA_API_KEY environment variable.".to_string(),
             ));
         }
+        config.task = resolve_task(&config.model, &config.task).to_string();
+        validate_task(&config.model, &config.task)?;
 
         let client = Client::builder()
             .timeout(config.timeout)
@@ -418,15 +481,56 @@ impl JinaEmbeddingProvider {
     fn log_runtime_config(self) -> Self {
         info!(
             target: "codegraph_vector::jina_provider",
-            "Jina provider config: max_tokens_per_text={}, max_texts_per_request={}, rel_max_texts={}, task={}, late_chunking={}, truncate={}",
+            "Jina provider config: model={}, max_tokens_per_text={}, max_texts_per_request={}, rel_max_texts={}, task={}, late_chunking={}, truncate={}, normalized={}",
+            self.config.model,
             self.config.max_tokens_per_text,
             self.config.max_texts_per_request,
             self.config.relationship_max_texts_per_request,
             self.config.task,
             self.config.late_chunking,
-            self.config.truncate
+            self.config.truncate,
+            self.config.normalized
         );
         self
+    }
+
+    /// Pair asymmetric passage embeddings with their query task. Symmetric tasks
+    /// such as classification and text-matching keep the configured task.
+    pub fn query_task(&self) -> &str {
+        match self.config.task.as_str() {
+            "code.passage" => "code.query",
+            "retrieval.passage" => "retrieval.query",
+            task => task,
+        }
+    }
+
+    pub fn input_identity(&self) -> Result<String> {
+        codegraph_core::artifact_cache::fingerprint(&(
+            "jina-request-v2",
+            &self.config.api_base,
+            &self.config.model,
+            &self.config.task,
+            self.config.truncate,
+            self.config.late_chunking,
+            self.request(Vec::new(), &self.config.task)?.normalized,
+        ))
+        .map_err(|e| CodeGraphError::Vector(e.to_string()))
+    }
+
+    fn request(&self, input: Vec<String>, task: &str) -> Result<EmbeddingRequest> {
+        validate_task(&self.config.model, task)?;
+        // v4 does not expose a normalized parameter; v3, v5 and CLIP v2 do.
+        let supports_normalized = self.config.model.starts_with("jina-embeddings-v5-text-")
+            || self.config.model == "jina-embeddings-v3"
+            || self.config.model == "jina-clip-v2";
+        Ok(EmbeddingRequest {
+            model: self.config.model.clone(),
+            task: task.to_string(),
+            truncate: self.config.truncate,
+            normalized: supports_normalized.then_some(self.config.normalized),
+            late_chunking: self.config.late_chunking,
+            input,
+        })
     }
 
     /// Update the batch size for embedding generation
@@ -475,6 +579,8 @@ impl JinaEmbeddingProvider {
             "jina-code-embeddings-0.5b" => 896,
             "jina-embeddings-v4" => 2048,
             "jina-embeddings-v3" => 1024,
+            "jina-embeddings-v5-text-small" => 1024,
+            "jina-embeddings-v5-text-nano" => 768,
             "jina-embeddings-v2-base-code" => 768,
             _ => 2048, // Default to v4 dimensions
         }
@@ -558,6 +664,15 @@ impl JinaEmbeddingProvider {
 
     /// Call Jina embeddings API with retry logic
     async fn call_embeddings_api(&self, texts: Vec<String>) -> Result<EmbeddingResponse> {
+        self.call_embeddings_api_with_task(texts, &self.config.task)
+            .await
+    }
+
+    async fn call_embeddings_api_with_task(
+        &self,
+        texts: Vec<String>,
+        task: &str,
+    ) -> Result<EmbeddingResponse> {
         // Debug logging: show all texts being sent with lengths
         if !texts.is_empty() {
             let approx_tokens: usize = texts
@@ -587,13 +702,11 @@ impl JinaEmbeddingProvider {
             }
         }
 
-        let request = EmbeddingRequest {
-            model: self.config.model.clone(),
-            task: self.config.task.clone(),
-            truncate: self.config.truncate,
-            late_chunking: self.config.late_chunking,
-            input: texts.clone(),
-        };
+        let expected_tokens = texts
+            .len()
+            .saturating_mul(self.config.max_tokens_per_text)
+            .max(1);
+        let request = self.request(texts, task)?;
 
         // Debug: log the COMPLETE JSON being sent
         if let Ok(json_str) = serde_json::to_string_pretty(&request) {
@@ -601,20 +714,11 @@ impl JinaEmbeddingProvider {
         }
 
         let mut last_error = None;
-        let expected_tokens = texts
-            .len()
-            .saturating_mul(self.config.max_tokens_per_text)
-            .max(1);
-
         for attempt in 0..=self.config.max_retries {
             if attempt > 0 {
                 // Exponential backoff
                 let delay = Duration::from_millis(100 * 2_u64.pow(attempt as u32));
                 tokio::time::sleep(delay).await;
-            }
-
-            if self.config.request_delay_ms > 0 {
-                tokio::time::sleep(Duration::from_millis(self.config.request_delay_ms)).await;
             }
 
             if self.config.request_delay_ms > 0 {
@@ -670,8 +774,8 @@ impl JinaEmbeddingProvider {
                                         .unwrap_or_else(|| "Unknown error".to_string());
                                     error!("Jina API error (HTTP {}): {}", status, error_msg);
                                     last_error = Some(CodeGraphError::External(format!(
-                                        "Jina API error: {}",
-                                        error_msg
+                                        "Jina API error (HTTP {}): {}",
+                                        status, error_msg
                                     )));
                                 } else {
                                     // Log raw body if we can't parse it
@@ -694,6 +798,14 @@ impl JinaEmbeddingProvider {
                                     status, e
                                 )));
                             }
+                        }
+                        // Validation/authentication failures will not improve on retry.
+                        // Retain retries for rate limits, request timeouts and server errors.
+                        if status != reqwest::StatusCode::REQUEST_TIMEOUT
+                            && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+                            && !status.is_server_error()
+                        {
+                            return Err(last_error.expect("HTTP error was recorded"));
                         }
                     }
                 }
@@ -748,45 +860,15 @@ impl JinaEmbeddingProvider {
         }
     }
 
-    /// Generate embedding for a single text with custom task type (e.g., "code.query")
+    /// Generate embedding for a single text with a supported custom task.
     pub async fn generate_text_embedding_with_task(
         &self,
         text: &str,
         task: &str,
     ) -> Result<Vec<f32>> {
-        let request = EmbeddingRequest {
-            model: self.config.model.clone(),
-            task: task.to_string(),
-            truncate: self.config.truncate,
-            late_chunking: self.config.late_chunking,
-            input: vec![text.to_string()],
-        };
-
-        let api_url = format!("{}/embeddings", self.config.api_base);
-
-        let response = timeout(
-            self.config.timeout,
-            self.client
-                .post(&api_url)
-                .header("Authorization", format!("Bearer {}", self.config.api_key))
-                .header("Content-Type", "application/json")
-                .json(&request)
-                .send(),
-        )
-        .await
-        .map_err(|_| CodeGraphError::External("Jina API timeout".to_string()))?
-        .map_err(|e| CodeGraphError::External(format!("Jina API request failed: {}", e)))?;
-
-        if !response.status().is_success() {
-            return Err(CodeGraphError::External(format!(
-                "Jina API returned status: {}",
-                response.status()
-            )));
-        }
-
-        let embedding_response = response.json::<EmbeddingResponse>().await.map_err(|e| {
-            CodeGraphError::External(format!("Failed to parse Jina response: {}", e))
-        })?;
+        let embedding_response = self
+            .call_embeddings_api_with_task(vec![text.to_string()], task)
+            .await?;
 
         if embedding_response.data.is_empty() {
             return Err(CodeGraphError::External(
@@ -1159,13 +1241,7 @@ impl EmbeddingProvider for JinaEmbeddingProvider {
     }
 
     fn embedding_dimension(&self) -> usize {
-        match self.config.model.as_str() {
-            "jina-code-embeddings-1.5b" => 1536,
-            "jina-code-embeddings-0.5b" => 896,
-            "jina-embeddings-v4" => 2048,
-            "jina-embeddings-v3" => 1024,
-            _ => 2048,
-        }
+        JinaEmbeddingProvider::embedding_dimension(self)
     }
 
     fn provider_name(&self) -> &str {
@@ -1174,12 +1250,8 @@ impl EmbeddingProvider for JinaEmbeddingProvider {
 
     async fn is_available(&self) -> bool {
         // Simple health check - try to embed a small text
-        let test_request = EmbeddingRequest {
-            model: self.config.model.clone(),
-            task: self.config.task.clone(),
-            truncate: self.config.truncate,
-            late_chunking: self.config.late_chunking,
-            input: vec!["test".to_string()],
+        let Ok(test_request) = self.request(vec!["test".to_string()], &self.config.task) else {
+            return false;
         };
 
         let health_check = timeout(
@@ -1215,6 +1287,281 @@ impl EmbeddingProvider for JinaEmbeddingProvider {
 mod tests {
     use super::*;
     use codegraph_core::{CodeNode, Language, Location};
+    use serde_json::{Value, json};
+    use std::sync::Mutex;
+
+    async fn mock_api(
+        responses: Vec<(u16, Value)>,
+    ) -> (String, Arc<Mutex<Vec<Value>>>, tokio::task::JoinHandle<()>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/v1", listener.local_addr().unwrap());
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let captured = requests.clone();
+        let server = tokio::spawn(async move {
+            let mut request_index = 0;
+            loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                let body_start;
+                loop {
+                    let mut buffer = [0; 4096];
+                    let count = stream.read(&mut buffer).await.unwrap();
+                    assert!(count > 0);
+                    bytes.extend_from_slice(&buffer[..count]);
+                    if let Some(end) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+                        let header = String::from_utf8_lossy(&bytes[..end]).to_ascii_lowercase();
+                        assert!(header.starts_with("post /v1/embeddings "));
+                        assert!(header.contains("authorization: bearer test-key"));
+                        let length: usize = header
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .unwrap()
+                            .parse()
+                            .unwrap();
+                        if bytes.len() >= end + 4 + length {
+                            body_start = end + 4;
+                            break;
+                        }
+                    }
+                }
+                captured
+                    .lock()
+                    .unwrap()
+                    .push(serde_json::from_slice(&bytes[body_start..]).unwrap());
+                let (status, body) = &responses[request_index.min(responses.len() - 1)];
+                request_index += 1;
+                let body = body.to_string();
+                let response = format!(
+                    "HTTP/1.1 {status} Mock\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        (url, requests, server)
+    }
+
+    fn embedding_response() -> Value {
+        json!({"model": "mock", "usage": {"total_tokens": 2}, "data": [
+            {"index": 0, "embedding": [1.0, 2.0]}
+        ]})
+    }
+
+    fn mock_config(url: String) -> JinaConfig {
+        JinaConfig {
+            api_key: "test-key".into(),
+            model: "jina-embeddings-v5-text-small".into(),
+            task: "retrieval.query".into(),
+            api_base: url,
+            truncate: true,
+            normalized: true,
+            late_chunking: false,
+            request_delay_ms: 0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn model_defaults_pair_passages_with_supported_query_tasks() {
+        for (model, task, query, dimension) in [
+            ("jina-embeddings-v4", "code.passage", "code.query", 2048),
+            (
+                "jina-embeddings-v3",
+                "retrieval.passage",
+                "retrieval.query",
+                1024,
+            ),
+            (
+                "jina-embeddings-v5-text-small",
+                "retrieval.passage",
+                "retrieval.query",
+                1024,
+            ),
+            (
+                "jina-embeddings-v5-text-nano",
+                "retrieval.passage",
+                "retrieval.query",
+                768,
+            ),
+        ] {
+            let config = codegraph_core::EmbeddingConfig {
+                model: Some(model.into()),
+                jina_api_key: Some("test-key".into()),
+                ..Default::default()
+            };
+            let provider = JinaEmbeddingProvider::new(JinaConfig::from(&config)).unwrap();
+            assert_eq!(provider.config.task, task);
+            assert_eq!(provider.query_task(), query);
+            assert_eq!(provider.embedding_dimension(), dimension);
+        }
+    }
+
+    #[test]
+    fn unsupported_v5_code_task_is_a_configuration_error() {
+        let config = JinaConfig {
+            task: "code.query".into(),
+            ..mock_config("unused".into())
+        };
+        let Err(error) = JinaEmbeddingProvider::new(config) else {
+            panic!("v5 must reject code.query before a request");
+        };
+        assert!(matches!(error, CodeGraphError::Configuration(_)));
+        assert!(error.to_string().contains("JINA_API_TASK"));
+        assert!(error.to_string().contains("retrieval.query"));
+    }
+
+    #[tokio::test]
+    async fn v5_batch_query_and_health_requests_use_one_payload_contract() {
+        let (url, requests, server) = mock_api(vec![(200, embedding_response())]).await;
+        let provider = JinaEmbeddingProvider::new(mock_config(url)).unwrap();
+        provider
+            .embed_relationship_texts(&["classification input".into()])
+            .await
+            .unwrap();
+        provider
+            .generate_text_embedding_with_task("search input", provider.query_task())
+            .await
+            .unwrap();
+        assert!(provider.is_available().await);
+        let requests = requests.lock().unwrap().clone();
+        assert_eq!(requests.len(), 3);
+        for (body, input) in requests
+            .iter()
+            .zip(["classification input", "search input", "test"])
+        {
+            assert_eq!(body["model"], "jina-embeddings-v5-text-small");
+            assert_eq!(body["task"], "retrieval.query");
+            assert_eq!(body["normalized"], true);
+            assert_eq!(body["truncate"], true);
+            assert_eq!(body["late_chunking"], false);
+            assert_eq!(body["input"], json!([input]));
+        }
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn generator_queries_pair_retrieval_tasks_and_preserve_symmetric_tasks() {
+        let (url, requests, server) = mock_api(vec![(200, embedding_response())]).await;
+        for (task, query) in [
+            ("retrieval.passage", "retrieval.query"),
+            ("retrieval.query", "retrieval.query"),
+            ("classification", "classification"),
+            ("text-matching", "text-matching"),
+            ("clustering", "clustering"),
+        ] {
+            let config = codegraph_core::CodeGraphConfig {
+                embedding: codegraph_core::EmbeddingConfig {
+                    provider: "jina".into(),
+                    model: Some("jina-embeddings-v5-text-small".into()),
+                    jina_task: task.into(),
+                    jina_api_base: url.clone(),
+                    jina_api_key: Some("test-key".into()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let generator = crate::EmbeddingGenerator::with_config(&config)
+                .await
+                .unwrap();
+            assert_eq!(generator.dimension(), 1024);
+            assert_eq!(
+                generator.generate_text_embedding("query").await.unwrap(),
+                vec![1.0, 2.0]
+            );
+            assert_eq!(requests.lock().unwrap().last().unwrap()["task"], query);
+        }
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn permanent_http_errors_are_not_retried_and_keep_status_and_detail() {
+        for status in [400, 401, 403, 422] {
+            let (url, requests, server) =
+                mock_api(vec![(status, json!({"detail": "invalid task"}))]).await;
+            let provider = JinaEmbeddingProvider::new(mock_config(url)).unwrap();
+            let error = provider
+                .call_embeddings_api(vec!["input".into()])
+                .await
+                .unwrap_err();
+            assert_eq!(requests.lock().unwrap().len(), 1);
+            assert!(error.to_string().contains(&status.to_string()));
+            assert!(error.to_string().contains("invalid task"));
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn transient_http_errors_are_retried_for_queries_and_batches() {
+        let (url, requests, server) = mock_api(vec![
+            (408, json!({"detail": "request timeout"})),
+            (429, json!({"detail": "rate limited"})),
+            (503, json!({"detail": "unavailable"})),
+            (200, embedding_response()),
+        ])
+        .await;
+        let provider = JinaEmbeddingProvider::new(mock_config(url)).unwrap();
+        assert_eq!(
+            provider
+                .generate_text_embedding_with_task("input", provider.query_task())
+                .await
+                .unwrap(),
+            vec![1.0, 2.0]
+        );
+        assert_eq!(requests.lock().unwrap().len(), 4);
+        server.abort();
+    }
+
+    #[test]
+    fn changed_request_options_invalidate_the_embedding_cache_identity() {
+        let config = mock_config("http://localhost/v1".into());
+        let identity = JinaEmbeddingProvider::new(config.clone())
+            .unwrap()
+            .input_identity()
+            .unwrap();
+        for changed in [
+            JinaConfig {
+                task: "classification".into(),
+                ..config.clone()
+            },
+            JinaConfig {
+                normalized: false,
+                ..config.clone()
+            },
+            JinaConfig {
+                truncate: false,
+                ..config.clone()
+            },
+            JinaConfig {
+                late_chunking: true,
+                ..config.clone()
+            },
+            JinaConfig {
+                model: "jina-embeddings-v5-text-nano".into(),
+                ..config.clone()
+            },
+        ] {
+            assert_ne!(
+                identity,
+                JinaEmbeddingProvider::new(changed)
+                    .unwrap()
+                    .input_identity()
+                    .unwrap()
+            );
+        }
+        let v4 = JinaEmbeddingProvider::new(JinaConfig {
+            model: "jina-embeddings-v4".into(),
+            task: "code.passage".into(),
+            ..config
+        })
+        .unwrap();
+        let body = serde_json::to_value(v4.request(vec!["input".into()], v4.query_task()).unwrap())
+            .unwrap();
+        assert!(
+            body.get("normalized").is_none(),
+            "v4 must not get a v5-only option"
+        );
+    }
 
     fn make_node_with_content(content: String) -> CodeNode {
         let location = Location {

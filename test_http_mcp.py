@@ -9,7 +9,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from agentic_test_cases import AGENTIC_TESTS
 
@@ -40,7 +40,12 @@ async def run_tests():
     print("=" * 72 + "\n")
 
     try:
-        async with streamablehttp_client(SERVER_URL) as (read_stream, write_stream, _):
+        # Keep the transport's idle-read budget above the longest case deadline.
+        # Otherwise the SDK's default 300-second SSE read limit ends a 600s case early.
+        read_timeout = timedelta(seconds=max(case[3] for case in AGENTIC_TESTS) + 5)
+        async with streamablehttp_client(
+            SERVER_URL, sse_read_timeout=read_timeout
+        ) as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
                 # Initialize
                 print("Initializing MCP connection...")

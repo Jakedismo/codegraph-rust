@@ -15,7 +15,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agentic_test_cases import AGENTIC_TESTS
+from agentic_test_cases import AGENTIC_TESTS, DEFAULT_AGENT_TIMEOUT_SECS
 
 TOOLS = ("context", "impact", "architecture", "quality")
 PROCESS_GRACE_SECONDS = 5
@@ -58,7 +58,7 @@ def argument_parser():
     parser.add_argument(
         "--timeout-secs",
         type=positive_integer,
-        help="Override each case's 300s deadline",
+        help=f"Override each case's {DEFAULT_AGENT_TIMEOUT_SECS}s deadline",
     )
     parser.add_argument(
         "--verbose", action="store_true", help="Capture verbose CLI diagnostics"

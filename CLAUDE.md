@@ -107,6 +107,17 @@ return `Result`. Changing the advanced backend clears its old provider policy/ca
 No semchunk paths remain. Mock/unit regressions cover actual request limits/prefixes,
 strict overflow, unknown models, warm-cache skip errors and Unicode/source recovery.
 
+Jina uses `JINA_API_TASK` > legacy `JINA_TASK` > TOML `jina_task` > `auto` (v4
+`code.passage`, v3/v5 `retrieval.passage`). Explicit tasks remain intact. Queries
+pair passage tasks with the matching query task and retain symmetric tasks.
+Batch/query/health calls share the request builder; `JINA_NORMALIZED` defaults to
+true for v3/v5/CLIP v2 and is omitted for v4. V5 small/nano dimensions are
+1024/768. Invalid known task/model pairs propagate initialization errors; permanent
+embedding HTTP 4xx errors fail once (408/429 remain retryable). Actual request
+options participate in vector and reconciliation cache identities. Verify with
+`cargo test -p codegraph-vector --features jina --lib jina_provider::tests` and
+the full-feature `index_cli_integration` Jina mock; no live API keys are needed.
+
 `bin/codegraph.rs` `handle_index` → `ProjectIndexer::index_project` in `crates/codegraph-mcp/src/indexer.rs`:
 
 1. Collect/prune files and capture immutable, hashed source snapshots with bounded retained bytes and temporary spill files. Fingerprint sources, build/doc inputs and output policy. All entry points (full, single-file, delete and watch) use complete-project reconciliation. `--force` ignores the prior catalog; preparation does not wipe live records.
@@ -132,6 +143,8 @@ Targeted offline checks include reconciliation/watch tests, `cargo test -p codeg
 4. Those call `fn::*` SurrealQL functions defined in `schema/codegraph.surql`, wrapped by `crates/codegraph-graph/src/graph_functions.rs`.
 
 The agent's system prompt is built in `codegraph-mcp-rig/src/prompts/tier_prompts.rs`, and tool semantics live in the tool descriptions in `codegraph-mcp-rig/src/tools/graph_tools.rs`.
+
+The four `codegraph agent` commands in `agent_cli.rs` use a 600-second whole-workflow deadline by default; `--timeout-secs` overrides it. Shared CLI/HTTP evaluation cases in `agentic_test_cases.py` also use 600 seconds, with a longer HTTP stream-read allowance. Historical accuracy reports retain their original budgets. Distinguish model-response stalls from graph-call failures when diagnosing timeouts.
 
 ### Schema
 

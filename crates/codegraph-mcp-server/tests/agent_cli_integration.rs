@@ -47,6 +47,13 @@ fn guidance_and_help_do_not_load_provider_configuration() {
     let help = String::from_utf8(output.stdout).unwrap();
     assert!(!help.contains("semantic_code_search"));
     assert!(!help.contains("graph-neighbors"));
+    for tool in ["context", "impact", "architecture", "quality"] {
+        let output = run(&["agent", tool, "--help"], None, project.path());
+        assert!(output.status.success());
+        let help = String::from_utf8(output.stdout).unwrap();
+        assert!(help.contains("--timeout-secs"), "{help}");
+        assert!(help.contains("[default: 600]"), "{help}");
+    }
     for args in [
         &["agent", "context"][..],
         &["agent", "impact", "query", "--focus", "search"][..],

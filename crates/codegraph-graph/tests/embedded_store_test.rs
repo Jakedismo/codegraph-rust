@@ -42,6 +42,47 @@ async fn embedded_store_applies_schema_once_and_shares_handle() {
     assert_eq!(rows[0]["n"], 1);
 }
 
+#[tokio::test]
+async fn reopening_refreshes_functions_from_an_older_schema_revision() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = SurrealDbConfig::embedded(dir.path());
+    let first = SurrealDbStorage::new(config.clone()).await.unwrap();
+
+    // Simulate a store created by an earlier binary: a stale function body and checksum.
+    first
+        .db()
+        .query(
+            "DEFINE FUNCTION OVERWRITE fn::edge_types() { RETURN ['stale']; } PERMISSIONS FULL; \
+             UPDATE schema_versions:bundled SET checksum = 'older-revision'; \
+             CREATE nodes:keep SET name = 'kept', project_id = 'p';",
+        )
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+    let reopened = SurrealDbStorage::new(config).await.unwrap();
+    let mut response = reopened
+        .db()
+        .query(
+            "RETURN { types: array::len(fn::edge_types()), \
+             checksum: (SELECT VALUE checksum FROM ONLY schema_versions:bundled), \
+             kept: (SELECT VALUE name FROM ONLY nodes:keep), \
+             versions: (SELECT count() AS n FROM schema_versions GROUP ALL)[0].n }",
+        )
+        .await
+        .unwrap();
+    let state: Option<Value> = response.take(0).unwrap();
+    let state = state.unwrap();
+    assert_eq!(state["types"], 21, "function body restored: {state}");
+    assert_ne!(
+        state["checksum"], "older-revision",
+        "checksum updated: {state}"
+    );
+    assert_eq!(state["kept"], "kept", "data untouched: {state}");
+    assert_eq!(state["versions"], 1);
+}
+
 #[test]
 fn connection_scheme_classification() {
     assert!(is_embedded_connection("surrealkv:///tmp/x"));

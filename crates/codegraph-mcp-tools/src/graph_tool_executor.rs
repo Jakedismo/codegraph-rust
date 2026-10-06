@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 const TOOL_PROGRESS_LOG_TARGET: &str = "codegraph::mcp::tools";
 
@@ -70,6 +70,63 @@ pub struct GraphToolExecutor {
 /// Default max result bytes when context window not specified (~200KB)
 const DEFAULT_MAX_RESULT_BYTES: usize = 200_000;
 
+/// Ceiling for one tool result regardless of the configured context window. A window of a
+/// million tokens does not make a multi-megabyte tool result useful to the model.
+const MAX_RESULT_BYTES_CEILING: usize = 200_000;
+
+/// Longest `content` a result row carries. Rows keep their file path and line range, so the
+/// client can read the rest; whole documents and impl blocks otherwise dominate the context.
+const DEFAULT_CONTENT_SNIPPET_CHARS: usize = 2_000;
+
+/// `CODEGRAPH_TOOL_CONTENT_CHARS` overrides the snippet length; 0 disables shortening.
+fn content_snippet_chars() -> usize {
+    std::env::var("CODEGRAPH_TOOL_CONTENT_CHARS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(DEFAULT_CONTENT_SNIPPET_CHARS)
+}
+
+/// Shorten long `content` strings anywhere in a tool result to a leading snippet that ends
+/// on a line boundary where possible, recording the original length next to it.
+fn shorten_content(value: &mut JsonValue, max_chars: usize) {
+    if max_chars == 0 {
+        return;
+    }
+    match value {
+        JsonValue::Array(items) => items
+            .iter_mut()
+            .for_each(|item| shorten_content(item, max_chars)),
+        JsonValue::Object(map) => {
+            let original_chars = match map.get("content") {
+                Some(JsonValue::String(content)) if content.chars().count() > max_chars => {
+                    Some(content.chars().count())
+                }
+                _ => None,
+            };
+            if let Some(original_chars) = original_chars {
+                if let Some(JsonValue::String(content)) = map.get_mut("content") {
+                    let cut = content
+                        .char_indices()
+                        .nth(max_chars)
+                        .map_or(content.len(), |(index, _)| index);
+                    // Prefer ending on a complete line when that keeps most of the snippet.
+                    let cut = content[..cut]
+                        .rfind('\n')
+                        .filter(|line_end| *line_end >= cut / 2)
+                        .unwrap_or(cut);
+                    content.truncate(cut);
+                }
+                map.insert("content_truncated".to_string(), JsonValue::Bool(true));
+                map.insert("content_chars".to_string(), json!(original_chars));
+            }
+            map.iter_mut()
+                .filter(|(key, _)| key.as_str() != "content")
+                .for_each(|(_, child)| shorten_content(child, max_chars));
+        }
+        _ => {}
+    }
+}
+
 impl GraphToolExecutor {
     /// Create a new tool executor with shared EmbeddingGenerator
     /// Derives max result size from the agent's context window (environment, then
@@ -85,7 +142,8 @@ impl GraphToolExecutor {
     }
 
     /// Create a new tool executor with explicit context window for result size limiting
-    /// max_result_bytes = context_window * 2 (conservative estimate: ~50% of context for results at 4 bytes/token)
+    /// max_result_bytes = context_window * 2 (about half the window at 4 bytes/token), capped at
+    /// `MAX_RESULT_BYTES_CEILING`
     pub fn with_context_window(
         graph_functions: Arc<GraphFunctions>,
         config: Arc<CodeGraphConfig>,
@@ -94,7 +152,9 @@ impl GraphToolExecutor {
     ) -> Self {
         // Calculate max result bytes: use ~50% of context window, assuming ~4 chars per token
         // This leaves room for system prompt, conversation history, and response
-        let max_result_bytes = context_window.saturating_mul(2);
+        let max_result_bytes = context_window
+            .saturating_mul(2)
+            .min(MAX_RESULT_BYTES_CEILING);
 
         Self::with_limits(
             graph_functions,
@@ -353,7 +413,9 @@ impl GraphToolExecutor {
                 }
             };
 
-            // Apply result size limiting to prevent context window overflow
+            // Shape the result for a model: content snippets first, then the size limit.
+            let mut result = result;
+            shorten_content(&mut result, content_snippet_chars());
             let result = self.truncate_if_oversized(tool_name, result);
 
             // Cache the result if enabled
@@ -381,6 +443,13 @@ impl GraphToolExecutor {
                 Ok(result)
             }
             Err(err) => {
+                warn!(
+                    target: TOOL_PROGRESS_LOG_TARGET,
+                    tool = tool_name,
+                    parameters = %parameters,
+                    error = %err,
+                    "Tool call failed"
+                );
                 DebugLogger::log_tool_error(tool_name, &parameters, &format!("{}", err));
                 Err(err)
             }
@@ -709,6 +778,7 @@ fn log_tool_call_finish(tool_name: &str, result: &JsonValue) {
     info!(
         target: TOOL_PROGRESS_LOG_TARGET,
         tool = tool_name,
+        result_bytes = result.to_string().len(),
         "Tool call completed"
     );
     debug!(
@@ -725,6 +795,50 @@ fn log_tool_call_finish(tool_name: &str, result: &JsonValue) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_shorten_content_keeps_location_and_marks_truncation() {
+        let long = (0..200)
+            .map(|i| format!("line {i} of a long document"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut result = json!({
+            "tool": "semantic_code_search",
+            "result": [
+                { "name": "doc", "file_path": "README.md", "start_line": 1, "content": long },
+                { "name": "small", "content": "fn small() {}" },
+                { "node": { "name": "nested", "content": "x".repeat(5_000) } }
+            ]
+        });
+
+        shorten_content(&mut result, 300);
+
+        let rows = result["result"].as_array().unwrap();
+        let snippet = rows[0]["content"].as_str().unwrap();
+        assert!(snippet.chars().count() <= 300, "{}", snippet.len());
+        assert!(
+            snippet.ends_with("of a long document"),
+            "ends on a full line"
+        );
+        assert_eq!(rows[0]["content_truncated"], true);
+        assert!(rows[0]["content_chars"].as_u64().unwrap() > 4_000);
+        assert_eq!(rows[0]["file_path"], "README.md");
+        assert_eq!(rows[1]["content"], "fn small() {}");
+        assert!(rows[1].get("content_truncated").is_none());
+        assert_eq!(rows[2]["node"]["content"].as_str().unwrap().len(), 300);
+        assert_eq!(rows[2]["node"]["content_truncated"], true);
+    }
+
+    #[test]
+    fn test_shorten_content_respects_char_boundaries_and_zero_disables() {
+        let mut result = json!({ "content": "é".repeat(50) });
+        shorten_content(&mut result, 10);
+        assert_eq!(result["content"].as_str().unwrap().chars().count(), 10);
+
+        let mut untouched = json!({ "content": "y".repeat(50) });
+        shorten_content(&mut untouched, 0);
+        assert_eq!(untouched["content"].as_str().unwrap().len(), 50);
+    }
 
     #[test]
     fn test_tool_schemas_available() {

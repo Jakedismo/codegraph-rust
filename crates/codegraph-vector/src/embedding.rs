@@ -80,7 +80,7 @@ impl EmbeddingGenerator {
         if let Some(policy) = &self.input_policy {
             return Ok(policy.identity.clone());
         }
-        codegraph_core::artifact_cache::fingerprint(&(
+        let identity = codegraph_core::artifact_cache::fingerprint(&(
             "input-policy-v1",
             &self.model_config.model_name,
             self.model_config.max_tokens,
@@ -88,7 +88,16 @@ impl EmbeddingGenerator {
                 .to_string(false)
                 .map_err(|e| CodeGraphError::Vector(e.to_string()))?,
         ))
-        .map_err(|e| CodeGraphError::Vector(e.to_string()))
+        .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+        #[cfg(feature = "jina")]
+        if let Some(provider) = &self.jina_provider {
+            return codegraph_core::artifact_cache::fingerprint(&(
+                identity,
+                provider.input_identity()?,
+            ))
+            .map_err(|e| CodeGraphError::Vector(e.to_string()));
+        }
+        Ok(identity)
     }
 
     pub fn new(config: ModelConfig) -> Self {
@@ -449,19 +458,10 @@ impl EmbeddingGenerator {
             {
                 // Create Jina embedding provider
                 let jina_config = crate::jina_provider::JinaConfig::default();
-                match crate::jina_provider::JinaEmbeddingProvider::new(jina_config) {
-                    Ok(jina_provider) => {
-                        tracing::info!("✅ Jina code embeddings initialized successfully");
-                        // Get dimension from the provider based on model
-                        let dimension = jina_provider.embedding_dimension();
-                        base.jina_provider = Some(jina_provider);
-                        base.model_config.dimension = dimension;
-                    }
-                    Err(e) => {
-                        tracing::error!("❌ Failed to initialize Jina embeddings: {}", e);
-                        tracing::error!("   Make sure JINA_API_KEY environment variable is set");
-                    }
-                }
+                let jina_provider = crate::jina_provider::JinaEmbeddingProvider::new(jina_config)?;
+                tracing::info!("✅ Jina embeddings initialized successfully");
+                base.model_config.dimension = jina_provider.embedding_dimension();
+                base.jina_provider = Some(jina_provider);
             }
         } else if provider == "lmstudio" {
             #[cfg(feature = "lmstudio")]
@@ -587,19 +587,10 @@ impl EmbeddingGenerator {
                 #[cfg(feature = "jina")]
                 {
                     let jina_config = crate::jina_provider::JinaConfig::from(&embedding_config);
-                    match crate::jina_provider::JinaEmbeddingProvider::new(jina_config) {
-                        Ok(provider) => {
-                            tracing::info!("✅ Jina embeddings initialized (from config)");
-                            base.model_config.dimension = provider.embedding_dimension();
-                            base.jina_provider = Some(provider);
-                        }
-                        Err(e) => {
-                            tracing::error!("❌ Failed to initialize Jina embeddings: {}", e);
-                            tracing::error!(
-                                "   Make sure jina_api_key is set in config or JINA_API_KEY env var"
-                            );
-                        }
-                    }
+                    let provider = crate::jina_provider::JinaEmbeddingProvider::new(jina_config)?;
+                    tracing::info!("✅ Jina embeddings initialized (from config)");
+                    base.model_config.dimension = provider.embedding_dimension();
+                    base.jina_provider = Some(provider);
                 }
             } else if provider == "lmstudio" {
                 #[cfg(feature = "lmstudio")]
@@ -941,12 +932,11 @@ impl EmbeddingGenerator {
     }
 
     async fn encode_text(&self, text: &str) -> Result<Vec<f32>> {
-        // Prefer Jina provider when available (cloud code embeddings with code.query task)
+        // Prefer Jina with a query task paired to the configured document task.
         #[cfg(feature = "jina")]
         if let Some(jina) = &self.jina_provider {
-            // Use code.query task type for search queries (asymmetric embeddings)
             return jina
-                .generate_text_embedding_with_task(text, "code.query")
+                .generate_text_embedding_with_task(text, jina.query_task())
                 .await;
         }
 

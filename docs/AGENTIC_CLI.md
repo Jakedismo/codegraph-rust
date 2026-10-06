@@ -86,8 +86,9 @@ Check `findings` and the answer before treating a result as complete.
 
 JSON-mode execution failures print `{"error":{"tool":"agentic_context","message":"..."}}`
 and a diagnostic on stderr. Text-mode failures leave stdout empty. Clap argument
-errors use stderr. `--timeout-secs` sets a whole-workflow deadline (default 300
-seconds) and expires with exit 1, without claiming a complete answer.
+errors use stderr. `--timeout-secs` sets a whole-workflow deadline (default 600
+seconds / 10 minutes), including provider/database setup, graph calls and model
+responses. It expires with exit 1, without claiming a complete answer.
 
 ## Testing the CLI
 
@@ -117,11 +118,13 @@ configuration; agent queries can incur provider costs. The embedded database acc
 one process at a time, so finish indexing and stop an MCP server holding that store
 before running the tests. Cases run sequentially.
 
-Questions, focuses and 300-second deadlines are shared in `agentic_test_cases.py`
+Questions, focuses and 600-second deadlines are shared in `agentic_test_cases.py`
 so HTTP and CLI inputs stay identical. `--tool` and `--case` can be repeated;
 combined filters select their intersection. `--timeout-secs` overrides each deadline.
 A process watchdog allows five extra seconds for startup/shutdown, then terminates
 a stalled command.
+The HTTP test's SSE read budget allows the full case deadline plus five seconds;
+the case's own deadline still bounds how long it waits for the agent's answer.
 
 Full agent answers and structured evidence are printed after each case completes,
 so you can judge their reasoning and source references directly in the terminal.

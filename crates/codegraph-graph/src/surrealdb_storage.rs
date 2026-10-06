@@ -73,6 +73,35 @@ fn strip_null_fields(payloads: Vec<JsonValue>) -> Vec<JsonValue> {
         .collect()
 }
 
+/// The schema statements that are safe to run against an existing store: functions and
+/// params declared with `OVERWRITE`. Function bodies end with `} PERMISSIONS FULL;` on
+/// its own line; params end at the first `;`.
+fn refreshable_definitions(schema: &str) -> String {
+    const FUNCTION: &str = "\nDEFINE FUNCTION OVERWRITE fn::";
+    const PARAM: &str = "\nDEFINE PARAM OVERWRITE $";
+    const FUNCTION_END: &str = "\n} PERMISSIONS FULL;";
+
+    let mut statements = Vec::new();
+    let mut rest = schema;
+    // Definitions start at the beginning of a line, which keeps prose in comments out.
+    while let Some(start) = [rest.find(FUNCTION), rest.find(PARAM)]
+        .into_iter()
+        .flatten()
+        .min()
+    {
+        let from = &rest[start + 1..];
+        let end = if from.starts_with("DEFINE FUNCTION") {
+            from.find(FUNCTION_END).map(|i| i + FUNCTION_END.len())
+        } else {
+            from.find(';').map(|i| i + 1)
+        };
+        let Some(end) = end else { break };
+        statements.push(&from[..end]);
+        rest = &from[end..];
+    }
+    statements.join("\n")
+}
+
 fn env_flag(name: &str) -> bool {
     env::var(name)
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -417,8 +446,7 @@ impl SurrealDbStorage {
             .collect::<String>();
 
         if Self::has_table(db, "nodes").await? {
-            Self::check_schema_checksum(db, name, &checksum).await;
-            return Ok(());
+            return Self::refresh_or_warn(db, name, schema, &checksum).await;
         }
 
         info!("Applying bundled {} schema to new embedded database", name);
@@ -457,7 +485,20 @@ impl SurrealDbStorage {
             .is_some())
     }
 
-    async fn check_schema_checksum(db: &Surreal<Any>, name: &str, checksum: &str) {
+    /// Bring an existing store up to date with the bundled schema where that is safe.
+    ///
+    /// Functions and params are defined with `OVERWRITE`, so when the store was created
+    /// from an earlier revision of the same schema they are re-applied in place and the
+    /// recorded checksum is updated; query fixes then reach existing indexes without a
+    /// re-index. Tables, fields and indexes are never touched (vector indexes in
+    /// particular are managed separately). A store created from a different schema, or a
+    /// schema without re-appliable definitions, only gets a warning.
+    async fn refresh_or_warn(
+        db: &Surreal<Any>,
+        name: &str,
+        schema: &str,
+        checksum: &str,
+    ) -> Result<()> {
         let recorded = async {
             let mut response = db
                 .query("SELECT name, checksum FROM schema_versions:bundled")
@@ -472,17 +513,46 @@ impl SurrealDbStorage {
         }
         .await;
 
-        match recorded {
-            Some((recorded_name, recorded_checksum))
-                if recorded_name == name && recorded_checksum == checksum => {}
-            Some((recorded_name, _)) => warn!(
+        let Some((recorded_name, recorded_checksum)) = recorded else {
+            debug!("Embedded database has no bundled-schema record; skipping check");
+            return Ok(());
+        };
+        if recorded_name == name && recorded_checksum == checksum {
+            return Ok(());
+        }
+
+        let refresh = refreshable_definitions(schema);
+        if recorded_name != name || refresh.is_empty() {
+            warn!(
                 "Embedded database was created from the {} schema at a different revision than \
                  this binary bundles ({}). The stored schema stays in use; to switch, stop all \
                  codegraph processes, delete <project>/.codegraph/db and run `codegraph index` again.",
                 recorded_name, name
-            ),
-            None => debug!("Embedded database has no bundled-schema record; skipping check"),
+            );
+            return Ok(());
         }
+
+        info!(
+            "Updating {} schema functions in the embedded database to this binary's revision",
+            name
+        );
+        db.query(refresh)
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("Schema function update failed: {}", e)))?
+            .check()
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Schema function update failed: {}", e))
+            })?;
+        db.query(
+            "UPDATE schema_versions:bundled SET checksum = $checksum, \
+             description = 'Bundled schema; functions refreshed on open';",
+        )
+        .bind(("checksum", checksum.to_string()))
+        .await
+        .map_err(|e| CodeGraphError::Database(format!("Failed to record schema: {}", e)))?
+        .check()
+        .map_err(|e| CodeGraphError::Database(format!("Failed to record schema: {}", e)))?;
+        Ok(())
     }
 
     /// Initialize database schema with flexible design (unused when schema managed externally)

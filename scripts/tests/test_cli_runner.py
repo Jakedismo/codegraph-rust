@@ -93,6 +93,8 @@ class CliRunnerTests(unittest.TestCase):
         return paths[0], json.loads(paths[0].read_text())
 
     def test_http_and_cli_use_shared_cases_and_all_eight_commands_match(self):
+        self.assertEqual(runner.DEFAULT_AGENT_TIMEOUT_SECS, 600)
+        self.assertTrue(all(case[3] == 600 for case in runner.AGENTIC_TESTS))
         module = ast.parse((ROOT / "test_http_mcp.py").read_text())
         self.assertTrue(
             any(
@@ -141,6 +143,48 @@ class CliRunnerTests(unittest.TestCase):
         self.assertIn(runner.AGENTIC_TESTS[0][1], log)
         self.assertIn("STDERR:", log)
         self.assertIn("mock diagnostic", log)
+
+    def test_http_stream_read_budget_allows_shared_agent_deadlines(self):
+        script = r"""
+import asyncio, json, sys, types
+from contextlib import asynccontextmanager
+sys.path.insert(0, sys.argv[1])
+sys.modules['dotenv'] = None  # Do not load the repository's provider configuration.
+import test_http_mcp as runner
+calls = []
+class Session:
+    def __init__(self, *_): pass
+    async def __aenter__(self): return self
+    async def __aexit__(self, *_): pass
+    async def initialize(self): pass
+    async def call_tool(self, name, params):
+        calls.append((name, params))
+        return types.SimpleNamespace(content=[types.SimpleNamespace(text=json.dumps({'answer': 'Offline answer'}))])
+@asynccontextmanager
+async def transport(url, *, sse_read_timeout):
+    assert sse_read_timeout.total_seconds() == max(case[3] for case in runner.AGENTIC_TESTS) + 5
+    assert sse_read_timeout.total_seconds() == 605
+    yield None, None, None
+sdk = types.ModuleType('mcp')
+sdk.ClientSession = Session
+http = types.ModuleType('mcp.client.streamable_http')
+http.streamablehttp_client = transport
+sys.modules.update({'mcp': sdk, 'mcp.client': types.ModuleType('mcp.client'), 'mcp.client.streamable_http': http})
+asyncio.run(runner.run_tests())
+assert len(calls) == 8
+for (name, params), (tool, query, focus, timeout) in zip(calls, runner.AGENTIC_TESTS):
+    assert name == tool and params['query'] == query and timeout == 600
+"""
+        completed = subprocess.run(
+            [sys.executable, "-c", script, str(ROOT)],
+            cwd=self.directory,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
+        self.assertEqual(completed.stdout.count("Timeout: 600s"), 8)
 
     def test_filters_configuration_and_shell_metacharacters_are_literal_arguments(self):
         (self.directory / "providers.toml").write_text("# not read by mock\n")
