@@ -422,6 +422,7 @@ impl SurrealDbStorage {
         }
 
         info!("Applying bundled {} schema to new embedded database", name);
+        let schema = crate::vector_indexes::VectorIndexMode::from_env()?.initial_schema(schema);
         db.query(schema)
             .await
             .map_err(|e| CodeGraphError::Database(format!("Schema parsing failed: {}", e)))?

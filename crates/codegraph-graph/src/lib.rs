@@ -51,6 +51,8 @@ pub mod graph_functions;
 pub mod surrealdb_migrations;
 #[cfg(feature = "surrealdb")]
 pub mod surrealdb_storage;
+#[cfg(feature = "surrealdb")]
+pub mod vector_indexes;
 
 pub use edge::*;
 
