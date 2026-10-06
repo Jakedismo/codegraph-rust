@@ -26,10 +26,7 @@ tokio = { workspace = true }
 futures = { workspace = true }
 num_cpus = { workspace = true }
 schemars = { workspace = true }
-secrecy = { workspace = true }
-config = { workspace = true }
 notify = { workspace = true }
-chacha20poly1305 = { workspace = true }
 base64 = { workspace = true }
 rand = { workspace = true }
 dashmap = { workspace = true }

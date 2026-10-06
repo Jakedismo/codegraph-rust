@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`CODEGRAPH_MODEL` is accepted as a model alias** after `CODEGRAPH_LLM_MODEL` and `CODEGRAPH_AGENT_MODEL`; `codegraph config agent-status` reports the model the agent will request.
 - **Default context window is 128000 everywhere** (the config default was 32000 while the agent assumed 128000); tier detection and tool-result limits use the same resolution.
 - **`config/example.toml` rewritten** to keys the loader uses; `config/.codegraph.toml.example` removed.
+- **Removed unused code**: the legacy layered settings loader (`codegraph-core/src/config.rs`, with its `Settings`, `ServerConfigManager` and `crypto` exports and the `config`, `secrecy` and `chacha20poly1305` dependencies) and `codegraph-ai`'s `LLMProviderFactory`. Neither had callers; configuration goes through `config_manager.rs` and the agent's LLM through the Rig adapter.
 
 ### Added - Indexing controls and agent workflows
 

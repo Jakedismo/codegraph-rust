@@ -237,10 +237,7 @@ tikv-jemalloc-ctl = "0.7.0"
 backtrace = "0.3.76"
 
 # Configuration
-config = "0.15.27"
 schemars = "1.2.2"
-secrecy = { version = "0.10.3", features = ["serde"] }
-chacha20poly1305 = { version = "0.11.0", features = ["alloc", "getrandom"] }
 base64 = "0.23.1"
 
 # CLI
