@@ -418,9 +418,10 @@ CODEGRAPH_CONTEXT_WINDOW=200000              # your model's real limit; selects 
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Set `CODEGRAPH_LLM_MODEL` explicitly: without it the agent requests its provider's built-in
-default model. `.env.example` lists every supported variable, and
-[AI_PROVIDERS.md](docs/AI_PROVIDERS.md) has per-provider examples.
+Set the model explicitly: without one the agent requests its provider's built-in default.
+The same settings can live in the `[llm]` section of a config file instead (see
+[Configuration](#configuration)); environment variables win. `.env.example` lists every
+supported variable, and [AI_PROVIDERS.md](docs/AI_PROVIDERS.md) has per-provider examples.
 
 ### 3. Database
 
@@ -590,9 +591,10 @@ separately because it did not explicitly select the intended request model.
 The fast baseline is local run `20261006_013512_392882`, with the model and indexing
 tier recorded from the test session. The runner does not capture those settings
 automatically. During balanced evaluation, source review found that the Rig adapter
-selects its model from `CODEGRAPH_LLM_MODEL`, then `CODEGRAPH_AGENT_MODEL`; it does
-not read the core configuration's `CODEGRAPH_MODEL`. With only the latter set, the
-OpenAI Rig path defaults to requesting `gpt-4o`. The historical fast request model
+selected its model from `CODEGRAPH_LLM_MODEL`, then `CODEGRAPH_AGENT_MODEL`; at that time
+it did not read the core configuration's `CODEGRAPH_MODEL`, so with only the latter set the
+OpenAI Rig path defaulted to requesting `gpt-4o`. (The adapter has since been changed to
+fall back to `CODEGRAPH_MODEL` and then `[llm] model`.) The historical fast request model
 cannot be confirmed from its saved responses, so its model label remains qualified.
 Set `CODEGRAPH_LLM_MODEL` explicitly for reproducible agent comparisons. These labels
 identify configured/requested models; the runner does not attest provider-side routing.
@@ -713,7 +715,7 @@ application configuration; project init does not configure model providers.
 
 Config files are read from `./.codegraph.toml` (project) and then `~/.codegraph/config.toml`
 (user); a `.env` in the working directory and `CODEGRAPH_*` environment variables override
-them. Indexing settings can live in the config file:
+them:
 
 ```toml
 [embedding]
@@ -721,11 +723,16 @@ provider = "ollama"
 model = "qwen3-embedding:0.6b"
 dimension = 1024
 
+[llm]
+provider = "anthropic"
+model = "claude-sonnet-4"
+context_window = 200000
+
 [indexing]
 tier = "fast"
 ```
 
-The built-in agent reads its settings from the environment (a project `.env` counts), not from the `[llm]` section of the config file: `CODEGRAPH_LLM_PROVIDER`, `CODEGRAPH_LLM_MODEL` (falling back to `CODEGRAPH_AGENT_MODEL`), `CODEGRAPH_CONTEXT_WINDOW`, and the provider's API key. `CODEGRAPH_MODEL` is not read by the agent; with only that set, the agent requests its provider's built-in default model.
+The built-in agent resolves each LLM setting in three steps: the environment variable (a project `.env` counts), then the key in the config file's `[llm]` section, then a default. `enabled = false` in `[llm]` makes the agent ignore the section, and API keys are read from the environment only. `codegraph config agent-status` shows the provider, model and tier in effect; [AI_PROVIDERS.md](docs/AI_PROVIDERS.md) lists every variable and key.
 
 Storage needs no configuration: the embedded per-project store is used unless
 `CODEGRAPH_SURREALDB_URL` (plus the other `CODEGRAPH_SURREALDB_*` variables) points at a

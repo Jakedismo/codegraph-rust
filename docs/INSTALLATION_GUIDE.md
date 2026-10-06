@@ -139,6 +139,12 @@ batch_size = 64
 ollama_url = "http://localhost:11434"
 # lmstudio_url = "http://localhost:1234"
 
+[llm]
+enabled = true                         # false makes the agent ignore this section
+provider = "ollama"                    # ollama | anthropic | openai | xai | lmstudio | openai-compatible
+model = "qwen2.5-coder:14b"
+context_window = 32768                 # your model's real limit; selects the prompt tier
+
 [indexing]
 tier = "fast"                          # fast | balanced | full
 
@@ -157,7 +163,7 @@ level = "info"
 
 Storage has no config-file section: the embedded per-project store is used unless `CODEGRAPH_SURREALDB_URL` is set.
 
-The built-in agent reads its settings from the environment (a project `.env` counts), not from the `[llm]` section of the config file: `CODEGRAPH_LLM_PROVIDER`, `CODEGRAPH_LLM_MODEL` (falling back to `CODEGRAPH_AGENT_MODEL`), `CODEGRAPH_CONTEXT_WINDOW`, and the provider's API key. `CODEGRAPH_MODEL` is not read by the agent; with only that set, the agent requests its provider's built-in default model.
+The built-in agent resolves each LLM setting in three steps: the environment variable (a project `.env` counts), then the key in the config file's `[llm]` section, then a default. `enabled = false` in `[llm]` makes the agent ignore the section, and API keys are read from the environment only. `codegraph config agent-status` shows the provider, model and tier in effect; [AI_PROVIDERS.md](AI_PROVIDERS.md) lists every variable and key.
 
 ### Environment variables and `.env`
 
@@ -173,7 +179,7 @@ CODEGRAPH_EMBEDDING_PROVIDER=ollama
 CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b
 CODEGRAPH_EMBEDDING_DIMENSION=1024
 
-# LLM for the agentic tools (read from the environment only)
+# LLM for the agentic tools (these override [llm] in the config file)
 CODEGRAPH_LLM_PROVIDER=anthropic      # ollama | lmstudio | anthropic | openai | xai | openai-compatible
 CODEGRAPH_LLM_MODEL=claude-sonnet-4
 CODEGRAPH_CONTEXT_WINDOW=200000       # your model's real limit; selects the prompt tier
