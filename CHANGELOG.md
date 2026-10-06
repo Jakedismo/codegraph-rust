@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 **Fixed - Agent context growth and graph functions on large indexes**
+
+- **Tool results are bounded for the model.** Long `content` arrives as a snippet (`content_truncated`, default 2,000 characters, `CODEGRAPH_TOOL_CONTENT_CHARS`), one result is capped at 200 KB regardless of the configured window, and each agent run has a tool-result budget (about a third of the window, 48-600 KB, `CODEGRAPH_AGENT_RESULT_BUDGET_BYTES`). Previously one search on a full-tier index could return 228 KB and a run had no total limit, which stalled the model call.
+- **`fn::get_hub_nodes` works on large graphs.** It no longer merges the whole project's degree lists with `array::concat` (limited to 1 MiB of output).
+- **Coupling `instability` is a real ratio.** It was always `0.0` because two integers were divided.
+- **Existing embedded stores receive schema function fixes.** When a store was created from an earlier revision of the same schema, its functions and params are re-applied on open; data, tables and indexes are untouched.
+- **Failed tool calls are logged** with their parameters and error.
+- **Node ids with trailing characters resolve.** `fn::parse_record_id` uses only the quoted part of an escaped id, so a model's malformed ``nodes:`uuid`}},{`` no longer misses. Hub rows no longer carry source text.
+
 ### Changed - Agent workflow deadlines
 
 - Increased the whole-agent CLI deadline from 300 to 600 seconds for all four

@@ -290,29 +290,37 @@ The Agent is stateless it only has conversational memory for the span of tool ex
 
 ### 4. Context Overflow Protection
 
-CodeGraph includes multi-layer protection against context overflow—preventing expensive failures when tool results exceed your model's limits.
+Every tool result the agent receives is resent to the model on each later round, so
+CodeGraph bounds what a run can put in the model's context at three levels:
 
-**Per-Tool Result Truncation:**
-- Each tool result is limited based on your configured context window
-- Large results (e.g., dependency trees with 1000+ nodes) are intelligently truncated
-- Truncated results include `_truncated: true` metadata so the agent knows data was cut
-- Array results keep the most relevant items that fit within limits
+**Content snippets.** Long `content` in a result row (a whole document, an `impl` block)
+is cut to a leading snippet, 2,000 characters by default, and marked
+`content_truncated` with its original length. The row keeps its file path and line range,
+so the client can read the rest.
 
-**Context Accumulation Guard:**
-- Monitors total accumulated context across multi-step reasoning
-- Fails fast with clear error message if accumulated tool results exceed safe threshold
-- Threshold: 80% of context window × 4 (conservative estimate for token overhead)
+**Per-result limit.** One tool result is limited to `context_window × 2` bytes, capped at
+200 KB however large the window is. Oversized array results keep their leading items and
+carry `_truncated` metadata.
+
+**Per-run budget.** All tool results in one agent run share a budget of about a third of
+the context window (at 4 bytes per token), between 48 KB and 600 KB. A result that would
+exceed the remainder is trimmed to fit and carries a `_budget` note; once the budget is
+used up, further calls return a note telling the agent to answer from the evidence it
+has.
 
 **Configure via environment:**
 ```bash
-# CRITICAL: Set this to match your agent's LLM context window
-CODEGRAPH_CONTEXT_WINDOW=128000  # Default: 128K
+# Set this to match your agent LLM's real context window
+CODEGRAPH_CONTEXT_WINDOW=128000            # default: 128K
 
-# Per-tool result limit derived automatically: context_window × 2 bytes
-# Accumulation limit derived automatically: context_window × 4 × 0.8 bytes
+# Optional overrides
+CODEGRAPH_TOOL_CONTENT_CHARS=2000          # snippet length per row; 0 disables shortening
+CODEGRAPH_AGENT_RESULT_BUDGET_BYTES=400000 # per-run tool-result budget
 ```
 
-**Why this matters:** Without these guards, a single `agentic_impact` query on a large codebase could return 6M+ tokens—far exceeding most models' limits and causing expensive failures.
+**Why this matters:** on a full-tier index of this repository, one semantic search could
+return 228 KB before these limits, and a dozen searches in one run put megabytes into
+every model request until the model call stalled.
 
 ### 5. Hybrid Search That Actually Works
 
@@ -632,6 +640,14 @@ Source review of the full-tier answers found:
   functions now lead (Rust walker: risk 3,131 from complexity 31 and 100 incoming
   edges) and `reconcile_project` drops to eighth, because the full index has more
   than twice the edges and the query counts edge rows, not distinct callers.
+
+The case 2 timeouts, the hub failures and the `0.0` instability values were traced to
+defects that are now fixed: tool results were unbounded (one search could return 228 KB
+and a run had no total limit), the hub query exceeded an `array::concat` size limit, and
+the instability ratio divided integers. Re-running cases 2 and 6 on the same index with
+the fixes returned `OK` in 79 and 106 seconds, with a hub ranking and non-zero
+instability; the other cases were not re-run. See the
+[follow-up section](docs/evaluations/full-cli-2026-10-06.md#follow-up-causes-found-and-fixed).
 
 All seven completed full-tier cases and all eight balanced cases logged typed-answer parse warnings; the server synthesized
 structured evidence from tool traces instead. The runner accepted the resulting

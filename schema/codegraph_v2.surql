@@ -285,8 +285,12 @@ DEFINE FUNCTION OVERWRITE fn::parse_record_id($table: string, $input: any) {
     IF type::is_record($input) { RETURN $input; };
     LET $str = <string>$input;
     LET $after_prefix = IF string::starts_with($str, $table + ':') THEN string::slice($str, string::len($table) + 1) ELSE $str END;
-    -- Strip SurrealDB's id escaping: ⟨⟩ (2.x) and backticks (3.x, what <string>id produces).
-    LET $clean_id = string::replace(string::replace(string::replace($after_prefix, '⟨', ''), '⟩', ''), '`', '');
+    -- Take the id out of SurrealDB's escaping: backticks (3.x, what <string>id produces) or
+    -- ⟨⟩ (2.x). Only the quoted part is used, so stray characters a model appends after the
+    -- closing quote (for example "nodes:`uuid`}},{") do not make the lookup miss.
+    LET $clean_id = IF string::starts_with($after_prefix, '`') THEN string::split($after_prefix, '`')[1]
+        ELSE IF string::starts_with($after_prefix, '⟨') THEN string::split(string::replace($after_prefix, '⟩', '⟨'), '⟨')[1]
+        ELSE $after_prefix END;
     RETURN type::record($table, $clean_id);
 } PERMISSIONS FULL;
 
@@ -302,6 +306,13 @@ DEFINE FUNCTION OVERWRITE fn::resolve_node($node_id: any) {
 DEFINE FUNCTION OVERWRITE fn::node_info($node_id: any) {
     IF $node_id = NONE OR !type::is_record($node_id) { RETURN NONE; };
     RETURN (SELECT <string>id AS id, name, node_type AS kind, language, content, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM ONLY $node_id);
+} PERMISSIONS FULL;
+
+-- Node identity and location without content or metadata, for ranked lists such as hubs
+-- where fifty rows of source text would crowd out everything else.
+DEFINE FUNCTION OVERWRITE fn::node_summary($node_id: any) {
+    IF $node_id = NONE OR !type::is_record($node_id) { RETURN NONE; };
+    RETURN (SELECT <string>id AS id, name, node_type AS kind, language, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM ONLY $node_id);
 } PERMISSIONS FULL;
 
 DEFINE FUNCTION OVERWRITE fn::node_reference($node_id: any) {
@@ -533,7 +544,7 @@ DEFINE FUNCTION OVERWRITE fn::get_hub_nodes($project_id: string, $min_degree: in
         SELECT node_id, node, afferent_degree, efferent_degree, total_degree,
             $incoming_by_type.filter(|$r| $r.node_id = node_id).map(|$r| { edge_type: $r.edge_type, count: $r.count }) AS incoming_by_type,
             $outgoing_by_type.filter(|$r| $r.node_id = node_id).map(|$r| { edge_type: $r.edge_type, count: $r.count }) AS outgoing_by_type
-        FROM (SELECT node_id, fn::node_info(node_id) AS node, afferent_degree, efferent_degree, total_degree FROM $hubs)
+        FROM (SELECT node_id, fn::node_summary(node_id) AS node, afferent_degree, efferent_degree, total_degree FROM $hubs)
         WHERE node != NONE
     );
 } PERMISSIONS FULL;

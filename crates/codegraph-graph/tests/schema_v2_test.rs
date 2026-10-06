@@ -181,6 +181,15 @@ async fn v2_graph_functions() {
     assert_eq!(cycles.as_array().unwrap().len(), 1, "{cycles}");
     assert_eq!(cycles[0]["node1"]["name"], "parse_config", "{cycles}");
 
+    // Models sometimes append stray characters after the quoted id; only the quoted part counts.
+    let garbled = call(
+        &db,
+        "RETURN fn::calculate_coupling_metrics($p, $n)",
+        vec![("p", p.clone()), ("n", json!("nodes:`a`}},{"))],
+    )
+    .await;
+    assert_eq!(garbled["node"]["name"], "parse_config", "{garbled}");
+
     let coupling = call(
         &db,
         "RETURN fn::calculate_coupling_metrics($p, $n)",
@@ -209,6 +218,11 @@ async fn v2_graph_functions() {
     assert_eq!(hub_names[0], "parse_config", "{hubs}");
     assert_eq!(hubs[0]["total_degree"], 4);
     assert_eq!(hubs[0]["afferent_degree"], 3);
+    assert!(
+        hubs[0]["node"].get("content").is_none(),
+        "hub rows carry no source text: {hubs}"
+    );
+    assert_eq!(hubs[0]["node"]["location"]["file_path"], "src/config.rs");
     assert_eq!(hubs[0]["efferent_degree"], 1);
     let none = call(
         &db,
