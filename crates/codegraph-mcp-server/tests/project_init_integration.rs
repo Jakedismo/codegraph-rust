@@ -27,7 +27,7 @@ fn all_hook_choices_install_only_selected_harnesses_and_merge_both_guides() {
         let project = tempfile::tempdir().unwrap();
         std::fs::write(
             project.path().join("AGENTS.md"),
-            "# Team rules\nKeep team rules.\n",
+            "# Team rules\nKeep team rules.\n\n<!-- codegraph:begin -->\n# codegraph\nOld guidance.\n<!-- codegraph:end -->\n",
         )
         .unwrap();
         std::fs::write(
@@ -70,6 +70,10 @@ fn all_hook_choices_install_only_selected_harnesses_and_merge_both_guides() {
                 let text = std::fs::read_to_string(project.path().join(name)).unwrap();
                 assert!(text.contains("Keep "));
                 assert_eq!(text.matches("# codegraph").count(), 1);
+                assert!(text.contains("CodeGraph is a CLI tool available through Bash"));
+                assert!(text.contains("using your Bash or shell execution tool"));
+                assert!(text.contains("`command -v codegraph`"));
+                assert!(!text.contains("Old guidance."));
                 for tool in ["context", "impact", "architecture", "quality"] {
                     assert!(text.contains(&format!("codegraph agent {tool}")));
                 }

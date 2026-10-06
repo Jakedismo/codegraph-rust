@@ -197,8 +197,10 @@ Init runs these steps in order:
    runs require this flag when CodeGraph hooks are absent. None leaves existing hooks
    untouched; unrelated hooks do not count as CodeGraph integration.
 2. Add or refresh a `# codegraph` section in both project `AGENTS.md` and `CLAUDE.md`,
-   even with no hooks selected. The guidance starts exploration with specific agent
-   queries, recommends impact checks before editing, and covers source verification,
+   even with no hooks selected. The guidance explains that CodeGraph is a CLI tool
+   available through Bash and tells agents to use their Bash/shell execution tool.
+   It starts exploration with specific agent queries, recommends impact checks
+   before editing, and covers source verification,
    output, project selection and fallbacks. Other content and custom CodeGraph rules
    are preserved; only the block between `<!-- codegraph:begin -->` and
    `<!-- codegraph:end -->` is owned by init. Both files are created if absent.
