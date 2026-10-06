@@ -17,6 +17,8 @@ pub(crate) struct Catalog {
     pub chunks: BTreeSet<String>,
     #[serde(default)]
     pub chunk_hashes: BTreeMap<String, String>,
+    #[serde(default)]
+    pub file_metadata_hashes: BTreeMap<String, String>,
     pub stats: crate::indexer::IndexStats,
 }
 

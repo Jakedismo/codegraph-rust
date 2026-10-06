@@ -51,6 +51,16 @@ async fn incremental_catalog_matches_full_graph_and_removes_stale_definitions() 
     let cold = indexer.index_project(dir.path()).await?;
     assert!(cold.complete);
     assert_eq!(cold.files, 2);
+    let storage = indexer.surreal_storage().await;
+    let mut response = storage.lock().await.db().query("SELECT file_path, last_indexed_at FROM file_metadata ORDER BY file_path; SELECT metadata FROM edges WHERE edge_type = 'calls'").await?.check()?;
+    let before_metadata: Vec<Value> = response.take(0)?;
+    let cold_edges: Vec<Value> = response.take(1)?;
+    assert!(!cold_edges.is_empty());
+    assert!(
+        cold_edges
+            .iter()
+            .all(|edge| edge["metadata"]["resolution_method"] == "exact")
+    );
     let warm = indexer.index_project(dir.path()).await?;
     assert_eq!(warm.nodes, cold.nodes);
     assert_eq!(warm.edges, cold.edges);
@@ -58,7 +68,25 @@ async fn incremental_catalog_matches_full_graph_and_removes_stale_definitions() 
     std::fs::write(&target, "fn replacement() {}\n")?;
     let edited = indexer.reconcile_project(dir.path(), false).await?;
     assert_eq!(edited.cached_files, 1);
-    let storage = indexer.surreal_storage().await;
+    assert!(edited.writer_rows_acked < cold.writer_rows_acked);
+    let mut response = storage
+        .lock()
+        .await
+        .db()
+        .query("SELECT file_path, last_indexed_at FROM file_metadata ORDER BY file_path")
+        .await?
+        .check()?;
+    let after_metadata: Vec<Value> = response.take(0)?;
+    let caller_metadata = |rows: &[Value]| {
+        rows.iter()
+            .find(|row| row["file_path"] == caller.to_string_lossy().as_ref())
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(
+        caller_metadata(&before_metadata),
+        caller_metadata(&after_metadata)
+    );
     let graph = |storage: std::sync::Arc<tokio::sync::Mutex<codegraph_graph::SurrealDbStorage>>| async move {
         let mut response = storage.lock().await.db().query("SELECT name, file_path FROM nodes ORDER BY file_path, name; SELECT from, to, edge_type, metadata FROM edges ORDER BY id").await?.check()?;
         Ok::<_, anyhow::Error>((

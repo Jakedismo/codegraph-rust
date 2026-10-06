@@ -757,7 +757,7 @@ impl ProjectIndexer {
             let make_fingerprint =
                 |external_support: &std::collections::BTreeMap<String, String>| {
                     fingerprint(&(
-                        "project-input-v5",
+                        "project-input-v6",
                         &self.project_id,
                         source_snapshots
                             .iter()
@@ -1804,11 +1804,22 @@ impl ProjectIndexer {
             let symbol_map = catalog.unique_aliases();
             let mut normalized = HashMap::new();
             let mut targets = Vec::with_capacity(edges.len());
+            let mut resolution_provenance = Vec::with_capacity(edges.len());
             let mut exact_count = 0;
             let mut lexical_count = 0;
             let mut lexical_cache = HashMap::new();
             for edge in &edges {
                 let mut target = catalog.exact(edge, &[]);
+                let mut provenance = (
+                    if target.is_some_and(|id| {
+                        edge.metadata.get("target_node_id") == Some(&id.to_string())
+                    }) {
+                        "definition"
+                    } else {
+                        "exact"
+                    },
+                    1.0f64,
+                );
                 if target.is_none() {
                     let variants = normalized.entry(edge.to.clone()).or_insert_with(|| {
                         let mut variants = Self::normalize_symbol_target(&edge.to);
@@ -1823,19 +1834,23 @@ impl ProjectIndexer {
                         variants
                     });
                     target = catalog.exact(edge, variants);
+                    provenance.0 = "normalized";
                 }
                 if target.is_some() {
                     exact_count += 1;
                 }
                 if target.is_none() && !catalog.ambiguous(&edge.to) {
-                    target = *lexical_cache
+                    let lexical = *lexical_cache
                         .entry((edge.from, edge.to.clone()))
                         .or_insert_with(|| catalog.fuzzy(edge));
-                    if target.is_some() {
+                    if let Some((id, score)) = lexical {
+                        target = Some(id);
+                        provenance = ("lexical", score);
                         lexical_count += 1;
                     }
                 }
                 targets.push(target);
+                resolution_provenance.push(provenance);
             }
             #[cfg(feature = "ai-enhanced")]
             {
@@ -1898,12 +1913,15 @@ impl ProjectIndexer {
                                 }
                             }
                             if !tied && let Some(id) = winner {
-                                semantic_targets.insert(target, id);
+                                semantic_targets.insert(target, (id, best));
                             }
                         }
-                        for (edge, target) in edges.iter().zip(&mut targets) {
-                            if target.is_none() {
-                                *target = semantic_targets.get(&edge.to).copied();
+                        for (index, (edge, target)) in edges.iter().zip(&mut targets).enumerate() {
+                            if target.is_none()
+                                && let Some((id, score)) = semantic_targets.get(&edge.to).copied()
+                            {
+                                *target = Some(id);
+                                resolution_provenance[index] = ("semantic", score as f64);
                             }
                         }
                         self.flush_surreal_writer().await?;
@@ -1912,10 +1930,18 @@ impl ProjectIndexer {
             }
             let resolved_count = targets.iter().filter(|target| target.is_some()).count();
             let mut resolved_edges = Vec::with_capacity(resolved_count);
-            for (edge, target) in edges.iter().zip(targets) {
+            for ((edge, target), (method, score)) in
+                edges.iter().zip(targets).zip(resolution_provenance)
+            {
                 if let Some(target) = target {
                     let mut record = CodeEdge::new(edge.from, target, edge.edge_type.clone());
                     record.metadata = edge.metadata.clone();
+                    record
+                        .metadata
+                        .insert("resolution_method".into(), method.into());
+                    record
+                        .metadata
+                        .insert("resolution_score".into(), format!("{score:.6}"));
                     if let Some(span) = &edge.span {
                         record.metadata.insert(
                             "source_span".into(),
@@ -1965,7 +1991,14 @@ impl ProjectIndexer {
             // Task 3.3: Update file metadata for incremental indexing
             info!("💾 Updating file metadata for change tracking");
             let file_paths_only: Vec<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
-            self.persist_file_metadata(&file_paths_only, &nodes, &edges, &source_snapshots)
+            next_catalog.file_metadata_hashes = self
+                .persist_file_metadata(
+                    &file_paths_only,
+                    &nodes,
+                    &edges,
+                    &source_snapshots,
+                    previous.as_ref().map(|state| &state.file_metadata_hashes),
+                )
                 .await?;
             self.flush_surreal_writer().await?;
             self.verify_file_metadata_count(file_paths_only.len())
@@ -2572,8 +2605,10 @@ impl ProjectIndexer {
         nodes: &[CodeNode],
         edges: &[EdgeRelationship],
         snapshots: &codegraph_parser::SourceSnapshots,
-    ) -> Result<()> {
+        previous: Option<&std::collections::BTreeMap<String, String>>,
+    ) -> Result<std::collections::BTreeMap<String, String>> {
         let mut file_metadata_records = Vec::new();
+        let mut hashes = std::collections::BTreeMap::new();
 
         // Create progress bar for file metadata
         let metadata_pb = self.progress.add(ProgressBar::new(files.len() as u64));
@@ -2623,6 +2658,20 @@ impl ProjectIndexer {
             let (node_count, edge_count) =
                 file_stats.get(&file_path_str).copied().unwrap_or((0, 0));
 
+            let hash = codegraph_core::artifact_cache::fingerprint(&(
+                &file_path_str,
+                &content_hash,
+                file_size,
+                modified_at,
+                node_count,
+                edge_count,
+            ))?;
+            let unchanged = previous.and_then(|hashes| hashes.get(&file_path_str)) == Some(&hash);
+            hashes.insert(file_path_str.clone(), hash);
+            metadata_pb.inc(1);
+            if unchanged {
+                continue;
+            }
             file_metadata_records.push(FileMetadataRecord {
                 file_path: file_path_str,
                 project_id: self.project_id.clone(),
@@ -2635,21 +2684,23 @@ impl ProjectIndexer {
                 language: None, // Will be inferred from file extension if needed
                 parse_errors: None,
             });
-            metadata_pb.inc(1);
         }
 
         // Batch upsert file metadata
-        self.surreal_writer_handle()?
-            .enqueue_file_metadata(file_metadata_records)
-            .await?;
+        let updated = file_metadata_records.len();
+        if updated > 0 {
+            self.surreal_writer_handle()?
+                .enqueue_file_metadata(file_metadata_records)
+                .await?;
+        }
 
         self.finish_bar(
             metadata_pb,
             format!("💾 File metadata complete: {} files tracked", files.len()),
         )?;
 
-        info!("💾 Persisted metadata for {} files", files.len());
-        Ok(())
+        info!("💾 Updated metadata for {updated} of {} files", files.len());
+        Ok(hashes)
     }
 
     async fn persist_project_metadata(

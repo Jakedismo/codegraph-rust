@@ -180,9 +180,19 @@ Explicit embedding backends cannot silently fall back to different model weights
     retrieval comparisons reject mismatched inputs and enforce recall/overlap gates.
     These experiments require explicitly selected model weights.
 
+14. File metadata joins nodes/chunks/edges in the reconciliation digest catalog; edits
+    update only changed records and preserve unchanged files' indexing timestamps.
+    Candidate normalization, character lengths and trigram cardinalities are prepared
+    once. Semantic gates reuse inverted-index overlap counts instead of allocating
+    trigram sets for every comparison. Resolved edges retain their method and actual
+    lexical/cosine score (a similarity measure, not a calibrated probability).
+    CLI help now describes SurrealDB storage and independent inference policies.
+
 ## Final verification record
 
-Workspace and full-feature CLI compilation passed. Offline parser, indexing, vector,
+Workspace compilation and the full-feature CLI build passed. The macOS debug linker
+emitted an unwind-section size warning; it did not prevent either binary from building.
+Offline parser, indexing, vector,
 artifact-cache, reconciliation/watch, tokenizer, text-cache and SCIP regression suites
 passed. Embedded storage tests exercised both schemas, ingestion acknowledgements,
 failure recovery and selected HNSW readiness. Deferred-policy tests verified persisted
@@ -192,12 +202,14 @@ regressions passed.
 
 A debug benchmark with 100 Rust files and three repeats completed all ten scenarios.
 No-change runs reused all 100 ASTs and acknowledged zero writer rows or inference
-texts. Its timings validate the harness, not a speedup against the original code.
+texts. Single-file edits reused 99 ASTs and acknowledged three rows. Its timings
+validate the harness, not a speedup against the original code.
 See the benchmark instructions for measured samples and their limits.
 
 Strict workspace Clippy (`--all-targets --all-features -- -D warnings`) remains blocked
 by existing diagnostics in untouched core configuration/watch/memory/updater code and
 zerocopy buffers/shared memory. Targeted Clippy for parser/indexing/vector/graph completed
-with existing warnings; it is not a strict-lint pass. No live language-server benchmark,
+with existing warnings; no diagnostics touched lines changed by this work. It is not
+a strict-lint pass. No live language-server benchmark,
 remote provider run, real-model quality comparison or persistent-disk benchmark was
 performed. Optional precision, compiler-index and splitter choices remain opt-in.

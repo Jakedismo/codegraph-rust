@@ -25,24 +25,27 @@ analyzer tier costs. They do not measure remote provider throughput or persisten
 write cost. For a real repository/database/provider, use the CLI's `--stats-json` output
 and separate cold/model-warm/source-warm states. Run against a disposable project database.
 
-An initial debug run on macOS ARM64 used 100 one-line Rust files, three repeats, in-memory
+The final debug run on macOS ARM64 used 100 one-line Rust files, three repeats, in-memory
 SurrealDB and disabled inference/analyzers. Observed median/max indexing wall times:
 
 | Scenario | Median (ms) | Maximum of three (ms) |
 | --- | ---: | ---: |
-| Cold | 354.68 | 408.02 |
-| No change | 8.82 | 8.95 |
-| Forced warm full | 400.60 | 518.61 |
-| Single-file edit | 190.07 | 302.14 |
-| Cross-file rename | 329.41 | 449.68 |
-| Delete | 224.85 | 225.17 |
-| Documentation change | 147.20 | 148.40 |
-| Manifest change | 147.44 | 147.57 |
-| Balanced upgrade | 155.53 | 161.68 |
-| Full upgrade | 159.27 | 172.82 |
+| Cold | 362.32 | 572.81 |
+| No change | 9.50 | 13.14 |
+| Forced warm full | 396.75 | 616.80 |
+| Single-file edit | 94.58 | 123.50 |
+| Cross-file rename | 235.97 | 242.59 |
+| Delete | 142.07 | 147.09 |
+| Documentation change | 64.86 | 65.05 |
+| Manifest change | 65.06 | 68.07 |
+| Balanced upgrade | 74.23 | 78.57 |
+| Full upgrade | 78.05 | 116.52 |
 
 Every no-change sample reused all ASTs and acknowledged zero writer rows/inference
-texts. Startup median was 67.23 ms; the largest process peak RSS was 161,824,768 bytes.
+texts. Single-file edits reused 99 ASTs and acknowledged three rows; docs/manifest
+changes acknowledged zero rows with analyzers disabled. Startup median was 89.24 ms;
+the largest child process peak RSS was 161,103,872 bytes. These samples were not collected
+on an otherwise idle machine.
 Forced runs deliberately rewrite the catalog and are not an incremental speed target.
 Three samples are insufficient for percentile estimates. This is a harness baseline,
 not a comparison against the original implementation or a production throughput claim.

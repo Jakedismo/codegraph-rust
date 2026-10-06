@@ -112,12 +112,11 @@ enum Commands {
 
     #[command(
         about = "Index a project or directory",
-        long_about = "Index a project with dual-mode support:\n\
-                      • Local Mode (FAISS): Set CODEGRAPH_EMBEDDING_PROVIDER=local or ollama\n\
-                      • Local Mode (SurrealDB HNSW + Ollama Embeddings + LMStudio Rerank): Set CODEGRAPH_EMBEDDING_PROVIDER=ollama and Set CODEGRAPH_RERANKING_PROVIDER=lmstudio\n\
-                      • Cloud Mode (SurrealDB HNSW + Jina reranking): Set CODEGRAPH_EMBEDDING_PROVIDER=jina\n\
-                      \n\
-                      Some flags are mode-specific (see individual flag help for details)."
+        long_about = "Index a project into the SurrealDB code graph.\n\
+                      Set CODEGRAPH_EMBEDDING_PROVIDER to a compiled local or remote provider.\n\
+                      CODEGRAPH_EMBEDDING_POLICY and CODEGRAPH_SEMANTIC_RESOLUTION accept sync, deferred or off independently.\n\
+                      Use --complete-deferred to finish a persisted inference job.\n\
+                      Some flags are provider-specific (see individual flag help for details)."
     )]
     Index {
         #[arg(help = "Path to project directory")]
@@ -176,7 +175,7 @@ enum Commands {
         max_seq_len: usize,
         #[arg(
             long,
-            help = "Symbol embedding batch size (overrides generic batch size for precomputing symbols)",
+            help = "Symbol-resolution embedding batch size (overrides generic batch size)",
             value_parser = clap::value_parser!(usize)
         )]
         symbol_batch_size: Option<usize>,

@@ -11,10 +11,18 @@ struct Symbol {
     qualified: String,
 }
 
+struct LexicalCandidate {
+    alias: String,
+    normalized: String,
+    #[cfg(any(test, feature = "ai-enhanced"))]
+    gram_count: usize,
+    characters: usize,
+}
+
 pub(crate) struct SymbolCatalog {
     aliases: BTreeMap<String, Vec<NodeId>>,
     symbols: HashMap<NodeId, Symbol>,
-    lexical: Vec<(String, String)>,
+    lexical: Vec<LexicalCandidate>,
     trigrams: HashMap<String, Vec<usize>>,
 }
 
@@ -84,10 +92,21 @@ impl SymbolCatalog {
         for alias in catalog.aliases.keys() {
             let normalized = alias.to_lowercase();
             let index = catalog.lexical.len();
-            for gram in trigrams(&normalized) {
-                catalog.trigrams.entry(gram).or_default().push(index);
+            let grams = trigrams(&normalized);
+            for gram in &grams {
+                catalog
+                    .trigrams
+                    .entry(gram.clone())
+                    .or_default()
+                    .push(index);
             }
-            catalog.lexical.push((alias.clone(), normalized));
+            catalog.lexical.push(LexicalCandidate {
+                alias: alias.clone(),
+                characters: normalized.chars().count(),
+                normalized,
+                #[cfg(any(test, feature = "ai-enhanced"))]
+                gram_count: grams.len(),
+            });
         }
         catalog
     }
@@ -109,22 +128,20 @@ impl SymbolCatalog {
     pub(crate) fn semantic_candidates(&self, target: &str, limit: usize) -> Vec<String> {
         let target = target.to_lowercase();
         let grams = trigrams(&target);
-        self.candidates(&target, limit)
+        let target_len = target.chars().count().max(1) as f32;
+        self.candidate_indices(&grams, limit)
             .into_iter()
-            .filter(|alias| {
-                if self.aliases[alias].len() != 1 {
-                    return false;
+            .filter_map(|(index, common)| {
+                let candidate = &self.lexical[index];
+                if self.aliases[&candidate.alias].len() != 1 {
+                    return None;
                 }
-                let name = alias.to_lowercase();
-                let target_len = target.chars().count().max(1) as f32;
-                let name_len = name.chars().count().max(1) as f32;
+                let name_len = candidate.characters.max(1) as f32;
                 if (target_len / name_len).min(name_len / target_len) < 0.5 {
-                    return false;
+                    return None;
                 }
-                let candidate_grams = trigrams(&name);
-                let common = grams.intersection(&candidate_grams).count();
-                let union = grams.len() + candidate_grams.len() - common;
-                common as f32 / union.max(1) as f32 >= 0.2
+                let union = grams.len() + candidate.gram_count - common;
+                (common as f32 / union.max(1) as f32 >= 0.2).then(|| candidate.alias.clone())
             })
             .collect()
     }
@@ -172,11 +189,10 @@ impl SymbolCatalog {
     }
 
     /// A deterministic shortlist; a zero limit retains every overlapping candidate.
-    pub(crate) fn candidates(&self, target: &str, limit: usize) -> Vec<String> {
-        let normalized = target.to_lowercase();
+    fn candidate_indices(&self, grams: &BTreeSet<String>, limit: usize) -> Vec<(usize, usize)> {
         let mut counts = HashMap::<usize, usize>::new();
-        for gram in trigrams(&normalized) {
-            if let Some(indices) = self.trigrams.get(&gram) {
+        for gram in grams {
+            if let Some(indices) = self.trigrams.get(gram) {
                 for index in indices {
                     *counts.entry(*index).or_default() += 1;
                 }
@@ -187,19 +203,35 @@ impl SymbolCatalog {
         ranked
             .into_iter()
             .take(if limit == 0 { usize::MAX } else { limit })
-            .map(|(index, _)| self.lexical[index].0.clone())
             .collect()
     }
 
-    pub(crate) fn fuzzy(&self, edge: &EdgeRelationship) -> Option<NodeId> {
+    #[cfg(test)]
+    pub(crate) fn candidates(&self, target: &str, limit: usize) -> Vec<String> {
+        self.candidate_indices(&trigrams(&target.to_lowercase()), limit)
+            .into_iter()
+            .map(|(index, _)| self.lexical[index].alias.clone())
+            .collect()
+    }
+
+    pub(crate) fn fuzzy(&self, edge: &EdgeRelationship) -> Option<(NodeId, f64)> {
         let target = edge.to.to_lowercase();
+        let target_length = target.chars().count();
         let scorer = rapidfuzz::distance::levenshtein::BatchComparator::new(target.chars());
         let mut best = 0.85f64;
         let mut matches = HashSet::new();
-        for alias in self.candidates(&target, 0) {
-            let candidate = alias.to_lowercase();
+        for (index, _) in self.candidate_indices(&trigrams(&target), 0) {
+            let candidate = &self.lexical[index];
+            // Edit-distance similarity cannot exceed the ratio of the shorter length.
+            if (target_length.min(candidate.characters) as f64)
+                / (target_length.max(candidate.characters).max(1) as f64)
+                + f64::EPSILON
+                < best
+            {
+                continue;
+            }
             let Some(score) = scorer.normalized_similarity_with_args(
-                candidate.chars(),
+                candidate.normalized.chars(),
                 &rapidfuzz::distance::levenshtein::Args::default().score_cutoff(best),
             ) else {
                 continue;
@@ -207,7 +239,7 @@ impl SymbolCatalog {
             if score < best {
                 continue;
             }
-            let Some(id) = self.choose(&self.aliases[&alias], edge.from) else {
+            let Some(id) = self.choose(&self.aliases[&candidate.alias], edge.from) else {
                 continue;
             };
             if score > best {
@@ -216,7 +248,7 @@ impl SymbolCatalog {
             }
             matches.insert(id);
         }
-        (matches.len() == 1).then(|| *matches.iter().next().unwrap())
+        (matches.len() == 1).then(|| (*matches.iter().next().unwrap(), best))
     }
 }
 
@@ -283,7 +315,9 @@ mod tests {
         let target = node("a.rs", "calculate_result");
         let catalog = SymbolCatalog::new(&[target.clone(), node("b.rs", "unrelated")]);
         assert_eq!(
-            catalog.fuzzy(&edge(target.id, "calculate_reslt")),
+            catalog
+                .fuzzy(&edge(target.id, "calculate_reslt"))
+                .map(|(id, _)| id),
             Some(target.id)
         );
         assert!(!catalog.candidates("calculate", 2).is_empty());
