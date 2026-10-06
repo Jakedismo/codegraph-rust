@@ -71,6 +71,17 @@ def argument_parser():
         action="store_true",
         help="Print commands without running or writing files",
     )
+    parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Hide full answers and structured output",
+    )
+    parser.add_argument(
+        "--replay",
+        type=Path,
+        metavar="PATH",
+        help="Print saved results from a case JSON, run directory or latest run under PATH",
+    )
     return parser
 
 
@@ -291,9 +302,108 @@ def save_case(directory, result):
     )
 
 
+def print_response(result):
+    """Show the agent's full answer and evidence rather than only execution metadata."""
+    response = result.get("response") or {}
+    answer = response.get("answer")
+    parsed = None
+    if isinstance(answer, str) and answer.strip():
+        try:
+            parsed = json.loads(answer)
+        except json.JSONDecodeError:
+            pass
+        print("\nAGENT ANSWER:", flush=True)
+        print(
+            json.dumps(parsed, indent=2, ensure_ascii=False)
+            if isinstance(parsed, (dict, list))
+            else answer,
+            flush=True,
+        )
+    elif result.get("stdout", "").strip():
+        print("\nRAW CLI OUTPUT:", flush=True)
+        print(result["stdout"], flush=True)
+    structured = response.get("structured_output")
+    if isinstance(structured, (dict, list)) and structured and structured != parsed:
+        print("\nSTRUCTURED OUTPUT / EVIDENCE:", flush=True)
+        print(json.dumps(structured, indent=2, ensure_ascii=False), flush=True)
+
+
+def print_result(result, summary_only=False):
+    print(
+        f"{result['status']}: {result['duration']:.1f}s | {result['steps_taken']} steps | {result['files']} file locations",
+        flush=True,
+    )
+    if result["error"]:
+        print(result["error"], flush=True)
+    for warning in result["warnings"]:
+        print(f"Warning: {warning}", flush=True)
+    if not summary_only:
+        print_response(result)
+
+
+def replay(args, parser):
+    """Read already saved results without starting binaries or loading project configuration."""
+    source = args.replay.expanduser().resolve()
+    pattern = "[0-9][0-9]_agentic_*.json"
+    if source.is_file() and source.name != "summary.json":
+        paths = [source]
+    else:
+        directory = source.parent if source.is_file() else source
+        paths = sorted(directory.glob(pattern))
+        if not paths:
+            runs = sorted(
+                child
+                for child in directory.glob("*")
+                if child.is_dir() and any(child.glob(pattern))
+            )
+            if runs:
+                paths = sorted(runs[-1].glob(pattern))
+        if not paths:
+            parser.error(f"No saved CLI case results found under {source}")
+    matched = 0
+    for path in paths:
+        try:
+            result = json.loads(path.read_text(encoding="utf-8"))
+            required = (
+                "case",
+                "test",
+                "query",
+                "status",
+                "duration",
+                "steps_taken",
+                "files",
+                "error",
+                "warnings",
+            )
+            if not isinstance(result, dict) or any(
+                key not in result for key in required
+            ):
+                parser.error(f"Not a saved CLI case result: {path}")
+        except (OSError, json.JSONDecodeError) as error:
+            parser.error(f"Cannot read saved result {path}: {error}")
+        if args.case and result["case"] not in args.case:
+            continue
+        if args.tool and result["test"][8:] not in args.tool:
+            continue
+        matched += 1
+        print(
+            f"\n[{result['case']:02}] {result['test']} | Focus: {result.get('focus') or 'default'}"
+        )
+        print(f"{result['query']}\nSaved result: {path}")
+        print_result(result, args.summary_only)
+    if not matched:
+        parser.error("No saved results match --tool and --case filters")
+    # Replaying is inspection; saved execution failures are displayed, not re-executed.
+    return 0
+
+
 def main(argv=None):
     parser = argument_parser()
     args = parser.parse_args(argv)
+    if args.replay:
+        if args.list or args.dry_run:
+            parser.error("--replay cannot be combined with --list or --dry-run")
+        return replay(args, parser)
     args.project = args.project.expanduser().resolve()
     if not args.project.is_dir():
         parser.error(f"Project is not a directory: {args.project}")
@@ -351,14 +461,7 @@ def main(argv=None):
                     if key not in ("response", "stdout", "stderr")
                 }
             )
-            print(
-                f"{result['status']}: {result['duration']:.1f}s | {result['steps_taken']} steps | {result['files']} file locations",
-                flush=True,
-            )
-            if result["error"]:
-                print(result["error"], flush=True)
-            for warning in result["warnings"]:
-                print(f"Warning: {warning}", flush=True)
+            print_result(result, args.summary_only)
         counts = dict(Counter(result["status"] for result in results))
         report = {
             "transport": "CLI",

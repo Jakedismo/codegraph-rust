@@ -3,12 +3,14 @@
 
 import ast
 import importlib
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -102,6 +104,11 @@ class CliRunnerTests(unittest.TestCase):
         )
         completed = self.execute()
         self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
+        self.assertIn(
+            "AGENT ANSWER:\nMock answer with source evidence.", completed.stdout
+        )
+        self.assertIn("STRUCTURED OUTPUT / EVIDENCE:", completed.stdout)
+        self.assertIn('"file_path": "b.rs"', completed.stdout)
         invocations = [
             json.loads(line) for line in self.record.read_text().splitlines()
         ]
@@ -226,6 +233,76 @@ class CliRunnerTests(unittest.TestCase):
         }
         locations = runner.file_locations(runner.structured_answer(response))
         self.assertEqual(locations[0]["file_path"], "call.rs")
+
+    def test_summary_only_hides_answers_but_still_saves_them(self):
+        completed = self.execute("--case", "1", "--summary-only")
+        self.assertEqual(completed.returncode, 0)
+        self.assertNotIn("Mock answer with source evidence.", completed.stdout)
+        self.assertNotIn("AGENT ANSWER:", completed.stdout)
+        path, report = self.report()
+        saved = json.loads(
+            (path.parent / report["results"][0]["json_file"]).read_text()
+        )
+        self.assertEqual(
+            saved["response"]["answer"], "Mock answer with source evidence."
+        )
+
+    def test_replay_works_for_saved_files_runs_and_incomplete_latest_runs_without_model_calls(
+        self,
+    ):
+        completed = self.execute("--case", "1", "--case", "2")
+        self.assertEqual(completed.returncode, 0)
+        path, report = self.report()
+        case = path.parent / report["results"][0]["json_file"]
+        path.unlink()  # The user's active run may not have written its summary yet.
+        for source in [case, path.parent, self.output]:
+            completed = self.execute(
+                "--replay",
+                str(source),
+                "--case",
+                "1",
+                "--binary",
+                "missing-codegraph",
+                "--project",
+                "missing-project",
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn(
+                "AGENT ANSWER:\nMock answer with source evidence.", completed.stdout
+            )
+            self.assertNotIn("[02]", completed.stdout)
+        self.assertEqual(len(self.record.read_text().splitlines()), 2)
+        self.assertEqual(len(list(self.output.iterdir())), 1)
+
+    def test_json_answers_are_pretty_printed_once_when_they_match_structured_output(
+        self,
+    ):
+        structured = {
+            "analysis": "Detailed answer",
+            "evidence": [{"file_path": "a.rs"}],
+        }
+        output = io.StringIO()
+        with redirect_stdout(output):
+            runner.print_response(
+                {
+                    "response": {
+                        "answer": json.dumps(structured),
+                        "structured_output": structured,
+                    }
+                }
+            )
+        printed = output.getvalue()
+        self.assertIn(json.dumps(structured, indent=2), printed)
+        self.assertEqual(printed.count("Detailed answer"), 1)
+
+    def test_replay_missing_or_invalid_results_fail_without_launching_a_command(self):
+        for source in [self.directory / "missing", self.directory / "invalid.json"]:
+            if source.suffix == ".json":
+                source.write_text("{}")
+            completed = self.execute("--replay", str(source))
+            self.assertEqual(completed.returncode, 2)
+        self.assertFalse(self.record.exists())
+        self.assertFalse(self.output.exists())
 
     def test_missing_binary_and_incompatible_filters_fail_before_writing(self):
         for arguments in [

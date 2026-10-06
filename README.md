@@ -362,8 +362,10 @@ is on the harness's PATH and reload/review the project hooks after setup; see
 [init and hook details](docs/AGENTIC_CLI.md#project-initialization).
 
 After indexing, `python3 test_cli_agentic.py` tests all four CLI agent tools with
-the same eight questions as `test_http_mcp.py`, saving answers and timings under
-`test_output_cli/`. See [CLI testing options](docs/AGENTIC_CLI.md#testing-the-cli).
+the same eight questions as `test_http_mcp.py`, printing full answers and saving
+responses/timings under `test_output_cli/`. Replay saved answers without new queries
+with `python3 test_cli_agentic.py --replay test_output_cli`. See
+[CLI testing options](docs/AGENTIC_CLI.md#testing-the-cli).
 
 > **🔒 Security Note:** Indexing automatically respects `.gitignore` and filters out common secrets patterns (`.env`, `credentials.json`, `*.pem`, API keys, etc.). Your secrets won't be embedded or exposed to the agent.
 

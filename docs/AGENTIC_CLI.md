@@ -100,6 +100,9 @@ python3 test_cli_agentic.py --binary /path/to/codegraph --project /path/to/index
 # Run only the three context questions, or one numbered question:
 python3 test_cli_agentic.py --tool context
 python3 test_cli_agentic.py --case 5 --timeout-secs 600
+# Review already saved answers without rerunning queries (latest run):
+python3 test_cli_agentic.py --replay test_output_cli
+python3 test_cli_agentic.py --replay test_output_cli --case 5
 # Inspect cases and commands without contacting providers:
 python3 test_cli_agentic.py --list
 python3 test_cli_agentic.py --dry-run
@@ -119,6 +122,15 @@ so HTTP and CLI inputs stay identical. `--tool` and `--case` can be repeated;
 combined filters select their intersection. `--timeout-secs` overrides each deadline.
 A process watchdog allows five extra seconds for startup/shutdown, then terminates
 a stalled command.
+
+Full agent answers and structured evidence are printed after each case completes,
+so you can judge their reasoning and source references directly in the terminal.
+JSON answers are pretty-printed; `--summary-only` keeps terminal output compact
+without removing saved responses. `--replay PATH` displays a saved case JSON, all
+cases in a run directory, or the latest run under a results directory. It also
+works before a running suite writes its final summary and supports `--tool`/`--case`
+filters. Replay launches no commands, writes no files, and displays saved failures
+with their original status; successful inspection exits 0.
 
 Each timestamped run under ignored `test_output_cli/` contains per-case JSON and
 readable logs with the complete response, stdout/stderr, command, status, timing,
