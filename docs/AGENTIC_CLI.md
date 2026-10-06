@@ -89,6 +89,54 @@ and a diagnostic on stderr. Text-mode failures leave stdout empty. Clap argument
 errors use stderr. `--timeout-secs` sets a whole-workflow deadline (default 300
 seconds) and expires with exit 1, without claiming a complete answer.
 
+## Testing the CLI
+
+After indexing finishes, run the same eight questions as `test_http_mcp.py` through
+the CLI:
+
+```sh
+python3 test_cli_agentic.py
+python3 test_cli_agentic.py --binary /path/to/codegraph --project /path/to/indexed/project
+# Run only the three context questions, or one numbered question:
+python3 test_cli_agentic.py --tool context
+python3 test_cli_agentic.py --case 5 --timeout-secs 600
+# Inspect cases and commands without contacting providers:
+python3 test_cli_agentic.py --list
+python3 test_cli_agentic.py --dry-run
+```
+
+The runner needs only Python 3.8+ and an existing agent-enabled binary (`full` or
+`ai-enhanced`). It defaults to `codegraph` on PATH; `CODEGRAPH_BIN` or `--binary`
+selects another executable. `--project-id` and `--config` match the CLI's overrides.
+Each CLI process loads the selected project's environment; the Python script does
+not load this repository's `.env` or start an MCP server. Use your existing model
+configuration; agent queries can incur provider costs. The embedded database accepts
+one process at a time, so finish indexing and stop an MCP server holding that store
+before running the tests. Cases run sequentially.
+
+Questions, focuses and 300-second deadlines are shared in `agentic_test_cases.py`
+so HTTP and CLI inputs stay identical. `--tool` and `--case` can be repeated;
+combined filters select their intersection. `--timeout-secs` overrides each deadline.
+A process watchdog allows five extra seconds for startup/shutdown, then terminates
+a stalled command.
+
+Each timestamped run under ignored `test_output_cli/` contains per-case JSON and
+readable logs with the complete response, stdout/stderr, command, status, timing,
+step/tool counts, warnings and unique structured file locations. `summary.json`
+collects the results; `--output-dir` changes the parent directory. Nonzero CLI exits,
+error payloads, invalid/empty JSON answers, timeouts and reported partial results
+make the runner exit 1; it still runs later cases. Invalid arguments or a missing
+binary/config file exit 2; writing failures exit 1.
+`OK` means a valid answer was returned, not that its factual accuracy was scored.
+Source counts can vary with extraction tier, model and available index evidence;
+review saved answers when comparing runs.
+
+Offline runner regression tests use temporary mock executables:
+
+```sh
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+```
+
 ## Project initialization
 
 ```sh

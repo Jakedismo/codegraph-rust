@@ -2,6 +2,12 @@
 
 This guide explains how to test the CodeGraph MCP server after indexing your project.
 
+For the CLI equivalent of `test_http_mcp.py`, run `python3 test_cli_agentic.py`
+after indexing finishes. It uses the same eight questions/focuses, needs only the
+Python standard library, and saves complete responses plus a summary under
+`test_output_cli/`. Use `--tool context` or `--case 1` for a focused run. See
+[CLI test options and prerequisites](AGENTIC_CLI.md#testing-the-cli).
+
 ## Prerequisites
 
 1. **Python 3.8+** with pip

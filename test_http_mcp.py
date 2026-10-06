@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
+from agentic_test_cases import AGENTIC_TESTS
+
 # Load .env
 try:
     from dotenv import load_dotenv
@@ -25,25 +27,6 @@ HTTP_HOST = os.environ.get("CODEGRAPH_HTTP_HOST", "127.0.0.1")
 HTTP_PORT = os.environ.get("CODEGRAPH_HTTP_PORT", "3003")
 SERVER_URL = f"http://{HTTP_HOST}:{HTTP_PORT}/mcp"
 
-# Test cases for consolidated 4 agentic tools
-# Each tuple: (tool_name, query, focus (optional), timeout)
-AGENTIC_TESTS = [
-    # agentic_context tests (absorbs: code_search, context_builder, semantic_question)
-    ("agentic_context", "How is configuration loaded in this codebase? Find all config loading mechanisms.", None, 300),
-    ("agentic_context", "Gather comprehensive context about the tier-aware prompt selection system", "builder", 300),
-    ("agentic_context", "How does the LRU cache work in GraphToolExecutor? What gets cached and when?", "question", 300),
-
-    # agentic_impact tests (absorbs: dependency_analysis, call_chain_analysis)
-    ("agentic_impact", "Analyze the dependency chain for the PromptSelector. What does it depend on?", "dependencies", 300),
-    ("agentic_impact", "Trace the call chain from execute_agentic_workflow to the graph analysis tools", "call_chain", 300),
-
-    # agentic_architecture tests (absorbs: architecture_analysis, api_surface_analysis)
-    ("agentic_architecture", "Analyze the architecture of the MCP server. Find coupling metrics and hub nodes.", "structure", 300),
-    ("agentic_architecture", "What is the public API surface of the GraphToolExecutor?", "api_surface", 300),
-
-    # agentic_quality tests (absorbs: complexity_analysis)
-    ("agentic_quality", "Find the highest complexity hotspots in the codebase. Which functions have the highest risk scores?", None, 300),
-]
 
 async def run_tests():
     from mcp import ClientSession

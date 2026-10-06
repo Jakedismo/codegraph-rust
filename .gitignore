@@ -181,6 +181,7 @@ SESSION-MEMORY.md
 .codegraph.toml
 /test_output/
 /test_output_http/
+/test_output_cli/
 CODEX_JOURNAL.md
 idd-state.graphson
 todo.md
