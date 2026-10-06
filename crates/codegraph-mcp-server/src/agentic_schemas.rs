@@ -1,0 +1,289 @@
+// ABOUTME: JSON schemas for structured agentic tool outputs enforcing file paths
+// ABOUTME: Combines freeform analysis with structured component/dependency data
+
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+/// Common file location reference with line number
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FileLocation {
+    /// Component/symbol name
+    pub name: String,
+    /// Absolute or relative file path
+    pub file_path: String,
+    /// Line number where the component is defined
+    pub line_number: Option<usize>,
+    /// Optional brief description of the component's role
+    pub description: Option<String>,
+}
+
+/// Dependency relationship between two components
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DependencyLink {
+    /// Source component name
+    pub from_name: String,
+    /// Source file location
+    pub from_file: String,
+    /// Source line number
+    pub from_line: Option<usize>,
+    /// Target component name
+    pub to_name: String,
+    /// Target file location
+    pub to_file: String,
+    /// Target line number
+    pub to_line: Option<usize>,
+    /// Dependency type (e.g., "import", "call", "extends")
+    pub dependency_type: String,
+}
+
+/// Structured output for agentic_code_search
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CodeSearchOutput {
+    /// Natural language analysis of search results
+    pub analysis: String,
+    /// Relevant code components found
+    pub components: Vec<FileLocation>,
+    /// Key patterns or insights discovered
+    pub patterns: Vec<String>,
+}
+
+/// Structured output for agentic_dependency_analysis
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DependencyAnalysisOutput {
+    /// Natural language dependency analysis
+    pub analysis: String,
+    /// Components involved in the dependency graph
+    pub components: Vec<FileLocation>,
+    /// Dependency relationships (flexible: can be strings or DependencyLink objects)
+    pub dependencies: Vec<serde_json::Value>,
+    /// Circular dependencies detected (if any)
+    pub circular_dependencies: Vec<Vec<String>>,
+    /// Depth of dependency tree analyzed
+    pub max_depth_analyzed: usize,
+}
+
+/// Call chain step in execution flow
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CallChainStep {
+    /// Step number in the call chain
+    pub step: usize,
+    /// Function/method name
+    pub function_name: String,
+    /// File location
+    pub file_path: String,
+    /// Line number
+    pub line_number: Option<usize>,
+    /// What this step does
+    pub action: String,
+}
+
+/// Structured output for agentic_call_chain_analysis
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CallChainOutput {
+    /// Natural language analysis of execution flow
+    pub analysis: String,
+    /// Entry point of the call chain
+    pub entry_point: FileLocation,
+    /// Ordered call chain steps (flexible: can be strings or CallChainStep objects)
+    pub call_chain: Vec<serde_json::Value>,
+    /// Key decision points or branches (flexible: can be strings or FileLocation objects)
+    pub decision_points: Vec<serde_json::Value>,
+}
+
+/// Architecture layer in the system
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ArchitectureLayer {
+    /// Layer name (e.g., "Presentation", "Business Logic", "Data Access")
+    pub name: String,
+    /// Components in this layer
+    pub components: Vec<FileLocation>,
+    /// Responsibilities of this layer
+    pub responsibilities: Vec<String>,
+}
+
+/// Coupling metric for a component
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CouplingMetric {
+    /// Component being measured
+    pub component: FileLocation,
+    /// Afferent coupling (incoming dependencies)
+    pub afferent_coupling: usize,
+    /// Efferent coupling (outgoing dependencies)
+    pub efferent_coupling: usize,
+    /// Instability metric (efferent / (afferent + efferent))
+    pub instability: f64,
+}
+
+/// Structured output for agentic_architecture_analysis
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ArchitectureAnalysisOutput {
+    /// Natural language architecture analysis
+    pub analysis: String,
+    /// Architectural layers identified (flexible: can be strings or ArchitectureLayer objects)
+    pub layers: Vec<serde_json::Value>,
+    /// Hub nodes (highly connected components)
+    pub hub_nodes: Vec<FileLocation>,
+    /// Coupling metrics (flexible: can be strings or CouplingMetric objects)
+    pub coupling_metrics: Vec<serde_json::Value>,
+    /// Architectural patterns detected
+    pub patterns: Vec<String>,
+    /// Architectural issues or smells
+    pub issues: Vec<String>,
+}
+
+/// Public API endpoint or interface
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct APIEndpoint {
+    /// Function/class/interface name
+    pub name: String,
+    /// File location
+    pub file_path: String,
+    /// Line number
+    pub line_number: Option<usize>,
+    /// API type (e.g., "HTTP endpoint", "public function", "exported class")
+    pub api_type: String,
+    /// Brief description of what it does
+    pub description: String,
+    /// Dependencies this endpoint relies on
+    pub dependencies: Vec<String>,
+}
+
+/// Structured output for agentic_api_surface_analysis
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct APISurfaceOutput {
+    /// Natural language API surface analysis
+    pub analysis: String,
+    /// Public API endpoints/interfaces (flexible: can be simplified objects)
+    pub endpoints: Vec<serde_json::Value>,
+    /// API usage patterns
+    pub usage_patterns: Vec<String>,
+    /// Integration points with external systems (flexible: can be strings or FileLocation objects)
+    pub integration_points: Vec<serde_json::Value>,
+}
+
+/// Structured output for agentic_context_builder
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ContextBuilderOutput {
+    /// Natural language context summary
+    pub analysis: String,
+    /// Core components in this context
+    pub core_components: Vec<FileLocation>,
+    /// Dependency tree structure (flexible: can be simplified)
+    pub dependency_tree: serde_json::Value,
+    /// Execution flows (flexible: can be simplified)
+    pub execution_flows: Vec<serde_json::Value>,
+    /// Architectural context (flexible: can be simplified)
+    pub architecture: serde_json::Value,
+    /// Related documentation or comments
+    pub documentation_references: Vec<String>,
+}
+
+/// Structured output for agentic_semantic_question
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SemanticQuestionOutput {
+    /// Direct answer to the question
+    pub answer: String,
+    /// Supporting evidence with file locations
+    pub evidence: Vec<FileLocation>,
+    /// Related components that provide context
+    pub related_components: Vec<FileLocation>,
+    /// Confidence level (0.0 to 1.0)
+    pub confidence: f64,
+}
+
+/// Structured output for agentic_complexity_analysis
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ComplexityAnalysisOutput {
+    /// Natural language analysis of complexity hotspots
+    pub analysis: String,
+    /// Top complexity hotspots with risk scores
+    pub hotspots: Vec<FileLocation>,
+    /// Refactoring recommendations prioritized by risk reduction
+    pub refactoring_roadmap: Vec<serde_json::Value>,
+    /// Pattern detection results (cycles, god objects, etc.)
+    pub patterns_detected: Vec<String>,
+    /// Risk statistics summary
+    pub risk_summary: serde_json::Value,
+}
+
+/// Unified output type for all agentic tools
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AgenticOutput {
+    CodeSearch(CodeSearchOutput),
+    DependencyAnalysis(DependencyAnalysisOutput),
+    CallChain(CallChainOutput),
+    ArchitectureAnalysis(ArchitectureAnalysisOutput),
+    APISurface(APISurfaceOutput),
+    ContextBuilder(ContextBuilderOutput),
+    SemanticQuestion(SemanticQuestionOutput),
+    ComplexityAnalysis(ComplexityAnalysisOutput),
+}
+
+impl AgenticOutput {
+    /// Get the natural language analysis from any output type
+    pub fn analysis(&self) -> &str {
+        match self {
+            Self::CodeSearch(o) => &o.analysis,
+            Self::DependencyAnalysis(o) => &o.analysis,
+            Self::CallChain(o) => &o.analysis,
+            Self::ArchitectureAnalysis(o) => &o.analysis,
+            Self::APISurface(o) => &o.analysis,
+            Self::ContextBuilder(o) => &o.analysis,
+            Self::SemanticQuestion(o) => &o.answer,
+            Self::ComplexityAnalysis(o) => &o.analysis,
+        }
+    }
+
+    /// Extract all file locations from any output type
+    pub fn all_file_locations(&self) -> Vec<&FileLocation> {
+        match self {
+            Self::CodeSearch(o) => o.components.iter().collect(),
+            Self::DependencyAnalysis(o) => o.components.iter().collect(),
+            Self::CallChain(o) => {
+                // Only extract entry_point (direct FileLocation)
+                // decision_points are now flexible Value types
+                vec![&o.entry_point]
+            }
+            Self::ArchitectureAnalysis(o) => {
+                // Only extract hub_nodes (direct FileLocation array)
+                // layers and coupling_metrics are now flexible Value types
+                o.hub_nodes.iter().collect()
+            }
+            Self::APISurface(_) => {
+                // integration_points are now flexible Value types, can't extract directly
+                vec![]
+            }
+            Self::ContextBuilder(o) => {
+                // Only extract core_components (direct FileLocation array)
+                // dependency_tree, execution_flows, architecture are now flexible Value types
+                o.core_components.iter().collect()
+            }
+            Self::SemanticQuestion(o) => {
+                let mut locs = o.evidence.iter().collect::<Vec<_>>();
+                locs.extend(o.related_components.iter());
+                locs
+            }
+            Self::ComplexityAnalysis(o) => {
+                // Extract hotspots which are FileLocations
+                o.hotspots.iter().collect()
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_analysis_extraction() {
+        let output = AgenticOutput::CodeSearch(CodeSearchOutput {
+            analysis: "Test analysis".to_string(),
+            components: vec![],
+            patterns: vec![],
+        });
+
+        assert_eq!(output.analysis(), "Test analysis");
+    }
+}

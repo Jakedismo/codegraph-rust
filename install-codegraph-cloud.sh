@@ -40,12 +40,10 @@ cat <<EOF
 
 Next steps
 ----------
-1. Start SurrealDB with persistent storage (adjust path or port as needed):
+1. (Optional) Use a SurrealDB server instead of the embedded per-project store:
      surreal start --bind 0.0.0.0:3004 --user root --pass root file://\$HOME/.codegraph/surreal.db
+   and set CODEGRAPH_SURREALDB_URL=${SURR_URL} (namespace ${SURR_NAMESPACE}, database ${SURR_DATABASE}).
 2. Configure cloud providers in your project .env:
-     CODEGRAPH_SURREALDB_URL=${SURR_URL}
-     CODEGRAPH_SURREALDB_NAMESPACE=${SURR_NAMESPACE}
-     CODEGRAPH_SURREALDB_DATABASE=${SURR_DATABASE}
      CODEGRAPH_EMBEDDING_PROVIDER=ollama          # or jina if remote only
      CODEGRAPH_LLM_PROVIDER=openai                # or anthropic/xai/ollama
      OPENAI_API_KEY=sk-...                        # set keys for the providers you enable

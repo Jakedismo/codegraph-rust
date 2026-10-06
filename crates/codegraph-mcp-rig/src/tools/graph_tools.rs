@@ -2,10 +2,10 @@
 // ABOUTME: 8 graph analysis tools implementing rig_core::Tool trait
 
 use super::counting_executor::CountingExecutor;
-use rig::tool::Tool;
+use rig::tool::PortableTool as Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use thiserror::Error;
 
 /// Error type for graph tool operations
@@ -24,12 +24,12 @@ pub enum GraphToolError {
 /// Arguments for get_transitive_dependencies tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct TransitiveDepsArgs {
-    /// Node ID to analyze dependencies for
+    /// Node ID exactly as returned by an earlier tool result, such as semantic_code_search. A symbol name is not a node ID.
     pub node_id: String,
-    /// Type of edge to traverse (default: "Calls")
+    /// Relationship to follow: "Calls", "Imports", "Uses", "Extends", "Implements", or "References" (default: "Calls")
     #[serde(default = "default_edge_type")]
     pub edge_type: String,
-    /// Maximum depth to traverse (default: 3)
+    /// How many hops to follow, 1-10 (default: 3). Results grow quickly with depth.
     #[serde(default = "default_depth")]
     pub depth: i32,
 }
@@ -37,16 +37,16 @@ pub struct TransitiveDepsArgs {
 /// Arguments for detect_circular_dependencies tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct DetectCyclesArgs {
-    /// Type of edge to check for cycles
+    /// Relationship to check for cycles: "Calls", "Imports", "Uses", "Extends", "Implements", or "References"
     pub edge_type: String,
 }
 
 /// Arguments for trace_call_chain tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct TraceCallChainArgs {
-    /// Starting node for the trace
+    /// ID of the function the trace starts from, exactly as returned by an earlier tool result
     pub from_node: String,
-    /// Maximum depth to trace (default: 5)
+    /// How many calls deep to follow, 1-10 (default: 5)
     #[serde(default = "default_max_depth")]
     pub max_depth: i32,
 }
@@ -54,14 +54,14 @@ pub struct TraceCallChainArgs {
 /// Arguments for calculate_coupling_metrics tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct CouplingMetricsArgs {
-    /// Node ID to calculate coupling for
+    /// Node ID exactly as returned by an earlier tool result, such as semantic_code_search. A symbol name is not a node ID.
     pub node_id: String,
 }
 
 /// Arguments for get_hub_nodes tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct HubNodesArgs {
-    /// Minimum degree to consider as hub (default: 5)
+    /// Minimum number of connections a node needs to count as a hub (default: 5). Lower it to get more nodes.
     #[serde(default = "default_min_degree")]
     pub min_degree: i32,
 }
@@ -69,12 +69,12 @@ pub struct HubNodesArgs {
 /// Arguments for get_reverse_dependencies tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ReverseDepsArgs {
-    /// Node ID to find dependents for
+    /// Node ID exactly as returned by an earlier tool result, such as semantic_code_search. A symbol name is not a node ID.
     pub node_id: String,
-    /// Type of edge to traverse (default: "Calls")
+    /// Relationship to follow: "Calls", "Imports", "Uses", "Extends", "Implements", or "References" (default: "Calls")
     #[serde(default = "default_edge_type")]
     pub edge_type: String,
-    /// Maximum depth to traverse (default: 3)
+    /// How many hops to follow, 1-10 (default: 3). Depth 1 gives direct dependents only.
     #[serde(default = "default_depth")]
     pub depth: i32,
 }
@@ -82,12 +82,12 @@ pub struct ReverseDepsArgs {
 /// Arguments for semantic_code_search tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct SemanticSearchArgs {
-    /// Natural language search query
+    /// What to look for, as a description ("where HTTP requests are authenticated") or an identifier ("parse_config")
     pub query: String,
-    /// Maximum results to return (default: 10)
+    /// Maximum results to return, 1-50 (default: 10)
     #[serde(default = "default_limit")]
     pub limit: usize,
-    /// Similarity threshold 0.0-1.0 (default: 0.6)
+    /// Minimum similarity, 0.0-1.0 (default: 0.6). Lower it if a search returns nothing.
     #[serde(default = "default_threshold")]
     pub threshold: f64,
 }
@@ -95,7 +95,7 @@ pub struct SemanticSearchArgs {
 /// Arguments for find_complexity_hotspots tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ComplexityHotspotsArgs {
-    /// Minimum complexity score to include (default: 5.0)
+    /// Minimum complexity score a function needs to be included (default: 5.0)
     #[serde(default = "default_min_complexity")]
     pub min_complexity: f32,
     /// Maximum results to return (default: 20)
@@ -152,12 +152,13 @@ impl Tool for GetTransitiveDependencies {
     type Args = TransitiveDepsArgs;
     type Output = JsonValue;
 
-    async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
-        rig::completion::ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Get all transitive dependencies of a node following specified edge types to a given depth".to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(TransitiveDepsArgs)).unwrap_or_default(),
-        }
+    fn description(&self) -> String {
+        "List everything a node depends on, directly and indirectly, by following one relationship type outward to a given depth. Use it to learn what a piece of code needs in order to work."
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(TransitiveDepsArgs)).unwrap_or_default()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -193,14 +194,13 @@ impl Tool for DetectCircularDependencies {
     type Args = DetectCyclesArgs;
     type Output = JsonValue;
 
-    async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
-        rig::completion::ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Detect circular dependencies (cycles) in the graph for a given edge type"
-                .to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(DetectCyclesArgs))
-                .unwrap_or_default(),
-        }
+    fn description(&self) -> String {
+        "Find dependency cycles across the whole codebase for one relationship type. Takes no node ID. Use it to check for circular imports or mutually recursive calls."
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(DetectCyclesArgs)).unwrap_or_default()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -234,14 +234,13 @@ impl Tool for TraceCallChain {
     type Args = TraceCallChainArgs;
     type Output = JsonValue;
 
-    async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
-        rig::completion::ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Trace the call chain from a starting node to understand execution flow"
-                .to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(TraceCallChainArgs))
-                .unwrap_or_default(),
-        }
+    fn description(&self) -> String {
+        "Follow function calls outward from a starting function and return the call paths in order. Use it to see how execution proceeds from an entry point."
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(TraceCallChainArgs)).unwrap_or_default()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -276,12 +275,13 @@ impl Tool for CalculateCouplingMetrics {
     type Args = CouplingMetricsArgs;
     type Output = JsonValue;
 
-    async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
-        rig::completion::ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Calculate afferent and efferent coupling metrics for a node to assess its dependencies".to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(CouplingMetricsArgs)).unwrap_or_default(),
-        }
+    fn description(&self) -> String {
+        "Measure how coupled one node is. Returns afferent coupling Ca (how many nodes depend on it), efferent coupling Ce (how many it depends on), and instability I = Ce / (Ca + Ce): near 0 means many dependents and costly to change, near 1 means few dependents and cheap to change."
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(CouplingMetricsArgs)).unwrap_or_default()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -315,14 +315,13 @@ impl Tool for GetHubNodes {
     type Args = HubNodesArgs;
     type Output = JsonValue;
 
-    async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
-        rig::completion::ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Find hub nodes with high connectivity (many incoming or outgoing edges)"
-                .to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(HubNodesArgs))
-                .unwrap_or_default(),
-        }
+    fn description(&self) -> String {
+        "List the most connected nodes in the whole codebase, by incoming plus outgoing edges. Takes no node ID. Use it to find the central components of an unfamiliar codebase."
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(HubNodesArgs)).unwrap_or_default()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -356,15 +355,13 @@ impl Tool for GetReverseDependencies {
     type Args = ReverseDepsArgs;
     type Output = JsonValue;
 
-    async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
-        rig::completion::ToolDefinition {
-            name: Self::NAME.to_string(),
-            description:
-                "Find all nodes that depend on the specified node (reverse dependency analysis)"
-                    .to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(ReverseDepsArgs))
-                .unwrap_or_default(),
-        }
+    fn description(&self) -> String {
+        "List everything that depends on a node, directly and indirectly, by following one relationship type inward to a given depth. Use it to learn what a change to the node could break."
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(ReverseDepsArgs)).unwrap_or_default()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -400,15 +397,13 @@ impl Tool for SemanticCodeSearch {
     type Args = SemanticSearchArgs;
     type Output = JsonValue;
 
-    async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
-        rig::completion::ToolDefinition {
-            name: Self::NAME.to_string(),
-            description:
-                "Search code semantically using natural language queries and vector embeddings"
-                    .to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(SemanticSearchArgs))
-                .unwrap_or_default(),
-        }
+    fn description(&self) -> String {
+        "Search the codebase by meaning or by identifier. Returns matching nodes with their node ID, name, file path, line, and a code snippet. This is the way to obtain the node IDs the other tools require, so it is usually the first call."
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(SemanticSearchArgs)).unwrap_or_default()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -444,15 +439,13 @@ impl Tool for FindComplexityHotspots {
     type Args = ComplexityHotspotsArgs;
     type Output = JsonValue;
 
-    async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
-        rig::completion::ToolDefinition {
-            name: Self::NAME.to_string(),
-            description:
-                "Find functions with high complexity and coupling that may benefit from refactoring"
-                    .to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(ComplexityHotspotsArgs))
-                .unwrap_or_default(),
-        }
+    fn description(&self) -> String {
+        "Rank the functions in the whole codebase that combine high complexity with high coupling. Takes no node ID. Use it to find code that is risky to change or worth refactoring."
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::to_value(schemars::schema_for!(ComplexityHotspotsArgs)).unwrap_or_default()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

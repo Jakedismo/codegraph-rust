@@ -7,14 +7,14 @@ use crate::{ZeroCopyError, ZeroCopyResult};
 use memmap2::{MmapMut, MmapOptions};
 use parking_lot::RwLock;
 use rkyv::api::high::HighValidator;
-use rkyv::{access, access_unchecked, Archive};
+use rkyv::{Archive, access, access_unchecked};
 use std::{
     fs::{File, OpenOptions},
     marker::PhantomData,
     path::Path,
     sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
 };
 use tracing::{debug, instrument, trace, warn};

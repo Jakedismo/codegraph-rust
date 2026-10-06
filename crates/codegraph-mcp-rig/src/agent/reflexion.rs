@@ -4,8 +4,8 @@ use crate::agent::api::{AgentEvent, RigAgentTrait};
 use anyhow::Result;
 use async_trait::async_trait;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
-use futures::stream;
 use futures::Stream;
+use futures::stream;
 use std::pin::Pin;
 
 /// Reflexion agent that wraps an inner agent and retries on failure
@@ -27,8 +27,7 @@ impl RigAgentTrait for ReflexionAgent {
                     if attempt > 0 {
                         return Ok(format!(
                             "[REFLEXION SUCCESS after {} retries]\n{}",
-                            attempt,
-                            response
+                            attempt, response
                         ));
                     }
                     return Ok(response);
@@ -37,9 +36,8 @@ impl RigAgentTrait for ReflexionAgent {
                     last_error = Some(e.to_string());
                     // Reflection step: Append error context to query
                     current_query = format!(
-                        "{}\n\n[Previous Attempt Failed]: {}\nPlease reflect on this error and try a different approach.",
-                        query,
-                        e
+                        "{}\n\nA previous attempt at this request failed with this error:\n{}\n\nWork out what caused the error and avoid it this time. If it came from running out of tool rounds, use fewer rounds and answer from less evidence. If it came from a tool call, change the arguments or use a different tool.",
+                        query, e
                     );
                 }
             }
@@ -56,26 +54,30 @@ impl RigAgentTrait for ReflexionAgent {
         &self,
         query: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<AgentEvent>> + Send>>> {
-        // Since I can't easily clone Box<dyn RigAgentTrait>, I will stick to buffered reflexion for streaming 
+        // Since I can't easily clone Box<dyn RigAgentTrait>, I will stick to buffered reflexion for streaming
         // in this phase, but I will add thinking events to show the process.
-        
+
         let result = self.execute(query).await;
         match result {
-             Ok(response) => {
-                 let events = vec![
-                     Ok(AgentEvent::Thinking("Reflexion: Validating reasoning...".to_string())),
-                     Ok(AgentEvent::OutputChunk(response)),
-                     Ok(AgentEvent::Done),
-                 ];
-                 Ok(Box::pin(stream::iter(events)))
-             }
-             Err(e) => {
-                 let events = vec![
-                     Ok(AgentEvent::Thinking("Reflexion: Attempt failed, reflecting...".to_string())),
-                     Ok(AgentEvent::Error(e.to_string())),
-                 ];
-                 Ok(Box::pin(stream::iter(events)))
-             }
+            Ok(response) => {
+                let events = vec![
+                    Ok(AgentEvent::Thinking(
+                        "Reflexion: Validating reasoning...".to_string(),
+                    )),
+                    Ok(AgentEvent::OutputChunk(response)),
+                    Ok(AgentEvent::Done),
+                ];
+                Ok(Box::pin(stream::iter(events)))
+            }
+            Err(e) => {
+                let events = vec![
+                    Ok(AgentEvent::Thinking(
+                        "Reflexion: Attempt failed, reflecting...".to_string(),
+                    )),
+                    Ok(AgentEvent::Error(e.to_string())),
+                ];
+                Ok(Box::pin(stream::iter(events)))
+            }
         }
     }
 

@@ -47,6 +47,31 @@ pub struct EmbeddingEngineConfig {
     pub onnx: Option<OnnxConfigCompat>,
 }
 
+fn explicit_provider(
+    config: &EmbeddingEngineConfig,
+    environment: Option<&str>,
+) -> Result<Option<&'static str>> {
+    let requested: Vec<_> = [
+        (config.local.is_some(), "local"),
+        (config.onnx.is_some(), "onnx"),
+        (config.openai.is_some(), "openai"),
+    ]
+    .into_iter()
+    .filter_map(|(enabled, name)| enabled.then_some(name))
+    .collect();
+    if requested.len() > 1 {
+        return Err(codegraph_core::CodeGraphError::Vector(
+            "Configure exactly one explicit embedding backend".into(),
+        ));
+    }
+    Ok(requested.first().copied().or(match environment {
+        Some("local") => Some("local"),
+        Some("onnx") => Some("onnx"),
+        Some("openai") => Some("openai"),
+        _ => None,
+    }))
+}
+
 impl Default for EmbeddingEngineConfig {
     fn default() -> Self {
         Self {
@@ -355,49 +380,76 @@ impl AdvancedEmbeddingGenerator {
         #[allow(unused_mut)]
         let mut dimension_hint = config.dimension_hint.unwrap_or(768);
 
-        // ONNX explicit selection via env or config
-        #[cfg(feature = "onnx")]
-        {
-            let prov = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
-                .unwrap_or_default()
-                .to_lowercase();
-            if prov == "onnx" || config.onnx.is_some() {
-                if let Ok(onnx) = make_onnx(&config).await {
-                    dimension_hint = onnx.embedding_dimension();
-                    primary = Some(onnx);
+        let environment = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
+            .unwrap_or_default()
+            .to_lowercase();
+        let explicit = explicit_provider(&config, Some(&environment))?;
+        #[cfg(any(feature = "onnx", feature = "local-embeddings", feature = "openai"))]
+        if let Some(provider) = explicit {
+            primary = Some(match provider {
+                #[cfg(feature = "onnx")]
+                "onnx" => make_onnx(&config).await?,
+                #[cfg(feature = "local-embeddings")]
+                "local" => make_local(&config).await?,
+                #[cfg(feature = "openai")]
+                "openai" => make_openai(&config)?,
+                _ => {
+                    return Err(codegraph_core::CodeGraphError::Vector(format!(
+                        "Embedding backend {provider} is not compiled in"
+                    )));
                 }
-            }
+            });
+            dimension_hint = primary.as_ref().unwrap().embedding_dimension();
+        }
+
+        #[cfg(not(any(feature = "onnx", feature = "local-embeddings", feature = "openai")))]
+        if explicit.is_some() {
+            return Err(codegraph_core::CodeGraphError::Vector(
+                "No embedding backend compiled in".into(),
+            ));
         }
 
         #[cfg(all(feature = "local-embeddings", feature = "openai"))]
-        {
+        if explicit.is_none() {
             if config.prefer_local_first {
-                if let Ok(local) = make_local(&config).await {
-                    dimension_hint = local.embedding_dimension();
-                    primary = Some(local);
-                    if let Ok(openai) = make_openai(&config) {
-                        fallbacks.push(openai);
+                match make_local(&config).await {
+                    Ok(local) => {
+                        dimension_hint = local.embedding_dimension();
+                        primary = Some(local);
+                        if let Ok(openai) = make_openai(&config) {
+                            fallbacks.push(openai);
+                        }
                     }
-                } else if let Ok(openai) = make_openai(&config) {
-                    dimension_hint = openai.embedding_dimension();
-                    primary = Some(openai);
+                    _ => match make_openai(&config) {
+                        Ok(openai) => {
+                            dimension_hint = openai.embedding_dimension();
+                            primary = Some(openai);
+                        }
+                        _ => {}
+                    },
                 }
             } else {
-                if let Ok(openai) = make_openai(&config) {
-                    dimension_hint = openai.embedding_dimension();
-                    primary = Some(openai);
-                    if let Ok(local) = make_local(&config).await {
-                        fallbacks.push(local);
+                match make_openai(&config) {
+                    Ok(openai) => {
+                        dimension_hint = openai.embedding_dimension();
+                        primary = Some(openai);
+                        if let Ok(local) = make_local(&config).await {
+                            fallbacks.push(local);
+                        }
                     }
-                } else if let Ok(local) = make_local(&config).await {
-                    dimension_hint = local.embedding_dimension();
-                    primary = Some(local);
+                    _ => match make_local(&config).await {
+                        Ok(local) => {
+                            dimension_hint = local.embedding_dimension();
+                            primary = Some(local);
+                        }
+                        _ => {}
+                    },
                 }
             }
         }
 
         #[cfg(all(feature = "local-embeddings", not(feature = "openai")))]
-        {
+        if explicit.is_none() {
             if let Ok(local) = make_local(&config).await {
                 dimension_hint = local.embedding_dimension();
                 primary = Some(local);
@@ -405,7 +457,7 @@ impl AdvancedEmbeddingGenerator {
         }
 
         #[cfg(all(feature = "openai", not(feature = "local-embeddings")))]
-        {
+        if explicit.is_none() {
             if let Ok(openai) = make_openai(&config) {
                 dimension_hint = openai.embedding_dimension();
                 primary = Some(openai);
@@ -524,15 +576,59 @@ impl AdvancedEmbeddingGenerator {
 
     /// Wrapper that ensures 1000+ text batches are processed in chunks efficiently.
     pub async fn embed_texts_batched(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        if texts.len() <= self.config.batch_size {
-            return self.embed_texts(texts).await;
-        }
-        let mut result = Vec::with_capacity(texts.len());
-        for chunk in texts.chunks(self.config.batch_size) {
-            let emb = self.embed_texts(chunk).await?;
-            result.extend(emb);
-        }
-        Ok(result)
+        let pipeline = self.pipeline.as_ref().ok_or_else(|| {
+            codegraph_core::CodeGraphError::Vector(
+                "No semantic embedding provider configured".into(),
+            )
+        })?;
+        pipeline
+            .generate_prepared_texts(texts, &self.provider_batch_config())
+            .await
+    }
+
+    pub fn dimension(&self) -> usize {
+        self.deterministic_dim
+    }
+    pub fn model_name(&self) -> Option<&str> {
+        self.config
+            .onnx
+            .as_ref()
+            .map(|config| config.model_repo.as_str())
+            .or_else(|| {
+                self.config
+                    .local
+                    .as_ref()
+                    .map(|config| config.model_name.as_str())
+            })
+            .or_else(|| {
+                self.config
+                    .openai
+                    .as_ref()
+                    .map(|config| config.model.as_str())
+            })
+    }
+    pub fn max_input_tokens(&self) -> usize {
+        self.config
+            .local
+            .as_ref()
+            .map(|config| config.max_sequence_length)
+            .or_else(|| {
+                self.config
+                    .onnx
+                    .as_ref()
+                    .map(|config| config.max_sequence_length)
+            })
+            .unwrap_or(if self.config.openai.is_some() {
+                8191
+            } else {
+                512
+            })
+    }
+
+    pub fn tokenizer(&self) -> Option<Arc<tokenizers::Tokenizer>> {
+        self.pipeline
+            .as_ref()
+            .and_then(|pipeline| pipeline.tokenizer())
     }
 
     /// Quality validation: compute cosine similarity across pairs and return average.
@@ -602,5 +698,36 @@ impl TextEmbeddingEngine for AdvancedEmbeddingGenerator {
     }
 }
 
-// Allow selecting ONNX explicitly via env (inside builder path)
-// Note: this block belongs inside AdvancedEmbeddingGenerator::new; ensure similar logic exists there.
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+    #[test]
+    fn explicit_backend_cannot_be_replaced_by_default_preference() {
+        let mut config = EmbeddingEngineConfig {
+            onnx: Some(OnnxConfigCompat {
+                model_repo: "same-model".into(),
+                model_file: None,
+                max_sequence_length: 512,
+                pooling: "mean".into(),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(explicit_provider(&config, None).unwrap(), Some("onnx"));
+        assert_eq!(
+            explicit_provider(&config, Some("openai")).unwrap(),
+            Some("onnx")
+        );
+        assert_eq!(
+            explicit_provider(&EmbeddingEngineConfig::default(), Some("onnx")).unwrap(),
+            Some("onnx")
+        );
+        config.local = Some(LocalEmbeddingConfigCompat {
+            model_name: "same-model".into(),
+            device: LocalDeviceTypeCompat::Cpu,
+            cache_dir: None,
+            max_sequence_length: 512,
+            pooling_strategy: LocalPoolingCompat::Mean,
+        });
+        assert!(explicit_provider(&config, None).is_err());
+    }
+}

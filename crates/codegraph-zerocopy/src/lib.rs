@@ -21,8 +21,8 @@ pub use shared_memory::*;
 
 // Re-export rkyv types for external use
 pub use rkyv::{
-    access, access_unchecked, deserialize, from_bytes, from_bytes_unchecked, to_bytes, Archive,
-    Deserialize, Serialize,
+    Archive, Deserialize, Serialize, access, access_unchecked, deserialize, from_bytes,
+    from_bytes_unchecked, to_bytes,
 };
 
 use thiserror::Error;

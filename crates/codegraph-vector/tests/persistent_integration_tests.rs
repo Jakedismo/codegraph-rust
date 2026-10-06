@@ -53,6 +53,7 @@ mod persistent_tests {
                     metadata,
                     embedding: Some(vector.clone()),
                     complexity: None,
+                    span: None,
                 }
             })
             .collect()

@@ -1,10 +1,10 @@
 # CodeGraph MCP Rig Agent (`codegraph-mcp-rig`)
 
 ## Overview
-`codegraph-mcp-rig` provides an alternative agent backend for the CodeGraph MCP server, built on top of the [Rig](https://github.com/0xPlaygrounds/rig) framework. It is **not** a testing rig, but a fully functional agent implementation that orchestrates LLMs to solve complex tasks using the code graph.
+`codegraph-mcp-rig` provides the agent backend for the CodeGraph MCP server, built on top of the [Rig](https://github.com/0xPlaygrounds/rig) framework. It is **not** a testing rig, but a fully functional agent implementation that orchestrates LLMs to solve complex tasks using the code graph.
 
 ## Purpose
-This crate serves as a robust, production-ready alternative to the experimental `codegraph-mcp-autoagents`. It leverages the `rig` library's abstractions for:
+This crate is the only agent backend. It leverages the `rig` library's abstractions for:
 - **Provider Abstraction**: Unified interface for OpenAI, Anthropic, Ollama, xAI, and generic OpenAI-compatible providers (like LM Studio).
 - **Agent Construction**: Builder pattern (`RigAgentBuilder`) to configure agents with specific system prompts, context tiers, and tool sets.
 - **Tool Integration**: Automatically exposes CodeGraph tools (dependency analysis, semantic search, etc.) to the LLM agent.

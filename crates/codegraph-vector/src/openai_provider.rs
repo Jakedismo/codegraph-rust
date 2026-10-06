@@ -1,7 +1,7 @@
 #[cfg(feature = "openai")]
 use crate::{
     prep::chunker::{
-        aggregate_chunk_embeddings, build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode,
+        ChunkPlan, ChunkerConfig, SanitizeMode, aggregate_chunk_embeddings, build_chunk_plan,
     },
     providers::{
         BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
@@ -147,7 +147,7 @@ impl OpenAiEmbeddingProvider {
             .smart_split(smart_split)
     }
 
-    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> Result<ChunkPlan> {
         build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
     }
 
@@ -203,16 +203,19 @@ impl OpenAiEmbeddingProvider {
                         let status = response.status();
 
                         // Try to parse error response
-                        if let Ok(api_error) = response.json::<ApiError>().await {
-                            last_error = Some(CodeGraphError::External(format!(
-                                "OpenAI API error: {} ({})",
-                                api_error.error.message, api_error.error.error_type
-                            )));
-                        } else {
-                            last_error = Some(CodeGraphError::External(format!(
-                                "OpenAI API error: HTTP {}",
-                                status
-                            )));
+                        match response.json::<ApiError>().await {
+                            Ok(api_error) => {
+                                last_error = Some(CodeGraphError::External(format!(
+                                    "OpenAI API error: {} ({})",
+                                    api_error.error.message, api_error.error.error_type
+                                )));
+                            }
+                            _ => {
+                                last_error = Some(CodeGraphError::External(format!(
+                                    "OpenAI API error: HTTP {}",
+                                    status
+                                )));
+                            }
                         }
                     }
                 }
@@ -247,7 +250,7 @@ impl OpenAiEmbeddingProvider {
         config: &BatchConfig,
     ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)> {
         let start_time = Instant::now();
-        let plan = self.build_plan_for_nodes(nodes);
+        let plan = self.build_plan_for_nodes(nodes)?;
         debug!(
             "OpenAI chunk planner: {} nodes -> {} chunks (avg {:.2} chunks/node)",
             plan.stats.total_nodes,
@@ -290,6 +293,29 @@ impl OpenAiEmbeddingProvider {
 #[cfg(feature = "openai")]
 #[async_trait]
 impl EmbeddingProvider for OpenAiEmbeddingProvider {
+    async fn generate_prepared_texts(
+        &self,
+        texts: &[String],
+        config: &BatchConfig,
+    ) -> Result<Vec<Vec<f32>>> {
+        let mut output = Vec::with_capacity(texts.len());
+        for batch in texts.chunks(config.batch_size.max(1)) {
+            let mut data = self.call_api(batch.to_vec()).await?.data;
+            data.sort_by_key(|item| item.index);
+            if data.len() != batch.len()
+                || data
+                    .iter()
+                    .enumerate()
+                    .any(|(index, item)| item.index != index)
+            {
+                return Err(CodeGraphError::Vector(
+                    "OpenAI returned missing or duplicate embedding indices".into(),
+                ));
+            }
+            output.extend(data.into_iter().map(|item| item.embedding));
+        }
+        Ok(output)
+    }
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
         let config = BatchConfig::default();
         let (mut embeddings, _) = self

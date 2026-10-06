@@ -4,4 +4,4 @@
 mod tier_prompts;
 
 pub use codegraph_mcp_core::analysis::AnalysisType;
-pub use tier_prompts::{detect_tier, get_max_turns, get_tier_system_prompt};
+pub use tier_prompts::{build_system_prompt, detect_tier, get_max_turns, get_tier_system_prompt};

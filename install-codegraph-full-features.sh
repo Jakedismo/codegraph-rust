@@ -4,8 +4,8 @@
 
 set -euo pipefail
 
-# Build with all available features on the server crate, plus LATS explicitly
-FEATURE_FLAGS="--all-features --features autoagents-lats"
+# Build with all available features on the server crate
+FEATURE_FLAGS="--all-features"
 SURR_URL="${CODEGRAPH_SURREALDB_URL:-ws://localhost:3004}"
 SURR_NAMESPACE="${CODEGRAPH_SURREALDB_NAMESPACE:-ouroboros}"
 SURR_DATABASE="${CODEGRAPH_SURREALDB_DATABASE:-codegraph}"
@@ -74,13 +74,13 @@ Enabled Features:
    - OpenAI, Anthropic, Ollama, xAI
    - LM Studio, OpenAI-compatible
 🌐 HTTP server (SSE streaming support)
-🔬 AutoAgents framework (experimental)
 🗄️ SurrealDB backend with HNSW vector search
 
 Next Steps
 ----------
-1. Start SurrealDB with persistent storage:
+1. (Optional) Use a SurrealDB server instead of the embedded per-project store:
      surreal start --bind 0.0.0.0:3004 --user root --pass root file://\$HOME/.codegraph/surreal.db
+   and set CODEGRAPH_SURREALDB_URL.
 
 2. Configure your preferred providers in ~/.codegraph/config.toml:
 

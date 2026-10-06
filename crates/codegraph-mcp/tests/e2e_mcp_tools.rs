@@ -4,10 +4,10 @@
 ///
 /// Tests consolidated MCP tools against the indexed Rust codebase
 /// using the official rmcp client library for authentic protocol testing.
-use anyhow::{anyhow, Result};
-use rmcp::{model::CallToolRequestParam, transport::TokioChildProcess, RoleClient, ServiceExt};
-use serde_json::json;
+use anyhow::{Result, anyhow};
+use rmcp::{RoleClient, ServiceExt, model::CallToolRequestParams, transport::TokioChildProcess};
 use serde_json::Value;
+use serde_json::json;
 use std::path::PathBuf;
 use std::process::{Command as StdCommand, Stdio};
 use std::sync::OnceLock;
@@ -51,7 +51,7 @@ fn codegraph_bin_path() -> PathBuf {
     } else {
         "codegraph"
     };
-    target_dir().join("debug").join(exe)
+    target_dir().join("fast-dev").join(exe)
 }
 
 fn ensure_codegraph_bin() -> PathBuf {
@@ -62,6 +62,8 @@ fn ensure_codegraph_bin() -> PathBuf {
                 .current_dir(&workspace_root)
                 .args([
                     "build",
+                    "--profile",
+                    "fast-dev",
                     "-q",
                     "-p",
                     "codegraph-mcp-server",
@@ -122,10 +124,8 @@ async fn assert_agentic_tool_is_disabled(
 
     let result = timeout(
         timeout_duration,
-        service.call_tool(CallToolRequestParam {
-            name: tool_name.to_string().into(),
-            arguments: Some(arguments),
-        }),
+        service
+            .call_tool(CallToolRequestParams::new(tool_name.to_string()).with_arguments(arguments)),
     )
     .await;
 
@@ -422,9 +422,8 @@ async fn test_error_conditions() -> Result<()> {
     // Test 1: Invalid parameters
     println!("🧪 Testing invalid parameters...");
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "agentic_context".into(),
-            arguments: Some(
+        .call_tool(
+            CallToolRequestParams::new("agentic_context").with_arguments(
                 json!({
                     "invalid_param": "test"
                     // Missing required "query" parameter
@@ -433,12 +432,17 @@ async fn test_error_conditions() -> Result<()> {
                 .unwrap()
                 .clone(),
             ),
-        })
+        )
         .await;
 
     // Should handle gracefully (either error or empty response)
     match result {
-        Ok(_response) => {
+        Ok(response) => {
+            assert_eq!(
+                response.is_error,
+                Some(true),
+                "Invalid arguments must be rejected"
+            );
             println!("✅ Tool handled invalid parameters gracefully");
         }
         Err(e) => {
@@ -458,10 +462,7 @@ async fn test_error_conditions() -> Result<()> {
     // Test 2: Non-existent tool
     println!("🧪 Testing non-existent tool...");
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "non_existent_tool".into(),
-            arguments: None,
-        })
+        .call_tool(CallToolRequestParams::new("non_existent_tool"))
         .await;
 
     assert!(result.is_err(), "Should error for non-existent tool");
@@ -470,9 +471,8 @@ async fn test_error_conditions() -> Result<()> {
     // Test 3: Invalid graph node UUID (when we add graph tools)
     println!("🧪 Testing invalid parameter types...");
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "agentic_context".into(),
-            arguments: Some(
+        .call_tool(
+            CallToolRequestParams::new("agentic_context").with_arguments(
                 json!({
                     "query": "type mismatch test",
                     "limit": "not-a-number"
@@ -481,12 +481,16 @@ async fn test_error_conditions() -> Result<()> {
                 .unwrap()
                 .clone(),
             ),
-        })
+        )
         .await;
 
     // Should reject invalid types during request decoding
     match result {
-        Ok(_response) => panic!("Expected invalid parameter types to be rejected"),
+        Ok(response) => assert_eq!(
+            response.is_error,
+            Some(true),
+            "Invalid parameter types must be rejected"
+        ),
         Err(e) => println!("✅ Tool rejected invalid parameter types: {}", e),
     }
 
@@ -580,7 +584,13 @@ async fn test_server_health() -> Result<()> {
     let info = service
         .peer_info()
         .expect("Server should provide peer info after initialization");
-    println!("📋 Server info: {:?}", info.server_info.name);
+    println!(
+        "📋 Server info: {:?}",
+        info.server_info
+            .as_ref()
+            .map(|server| server.name.as_str())
+            .unwrap_or("unknown")
+    );
 
     service.cancel().await?;
     println!("🎉 Server health test passed!");

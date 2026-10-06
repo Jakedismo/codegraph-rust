@@ -144,9 +144,11 @@ fn test_error_types() {
     assert!(version_mismatch.to_string().contains("version mismatch"));
 
     let timeout_error = McpError::RequestTimeout("test_method".to_string());
-    assert!(timeout_error
-        .to_string()
-        .contains("Request timeout: test_method"));
+    assert!(
+        timeout_error
+            .to_string()
+            .contains("Request timeout: test_method")
+    );
 }
 
 #[test]

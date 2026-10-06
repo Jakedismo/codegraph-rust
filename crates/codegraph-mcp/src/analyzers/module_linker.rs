@@ -265,7 +265,8 @@ fn canonical_import_target(
 
     let spec = spec.trim();
     if *language == Language::Rust {
-        if let Some(resolved) = resolve_rust_import(project_root, from_file, spec, known_module_keys)
+        if let Some(resolved) =
+            resolve_rust_import(project_root, from_file, spec, known_module_keys)
         {
             return resolved;
         }

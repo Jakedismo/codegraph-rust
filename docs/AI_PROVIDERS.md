@@ -5,7 +5,7 @@ This document explains how to configure CodeGraph’s embedding providers (for i
 It is based on the runtime configuration loader in `crates/codegraph-core/src/config_manager.rs` and provider implementations in:
 
 - `crates/codegraph-vector/src/*` (embeddings)
-- `crates/codegraph-ai/src/*` (LLM providers)
+- `crates/codegraph-mcp-rig/src/adapter/llm_adapter.rs` (the agent's LLM provider, model and endpoints)
 
 ## Configuration sources and precedence
 
@@ -22,10 +22,10 @@ If you use `.env`, it’s loaded automatically at startup (you do not need `dire
 
 ## Minimal setup checklist
 
-1. SurrealDB is running and schema is applied (see `docs/INSTALLATION_GUIDE.md`).
+1. The project has been indexed (the embedded store needs no setup; a SurrealDB server needs the schema applied, see `docs/INSTALLATION_GUIDE.md`).
 2. You have a `./.codegraph.toml` or `~/.codegraph/config.toml` with at least:
    - `[embedding] provider = ...`
-   - `[llm] enabled = true` and a working LLM provider configuration (required for agentic tools)
+   - an LLM for the agentic tools: `[llm] provider` and `model` in the config file, or `CODEGRAPH_LLM_PROVIDER` and `CODEGRAPH_LLM_MODEL` in the environment, plus the provider's API key in the environment
 3. Secrets are present via `.env` or your shell environment (recommended).
 
 ## `.env` examples
@@ -33,7 +33,7 @@ If you use `.env`, it’s loaded automatically at startup (you do not need `dire
 ### Local (Ollama embeddings + Ollama LLM)
 
 ```bash
-# SurrealDB connection (used by indexing and agentic tools)
+# SurrealDB server (optional; omit to use the embedded per-project store)
 CODEGRAPH_SURREALDB_URL=ws://localhost:3004
 CODEGRAPH_SURREALDB_NAMESPACE=ouroboros
 CODEGRAPH_SURREALDB_DATABASE=codegraph
@@ -47,7 +47,7 @@ CODEGRAPH_EMBEDDING_MODEL=hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M
 
 # Built-in agent LLM
 CODEGRAPH_LLM_PROVIDER=ollama
-CODEGRAPH_MODEL=qwen2.5-coder:14b
+CODEGRAPH_LLM_MODEL=qwen2.5-coder:14b
 ```
 
 ### Local (LM Studio embeddings + LM Studio LLM)
@@ -57,10 +57,10 @@ CODEGRAPH_EMBEDDING_PROVIDER=lmstudio
 CODEGRAPH_EMBEDDING_MODEL=jinaai/jina-embeddings-v3
 
 CODEGRAPH_LLM_PROVIDER=lmstudio
-CODEGRAPH_MODEL=local-model
+CODEGRAPH_LLM_MODEL=local-model
 ```
 
-Note: `lmstudio_url` is configured via TOML (`embedding.lmstudio_url` / `llm.lmstudio_url`); there is no `CODEGRAPH_LMSTUDIO_URL` env override today.
+Note: the embedding endpoint is `embedding.lmstudio_url` in TOML. The agent's LM Studio endpoint is `LMSTUDIO_URL` / `CODEGRAPH_LMSTUDIO_URL`, or `llm.lmstudio_url` in TOML.
 
 ### Remote (Jina embeddings + OpenAI LLM)
 
@@ -72,7 +72,7 @@ JINA_API_BASE=https://api.jina.ai/v1
 
 CODEGRAPH_LLM_PROVIDER=openai
 OPENAI_API_KEY=...
-CODEGRAPH_MODEL=gpt-5.1-codex
+CODEGRAPH_LLM_MODEL=gpt-5.1-codex
 ```
 
 Notes:
@@ -100,10 +100,10 @@ batch_size = 64
 enabled = true
 provider = "xai"
 model = "grok-4-1-fast-reasoning"
-xai_base_url = "https://api.x.ai/v1"
 context_window = 2000000
-timeout_secs = 120
 ```
+
+`XAI_API_KEY` and `JINA_API_KEY` go in the environment.
 
 ## Embedding providers (indexing + search)
 
@@ -202,88 +202,75 @@ If you change embedding dimensions/models, ensure your SurrealDB schema supports
 
 ## LLM providers (built-in agentic tools)
 
-The agentic MCP tools run a built-in agent server-side. That agent needs an LLM provider.
+The agentic tools run a built-in agent (the Rig backend in `crates/codegraph-mcp-rig`). The built-in agent resolves each LLM setting in three steps: the environment variable (a project `.env` counts), then the key in the config file's `[llm]` section, then a default.
 
-Important: the LLM provider factory requires `llm.enabled = true`. If it is `false`, agentic tools fail with “LLM is not enabled in configuration”.
+| Setting | Environment variable | `[llm]` key | Default |
+| --- | --- | --- | --- |
+| Provider | `CODEGRAPH_LLM_PROVIDER` | `provider` | inferred from whichever API key is set |
+| Model | `CODEGRAPH_LLM_MODEL`, then `CODEGRAPH_AGENT_MODEL`, then `CODEGRAPH_MODEL` | `model` | the provider's built-in default |
+| Context window | `CODEGRAPH_CONTEXT_WINDOW` | `context_window` | 128000 |
+| Ollama endpoint | `OLLAMA_API_BASE_URL`, `OLLAMA_API_URL`, `OLLAMA_HOST` | `ollama_url` | `http://localhost:11434` |
+| LM Studio endpoint | `LMSTUDIO_URL`, `CODEGRAPH_LMSTUDIO_URL` | `lmstudio_url` (`/v1` is appended) | `http://localhost:1234/v1` |
+| OpenAI-compatible endpoint | `CODEGRAPH_OPENAI_COMPATIBLE_URL` | `openai_compatible_url` | `http://localhost:1234/v1` |
+| API keys | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, `OPENAI_COMPATIBLE_API_KEY` | not read | none |
 
-You can enable it by:
+Set the model explicitly. Without one the agent requests its provider's built-in default (`gpt-4o` for OpenAI, `claude-sonnet-4-20250514` for Anthropic, `llama3.2` for Ollama, `grok-3-latest` for xAI).
 
-- setting `llm.enabled = true` in your TOML config, or
-- setting `CODEGRAPH_MODEL=...` (this env var implicitly enables the LLM configuration)
+`[llm] enabled = false` makes the agent ignore the whole section. `codegraph config init` writes a config file with every default spelled out and `enabled = false`, so a generated file does not select a provider until you set `enabled = true` or remove the line. Other `[llm]` keys (`temperature`, `max_tokens`, `timeout_secs`, `reasoning_effort`, `xai_base_url`, the `*_api_key` fields) are accepted by the loader but do not reach the agent.
 
-Valid values for `llm.provider` (availability depends on build features):
+Check the result with `codegraph config agent-status`.
 
-- `ollama`
-- `lmstudio`
-- `anthropic`
-- `openai`
-- `xai`
-- `openai-compatible`
+Valid providers (availability depends on build features): `ollama`, `lmstudio`, `anthropic`, `openai`, `xai`, `openai-compatible`.
 
-### `llm.provider = "ollama"`
+### Ollama
 
-Uses Ollama’s OpenAI-compatible endpoint at `<ollama_url>/v1`.
+```toml
+[llm]
+provider = "ollama"
+model = "qwen2.5-coder:14b"
+context_window = 32768
+# ollama_url = "http://localhost:11434"
+```
 
-Config inputs:
+### LM Studio
 
-- `llm.ollama_url` (default `http://localhost:11434`)
-- `llm.model` (e.g. `qwen2.5-coder:14b`)
+```toml
+[llm]
+provider = "lmstudio"
+model = "your-local-model-id"
+# lmstudio_url = "http://localhost:1234"
+```
 
-### `llm.provider = "lmstudio"`
+### Anthropic, OpenAI, xAI
 
-Uses LM Studio’s OpenAI-compatible endpoint at `<lmstudio_url>/v1`.
+```toml
+[llm]
+provider = "anthropic"            # or "openai" / "xai"
+model = "claude-sonnet-4"
+context_window = 200000
+```
 
-Config inputs:
+with the key in the environment: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `XAI_API_KEY`.
 
-- `llm.lmstudio_url` (default `http://localhost:1234`)
-- `llm.model` (your local model id/name)
+### OpenAI-compatible
 
-### `llm.provider = "openai"`
+For OpenAI-shaped APIs (self-hosted gateways, proxies):
 
-Config inputs:
+```toml
+[llm]
+provider = "openai-compatible"
+model = "served-model-name"
+openai_compatible_url = "http://localhost:8000/v1"
+```
 
-- `OPENAI_API_KEY` (or `llm.openai_api_key`)
-- `llm.model`
-
-Optional:
-
-- `OPENAI_ORG_ID`
-- `llm.reasoning_effort` (for reasoning-style models)
-
-### `llm.provider = "xai"`
-
-Config inputs:
-
-- `XAI_API_KEY` (or `llm.xai_api_key`)
-- `llm.model`
-- `llm.xai_base_url` (default `https://api.x.ai/v1`)
-
-### `llm.provider = "anthropic"`
-
-Config inputs:
-
-- `ANTHROPIC_API_KEY` (or `llm.anthropic_api_key`)
-- `llm.model`
-
-### `llm.provider = "openai-compatible"`
-
-Use this for OpenAI-shaped APIs (self-hosted gateways, proxies, etc.).
-
-Config inputs:
-
-- `llm.openai_compatible_url` (must be set)
-- `llm.model` (required)
-- `llm.openai_api_key` (optional; depends on your endpoint)
+The key, if the endpoint needs one, comes from `OPENAI_COMPATIBLE_API_KEY` or `OPENAI_API_KEY`.
 
 ### Context window and tier selection
 
-The 4-tier prompt system uses `llm.context_window` (or `CODEGRAPH_CONTEXT_WINDOW`) to decide how verbose prompts can be and how much to retrieve. See `docs/AGENT_PROMPT_TIERS.md`.
+The context window decides the prompt tier, the tool-round budget and the size limit for tool results. Set it to your model's real limit. See `docs/AGENT_PROMPT_TIERS.md`.
 
 ## Graph schema selection (optional)
 
-If you want CodeGraph to use the experimental graph schema database for agentic tools and indexing, set:
+To use the experimental graph schema, set `CODEGRAPH_USE_GRAPH_SCHEMA=true` before the project's embedded store is created (or delete `<project>/.codegraph/db` and re-index).
 
-- `CODEGRAPH_USE_GRAPH_SCHEMA=true`
-- `CODEGRAPH_GRAPH_DB_DATABASE=codegraph_experimental` (or your chosen db name)
-
-The schema still must be applied manually to that database (see `docs/INSTALLATION_GUIDE.md` and `schema/codegraph_graph_experimental.surql`).
+With a SurrealDB server, also set `CODEGRAPH_GRAPH_DB_DATABASE=codegraph_experimental` (or your chosen database name) and apply `schema/codegraph_graph_experimental.surql` to that database yourself (see `docs/INSTALLATION_GUIDE.md`).

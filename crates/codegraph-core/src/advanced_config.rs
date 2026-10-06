@@ -545,10 +545,12 @@ mod tests {
         let current = manager.get_config().await;
         assert_eq!(current.performance.mode, PerformanceMode::Balanced);
 
-        assert!(manager
-            .switch_performance_mode(PerformanceMode::HighSpeed)
-            .await
-            .is_ok());
+        assert!(
+            manager
+                .switch_performance_mode(PerformanceMode::HighSpeed)
+                .await
+                .is_ok()
+        );
 
         let updated = manager.get_config().await;
         assert_eq!(updated.performance.mode, PerformanceMode::HighSpeed);

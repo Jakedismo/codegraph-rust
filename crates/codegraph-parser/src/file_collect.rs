@@ -68,6 +68,17 @@ pub fn collect_source_files_with_config(
         .git_ignore(true)
         .git_exclude(true)
         .ignore(true);
+    let directory_excludes = exclude_set.clone();
+    walker_builder.filter_entry(move |entry| {
+        if entry.depth() == 0 || !entry.file_type().is_some_and(|kind| kind.is_dir()) {
+            return true;
+        }
+        // Appending a component also matches patterns such as **/target/** at the
+        // directory itself, so the walker never visits its descendants.
+        !directory_excludes
+            .as_ref()
+            .is_some_and(|set| set.is_match(entry.path()) || set.is_match(entry.path().join("_")))
+    });
 
     // Set max depth based on recursive flag
     if !config.recursive {
@@ -81,6 +92,7 @@ pub fn collect_source_files_with_config(
 
     // Create set of supported file extensions
     let supported_extensions = get_supported_extensions(&config.languages);
+    let registry = crate::LanguageRegistry::new();
     debug!("Supported extensions: {:?}", supported_extensions);
 
     let mut paths = Vec::new();
@@ -97,11 +109,14 @@ pub fn collect_source_files_with_config(
         };
 
         let path = dent.path();
-        if !path.is_file() {
+        if !dent.file_type().is_some_and(|kind| kind.is_file()) {
             continue;
         }
 
         total_files += 1;
+        if registry.detect_language(&path.to_string_lossy()).is_none() {
+            continue;
+        }
 
         if let Some(ref set) = exclude_set {
             if set.is_match(path) {
@@ -116,7 +131,7 @@ pub fn collect_source_files_with_config(
         }
 
         // Filter by file extension if languages specified
-        if !config.languages.is_empty() {
+        {
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 if !supported_extensions.contains(ext) {
                     continue;
@@ -129,11 +144,7 @@ pub fn collect_source_files_with_config(
         filtered_files += 1;
 
         // Size extraction (best-effort)
-        let size = dent
-            .metadata()
-            .ok()
-            .and_then(|m| Some(m.len()))
-            .unwrap_or(0);
+        let size = dent.metadata().ok().map(|m| m.len()).unwrap_or(0);
 
         paths.push((path.to_path_buf(), size));
     }
@@ -148,6 +159,7 @@ pub fn collect_source_files_with_config(
         warn!("Supported extensions: {:?}", supported_extensions);
     }
 
+    paths.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     Ok(paths)
 }
 
@@ -169,11 +181,7 @@ where
         }
     }
 
-    if added {
-        builder.build().ok()
-    } else {
-        None
-    }
+    if added { builder.build().ok() } else { None }
 }
 
 /// Get supported file extensions for specified languages
@@ -263,4 +271,22 @@ fn get_supported_extensions(languages: &[String]) -> HashSet<&'static str> {
 /// Legacy function for backward compatibility
 pub fn collect_source_files(dir: &Path) -> Result<Vec<(PathBuf, u64)>> {
     collect_source_files_with_config(dir, &FileCollectionConfig::default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auto_detection_prunes_generated_directories_and_unsupported_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("target/nested")).unwrap();
+        std::fs::create_dir_all(dir.path().join(".codegraph")).unwrap();
+        for file in ["a.rs", "notes.md", "target/nested/b.rs", ".codegraph/c.rs"] {
+            std::fs::write(dir.path().join(file), "fn example() {}\n").unwrap();
+        }
+        let files = collect_source_files(dir.path()).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].0, dir.path().join("a.rs"));
+    }
 }

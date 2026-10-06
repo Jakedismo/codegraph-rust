@@ -2,6 +2,7 @@
 name = "codegraph-parser"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 description = "Source code parsing using tree-sitter for CodeGraph"
@@ -44,8 +45,7 @@ globset = { workspace = true }
 ignore = { workspace = true }
 
 # Fast ML for code analysis
-aho-corasick = "1.1"
-lsh-rs2 = "0.4.1"
+aho-corasick = "1.1.5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tokio-uring = { workspace = true, optional = true }

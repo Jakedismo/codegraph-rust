@@ -46,6 +46,28 @@ impl HttpServerConfig {
     }
 }
 
+/// Host authorities accepted by MCP 3's HTTP transport. Public deployments can
+/// supply a comma-separated allowlist independently of the bind address.
+pub fn allowed_http_hosts(bind_host: &str) -> Vec<String> {
+    if let Ok(hosts) = std::env::var("CODEGRAPH_HTTP_ALLOWED_HOSTS") {
+        return hosts
+            .split(',')
+            .map(str::trim)
+            .filter(|host| !host.is_empty())
+            .map(str::to_owned)
+            .collect();
+    }
+    let mut hosts = vec![
+        "localhost".to_owned(),
+        "127.0.0.1".to_owned(),
+        "::1".to_owned(),
+    ];
+    if !hosts.iter().any(|host| host == bind_host) {
+        hosts.push(bind_host.to_owned());
+    }
+    hosts
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,9 +94,16 @@ mod tests {
     #[test]
     #[serial]
     fn test_from_env_with_valid_values() {
-        std::env::set_var("CODEGRAPH_HTTP_HOST", "0.0.0.0");
-        std::env::set_var("CODEGRAPH_HTTP_PORT", "8080");
-        std::env::set_var("CODEGRAPH_HTTP_KEEP_ALIVE", "30");
+        if !test_env::run(
+            concat!(module_path!(), "::test_from_env_with_valid_values"),
+            &[
+                ("CODEGRAPH_HTTP_HOST", Some("0.0.0.0")),
+                ("CODEGRAPH_HTTP_PORT", Some("8080")),
+                ("CODEGRAPH_HTTP_KEEP_ALIVE", Some("30")),
+            ],
+        ) {
+            return;
+        }
 
         let config = HttpServerConfig::from_env();
         assert_eq!(config.host, "0.0.0.0");
@@ -82,17 +111,21 @@ mod tests {
         assert_eq!(config.keep_alive_seconds, 30);
 
         // Cleanup
-        std::env::remove_var("CODEGRAPH_HTTP_HOST");
-        std::env::remove_var("CODEGRAPH_HTTP_PORT");
-        std::env::remove_var("CODEGRAPH_HTTP_KEEP_ALIVE");
     }
 
     #[test]
     #[serial]
     fn test_from_env_with_invalid_port() {
-        std::env::set_var("CODEGRAPH_HTTP_HOST", "localhost");
-        std::env::set_var("CODEGRAPH_HTTP_PORT", "not_a_number");
-        std::env::set_var("CODEGRAPH_HTTP_KEEP_ALIVE", "invalid");
+        if !test_env::run(
+            concat!(module_path!(), "::test_from_env_with_invalid_port"),
+            &[
+                ("CODEGRAPH_HTTP_HOST", Some("localhost")),
+                ("CODEGRAPH_HTTP_PORT", Some("not_a_number")),
+                ("CODEGRAPH_HTTP_KEEP_ALIVE", Some("invalid")),
+            ],
+        ) {
+            return;
+        }
 
         let config = HttpServerConfig::from_env();
         assert_eq!(config.host, "localhost");
@@ -100,22 +133,35 @@ mod tests {
         assert_eq!(config.keep_alive_seconds, 15); // Falls back to default
 
         // Cleanup
-        std::env::remove_var("CODEGRAPH_HTTP_HOST");
-        std::env::remove_var("CODEGRAPH_HTTP_PORT");
-        std::env::remove_var("CODEGRAPH_HTTP_KEEP_ALIVE");
     }
 
     #[test]
     #[serial]
     fn test_from_env_with_missing_vars() {
+        if !test_env::run(
+            concat!(module_path!(), "::test_from_env_with_missing_vars"),
+            &[
+                ("CODEGRAPH_HTTP_HOST", None),
+                ("CODEGRAPH_HTTP_PORT", None),
+                ("CODEGRAPH_HTTP_KEEP_ALIVE", None),
+            ],
+        ) {
+            return;
+        }
+
         // Ensure vars are not set
-        std::env::remove_var("CODEGRAPH_HTTP_HOST");
-        std::env::remove_var("CODEGRAPH_HTTP_PORT");
-        std::env::remove_var("CODEGRAPH_HTTP_KEEP_ALIVE");
 
         let config = HttpServerConfig::from_env();
         assert_eq!(config.host, "127.0.0.1"); // Default
         assert_eq!(config.port, 3000); // Default
         assert_eq!(config.keep_alive_seconds, 15); // Default
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

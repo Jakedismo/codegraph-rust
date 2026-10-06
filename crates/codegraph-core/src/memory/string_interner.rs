@@ -4,7 +4,7 @@ use rustc_hash::FxHasher;
 use std::hash::BuildHasherDefault;
 use std::sync::Arc;
 
-use super::debug::{MemoryCategory, MEMORY_TRACKER};
+use super::debug::{MEMORY_TRACKER, MemoryCategory};
 
 /// Interned string type. Cloning is cheap and deduplicated by content.
 pub type InternedStr = Arc<str>;

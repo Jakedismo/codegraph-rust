@@ -199,37 +199,40 @@ where
     }
 
     pub fn get(&self, key: &K) -> Option<V> {
-        if let Some(mut entry) = self.data.get_mut(key) {
-            entry.access();
+        match self.data.get_mut(key) {
+            Some(mut entry) => {
+                entry.access();
 
-            // Update frequency
-            self.frequency
-                .entry(key.clone())
-                .and_modify(|freq| *freq += 1)
-                .or_insert(1);
+                // Update frequency
+                self.frequency
+                    .entry(key.clone())
+                    .and_modify(|freq| *freq += 1)
+                    .or_insert(1);
 
-            // Update access order
-            if let Some(mut order) = self.access_order.try_lock() {
-                order.retain(|k| k != key);
-                order.push_back(key.clone());
-            }
-
-            if self.config.enable_stats {
-                if let Some(mut stats) = self.stats.try_write() {
-                    stats.hits += 1;
-                    stats.update_hit_ratio();
+                // Update access order
+                if let Some(mut order) = self.access_order.try_lock() {
+                    order.retain(|k| k != key);
+                    order.push_back(key.clone());
                 }
-            }
 
-            Some(entry.value.clone())
-        } else {
-            if self.config.enable_stats {
-                if let Some(mut stats) = self.stats.try_write() {
-                    stats.misses += 1;
-                    stats.update_hit_ratio();
+                if self.config.enable_stats {
+                    if let Some(mut stats) = self.stats.try_write() {
+                        stats.hits += 1;
+                        stats.update_hit_ratio();
+                    }
                 }
+
+                Some(entry.value.clone())
             }
-            None
+            _ => {
+                if self.config.enable_stats {
+                    if let Some(mut stats) = self.stats.try_write() {
+                        stats.misses += 1;
+                        stats.update_hit_ratio();
+                    }
+                }
+                None
+            }
         }
     }
 
@@ -312,10 +315,9 @@ where
     }
 
     pub fn get_stats(&self) -> CacheStats {
-        if let Some(stats) = self.stats.try_read() {
-            stats.clone()
-        } else {
-            CacheStats::new()
+        match self.stats.try_read() {
+            Some(stats) => stats.clone(),
+            _ => CacheStats::new(),
         }
     }
 

@@ -4,8 +4,7 @@
 #![cfg(feature = "server-http")]
 
 use codegraph_mcp_server::{
-    http_config::HttpServerConfig, http_server::build_http_app,
-    official_server::CodeGraphMCPServer,
+    http_config::HttpServerConfig, http_server::build_http_app, official_server::CodeGraphMCPServer,
 };
 use http_body_util::BodyExt;
 use serde_json::json;
@@ -73,6 +72,7 @@ async fn test_http_mcp_initialize_request() {
             axum::http::Request::builder()
                 .method("POST")
                 .uri("/mcp")
+                .header("Host", "127.0.0.1:13001")
                 .header("Accept", "application/json, text/event-stream")
                 .header("Content-Type", "application/json")
                 .body(axum::body::Body::from(initialize_request.to_string()))
@@ -122,4 +122,24 @@ async fn test_http_mcp_initialize_request() {
         has_session_header || has_session_in_body,
         "initialize should return a session identifier (header or body)"
     );
+}
+
+#[tokio::test]
+async fn test_http_mcp_rejects_untrusted_host() {
+    let config = HttpServerConfig::default();
+    let app = build_http_app(CodeGraphMCPServer::new(), &config);
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header("Host", "untrusted.example")
+                .header("Accept", "application/json, text/event-stream")
+                .header("Content-Type", "application/json")
+                .body(axum::body::Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
 }

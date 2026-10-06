@@ -15,6 +15,15 @@ pub struct DocsContractsStats {
     pub specification_edges_added: usize,
 }
 
+static TICK_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+#[derive(serde::Serialize, serde::Deserialize)]
+struct DocToken {
+    text: String,
+    start: usize,
+    end: usize,
+    line: usize,
+}
+
 pub fn link_docs_and_contracts(
     project_root: &Path,
     project_id: &str,
@@ -33,15 +42,37 @@ pub fn link_docs_and_contracts(
         return Ok(stats);
     }
 
-    let tick_re = Regex::new(r"`([^`]+)`")?;
-    let mut seen_edges: HashSet<(codegraph_core::NodeId, String, String)> = HashSet::new();
+    let tick_re =
+        TICK_RE.get_or_init(|| Regex::new(r"`([^`]+)`").expect("static backtick pattern"));
+    let cache = codegraph_core::artifact_cache::ArtifactCache::new(
+        project_root.join(".codegraph/index-cache"),
+        "doc-tokens-v1",
+    );
+    let mut seen_edges: HashSet<(codegraph_core::NodeId, String, String, usize)> = HashSet::new();
 
     for doc_path in doc_paths {
         let rel = relative_display_path(project_root, &doc_path);
-        let content = match std::fs::read_to_string(&doc_path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
+        let content = std::fs::read_to_string(&doc_path)?;
+        let key = codegraph_core::artifact_cache::fingerprint(&("doc-tokens-v1", &content))?;
+        let tokens: Vec<DocToken> = cache.get(&key).unwrap_or_else(|| {
+            let starts: Vec<usize> = std::iter::once(0)
+                .chain(content.match_indices('\n').map(|(index, _)| index + 1))
+                .collect();
+            let tokens: Vec<_> = tick_re
+                .captures_iter(&content)
+                .filter_map(|capture| capture.get(1))
+                .map(|token| DocToken {
+                    text: token.as_str().trim().to_owned(),
+                    start: token.start(),
+                    end: token.end(),
+                    line: starts.partition_point(|offset| *offset <= token.start()),
+                })
+                .collect();
+            if let Err(error) = cache.put(&key, &tokens) {
+                tracing::debug!("Doc token cache unavailable: {error}");
+            }
+            tokens
+        });
 
         let mut doc_node = CodeNode::new(
             rel.clone(),
@@ -55,6 +86,7 @@ pub fn link_docs_and_contracts(
                 end_column: Some(0),
             },
         )
+        .with_content(content)
         .with_deterministic_id(project_id);
 
         doc_node
@@ -77,19 +109,12 @@ pub fn link_docs_and_contracts(
             EdgeType::Other("documents".to_string())
         };
 
-        for cap in tick_re.captures_iter(&content) {
-            let Some(m) = cap.get(1) else {
-                continue;
-            };
-            let token = m.as_str().trim();
-            if token.is_empty() {
+        for token_info in tokens {
+            let token = token_info.text.as_str();
+            if token.is_empty() || !symbols.contains(token) {
                 continue;
             }
-            if !symbols.contains(token) {
-                continue;
-            }
-
-            let line_1based = 1 + content[..m.start()].bytes().filter(|b| *b == b'\n').count();
+            let line_1based = token_info.line;
             let mut metadata: HashMap<String, String> = HashMap::new();
             metadata.insert("analyzer".to_string(), "docs_contracts".to_string());
             metadata.insert("analyzer_confidence".to_string(), "0.7".to_string());
@@ -98,14 +123,22 @@ pub fn link_docs_and_contracts(
                 format!("{}:{}", rel, line_1based),
             );
 
-            let edge_key = (doc_node.id, token.to_string(), edge_type.to_string());
+            let edge_key = (
+                doc_node.id,
+                token.to_string(),
+                edge_type.to_string(),
+                token_info.start,
+            );
             if seen_edges.insert(edge_key) {
                 edges.push(EdgeRelationship {
                     from: doc_node.id,
                     to: token.to_string(),
                     edge_type: edge_type.clone(),
                     metadata,
-                    span: None,
+                    span: Some(codegraph_core::Span {
+                        start_byte: token_info.start as u32,
+                        end_byte: token_info.end as u32,
+                    }),
                 });
                 if is_spec {
                     stats.specification_edges_added += 1;
@@ -228,11 +261,15 @@ mod tests {
             .expect("link should succeed");
 
         assert_eq!(stats.document_nodes_added, 2);
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("documents".to_string())));
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("specifies".to_string())));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("documents".to_string()))
+        );
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("specifies".to_string()))
+        );
     }
 }

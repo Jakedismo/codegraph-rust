@@ -147,14 +147,38 @@ fn create_sample_candidates() -> Vec<(codegraph_core::NodeId, CodeNode)> {
     use uuid::Uuid;
 
     let samples = vec![
-        ("user_controller.rs", "struct UserController { db: Database }\nimpl UserController { fn create_user(&self, name: String) -> Result<User> { ... } }"),
-        ("user_service.rs", "pub fn register_new_user(email: &str, password: &str) -> Result<UserId> { ... }"),
-        ("auth_middleware.rs", "fn authenticate_request(req: Request) -> Result<User> { ... }"),
-        ("database.rs", "pub struct Database { pool: Pool }\nimpl Database { fn connect() -> Result<Self> { ... } }"),
-        ("models/user.rs", "pub struct User { id: UserId, name: String, email: String, created_at: DateTime }"),
-        ("api/users.rs", "async fn create_user_endpoint(Json(payload): Json<CreateUserRequest>) -> Result<Json<User>> { ... }"),
-        ("validation.rs", "fn validate_email(email: &str) -> bool { ... }\nfn validate_password(password: &str) -> bool { ... }"),
-        ("errors.rs", "pub enum UserError { InvalidEmail, WeakPassword, UserAlreadyExists }"),
+        (
+            "user_controller.rs",
+            "struct UserController { db: Database }\nimpl UserController { fn create_user(&self, name: String) -> Result<User> { ... } }",
+        ),
+        (
+            "user_service.rs",
+            "pub fn register_new_user(email: &str, password: &str) -> Result<UserId> { ... }",
+        ),
+        (
+            "auth_middleware.rs",
+            "fn authenticate_request(req: Request) -> Result<User> { ... }",
+        ),
+        (
+            "database.rs",
+            "pub struct Database { pool: Pool }\nimpl Database { fn connect() -> Result<Self> { ... } }",
+        ),
+        (
+            "models/user.rs",
+            "pub struct User { id: UserId, name: String, email: String, created_at: DateTime }",
+        ),
+        (
+            "api/users.rs",
+            "async fn create_user_endpoint(Json(payload): Json<CreateUserRequest>) -> Result<Json<User>> { ... }",
+        ),
+        (
+            "validation.rs",
+            "fn validate_email(email: &str) -> bool { ... }\nfn validate_password(password: &str) -> bool { ... }",
+        ),
+        (
+            "errors.rs",
+            "pub enum UserError { InvalidEmail, WeakPassword, UserAlreadyExists }",
+        ),
     ];
 
     samples

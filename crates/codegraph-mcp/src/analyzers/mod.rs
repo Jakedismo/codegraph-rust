@@ -11,6 +11,7 @@ pub mod docs_contracts;
 pub mod enrichment;
 pub mod lsp;
 pub mod module_linker;
+pub mod scip;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AnalyzerSettings {
@@ -60,6 +61,39 @@ impl AnalyzerSettings {
         }
     }
 
+    pub fn from_env(tier: codegraph_core::config_manager::IndexingTier) -> Self {
+        let enabled = !matches!(
+            std::env::var("CODEGRAPH_ANALYZERS").as_deref(),
+            Ok("0" | "false" | "off")
+        );
+        let require_tools = !matches!(
+            std::env::var("CODEGRAPH_ANALYZERS_REQUIRE_TOOLS").as_deref(),
+            Ok("0" | "false" | "off")
+        );
+        Self::configured(tier, enabled, require_tools)
+    }
+    fn configured(
+        tier: codegraph_core::config_manager::IndexingTier,
+        enabled: bool,
+        require_tools: bool,
+    ) -> Self {
+        if !enabled {
+            return Self {
+                build_context: false,
+                lsp_mode: LspMode::Off,
+                enrichment: false,
+                module_linking: false,
+                dataflow: false,
+                docs_contracts: false,
+                architecture: false,
+                require_tools: false,
+            };
+        }
+        Self {
+            require_tools,
+            ..Self::for_tier(tier)
+        }
+    }
     pub fn lsp_enabled(&self) -> bool {
         !matches!(self.lsp_mode, LspMode::Off)
     }
@@ -209,6 +243,9 @@ pub fn find_tool_candidates_on_path(tool: &str, path_env: &str) -> Vec<PathBuf> 
     for dir in std::env::split_paths(path_env) {
         let candidate = dir.join(tool);
         if candidate.is_file() {
+            // Keep the shim's filename while resolving relative PATH entries before
+            // language servers change their working directory to the indexed project.
+            let candidate = std::path::absolute(&candidate).unwrap_or(candidate);
             if !out.contains(&candidate) {
                 out.push(candidate);
             }
@@ -217,6 +254,7 @@ pub fn find_tool_candidates_on_path(tool: &str, path_env: &str) -> Vec<PathBuf> 
         {
             let candidate = dir.join(format!("{}.exe", tool));
             if candidate.is_file() {
+                let candidate = std::path::absolute(&candidate).unwrap_or(candidate);
                 if !out.contains(&candidate) {
                     out.push(candidate);
                 }
@@ -246,5 +284,28 @@ mod tests {
     #[test]
     fn tool_search_returns_none_for_empty_path() {
         assert_eq!(find_tool_on_path("rust-analyzer", ""), None);
+    }
+}
+
+#[cfg(test)]
+mod policy_tests {
+    use super::*;
+    #[test]
+    fn disabled_analyzers_stay_disabled_after_tier_upgrade() {
+        for tier in [
+            codegraph_core::config_manager::IndexingTier::Fast,
+            codegraph_core::config_manager::IndexingTier::Balanced,
+            codegraph_core::config_manager::IndexingTier::Full,
+        ] {
+            assert!(!AnalyzerSettings::configured(tier, false, false).any_enabled());
+        }
+        assert!(
+            AnalyzerSettings::configured(
+                codegraph_core::config_manager::IndexingTier::Full,
+                true,
+                true
+            )
+            .lsp_definitions_enabled()
+        );
     }
 }

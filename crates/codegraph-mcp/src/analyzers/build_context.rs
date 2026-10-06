@@ -21,11 +21,40 @@ pub fn analyze_cargo_workspace(
         return Ok(BuildContextOutput::default());
     }
 
+    use codegraph_core::artifact_cache::{ArtifactCache, fingerprint};
+    let cache = ArtifactCache::new(
+        project_root.join(".codegraph/index-cache"),
+        "cargo-metadata-v1",
+    );
+    let manifests: std::collections::BTreeMap<_, _> =
+        crate::reconciliation::support_fingerprints(project_root)?
+            .into_iter()
+            .filter(|(path, _)| {
+                !matches!(
+                    Path::new(path).extension().and_then(|s| s.to_str()),
+                    Some("md" | "surql")
+                )
+            })
+            .collect();
+    let key = fingerprint(&(
+        project_root,
+        manifests,
+        ["RUSTFLAGS", "CARGO_BUILD_TARGET", "RUSTUP_TOOLCHAIN"]
+            .map(|name| std::env::var(name).unwrap_or_default()),
+    ))?;
+    if let Some(artifact) = cache.get::<MetadataArtifact>(&key)
+        && artifact
+            .external
+            .iter()
+            .all(|(path, hash)| file_hash(Path::new(path)).as_ref() == Some(hash))
+    {
+        cache.put("external-inputs", &artifact.external)?;
+        return parse_cargo_metadata_json(&artifact.json, project_id);
+    }
     let output = Command::new("cargo")
         .args(["metadata", "--format-version", "1"])
         .current_dir(project_root)
         .output()?;
-
     if !output.status.success() {
         return Err(anyhow::anyhow!(
             "cargo metadata failed: {}",
@@ -34,7 +63,65 @@ pub fn analyze_cargo_workspace(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let root: JsonValue = serde_json::from_str(&stdout)?;
+    let external: std::collections::BTreeMap<String, String> = root["packages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|package| package["manifest_path"].as_str())
+        .filter(|path| !Path::new(path).starts_with(project_root))
+        .filter_map(|path| file_hash(Path::new(path)).map(|hash| (path.to_owned(), hash)))
+        .collect();
+    cache.put("external-inputs", &external)?;
+    if let Err(error) = cache.put(
+        &key,
+        &MetadataArtifact {
+            json: stdout.to_string(),
+            external,
+        },
+    ) {
+        tracing::debug!("Cargo metadata cache unavailable: {error}");
+    }
     parse_cargo_metadata_json(&stdout, project_id)
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct MetadataArtifact {
+    json: String,
+    external: std::collections::BTreeMap<String, String>,
+}
+fn file_hash(path: &Path) -> Option<String> {
+    crate::reconciliation::file_fingerprint(path).ok()
+}
+
+pub(crate) fn external_input_fingerprints(
+    root: &Path,
+) -> Result<std::collections::BTreeMap<String, String>> {
+    let cache = codegraph_core::artifact_cache::ArtifactCache::new(
+        root.join(".codegraph/index-cache"),
+        "cargo-metadata-v1",
+    );
+    let previous: std::collections::BTreeMap<String, String> =
+        cache.get("external-inputs").unwrap_or_default();
+    previous
+        .keys()
+        .map(|path| {
+            Ok((
+                path.clone(),
+                match crate::reconciliation::file_fingerprint(Path::new(path)) {
+                    Ok(hash) => hash,
+                    Err(error)
+                        if error
+                            .downcast_ref::<std::io::Error>()
+                            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+                    {
+                        "<missing>".into()
+                    }
+                    Err(error) => return Err(error),
+                },
+            ))
+        })
+        .collect()
 }
 
 pub fn parse_cargo_metadata_json(json: &str, project_id: &str) -> Result<BuildContextOutput> {
@@ -42,15 +129,15 @@ pub fn parse_cargo_metadata_json(json: &str, project_id: &str) -> Result<BuildCo
     let packages = root
         .get("packages")
         .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
 
     let mut out = BuildContextOutput::default();
 
     let mut package_ids: std::collections::HashMap<String, codegraph_core::NodeId> =
         std::collections::HashMap::new();
 
-    for pkg in &packages {
+    for pkg in packages {
         let Some(name) = pkg.get("name").and_then(|v| v.as_str()) else {
             continue;
         };
@@ -58,7 +145,8 @@ pub fn parse_cargo_metadata_json(json: &str, project_id: &str) -> Result<BuildCo
             .get("manifest_path")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        let package_qualified = format!("package::{}", name);
+        let package_identity = pkg.get("id").and_then(|v| v.as_str()).unwrap_or(name);
+        let package_qualified = format!("package::{}", package_identity);
 
         let mut node = CodeNode::new(
             name,
@@ -84,7 +172,14 @@ pub fn parse_cargo_metadata_json(json: &str, project_id: &str) -> Result<BuildCo
             .attributes
             .insert("qualified_name".to_string(), package_qualified.clone());
 
-        package_ids.insert(name.to_string(), node.id);
+        node.id = codegraph_core::generate_node_id(
+            project_id,
+            manifest_path,
+            package_identity,
+            "package",
+            1,
+        );
+        package_ids.insert(package_identity.to_string(), node.id);
         out.nodes.push(node);
 
         let features = pkg
@@ -134,14 +229,41 @@ pub fn parse_cargo_metadata_json(json: &str, project_id: &str) -> Result<BuildCo
         }
     }
 
-    for pkg in &packages {
+    for pkg in packages {
         let Some(name) = pkg.get("name").and_then(|v| v.as_str()) else {
             continue;
         };
-        let Some(&from_id) = package_ids.get(name) else {
+        let identity = pkg.get("id").and_then(|v| v.as_str()).unwrap_or(name);
+        let Some(&from_id) = package_ids.get(identity) else {
             continue;
         };
 
+        if let Some(resolve) = root
+            .get("resolve")
+            .and_then(|v| v.get("nodes"))
+            .and_then(|v| v.as_array())
+            .and_then(|rows| rows.iter().find(|row| row["id"].as_str() == Some(identity)))
+        {
+            for dep in resolve["deps"].as_array().into_iter().flatten() {
+                let Some(target_identity) = dep["pkg"].as_str() else {
+                    continue;
+                };
+                if let Some(target) = package_ids.get(target_identity) {
+                    out.edges.push(EdgeRelationship {
+                        from: from_id,
+                        to: format!("package::{target_identity}"),
+                        edge_type: EdgeType::Other("depends_on".into()),
+                        metadata: std::collections::HashMap::from([
+                            ("analyzer".into(), "build_context".into()),
+                            ("target_node_id".into(), target.to_string()),
+                            ("analyzer_confidence".into(), "1.0".into()),
+                        ]),
+                        span: None,
+                    });
+                }
+            }
+            continue;
+        }
         let deps = pkg
             .get("dependencies")
             .and_then(|v| v.as_array())

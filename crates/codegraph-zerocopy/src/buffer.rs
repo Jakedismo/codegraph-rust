@@ -9,11 +9,11 @@ use bytes::{Bytes, BytesMut};
 use crossbeam_queue::{ArrayQueue, SegQueue};
 use parking_lot::RwLock;
 use std::{
-    alloc::{alloc, dealloc, Layout},
+    alloc::{Layout, alloc, dealloc},
     ptr::NonNull,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 use tracing::{debug, instrument, trace, warn};
@@ -48,16 +48,19 @@ impl BufferPool {
     /// Get a buffer from the pool, creating a new one if necessary
     #[instrument(skip(self))]
     pub fn get(&self) -> BytesMut {
-        if let Some(mut buffer) = self.buffers.pop() {
-            buffer.clear();
-            self.hit_count.fetch_add(1, Ordering::Relaxed);
-            trace!("Buffer pool hit, reusing buffer");
-            buffer
-        } else {
-            self.miss_count.fetch_add(1, Ordering::Relaxed);
-            let buffer = BytesMut::with_capacity(self.buffer_size);
-            trace!("Buffer pool miss, allocating new buffer");
-            buffer
+        match self.buffers.pop() {
+            Some(mut buffer) => {
+                buffer.clear();
+                self.hit_count.fetch_add(1, Ordering::Relaxed);
+                trace!("Buffer pool hit, reusing buffer");
+                buffer
+            }
+            _ => {
+                self.miss_count.fetch_add(1, Ordering::Relaxed);
+                let buffer = BytesMut::with_capacity(self.buffer_size);
+                trace!("Buffer pool miss, allocating new buffer");
+                buffer
+            }
         }
     }
 

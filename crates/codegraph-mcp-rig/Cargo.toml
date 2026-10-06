@@ -1,7 +1,8 @@
 [package]
 name = "codegraph-mcp-rig"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 authors = ["Solita CodeGraph"]
 license = "Apache-2.0"
 description = "Rig-based agent backend for CodeGraph MCP server"
@@ -19,14 +20,14 @@ ollama = []
 xai = []
 
 [dependencies]
-# Rig framework (aliased as 'rig' for cleaner imports)
-rig = { package = "rig-core", version = "0.27.0" }
+# Provider contracts and the companion agent runtime split out in Rig 0.43.
+rig = { package = "rig-core", version = "0.43.0", features = ["reqwest"] }
+rig-agent = "0.43.0"
 
 # Internal shared crates
 codegraph-core = { path = "../codegraph-core" }
 codegraph-mcp-core = { path = "../codegraph-mcp-core" }
 codegraph-mcp-tools = { path = "../codegraph-mcp-tools" }
-codegraph-ai = { path = "../codegraph-ai" }
 codegraph-graph = { path = "../codegraph-graph" }
 
 # Async runtime
@@ -48,3 +49,5 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+axum = { workspace = true }
+codegraph-vector = { workspace = true }

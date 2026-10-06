@@ -20,6 +20,15 @@ pub fn apply_basic_enrichment(
     nodes: &mut Vec<CodeNode>,
     edges: &mut Vec<EdgeRelationship>,
 ) -> Result<EnrichmentStats> {
+    apply_basic_enrichment_with_sources(project_root, nodes, edges, None)
+}
+
+pub fn apply_basic_enrichment_with_sources(
+    project_root: &Path,
+    nodes: &mut [CodeNode],
+    edges: &mut Vec<EdgeRelationship>,
+    sources: Option<&codegraph_parser::SourceSnapshots>,
+) -> Result<EnrichmentStats> {
     let mut stats = EnrichmentStats::default();
 
     let package_roots = package_roots(project_root, nodes);
@@ -39,7 +48,13 @@ pub fn apply_basic_enrichment(
 
         let lines = file_cache
             .entry(node.location.file_path.clone())
-            .or_insert_with(|| read_lines(project_root, &node.location.file_path));
+            .or_insert_with(|| {
+                sources
+                    .and_then(|sources| sources.get(&node.location.file_path))
+                    .and_then(|source| source.contents().ok())
+                    .map(|source| source.lines().map(str::to_owned).collect())
+                    .unwrap_or_else(|| read_lines(project_root, &node.location.file_path))
+            });
 
         if let Some(doc) = rust_doc_comment_block(lines, node.location.line) {
             node.metadata.attributes.insert("doc".to_string(), doc);
@@ -163,7 +178,7 @@ pub fn apply_basic_enrichment(
         if edge.metadata.get("analyzer").map(|v| v.as_str()) != Some("lsp_definition") {
             continue;
         }
-        
+
         // Count all LSP-resolved edges in the metric
         stats.uses_edges_derived += 1;
 
@@ -464,12 +479,16 @@ mod tests {
 
         assert!(stats.reexport_edges_added > 0);
         assert!(stats.feature_enables_edges_added > 0);
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("reexports".to_string())));
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("enables".to_string())));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("reexports".to_string()))
+        );
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("enables".to_string()))
+        );
     }
 
     #[test]
@@ -524,11 +543,15 @@ mod tests {
             stats.reexport_edges_added > 0,
             "expected reexport edges for pub use"
         );
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("exports".to_string())));
-        assert!(edges
-            .iter()
-            .any(|e| e.edge_type == EdgeType::Other("reexports".to_string())));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("exports".to_string()))
+        );
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == EdgeType::Other("reexports".to_string()))
+        );
     }
 }

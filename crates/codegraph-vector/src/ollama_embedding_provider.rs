@@ -8,14 +8,14 @@ use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokenizers::Tokenizer;
 use tokio::time::timeout;
 use tracing::{debug, info, trace, warn};
 
-use crate::prep::chunker::{build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode};
+use crate::input_policy::{InputPolicy, env_positive, known_model};
+use crate::prep::chunker::{ChunkPlan, ChunkerConfig, SanitizeMode, build_chunk_plan};
 use crate::providers::{
     BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
 };
@@ -40,7 +40,7 @@ impl Default for OllamaEmbeddingConfig {
             timeout: Duration::from_secs(300),
             batch_size: 32,
             max_retries: 3,
-            max_tokens_per_text: 512,
+            max_tokens_per_text: usize::MAX,
             num_ctx: None,
         }
     }
@@ -56,12 +56,13 @@ impl From<&codegraph_core::EmbeddingConfig> for OllamaEmbeddingConfig {
             .unwrap_or_else(|| "nomic-embed-code".to_string());
 
         // Use batch_size from config (already has env var fallback in config loading)
-        let batch_size = config.batch_size.clamp(1, 256);
+        let batch_size = config.batch_size.max(1);
 
-        let max_tokens_per_text = std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS")
+        let max_tokens_per_text = std::env::var("CODEGRAPH_CHUNK_MAX_TOKENS")
+            .or_else(|_| std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS"))
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(512);
+            .unwrap_or(usize::MAX);
 
         let num_ctx = std::env::var("CODEGRAPH_OLLAMA_NUM_CTX")
             .ok()
@@ -114,7 +115,7 @@ pub struct OllamaEmbeddingProvider {
     client: Client,
     config: OllamaEmbeddingConfig,
     characteristics: ProviderCharacteristics,
-    tokenizer: Arc<Tokenizer>,
+    input_policy: tokio::sync::OnceCell<InputPolicy>,
 }
 
 impl OllamaEmbeddingProvider {
@@ -132,26 +133,194 @@ impl OllamaEmbeddingProvider {
             memory_usage: MemoryUsage::Medium, // ~500MB-1GB for embedding model
         };
 
-        // Load Qwen2.5-Coder tokenizer for accurate token counting
-        let tokenizer_path = PathBuf::from(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tokenizers/qwen2.5-coder.json"
-        ));
-        let tokenizer = Tokenizer::from_file(&tokenizer_path).unwrap_or_else(|e| {
-            warn!(
-                "Failed to load Qwen2.5-Coder tokenizer from {:?}: {}. Using fallback character approximation.",
-                tokenizer_path, e
-            );
-            // Create a minimal fallback tokenizer (shouldn't happen in practice)
-            panic!("Tokenizer required for Ollama chunking");
-        });
-
         Self {
             client: Client::new(),
             config,
             characteristics,
-            tokenizer: Arc::new(tokenizer),
+            input_policy: tokio::sync::OnceCell::new(),
         }
+    }
+
+    /// Resolve once per provider lifecycle; no model weights are downloaded.
+    pub async fn input_policy(&self) -> Result<&InputPolicy> {
+        self.input_policy
+            .get_or_try_init(|| self.resolve_input_policy())
+            .await
+    }
+
+    async fn resolve_input_policy(&self) -> Result<InputPolicy> {
+        env_positive("CODEGRAPH_OLLAMA_NUM_CTX")?;
+        let base = self.config.base_url.trim_end_matches('/');
+        let profile = known_model(&self.config.model_name);
+        let response = self
+            .client
+            .post(format!("{base}/api/show"))
+            .json(&serde_json::json!({"model": self.config.model_name}))
+            .timeout(Duration::from_secs(15))
+            .send()
+            .await
+            .map_err(|e| CodeGraphError::Network(format!("Ollama model metadata failed: {e}")))?;
+        let metadata: serde_json::Value = if response.status().is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| CodeGraphError::Parse(e.to_string()))?
+        } else {
+            return Err(CodeGraphError::Vector(format!(
+                "Cannot resolve Ollama model {}: /api/show returned {}",
+                self.config.model_name,
+                response.status()
+            )));
+        };
+        if let Some(capabilities) = metadata["capabilities"].as_array()
+            && !capabilities.iter().any(|value| value == "embedding")
+        {
+            return Err(CodeGraphError::Vector(format!(
+                "Ollama model {} does not advertise embedding capability",
+                self.config.model_name
+            )));
+        }
+        let info = &metadata["model_info"];
+        let architecture = info["general.architecture"].as_str();
+        let advertised = architecture
+            .and_then(|arch| info[format!("{arch}.context_length")].as_u64())
+            .or_else(|| {
+                info.as_object().and_then(|object| {
+                    object
+                        .iter()
+                        .filter(|(key, _)| key.ends_with(".context_length"))
+                        .filter_map(|(_, value)| value.as_u64())
+                        .min()
+                })
+            })
+            .and_then(|value| usize::try_from(value).ok())
+            .filter(|value| *value > 0);
+        let override_max = env_positive("CODEGRAPH_MODEL_MAX_TOKENS")?;
+        let model_max = [advertised, profile.map(|p| p.1), override_max]
+            .into_iter().flatten().min().ok_or_else(|| CodeGraphError::Vector(
+                "Ollama metadata has no context limit; set CODEGRAPH_MODEL_MAX_TOKENS explicitly".into()))?;
+        let parameter_ctx = metadata["parameters"]
+            .as_str()
+            .and_then(|text| {
+                text.lines().find_map(|line| {
+                    let mut fields = line.split_whitespace();
+                    (fields.next() == Some("num_ctx"))
+                        .then(|| fields.next()?.parse::<usize>().ok())
+                        .flatten()
+                })
+            })
+            .filter(|value| *value > 0);
+        let mut running_ctx = None;
+        if self.config.num_ctx.is_none()
+            && let Ok(response) = self
+                .client
+                .get(format!("{base}/api/ps"))
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await
+            && response.status().is_success()
+            && let Ok(running) = response.json::<serde_json::Value>().await
+        {
+            running_ctx = running["models"]
+                .as_array()
+                .and_then(|models| {
+                    models
+                        .iter()
+                        .find(|model| {
+                            model["name"].as_str().is_some_and(|name| {
+                                model_names_match(name, &self.config.model_name)
+                            })
+                        })
+                        .and_then(|model| model["context_length"].as_u64())
+                })
+                .and_then(|value| usize::try_from(value).ok())
+                .filter(|value| *value > 0);
+        }
+        let serving = self.config.num_ctx.unwrap_or_else(|| {
+            [parameter_ctx, running_ctx]
+                .into_iter()
+                .flatten()
+                .min()
+                .unwrap_or(model_max)
+        });
+        let context_tokens = model_max.min(serving);
+        let repository = std::env::var("CODEGRAPH_TOKENIZER_REPO")
+            .ok()
+            .or_else(|| profile.map(|p| p.0.to_owned()));
+        let path = std::env::var_os("CODEGRAPH_TOKENIZER_PATH");
+        let revision =
+            std::env::var("CODEGRAPH_TOKENIZER_REVISION").unwrap_or_else(|_| "main".into());
+        let tokenizer = tokio::task::spawn_blocking(move || -> Result<Tokenizer> {
+            if let Some(path) = path {
+                return Tokenizer::from_file(path).map_err(|e| CodeGraphError::Vector(format!("Invalid provider tokenizer: {e}")));
+            }
+            let repository = repository.ok_or_else(|| CodeGraphError::Vector(
+                "Unknown Ollama embedding tokenizer. Set CODEGRAPH_TOKENIZER_PATH or CODEGRAPH_TOKENIZER_REPO; generic token counting is unsafe.".into()))?;
+            tracing::info!("Loading embedding tokenizer {repository}@{revision} from the tokenizer cache (downloads tokenizer.json if absent)");
+            Tokenizer::from_pretrained(&repository, Some(tokenizers::FromPretrainedParameters {
+                revision, ..Default::default()
+            })).map_err(|e| CodeGraphError::Vector(format!("Cannot load tokenizer {repository}: {e}. Set CODEGRAPH_TOKENIZER_PATH for offline use.")))
+        }).await.map_err(|e| CodeGraphError::Vector(e.to_string()))??;
+        let special_tokens = [
+            "tokenizer.ggml.add_bos_token",
+            "tokenizer.ggml.add_eos_token",
+        ]
+        .into_iter()
+        .map(|key| usize::from(info[key].as_bool().unwrap_or(true)))
+        .sum();
+        let document_prefix = std::env::var("CODEGRAPH_EMBEDDING_DOCUMENT_PREFIX")
+            .unwrap_or_else(|_| profile.map_or("", |p| p.2).into());
+        let query_prefix = std::env::var("CODEGRAPH_EMBEDDING_QUERY_PREFIX")
+            .unwrap_or_else(|_| profile.map_or("", |p| p.3).into());
+        let tags = self
+            .client
+            .get(format!("{base}/api/tags"))
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .map_err(|e| CodeGraphError::Network(format!("Ollama model identity failed: {e}")))?
+            .error_for_status()
+            .map_err(|e| CodeGraphError::Network(e.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| CodeGraphError::Parse(e.to_string()))?;
+        let digest = tags["models"]
+            .as_array()
+            .and_then(|models| {
+                models.iter().find(|model| {
+                    model["name"]
+                        .as_str()
+                        .is_some_and(|name| model_names_match(name, &self.config.model_name))
+                })
+            })
+            .and_then(|model| model["digest"].as_str());
+        let identity = codegraph_core::artifact_cache::fingerprint(&(
+            &self.config.model_name,
+            digest,
+            &metadata,
+            std::env::var("CODEGRAPH_MODEL_REVISION").unwrap_or_default(),
+            std::env::var("CODEGRAPH_TOKENIZER_REPO").unwrap_or_default(),
+            std::env::var("CODEGRAPH_TOKENIZER_REVISION").unwrap_or_default(),
+        ))
+        .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+        let policy = InputPolicy::new(
+            tokenizer,
+            context_tokens,
+            document_prefix,
+            query_prefix,
+            special_tokens,
+            &identity,
+        )?;
+        info!(
+            "Embedding input policy: model={} model_limit={} serving_context={} tokenizer={} document_prefix={:?} query_prefix={:?}; truncation disabled",
+            self.config.model_name,
+            model_max,
+            context_tokens,
+            policy.identity,
+            policy.document_prefix,
+            policy.query_prefix
+        );
+        Ok(policy)
     }
 
     /// Check if nomic-embed-code model is available
@@ -187,12 +356,7 @@ impl OllamaEmbeddingProvider {
                 models.iter().any(|model| {
                     model["name"]
                         .as_str()
-                        .map(|name| {
-                            let lower = name.to_lowercase();
-                            lower == desired
-                                || lower.contains(&desired)
-                                || lower.contains("nomic-embed")
-                        })
+                        .map(|name| model_names_match(name, &desired))
                         .unwrap_or(false)
                 })
             })
@@ -202,84 +366,33 @@ impl OllamaEmbeddingProvider {
         Ok(has_model)
     }
 
-    fn chunker_config(&self) -> ChunkerConfig {
-        let overlap_tokens = std::env::var("CODEGRAPH_CHUNK_OVERLAP_TOKENS")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(64);
-        let smart_split = std::env::var("CODEGRAPH_CHUNK_SMART_SPLIT")
-            .ok()
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(true);
-
-        ChunkerConfig::new(self.config.max_tokens_per_text)
+    async fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> Result<ChunkPlan> {
+        let policy = self.input_policy().await?.clone();
+        let max_tokens = env_positive("CODEGRAPH_CHUNK_MAX_TOKENS")?
+            .or(env_positive("CODEGRAPH_MAX_CHUNK_TOKENS")?)
+            .unwrap_or(policy.context_tokens)
+            .min(policy.context_tokens)
+            .min(self.config.max_tokens_per_text.max(1));
+        let mut config = ChunkerConfig::new(max_tokens)
             .max_texts_per_request(self.config.batch_size)
-            .cache_capacity(2048)
             .sanitize_mode(SanitizeMode::AsciiFastPath)
-            .overlap_tokens(overlap_tokens)
-            .smart_split(smart_split)
-    }
-
-    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
-        build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
-    }
-
-    fn prepare_text(&self, node: &CodeNode) -> Vec<String> {
-        let formatted = Self::format_node_text(node);
-
-        // Use tokenizer to accurately check if chunking is needed
-        let token_count = self
-            .tokenizer
-            .encode(formatted.as_str(), false)
-            .map(|enc| enc.len())
-            .unwrap_or_else(|_| (formatted.len() + 3) / 4); // Fallback to char approximation
-
-        if token_count <= self.config.max_tokens_per_text {
-            // Fast path: Node is under token limit - no chunking needed (99% of nodes!)
-            return vec![formatted];
-        }
-
-        // Slow path: Node exceeds token limit - use semantic chunking
-        debug!(
-            "Node '{}' has {} tokens (limit: {}), chunking required",
-            node.name, token_count, self.config.max_tokens_per_text
-        );
-
-        let plan = self.build_plan_for_nodes(std::slice::from_ref(node));
-        if plan.chunks.is_empty() {
-            return vec![formatted];
-        }
-
-        let texts: Vec<String> = plan.chunks.into_iter().map(|chunk| chunk.text).collect();
-
-        debug!(
-            "Chunked large node '{}' into {} chunks (was {} tokens)",
-            node.name,
-            texts.len(),
-            token_count
-        );
-
-        texts
-    }
-
-    fn format_node_text(node: &CodeNode) -> String {
-        let mut header = format!(
-            "{} {} {}",
-            node.language
-                .as_ref()
-                .map_or("unknown".to_string(), |l| format!("{:?}", l)),
-            node.node_type
-                .as_ref()
-                .map_or("unknown".to_string(), |t| format!("{:?}", t)),
-            node.name.as_str()
-        );
-
-        if let Some(content) = &node.content {
-            header.push(' ');
-            header.push_str(content);
-        }
-
-        header
+            .overlap_tokens(
+                std::env::var("CODEGRAPH_CHUNK_OVERLAP_TOKENS")
+                    .ok()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(64),
+            );
+        config.skip_chunking = std::env::var("CODEGRAPH_EMBEDDING_SKIP_CHUNKING")
+            .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true"));
+        config.smart_split = std::env::var("CODEGRAPH_CHUNK_SMART_SPLIT").map_or(true, |value| {
+            value == "1" || value.eq_ignore_ascii_case("true")
+        });
+        let tokenizer = policy.tokenizer.clone();
+        config.token_counter = Some((
+            policy.identity.clone(),
+            Arc::new(move |text| policy.document_tokens(text)),
+        ));
+        build_chunk_plan(nodes, tokenizer, config)
     }
 
     async fn call_embed_endpoint(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
@@ -287,11 +400,17 @@ impl OllamaEmbeddingProvider {
             return Ok(Vec::new());
         }
 
-        let options = self.config.num_ctx.map(|num_ctx| OllamaOptions { num_ctx });
+        let policy = self.input_policy().await?;
+        for text in texts {
+            policy.validate(text)?;
+        }
+        let options = Some(OllamaOptions {
+            num_ctx: policy.context_tokens,
+        });
         let request = OllamaEmbeddingRequest {
             model: &self.config.model_name,
             input: texts,
-            truncate: Some(true),
+            truncate: Some(false),
             options,
         };
 
@@ -345,21 +464,17 @@ impl OllamaEmbeddingProvider {
             request_start.elapsed().as_millis()
         );
 
-        // Sanitize: replace non-finite values to avoid JSON encoding failures downstream
-        let sanitized: Vec<Vec<f32>> = response_data
+        if response_data
             .embeddings
-            .into_iter()
-            .map(|mut emb| {
-                for v in emb.iter_mut() {
-                    if !v.is_finite() {
-                        *v = 0.0;
-                    }
-                }
-                emb
-            })
-            .collect();
-
-        Ok(sanitized)
+            .iter()
+            .flatten()
+            .any(|value| !value.is_finite())
+        {
+            return Err(CodeGraphError::Vector(
+                "Ollama returned non-finite embedding values".into(),
+            ));
+        }
+        Ok(response_data.embeddings)
     }
 
     fn is_context_overflow_message(message: &str) -> bool {
@@ -377,10 +492,8 @@ impl OllamaEmbeddingProvider {
             Err(e) if texts.len() == 1 && Self::is_context_overflow_message(&e.to_string()) => {
                 let chars = texts[0].len();
                 Err(CodeGraphError::External(format!(
-                    "Ollama embedding request exceeded context length for single input (model={}, chars={}). Consider reducing CODEGRAPH_MAX_CHUNK_TOKENS or configuring CODEGRAPH_OLLAMA_NUM_CTX if supported by your Ollama server. Root error: {}",
-                    self.config.model_name,
-                    chars,
-                    e
+                    "Ollama embedding request exceeded context length for single input (model={}, chars={}). Verify CODEGRAPH_TOKENIZER_PATH and reduce CODEGRAPH_CHUNK_MAX_TOKENS or configure CODEGRAPH_OLLAMA_NUM_CTX. Input was not truncated. Root error: {}",
+                    self.config.model_name, chars, e
                 )))
             }
             Err(e) => Err(e),
@@ -392,13 +505,27 @@ impl OllamaEmbeddingProvider {
         texts: &[String],
         batch_size: usize,
     ) -> Result<Vec<Vec<f32>>> {
+        let policy = self.input_policy().await?;
+        let prepared = texts
+            .iter()
+            .map(|text| policy.prepare(text, false))
+            .collect::<Result<Vec<_>>>()?;
+        self.generate_prepared_embeddings(&prepared, batch_size)
+            .await
+    }
+
+    pub async fn generate_prepared_embeddings(
+        &self,
+        texts: &[String],
+        batch_size: usize,
+    ) -> Result<Vec<Vec<f32>>> {
         if texts.is_empty() {
             return Ok(Vec::new());
         }
 
         let mut all_embeddings = Vec::with_capacity(texts.len());
 
-        for (batch_idx, batch) in texts.chunks(batch_size).enumerate() {
+        for (batch_idx, batch) in texts.chunks(batch_size.max(1)).enumerate() {
             trace!(
                 "Sending Ollama embed batch {} ({} items)",
                 batch_idx + 1,
@@ -419,14 +546,30 @@ impl OllamaEmbeddingProvider {
 
     /// Generate embedding for single text
     pub async fn generate_single_embedding(&self, text: &str) -> Result<Vec<f32>> {
-        let payload = vec![text.to_string()];
+        let payload = vec![self.input_policy().await?.prepare(text, true)?];
         let mut embeddings = self
-            .generate_embeddings_for_texts(&payload, self.config.batch_size)
+            .generate_prepared_embeddings(&payload, self.config.batch_size)
             .await?;
         embeddings
             .pop()
             .ok_or_else(|| CodeGraphError::Vector("Ollama returned no embedding".to_string()))
     }
+}
+
+fn model_names_match(actual: &str, desired: &str) -> bool {
+    fn normalize(name: &str) -> String {
+        let name = name.to_ascii_lowercase();
+        if name
+            .rsplit('/')
+            .next()
+            .is_some_and(|part| part.contains(':'))
+        {
+            name
+        } else {
+            format!("{name}:latest")
+        }
+    }
+    normalize(actual) == normalize(desired)
 }
 
 async fn embed_resilient_with<'t, F, Fut>(
@@ -480,6 +623,129 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn document_query_prefixes_and_overflow_errors_reach_strict_requests() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut bodies = Vec::new();
+            for request in 0..3 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                let body_start;
+                loop {
+                    let mut buffer = [0; 4096];
+                    let count = stream.read(&mut buffer).await.unwrap();
+                    assert!(count > 0);
+                    bytes.extend_from_slice(&buffer[..count]);
+                    if let Some(end) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+                        let header = String::from_utf8_lossy(&bytes[..end]).to_ascii_lowercase();
+                        let length: usize = header
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .unwrap()
+                            .parse()
+                            .unwrap();
+                        if bytes.len() >= end + 4 + length {
+                            body_start = end + 4;
+                            break;
+                        }
+                    }
+                }
+                bodies.push(
+                    serde_json::from_slice::<serde_json::Value>(&bytes[body_start..]).unwrap(),
+                );
+                let (status, body) = if request == 2 {
+                    (
+                        "400 Bad Request",
+                        "{\"error\":\"input length exceeds the context length\"}",
+                    )
+                } else {
+                    ("200 OK", "{\"embeddings\":[[1.0,2.0]]}")
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+            bodies
+        });
+        let provider = OllamaEmbeddingProvider::new(OllamaEmbeddingConfig {
+            base_url: format!("http://{address}"),
+            ..Default::default()
+        });
+        let tokenizer = Tokenizer::from_file(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tokenizers/qwen2.5-coder.json"
+        ))
+        .unwrap();
+        provider
+            .input_policy
+            .set(
+                InputPolicy::new(
+                    tokenizer,
+                    512,
+                    "search_document: ".into(),
+                    "search_query: ".into(),
+                    2,
+                    "fixture",
+                )
+                .unwrap(),
+            )
+            .unwrap_or_else(|_| panic!("policy initialized twice"));
+        assert_eq!(
+            provider
+                .generate_embeddings_for_texts(&["code".into()], 64)
+                .await
+                .unwrap(),
+            vec![vec![1.0, 2.0]]
+        );
+        assert_eq!(
+            provider.generate_single_embedding("query").await.unwrap(),
+            vec![1.0, 2.0]
+        );
+        let error = provider
+            .generate_single_embedding("server-limit")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("Input was not truncated"));
+        let bodies = tokio::time::timeout(Duration::from_secs(5), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bodies[0]["input"][0], "search_document: code");
+        assert_eq!(bodies[1]["input"][0], "search_query: query");
+        for body in bodies {
+            assert_eq!(body["truncate"], false);
+            assert_eq!(body["options"]["num_ctx"], 512);
+        }
+    }
+    #[test]
+    fn availability_requires_the_selected_model_and_tag() {
+        assert!(model_names_match(
+            "nomic-embed-text:latest",
+            "nomic-embed-text"
+        ));
+        assert!(!model_names_match(
+            "nomic-embed-text:latest",
+            "qwen3-embedding:0.6b"
+        ));
+        assert!(!model_names_match(
+            "qwen3-embedding:4b",
+            "qwen3-embedding:0.6b"
+        ));
+    }
+
+    #[test]
+    fn configured_batch_sizes_above_256_are_preserved() {
+        let config = codegraph_core::EmbeddingConfig {
+            batch_size: 4096,
+            ..Default::default()
+        };
+        assert_eq!(OllamaEmbeddingConfig::from(&config).batch_size, 4096);
+    }
 
     #[test]
     fn detects_context_overflow_messages() {
@@ -545,8 +811,10 @@ mod tests {
 impl EmbeddingProvider for OllamaEmbeddingProvider {
     /// Generate embedding for a single code node
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
-        let formatted = Self::format_node_text(node);
-        self.generate_single_embedding(&formatted).await
+        self.generate_embeddings(std::slice::from_ref(node))
+            .await?
+            .pop()
+            .ok_or_else(|| CodeGraphError::Vector("No node embedding returned".into()))
     }
 
     /// Generate embeddings for multiple code nodes with batch optimization and chunking
@@ -562,23 +830,9 @@ impl EmbeddingProvider for OllamaEmbeddingProvider {
         );
         let start_time = Instant::now();
 
-        // Prepare texts from nodes with semantic chunking
-        let node_chunks: Vec<(usize, Vec<String>)> = nodes
-            .iter()
-            .enumerate()
-            .map(|(idx, node)| (idx, self.prepare_text(node)))
-            .collect();
-
-        // Flatten all chunks and track which node they belong to
-        let mut all_texts = Vec::new();
-        let mut chunk_to_node: Vec<usize> = Vec::new();
-
-        for (node_idx, chunks) in &node_chunks {
-            for chunk in chunks {
-                all_texts.push(chunk.clone());
-                chunk_to_node.push(*node_idx);
-            }
-        }
+        let plan = self.build_plan_for_nodes(nodes).await?;
+        let chunk_to_node = plan.chunk_to_node();
+        let all_texts: Vec<_> = plan.chunks.into_iter().map(|chunk| chunk.text).collect();
 
         debug!(
             "Processing {} nodes with {} total chunks (avg {:.2} chunks/node)",

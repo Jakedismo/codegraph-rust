@@ -59,6 +59,21 @@ impl Default for BatchConfig {
 /// Unified trait for all embedding providers (local and remote)
 #[async_trait]
 pub trait EmbeddingProvider: Send + Sync {
+    /// Embed already prepared text exactly once; no node wrappers or second chunk plan.
+    async fn generate_prepared_texts(
+        &self,
+        _texts: &[String],
+        _config: &BatchConfig,
+    ) -> Result<Vec<Vec<f32>>> {
+        Err(codegraph_core::CodeGraphError::Vector(
+            "Provider does not support prepared text batches".into(),
+        ))
+    }
+
+    fn tokenizer(&self) -> Option<std::sync::Arc<tokenizers::Tokenizer>> {
+        None
+    }
+
     /// Generate embedding for a single code node
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>>;
 
@@ -188,6 +203,17 @@ impl HybridEmbeddingPipeline {
 
 #[async_trait]
 impl EmbeddingProvider for HybridEmbeddingPipeline {
+    async fn generate_prepared_texts(
+        &self,
+        texts: &[String],
+        config: &BatchConfig,
+    ) -> Result<Vec<Vec<f32>>> {
+        // A cache namespace identifies one model; fallback models must not mix vectors.
+        self.primary.generate_prepared_texts(texts, config).await
+    }
+    fn tokenizer(&self) -> Option<std::sync::Arc<tokenizers::Tokenizer>> {
+        self.primary.tokenizer()
+    }
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
         let provider = self.select_provider().await;
 

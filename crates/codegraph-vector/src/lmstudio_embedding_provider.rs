@@ -60,7 +60,7 @@ impl From<&codegraph_core::EmbeddingConfig> for LmStudioEmbeddingConfig {
         );
 
         // Batch size from config (central config already loaded from env)
-        let batch_size = config.batch_size.clamp(1, 256);
+        let batch_size = config.batch_size.max(1);
 
         // Max retries from env var or default
         let max_retries = std::env::var("CODEGRAPH_LMSTUDIO_MAX_RETRIES")
@@ -158,29 +158,31 @@ impl LmStudioEmbeddingProvider {
         }
     }
 
-    /// Prepare text by chunking if necessary
-    fn prepare_text(&self, text: &str) -> Vec<String> {
-        let encoding = self.tokenizer.encode(text, false).ok();
-        let token_count = encoding.as_ref().map(|e| e.len()).unwrap_or(0);
-
-        if token_count <= self.config.max_tokens_per_request {
-            // Fast path: text fits in single chunk
-            vec![text.to_string()]
-        } else {
-            // Semantic chunking for large text
-            use semchunk_rs::Chunker;
-            let tokenizer = self.tokenizer.clone();
-            let chunker = Chunker::new(
-                self.config.max_tokens_per_request,
-                Box::new(move |s: &str| {
-                    tokenizer
-                        .encode(s, false)
-                        .map(|enc| enc.len())
-                        .unwrap_or_else(|_| (s.len() + 3) / 4) // Fallback to char approximation
-                }),
-            );
-            chunker.chunk(text)
-        }
+    /// Plan lossless chunks through the shared UTF-8-safe syntax/token pipeline.
+    fn prepare_text(
+        &self,
+        text: &str,
+        language: Option<codegraph_core::Language>,
+    ) -> Result<Vec<String>> {
+        let node = CodeNode::new(
+            "input",
+            None,
+            language,
+            codegraph_core::Location {
+                file_path: String::new(),
+                line: 1,
+                column: 0,
+                end_line: None,
+                end_column: None,
+            },
+        )
+        .with_content(text.to_owned());
+        let plan = crate::prep::chunker::build_chunk_plan(
+            &[node],
+            std::sync::Arc::new(self.tokenizer.clone()),
+            crate::prep::chunker::ChunkerConfig::new(self.config.max_tokens_per_request),
+        )?;
+        Ok(plan.chunks.into_iter().map(|chunk| chunk.text).collect())
     }
 
     /// Call LM Studio embeddings endpoint
@@ -251,7 +253,7 @@ impl LmStudioEmbeddingProvider {
 
     /// Generate embedding for a single text string (convenience method)
     pub async fn generate_single_embedding(&self, text: &str) -> Result<Vec<f32>> {
-        let chunks = self.prepare_text(text);
+        let chunks = self.prepare_text(text, None)?;
 
         if chunks.len() == 1 {
             // Single chunk - direct embedding
@@ -367,7 +369,7 @@ impl EmbeddingProvider for LmStudioEmbeddingProvider {
             CodeGraphError::Validation("CodeNode missing content for embedding".to_string())
         })?;
 
-        let chunks = self.prepare_text(content);
+        let chunks = self.prepare_text(content, node.language.clone())?;
 
         if chunks.len() == 1 {
             // Single chunk - direct embedding
@@ -488,6 +490,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn configured_batch_sizes_above_256_are_preserved() {
+        let config = codegraph_core::EmbeddingConfig {
+            batch_size: 4096,
+            ..Default::default()
+        };
+        assert_eq!(LmStudioEmbeddingConfig::from(&config).batch_size, 4096);
+    }
+
+    #[test]
+    fn long_unicode_inputs_use_lossless_shared_chunk_planning() {
+        let provider = LmStudioEmbeddingProvider::new(LmStudioEmbeddingConfig {
+            max_tokens_per_request: 32,
+            ..Default::default()
+        })
+        .unwrap();
+        let source = "fn café() {\n let message = \"🚀 計算\";\n}\n".repeat(20);
+        let chunks = provider
+            .prepare_text(&source, Some(codegraph_core::Language::Rust))
+            .unwrap();
+        assert!(chunks.len() > 1);
+        assert!(chunks.iter().all(|chunk| {
+            provider
+                .tokenizer
+                .encode(chunk.as_str(), true)
+                .unwrap()
+                .len()
+                <= 32
+        }));
+        assert!(chunks.concat().contains("🚀 計算"));
+    }
+
+    #[test]
     fn test_dimension_inference() {
         // Jina models
         assert_eq!(
@@ -538,14 +572,27 @@ mod tests {
 
     #[test]
     fn test_config_from_env() {
-        std::env::set_var("CODEGRAPH_LMSTUDIO_MODEL", "test-model");
-        std::env::set_var("CODEGRAPH_LMSTUDIO_URL", "http://test:9000/v1");
+        if !test_env::run(
+            concat!(module_path!(), "::test_config_from_env"),
+            &[("CODEGRAPH_LMSTUDIO_MODEL", Some("test-model"))],
+        ) {
+            return;
+        }
 
-        let config = LmStudioEmbeddingConfig::from_env();
+        let core_config = codegraph_core::EmbeddingConfig {
+            lmstudio_url: "http://test:9000/v1".to_string(),
+            ..Default::default()
+        };
+        let config = LmStudioEmbeddingConfig::from(&core_config);
         assert_eq!(config.model, "test-model");
         assert_eq!(config.api_base, "http://test:9000/v1");
-
-        std::env::remove_var("CODEGRAPH_LMSTUDIO_MODEL");
-        std::env::remove_var("CODEGRAPH_LMSTUDIO_URL");
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

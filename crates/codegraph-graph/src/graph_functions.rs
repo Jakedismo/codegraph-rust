@@ -6,32 +6,22 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::json;
 use std::sync::Arc;
-use surrealdb::{engine::any::Any, Surreal, Value as SurrealValue};
+use surrealdb::types::{SurrealValue as _, ToSql, Value as SurrealValue};
+use surrealdb::{Surreal, engine::any::Any};
 use tracing::{debug, error, warn};
 
 /// Convert SurrealDB Value to clean serde_json::Value using accessor methods
 /// Avoids externally-tagged enum serialization that produces {"None": ...}, {"Number": {"Int": ...}}
 fn surreal_to_json(value: SurrealValue) -> serde_json::Value {
-    // Use into_inner() to get the internal sql::Value, then serialize properly
-    let inner = value.into_inner();
-    sql_value_to_json(inner)
+    sql_value_to_json(value)
 }
 
-fn sql_value_to_json(value: surrealdb::sql::Value) -> serde_json::Value {
-    use surrealdb::sql::Value as SqlValue;
+fn sql_value_to_json(value: surrealdb::types::Value) -> serde_json::Value {
+    use surrealdb::types::Value as SqlValue;
     match value {
         SqlValue::None | SqlValue::Null => serde_json::Value::Null,
         SqlValue::Bool(b) => serde_json::Value::Bool(b),
-        SqlValue::Number(n) => {
-            // Try to get as float first (handles both int and float)
-            let f = n.as_float();
-            if f.fract() == 0.0 && f.abs() < i64::MAX as f64 {
-                // It's effectively an integer
-                serde_json::json!(f as i64)
-            } else {
-                serde_json::json!(f)
-            }
-        }
+        SqlValue::Number(n) => surrealdb::types::Value::Number(n).into_json_value(),
         SqlValue::Duration(d) => serde_json::Value::String(d.to_string()),
         SqlValue::Datetime(dt) => serde_json::Value::String(dt.to_string()),
         SqlValue::Uuid(u) => serde_json::Value::String(u.to_string()),
@@ -45,25 +35,27 @@ fn sql_value_to_json(value: surrealdb::sql::Value) -> serde_json::Value {
                 .collect();
             serde_json::Value::Object(map)
         }
-        SqlValue::Thing(thing) => serde_json::Value::String(thing.to_string()),
+        SqlValue::RecordId(thing) => serde_json::Value::String(thing.to_sql()),
         SqlValue::Bytes(b) => serde_json::Value::String(format!("bytes:{}", b.len())),
-        SqlValue::Strand(s) => {
+        SqlValue::String(s) => {
             let s_str = s.to_string();
             // Transparently decompress if it looks like our compressed format
-            if let Ok(decompressed) = codegraph_core::decompress_string(&s_str) {
-                 // Try parsing as JSON first if it looks like it
-                 if (decompressed.starts_with('{') && decompressed.ends_with('}')) || 
-                    (decompressed.starts_with('[') && decompressed.ends_with(']')) {
-                     if let Ok(json) = serde_json::from_str(&decompressed) {
-                         return json;
-                     }
-                 }
-                 serde_json::Value::String(decompressed)
-            } else {
-                 serde_json::Value::String(s_str)
+            match codegraph_core::decompress_string(&s_str) {
+                Ok(decompressed) => {
+                    // Try parsing as JSON first if it looks like it
+                    if (decompressed.starts_with('{') && decompressed.ends_with('}'))
+                        || (decompressed.starts_with('[') && decompressed.ends_with(']'))
+                    {
+                        if let Ok(json) = serde_json::from_str(&decompressed) {
+                            return json;
+                        }
+                    }
+                    serde_json::Value::String(decompressed)
+                }
+                _ => serde_json::Value::String(s_str),
             }
         }
-        other => serde_json::Value::String(format!("{}", other)),
+        other => serde_json::Value::String(other.to_sql()),
     }
 }
 
@@ -616,7 +608,7 @@ impl GraphFunctions {
         threshold: f32,
     ) -> Result<Vec<serde_json::Value>> {
         // Call the SurrealDB function directly
-        let embedding_value = surrealdb::sql::Value::from(query_embedding.to_vec());
+        let embedding_value = query_embedding.to_vec().into_value();
         let mut response = self
             .db
             .query("RETURN fn::semantic_search_nodes_via_chunks($project_id, $query_text, $dimension, $limit, $threshold, $query_embedding)")
@@ -710,7 +702,10 @@ pub struct DependencyNode {
     pub kind: Option<String>,
     pub location: Option<NodeLocation>,
     pub language: Option<String>,
-    #[serde(default, deserialize_with = "codegraph_core::deserialize_content_string")]
+    #[serde(
+        default,
+        deserialize_with = "codegraph_core::deserialize_content_string"
+    )]
     pub content: Option<String>,
     pub metadata: Option<serde_json::Value>,
     pub dependency_depth: Option<i32>,
@@ -735,7 +730,10 @@ pub struct CallChainNode {
     pub kind: Option<String>,
     pub location: Option<NodeLocation>,
     pub language: Option<String>,
-    #[serde(default, deserialize_with = "codegraph_core::deserialize_content_string")]
+    #[serde(
+        default,
+        deserialize_with = "codegraph_core::deserialize_content_string"
+    )]
     pub content: Option<String>,
     pub metadata: Option<serde_json::Value>,
     pub call_depth: Option<i32>,
@@ -801,7 +799,10 @@ pub struct NodeInfo {
     pub kind: Option<String>,
     pub location: Option<NodeLocation>,
     pub language: Option<String>,
-    #[serde(default, deserialize_with = "codegraph_core::deserialize_content_string")]
+    #[serde(
+        default,
+        deserialize_with = "codegraph_core::deserialize_content_string"
+    )]
     pub content: Option<String>,
     pub metadata: Option<serde_json::Value>,
 }
@@ -852,6 +853,37 @@ pub struct ComplexityHotspot {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn native_sdk_values_preserve_content_defaults_record_ids_and_integer_precision() {
+        let db: Surreal<Any> = Surreal::init();
+        db.connect("mem://").await.unwrap();
+        db.use_ns("test").use_db("conversion").await.unwrap();
+        let content = "fn native_sdk() {}\n".repeat(100);
+        let compressed = codegraph_core::compress_to_string(&content);
+        let query = "RETURN [{ id: nodes:native, name: 'native_sdk', content: $content, metadata: { large: 9007199254740993 } }, { id: nodes:missing, name: 'missing_content' }];";
+
+        let mut response = db
+            .query(query)
+            .bind(("content", compressed.clone()))
+            .await
+            .unwrap();
+        let nodes: Vec<NodeInfo> = response.take(0).unwrap();
+        assert_eq!(nodes[0].id, "nodes:native");
+        assert_eq!(nodes[0].content.as_deref(), Some(content.as_str()));
+        assert_eq!(
+            nodes[0].metadata.as_ref().unwrap()["large"],
+            json!(9007199254740993_i64)
+        );
+        assert!(nodes[1].content.is_none());
+
+        let mut response = db.query(query).bind(("content", compressed)).await.unwrap();
+        let raw: SurrealValue = response.take(0).unwrap();
+        let json = surreal_to_json(raw);
+        assert_eq!(json[0]["id"], "nodes:native");
+        assert_eq!(json[0]["content"], content);
+        assert_eq!(json[0]["metadata"]["large"], json!(9007199254740993_i64));
+    }
+
     #[test]
     fn test_dependency_node_serialization() {
         let node = DependencyNode {
@@ -883,8 +915,8 @@ mod tests {
         db.connect("mem://").await.unwrap();
         db.use_ns("test").use_db("test").await.unwrap();
         db.signin(Root {
-            username: "root",
-            password: "root",
+            username: "root".to_string(),
+            password: "root".to_string(),
         })
         .await
         .ok(); // mem engine ignores auth
@@ -920,3 +952,19 @@ mod tests {
         assert_eq!(count, 1, "Should only count nodes in proj-a");
     }
 }
+
+crate::impl_surreal_serde!(
+    DependencyNode,
+    CircularDependency,
+    CallChainNode,
+    CouplingMetricsResult,
+    CouplingMetrics,
+    HubNode,
+    DirectorySummary,
+    EdgeTypeCount,
+    NodeInfo,
+    NodeReference,
+    CallerInfo,
+    NodeLocation,
+    ComplexityHotspot
+);

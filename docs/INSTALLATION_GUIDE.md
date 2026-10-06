@@ -1,42 +1,58 @@
 # CodeGraph Installation & Setup Guide
 
-This guide covers the complete installation process for CodeGraph, from building the binary to configuring the MCP server for use with Claude Code.
+This guide covers installing CodeGraph and setting up a project. The short version is three steps: build the binary, configure a model provider, and run `codegraph init` in your project. There is no database to install or start.
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
 2. [Building CodeGraph](#building-codegraph)
-3. [Setting Up SurrealDB](#setting-up-surrealdb)
-4. [Creating the Database Schema](#creating-the-database-schema)
-5. [Configuration](#configuration)
-6. [Indexing Your Codebase](#indexing-your-codebase)
-7. [Running the MCP Server](#running-the-mcp-server)
-8. [Daemon Mode](#daemon-mode)
-9. [Using Agentic Tools](#using-agentic-tools)
+3. [Quick Setup with `codegraph init`](#quick-setup-with-codegraph-init)
+4. [Configuration](#configuration)
+5. [Indexing Your Codebase](#indexing-your-codebase)
+6. [Running the MCP Server](#running-the-mcp-server)
+7. [Daemon Mode](#daemon-mode)
+8. [Using Agentic Tools](#using-agentic-tools)
+9. [Optional: Using a SurrealDB Server](#optional-using-a-surrealdb-server)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Supported CLI Commands
 
 - `start` / `stop` / `status` — manage the MCP server transports (stdio/http)
+- `init` — choose project-local Claude/Codex hooks, merge agent instructions, then index
 - `index` — index a project (supports `--force`, language filters, watch mode)
+- `agent` — run context/impact/architecture/quality tools or print CLI instructions
+- `hooks` — install project-local guidance hooks or emit lifecycle context
 - `estimate` — estimate indexing time/cost without persisting
 - `config` — init/show/set/get/validate configuration; agent-status/db-check live here
-- `dbcheck` — quick Surreal connectivity/schema canary
+- `db-check` — opens the project's store (creating it with the bundled schema if new) and reports the target
 - `daemon` — (feature-gated) file-watch daemon control
 
-Legacy helper commands (`code`, `test`, `perf`, `stats`, `clean`, `init`) are no longer part of the CLI.
+Legacy helper commands (`code`, `test`, `perf`, `stats`, `clean`) are no longer part of the CLI.
+
+For first-time project setup, run `codegraph init /path/to/project`. It offers Claude,
+Codex, both or none before updating project `AGENTS.md`/`CLAUDE.md` and indexing.
+Scripts should pass `--hooks claude|codex|both|none`; `--no-index` performs setup only.
+See [project initialization](AGENTIC_CLI.md#project-initialization) for preservation,
+existing-hook detection and provider prerequisites.
+
+For HTTP deployments, MCP 3 validates the request's `Host` header. Loopback hosts
+and the configured bind host are accepted by default. When binding to `0.0.0.0`
+behind a proxy or serving a public hostname, set an explicit comma-separated
+allowlist, for example `CODEGRAPH_HTTP_ALLOWED_HOSTS=localhost,codegraph.example.com`.
 
 ---
 
 ## Prerequisites
 
-Before installing CodeGraph, ensure you have:
+- **Rust 1.95 or newer** - The workspace uses Rust edition 2024. Install from [rustup.rs](https://rustup.rs).
+- **A model provider** for embeddings and for the agentic tools: [Ollama](https://ollama.com) or LM Studio locally, or an API key for Anthropic, OpenAI, xAI or Jina. See `docs/AI_PROVIDERS.md`.
+- **macOS** for the installer scripts (Linux users can run the `cargo install` command directly). The scripts use Homebrew.
 
-- **macOS** (the installer scripts target macOS; Linux users can adapt the commands)
-- **Rust toolchain** - Install from [rustup.rs](https://rustup.rs)
-- **Homebrew** - Install from [brew.sh](https://brew.sh)
-- **Ollama** (recommended) - Install from [ollama.com](https://ollama.com) for local LLM/embedding support
+No database is required. SurrealDB is embedded in the binary and each project gets its own store. A separate SurrealDB server is optional; see [Optional: Using a SurrealDB Server](#optional-using-a-surrealdb-server).
+
+Balanced and full indexing tiers additionally need the language servers for the languages you index (for example `rust-analyzer`); the default fast tier does not.
 
 ---
 
@@ -50,8 +66,8 @@ cd /path/to/codegraph-rust
 ```
 
 This script:
-- Installs SurrealDB CLI via Homebrew if not present
-- Builds CodeGraph with all features enabled (daemon, AI-enhanced, all providers, LATS)
+- Installs the SurrealDB CLI via Homebrew if not present (only used for the optional server mode)
+- Builds CodeGraph with all features enabled (daemon, AI-enhanced, all providers)
 - Installs the binary to `~/.cargo/bin/codegraph`
 
 ### What Gets Enabled
@@ -61,7 +77,7 @@ The full-features build includes:
 - All LLM providers (Anthropic, OpenAI, xAI Grok, Ollama, LM Studio)
 - Daemon mode (file watching & auto re-indexing)
 - HTTP server with SSE streaming
-- AutoAgents framework with LATS (Language Agent Tree Search)
+- Rig agent framework with all providers
 
 ### Manual Build (Alternative)
 
@@ -69,268 +85,124 @@ If you prefer to build manually:
 
 ```bash
 cargo install --path crates/codegraph-mcp-server --bin codegraph \
-  --all-features --features autoagents-lats --force
+  --all-features --force
 ```
 
 ---
 
-## Setting Up SurrealDB
+## Quick Setup with `codegraph init`
 
-CodeGraph requires SurrealDB for graph storage and vector search. You have two options:
-
-### Option 1: Local Installation (Recommended for Development)
+From a terminal, with a provider configured (see [Configuration](#configuration)):
 
 ```bash
-# Install SurrealDB CLI
-brew install surrealdb/tap/surreal
-
-# Start SurrealDB with persistent storage
-surreal start \
-  --bind 0.0.0.0:3004 \
-  --user root \
-  --pass root \
-  file://$HOME/.codegraph/surreal.db
+codegraph init /path/to/project
 ```
 
-For in-memory storage (data lost on restart):
-```bash
-surreal start --bind 0.0.0.0:3004 --user root --pass root memory
-```
+Init does the per-project setup in one pass:
 
-### Option 2: Surreal Cloud (Free Tier Available)
+1. Offers project-local guidance hooks for **Claude Code, Codex, both, or none**, and skips the prompt when CodeGraph hooks are already installed.
+2. Adds or refreshes a managed `# codegraph` section in the project's `AGENTS.md` and `CLAUDE.md`, leaving the rest of those files alone.
+3. Loads the project's `.env` and configuration and indexes the project recursively. On first use this creates the embedded store at `<project>/.codegraph/db` with the bundled schema and a `.gitignore` that keeps it out of version control.
 
-1. Sign up at [surrealdb.com/cloud](https://surrealdb.com/cloud)
-2. Create a free 1GB instance
-3. Note your connection URL, namespace, and credentials
-
-### Option 3: Surrealist IDE
-
-[Surrealist](https://surrealdb.com/surrealist) provides a graphical IDE for SurrealDB that makes database management easy:
-
-- Visual query editor with syntax highlighting
-- Schema visualization
-- Data browser and editor
-- Easy connection management
-
-Download from [surrealdb.com/surrealist](https://surrealdb.com/surrealist) or use the web version.
-
----
-
-## Creating the Database Schema
-
-After starting SurrealDB, apply the CodeGraph schema:
-
-### Using the Apply Script
+For scripts and CI, pass the choices explicitly:
 
 ```bash
-cd /path/to/codegraph-rust/schema
-
-# Apply to local database (defaults: localhost:3004, root/root)
-./apply-schema.sh
-
-# Apply with custom settings
-./apply-schema.sh \
-  --endpoint ws://localhost:3004 \
-  --namespace ouroboros \
-  --database codegraph \
-  --username root \
-  --password root
+codegraph init /path/to/project --hooks both --index-tier balanced --workers 4
+codegraph init /path/to/project --hooks none --no-index   # hooks/instructions only; no providers, no database
 ```
 
-### Using SurrealDB CLI Directly
+After init, connect your client (see [Running the MCP Server](#running-the-mcp-server)) or use the CLI directly (`codegraph agent context "..."`). Details on hook detection, file preservation and validation are in [project initialization](AGENTIC_CLI.md#project-initialization).
 
-```bash
-surreal sql \
-  --endpoint ws://localhost:3004 \
-  --namespace ouroboros \
-  --database codegraph \
-  --username root \
-  --password root \
-  < schema/codegraph.surql
-```
-
-### Using Surrealist IDE
-
-1. Open Surrealist and connect to your database
-2. Navigate to the Query tab
-3. Open `schema/codegraph.surql`
-4. Execute the schema
-
-### Verify Schema Installation
-
-```bash
-surreal sql \
-  --endpoint ws://localhost:3004 \
-  --namespace ouroboros \
-  --database codegraph \
-  --username root \
-  --password root \
-  --command "INFO FOR DB;"
-```
-
-You should see tables like `nodes`, `edges`, `chunks`, `symbol_embeddings`, and functions like `fn::semantic_search_chunks_with_context`.
+What init does not do: it does not create global configuration (`codegraph config init` does), choose or install models, or touch user-level harness settings.
 
 ---
 
 ## Configuration
 
-CodeGraph uses a hierarchical configuration system. Settings can be specified via:
+Settings are resolved in this order, later sources overriding earlier ones:
 
-1. Global config file (`~/.codegraph/config.toml`)
-2. Project-level config file (`.codegraph/config.toml` in project root)
-3. Environment variables (with `CODEGRAPH_` prefix)
-4. `.env` file in project root
+1. `./.codegraph.toml` in the directory you run from (project-level)
+2. `~/.codegraph/config.toml` (user-level; create it with `codegraph config init`)
+3. `.env` in the working directory, then `~/.codegraph.env`
+4. `CODEGRAPH_*` environment variables
 
-For detailed configuration examples (Ollama/LM Studio/Jina embeddings and OpenAI/xAI/Anthropic/OpenAI-compatible LLMs), see `docs/AI_PROVIDERS.md`.
+For provider-specific examples (Ollama, LM Studio, Jina, OpenAI, xAI, Anthropic, OpenAI-compatible), see `docs/AI_PROVIDERS.md`.
 
-### Global Configuration (`~/.codegraph/config.toml`)
-
-Create the directory and config file:
-
-```bash
-mkdir -p ~/.codegraph
-cp config/example.toml ~/.codegraph/config.toml
-```
-
-Edit `~/.codegraph/config.toml`:
+### Config file
 
 ```toml
-# Embedding Configuration
 [embedding]
-provider = "ollama"                    # ollama | lmstudio | jina | openai
-model = "qwen3-embedding:0.6b"         # Model name for your provider
-dimension = 1024                       # 384, 768, 1024, 1536, 2048, 2560, 3072, 4096
-batch_size = 32
-normalize_embeddings = true
-cache_enabled = true
+provider = "ollama"                    # ollama | lmstudio | jina | openai | onnx
+model = "qwen3-embedding:0.6b"
+dimension = 1024                       # 384, 768, 1024, 1536, 2048, 2560, 3072, 3584, 4096
+batch_size = 64
 ollama_url = "http://localhost:11434"
-# lmstudio_url = "http://localhost:1234"  # For LM Studio
+# lmstudio_url = "http://localhost:1234"
 
-# LLM Configuration (for agentic tools)
 [llm]
-provider = "ollama"                    # ollama | anthropic | openai | xai | lmstudio
-model = "qwen3:4b"                     # Model for reasoning
-context_window = 32000                 # Affects tier selection for prompts
-max_retries = 3
+enabled = true                         # false makes the agent ignore this section
+provider = "ollama"                    # ollama | anthropic | openai | xai | lmstudio | openai-compatible
+model = "qwen2.5-coder:14b"
+context_window = 32768                 # your model's real limit; selects the prompt tier
 
-# Reranking (Optional - improves search quality)
-[rerank]
-provider = "jina"                      # jina | ollama
-model = "jina-reranker-v3"
-top_n = 10
-candidates = 256
+[indexing]
+tier = "fast"                          # fast | balanced | full
 
-# Database Configuration
-[database]
-backend = "surrealdb"
-
-[database.surrealdb]
-connection = "ws://localhost:3004"
-namespace = "ouroboros"
-database = "codegraph"
-# username = "root"
-# password is best set via env: CODEGRAPH__DATABASE__SURREALDB__PASSWORD
-strict_mode = false
-auto_migrate = true
-
-# Server Configuration
-[server]
-host = "0.0.0.0"
-port = 3003
-
-# Performance Tuning
 [performance]
-batch_size = 64                        # Embedding batch size
-workers = 4                            # Rayon thread count
-max_concurrent = 4                     # Concurrent embedding requests
-max_texts_per_request = 256
+num_threads = 0                        # 0 = auto
+max_concurrent_requests = 4
 
-# Daemon Configuration (for --watch mode)
 [daemon]
-auto_start_with_mcp = true             # Auto-start when MCP server starts
+auto_start_with_mcp = true             # start the file watcher with `codegraph start`
 debounce_ms = 30
-batch_timeout_ms = 200
 exclude_patterns = ["**/node_modules/**", "**/target/**", "**/.git/**"]
 
-# Monitoring
-[monitoring]
-enabled = true
-metrics_enabled = true
-trace_enabled = false
-metrics_interval_secs = 60
-
-# Security
-[security]
-require_auth = false
-rate_limit_per_minute = 1200
+[logging]
+level = "info"
 ```
 
-### Project-Level Configuration
+Storage has no config-file section: the embedded per-project store is used unless `CODEGRAPH_SURREALDB_URL` is set.
 
-Create `.codegraph/config.toml` in your project root for project-specific overrides:
+The built-in agent resolves each LLM setting in three steps: the environment variable (a project `.env` counts), then the key in the config file's `[llm]` section, then a default. `enabled = false` in `[llm]` makes the agent ignore the section, and API keys are read from the environment only. `codegraph config agent-status` shows the provider, model and tier in effect; [AI_PROVIDERS.md](AI_PROVIDERS.md) lists every variable and key.
 
-```toml
-# Project-specific settings override global config
-[embedding]
-model = "jina-embeddings-v4"           # Different model for this project
-dimension = 2048
-
-[llm]
-provider = "anthropic"
-model = "claude-sonnet-4"
-```
-
-### Environment Variables
-
-Environment variables override config files. Use the `CODEGRAPH_` prefix:
+### Environment variables and `.env`
 
 ```bash
-# Embedding
-export CODEGRAPH_EMBEDDING_PROVIDER=ollama
-export CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b
-export CODEGRAPH_EMBEDDING_DIMENSION=1024
-export CODEGRAPH_MAX_CHUNK_TOKENS=32000
-
-# LLM
-export CODEGRAPH_LLM_PROVIDER=anthropic
-export CODEGRAPH_LLM_MODEL=claude-sonnet-4
-
-# Database
-export CODEGRAPH_SURREALDB_URL=ws://localhost:3004
-export CODEGRAPH_SURREALDB_NAMESPACE=ouroboros
-export CODEGRAPH_SURREALDB_DATABASE=codegraph
-export CODEGRAPH_SURREALDB_USERNAME=root
-export CODEGRAPH_SURREALDB_PASSWORD=root
-
-# API Keys (for cloud providers)
-export ANTHROPIC_API_KEY=sk-ant-...
-export OPENAI_API_KEY=sk-...
-export JINA_API_KEY=jina_...
-export XAI_API_KEY=xai-...
-
-# Agent Architecture
-export CODEGRAPH_AGENT_ARCHITECTURE=react    # react | lats
-
-# Debugging
-export CODEGRAPH_DEBUG=1                     # Enable debug logging
+cp .env.example .env    # then edit
 ```
 
-### Using .env File
-
-Create a `.env` file in your project root:
+The variables most setups need:
 
 ```bash
-# Copy the example
-cp .env.example .env
+# Embeddings
+CODEGRAPH_EMBEDDING_PROVIDER=ollama
+CODEGRAPH_EMBEDDING_MODEL=qwen3-embedding:0.6b
+CODEGRAPH_EMBEDDING_DIMENSION=1024
 
-# Edit with your settings
+# LLM for the agentic tools (these override [llm] in the config file)
+CODEGRAPH_LLM_PROVIDER=anthropic      # ollama | lmstudio | anthropic | openai | xai | openai-compatible
+CODEGRAPH_LLM_MODEL=claude-sonnet-4
+CODEGRAPH_CONTEXT_WINDOW=200000       # your model's real limit; selects the prompt tier
+# CODEGRAPH_OPENAI_COMPATIBLE_URL=http://localhost:8000/v1   # for provider openai-compatible
+
+# API keys (cloud providers)
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+JINA_API_KEY=jina_...
+XAI_API_KEY=xai-...
+
+# Agent selection and debugging
+CODEGRAPH_AGENT_ARCHITECTURE=react    # react | lats | reflexion
+CODEGRAPH_DEBUG=1                     # debug logging
 ```
+
+`.env.example` lists the rest (chunking, tokenizer, batching, Jina and server-mode settings), each with a comment.
 
 ---
 
 ## Indexing Your Codebase
 
-Before using the MCP server, you must index your codebase to create the graph and embeddings.
+`codegraph init` indexes the project as its last step. Use `codegraph index` directly to re-index, to pick languages or a tier, or to index without touching hooks and instruction files.
 
 ### Basic Indexing
 
@@ -351,14 +223,19 @@ codegraph index /path/to/codebase -r -l rust
 codegraph index <PATH> [OPTIONS]
 
 Options:
-  -r, --recursive           Recursively index subdirectories
+  -r, --recursive           Recursively index subdirectories (default)
+      --no-recursive        Index only files directly in the project directory
   -l, --languages <LANGS>   Comma-separated list of languages to index
-                            (rust, python, typescript, javascript, go, java,
-                             cpp, c, swift, kotlin, csharp, ruby, php, dart)
-  --exclude <PATTERN>       Glob patterns to exclude (can be repeated)
-  --force                   Force re-index of all files
-  --project-id <ID>         Custom project identifier
+      --exclude <PATTERN>   Exclude patterns (gitignore format, repeatable)
+      --include <PATTERN>   Include only these patterns
+      --index-tier <TIER>   fast (default) | balanced | full
+      --batch-size <N>      Embedding batch size (overrides env and config)
+      --force               Re-index even if already indexed
+      --complete-deferred   Finish embedding/semantic work deferred by an earlier run
+      --stats-json <FILE>   Write indexing metrics and completion status as JSON
 ```
+
+Run `codegraph index --help` for the full list.
 
 ### Examples
 
@@ -375,17 +252,15 @@ codegraph index . -r -l rust --force
 
 ### Verify Indexing
 
-Check that data was indexed:
+The index command ends with a summary of files, nodes and edges. To check the store afterwards:
 
 ```bash
-surreal sql \
-  --endpoint ws://localhost:3004 \
-  --namespace ouroboros \
-  --database codegraph \
-  --username root \
-  --password root \
-  --command "SELECT count() FROM nodes GROUP ALL; SELECT count() FROM chunks GROUP ALL;"
+cd /path/to/project
+codegraph db-check                                             # prints the store it opened
+codegraph agent context "Where is the main entry point?" --focus search
 ```
+
+Only one process can hold a project's embedded store at a time. If a `codegraph start` server for the same project has already answered a tool call, stop it before running `codegraph index`; otherwise the index command reports that the database is open in another process.
 
 ---
 
@@ -490,8 +365,8 @@ codegraph daemon stop /path/to/project
 | Fine-grained control | Limited | Full |
 | Status monitoring | No | Yes |
 
-**Use `--watch`** for simple single-project setups with Claude Code.
-**Use `daemon`** for complex multi-project environments or when you need independent control.
+**Use `--watch`** for single-project setups with Claude Code. With the embedded per-project store this is the mode that works alongside the MCP server, because the watcher runs inside the server process.
+**Use `daemon`** when no MCP server is running against the same project, or when you use a SurrealDB server: a standalone daemon is a separate process and cannot share a project's embedded store with a running server.
 
 ---
 
@@ -548,30 +423,35 @@ In Claude Code, simply ask questions - the agentic tools will be used automatica
 
 ### Agent Architecture Selection
 
-CodeGraph supports two reasoning architectures:
+CodeGraph's agents run on the Rig framework. Select one with `CODEGRAPH_AGENT_ARCHITECTURE`:
 
-**ReAct (Default)** - Fast, single-pass reasoning:
+**ReAct (Default)** - Tool-calling loop over the graph tools:
 ```bash
 export CODEGRAPH_AGENT_ARCHITECTURE=react
 ```
 
-**LATS** - Deeper, tree-search reasoning (slower but more thorough):
+**LATS** - Tree search over reasoning steps. It does not call the graph tools:
 ```bash
 export CODEGRAPH_AGENT_ARCHITECTURE=lats
 ```
 
+**Reflexion** - ReAct with a retry that feeds the previous error back to the agent:
+```bash
+export CODEGRAPH_AGENT_ARCHITECTURE=reflexion
+```
+
 ### Tier-Aware Prompting
 
-The agent automatically adjusts its behavior based on the context window of the LLM you configured for CodeGraph (set .env CODEGRAPH_CONTEXT_WINDOW=ctx):
+The agent adjusts to the context window you configured for its LLM (`CODEGRAPH_CONTEXT_WINDOW`):
 
-| Tier | Context Window | Behavior |
-|------|----------------|----------|
-| Small | < 50K tokens | Terse prompts, 5 max steps |
-| Medium | 50K-150K | Balanced prompts, 10 max steps |
-| Large | 150K-500K | Detailed prompts, 15 max steps |
-| Massive | > 500K | Exploratory prompts, 20 max steps |
+| Tier | Context Window | Tool-round budget |
+|------|----------------|-------------------|
+| Small | up to 50K | 3 |
+| Medium | 50K-150K | 5 |
+| Large | 150K-500K | 6 |
+| Massive | > 500K | 8 |
 
-This means you can use smaller local models for quick queries and larger cloud models for comprehensive analysis.
+The tier also sets how far the agent investigates and how detailed its answer is. See `docs/AGENT_PROMPT_TIERS.md`.
 
 ### Debugging Agent Behavior
 
@@ -588,22 +468,137 @@ python tools/view_debug_logs.py --follow
 
 ---
 
+## Optional: Using a SurrealDB Server
+
+Skip this section unless you want several machines or processes to share one database, or you use Surreal Cloud. With a server, set these in `.env` and CodeGraph connects to it instead of the embedded store:
+
+```bash
+CODEGRAPH_SURREALDB_URL=ws://localhost:3004
+CODEGRAPH_SURREALDB_NAMESPACE=ouroboros
+CODEGRAPH_SURREALDB_DATABASE=codegraph
+CODEGRAPH_SURREALDB_USERNAME=root
+CODEGRAPH_SURREALDB_PASSWORD=root
+```
+
+In server mode the schema is not applied automatically and all projects share the database (rows are scoped by project id).
+
+### Setting Up SurrealDB
+
+Use SurrealDB 3.x (the embedded SDK is 3.3). Follow SurrealDB's upgrade guide before opening an existing 2.x database with a 3.x server. After the server is up, apply the schema (see [Creating the Database Schema](#creating-the-database-schema)).
+
+#### Option 1: Local Server
+
+```bash
+# Install SurrealDB CLI
+brew install surrealdb/tap/surreal
+
+# Start SurrealDB with persistent storage
+surreal start \
+  --bind 0.0.0.0:3004 \
+  --user root \
+  --pass root \
+  file://$HOME/.codegraph/surreal.db
+```
+
+For in-memory storage (data lost on restart):
+```bash
+surreal start --bind 0.0.0.0:3004 --user root --pass root memory
+```
+
+#### Option 2: Surreal Cloud (Free Tier Available)
+
+1. Sign up at [surrealdb.com/cloud](https://surrealdb.com/cloud)
+2. Create a free 1GB instance
+3. Note your connection URL, namespace, and credentials
+
+#### Option 3: Surrealist IDE
+
+[Surrealist](https://surrealdb.com/surrealist) provides a graphical IDE for SurrealDB that makes database management easy:
+
+- Visual query editor with syntax highlighting
+- Schema visualization
+- Data browser and editor
+- Easy connection management
+
+Download from [surrealdb.com/surrealist](https://surrealdb.com/surrealist) or use the web version.
+
+---
+
+### Creating the Database Schema
+
+After starting SurrealDB, apply the CodeGraph schema:
+
+#### Using the Apply Script
+
+```bash
+cd /path/to/codegraph-rust/schema
+
+# Apply to local database (defaults: localhost:3004, root/root)
+./apply-schema.sh
+
+# Apply with custom settings
+./apply-schema.sh \
+  --endpoint ws://localhost:3004 \
+  --namespace ouroboros \
+  --database codegraph \
+  --username root \
+  --password root
+```
+
+#### Using SurrealDB CLI Directly
+
+```bash
+surreal sql \
+  --endpoint ws://localhost:3004 \
+  --namespace ouroboros \
+  --database codegraph \
+  --username root \
+  --password root \
+  < schema/codegraph_v2.surql
+```
+
+#### Using Surrealist IDE
+
+1. Open Surrealist and connect to your database
+2. Navigate to the Query tab
+3. Open `schema/codegraph_v2.surql`
+4. Execute the schema
+
+#### Verify Schema Installation
+
+```bash
+surreal sql \
+  --endpoint ws://localhost:3004 \
+  --namespace ouroboros \
+  --database codegraph \
+  --username root \
+  --password root \
+  --command "INFO FOR DB;"
+```
+
+You should see tables like `nodes`, `edges`, `chunks`, `symbol_embeddings`, and functions like `fn::semantic_search_chunks_with_context`.
+
+---
+
 ## Troubleshooting
 
 ### Common Issues
 
-**"Cannot connect to SurrealDB"**
-- Ensure SurrealDB is running: `surreal start ...`
-- Check the connection URL matches your config
-- Verify namespace and database exist
+**"The embedded database ... is open in another process"**
+- Another `codegraph` process holds this project's store. Stop the running `codegraph start` (or the other client's server) and retry.
+- One MCP client per project at a time; use server mode if several must share a database.
 
-**"No embeddings found"**
-- Ensure you've indexed the project: `codegraph index . -r -l <languages>`
-- Check your embedding provider is running (Ollama, LM Studio, etc.)
+**"Embedded database was created from the ... schema at a different revision"**
+- The store keeps the schema it was created with. To move to the current schema, stop all `codegraph` processes, delete `<project>/.codegraph/db` and run `codegraph index` again.
 
-**"GraphFunctions not initialized"**
-- Apply the schema: `./schema/apply-schema.sh`
-- Verify functions exist: `INFO FOR DB;`
+**"No embeddings found" or empty search results**
+- Index the project: `codegraph init .` or `codegraph index . -r`
+- Check the embedding provider is running and the model is pulled (Ollama, LM Studio, etc.)
+- A fast-tier index built without the embeddings feature has graph data but no vectors
+
+**Server mode: "Failed to connect" or missing `fn::` functions**
+- Ensure the server is running and `CODEGRAPH_SURREALDB_URL` matches it
+- Apply the schema: `cd schema && ./apply-schema.sh`
 
 **MCP server not appearing in Claude Code**
 - Use the full absolute path to the binary

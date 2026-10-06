@@ -1,7 +1,8 @@
 [package]
 name = "codegraph-mcp-core"
 version = "1.0.0"
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 authors = ["CodeGraph Team"]
 license = "MIT OR Apache-2.0"
 
@@ -19,6 +20,7 @@ anyhow = { workspace = true }
 nix = { workspace = true, features = ["process", "signal"] }
 regex = { workspace = true }
 tokio = { workspace = true }
+futures = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 parking_lot = { workspace = true }
@@ -29,4 +31,4 @@ toml = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-serial_test = "3.2"
+serial_test = "4.0.1"

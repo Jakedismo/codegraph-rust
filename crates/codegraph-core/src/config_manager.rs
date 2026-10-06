@@ -211,10 +211,6 @@ pub struct LLMConfig {
     /// Set CODEGRAPH_USE_COMPLETIONS_API=true to enable backward compatibility
     #[serde(default)]
     pub use_completions_api: bool,
-
-    /// LATS-specific multi-provider configuration
-    #[serde(default)]
-    pub lats: Option<LATSProviderConfig>,
 }
 
 impl Default for LLMConfig {
@@ -239,112 +235,7 @@ impl Default for LLMConfig {
             reasoning_effort: None,     // Only for reasoning models
             timeout_secs: default_timeout_secs(),
             use_completions_api: false, // Default to Responses API
-            lats: None,                 // No LATS config by default
         }
-    }
-}
-
-/// LATS-specific multi-provider configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LATSProviderConfig {
-    /// Provider for selection phase (node scoring)
-    #[serde(default)]
-    pub selection_provider: Option<String>,
-    pub selection_model: Option<String>,
-
-    /// Provider for expansion phase (generating new thoughts)
-    #[serde(default)]
-    pub expansion_provider: Option<String>,
-    pub expansion_model: Option<String>,
-
-    /// Provider for evaluation phase (assessing quality)
-    #[serde(default)]
-    pub evaluation_provider: Option<String>,
-    pub evaluation_model: Option<String>,
-
-    /// Provider for backpropagation phase (updating scores)
-    #[serde(default)]
-    pub backprop_provider: Option<String>,
-    pub backprop_model: Option<String>,
-
-    /// LATS algorithm parameters
-    #[serde(default = "default_lats_beam_width")]
-    pub beam_width: usize,
-
-    #[serde(default = "default_lats_max_depth")]
-    pub max_depth: usize,
-
-    #[serde(default = "default_lats_exploration_weight")]
-    pub exploration_weight: f32,
-}
-
-impl Default for LATSProviderConfig {
-    fn default() -> Self {
-        Self {
-            selection_provider: None,
-            selection_model: None,
-            expansion_provider: None,
-            expansion_model: None,
-            evaluation_provider: None,
-            evaluation_model: None,
-            backprop_provider: None,
-            backprop_model: None,
-            beam_width: default_lats_beam_width(),
-            max_depth: default_lats_max_depth(),
-            exploration_weight: default_lats_exploration_weight(),
-        }
-    }
-}
-
-fn default_lats_beam_width() -> usize {
-    3
-}
-fn default_lats_max_depth() -> usize {
-    5
-}
-fn default_lats_exploration_weight() -> f32 {
-    1.414
-} // sqrt(2) for UCT
-
-/// Validate LATS beam width parameter (must be 1-100)
-fn validate_lats_beam_width(w: usize) -> Option<usize> {
-    if (1..=100).contains(&w) {
-        Some(w)
-    } else {
-        tracing::warn!(
-            value = w,
-            "Invalid CODEGRAPH_LATS_BEAM_WIDTH (must be 1-100), using default: {}",
-            default_lats_beam_width()
-        );
-        None
-    }
-}
-
-/// Validate LATS max depth parameter (must be 1-50)
-fn validate_lats_max_depth(d: usize) -> Option<usize> {
-    if (1..=50).contains(&d) {
-        Some(d)
-    } else {
-        tracing::warn!(
-            value = d,
-            "Invalid CODEGRAPH_LATS_MAX_DEPTH (must be 1-50), using default: {}",
-            default_lats_max_depth()
-        );
-        None
-    }
-}
-
-/// Validate LATS exploration weight parameter (must be 0.0-10.0)
-fn validate_lats_exploration_weight(w: f32) -> Option<f32> {
-    if (0.0..=10.0).contains(&w) {
-        Some(w)
-    } else {
-        tracing::warn!(
-            value = w,
-            "Invalid CODEGRAPH_LATS_EXPLORATION_WEIGHT (must be 0.0-10.0), using default: {}",
-            default_lats_exploration_weight()
-        );
-        None
     }
 }
 
@@ -523,9 +414,62 @@ fn default_xai_base_url() -> String {
     "https://api.x.ai/v1".to_string()
 }
 
+/// Context window assumed when none is configured.
+pub const DEFAULT_CONTEXT_WINDOW: usize = 128_000;
+
 fn default_context_window() -> usize {
-    32000
-} // DeepSeek Coder v2 Lite
+    DEFAULT_CONTEXT_WINDOW
+}
+
+/// `[llm]` settings exactly as written in a config file; `None` means the key is absent.
+/// All fields are `None` when the section sets `enabled = false`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExplicitLlmSettings {
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub context_window: Option<usize>,
+    pub ollama_url: Option<String>,
+    pub lmstudio_url: Option<String>,
+    pub openai_compatible_url: Option<String>,
+}
+
+impl ExplicitLlmSettings {
+    /// Extract the `[llm]` keys present in a TOML document. Invalid TOML and keys of
+    /// the wrong type are treated as absent; full validation is `ConfigManager::load`'s job.
+    pub fn from_toml_str(content: &str) -> Self {
+        let Ok(document) = content.parse::<toml::Table>() else {
+            return Self::default();
+        };
+        let Some(llm) = document.get("llm").and_then(|v| v.as_table()) else {
+            return Self::default();
+        };
+        // `enabled = false` switches the section off. `codegraph config init` writes every
+        // default explicitly (including provider = "lmstudio") with enabled = false, and
+        // that generated file must not count as the user's choice of provider.
+        if llm.get("enabled").and_then(|v| v.as_bool()) == Some(false) {
+            return Self::default();
+        }
+        let text = |key: &str| {
+            llm.get(key)
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+        };
+        Self {
+            provider: text("provider"),
+            model: text("model"),
+            context_window: llm
+                .get("context_window")
+                .and_then(|v| v.as_integer())
+                .and_then(|v| usize::try_from(v).ok())
+                .filter(|v| *v > 0),
+            ollama_url: text("ollama_url"),
+            lmstudio_url: text("lmstudio_url"),
+            openai_compatible_url: text("openai_compatible_url"),
+        }
+    }
+}
 fn default_temperature() -> f32 {
     0.1
 }
@@ -584,14 +528,11 @@ pub struct ConfigManager {
 
 impl ConfigManager {
     /// Load configuration with the following precedence:
-    /// 1. Environment variables (.env file)
+    /// 1. Environment variables (initialize dotenv before starting workers)
     /// 2. Config file (.codegraph.toml)
     /// 3. Sensible defaults
     pub fn load() -> Result<Self, ConfigError> {
         info!("🔧 Loading CodeGraph configuration...");
-
-        // Try to load .env file from current directory or home
-        Self::load_dotenv();
 
         // Try to find and load config file
         let (config, config_path) = Self::load_config_file()?;
@@ -627,8 +568,13 @@ impl ConfigManager {
         })
     }
 
-    /// Load .env file if it exists
-    fn load_dotenv() {
+    /// Load project `.env` or user `.codegraph.env` before starting workers.
+    /// `load()` itself only reads configuration and never mutates the environment.
+    ///
+    /// # Safety
+    /// Call only from a single-threaded process entry point, before other threads
+    /// can access the environment (including through foreign libraries).
+    pub unsafe fn initialize_environment() {
         // Try current directory first
         if Path::new(".env").exists() {
             if let Err(e) = dotenv::from_filename(".env") {
@@ -654,32 +600,73 @@ impl ConfigManager {
 
     /// Find and load config file
     /// Search order:
-    /// 1. ./.codegraph.toml (current directory)
-    /// 2. ~/.codegraph/config.toml (user config)
-    /// 3. Use defaults
-    fn load_config_file() -> Result<(CodeGraphConfig, Option<PathBuf>), ConfigError> {
-        // Try current directory
+    /// 1. CODEGRAPH_CONFIG_PATH (explicit CLI/environment selection)
+    /// 2. ./.codegraph.toml (current directory)
+    /// 3. ~/.codegraph/config.toml (user config)
+    /// 4. Use defaults
+    /// Locate the configuration file: an explicit CLI/environment selection, then the
+    /// project file in the working directory, then the user file.
+    fn config_file_path() -> Option<PathBuf> {
+        if let Some(path) = std::env::var_os("CODEGRAPH_CONFIG_PATH") {
+            return Some(PathBuf::from(path));
+        }
         let local_config = Path::new(".codegraph.toml");
         if local_config.exists() {
-            let config = Self::read_toml_file(local_config)?;
-            return Ok((config, Some(local_config.to_path_buf())));
+            return Some(local_config.to_path_buf());
         }
-
-        // Try user config directory
-        if let Some(home) = dirs::home_dir() {
-            let user_config = home.join(".codegraph").join("config.toml");
-            if user_config.exists() {
-                let config = Self::read_toml_file(&user_config)?;
-                return Ok((config, Some(user_config)));
-            }
-        }
-
-        // Use defaults
-        info!("📋 No config file found, using defaults");
-        Ok((CodeGraphConfig::default(), None))
+        dirs::home_dir()
+            .map(|home| home.join(".codegraph").join("config.toml"))
+            .filter(|user_config| user_config.exists())
     }
 
-    /// Read TOML config file
+    fn load_config_file() -> Result<(CodeGraphConfig, Option<PathBuf>), ConfigError> {
+        match Self::config_file_path() {
+            Some(path) => {
+                let config = Self::read_toml_file(&path)?;
+                Ok((config, Some(path)))
+            }
+            None => {
+                info!("📋 No config file found, using defaults");
+                Ok((CodeGraphConfig::default(), None))
+            }
+        }
+    }
+
+    /// The `[llm]` keys the user actually wrote in the config file, without defaults.
+    ///
+    /// The agent backend layers these under its environment variables. Reading only
+    /// explicit keys matters because `LLMConfig` fills unset fields with defaults (for
+    /// example `provider = "lmstudio"`), which must not override provider detection
+    /// from API keys. A missing or unreadable file yields empty settings.
+    pub fn explicit_llm_settings() -> ExplicitLlmSettings {
+        let Some(path) = Self::config_file_path() else {
+            return ExplicitLlmSettings::default();
+        };
+        match std::fs::read_to_string(&path) {
+            Ok(content) => ExplicitLlmSettings::from_toml_str(&content),
+            Err(e) => {
+                warn!(
+                    "Could not read {} for [llm] settings: {}",
+                    path.display(),
+                    e
+                );
+                ExplicitLlmSettings::default()
+            }
+        }
+    }
+
+    /// Context window the agent and its tool-result limits are sized for:
+    /// `CODEGRAPH_CONTEXT_WINDOW`, then `CODEGRAPH_LLM_CONTEXT_WINDOW`, then
+    /// `[llm] context_window` in the config file, then the default.
+    pub fn agent_context_window() -> usize {
+        std::env::var("CODEGRAPH_CONTEXT_WINDOW")
+            .or_else(|_| std::env::var("CODEGRAPH_LLM_CONTEXT_WINDOW"))
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .or_else(|| Self::explicit_llm_settings().context_window)
+            .unwrap_or(DEFAULT_CONTEXT_WINDOW)
+    }
+
     fn read_toml_file(path: &Path) -> Result<CodeGraphConfig, ConfigError> {
         let content =
             std::fs::read_to_string(path).map_err(|e| ConfigError::ReadError(e.to_string()))?;
@@ -714,10 +701,19 @@ impl ConfigManager {
                 config.embedding.dimension = dim;
             }
         }
-        if let Ok(batch) = std::env::var("CODEGRAPH_EMBEDDING_BATCH_SIZE") {
-            if let Ok(size) = batch.parse() {
-                config.embedding.batch_size = size;
-            }
+        // Resolve batch aliases once, before explicit CLI overrides are applied.
+        if let Some(size) = [
+            "CODEGRAPH_EMBEDDINGS_BATCH_SIZE",
+            "CODEGRAPH_EMBEDDING_BATCH_SIZE",
+        ]
+        .iter()
+        .find_map(|name| {
+            std::env::var(name)
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+                .filter(|size| *size > 0)
+        }) {
+            config.embedding.batch_size = size;
         }
 
         // Jina configuration
@@ -776,7 +772,11 @@ impl ConfigManager {
         {
             config.llm.provider = provider;
         }
-        if let Ok(model) = std::env::var("CODEGRAPH_MODEL") {
+        // Same precedence the agent backend uses, so status output names the model it requests.
+        if let Ok(model) = std::env::var("CODEGRAPH_LLM_MODEL")
+            .or_else(|_| std::env::var("CODEGRAPH_AGENT_MODEL"))
+            .or_else(|_| std::env::var("CODEGRAPH_MODEL"))
+        {
             config.llm.model = Some(model);
             config.llm.enabled = true; // Enable if model specified
         }
@@ -815,78 +815,6 @@ impl ConfigManager {
             }
         }
 
-        // LATS configuration
-        let mut has_lats_config = false;
-        let mut lats_config = config.llm.lats.take().unwrap_or_default();
-
-        if let Ok(provider) = std::env::var("CODEGRAPH_LATS_SELECTION_PROVIDER") {
-            lats_config.selection_provider = Some(provider);
-            has_lats_config = true;
-        }
-        if let Ok(model) = std::env::var("CODEGRAPH_LATS_SELECTION_MODEL") {
-            lats_config.selection_model = Some(model);
-            has_lats_config = true;
-        }
-        if let Ok(provider) = std::env::var("CODEGRAPH_LATS_EXPANSION_PROVIDER") {
-            lats_config.expansion_provider = Some(provider);
-            has_lats_config = true;
-        }
-        if let Ok(model) = std::env::var("CODEGRAPH_LATS_EXPANSION_MODEL") {
-            lats_config.expansion_model = Some(model);
-            has_lats_config = true;
-        }
-        if let Ok(provider) = std::env::var("CODEGRAPH_LATS_EVALUATION_PROVIDER") {
-            lats_config.evaluation_provider = Some(provider);
-            has_lats_config = true;
-        }
-        if let Ok(model) = std::env::var("CODEGRAPH_LATS_EVALUATION_MODEL") {
-            lats_config.evaluation_model = Some(model);
-            has_lats_config = true;
-        }
-        if let Ok(provider) = std::env::var("CODEGRAPH_LATS_BACKPROP_PROVIDER") {
-            lats_config.backprop_provider = Some(provider);
-            has_lats_config = true;
-        }
-        if let Ok(model) = std::env::var("CODEGRAPH_LATS_BACKPROP_MODEL") {
-            lats_config.backprop_model = Some(model);
-            has_lats_config = true;
-        }
-        if let Ok(width) = std::env::var("CODEGRAPH_LATS_BEAM_WIDTH") {
-            if let Ok(w) = width.parse() {
-                if let Some(validated) = validate_lats_beam_width(w) {
-                    lats_config.beam_width = validated;
-                    has_lats_config = true;
-                }
-            }
-        }
-        if let Ok(depth) = std::env::var("CODEGRAPH_LATS_MAX_DEPTH") {
-            if let Ok(d) = depth.parse() {
-                if let Some(validated) = validate_lats_max_depth(d) {
-                    lats_config.max_depth = validated;
-                    has_lats_config = true;
-                }
-            }
-        }
-        if let Ok(weight) = std::env::var("CODEGRAPH_LATS_EXPLORATION_WEIGHT") {
-            if let Ok(w) = weight.parse() {
-                if let Some(validated) = validate_lats_exploration_weight(w) {
-                    lats_config.exploration_weight = validated;
-                    has_lats_config = true;
-                }
-            }
-        }
-
-        if has_lats_config {
-            tracing::debug!(
-                selection_provider = ?lats_config.selection_provider,
-                beam_width = lats_config.beam_width,
-                max_depth = lats_config.max_depth,
-                exploration_weight = lats_config.exploration_weight,
-                "LATS configuration loaded from environment variables"
-            );
-            config.llm.lats = Some(lats_config);
-        }
-
         // Logging
         if let Ok(level) = std::env::var("RUST_LOG") {
             config.logging.level = level;
@@ -923,7 +851,7 @@ impl ConfigManager {
                 return Err(ConfigError::ValidationError(format!(
                     "Invalid embedding provider: {}. Must be one of: auto, onnx, ollama, openai, jina, lmstudio",
                     other
-                )))
+                )));
             }
         }
 
@@ -934,7 +862,7 @@ impl ConfigManager {
                 return Err(ConfigError::ValidationError(format!(
                     "Invalid insights mode: {}. Must be one of: context-only, balanced, deep",
                     other
-                )))
+                )));
             }
         }
 
@@ -954,7 +882,7 @@ impl ConfigManager {
                 return Err(ConfigError::ValidationError(format!(
                     "Invalid log level: {}. Must be one of: trace, debug, info, warn, error",
                     other
-                )))
+                )));
             }
         }
 
@@ -1058,13 +986,71 @@ mod tests {
 
     #[test]
     fn test_indexing_tier_env_override() {
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = ENV_LOCK.lock().expect("env lock");
+        if !test_env::run(
+            concat!(module_path!(), "::test_indexing_tier_env_override"),
+            &[("CODEGRAPH_INDEX_TIER", Some("balanced"))],
+        ) {
+            return;
+        }
 
-        std::env::set_var("CODEGRAPH_INDEX_TIER", "balanced");
         let config = ConfigManager::apply_env_overrides(CodeGraphConfig::default());
         assert_eq!(config.indexing.tier, IndexingTier::Balanced);
-        std::env::remove_var("CODEGRAPH_INDEX_TIER");
+    }
+
+    #[test]
+    fn test_explicit_llm_settings_reads_only_present_keys() {
+        let settings = ExplicitLlmSettings::from_toml_str(
+            r#"
+            [embedding]
+            provider = "ollama"
+
+            [llm]
+            provider = "anthropic"
+            model = "claude-sonnet-4"
+            context_window = 200000
+            ollama_url = "  "
+            "#,
+        );
+        assert_eq!(settings.provider.as_deref(), Some("anthropic"));
+        assert_eq!(settings.model.as_deref(), Some("claude-sonnet-4"));
+        assert_eq!(settings.context_window, Some(200_000));
+        assert_eq!(settings.ollama_url, None);
+        assert_eq!(settings.lmstudio_url, None);
+    }
+
+    #[test]
+    fn test_explicit_llm_settings_ignores_disabled_and_generated_defaults() {
+        let disabled = ExplicitLlmSettings::from_toml_str(
+            "[llm]\nenabled = false\nprovider = \"lmstudio\"\nmodel = \"m\"\n",
+        );
+        assert_eq!(disabled, ExplicitLlmSettings::default());
+
+        // What `codegraph config init` writes: every default spelled out, enabled = false.
+        let generated = toml::to_string_pretty(&CodeGraphConfig::default()).unwrap();
+        assert!(generated.contains("provider = \"lmstudio\""));
+        assert_eq!(
+            ExplicitLlmSettings::from_toml_str(&generated),
+            ExplicitLlmSettings::default()
+        );
+
+        let enabled =
+            ExplicitLlmSettings::from_toml_str("[llm]\nenabled = true\nprovider = \"ollama\"\n");
+        assert_eq!(enabled.provider.as_deref(), Some("ollama"));
+    }
+
+    #[test]
+    fn test_explicit_llm_settings_absent_or_invalid() {
+        assert_eq!(
+            ExplicitLlmSettings::from_toml_str("[embedding]\nprovider = \"ollama\"\n"),
+            ExplicitLlmSettings::default()
+        );
+        assert_eq!(
+            ExplicitLlmSettings::from_toml_str("not = [valid"),
+            ExplicitLlmSettings::default()
+        );
+        let wrong_types =
+            ExplicitLlmSettings::from_toml_str("[llm]\nprovider = 3\ncontext_window = \"big\"\n");
+        assert_eq!(wrong_types, ExplicitLlmSettings::default());
     }
 
     #[test]
@@ -1076,65 +1062,12 @@ mod tests {
         bad_config.embedding.provider = "invalid".to_string();
         assert!(ConfigManager::validate_config(&bad_config).is_err());
     }
+}
 
-    #[test]
-    fn test_lats_provider_config_default() {
-        let config = LATSProviderConfig::default();
-        assert_eq!(config.beam_width, 3);
-        assert_eq!(config.max_depth, 5);
-        assert_eq!(config.exploration_weight, 1.414);
-        assert!(config.selection_provider.is_none());
-        assert!(config.selection_model.is_none());
-        assert!(config.expansion_provider.is_none());
-        assert!(config.expansion_model.is_none());
-        assert!(config.evaluation_provider.is_none());
-        assert!(config.evaluation_model.is_none());
-        assert!(config.backprop_provider.is_none());
-        assert!(config.backprop_model.is_none());
-    }
-
-    #[test]
-    fn test_validate_lats_beam_width_valid() {
-        assert_eq!(validate_lats_beam_width(1), Some(1));
-        assert_eq!(validate_lats_beam_width(3), Some(3));
-        assert_eq!(validate_lats_beam_width(50), Some(50));
-        assert_eq!(validate_lats_beam_width(100), Some(100));
-    }
-
-    #[test]
-    fn test_validate_lats_beam_width_invalid() {
-        assert_eq!(validate_lats_beam_width(0), None);
-        assert_eq!(validate_lats_beam_width(101), None);
-        assert_eq!(validate_lats_beam_width(1000), None);
-    }
-
-    #[test]
-    fn test_validate_lats_max_depth_valid() {
-        assert_eq!(validate_lats_max_depth(1), Some(1));
-        assert_eq!(validate_lats_max_depth(5), Some(5));
-        assert_eq!(validate_lats_max_depth(25), Some(25));
-        assert_eq!(validate_lats_max_depth(50), Some(50));
-    }
-
-    #[test]
-    fn test_validate_lats_max_depth_invalid() {
-        assert_eq!(validate_lats_max_depth(0), None);
-        assert_eq!(validate_lats_max_depth(51), None);
-        assert_eq!(validate_lats_max_depth(100), None);
-    }
-
-    #[test]
-    fn test_validate_lats_exploration_weight_valid() {
-        assert_eq!(validate_lats_exploration_weight(0.0), Some(0.0));
-        assert_eq!(validate_lats_exploration_weight(1.414), Some(1.414));
-        assert_eq!(validate_lats_exploration_weight(5.0), Some(5.0));
-        assert_eq!(validate_lats_exploration_weight(10.0), Some(10.0));
-    }
-
-    #[test]
-    fn test_validate_lats_exploration_weight_invalid() {
-        assert_eq!(validate_lats_exploration_weight(-0.1), None);
-        assert_eq!(validate_lats_exploration_weight(10.1), None);
-        assert_eq!(validate_lats_exploration_weight(100.0), None);
-    }
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

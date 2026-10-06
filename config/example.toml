@@ -1,103 +1,46 @@
-# CodeGraph example configuration (copy to ~/.codegraph/config.toml or use CODEGRAPH_* env vars)
+# CodeGraph example configuration.
+#
+# Copy to ./.codegraph.toml (project) or ~/.codegraph/config.toml (user). The project file
+# is used when present; otherwise the user file. A .env file and CODEGRAPH_* environment
+# variables override anything set here.
+#
+# Only keys that change behaviour are shown. The loader also accepts [rerank],
+# [performance] and [logging] sections, but nothing outside status output reads them
+# today (reranking is configured through JINA_* environment variables; see .env.example).
+# Unknown sections and keys are ignored without an error, so check spelling.
 
 [embedding]
-# provider options: ollama | openai | jina | lmstudio
-provider = "ollama"
+provider = "ollama"                    # ollama | lmstudio | jina | openai | onnx
 model = "qwen3-embedding:0.6b"
-dimension = 1024
-batch_size = 32
-normalize_embeddings = true
-cache_enabled = true
+dimension = 1024                       # 384, 768, 1024, 1536, 2048, 2560, 3072, 3584, 4096
+batch_size = 64                        # max texts per request; env and --batch-size override
 ollama_url = "http://localhost:11434"
-# Optional: override chunk size for longer-context models
-# env: CODEGRAPH_CHUNK_MAX_TOKENS=2048
-# skip_chunking = false
+# lmstudio_url = "http://localhost:1234"
+# jina_api_base = "https://api.jina.ai/v1"
+# jina_task = "code.passage"
+# jina_late_chunking = false
 
+# LLM for the agentic tools. Each key is used unless the matching environment variable
+# is set: CODEGRAPH_LLM_PROVIDER, CODEGRAPH_LLM_MODEL, CODEGRAPH_CONTEXT_WINDOW.
+# API keys are read from the environment only (ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY).
 [llm]
-provider = "ollama"   # or openai / anthropic / openai-compatible / xai / lmstudio
-model = "qwen3:4b"
-context_window = 252000
-max_retries = 3
-
-[rerank]
-# Optional reranking provider: jina | lmstudio
-provider = "jina"
-model = "jina-reranker-v3"
-top_n = 10
-candidates = 256
-
-[database]
-backend = "surrealdb"
-
-[database.surrealdb]
-connection = "ws://localhost:3004"
-namespace = "codegraph"
-database = "main"
-# username = "root"
-# password is best set via env: CODEGRAPH__DATABASE__SURREALDB__PASSWORD
-strict_mode = false
-auto_migrate = true
-
-[server]
-host = "0.0.0.0"
-port = 3003
-
-[performance]
-# Global knobs for indexing/embedding
-batch_size = 64           # embedding batch size (overrides via CODEGRAPH_EMBEDDINGS_BATCH_SIZE)
-workers = 4               # caps Rayon threads (leave one core free by default)
-max_concurrent = 4        # concurrent embedding requests
-max_texts_per_request = 256
+enabled = true                         # false makes the agent ignore this whole section
+provider = "ollama"                    # ollama | lmstudio | anthropic | openai | xai | openai-compatible
+model = "qwen2.5-coder:14b"
+context_window = 32768                 # your model's real token limit; selects the prompt tier
+# ollama_url = "http://localhost:11434"
+# lmstudio_url = "http://localhost:1234"
+# openai_compatible_url = "http://localhost:8000/v1"
 
 [indexing]
-# Indexing tiers: fast | balanced | full
-tier = "fast"
-
-[monitoring]
-enabled = true
-metrics_enabled = true
-trace_enabled = false
-metrics_interval_secs = 60
-
-[security]
-require_auth = false
-rate_limit_per_minute = 1200
+tier = "fast"                          # fast | balanced | full
 
 [daemon]
-# Daemon mode for automatic file watching and re-indexing
-auto_start_with_mcp = true           # Auto-start daemon when MCP server starts with --watch
-debounce_ms = 30                     # Debounce file change events
-batch_timeout_ms = 200               # Wait for batch before processing
+auto_start_with_mcp = true             # start the file watcher with `codegraph start --watch`
+debounce_ms = 30
+batch_timeout_ms = 200
 exclude_patterns = ["**/node_modules/**", "**/target/**", "**/.git/**", "**/dist/**"]
+# languages = ["rust", "typescript"]
 
-[agent]
-# Agentic tool configuration
-# Architecture options:
-#   react - ReAct single-pass reasoning (default, fast)
-#   lats  - Language Agent Tree Search (complex problems, multi-path)
-#   rig   - Rig framework native orchestration (alternative backend)
-# Override at runtime: CODEGRAPH_AGENT_ARCHITECTURE=rig
-architecture = "react"
-timeout_secs = 300                   # Total agent execution timeout
-max_steps = 15                       # Maximum reasoning steps (tier-adjusted)
-memory_window = 40                   # Conversation memory window
-
-# LATS-specific settings (only apply when architecture = "lats")
-[agent.lats]
-beam_width = 3                       # Number of best paths to keep
-max_depth = 5                        # Maximum search depth
-iteration_timeout_secs = 60          # Timeout per iteration
-# Multi-provider LATS (optional - uses main LLM provider if not set)
-# selection_provider = "openai"
-# selection_model = "gpt-5.1-codex-mini"
-# expansion_provider = "anthropic"
-# expansion_model = "claude-4.5"
-# evaluation_provider = "openai"
-# evaluation_model = "gpt-5.1"
-
-# Secrets are provided via environment variables; do not commit secrets to this file.
-# Examples:
-#   OPENAI_API_KEY=sk-...
-#   ANTHROPIC_API_KEY=...
-#   JINA_API_KEY=...
-#   XAI_API_KEY=xai-...
+# Storage has no section here: each project uses an embedded store at <project>/.codegraph/db
+# unless CODEGRAPH_SURREALDB_URL points at a SurrealDB server.

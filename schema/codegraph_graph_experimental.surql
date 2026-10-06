@@ -30,7 +30,7 @@ DEFINE FIELD file_path       ON TABLE nodes TYPE option<string>;      -- file pa
 DEFINE FIELD content         ON TABLE nodes TYPE option<string>;      -- optional full body / doc
 DEFINE FIELD start_line      ON TABLE nodes TYPE option<int>;
 DEFINE FIELD end_line        ON TABLE nodes TYPE option<int>;
-DEFINE FIELD metadata        ON TABLE nodes TYPE option<object>;      -- arbitrary metadata
+DEFINE FIELD metadata        ON TABLE nodes TYPE option<object | string> FLEXIBLE; -- arbitrary metadata (compressed string or object)
 DEFINE FIELD range           ON TABLE nodes TYPE option<object>;      -- {start:{line}, end:{line}}
 DEFINE FIELD chunk_count     ON TABLE nodes TYPE option<int> DEFAULT 0;
 DEFINE FIELD complexity      ON TABLE nodes TYPE option<float>;
@@ -39,31 +39,31 @@ DEFINE FIELD repository_url  ON TABLE nodes TYPE option<string>;
 
 DEFINE FIELD embedding_384   ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 384;
-DEFINE FIELD embedding_384[*]   ON TABLE nodes TYPE float;
+DEFINE FIELD OVERWRITE embedding_384[*]   ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_768   ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 768;
-DEFINE FIELD embedding_768[*]   ON TABLE nodes TYPE float;
+DEFINE FIELD OVERWRITE embedding_768[*]   ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_1024  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1024;
-DEFINE FIELD embedding_1024[*]  ON TABLE nodes TYPE float;
+DEFINE FIELD OVERWRITE embedding_1024[*]  ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_1536  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1536;
-DEFINE FIELD embedding_1536[*]  ON TABLE nodes TYPE float;
+DEFINE FIELD OVERWRITE embedding_1536[*]  ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_2048  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2048;
-DEFINE FIELD embedding_2048[*]  ON TABLE nodes TYPE float;
+DEFINE FIELD OVERWRITE embedding_2048[*]  ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_2560  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2560;
-DEFINE FIELD embedding_2560[*]  ON TABLE nodes TYPE float;
+DEFINE FIELD OVERWRITE embedding_2560[*]  ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_3072  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 3072;
-DEFINE FIELD embedding_3072[*]  ON TABLE nodes TYPE float;
+DEFINE FIELD OVERWRITE embedding_3072[*]  ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_3584  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 3584;
-DEFINE FIELD embedding_3584[*]  ON TABLE nodes TYPE float;
+DEFINE FIELD OVERWRITE embedding_3584[*]  ON TABLE nodes TYPE float;
 DEFINE FIELD embedding_4096  ON TABLE nodes TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 4096;
-DEFINE FIELD embedding_4096[*]  ON TABLE nodes TYPE float;
+DEFINE FIELD OVERWRITE embedding_4096[*]  ON TABLE nodes TYPE float;
 
 DEFINE FIELD embedding_model ON TABLE nodes TYPE option<string> DEFAULT 'jina-embeddings-v4';
 DEFINE FIELD created_at      ON TABLE nodes TYPE datetime DEFAULT time::now() READONLY;
@@ -97,31 +97,31 @@ DEFINE FIELD text            ON TABLE chunks TYPE string;
 
 DEFINE FIELD embedding_384   ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 384;
-DEFINE FIELD embedding_384[*]   ON TABLE chunks TYPE float;
+DEFINE FIELD OVERWRITE embedding_384[*]   ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_768   ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 768;
-DEFINE FIELD embedding_768[*]   ON TABLE chunks TYPE float;
+DEFINE FIELD OVERWRITE embedding_768[*]   ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_1024  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1024;
-DEFINE FIELD embedding_1024[*]  ON TABLE chunks TYPE float;
+DEFINE FIELD OVERWRITE embedding_1024[*]  ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_1536  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1536;
-DEFINE FIELD embedding_1536[*]  ON TABLE chunks TYPE float;
+DEFINE FIELD OVERWRITE embedding_1536[*]  ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_2048  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2048;
-DEFINE FIELD embedding_2048[*]  ON TABLE chunks TYPE float;
+DEFINE FIELD OVERWRITE embedding_2048[*]  ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_2560  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2560;
-DEFINE FIELD embedding_2560[*]  ON TABLE chunks TYPE float;
+DEFINE FIELD OVERWRITE embedding_2560[*]  ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_3072  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 3072;
-DEFINE FIELD embedding_3072[*]  ON TABLE chunks TYPE float;
+DEFINE FIELD OVERWRITE embedding_3072[*]  ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_3584  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 3584;
-DEFINE FIELD embedding_3584[*]  ON TABLE chunks TYPE float;
+DEFINE FIELD OVERWRITE embedding_3584[*]  ON TABLE chunks TYPE float;
 DEFINE FIELD embedding_4096  ON TABLE chunks TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 4096;
-DEFINE FIELD embedding_4096[*]  ON TABLE chunks TYPE float;
+DEFINE FIELD OVERWRITE embedding_4096[*]  ON TABLE chunks TYPE float;
 
 DEFINE FIELD embedding_model ON TABLE chunks TYPE option<string>;
 DEFINE FIELD created_at      ON TABLE chunks TYPE datetime DEFAULT time::now() READONLY;
@@ -142,7 +142,7 @@ DEFINE FIELD modified_at      ON TABLE file_metadata TYPE datetime;
 DEFINE FIELD node_count       ON TABLE file_metadata TYPE int DEFAULT 0;
 DEFINE FIELD edge_count       ON TABLE file_metadata TYPE int DEFAULT 0;
 DEFINE FIELD parse_errors     ON TABLE file_metadata TYPE option<array<string>>;
-DEFINE FIELD parse_errors[*]  ON TABLE file_metadata TYPE string;
+DEFINE FIELD OVERWRITE parse_errors[*]  ON TABLE file_metadata TYPE string;
 DEFINE FIELD last_indexed_at  ON TABLE file_metadata TYPE datetime DEFAULT time::now();
 DEFINE FIELD created_at       ON TABLE file_metadata TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD updated_at       ON TABLE file_metadata TYPE datetime VALUE time::now();
@@ -163,6 +163,7 @@ DEFINE FIELD edge_count        ON TABLE project_metadata TYPE int DEFAULT 0;
 DEFINE FIELD last_analyzed     ON TABLE project_metadata TYPE option<datetime>;
 DEFINE FIELD organization_id   ON TABLE project_metadata TYPE option<string>;
 DEFINE FIELD domain            ON TABLE project_metadata TYPE option<string>;
+DEFINE FIELD avg_coverage_score ON TABLE project_metadata TYPE option<float>;
 DEFINE FIELD codegraph_version ON TABLE project_metadata TYPE option<string>;
 DEFINE FIELD metadata          ON TABLE project_metadata TYPE option<object>;
 DEFINE FIELD created_at        ON TABLE project_metadata TYPE datetime DEFAULT time::now() READONLY;
@@ -187,31 +188,31 @@ DEFINE FIELD symbol             ON TABLE symbol_embeddings TYPE string;
 
 DEFINE FIELD embedding_384      ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 384;
-DEFINE FIELD embedding_384[*]      ON TABLE symbol_embeddings TYPE float;
+DEFINE FIELD OVERWRITE embedding_384[*]      ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_768      ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 768;
-DEFINE FIELD embedding_768[*]      ON TABLE symbol_embeddings TYPE float;
+DEFINE FIELD OVERWRITE embedding_768[*]      ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_1024     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1024;
-DEFINE FIELD embedding_1024[*]     ON TABLE symbol_embeddings TYPE float;
+DEFINE FIELD OVERWRITE embedding_1024[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_1536     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 1536;
-DEFINE FIELD embedding_1536[*]     ON TABLE symbol_embeddings TYPE float;
+DEFINE FIELD OVERWRITE embedding_1536[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_2048     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2048;
-DEFINE FIELD embedding_2048[*]     ON TABLE symbol_embeddings TYPE float;
+DEFINE FIELD OVERWRITE embedding_2048[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_2560     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 2560;
-DEFINE FIELD embedding_2560[*]     ON TABLE symbol_embeddings TYPE float;
+DEFINE FIELD OVERWRITE embedding_2560[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_3072     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 3072;
-DEFINE FIELD embedding_3072[*]     ON TABLE symbol_embeddings TYPE float;
+DEFINE FIELD OVERWRITE embedding_3072[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_3584     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 3584;
-DEFINE FIELD embedding_3584[*]     ON TABLE symbol_embeddings TYPE float;
+DEFINE FIELD OVERWRITE embedding_3584[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD embedding_4096     ON TABLE symbol_embeddings TYPE option<array<float>>
   ASSERT $value = NONE OR array::len($value) = 4096;
-DEFINE FIELD embedding_4096[*]     ON TABLE symbol_embeddings TYPE float;
+DEFINE FIELD OVERWRITE embedding_4096[*]     ON TABLE symbol_embeddings TYPE float;
 DEFINE FIELD created_at         ON TABLE symbol_embeddings TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD updated_at         ON TABLE symbol_embeddings TYPE datetime VALUE time::now();
 
@@ -230,11 +231,11 @@ DEFINE INDEX idx_nodes_project_type ON TABLE nodes FIELDS project_id, node_type 
 -- nodes: full-text indexes for hybrid search
 DEFINE INDEX idx_nodes_name_search
   ON TABLE nodes FIELDS name
-  SEARCH ANALYZER code_analyzer BM25 CONCURRENTLY;
+  FULLTEXT ANALYZER code_analyzer BM25 CONCURRENTLY;
 
 DEFINE INDEX idx_nodes_content_search
   ON TABLE nodes FIELDS content
-  SEARCH ANALYZER code_analyzer BM25 CONCURRENTLY;
+  FULLTEXT ANALYZER code_analyzer BM25 CONCURRENTLY;
 
 -- nodes: HNSW vector indexes (COSINE metric)
 DEFINE INDEX idx_nodes_embedding_384
@@ -344,13 +345,13 @@ DEFINE INDEX idx_symbol_embeddings_vector_3584
 -- Helper function to parse record IDs from various formats
 -- Handles: record IDs, "nodes:⟨uuid⟩", "nodes:id", "⟨uuid⟩", "id"
 DEFINE FUNCTION fn::parse_record_id($table: string, $input: any) {
-IF type::is::record($input) { RETURN $input; };
+IF type::is_record($input) { RETURN $input; };
 LET $str = <string>$input;
 -- Strip table prefix if present (e.g., "nodes:" or "chunks:")
 LET $after_prefix = IF string::starts_with($str, $table + ':') THEN string::slice($str, string::len($table) + 1) ELSE $str END;
 -- Strip angle brackets ⟨⟩ if present (SurrealDB's escaping for complex IDs)
 LET $clean_id = IF string::starts_with($after_prefix, '⟨') AND string::ends_with($after_prefix, '⟩') THEN string::slice($after_prefix, 1, string::len($after_prefix) - 2) ELSE $after_prefix END;
-RETURN type::thing($table, $clean_id);
+RETURN type::record($table, $clean_id);
 } PERMISSIONS FULL;
 
 -- Calculate coupling metrics (afferent/efferent coupling, instability)
@@ -582,7 +583,7 @@ RETURN (SELECT node.id AS id, node.name AS name, node.kind AS kind, node.locatio
 } PERMISSIONS FULL;
 
 DEFINE FUNCTION fn::node_info($node_id: any) {
-IF $node_id = NONE OR !type::is::record($node_id) { RETURN NONE; };
+IF $node_id = NONE OR !type::is_record($node_id) { RETURN NONE; };
 LET $res = (SELECT <string>id AS id, name, node_type AS kind, language, content, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location FROM ONLY $node_id);
 RETURN $res;
 } PERMISSIONS FULL;
@@ -1243,18 +1244,18 @@ DEFINE FUNCTION fn::get_complexity_hotspots($project_id: string, $min_complexity
             start_line,
             end_line,
             complexity,
-            (IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END) AS afferent_coupling,
-            (IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) AS efferent_coupling,
+            (IF type::is_number(afferent_coupling) THEN afferent_coupling ELSE 0 END) AS afferent_coupling,
+            (IF type::is_number(efferent_coupling) THEN efferent_coupling ELSE 0 END) AS efferent_coupling,
             (
                 math::floor(
                     (
-                        IF ((IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) + (IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END)) > 0 {
-                            (IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) / ((IF type::is::number(efferent_coupling) THEN efferent_coupling ELSE 0 END) + (IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END))
+                        IF ((IF type::is_number(efferent_coupling) THEN efferent_coupling ELSE 0 END) + (IF type::is_number(afferent_coupling) THEN afferent_coupling ELSE 0 END)) > 0 {
+                            (IF type::is_number(efferent_coupling) THEN efferent_coupling ELSE 0 END) / ((IF type::is_number(efferent_coupling) THEN efferent_coupling ELSE 0 END) + (IF type::is_number(afferent_coupling) THEN afferent_coupling ELSE 0 END))
                         } ELSE { 0f }
                     ) * 10000f
                 ) / 10000f
             ) AS instability,
-            complexity * ((IF type::is::number(afferent_coupling) THEN afferent_coupling ELSE 0 END) + 1) AS risk_score
+            complexity * ((IF type::is_number(afferent_coupling) THEN afferent_coupling ELSE 0 END) + 1) AS risk_score
         FROM $with_coupling
         ORDER BY risk_score DESC
         LIMIT $safe_limit;

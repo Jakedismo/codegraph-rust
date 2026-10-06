@@ -2,15 +2,14 @@
 // ABOUTME: HTTP server implementation using rmcp StreamableHttpService
 // ABOUTME: Provides session-based HTTP transport with SSE streaming for progress notifications
 
-use crate::http_config::HttpServerConfig;
+use crate::http_config::{HttpServerConfig, allowed_http_hosts};
 use crate::official_server::CodeGraphMCPServer;
 use axum::Router;
 use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 pub fn build_http_app(server: CodeGraphMCPServer, config: &HttpServerConfig) -> Router {
@@ -24,11 +23,12 @@ pub fn build_http_app(server: CodeGraphMCPServer, config: &HttpServerConfig) -> 
     let http_service = StreamableHttpService::new(
         move || Ok(server_clone.clone()),
         session_manager,
-        StreamableHttpServerConfig {
-            sse_keep_alive: Some(std::time::Duration::from_secs(config.keep_alive_seconds)),
-            stateful_mode: true,
-            cancellation_token: CancellationToken::new(),
-        },
+        StreamableHttpServerConfig::default()
+            .with_allowed_hosts(allowed_http_hosts(&config.host))
+            .with_sse_keep_alive(Some(std::time::Duration::from_secs(
+                config.keep_alive_seconds,
+            )))
+            .with_legacy_session_mode(true),
     );
 
     // Build Axum router with MCP service mounted as Tower service

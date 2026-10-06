@@ -1,8 +1,8 @@
 #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
 use crate::embeddings::generator::TextEmbeddingEngine;
 use crate::prep::chunker::{
-    aggregate_chunk_embeddings, build_chunk_plan, build_chunk_plan_with_sources, ChunkPlan,
-    ChunkerConfig, SanitizeMode,
+    ChunkPlan, ChunkerConfig, SanitizeMode, aggregate_chunk_embeddings, build_chunk_plan,
+    build_chunk_plan_with_sources,
 };
 #[cfg(feature = "ollama")]
 use crate::providers::EmbeddingProvider;
@@ -21,6 +21,9 @@ pub struct EmbeddingGenerator {
     #[cfg(feature = "lmstudio")]
     lmstudio_provider: Option<crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider>,
     tokenizer: Arc<Tokenizer>,
+    submitted_cache: Option<crate::submitted_cache::SubmittedCache>,
+    chunk_cache_dir: Option<PathBuf>,
+    input_policy: Option<crate::input_policy::InputPolicy>,
 }
 
 #[derive(Debug, Clone)]
@@ -47,6 +50,47 @@ impl Default for EmbeddingGenerator {
 }
 
 impl EmbeddingGenerator {
+    async fn initialize_input_policy(&mut self) -> Result<()> {
+        #[cfg(feature = "ollama")]
+        if let Some(provider) = &self.ollama_provider {
+            let policy = provider.input_policy().await?.clone();
+            self.tokenizer = policy.tokenizer.clone();
+            self.model_config.max_tokens = policy.context_tokens;
+            self.input_policy = Some(policy);
+        }
+        for key in [
+            "CODEGRAPH_CHUNK_MAX_TOKENS",
+            "CODEGRAPH_MAX_CHUNK_TOKENS",
+            "CODEGRAPH_OLLAMA_NUM_CTX",
+        ] {
+            crate::input_policy::env_positive(key)?;
+        }
+        let chunking = self.base_chunker_config()?;
+        tracing::info!(
+            "Chunk input limit: {} tokens including prefixes/special tokens | skip_chunking={} | AST splitting={} | overlap={} tokens",
+            chunking.max_tokens_per_text,
+            chunking.skip_chunking,
+            chunking.smart_split,
+            chunking.overlap_tokens
+        );
+        Ok(())
+    }
+
+    pub fn input_identity(&self) -> Result<String> {
+        if let Some(policy) = &self.input_policy {
+            return Ok(policy.identity.clone());
+        }
+        codegraph_core::artifact_cache::fingerprint(&(
+            "input-policy-v1",
+            &self.model_config.model_name,
+            self.model_config.max_tokens,
+            self.tokenizer
+                .to_string(false)
+                .map_err(|e| CodeGraphError::Vector(e.to_string()))?,
+        ))
+        .map_err(|e| CodeGraphError::Vector(e.to_string()))
+    }
+
     pub fn new(config: ModelConfig) -> Self {
         let tokenizer_path = PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -70,6 +114,9 @@ impl EmbeddingGenerator {
             #[cfg(feature = "lmstudio")]
             lmstudio_provider: None,
             tokenizer: Arc::new(tokenizer),
+            submitted_cache: None,
+            chunk_cache_dir: None,
+            input_policy: None,
         }
     }
 
@@ -78,6 +125,30 @@ impl EmbeddingGenerator {
         &mut self,
         engine: Arc<crate::embeddings::generator::AdvancedEmbeddingGenerator>,
     ) {
+        // Replacing the active backend invalidates its tokenizer/task policy and caches.
+        self.input_policy = None;
+        self.submitted_cache = None;
+        self.chunk_cache_dir = None;
+        #[cfg(feature = "ollama")]
+        {
+            self.ollama_provider = None;
+        }
+        #[cfg(feature = "jina")]
+        {
+            self.jina_provider = None;
+        }
+        #[cfg(feature = "lmstudio")]
+        {
+            self.lmstudio_provider = None;
+        }
+        self.model_config.dimension = engine.dimension();
+        if let Some(model) = engine.model_name() {
+            self.model_config.model_name = model.to_owned();
+        }
+        if let Some(tokenizer) = engine.tokenizer() {
+            self.tokenizer = tokenizer;
+        }
+        self.model_config.max_tokens = engine.max_input_tokens().max(1);
         self.advanced = Some(engine);
     }
 
@@ -95,16 +166,47 @@ impl EmbeddingGenerator {
         }
     }
 
-    fn chunker_config(&self) -> ChunkerConfig {
-        // Allow skipping chunking for speed with env flag
+    fn chunker_config(&self) -> Result<ChunkerConfig> {
+        let mut config = self.base_chunker_config()?;
+        if let Some(policy) = &self.input_policy {
+            let policy = policy.clone();
+            config.token_counter = Some((
+                policy.identity.clone(),
+                Arc::new(move |text| policy.document_tokens(text)),
+            ));
+            return Ok(config);
+        }
+        #[cfg(feature = "openai")]
+        if self.model_config.model_name.starts_with("text-embedding-")
+            && let Ok(bpe) = tiktoken_rs::bpe_for_model(&self.model_config.model_name)
+        {
+            let mut config = config;
+            let overlap_bpe = bpe.clone();
+            config.overlap_counter = Some((
+                format!("tiktoken-0.12:{}", self.model_config.model_name),
+                Arc::new(move |text| overlap_bpe.encode_ordinary(text).len()),
+            ));
+            config.token_counter = Some((
+                format!("tiktoken-0.12:{}", self.model_config.model_name),
+                Arc::new(move |text| bpe.encode_ordinary(text).len()),
+            ));
+            return Ok(config);
+        }
+        Ok(config)
+    }
+
+    fn base_chunker_config(&self) -> Result<ChunkerConfig> {
+        // An explicit skip keeps units whole while retaining complete-input validation.
         let skip_chunking = std::env::var("CODEGRAPH_EMBEDDING_SKIP_CHUNKING")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
 
-        let max_tokens_env = std::env::var("CODEGRAPH_CHUNK_MAX_TOKENS")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok());
-        let max_tokens = max_tokens_env.unwrap_or(self.model_config.max_tokens);
+        let max_tokens_env = crate::input_policy::env_positive("CODEGRAPH_CHUNK_MAX_TOKENS")?.or(
+            crate::input_policy::env_positive("CODEGRAPH_MAX_CHUNK_TOKENS")?,
+        );
+        let max_tokens = max_tokens_env
+            .unwrap_or(self.model_config.max_tokens)
+            .clamp(1, self.model_config.max_tokens.max(1));
         let overlap_tokens = std::env::var("CODEGRAPH_CHUNK_OVERLAP_TOKENS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
@@ -114,27 +216,28 @@ impl EmbeddingGenerator {
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
 
-        if skip_chunking {
-            ChunkerConfig::new(u32::MAX as usize)
+        Ok(if skip_chunking {
+            ChunkerConfig::new(max_tokens)
                 .sanitize_mode(SanitizeMode::AsciiFastPath)
                 .cache_capacity(2048)
                 .overlap_tokens(0)
                 .smart_split(false)
+                .skip_chunking(true)
         } else {
             ChunkerConfig::new(max_tokens)
                 .sanitize_mode(SanitizeMode::AsciiFastPath)
                 .cache_capacity(2048)
                 .overlap_tokens(overlap_tokens)
                 .smart_split(smart_split)
-        }
+        })
     }
 
-    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
-        build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
+    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> Result<ChunkPlan> {
+        build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config()?)
     }
 
     /// Expose chunking so callers can persist chunk-level embeddings.
-    pub fn chunk_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+    pub fn chunk_nodes(&self, nodes: &[CodeNode]) -> Result<ChunkPlan> {
         self.build_plan_for_nodes(nodes)
     }
 
@@ -142,40 +245,62 @@ impl EmbeddingGenerator {
         &self,
         nodes: &[CodeNode],
         file_sources: &std::collections::HashMap<String, String>,
-    ) -> ChunkPlan {
+    ) -> Result<ChunkPlan> {
         build_chunk_plan_with_sources(
             nodes,
             file_sources,
             Arc::clone(&self.tokenizer),
-            self.chunker_config(),
+            self.chunker_config()?
+                .cache_dir(self.chunk_cache_dir.clone()),
         )
     }
 
+    pub fn chunk_nodes_with_source_lookup(
+        &self,
+        nodes: &[CodeNode],
+        source_lookup: impl Fn(&str) -> Option<Arc<str>> + Sync,
+    ) -> Result<ChunkPlan> {
+        crate::prep::chunker::build_chunk_plan_with_source_lookup(
+            nodes,
+            source_lookup,
+            self.tokenizer.clone(),
+            self.chunker_config()?
+                .cache_dir(self.chunk_cache_dir.clone()),
+        )
+    }
+
+    pub fn has_provider(&self) -> bool {
+        #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
+        if self
+            .advanced
+            .as_ref()
+            .is_some_and(|engine| engine.has_provider())
+        {
+            return true;
+        }
+        #[cfg(feature = "jina")]
+        if self.jina_provider.is_some() {
+            return true;
+        }
+        #[cfg(feature = "ollama")]
+        if self.ollama_provider.is_some() {
+            return true;
+        }
+        #[cfg(feature = "lmstudio")]
+        if self.lmstudio_provider.is_some() {
+            return true;
+        }
+        false
+    }
     pub fn dimension(&self) -> usize {
         self.model_config.dimension
     }
 
     /// Construct an EmbeddingGenerator that optionally wraps the advanced engine based on env.
     /// If CODEGRAPH_EMBEDDING_PROVIDER=local, tries to initialize a local-first engine.
-    pub async fn with_auto_from_env() -> Self {
-        #[cfg(any(
-            feature = "local-embeddings",
-            feature = "openai",
-            feature = "onnx",
-            feature = "ollama",
-            feature = "jina",
-            feature = "lmstudio"
-        ))]
+    pub async fn with_auto_from_env() -> Result<Self> {
+        #[allow(unused_mut)]
         let mut base = Self::new(ModelConfig::default());
-        #[cfg(not(any(
-            feature = "local-embeddings",
-            feature = "openai",
-            feature = "onnx",
-            feature = "ollama",
-            feature = "jina",
-            feature = "lmstudio"
-        )))]
-        let base = Self::new(ModelConfig::default());
         let provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER")
             .unwrap_or_default()
             .to_lowercase();
@@ -204,7 +329,7 @@ impl EmbeddingGenerator {
                     });
                 }
                 if let Ok(engine) = AdvancedEmbeddingGenerator::new(cfg).await {
-                    base.advanced = Some(Arc::new(engine));
+                    base.set_advanced_engine(Arc::new(engine));
                 }
             }
         } else if provider == "onnx" {
@@ -230,12 +355,14 @@ impl EmbeddingGenerator {
                 match AdvancedEmbeddingGenerator::new(cfg).await {
                     Ok(engine) => {
                         tracing::info!("✅ ONNX embedding provider initialized successfully");
-                        base.advanced = Some(Arc::new(engine));
+                        base.set_advanced_engine(Arc::new(engine));
                     }
                     Err(e) => {
                         tracing::error!("❌ ONNX embedding provider failed to initialize: {}", e);
                         tracing::error!("   Model path: {}", model_repo);
-                        tracing::warn!("🔄 Attempting fallback to Ollama embeddings for AI semantic matching...");
+                        tracing::warn!(
+                            "🔄 Attempting fallback to Ollama embeddings for AI semantic matching..."
+                        );
 
                         // INTELLIGENT FALLBACK: Try Ollama if ONNX fails
                         #[cfg(feature = "ollama")]
@@ -249,19 +376,29 @@ impl EmbeddingGenerator {
 
                             match ollama_provider.check_availability().await {
                                 Ok(true) => {
-                                    tracing::info!("✅ Fallback successful: Ollama nomic-embed-code available for AI semantic matching");
+                                    tracing::info!(
+                                        "✅ Fallback successful: Ollama nomic-embed-code available for AI semantic matching"
+                                    );
                                     base.model_config.dimension =
                                         ollama_provider.embedding_dimension();
                                     base.ollama_provider = Some(ollama_provider);
                                 }
                                 Ok(false) => {
-                                    tracing::error!("❌ Ollama fallback failed: nomic-embed-code model not found");
-                                    tracing::error!("   Install with: ollama pull hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M");
-                                    tracing::error!("   Falling back to random embeddings (no semantic AI matching)");
+                                    tracing::error!(
+                                        "❌ Ollama fallback failed: nomic-embed-code model not found"
+                                    );
+                                    tracing::error!(
+                                        "   Install with: ollama pull hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M"
+                                    );
+                                    tracing::error!(
+                                        "   Falling back to random embeddings (no semantic AI matching)"
+                                    );
                                 }
                                 Err(e) => {
                                     tracing::error!("❌ Ollama fallback failed: {}", e);
-                                    tracing::error!("   Falling back to random embeddings (no semantic AI matching)");
+                                    tracing::error!(
+                                        "   Falling back to random embeddings (no semantic AI matching)"
+                                    );
                                 }
                             }
                         }
@@ -298,7 +435,9 @@ impl EmbeddingGenerator {
                         base.ollama_provider = Some(ollama_provider);
                     }
                     Ok(false) => {
-                        tracing::warn!("⚠️ nomic-embed-code model not found. Install with: ollama pull hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M");
+                        tracing::warn!(
+                            "⚠️ nomic-embed-code model not found. Install with: ollama pull hf.co/nomic-ai/nomic-embed-code-GGUF:Q4_K_M"
+                        );
                     }
                     Err(e) => {
                         tracing::error!("❌ Failed to connect to Ollama for embeddings: {}", e);
@@ -358,141 +497,194 @@ impl EmbeddingGenerator {
                 );
             }
         }
-        base
+        base.initialize_input_policy().await?;
+        Ok(base)
     }
 
     /// Construct an EmbeddingGenerator from a CodeGraphConfig
     /// This enables TOML configuration file support in addition to environment variables
-    pub async fn with_config(config: &codegraph_core::CodeGraphConfig) -> Self {
-        // Allow env override for batch size (applies across providers)
-        let mut embedding_config = config.embedding.clone();
-        if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
-            if let Ok(parsed) = val.parse::<usize>() {
-                embedding_config.batch_size = parsed.clamp(1, 2048);
-            }
-        }
-        #[allow(unused_mut)]
-        let mut base = Self::new(ModelConfig {
-            dimension: embedding_config.dimension,
-            max_tokens: 512, // Default, could be added to config if needed
-            model_name: embedding_config
+    pub fn with_config(
+        config: &codegraph_core::CodeGraphConfig,
+    ) -> futures::future::BoxFuture<'_, Result<Self>> {
+        Box::pin(async move {
+            // ConfigManager resolves environment defaults; callers may then override
+            // them (e.g. --batch-size). Do not reapply environment values here.
+            let embedding_config = config.embedding.clone();
+            let model_name = embedding_config
                 .model
                 .clone()
-                .unwrap_or_else(|| "auto".to_string()),
-        });
+                .unwrap_or_else(|| "auto".into());
+            let max_tokens = if model_name.starts_with("text-embedding-") {
+                8191
+            } else {
+                512
+            };
+            #[allow(unused_mut)]
+            let mut base = Self::new(ModelConfig {
+                dimension: embedding_config.dimension,
+                max_tokens,
+                model_name,
+            });
 
-        let provider = embedding_config.provider.to_lowercase();
-        tracing::info!(
-            "🔍 EmbeddingGenerator::with_config called with provider='{}', model={:?}, dimension={}",
-            provider,
-            embedding_config.model,
-            embedding_config.dimension
-        );
+            let provider = embedding_config.provider.to_lowercase();
+            tracing::info!(
+                "🔍 EmbeddingGenerator::with_config called with provider='{}', model={:?}, dimension={}",
+                provider,
+                embedding_config.model,
+                embedding_config.dimension
+            );
 
-        if provider == "ollama" {
-            tracing::info!("🎯 Provider matches 'ollama', attempting to initialize...");
-            #[cfg(feature = "ollama")]
-            {
-                tracing::info!("✅ 'ollama' feature is ENABLED");
-                let ollama_config = crate::ollama_embedding_provider::OllamaEmbeddingConfig::from(
-                    &embedding_config,
-                );
-                tracing::info!(
-                    "🔧 Created OllamaEmbeddingConfig: model='{}', url='{}'",
-                    ollama_config.model_name,
-                    ollama_config.base_url
-                );
-                let ollama_provider =
-                    crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(ollama_config);
-
-                tracing::info!("🔍 Checking Ollama availability...");
-                match ollama_provider.check_availability().await {
-                    Ok(true) => {
-                        use crate::providers::EmbeddingProvider;
-                        tracing::info!(
-                            "✅ Ollama {} available for embeddings (from config)",
-                            ollama_provider.provider_name()
+            if provider == "ollama" {
+                tracing::info!("🎯 Provider matches 'ollama', attempting to initialize...");
+                #[cfg(feature = "ollama")]
+                {
+                    tracing::info!("✅ 'ollama' feature is ENABLED");
+                    let ollama_config =
+                        crate::ollama_embedding_provider::OllamaEmbeddingConfig::from(
+                            &embedding_config,
                         );
-                        base.model_config.dimension = ollama_provider.embedding_dimension();
-                        base.ollama_provider = Some(ollama_provider);
-                        tracing::info!("✅ ollama_provider successfully set!");
-                    }
-                    Ok(false) => {
-                        use crate::providers::EmbeddingProvider;
-                        tracing::error!(
-                            "❌ Ollama model {} not found. Install with: ollama pull <model>",
-                            ollama_provider.provider_name()
-                        );
-                    }
-                    Err(e) => {
-                        tracing::error!("❌ Failed to connect to Ollama for embeddings: {}", e);
-                    }
-                }
-            }
-            #[cfg(not(feature = "ollama"))]
-            {
-                tracing::error!("❌ 'ollama' feature is NOT ENABLED - cannot use Ollama provider!");
-            }
-        } else if provider == "jina" {
-            #[cfg(feature = "jina")]
-            {
-                let jina_config = crate::jina_provider::JinaConfig::from(&embedding_config);
-                match crate::jina_provider::JinaEmbeddingProvider::new(jina_config) {
-                    Ok(provider) => {
-                        tracing::info!("✅ Jina embeddings initialized (from config)");
-                        base.model_config.dimension = provider.embedding_dimension();
-                        base.jina_provider = Some(provider);
-                    }
-                    Err(e) => {
-                        tracing::error!("❌ Failed to initialize Jina embeddings: {}", e);
-                        tracing::error!(
-                            "   Make sure jina_api_key is set in config or JINA_API_KEY env var"
-                        );
-                    }
-                }
-            }
-        } else if provider == "lmstudio" {
-            #[cfg(feature = "lmstudio")]
-            {
-                let lmstudio_config =
-                    crate::lmstudio_embedding_provider::LmStudioEmbeddingConfig::from(
-                        &embedding_config,
+                    tracing::info!(
+                        "🔧 Created OllamaEmbeddingConfig: model='{}', url='{}'",
+                        ollama_config.model_name,
+                        ollama_config.base_url
                     );
-                match crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider::new(
-                    lmstudio_config,
-                ) {
-                    Ok(provider) => {
-                        tracing::info!("🔍 Checking LM Studio availability...");
-                        if provider.check_availability().await {
+                    let ollama_provider =
+                        crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(
+                            ollama_config,
+                        );
+
+                    tracing::info!("🔍 Checking Ollama availability...");
+                    match ollama_provider.check_availability().await {
+                        Ok(true) => {
                             use crate::providers::EmbeddingProvider;
-                            tracing::info!("✅ LM Studio embeddings initialized (from config)");
-                            base.model_config.dimension = provider.embedding_dimension();
-                            base.lmstudio_provider = Some(provider);
-                        } else {
-                            tracing::error!(
-                                "❌ LM Studio not available at {}",
-                                embedding_config.lmstudio_url
+                            tracing::info!(
+                                "✅ Ollama {} available for embeddings (from config)",
+                                ollama_provider.provider_name()
                             );
+                            base.model_config.dimension = ollama_provider.embedding_dimension();
+                            base.ollama_provider = Some(ollama_provider);
+                            tracing::info!("✅ ollama_provider successfully set!");
+                        }
+                        Ok(false) => {
+                            use crate::providers::EmbeddingProvider;
                             tracing::error!(
-                                "   Make sure LM Studio is running with an embedding model loaded"
+                                "❌ Ollama model {} not found. Install with: ollama pull <model>",
+                                ollama_provider.provider_name()
+                            );
+                        }
+                        Err(e) => {
+                            tracing::error!("❌ Failed to connect to Ollama for embeddings: {}", e);
+                        }
+                    }
+                }
+                #[cfg(not(feature = "ollama"))]
+                {
+                    tracing::error!(
+                        "❌ 'ollama' feature is NOT ENABLED - cannot use Ollama provider!"
+                    );
+                }
+            } else if provider == "jina" {
+                #[cfg(feature = "jina")]
+                {
+                    let jina_config = crate::jina_provider::JinaConfig::from(&embedding_config);
+                    match crate::jina_provider::JinaEmbeddingProvider::new(jina_config) {
+                        Ok(provider) => {
+                            tracing::info!("✅ Jina embeddings initialized (from config)");
+                            base.model_config.dimension = provider.embedding_dimension();
+                            base.jina_provider = Some(provider);
+                        }
+                        Err(e) => {
+                            tracing::error!("❌ Failed to initialize Jina embeddings: {}", e);
+                            tracing::error!(
+                                "   Make sure jina_api_key is set in config or JINA_API_KEY env var"
                             );
                         }
                     }
-                    Err(e) => {
-                        tracing::error!("❌ Failed to initialize LM Studio embeddings: {}", e);
+                }
+            } else if provider == "lmstudio" {
+                #[cfg(feature = "lmstudio")]
+                {
+                    let lmstudio_config =
+                        crate::lmstudio_embedding_provider::LmStudioEmbeddingConfig::from(
+                            &embedding_config,
+                        );
+                    match crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider::new(
+                        lmstudio_config,
+                    ) {
+                        Ok(provider) => {
+                            tracing::info!("🔍 Checking LM Studio availability...");
+                            if provider.check_availability().await {
+                                use crate::providers::EmbeddingProvider;
+                                tracing::info!("✅ LM Studio embeddings initialized (from config)");
+                                base.model_config.dimension = provider.embedding_dimension();
+                                base.lmstudio_provider = Some(provider);
+                            } else {
+                                tracing::error!(
+                                    "❌ LM Studio not available at {}",
+                                    embedding_config.lmstudio_url
+                                );
+                                tracing::error!(
+                                    "   Make sure LM Studio is running with an embedding model loaded"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("❌ Failed to initialize LM Studio embeddings: {}", e);
+                        }
                     }
                 }
+                #[cfg(not(feature = "lmstudio"))]
+                {
+                    tracing::error!(
+                        "❌ 'lmstudio' feature is NOT ENABLED - cannot use LM Studio provider!"
+                    );
+                }
             }
-            #[cfg(not(feature = "lmstudio"))]
-            {
-                tracing::error!(
-                    "❌ 'lmstudio' feature is NOT ENABLED - cannot use LM Studio provider!"
-                );
+            #[cfg(any(feature = "openai", feature = "onnx", feature = "local-embeddings"))]
+            if provider == "onnx" || provider == "openai" {
+                use crate::embeddings::generator::{
+                    AdvancedEmbeddingGenerator, EmbeddingEngineConfig, OnnxConfigCompat,
+                    OpenAiConfigCompat,
+                };
+                let mut engine = EmbeddingEngineConfig {
+                    batch_size: embedding_config.batch_size,
+                    dimension_hint: Some(embedding_config.dimension),
+                    ..Default::default()
+                };
+                if provider == "onnx" {
+                    engine.onnx = Some(OnnxConfigCompat {
+                        model_repo: base.model_config.model_name.clone(),
+                        model_file: std::env::var("CODEGRAPH_ONNX_MODEL_FILE").ok(),
+                        max_sequence_length: 512,
+                        pooling: "mean".into(),
+                    });
+                } else {
+                    engine.openai = Some(OpenAiConfigCompat {
+                        api_key: embedding_config
+                            .openai_api_key
+                            .clone()
+                            .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+                            .unwrap_or_default(),
+                        model: base.model_config.model_name.clone(),
+                        api_base: std::env::var("OPENAI_API_BASE")
+                            .unwrap_or_else(|_| "https://api.openai.com/v1".into()),
+                        max_retries: 3,
+                        timeout: std::time::Duration::from_secs(30),
+                        max_tokens_per_request: 8191,
+                    });
+                }
+                match AdvancedEmbeddingGenerator::new(engine).await {
+                    Ok(engine) => base.set_advanced_engine(Arc::new(engine)),
+                    Err(error) => tracing::error!(
+                        "Failed to initialize {provider} embedding backend: {error}"
+                    ),
+                }
             }
-        }
-        // Add other providers (ONNX, local, etc.) as needed following the same pattern
+            // Other unsupported providers fail the indexing startup guard.
 
-        base
+            base.initialize_input_policy().await?;
+            Ok(base)
+        })
     }
 
     pub async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
@@ -570,7 +762,7 @@ impl EmbeddingGenerator {
 
         #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
         if let Some(engine) = &self.advanced {
-            let plan = self.build_plan_for_nodes(nodes);
+            let plan = self.build_plan_for_nodes(nodes)?;
             tracing::debug!(
                 target: "codegraph_vector::embeddings",
                 "Advanced engine chunk plan: {} nodes -> {} chunks",
@@ -603,7 +795,7 @@ impl EmbeddingGenerator {
         }
 
         // Fallback: sequential deterministic embeddings with chunking
-        let plan = self.build_plan_for_nodes(nodes);
+        let plan = self.build_plan_for_nodes(nodes)?;
         let chunk_to_node = plan.chunk_to_node();
         let mut chunk_embeddings = Vec::with_capacity(plan.chunks.len());
         for chunk in plan.chunks {
@@ -624,7 +816,102 @@ impl EmbeddingGenerator {
 
     /// Generate embeddings for multiple texts in batches for GPU optimization.
     /// This method processes texts in batches to maximize GPU utilization.
+    pub fn configure_index_cache(
+        &mut self,
+        root: PathBuf,
+        identity: &serde_json::Value,
+        dimension: usize,
+        provider: &str,
+        rows: usize,
+    ) -> Result<()> {
+        if self.input_policy.is_none()
+            && let Some(path) = std::env::var_os("CODEGRAPH_TOKENIZER_PATH")
+        {
+            self.tokenizer =
+                Arc::new(Tokenizer::from_file(path).map_err(|e| {
+                    CodeGraphError::Vector(format!("Invalid provider tokenizer: {e}"))
+                })?);
+        }
+        let mut tokenizer = self.tokenizer.as_ref().clone();
+        tokenizer
+            .with_truncation(None)
+            .map_err(|error| CodeGraphError::Vector(error.to_string()))?;
+        tokenizer.with_padding(None);
+        self.tokenizer = Arc::new(tokenizer);
+        let namespace = codegraph_core::artifact_cache::fingerprint(&(
+            "prepared-v3",
+            identity,
+            self.input_identity()?,
+            dimension,
+            self.tokenizer
+                .to_string(false)
+                .map_err(|e| CodeGraphError::Vector(e.to_string()))?,
+            std::env::var("CODEGRAPH_MODEL_REVISION").unwrap_or_default(),
+        ))
+        .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+        self.submitted_cache = Some(crate::submitted_cache::SubmittedCache::new(
+            namespace,
+            dimension,
+            Some(root.clone()),
+            matches!(provider, "local" | "onnx" | "ollama" | "lmstudio"),
+            rows,
+            self.model_config.max_tokens,
+        ));
+        self.chunk_cache_dir = Some(root);
+        Ok(())
+    }
+
+    pub fn inference_stats(&self) -> (u64, u64, u64) {
+        use std::sync::atomic::Ordering;
+        self.submitted_cache.as_ref().map_or((0, 0, 0), |cache| {
+            (
+                cache.hits.load(Ordering::Relaxed),
+                cache.inferred.load(Ordering::Relaxed),
+                cache.submitted_tokens.load(Ordering::Relaxed),
+            )
+        })
+    }
+
     pub async fn embed_texts_batched(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        let prepared;
+        let texts = if let Some(policy) = &self.input_policy {
+            prepared = texts
+                .iter()
+                .map(|text| policy.prepare(text, false))
+                .collect::<Result<Vec<_>>>()?;
+            prepared.as_slice()
+        } else {
+            texts
+        };
+        if let Some(cache) = &self.submitted_cache {
+            cache
+                .embed(
+                    texts,
+                    |text| {
+                        if let Some(policy) = &self.input_policy {
+                            return policy.tokens(text).unwrap_or(usize::MAX);
+                        }
+                        #[cfg(feature = "openai")]
+                        if self.model_config.model_name.starts_with("text-embedding-")
+                            && let Ok(bpe) =
+                                tiktoken_rs::bpe_for_model(&self.model_config.model_name)
+                        {
+                            return bpe.encode_ordinary(text).len();
+                        }
+                        self.tokenizer
+                            .encode(text, true)
+                            .map_or(text.len(), |tokens| tokens.len())
+                    },
+                    |batch| Box::pin(async move { self.embed_prepared_uncached(&batch).await }),
+                )
+                .await
+        } else {
+            self.embed_prepared_uncached(texts).await
+        }
+    }
+
+    #[allow(unused_variables)]
+    async fn embed_prepared_uncached(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
         // Use advanced engine's batching capabilities when available
         #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
         if let Some(engine) = &self.advanced {
@@ -639,7 +926,7 @@ impl EmbeddingGenerator {
         #[cfg(feature = "ollama")]
         if let Some(provider) = &self.ollama_provider {
             return provider
-                .generate_embeddings_for_texts(texts, provider.max_batch_size())
+                .generate_prepared_embeddings(texts, provider.max_batch_size())
                 .await;
         }
 
@@ -648,13 +935,9 @@ impl EmbeddingGenerator {
             return provider.process_in_batches(texts.to_vec()).await;
         }
 
-        // Fallback: process texts sequentially
-        let mut embeddings = Vec::with_capacity(texts.len());
-        for text in texts {
-            let embedding = self.encode_text(text).await?;
-            embeddings.push(embedding);
-        }
-        Ok(embeddings)
+        Err(CodeGraphError::Vector(
+            "No semantic embedding provider configured for prepared text indexing".into(),
+        ))
     }
 
     async fn encode_text(&self, text: &str) -> Result<Vec<f32>> {

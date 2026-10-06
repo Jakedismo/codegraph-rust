@@ -435,8 +435,8 @@ impl IncrementalUpdater {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::VectorStore;
     use crate::CodeGraphError;
+    use crate::traits::VectorStore;
     use async_trait::async_trait;
 
     struct InMemoryParser {

@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ops::{Index, IndexMut};
 
-use crate::memory::debug::{MemoryCategory, MEMORY_TRACKER};
+use crate::memory::debug::{MEMORY_TRACKER, MemoryCategory};
 
 /// Simple wrapper around bumpalo::Bump for scoped arena allocations of
 /// short-lived data structures created during parsing and batch transforms.

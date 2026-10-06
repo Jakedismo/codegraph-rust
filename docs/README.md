@@ -6,6 +6,7 @@ Welcome to the comprehensive documentation for the CodeGraph project.
 
 - [Installation & setup](INSTALLATION_GUIDE.md)
 - [Usage guide (for AI assistants)](USAGE_GUIDE.md)
+- [Agentic CLI commands and Claude Code/Codex hooks](AGENTIC_CLI.md)
 - [AI provider configuration (embeddings + LLMs)](AI_PROVIDERS.md)
 - [Agentic prompt tiers (4-tier system)](AGENT_PROMPT_TIERS.md)
 - [Supported languages](SUPPORTED_LANGUAGES.md)
@@ -23,7 +24,6 @@ Explore the interactive [Architecture Diagram](architecture-visualization.html) 
 ### Processing & AI
 - [codegraph-parser](crates/codegraph-parser/README.md): Tree-sitter parsing and unified extraction.
 - [codegraph-vector](crates/codegraph-vector/README.md): Embeddings and chunking.
-- [codegraph-ai](crates/codegraph-ai/README.md): LLM provider abstractions.
 - [codegraph-cache](crates/codegraph-cache/README.md): Caching and read-ahead mechanisms.
 - [codegraph-concurrent](crates/codegraph-concurrent/README.md): Concurrency primitives.
 
@@ -33,8 +33,7 @@ Explore the interactive [Architecture Diagram](architecture-visualization.html) 
 - [codegraph-mcp-daemon](crates/codegraph-mcp-daemon/README.md): Background service and file watching.
 - [codegraph-mcp-tools](crates/codegraph-mcp-tools/README.md): Specific tool implementations.
 - [codegraph-mcp-core](crates/codegraph-mcp-core/README.md): Shared MCP traits.
-- [codegraph-mcp-autoagents](crates/codegraph-mcp-autoagents/README.md): Experimental agents.
-- [codegraph-mcp-rig](crates/codegraph-mcp-rig/README.md): Testing rig.
+- [codegraph-mcp-rig](crates/codegraph-mcp-rig/README.md): Agent backend for the agentic tools, built on the Rig framework.
 
 ## Specifications
 Detailed specs can be found in the [specifications](specifications/) directory.

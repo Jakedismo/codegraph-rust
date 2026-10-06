@@ -10,10 +10,8 @@ members = [
     "crates/codegraph-graph",
     "crates/codegraph-zerocopy",
 
-    "crates/codegraph-ai",
     "crates/codegraph-mcp-core",
     "crates/codegraph-mcp-tools",
-    "crates/codegraph-mcp-autoagents",
     "crates/codegraph-mcp-rig",
     "crates/codegraph-mcp-server",
     "crates/codegraph-mcp-daemon",
@@ -22,12 +20,13 @@ exclude = ["scripts", "vendor/rmcp", "vendor/semchunk-rs"]
 default-members = [
     "crates/codegraph-core"
 ]
-resolver = "2"
+resolver = "3"
 
 
 [workspace.package]
 version = "1.0.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.95"
 authors = ["CodeGraph Team"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/codegraph/embedding-system"
@@ -37,17 +36,14 @@ repository = "https://github.com/codegraph/embedding-system"
 # Minimal build for MCP server development (fastest build times)
 mcp-minimal = [
     "ai-enhanced",
-    "embeddings-ollama",
-    "codegraph-ai/anthropic"
+    "embeddings-ollama"
 ]
 
 # MCP development with LM Studio support
 mcp-lmstudio = [
     "ai-enhanced",
     "embeddings-ollama",
-    "embeddings-lmstudio",
-    "codegraph-ai/anthropic",
-    "codegraph-ai/openai-compatible"
+    "embeddings-lmstudio"
 ]
 
 # Full local stack (no cloud dependencies)
@@ -56,9 +52,7 @@ local-stack = [
     "ai-enhanced",
     "embeddings-ollama",
     "embeddings-lmstudio",
-    "embeddings-local",
-    "codegraph-ai/openai-compatible",
-    "autoagents-experimental"
+    "embeddings-local"
 ]
 
 # Cloud-enabled build
@@ -67,10 +61,7 @@ cloud-enabled = [
     "ai-enhanced",
     "cloud",
     "embeddings-jina",
-    "codegraph-ai/anthropic",
-    "codegraph-ai/openai-llm",
-    "server-http",
-    "autoagents-experimental"
+    "server-http"
 ]
 
 # Everything (development/testing)
@@ -84,191 +75,178 @@ full = [
     "embeddings-ollama",
     "embeddings-jina",
     "embeddings-lmstudio",
-    "codegraph-ai/anthropic",
-    "codegraph-ai/openai-llm",
-    "codegraph-ai/openai-compatible",
-    "server-http",
-    "autoagents-experimental"
+    "server-http"
 ]
 
 [workspace.dependencies]
-fastrand = "2.0"
-governor = { version = "0.10.1" }
-lazy_static = "1.4.0"
+fastrand = "2.5.0"
+governor = { version = "0.10.4" }
+lazy_static = "1.5.1"
 # Async Runtime
-tokio = { version = "1.39", features = ["full"] }
-async-trait = "0.1"
-futures = "0.3"
-rmcp = { version = "0.12.0", features = ["server", "transport-io", "transport-streamable-http-server"] }
-semchunk-rs = { version = "0.1.1" }
-tokenizers = { version = "0.22.2", default-features = false, features = ["http", "fancy-regex", "onig"] }
+tokio = { version = "1.53.2", features = ["full"] }
+async-trait = "0.1.92"
+futures = "0.3.34"
+rmcp = { version = "3.5.1", features = ["server", "transport-io", "transport-streamable-http-server"] }
+tokenizers = { version = "0.23.2", default-features = false, features = ["http", "fancy-regex", "onig"] }
 
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-toml = "0.9.5"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+toml = "0.9.8"
 
 # Zero-copy serialization
-rkyv = { version = "0.8.8", features = ["alloc", "std"] }
-bytecheck = "0.8"
-rend = "0.5"
+rkyv = { version = "0.8.18", features = ["alloc", "std"] }
+bytecheck = "0.8.3"
+rend = "0.5.4"
 
 # Error Handling
-thiserror = "2.0.17"
-anyhow = "1.0"
+thiserror = "2.0.21"
+anyhow = "1.0.104"
 
 # Utilities
-regex = "1.12"
-sha2 = "0.10"
-uuid = { version = "1.6", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
+regex = "1.13.1"
+sha2 = "0.11.0"
+uuid = { version = "1.27.0", features = ["v4", "serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
 
 # Parallel Processing
-rayon = "1.8"
-crossbeam-channel = "0.5"
-crossbeam-utils = "0.8"
-crossbeam-queue = "0.3"
-crossbeam-skiplist = "0.1"
-arc-swap = "1.7"
+rayon = "1.12.0"
+crossbeam-channel = "0.5.17"
+crossbeam-utils = "0.8.23"
+crossbeam-queue = "0.3.14"
+crossbeam-skiplist = "0.1.3"
+arc-swap = "1.9.2"
 
 
 # System Information
-num_cpus = "1.16"
-sysinfo = "0.37.2"
+num_cpus = "1.17.0"
+sysinfo = "0.39.6"
 
 # Scientific computing
-ndarray = "0.16.1"
+ndarray = "0.17.2"
 
 # OpenAI API client
 # Minimize reqwest features for smaller binaries; prefer system TLS
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "native-tls"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream", "native-tls"] }
 
 # ONNX ort format
-# ort = "=2.0.0-rc.10"
-ort = { version = "2", features = [ "load-dynamic" ] }
+# The ONNX Runtime Rust bindings are still release candidates.
+ort = { version = "2.0.0-rc.13", features = [ "load-dynamic" ] }
 
 # Additional utilities
-bincode = { version = "2.0", features = ["serde"] }
-dashmap = "6.0"
-parking_lot = "0.12"
-tokio-util = "0.7"
+# Bincode 3.0.0 is a tombstone containing only compile_error!; retain the latest usable release.
+bincode = { version = "2.0.1", features = ["serde"] }
+dashmap = "6.2.1"
+parking_lot = "0.12.5"
+tokio-util = "0.7.19"
 tokio-uring = { version = "0.5.0" }
 
 # File system monitoring and diff processing
 notify = "8.2.0"
-similar = "2.4"
-memmap2 = "0.9"
-flate2 = "1.0"
+similar = "3.2.0"
+memmap2 = "0.9.11"
+flate2 = "1.1.10"
 # Compression algorithms
-zstd = "0.13"
-lz4_flex = "0.11"
+zstd = "0.14.0"
+lz4_flex = "0.14.0"
 
 # Version overrides for transitive crates we rely on
-cedar-policy = "2.5.1"
-cedar-policy-core = "2.5.1"
-cedar-policy-validator = "2.5.1"
-dirs = "6.0.0"
-generic-array = "0.14.9"
-matchit = "0.8.6"
+cedar-policy = "4.13.0"
+cedar-policy-core = "4.13.0"
+cedar-policy-validator = "4.4.2"
+dirs = "7.0.0"
+generic-array = "1.4.5"
+matchit = "0.9.2"
 pdqselect = "0.1.1"
 
-# AutoAgents
-autoagents = "*"
-autoagents-derive = "*"
-
 # Moved MCP crate dependencies
-nix = { version = "0.30.1", features = ["process", "signal"] }
+nix = { version = "0.31.3", features = ["process", "signal"] }
 
-# AutoAgents
-globset = "0.4"
-ignore = "0.4"
-rand = "0.9.2"
+globset = "0.4.20"
+ignore = "0.4.33"
+rand = "0.10.3"
 
 # Git integration
-git2 = "0.20"
+git2 = "0.21.0"
 
 # Tree-sitter for parsing - Enhanced error handling and pooling implemented
-tree-sitter = "0.25"
-tree-sitter-rust = "0.24"
+tree-sitter = "0.27.0"
+tree-sitter-rust = "0.24.2"
 tree-sitter-python = "0.25.0"
-tree-sitter-javascript = "0.25"
-tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-typescript = "0.23.2"
 tree-sitter-go = "0.25.0"
-tree-sitter-java = "0.23"
-tree-sitter-cpp = "0.23"
+tree-sitter-java = "0.23.5"
+tree-sitter-cpp = "0.23.4"
 
 # Additional language support - Revolutionary universal programming language coverage
-tree-sitter-swift = "0.7.1"
-tree-sitter-kotlin = "0.3.5"
-tree-sitter-c-sharp = "0.23.0"
-tree-sitter-ruby = "0.23.0"
+tree-sitter-swift = "0.7.4"
+tree-sitter-kotlin = "0.3.8"
+tree-sitter-c-sharp = "0.23.5"
+tree-sitter-ruby = "0.23.1"
 tree-sitter-php = "0.24.2"
-tree-sitter-dart = "0.0.4"
+tree-sitter-dart = "0.2.0"
 
 # GraphQL
-async-graphql = "7.0"
-async-graphql-axum = "7.0"
+async-graphql = "7.2.1"
+async-graphql-axum = "7.2.1"
 
 # Web framework
-axum = "0.8"
-tower = { version = "0.5.2", features = ["util"] }
-tower-http = "0.6.6"
-hyper = "1.7.0"
-http-body-util = "0.1.2"
-http = "1.3.1"
-prometheus = { version = "0.14.0", features = ["process"] }
+axum = "0.8.9"
+tower = { version = "0.5.3", features = ["util"] }
+tower-http = "0.7.1"
+hyper = "1.11.1"
+http-body-util = "0.1.5"
+http = "1.5.0"
 
 # OpenAPI / Swagger documentation for Axum
-utoipa = { version = "5.4.0", features = ["axum_extras", "uuid", "chrono"] }
-utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
+utoipa = { version = "6.0.0", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-swagger-ui = { version = "10.0.1", features = ["axum"] }
 
 # Memory leak detection and tracking (optional, feature-gated in binaries)
-memscope-rs = "0.1.4"
+memscope-rs = "0.2.5"
 
 # WebSocket support
-tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
-url = "2.5"
+tokio-tungstenite = { version = "0.30.0", features = ["native-tls"] }
+url = "2.5.8"
 
 # Tracing and logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
-tracing-indicatif = "0.3.1"
-tracing-appender = "0.2"
-once_cell = "1.19"
-hashbrown = "0.16.0"
-rustc-hash = "2.1.1"
-bytes = "1.6"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "registry"] }
+tracing-indicatif = "0.3.14"
+tracing-appender = "0.2.5"
+once_cell = "1.21.4"
+hashbrown = "0.17.1"
+rustc-hash = "2.1.3"
+bytes = "1.12.1"
 
 # Memory allocator + profiling
-tikv-jemallocator = { version = "0.6.0", default-features = true }
-tikv-jemalloc-ctl = "0.6.0"
-backtrace = "0.3"
+tikv-jemallocator = { version = "0.7.0", default-features = true }
+tikv-jemalloc-ctl = "0.7.0"
+backtrace = "0.3.76"
 
 # Configuration
-config = "0.15.15"
-schemars = "1.0.4"
-secrecy = { version = "0.10.3", features = ["serde"] }
-chacha20poly1305 = { version = "0.10", features = ["std"] }
-base64 = "0.22"
+schemars = "1.2.2"
+base64 = "0.23.1"
 
 # CLI
-clap = { version = "4.5", features = ["derive", "cargo", "env", "wrap_help"] }
-colored = "3.0.0"
-indicatif = "0.18.0"
+clap = { version = "4.6.7", features = ["derive", "cargo", "env", "wrap_help"] }
+colored = "3.1.1"
+indicatif = "0.18.6"
 atty = "0.2.14"
 
 # Security
-jsonwebtoken = "9.3"
-argon2 = "0.5"
+jsonwebtoken = { version = "11.1.0", features = ["rust_crypto"] }
+argon2 = "0.6.0"
 
 # Testing
-tempfile = "3.23"
-tokio-test = "0.4"
-approx = "0.5"
-criterion = { version = "0.7.0", features = ["html_reports", "async_tokio"] }
+tempfile = "3.27.0"
+tokio-test = "0.4.6"
+approx = "0.5.1"
+criterion = { version = "0.8.2", features = ["html_reports", "async_tokio"] }
 
 # LRU cache utility
-lru = "0.16.1"
+lru = "0.18.5"
 
 # Internal crates
 codegraph-core = { path = "crates/codegraph-core" }
@@ -279,7 +257,6 @@ codegraph-mcp = { path = "crates/codegraph-mcp" }
 
 codegraph-zerocopy = { path = "crates/codegraph-zerocopy" }
 
-codegraph-ai = { path = "crates/codegraph-ai" }
 
 
 # Development dependencies

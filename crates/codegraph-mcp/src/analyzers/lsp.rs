@@ -1,20 +1,20 @@
 // ABOUTME: Implements a high-performance async Language Server Protocol client
 // ABOUTME: Provides pipelined request handling and concurrent file processing
 
-use anyhow::{anyhow, Result};
+use anyhow::{Context, Result, anyhow};
 use codegraph_core::{CodeNode, EdgeRelationship};
 use dashmap::DashMap;
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
 use serde_json::Value as JsonValue;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::{mpsc, oneshot};
-use tracing::{error, info};
+use tokio::sync::{mpsc, oneshot, watch};
+use tracing::{debug, error, info};
 use url::Url;
 
 pub fn encode_lsp_message(body: &str) -> Vec<u8> {
@@ -91,9 +91,152 @@ pub struct LspClient {
     tx: mpsc::Sender<LspRequest>,
     pending_requests: Arc<DashMap<u64, oneshot::Sender<Result<JsonValue>>>>,
     next_id: Arc<AtomicU64>,
+    requests: Arc<tokio::sync::Semaphore>,
+    documents: Arc<DashMap<String, (String, i64)>>,
+    diagnostics: Arc<LspDiagnostics>,
+    _tasks: Arc<SessionTasks>,
+}
+
+const STDERR_TAIL_BYTES: usize = 4096;
+const LSP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const CONTENT_MODIFIED_BACKOFF: [Duration; 5] = [
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(400),
+    Duration::from_millis(800),
+    Duration::from_millis(1600),
+];
+
+#[derive(Debug, thiserror::Error)]
+#[error("LSP error: {0}")]
+struct LspResponseError(JsonValue);
+
+impl LspResponseError {
+    fn is_content_modified(&self) -> bool {
+        self.0.get("code").and_then(JsonValue::as_i64) == Some(-32801)
+    }
+}
+
+struct LspDiagnostics {
+    command: PathBuf,
+    stderr: parking_lot::Mutex<Vec<u8>>,
+    stderr_done: watch::Receiver<bool>,
+    stopped: AtomicBool,
+}
+
+impl LspDiagnostics {
+    fn record_stderr(&self, bytes: &[u8]) {
+        let mut tail = self.stderr.lock();
+        tail.extend_from_slice(bytes);
+        let excess = tail.len().saturating_sub(STDERR_TAIL_BYTES);
+        tail.drain(..excess);
+    }
+
+    async fn failure(&self, reason: &str) -> anyhow::Error {
+        // stdout can close before the stderr task has consumed the final diagnostic.
+        // Bound the wait: a server may close stdout while keeping stderr open.
+        let mut done = self.stderr_done.clone();
+        let _ = tokio::time::timeout(Duration::from_millis(250), async {
+            while !*done.borrow_and_update() {
+                if done.changed().await.is_err() {
+                    break;
+                }
+            }
+        })
+        .await;
+        let stderr = String::from_utf8_lossy(&self.stderr.lock())
+            .trim()
+            .to_owned();
+        if stderr.is_empty() {
+            anyhow!("{}: {}", self.command.display(), reason)
+        } else {
+            anyhow!(
+                "{}: {}\nServer stderr: {}",
+                self.command.display(),
+                reason,
+                stderr
+            )
+        }
+    }
+}
+
+async fn fail_pending_requests(
+    pending: &DashMap<u64, oneshot::Sender<Result<JsonValue>>>,
+    diagnostics: &LspDiagnostics,
+    reason: &str,
+) {
+    diagnostics.stopped.store(true, Ordering::Release);
+    let error = diagnostics.failure(reason).await.to_string();
+    let ids: Vec<_> = pending.iter().map(|entry| *entry.key()).collect();
+    for id in ids {
+        if let Some((_, response)) = pending.remove(&id) {
+            let _ = response.send(Err(anyhow!(error.clone())));
+        }
+    }
+}
+
+/// Check rustup shims as well as standalone binaries before spending time parsing.
+pub async fn probe_rust_analyzer(command: &Path, project_root: &Path) -> Result<()> {
+    let mut probe = Command::new(command);
+    probe
+        .arg("--version")
+        .current_dir(project_root)
+        .stdin(Stdio::null())
+        .kill_on_drop(true);
+    let result = tokio::time::timeout(Duration::from_secs(5), probe.output()).await;
+    let problem = match result {
+        Ok(Ok(output)) if output.status.success() => return Ok(()),
+        Ok(Ok(output)) => {
+            let start = output.stderr.len().saturating_sub(STDERR_TAIL_BYTES);
+            format!(
+                "{}\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr[start..]).trim()
+            )
+        }
+        Ok(Err(error)) => error.to_string(),
+        Err(_) => "--version timed out after 5 seconds".to_owned(),
+    };
+    Err(anyhow!(
+        "rust-analyzer at {} cannot run for project {}: {}. If using rustup, run `rustup component add rust-analyzer` from the project directory for its active toolchain. Otherwise install a working rust-analyzer on PATH, or choose --index-tier fast.",
+        command.display(),
+        project_root.display(),
+        problem
+    ))
+}
+
+struct SessionTasks(Vec<tokio::task::AbortHandle>);
+impl Drop for SessionTasks {
+    fn drop(&mut self) {
+        for task in &self.0 {
+            task.abort();
+        }
+    }
+}
+#[derive(Default)]
+pub struct LspPool {
+    clients: tokio::sync::Mutex<std::collections::BTreeMap<String, LspClient>>,
+}
+impl LspPool {
+    async fn client(&self, command: &Path, args: &[&str], root: &str) -> Result<LspClient> {
+        let key = codegraph_core::artifact_cache::fingerprint(&(command, args, root))?;
+        let mut clients = self.clients.lock().await;
+        if let Some(client) = clients.get(&key).filter(|client| {
+            !client.tx.is_closed() && !client.diagnostics.stopped.load(Ordering::Acquire)
+        }) {
+            return Ok(client.clone());
+        }
+        let client = LspClient::start(command, args, root).await?;
+        clients.insert(key, client.clone());
+        Ok(client)
+    }
+    pub async fn clear(&self) {
+        self.clients.lock().await.clear();
+    }
 }
 
 enum LspRequest {
+    ServerResponse(JsonValue),
     Request {
         id: u64,
         method: String,
@@ -114,33 +257,51 @@ impl LspClient {
             root_uri
         );
 
-        let mut child = Command::new(command)
+        let mut process = Command::new(command);
+        if let Some(root) = Url::parse(root_uri)
+            .ok()
+            .and_then(|uri| uri.to_file_path().ok())
+        {
+            process.current_dir(root);
+        }
+        let mut child = process
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
-            .spawn()?;
+            .spawn()
+            .with_context(|| format!("Failed to start LSP server {}", command.display()))?;
 
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow!("missing stdin"))?;
+        let mut stdin = child.stdin.take().ok_or_else(|| anyhow!("missing stdin"))?;
         let stdout = child
             .stdout
             .take()
             .ok_or_else(|| anyhow!("missing stdout"))?;
-        let stderr = child.stderr.take().ok_or_else(|| anyhow!("missing stderr"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow!("missing stderr"))?;
 
         let (tx, mut rx) = mpsc::channel::<LspRequest>(100);
         let pending_requests = Arc::new(DashMap::<u64, oneshot::Sender<Result<JsonValue>>>::new());
         let pending_requests_read = pending_requests.clone();
+        let pending_requests_write = pending_requests.clone();
+        let (stderr_done_tx, stderr_done) = watch::channel(false);
+        let diagnostics = Arc::new(LspDiagnostics {
+            command: command.to_path_buf(),
+            stderr: parking_lot::Mutex::new(Vec::new()),
+            stderr_done,
+            stopped: AtomicBool::new(false),
+        });
+        let diagnostics_write = diagnostics.clone();
 
         // Writer task
-        tokio::spawn(async move {
+        let writer = tokio::spawn(async move {
             let _child_guard = child; // Keep child alive as long as this task runs
             while let Some(msg) = rx.recv().await {
                 let json = match msg {
+                    LspRequest::ServerResponse(json) => json,
                     LspRequest::Request { id, method, params } => {
                         serde_json::json!({
                             "jsonrpc": "2.0",
@@ -162,34 +323,49 @@ impl LspClient {
                 let framed = encode_lsp_message(&body);
                 if let Err(e) = stdin.write_all(&framed).await {
                     error!("LSP stdin write failed: {}", e);
+                    fail_pending_requests(
+                        &pending_requests_write,
+                        &diagnostics_write,
+                        &format!("Language server stdin write failed: {e}"),
+                    )
+                    .await;
                     break;
                 }
                 if let Err(e) = stdin.flush().await {
                     error!("LSP stdin flush failed: {}", e);
+                    fail_pending_requests(
+                        &pending_requests_write,
+                        &diagnostics_write,
+                        &format!("Language server stdin flush failed: {e}"),
+                    )
+                    .await;
                     break;
                 }
             }
         });
 
         // Reader task
-        tokio::spawn(async move {
+        let response_tx = tx.clone();
+        let server_root = root_uri.to_owned();
+        let diagnostics_read = diagnostics.clone();
+        let reader = tokio::spawn(async move {
             let mut reader = BufReader::new(stdout);
             let mut content_length_buf = String::new();
 
-            loop {
+            'messages: loop {
                 content_length_buf.clear();
                 // Read headers
                 let mut content_length: Option<usize> = None;
-                
+
                 loop {
                     if reader.read_line(&mut content_length_buf).await.unwrap_or(0) == 0 {
-                        return; // EOF
+                        break 'messages; // EOF
                     }
                     let line = content_length_buf.trim();
                     if line.is_empty() {
                         break; // End of headers
                     }
-                    
+
                     let lower = line.to_ascii_lowercase();
                     if let Some(rest) = lower.strip_prefix("content-length:") {
                         content_length = rest.trim().parse::<usize>().ok();
@@ -215,36 +391,83 @@ impl LspClient {
                     continue;
                 };
 
-                // Handle response
-                if let Some(id) = json.get("id").and_then(|id| id.as_u64()) {
-                    if let Some((_, tx)) = pending_requests_read.remove(&id) {
-                        if let Some(error) = json.get("error") {
-                            let _ = tx.send(Err(anyhow!("LSP error: {}", error)));
-                        } else {
-                            let result = json.get("result").cloned().unwrap_or(JsonValue::Null);
-                            let _ = tx.send(Ok(result));
+                if let (Some(id), Some(method)) =
+                    (json.get("id"), json.get("method").and_then(|v| v.as_str()))
+                {
+                    let result = match method {
+                        "workspace/configuration" => serde_json::json!(
+                            json["params"]["items"]
+                                .as_array()
+                                .map_or(vec![], |items| vec![JsonValue::Null; items.len()])
+                        ),
+                        "workspace/workspaceFolders" => {
+                            serde_json::json!([{"uri": server_root, "name": "project"}])
                         }
-                    }
+                        "workspace/applyEdit" => serde_json::json!({"applied": false}),
+                        "client/registerCapability"
+                        | "client/unregisterCapability"
+                        | "window/workDoneProgress/create" => JsonValue::Null,
+                        _ => {
+                            let _ = response_tx.send(LspRequest::ServerResponse(serde_json::json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": "Unsupported client request"}}))).await;
+                            continue;
+                        }
+                    };
+                    let _ = response_tx
+                        .send(LspRequest::ServerResponse(
+                            serde_json::json!({"jsonrpc": "2.0", "id": id, "result": result}),
+                        ))
+                        .await;
+                } else if let Some(id) = json.get("id").and_then(|id| id.as_u64())
+                    && let Some((_, tx)) = pending_requests_read.remove(&id)
+                {
+                    let result = json.get("error").map_or_else(
+                        || Ok(json.get("result").cloned().unwrap_or(JsonValue::Null)),
+                        |error| Err(LspResponseError(error.clone()).into()),
+                    );
+                    let _ = tx.send(result);
                 }
                 // We ignore notifications from server for now
             }
+            fail_pending_requests(
+                &pending_requests_read,
+                &diagnostics_read,
+                "Language server closed its output stream",
+            )
+            .await;
         });
 
-        // Stderr logger
-        tokio::spawn(async move {
-            let mut reader = BufReader::new(stderr);
-            let mut line = String::new();
-            while let Ok(n) = reader.read_line(&mut line).await {
-                if n == 0 { break; }
-                // debug!("LSP stderr: {}", line.trim());
-                line.clear();
+        // Retain a bounded tail even when verbose logging is disabled.
+        let diagnostics_stderr = diagnostics.clone();
+        let stderr_task = tokio::spawn(async move {
+            let mut reader = stderr;
+            let mut bytes = [0u8; 1024];
+            while let Ok(n) = reader.read(&mut bytes).await {
+                if n == 0 {
+                    break;
+                }
+                diagnostics_stderr.record_stderr(&bytes[..n]);
             }
+            let _ = stderr_done_tx.send(true);
         });
 
         let client = Self {
             tx,
             pending_requests,
             next_id: Arc::new(AtomicU64::new(1)),
+            requests: Arc::new(tokio::sync::Semaphore::new(
+                std::env::var("CODEGRAPH_LSP_REQUESTS")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(32)
+                    .clamp(1, 128),
+            )),
+            documents: Arc::new(DashMap::new()),
+            diagnostics,
+            _tasks: Arc::new(SessionTasks(vec![
+                writer.abort_handle(),
+                reader.abort_handle(),
+                stderr_task.abort_handle(),
+            ])),
         };
 
         // Initialize
@@ -269,32 +492,154 @@ impl LspClient {
     }
 
     pub async fn request(&self, method: &str, params: JsonValue) -> Result<JsonValue> {
+        self.request_with_timeout(method, params, LSP_REQUEST_TIMEOUT)
+            .await
+    }
+
+    async fn request_with_timeout(
+        &self,
+        method: &str,
+        params: JsonValue,
+        timeout: Duration,
+    ) -> Result<JsonValue> {
+        let _permit = self.requests.acquire().await?;
+        // These reads use immutable indexing snapshots. A workspace reload can invalidate
+        // rust-analyzer's in-flight analysis without changing the source or request position.
+        // Retry only ContentModified, never cancellation, initialization or other RPC errors.
+        let retryable = matches!(
+            method,
+            "textDocument/documentSymbol" | "textDocument/definition"
+        );
+        let uri = params["textDocument"]["uri"].as_str();
+        let document = uri.and_then(|uri| self.documents.get(uri).map(|entry| entry.clone()));
+        let description =
+            uri.map_or_else(|| method.to_owned(), |uri| format!("{method} for {uri}"));
+        let mut retries = 0;
+        let mut last_content_modified: Option<anyhow::Error> = None;
+        // One deadline covers enqueueing, all attempts and backoff, rather than resetting
+        // the 30-second timeout on each retry. Keep the concurrency permit while retrying.
+        let result = tokio::time::timeout(timeout, async {
+            loop {
+                if retries > 0
+                    && uri.and_then(|uri| self.documents.get(uri).map(|entry| entry.clone()))
+                        != document
+                {
+                    return Err(last_content_modified
+                        .take()
+                        .expect("a retry follows ContentModified")
+                        .context("Document changed while retrying; indexing positions are stale"));
+                }
+                let error = match self.request_once(method, params.clone()).await {
+                    Ok(result) => return Ok(result),
+                    Err(error) => error,
+                };
+                if !retryable
+                    || !error
+                        .downcast_ref::<LspResponseError>()
+                        .is_some_and(LspResponseError::is_content_modified)
+                {
+                    return Err(error);
+                }
+                let Some(delay) = CONTENT_MODIFIED_BACKOFF.get(retries) else {
+                    return Err(
+                        error.context(format!("ContentModified persisted after {retries} retries"))
+                    );
+                };
+                debug!(
+                    method,
+                    uri,
+                    retry = retries + 1,
+                    delay_ms = delay.as_millis(),
+                    "Retrying LSP ContentModified response"
+                );
+                last_content_modified = Some(error);
+                tokio::time::sleep(*delay).await;
+                retries += 1;
+            }
+        })
+        .await;
+        let result = match result {
+            Ok(result) => result,
+            Err(_) => {
+                let message = format!("LSP request timed out after {timeout:?}: {description}");
+                Err(match last_content_modified {
+                    Some(error) => error.context(message),
+                    None => anyhow!(message),
+                })
+            }
+        };
+        result.map_err(|error| {
+            let message = format!("LSP request failed: {description}: {error:#}");
+            error.context(message)
+        })
+    }
+
+    async fn request_once(&self, method: &str, params: JsonValue) -> Result<JsonValue> {
+        if self.diagnostics.stopped.load(Ordering::Acquire) {
+            return Err(self
+                .diagnostics
+                .failure("Language server has stopped")
+                .await);
+        }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
-        
-        self.pending_requests.insert(id, tx);
-        
-        self.tx.send(LspRequest::Request {
-            id,
-            method: method.to_string(),
-            params,
-        }).await.map_err(|_| anyhow!("LSP server channel closed"))?;
 
-        // 30s timeout for individual requests
-        match tokio::time::timeout(Duration::from_secs(30), rx).await {
-            Ok(res) => Ok(res.map_err(|_| anyhow!("LSP response channel closed"))??),
-            Err(_) => {
-                self.pending_requests.remove(&id);
-                Err(anyhow!("LSP request timed out: {}", method))
+        self.pending_requests.insert(id, tx);
+        struct PendingGuard {
+            map: Arc<DashMap<u64, oneshot::Sender<Result<JsonValue>>>>,
+            id: u64,
+        }
+        impl Drop for PendingGuard {
+            fn drop(&mut self) {
+                self.map.remove(&self.id);
             }
         }
+        let _pending_guard = PendingGuard {
+            map: self.pending_requests.clone(),
+            id,
+        };
+
+        if self
+            .tx
+            .send(LspRequest::Request {
+                id,
+                method: method.to_string(),
+                params,
+            })
+            .await
+            .is_err()
+        {
+            return Err(self.diagnostics.failure("LSP server channel closed").await);
+        }
+        if self.diagnostics.stopped.load(Ordering::Acquire) {
+            return Err(self
+                .diagnostics
+                .failure("Language server has stopped")
+                .await);
+        }
+
+        rx.await
+            .map_err(|_| anyhow!("LSP response channel closed"))?
     }
 
     pub async fn notify(&self, method: &str, params: JsonValue) -> Result<()> {
-        self.tx.send(LspRequest::Notify {
-            method: method.to_string(),
-            params,
-        }).await.map_err(|_| anyhow!("LSP server channel closed"))?;
+        if self.diagnostics.stopped.load(Ordering::Acquire) {
+            return Err(self
+                .diagnostics
+                .failure("Language server has stopped")
+                .await);
+        }
+        if self
+            .tx
+            .send(LspRequest::Notify {
+                method: method.to_string(),
+                params,
+            })
+            .await
+            .is_err()
+        {
+            return Err(self.diagnostics.failure("LSP server channel closed").await);
+        }
         Ok(())
     }
 }
@@ -314,9 +659,11 @@ pub fn enrich_nodes_and_edges_with_lsp(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    
+
     rt.block_on(async {
         enrich_async(
+            &LspPool::default(),
+            None,
             server_path,
             server_args,
             language_id,
@@ -331,7 +678,11 @@ pub fn enrich_nodes_and_edges_with_lsp(
     })
 }
 
-async fn enrich_async(
+// Keep the shared batch interface explicit across language-specific adapters.
+#[allow(clippy::too_many_arguments)]
+pub async fn enrich_async(
+    pool: &LspPool,
+    sources: Option<&codegraph_parser::SourceSnapshots>,
     server_path: &Path,
     server_args: &[&str],
     language_id: &str,
@@ -342,17 +693,41 @@ async fn enrich_async(
     nodes: &mut [CodeNode],
     edges: &mut [EdgeRelationship],
 ) -> Result<LspEnrichmentStats> {
-    let project_root = std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
+    let project_root =
+        std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
     let root_uri = Url::from_directory_path(&project_root)
         .map_err(|_| anyhow::anyhow!("failed to create file URI"))?
         .to_string();
 
-    let client = LspClient::start(server_path, server_args, &root_uri).await?;
+    let client = pool.client(server_path, server_args, &root_uri).await?;
 
+    if let Some(sources) = sources {
+        let current: std::collections::HashSet<_> = sources
+            .iter()
+            .map(|source| absolute_file_path(&project_root, &source.path))
+            .collect();
+        let deleted: Vec<_> = client
+            .documents
+            .iter()
+            .filter_map(|entry| {
+                let path = Url::parse(entry.key()).ok()?.to_file_path().ok()?;
+                (!current.contains(&path)).then(|| entry.key().clone())
+            })
+            .collect();
+        for uri in deleted {
+            client
+                .notify(
+                    "textDocument/didClose",
+                    serde_json::json!({"textDocument": {"uri": uri}}),
+                )
+                .await?;
+            client.documents.remove(&uri);
+        }
+    }
     // Build lookup maps (same as before)
-    let mut nodes_by_file_line_name: std::collections::HashMap<(String, u32, String), usize> =
+    let mut nodes_by_file_line_name: std::collections::HashMap<(String, u32, String), Vec<usize>> =
         std::collections::HashMap::new();
-    let mut nodes_by_file_line: std::collections::HashMap<(String, u32), usize> =
+    let mut nodes_by_file_line: std::collections::HashMap<(String, u32), Vec<usize>> =
         std::collections::HashMap::new();
     let mut files_with_nodes: std::collections::HashSet<String> = std::collections::HashSet::new();
 
@@ -360,9 +735,60 @@ async fn enrich_async(
         let file = node.location.file_path.clone();
         let line0 = node.location.line.saturating_sub(1);
         for key in normalized_file_keys(&project_root, Path::new(&file)) {
-            nodes_by_file_line_name.insert((key.clone(), line0, node.name.to_string()), idx);
-            nodes_by_file_line.entry((key.clone(), line0)).or_insert(idx);
+            nodes_by_file_line_name
+                .entry((key.clone(), line0, node.name.to_string()))
+                .or_default()
+                .push(idx);
+            nodes_by_file_line
+                .entry((key.clone(), line0))
+                .or_default()
+                .push(idx);
             files_with_nodes.insert(key);
+        }
+    }
+
+    let mut utf16_columns: Vec<_> = nodes
+        .iter()
+        .map(|node| {
+            (
+                node.location.column,
+                node.location.end_column.unwrap_or(u32::MAX),
+            )
+        })
+        .collect();
+    if let Some(sources) = sources {
+        let mut by_file = std::collections::BTreeMap::<&str, Vec<usize>>::new();
+        for (index, node) in nodes.iter().enumerate() {
+            by_file
+                .entry(&node.location.file_path)
+                .or_default()
+                .push(index);
+        }
+        for snapshot in sources.iter() {
+            let Some(indices) = by_file.get(snapshot.path.to_string_lossy().as_ref()) else {
+                continue;
+            };
+            let text = snapshot.contents()?;
+            let lines: Vec<_> = text.split('\n').collect();
+            for &index in indices {
+                let node = &nodes[index];
+                let column = |line: u32, bytes: u32| -> u32 {
+                    lines
+                        .get(line.saturating_sub(1) as usize)
+                        .and_then(|text| text.get(..bytes as usize))
+                        .map(|prefix| prefix.encode_utf16().count() as u32)
+                        .unwrap_or(bytes)
+                };
+                utf16_columns[index] = (
+                    column(node.location.line, node.location.column),
+                    node.location
+                        .end_column
+                        .map(|bytes| {
+                            column(node.location.end_line.unwrap_or(node.location.line), bytes)
+                        })
+                        .unwrap_or(u32::MAX),
+                );
+            }
         }
     }
 
@@ -377,9 +803,7 @@ async fn enrich_async(
     let mut files_to_process: Vec<PathBuf> = Vec::new();
     for file_path in files {
         let file_keys = normalized_file_keys(&project_root, file_path);
-        let has_nodes = file_keys
-            .iter()
-            .any(|key| files_with_nodes.contains(key));
+        let has_nodes = file_keys.iter().any(|key| files_with_nodes.contains(key));
         let has_edges = file_keys
             .iter()
             .any(|key| def_edges_by_file.contains_key(key));
@@ -390,7 +814,10 @@ async fn enrich_async(
     }
 
     let total_files = files_to_process.len();
-    info!("🧠 LSP Analysis: Processing {} files concurrently", total_files);
+    info!(
+        "🧠 LSP Analysis: Processing {} files concurrently",
+        total_files
+    );
 
     // Pre-collect edge spans to avoid borrowing `edges` inside the async block
     let mut file_edge_spans: std::collections::HashMap<String, Vec<(usize, u32)>> =
@@ -413,70 +840,62 @@ async fn enrich_async(
         .map(|file_path| {
             let client = client.clone();
             let project_root = project_root.clone();
-            let language_id = language_id.to_string();
+            let language_id = match file_path.extension().and_then(|ext| ext.to_str()) {
+                Some("js" | "mjs" | "cjs") => "javascript", Some("jsx") => "javascriptreact", Some("tsx") => "typescriptreact", _ => language_id,
+            }.to_string();
             let file_edge_spans = file_edge_spans.clone();
-            
+
             async move {
                 let abs_path = absolute_file_path(&project_root, &file_path);
-                let Ok(content) = tokio::fs::read_to_string(&abs_path).await else { return Ok(None) };
+                let content = match sources.and_then(|sources| sources.get(&abs_path).or_else(|| sources.get(&file_path))) {
+                    Some(source) => source.contents_async().await?,
+                    None => std::sync::Arc::<str>::from(tokio::fs::read_to_string(&abs_path).await?),
+                };
                 let file_keys = normalized_file_keys(&project_root, &file_path);
-                
-                let Ok(uri) = Url::from_file_path(&abs_path) else { return Ok(None) };
+
+                let uri = Url::from_file_path(&abs_path).map_err(|_| anyhow!("Invalid source URI: {}", abs_path.display()))?;
                 let uri_str = uri.to_string();
-                
+
                 let pos_index = LspPositionIndex::new(&content);
 
-                // Open
-                client.notify(
-                    "textDocument/didOpen",
-                    serde_json::json!({
-                        "textDocument": {
-                            "uri": uri_str,
-                            "languageId": language_id,
-                            "version": 1,
-                            "text": content
-                        }
-                    })
-                ).await?;
+                let source_hash = codegraph_core::artifact_cache::fingerprint(&content.as_ref())?;
+                let previous = client.documents.get(&uri_str).map(|entry| entry.clone());
+                if let Some((hash, version)) = previous {
+                    if hash != source_hash {
+                        client.notify("textDocument/didChange", serde_json::json!({"textDocument": {"uri": uri_str, "version": version + 1}, "contentChanges": [{"text": content.as_ref()}]})).await?;
+                        client.documents.insert(uri_str.clone(), (source_hash, version + 1));
+                    }
+                } else {
+                    client.notify("textDocument/didOpen", serde_json::json!({"textDocument": {"uri": uri_str, "languageId": language_id, "version": 1, "text": content.as_ref()}})).await?;
+                    client.documents.insert(uri_str.clone(), (source_hash, 1));
+                }
 
                 // Symbols
-                let symbols = client.request(
-                    "textDocument/documentSymbol",
-                    serde_json::json!({ "textDocument": { "uri": uri_str } }),
-                ).await?;
+                let symbols = client
+                    .request(
+                        "textDocument/documentSymbol",
+                        serde_json::json!({ "textDocument": { "uri": uri_str } }),
+                    )
+                    .await?;
 
                 // Definitions
                 let mut def_results = Vec::new();
                 if resolve_definitions && !file_keys.is_empty() {
+                    let mut positions = std::collections::BTreeMap::<(u32,u32), Vec<usize>>::new();
                     let mut seen_edges = std::collections::HashSet::new();
-                    for key in &file_keys {
-                        if let Some(spans) = file_edge_spans.get(key) {
-                            for &(edge_idx, byte_offset) in spans {
-                                if !seen_edges.insert(edge_idx) {
-                                    continue;
-                                }
-                                let pos = pos_index.position_for_byte_offset(byte_offset);
-                                let def_response = client.request(
-                                    "textDocument/definition",
-                                    serde_json::json!({
-                                        "textDocument": { "uri": uri_str },
-                                        "position": { "line": pos.line, "character": pos.character }
-                                    })
-                                ).await;
-                                
-                                if let Ok(def) = def_response {
-                                    def_results.push((edge_idx, def));
-                                }
-                            }
-                        }
-                    }
+                    for key in &file_keys { if let Some(spans) = file_edge_spans.get(key) {
+                        for &(edge_idx, byte_offset) in spans { if seen_edges.insert(edge_idx) {
+                            let pos = pos_index.position_for_byte_offset(byte_offset);
+                            positions.entry((pos.line, pos.character)).or_default().push(edge_idx);
+                        } }
+                    } }
+                    let mut definitions = stream::iter(positions.into_iter().map(|((line, character), indices)| {
+                        let client = client.clone(); let uri = uri_str.clone();
+                        async move { let definition = client.request("textDocument/definition", serde_json::json!({"textDocument": {"uri": uri}, "position": {"line": line, "character": character}})).await?;
+                            Ok::<_,anyhow::Error>((indices, definition)) }
+                    })).buffer_unordered(32);
+                    while let Some(result) = definitions.next().await { let (indices, definition) = result?; for index in indices { def_results.push((index, definition.clone())); } }
                 }
-
-                // Close (fire and forget)
-                let _ = client.notify(
-                    "textDocument/didClose",
-                    serde_json::json!({ "textDocument": { "uri": uri_str } }),
-                ).await;
 
                 Ok::<_, anyhow::Error>(Some((file_keys, symbols, def_results)))
             }
@@ -486,58 +905,111 @@ async fn enrich_async(
     let mut stats = LspEnrichmentStats::default();
     let mut results = stream;
     let mut processed = 0;
-    
+
     // Process results as they come in and mutate state
     while let Some(res) = results.next().await {
-        if let Ok(Some((file_keys, symbols, def_results))) = res {
+        if let Some((file_keys, symbols, def_results)) = res? {
             // 1. Process Symbols
             for sym in collect_document_symbols(&symbols, name_joiner) {
                 let mut node_idx: Option<usize> = None;
                 for key in &file_keys {
                     let key_tuple = (key.clone(), sym.start_line, sym.name.clone());
-                    if let Some(idx) = nodes_by_file_line_name.get(&key_tuple).copied() {
-                        node_idx = Some(idx);
+                    if let Some(indices) = nodes_by_file_line_name.get(&key_tuple) {
+                        // A name and line alone cannot distinguish same-line definitions.
+                        node_idx = unique_symbol_index(indices);
                         break;
                     }
                 }
                 if let Some(node_idx) = node_idx {
                     let node = &mut nodes[node_idx];
-                    node.metadata.attributes.insert("qualified_name".to_string(), sym.qualified_name.clone());
-                    node.metadata.attributes.insert("analyzer".to_string(), "lsp_symbols".to_string());
-                    node.metadata.attributes.insert("analyzer_confidence".to_string(), "1.0".to_string());
+                    node.metadata
+                        .attributes
+                        .insert("qualified_name".to_string(), sym.qualified_name.clone());
+                    node.metadata
+                        .attributes
+                        .insert("analyzer".to_string(), "lsp_symbols".to_string());
+                    node.metadata
+                        .attributes
+                        .insert("analyzer_confidence".to_string(), "1.0".to_string());
                     stats.nodes_enriched += 1;
                 }
             }
 
             // 2. Process Definitions
             for (edge_idx, def) in def_results {
-                let Some((target_file, target_line0)) = extract_first_definition_location(&def) else { continue; };
-                
-                let target_idx = nodes_by_file_line
+                let Some((target_file, target_line0, target_column)) =
+                    extract_first_definition_location(&def)
+                else {
+                    continue;
+                };
+
+                let candidates = nodes_by_file_line
                     .get(&(target_file.clone(), target_line0))
-                    .copied()
                     .or_else(|| {
-                        let rel_target = Path::new(&target_file);
-                        let rel_key = relative_file_key(&project_root, rel_target)?;
-                        nodes_by_file_line.get(&(rel_key, target_line0)).copied()
+                        let relative = relative_file_key(&project_root, Path::new(&target_file))?;
+                        nodes_by_file_line.get(&(relative, target_line0))
                     });
+                let target_idx = candidates.and_then(|indices| {
+                    let mut ranked: Vec<_> = indices
+                        .iter()
+                        .copied()
+                        .filter(|index| {
+                            let node = &nodes[*index];
+                            let (start, end) = utf16_columns[*index];
+                            start <= target_column
+                                && (node.location.end_line != Some(node.location.line)
+                                    || target_column <= end)
+                        })
+                        .collect();
+                    ranked.sort_by_key(|index| {
+                        nodes[*index].span.as_ref().map_or(u32::MAX, |span| {
+                            span.end_byte.saturating_sub(span.start_byte)
+                        })
+                    });
+                    match ranked.as_slice() {
+                        [index] => Some(*index),
+                        [first, second, ..]
+                            if nodes[*first]
+                                .span
+                                .as_ref()
+                                .map(|span| span.end_byte - span.start_byte)
+                                != nodes[*second]
+                                    .span
+                                    .as_ref()
+                                    .map(|span| span.end_byte - span.start_byte) =>
+                        {
+                            Some(*first)
+                        }
+                        _ => None,
+                    }
+                });
 
                 if let Some(target_idx) = target_idx {
                     let target = &nodes[target_idx];
-                    let target_name = target.metadata.attributes.get("qualified_name")
+                    let target_name = target
+                        .metadata
+                        .attributes
+                        .get("qualified_name")
                         .cloned()
                         .unwrap_or_else(|| target.name.to_string());
-                    
+
                     let edge = &mut edges[edge_idx];
                     edge.to = target_name;
-                    edge.metadata.insert("analyzer".to_string(), "lsp_definition".to_string());
-                    edge.metadata.insert("analyzer_confidence".to_string(), "1.0".to_string());
+                    edge.metadata
+                        .insert("target_node_id".into(), target.id.to_string());
+                    edge.metadata
+                        .insert("analyzer".to_string(), "lsp_definition".to_string());
+                    edge.metadata
+                        .insert("analyzer_confidence".to_string(), "1.0".to_string());
                     stats.edges_resolved += 1;
                 }
             }
             processed += 1;
             if processed % 10 == 0 {
-                 info!("🧠 LSP progress: {}/{} files processed", processed, total_files);
+                info!(
+                    "🧠 LSP progress: {}/{} files processed",
+                    processed, total_files
+                );
             }
         }
     }
@@ -551,7 +1023,7 @@ fn absolute_file_path(project_root: &Path, file_path: &Path) -> PathBuf {
     } else {
         project_root.join(file_path)
     };
-    normalize_path(&combined)
+    std::fs::canonicalize(&combined).unwrap_or_else(|_| normalize_path(&combined))
 }
 
 fn relative_file_key(project_root: &Path, file_path: &Path) -> Option<String> {
@@ -575,9 +1047,20 @@ fn normalize_path(path: &Path) -> PathBuf {
     out
 }
 
-fn extract_first_definition_location(def: &JsonValue) -> Option<(String, u32)> {
+fn unique_symbol_index(indices: &[usize]) -> Option<usize> {
+    match indices {
+        [index] => Some(*index),
+        _ => None,
+    }
+}
+
+fn extract_first_definition_location(def: &JsonValue) -> Option<(String, u32, u32)> {
     let loc = if let Some(arr) = def.as_array() {
-        arr.first()? 
+        let first = arr.first()?;
+        if arr.iter().any(|location| location != first) {
+            return None;
+        }
+        first
     } else {
         def
     };
@@ -586,13 +1069,17 @@ fn extract_first_definition_location(def: &JsonValue) -> Option<(String, u32)> {
         .get("uri")
         .or_else(|| loc.get("targetUri"))
         .and_then(|v| v.as_str())?;
-    let range = loc.get("range").or_else(|| loc.get("targetRange"))?;
+    let range = loc
+        .get("targetSelectionRange")
+        .or_else(|| loc.get("range"))
+        .or_else(|| loc.get("targetRange"))?;
     let start = range.get("start")?;
     let line = start.get("line")?.as_u64()? as u32;
 
     let url = Url::parse(uri).ok()?;
     let path = url.to_file_path().ok()?;
-    Some((path.to_string_lossy().to_string(), line))
+    let column = start.get("character")?.as_u64()? as u32;
+    Some((path.to_string_lossy().to_string(), line, column))
 }
 
 pub fn byte_offset_to_utf16_position(text: &str, byte_offset: u32) -> LspPosition {
@@ -664,7 +1151,7 @@ impl<'a> LspPositionIndex<'a> {
 
 fn normalized_file_keys(project_root: &Path, file_path: &Path) -> Vec<String> {
     let mut keys = Vec::new();
-    let normalized = normalize_path(file_path);
+    let normalized = absolute_file_path(project_root, file_path);
     let normalized_str = normalized.to_string_lossy().to_string();
     keys.push(normalized_str.clone());
 
@@ -747,6 +1234,403 @@ pub fn decode_one_lsp_message(buffer: &[u8]) -> Result<Option<(String, usize)>> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ambiguous_symbol_and_definition_results_remain_unresolved() {
+        assert_eq!(unique_symbol_index(&[1]), Some(1));
+        assert_eq!(unique_symbol_index(&[1, 2]), None);
+        let first = serde_json::json!({"uri":"file:///tmp/a.rs", "range":{"start":{"line":0,"character":3}}});
+        let second = serde_json::json!({"uri":"file:///tmp/b.rs", "range":{"start":{"line":0,"character":3}}});
+        assert!(extract_first_definition_location(&serde_json::json!([first, second])).is_none());
+        assert!(extract_first_definition_location(&serde_json::json!([first, first])).is_some());
+    }
+
+    #[tokio::test]
+    async fn closed_server_fails_initialization_without_waiting_for_timeout() {
+        let started = Instant::now();
+        let result = LspClient::start(Path::new("/usr/bin/true"), &[], "file:///tmp").await;
+        assert!(result.is_err());
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn startup_failure_retains_bounded_stderr_without_a_trailing_newline() {
+        let project = tempfile::Builder::new()
+            .prefix("lsp project ")
+            .tempdir()
+            .unwrap();
+        let root = std::fs::canonicalize(project.path()).unwrap();
+        let uri = Url::from_directory_path(&root).unwrap().to_string();
+        let started = Instant::now();
+        let result = LspClient::start(Path::new("python3"), &[
+            "-c",
+            "import os,sys,time; assert os.getcwd()==sys.argv[1]; sys.stderr.write('x'*16384+\"Unknown binary 'rust-analyzer'\"); sys.stderr.flush(); os.close(1); time.sleep(0.02)",
+            root.to_str().unwrap(),
+        ], &uri).await;
+        let error = result.err().expect("server should fail").to_string();
+        assert!(error.contains("Unknown binary 'rust-analyzer'"), "{error}");
+        assert!(error.contains("python3"));
+        assert!(error.len() < STDERR_TAIL_BYTES + 256);
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn crashed_servers_fail_pending_requests_and_are_replaced_in_the_pool() {
+        let project = tempfile::tempdir().unwrap();
+        let script = project.path().join("crashing_server.py");
+        std::fs::write(
+            &script,
+            r#"
+import sys,json
+def send(value):
+    body=json.dumps(value).encode()
+    sys.stdout.buffer.write(('Content-Length: %d\r\n\r\n'%len(body)).encode()+body)
+    sys.stdout.buffer.flush()
+while True:
+    line=sys.stdin.buffer.readline()
+    if not line: break
+    length=int(line.decode().split(':')[1]); sys.stdin.buffer.readline()
+    msg=json.loads(sys.stdin.buffer.read(length)); method=msg.get('method')
+    if method=='initialize': send({'jsonrpc':'2.0','id':msg['id'],'result':{'capabilities':{}}})
+    elif method=='test/ping': send({'jsonrpc':'2.0','id':msg['id'],'result':True})
+    elif method=='test/crash':
+        sys.stderr.write('fatal: test language server crashed'); sys.stderr.flush(); sys.exit(7)
+"#,
+        )
+        .unwrap();
+        let uri = Url::from_directory_path(std::fs::canonicalize(project.path()).unwrap())
+            .unwrap()
+            .to_string();
+        let pool = LspPool::default();
+        let args = ["-u", script.to_str().unwrap()];
+        let first = pool
+            .client(Path::new("python3"), &args, &uri)
+            .await
+            .unwrap();
+        let started = Instant::now();
+        let error = first
+            .request("test/crash", JsonValue::Null)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("fatal: test language server crashed"),
+            "{error}"
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(first.request("test/ping", JsonValue::Null).await.is_err());
+        let replacement = pool
+            .client(Path::new("python3"), &args, &uri)
+            .await
+            .unwrap();
+        assert!(!Arc::ptr_eq(&first.next_id, &replacement.next_id));
+        assert_eq!(
+            replacement
+                .request("test/ping", JsonValue::Null)
+                .await
+                .unwrap(),
+            true
+        );
+        pool.clear().await;
+    }
+
+    async fn error_response_server(project: &Path) -> LspClient {
+        let script = project.join("error_server.py");
+        std::fs::write(
+            &script,
+            r#"
+import sys,json
+def send(value):
+    body=json.dumps(value).encode()
+    sys.stdout.buffer.write(('Content-Length: %d\r\n\r\n'%len(body)).encode()+body)
+    sys.stdout.buffer.flush()
+counts={}
+request_ids=set()
+while True:
+    line=sys.stdin.buffer.readline()
+    if not line: break
+    length=int(line.decode().split(':')[1]); sys.stdin.buffer.readline()
+    msg=json.loads(sys.stdin.buffer.read(length)); method=msg.get('method')
+    if 'id' not in msg: continue
+    assert msg['id'] not in request_ids
+    request_ids.add(msg['id'])
+    if method=='initialize':
+        send({'jsonrpc':'2.0','id':msg['id'],'result':{'capabilities':{}}})
+    elif method=='test/counts':
+        send({'jsonrpc':'2.0','id':msg['id'],'result':counts})
+    else:
+        uri=msg['params']['textDocument']['uri']
+        key=method+'|'+uri
+        counts[key]=counts.get(key,0)+1
+        if uri.endswith('/hang.rs'): continue
+        code=-32602 if uri.endswith('/invalid.rs') else -32800 if uri.endswith('/cancelled.rs') else -32801
+        send({'jsonrpc':'2.0','id':msg['id'],'error':{'code':code,'message':'content modified','data':{'uri':uri}}})
+"#,
+        )
+        .unwrap();
+        let uri = Url::from_directory_path(std::fs::canonicalize(project).unwrap())
+            .unwrap()
+            .to_string();
+        LspClient::start(
+            Path::new("python3"),
+            &["-u", script.to_str().unwrap()],
+            &uri,
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn content_modified_retries_are_bounded_and_other_errors_are_not_retried() {
+        let project = tempfile::tempdir().unwrap();
+        let client = error_response_server(project.path()).await;
+        for (method, file, code, attempts) in [
+            ("textDocument/documentSymbol", "invalid.rs", -32602, 1),
+            ("textDocument/definition", "cancelled.rs", -32800, 1),
+            ("test/mutate", "mutation.rs", -32801, 1),
+            ("textDocument/definition", "persistent.rs", -32801, 6),
+        ] {
+            let uri = format!("file:///test/{file}");
+            let error = client
+                .request(
+                    method,
+                    serde_json::json!({"textDocument": {"uri": uri}, "position": {"line": 0, "character": 3}}),
+                )
+                .await
+                .unwrap_err();
+            let response = &error.downcast_ref::<LspResponseError>().unwrap().0;
+            assert_eq!(response["code"], code);
+            assert_eq!(response["data"]["uri"], uri);
+            let message = error.to_string();
+            assert!(message.contains(method), "{message}");
+            assert!(message.contains(&uri), "{message}");
+            assert!(message.contains(&code.to_string()), "{message}");
+            if attempts > 1 {
+                assert!(message.contains("persisted after 5 retries"), "{message}");
+            }
+            let counts = client
+                .request("test/counts", JsonValue::Null)
+                .await
+                .unwrap();
+            assert_eq!(counts[format!("{method}|{uri}")], attempts);
+            assert!(client.pending_requests.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn request_deadline_covers_backoff_and_cleans_up_unanswered_requests() {
+        let project = tempfile::tempdir().unwrap();
+        let client = error_response_server(project.path()).await;
+        let permits = client.requests.available_permits();
+        for file in ["persistent.rs", "hang.rs"] {
+            let uri = format!("file:///test/{file}");
+            let started = Instant::now();
+            let error = client
+                .request_with_timeout(
+                    "textDocument/documentSymbol",
+                    serde_json::json!({"textDocument": {"uri": uri}}),
+                    Duration::from_millis(40),
+                )
+                .await
+                .unwrap_err();
+            let message = error.to_string();
+            assert!(message.contains("timed out"), "{message}");
+            assert!(message.contains(&uri), "{message}");
+            assert!(started.elapsed() < Duration::from_secs(1));
+            if file == "persistent.rs" {
+                assert!(error.downcast_ref::<LspResponseError>().is_some());
+            }
+            assert!(client.pending_requests.is_empty());
+            assert_eq!(client.requests.available_permits(), permits);
+            let counts = client
+                .request("test/counts", JsonValue::Null)
+                .await
+                .unwrap();
+            assert_eq!(counts[format!("textDocument/documentSymbol|{uri}")], 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn changed_document_is_not_retried_with_stale_positions() {
+        let project = tempfile::tempdir().unwrap();
+        let client = error_response_server(project.path()).await;
+        let uri = "file:///test/changed.rs";
+        client
+            .documents
+            .insert(uri.to_owned(), ("original".into(), 1));
+        let (response, ()) = tokio::join!(
+            client.request(
+                "textDocument/definition",
+                serde_json::json!({"textDocument": {"uri": uri}, "position": {"line": 0, "character": 3}}),
+            ),
+            async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                client
+                    .notify(
+                        "textDocument/didChange",
+                        serde_json::json!({"textDocument": {"uri": uri, "version": 2}, "contentChanges": [{"text": "changed"}]}),
+                    )
+                    .await
+                    .unwrap();
+                client.documents.insert(uri.to_owned(), ("changed".into(), 2));
+            }
+        );
+        let error = response.unwrap_err();
+        assert!(error.to_string().contains("indexing positions are stale"));
+        assert!(error.downcast_ref::<LspResponseError>().is_some());
+        let counts = client
+            .request("test/counts", JsonValue::Null)
+            .await
+            .unwrap();
+        assert_eq!(counts[format!("textDocument/definition|{uri}")], 1);
+        assert!(client.pending_requests.is_empty());
+    }
+
+    #[tokio::test]
+    async fn warm_server_retries_content_modified_and_deduplicates_definition_positions() {
+        use codegraph_core::{EdgeType, Language, Location, NodeType, Span};
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("server.py");
+        std::fs::write(&script, r#"
+import sys,json
+def send(value):
+    body=json.dumps(value).encode()
+    sys.stdout.buffer.write(('Content-Length: %d\r\n\r\n'%len(body)).encode()+body)
+    sys.stdout.buffer.flush()
+counts={'symbols':0,'definitions':0,'opens':0,'changes':0}
+attempts={}
+request_ids=set()
+parallel=[]
+while True:
+    line=sys.stdin.buffer.readline()
+    if not line: break
+    length=int(line.decode().split(':')[1]); sys.stdin.buffer.readline()
+    msg=json.loads(sys.stdin.buffer.read(length)); method=msg.get('method')
+    if method and 'id' in msg:
+        assert msg['id'] not in request_ids
+        request_ids.add(msg['id'])
+    if method in ('textDocument/documentSymbol','textDocument/definition'):
+        key=(method,json.dumps(msg['params'],sort_keys=True))
+        attempts[key]=attempts.get(key,0)+1
+        counter='symbols' if method=='textDocument/documentSymbol' else 'definitions'
+        counts[counter]+=1
+        if attempts[key]==1:
+            send({'jsonrpc':'2.0','id':msg['id'],'error':{'code':-32801,'message':'workspace reloading'}})
+            continue
+    if method=='initialize':
+        initialize=msg['id']; root=msg['params']['rootUri']
+        send({'jsonrpc':'2.0','id':'configuration','method':'workspace/configuration','params':{'items':[{}]}})
+    elif msg.get('id')=='configuration':
+        assert msg['result']==[None]
+        send({'jsonrpc':'2.0','id':initialize,'result':{'capabilities':{}}})
+    elif method=='textDocument/didOpen': counts['opens']+=1
+    elif method=='textDocument/didChange': counts['changes']+=1
+    elif method=='textDocument/documentSymbol':
+        name='caller' if msg['params']['textDocument']['uri'].endswith('/caller.rs') else 'target'
+        send({'jsonrpc':'2.0','id':msg['id'],'result':[{'name':name,'kind':12,'range':{'start':{'line':0,'character':0},'end':{'line':0,'character':30}}}]})
+    elif method=='textDocument/definition':
+        send({'jsonrpc':'2.0','id':msg['id'],'result':{'uri':root.rstrip('/')+'/target.rs','range':{'start':{'line':0,'character':3},'end':{'line':0,'character':9}}}})
+    elif method=='test/counts': send({'jsonrpc':'2.0','id':msg['id'],'result':counts})
+    elif method=='test/parallel':
+        parallel.append(msg['id'])
+        if len(parallel)==2:
+            for id in parallel: send({'jsonrpc':'2.0','id':id,'result':True})
+            parallel=[]
+"#).unwrap();
+        let caller = dir.path().join("caller.rs");
+        let target = dir.path().join("target.rs");
+        std::fs::write(&caller, "fn caller() { target(); }").unwrap();
+        std::fs::write(&target, "fn target() {}").unwrap();
+        let files = vec![caller.clone(), target.clone()];
+        let make_node = |name: &str, path: &Path| {
+            CodeNode::new(
+                name.to_owned(),
+                Some(NodeType::Function),
+                Some(Language::Rust),
+                Location {
+                    file_path: path.to_string_lossy().into_owned(),
+                    line: 1,
+                    column: 0,
+                    end_line: Some(1),
+                    end_column: Some(30),
+                },
+            )
+            .with_deterministic_id("project")
+        };
+        let mut nodes = vec![make_node("caller", &caller), make_node("target", &target)];
+        let mut edges = vec![
+            EdgeRelationship {
+                from: nodes[0].id,
+                to: "target".into(),
+                edge_type: EdgeType::Calls,
+                metadata: Default::default(),
+                span: Some(Span {
+                    start_byte: 14,
+                    end_byte: 20
+                })
+            };
+            2
+        ];
+        let sources = codegraph_parser::SourceSnapshots::capture(
+            &files
+                .iter()
+                .map(|path| (path.clone(), std::fs::metadata(path).unwrap().len()))
+                .collect::<Vec<_>>(),
+            1024 * 1024,
+            2,
+        )
+        .await
+        .unwrap();
+        let pool = LspPool::default();
+        let args = ["-u", script.to_str().unwrap()];
+        for _ in 0..2 {
+            let stats = enrich_async(
+                &pool,
+                Some(&sources),
+                Path::new("python3"),
+                &args,
+                "rust",
+                "::",
+                true,
+                dir.path(),
+                &files,
+                &mut nodes,
+                &mut edges,
+            )
+            .await
+            .unwrap();
+            assert_eq!(stats.nodes_enriched, 2);
+            assert_eq!(stats.edges_resolved, 2);
+        }
+        assert!(
+            edges
+                .iter()
+                .all(|edge| edge.metadata["target_node_id"] == nodes[1].id.to_string())
+        );
+        let uri = Url::from_directory_path(std::fs::canonicalize(dir.path()).unwrap())
+            .unwrap()
+            .to_string();
+        let client = pool
+            .client(Path::new("python3"), &args, &uri)
+            .await
+            .unwrap();
+        let counts = client
+            .request("test/counts", JsonValue::Null)
+            .await
+            .unwrap();
+        assert_eq!(counts["symbols"], 6);
+        assert_eq!(counts["definitions"], 3);
+        assert_eq!(counts["opens"], 2);
+        assert_eq!(counts["changes"], 0);
+        assert!(client.pending_requests.is_empty());
+        let (a, b) = tokio::join!(
+            client.request("test/parallel", JsonValue::Null),
+            client.request("test/parallel", JsonValue::Null)
+        );
+        assert_eq!(a.unwrap(), true);
+        assert_eq!(b.unwrap(), true);
+        pool.clear().await;
+    }
 
     #[test]
     fn lsp_message_round_trips_through_framing() {

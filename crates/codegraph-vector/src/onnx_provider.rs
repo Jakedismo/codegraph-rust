@@ -7,15 +7,15 @@ use async_trait::async_trait;
 #[cfg(feature = "onnx")]
 use codegraph_core::{CodeGraphError, CodeNode, Result};
 #[cfg(feature = "onnx")]
-use hf_hub::api::tokio::Api;
+use hf_hub::HFClient as Api;
 #[cfg(feature = "onnx")]
-use ndarray::{s, Array2, Axis};
-#[cfg(feature = "onnx")]
-use ort::execution_providers::CoreMLExecutionProvider;
-#[cfg(feature = "onnx")]
-use ort::session::builder::GraphOptimizationLevel;
+use ndarray::{Array2, Axis, s};
+#[cfg(all(feature = "onnx-coreml", target_os = "macos"))]
+use ort::ep::CoreML;
 #[cfg(feature = "onnx")]
 use ort::session::Session;
+#[cfg(feature = "onnx")]
+use ort::session::builder::GraphOptimizationLevel;
 #[cfg(feature = "onnx")]
 use ort::value::Value;
 #[cfg(feature = "onnx")]
@@ -45,6 +45,7 @@ pub enum OnnxPooling {
 }
 
 #[cfg(feature = "onnx")]
+#[derive(Clone)]
 pub struct OnnxEmbeddingProvider {
     session: Arc<Mutex<Session>>,
     tokenizer: Arc<Tokenizer>,
@@ -54,6 +55,113 @@ pub struct OnnxEmbeddingProvider {
 
 #[cfg(feature = "onnx")]
 impl OnnxEmbeddingProvider {
+    fn run_prepared(
+        &self,
+        texts: &[String],
+        batch_size: usize,
+    ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)> {
+        let start = Instant::now();
+        let mut all = Vec::with_capacity(texts.len());
+        for chunk in texts.chunks(batch_size.max(1)) {
+            let (ids, mask, type_ids, _l) = self.prepare_inputs(chunk)?;
+            // Run session and immediately convert output to an owned Array2<f32> to avoid borrowing issues.
+            let arr: Array2<f32> = {
+                let mut sess = self.session.lock();
+                // Prepare values once
+                let input_ids_v = Value::from_array(ids.clone().into_dyn())
+                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
+                let attention_mask_v = Value::from_array(mask.clone().into_dyn())
+                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
+                let token_type_ids_v = Value::from_array(type_ids.clone().into_dyn())
+                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
+
+                // Build named inputs based on session's expected names
+                let mut named: Vec<(String, ort::session::SessionInputValue<'_>)> = Vec::new();
+                for inp in sess.inputs() {
+                    let n = inp.name().to_lowercase();
+                    if n.contains("input_ids") || n == "input" {
+                        // some models use generic name
+                        named.push((inp.name().to_string(), input_ids_v.clone().into()));
+                    } else if n.contains("attention") || n.contains("mask") {
+                        named.push((inp.name().to_string(), attention_mask_v.clone().into()));
+                    } else if n.contains("token_type") || n.contains("segment") {
+                        named.push((inp.name().to_string(), token_type_ids_v.clone().into()));
+                    }
+                }
+
+                // Fallbacks if matching by names failed to fill all
+                if named.is_empty() {
+                    // Use common defaults by arity
+                    match sess.inputs().len() {
+                        3 => {
+                            named.push(("input_ids".into(), input_ids_v.clone().into()));
+                            named.push(("attention_mask".into(), attention_mask_v.clone().into()));
+                            named.push(("token_type_ids".into(), token_type_ids_v.clone().into()));
+                        }
+                        2 => {
+                            named.push(("input_ids".into(), input_ids_v.clone().into()));
+                            named.push(("attention_mask".into(), attention_mask_v.clone().into()));
+                        }
+                        1 => {
+                            named.push(("input".into(), input_ids_v.clone().into()));
+                        }
+                        _ => {}
+                    }
+                }
+
+                let outputs = sess
+                    .run(named)
+                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
+                let (shape, data) = outputs[0]
+                    .try_extract_tensor::<f32>()
+                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
+                let arr_dyn = ndarray::Array::from_shape_vec(shape.to_ixdyn(), data.to_vec())
+                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
+                // Handle both [B, H] and [B, L, H] outputs
+                if arr_dyn.ndim() == 2 {
+                    arr_dyn
+                        .into_dimensionality::<ndarray::Ix2>()
+                        .map_err(|e| CodeGraphError::External(e.to_string()))?
+                } else if arr_dyn.ndim() == 3 {
+                    let arr3 = arr_dyn
+                        .into_dimensionality::<ndarray::Ix3>()
+                        .map_err(|e| CodeGraphError::External(e.to_string()))?;
+                    let b = arr3.len_of(Axis(0));
+                    let _seq_len = arr3.len_of(Axis(1));
+                    let h = arr3.len_of(Axis(2));
+                    // Broadcast mask to [B, L, 1]
+                    let mask_f = mask.map(|&x| x as f32);
+                    let mask_exp = mask_f.clone().insert_axis(Axis(2));
+                    // Weighted sum over L
+                    let masked = arr3 * &mask_exp;
+                    let sum_emb = masked.sum_axis(Axis(1)); // [B, H]
+                    let counts = mask_f
+                        .sum_axis(Axis(1))
+                        .mapv(|x| if x <= 0.0 { 1.0 } else { x }); // [B]
+                    let mut pooled = Array2::<f32>::zeros((b, h));
+                    for i in 0..b {
+                        let denom = counts[i];
+                        pooled
+                            .slice_mut(s![i, ..])
+                            .assign(&(&sum_emb.slice(s![i, ..]) / denom));
+                    }
+                    pooled
+                } else {
+                    return Err(CodeGraphError::External(
+                        "Unexpected ONNX output rank; expected 2D or 3D tensor".into(),
+                    ));
+                }
+            };
+
+            let pooled = self.pool_and_normalize(arr, &mask)?;
+            all.extend(pooled);
+        }
+
+        let dur = start.elapsed();
+        let metrics = EmbeddingMetrics::new("ONNX".into(), texts.len(), dur);
+        Ok((all, metrics))
+    }
+
     pub async fn new(config: OnnxConfig) -> Result<Self> {
         use std::path::Path;
         // Resolve files via HF Hub if repo id or local path
@@ -86,9 +194,15 @@ impl OnnxEmbeddingProvider {
             (tok, model)
         } else {
             let api = Api::new().map_err(|e| CodeGraphError::External(e.to_string()))?;
-            let repo = api.model(config.model_repo.clone());
+            let (owner, name) = config
+                .model_repo
+                .split_once('/')
+                .unwrap_or(("", config.model_repo.as_str()));
+            let repo = api.model(owner, name);
             let tok = repo
-                .get("tokenizer.json")
+                .download_file()
+                .filename("tokenizer.json")
+                .send()
                 .await
                 .map_err(|e| CodeGraphError::External(e.to_string()))?;
             let candidates: Vec<String> = if let Some(mf) = &config.model_file {
@@ -107,7 +221,7 @@ impl OnnxEmbeddingProvider {
             };
             let mut model_opt = None;
             for cand in candidates {
-                match repo.get(&cand).await {
+                match repo.download_file().filename(&cand).send().await {
                     Ok(p) => {
                         model_opt = Some(p);
                         break;
@@ -134,12 +248,32 @@ impl OnnxEmbeddingProvider {
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(|e| CodeGraphError::External(e.to_string()))?;
 
+        let threads = std::env::var("CODEGRAPH_ONNX_INTRA_THREADS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or_else(|| {
+                std::thread::available_parallelism().map_or(1, |n| n.get().saturating_sub(1).max(1))
+            });
+        session_builder = session_builder
+            .with_intra_threads(threads.max(1))
+            .map_err(|error| CodeGraphError::External(error.to_string()))?
+            .with_inter_threads(1)
+            .map_err(|error| CodeGraphError::External(error.to_string()))?;
         // Register CoreML EP when requested, fall back to CPU if unavailable
         if ep == "coreml" {
-            #[cfg(target_os = "macos")]
+            #[cfg(all(target_os = "macos", feature = "onnx-coreml"))]
             {
                 session_builder = session_builder
-                    .with_execution_providers([CoreMLExecutionProvider::default().build()])
+                    .with_execution_providers([{
+                        let mut coreml = CoreML::default();
+                        if let Ok(path) = std::env::var("CODEGRAPH_COREML_CACHE_DIR") {
+                            coreml = coreml.with_model_cache_dir(path);
+                        }
+                        coreml = coreml.with_low_precision_accumulation_on_gpu(
+                            std::env::var("CODEGRAPH_COREML_LOW_PRECISION").as_deref() == Ok("1"),
+                        );
+                        coreml.build()
+                    }])
                     .map_err(|e| CodeGraphError::External(e.to_string()))?;
                 tracing::info!("Using ONNX Runtime CoreML execution provider");
             }
@@ -252,6 +386,26 @@ impl OnnxEmbeddingProvider {
 #[cfg(feature = "onnx")]
 #[async_trait]
 impl EmbeddingProvider for OnnxEmbeddingProvider {
+    fn tokenizer(&self) -> Option<Arc<Tokenizer>> {
+        Some(self.tokenizer.clone())
+    }
+    async fn generate_prepared_texts(
+        &self,
+        texts: &[String],
+        config: &BatchConfig,
+    ) -> Result<Vec<Vec<f32>>> {
+        let provider = self.clone();
+        let texts = texts.to_vec();
+        let batch_size = config.batch_size;
+        tokio::task::spawn_blocking(move || {
+            provider
+                .run_prepared(&texts, batch_size)
+                .map(|result| result.0)
+        })
+        .await
+        .map_err(|error| CodeGraphError::Vector(error.to_string()))?
+    }
+
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
         let (embs, _) = self
             .generate_embeddings_with_config(&[node.clone()], &BatchConfig::default())
@@ -277,126 +431,21 @@ impl EmbeddingProvider for OnnxEmbeddingProvider {
                 EmbeddingMetrics::new("ONNX".into(), 0, std::time::Duration::ZERO),
             ));
         }
-        let start = Instant::now();
-        // Prepare texts
         let texts: Vec<String> = nodes
             .iter()
-            .map(|n| {
-                let mut s = String::new();
-                if let Some(lang) = &n.language {
-                    s.push_str(&format!("{:?} ", lang));
-                }
-                if let Some(nt) = &n.node_type {
-                    s.push_str(&format!("{:?} ", nt));
-                }
-                s.push_str(n.name.as_str());
-                if let Some(c) = &n.content {
-                    s.push(' ');
-                    s.push_str(c);
-                }
-                s
+            .map(|node| {
+                node.content
+                    .as_deref()
+                    .unwrap_or(node.name.as_str())
+                    .to_owned()
             })
             .collect();
-
-        let mut all = Vec::with_capacity(nodes.len());
-        for chunk in texts.chunks(config.batch_size.max(1)) {
-            let (ids, mask, type_ids, _l) = self.prepare_inputs(chunk)?;
-            // Run session and immediately convert output to an owned Array2<f32> to avoid borrowing issues.
-            let arr: Array2<f32> = {
-                let mut sess = self.session.lock();
-                // Prepare values once
-                let input_ids_v = Value::from_array(ids.clone().into_dyn())
-                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
-                let attention_mask_v = Value::from_array(mask.clone().into_dyn())
-                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
-                let token_type_ids_v = Value::from_array(type_ids.clone().into_dyn())
-                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
-
-                // Build named inputs based on session's expected names
-                let mut named: Vec<(String, ort::session::SessionInputValue<'_>)> = Vec::new();
-                for inp in &sess.inputs {
-                    let n = inp.name.to_lowercase();
-                    if n.contains("input_ids") || n == "input" {
-                        // some models use generic name
-                        named.push((inp.name.clone(), input_ids_v.clone().into()));
-                    } else if n.contains("attention") || n.contains("mask") {
-                        named.push((inp.name.clone(), attention_mask_v.clone().into()));
-                    } else if n.contains("token_type") || n.contains("segment") {
-                        named.push((inp.name.clone(), token_type_ids_v.clone().into()));
-                    }
-                }
-
-                // Fallbacks if matching by names failed to fill all
-                if named.is_empty() {
-                    // Use common defaults by arity
-                    match sess.inputs.len() {
-                        3 => {
-                            named.push(("input_ids".into(), input_ids_v.clone().into()));
-                            named.push(("attention_mask".into(), attention_mask_v.clone().into()));
-                            named.push(("token_type_ids".into(), token_type_ids_v.clone().into()));
-                        }
-                        2 => {
-                            named.push(("input_ids".into(), input_ids_v.clone().into()));
-                            named.push(("attention_mask".into(), attention_mask_v.clone().into()));
-                        }
-                        1 => {
-                            named.push(("input".into(), input_ids_v.clone().into()));
-                        }
-                        _ => {}
-                    }
-                }
-
-                let outputs = sess
-                    .run(named)
-                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
-                let (shape, data) = outputs[0]
-                    .try_extract_tensor::<f32>()
-                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
-                let arr_dyn = ndarray::Array::from_shape_vec(shape.to_ixdyn(), data.to_vec())
-                    .map_err(|e| CodeGraphError::External(e.to_string()))?;
-                // Handle both [B, H] and [B, L, H] outputs
-                if arr_dyn.ndim() == 2 {
-                    arr_dyn
-                        .into_dimensionality::<ndarray::Ix2>()
-                        .map_err(|e| CodeGraphError::External(e.to_string()))?
-                } else if arr_dyn.ndim() == 3 {
-                    let arr3 = arr_dyn
-                        .into_dimensionality::<ndarray::Ix3>()
-                        .map_err(|e| CodeGraphError::External(e.to_string()))?;
-                    let b = arr3.len_of(Axis(0));
-                    let _seq_len = arr3.len_of(Axis(1));
-                    let h = arr3.len_of(Axis(2));
-                    // Broadcast mask to [B, L, 1]
-                    let mask_f = mask.map(|&x| x as f32);
-                    let mask_exp = mask_f.clone().insert_axis(Axis(2));
-                    // Weighted sum over L
-                    let masked = arr3 * &mask_exp;
-                    let sum_emb = masked.sum_axis(Axis(1)); // [B, H]
-                    let counts = mask_f
-                        .sum_axis(Axis(1))
-                        .mapv(|x| if x <= 0.0 { 1.0 } else { x }); // [B]
-                    let mut pooled = Array2::<f32>::zeros((b, h));
-                    for i in 0..b {
-                        let denom = counts[i];
-                        pooled
-                            .slice_mut(s![i, ..])
-                            .assign(&(&sum_emb.slice(s![i, ..]) / denom));
-                    }
-                    pooled
-                } else {
-                    return Err(CodeGraphError::External(
-                        "Unexpected ONNX output rank; expected 2D or 3D tensor".into(),
-                    ));
-                }
-            };
-
-            let pooled = self.pool_and_normalize(arr, &mask).unwrap_or_default();
-            all.extend(pooled);
-        }
-
-        let dur = start.elapsed();
-        let metrics = EmbeddingMetrics::new("ONNX".into(), nodes.len(), dur);
-        Ok((all, metrics))
+        let start = Instant::now();
+        let vectors = self.generate_prepared_texts(&texts, config).await?;
+        Ok((
+            vectors,
+            EmbeddingMetrics::new("ONNX".into(), nodes.len(), start.elapsed()),
+        ))
     }
 
     fn embedding_dimension(&self) -> usize {

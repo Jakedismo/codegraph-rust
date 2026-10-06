@@ -10,6 +10,7 @@ use codegraph_mcp_core::debug_logger::DebugLogger;
 #[cfg(feature = "daemon")]
 use codegraph_mcp_daemon::{DaemonManager, PidFile, WatchConfig, WatchDaemon};
 use codegraph_mcp_server::CodeGraphMCPServer;
+use codegraph_mcp_server::{agent_cli, agent_hooks, project_init};
 use colored::Colorize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rmcp::ServiceExt;
@@ -20,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::info;
 use tracing_subscriber::{
-    filter::EnvFilter, fmt::writer::BoxMakeWriter, layer::SubscriberExt, Registry,
+    Registry, filter::EnvFilter, fmt::writer::BoxMakeWriter, layer::SubscriberExt,
 };
 
 const DEFAULT_JINA_BATCH_SIZE: usize = 2000;
@@ -32,8 +33,8 @@ const DEFAULT_LOCAL_EMBEDDINGS_PER_WORKER_PER_MINUTE: f64 = 3600.0;
     name = "codegraph",
     version,
     author,
-    about = "CodeGraph CLI - MCP server management and project indexing",
-    long_about = "CodeGraph provides a unified interface for managing MCP servers and indexing projects with the codegraph system."
+    about = "CodeGraph CLI - agentic tools, MCP server management, and project indexing",
+    long_about = "Run CodeGraph's four agentic tools directly, configure harness hooks, manage MCP servers, and index projects."
 )]
 #[command(propagate_version = true)]
 struct Cli {
@@ -56,6 +57,39 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    #[command(about = "Choose project hooks, add agent instructions, then index the project")]
+    Init {
+        #[arg(default_value = ".", help = "Project directory")]
+        path: PathBuf,
+        #[arg(
+            long,
+            value_enum,
+            help = "Project-local hooks; prompts interactively when absent"
+        )]
+        hooks: Option<project_init::HookSelection>,
+        #[arg(
+            long,
+            help = "Set up hooks/instructions without loading providers or indexing"
+        )]
+        no_index: bool,
+        #[arg(long, value_enum, help = "Indexing tier: fast | balanced | full")]
+        index_tier: Option<IndexTier>,
+        #[arg(long, default_value_t = 4, help = "Parallel parser workers")]
+        workers: usize,
+    },
+
+    #[command(about = "Run client-facing agentic tools without an MCP transport")]
+    Agent {
+        #[command(subcommand)]
+        action: agent_cli::AgentCommand,
+    },
+
+    #[command(about = "Emit agent guidance or install project-local harness hooks")]
+    Hooks {
+        #[command(subcommand)]
+        action: agent_hooks::HookCommand,
+    },
+
     #[command(about = "Start MCP server with specified transport")]
     Start {
         #[command(subcommand)]
@@ -99,12 +133,11 @@ enum Commands {
 
     #[command(
         about = "Index a project or directory",
-        long_about = "Index a project with dual-mode support:\n\
-                      • Local Mode (FAISS): Set CODEGRAPH_EMBEDDING_PROVIDER=local or ollama\n\
-                      • Local Mode (SurrealDB HNSW + Ollama Embeddings + LMStudio Rerank): Set CODEGRAPH_EMBEDDING_PROVIDER=ollama and Set CODEGRAPH_RERANKING_PROVIDER=lmstudio\n\
-                      • Cloud Mode (SurrealDB HNSW + Jina reranking): Set CODEGRAPH_EMBEDDING_PROVIDER=jina\n\
-                      \n\
-                      Some flags are mode-specific (see individual flag help for details)."
+        long_about = "Index a project into the SurrealDB code graph.\n\
+                      Set CODEGRAPH_EMBEDDING_PROVIDER to a compiled local or remote provider.\n\
+                      CODEGRAPH_EMBEDDING_POLICY and CODEGRAPH_SEMANTIC_RESOLUTION accept sync, deferred or off independently.\n\
+                      Use --complete-deferred to finish a persisted inference job.\n\
+                      Some flags are provider-specific (see individual flag help for details)."
     )]
     Index {
         #[arg(help = "Path to project directory")]
@@ -119,8 +152,17 @@ enum Commands {
         #[arg(long, help = "Include only these patterns")]
         include: Vec<String>,
 
-        #[arg(short, long, help = "Recursively index subdirectories")]
+        #[arg(
+            short,
+            long,
+            default_value_t = true,
+            conflicts_with = "no_recursive",
+            help = "Recursively index subdirectories (default)"
+        )]
         recursive: bool,
+
+        #[arg(long, help = "Index only files directly in the project directory")]
+        no_recursive: bool,
 
         #[arg(long, help = "Force reindex even if already indexed")]
         force: bool,
@@ -137,10 +179,10 @@ enum Commands {
 
         #[arg(
             long,
-            help = "Embedding batch size (both modes; cloud mode uses API batching, local uses local processing batches)",
-            default_value = "100"
+            help = "Maximum embedding texts per batch; overrides environment/config (token, byte and provider limits may split requests)",
+            value_parser = parse_positive_batch_size
         )]
-        batch_size: usize,
+        batch_size: Option<usize>,
 
         #[arg(
             long,
@@ -163,7 +205,7 @@ enum Commands {
         max_seq_len: usize,
         #[arg(
             long,
-            help = "Symbol embedding batch size (overrides generic batch size for precomputing symbols)",
+            help = "Symbol-resolution embedding batch size (overrides generic batch size)",
             value_parser = clap::value_parser!(usize)
         )]
         symbol_batch_size: Option<usize>,
@@ -176,6 +218,13 @@ enum Commands {
 
         #[arg(long, value_enum, help = "Indexing tier: fast | balanced | full")]
         index_tier: Option<IndexTier>,
+        #[arg(
+            long,
+            help = "Complete the persisted deferred inference job with current sources"
+        )]
+        complete_deferred: bool,
+        #[arg(long, help = "Write indexing metrics and completion status as JSON")]
+        stats_json: Option<PathBuf>,
     },
 
     #[command(
@@ -194,8 +243,17 @@ enum Commands {
         #[arg(long, help = "Include only these patterns")]
         include: Vec<String>,
 
-        #[arg(short, long, help = "Recursively walk subdirectories")]
+        #[arg(
+            short,
+            long,
+            default_value_t = true,
+            conflicts_with = "no_recursive",
+            help = "Recursively walk subdirectories (default)"
+        )]
         recursive: bool,
+
+        #[arg(long, help = "Estimate only files directly in the project directory")]
+        no_recursive: bool,
 
         #[arg(
             long,
@@ -489,27 +547,88 @@ impl From<IndexTier> for codegraph_core::config_manager::IndexingTier {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    let mut cli = Cli::parse();
+    // Guidance/hooks must work without valid provider config or any network services.
+    if let Commands::Agent { ref action } = cli.command {
+        // SAFETY: No async runtime or application threads have been started yet.
+        return unsafe { agent_cli::run(action, cli.verbose, cli.config.as_deref()) };
+    }
+    if let Commands::Hooks { ref action } = cli.command {
+        return agent_hooks::run(action);
+    }
+    if let Commands::Init {
+        ref path,
+        hooks,
+        no_index,
+        index_tier,
+        workers,
+    } = cli.command
+    {
+        let invoking_directory = std::env::current_dir()?;
+        let project = project_init::prepare(path, hooks)?;
+        if no_index {
+            eprintln!("Project setup complete; indexing skipped (--no-index).");
+            return Ok(());
+        }
+        // Resolve an explicit config against the invoking cwd before loading project env/config.
+        cli.config = cli.config.map(|path| invoking_directory.join(path));
+        std::env::set_current_dir(&project)?;
+        eprintln!("Step 3: Indexing project {}", project.display());
+        cli.command = Commands::Index {
+            path: project,
+            languages: None,
+            exclude: Vec::new(),
+            include: Vec::new(),
+            recursive: true,
+            no_recursive: false,
+            force: false,
+            watch: false,
+            workers,
+            batch_size: None,
+            max_concurrent: 10,
+            device: None,
+            max_seq_len: 512,
+            symbol_batch_size: None,
+            symbol_max_concurrent: None,
+            index_tier,
+            complete_deferred: false,
+            stats_json: None,
+        };
+    }
+    if let Some(path) = &cli.config {
+        // SAFETY: Process configuration is prepared before starting worker threads.
+        unsafe {
+            std::env::set_var(
+                "CODEGRAPH_CONFIG_PATH",
+                path.canonicalize()
+                    .with_context(|| format!("Cannot resolve config {}", path.display()))?,
+            )
+        };
+    }
     // Load .env file if present
-    dotenv::dotenv().ok();
+    // SAFETY: No worker threads exist before the runtime is created.
+    unsafe { codegraph_core::config_manager::ConfigManager::initialize_environment() };
 
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run_cli(cli))
+}
+
+async fn run_cli(cli: Cli) -> Result<()> {
     // Initialize debug logger (enabled with CODEGRAPH_DEBUG=1)
     DebugLogger::init();
-
-    let cli = Cli::parse();
 
     // Load configuration once at startup
     use codegraph_core::config_manager::ConfigManager;
     let config_mgr = ConfigManager::load().context("Failed to load configuration")?;
     let config = config_mgr.config();
 
-    // TODO: Override with CLI config path if provided
-    if let Some(_config_path) = &cli.config {
-        // Future: merge CLI-specified config file
-    }
-
     match cli.command {
+        Commands::Init { .. } | Commands::Agent { .. } | Commands::Hooks { .. } => {
+            unreachable!("handled before configuration")
+        }
         Commands::Start {
             transport,
             config,
@@ -530,6 +649,7 @@ async fn main() -> Result<()> {
             exclude,
             include,
             recursive,
+            no_recursive,
             force,
             watch,
             workers,
@@ -540,6 +660,8 @@ async fn main() -> Result<()> {
             symbol_batch_size,
             symbol_max_concurrent,
             index_tier,
+            complete_deferred,
+            stats_json,
         } => {
             handle_index(
                 config,
@@ -547,7 +669,7 @@ async fn main() -> Result<()> {
                 languages,
                 exclude,
                 include,
-                recursive,
+                recursive && !no_recursive,
                 force,
                 watch,
                 workers,
@@ -558,6 +680,8 @@ async fn main() -> Result<()> {
                 symbol_batch_size,
                 symbol_max_concurrent,
                 index_tier,
+                complete_deferred,
+                stats_json,
                 cli.debug,
             )
             .await?;
@@ -568,6 +692,7 @@ async fn main() -> Result<()> {
             exclude,
             include,
             recursive,
+            no_recursive,
             workers,
             batch_size,
             jina_batch_size,
@@ -582,7 +707,7 @@ async fn main() -> Result<()> {
                 languages,
                 exclude,
                 include,
-                recursive,
+                recursive && !no_recursive,
                 workers,
                 batch_size,
                 jina_batch_size,
@@ -809,8 +934,8 @@ async fn handle_start(
             {
                 use axum::Router;
                 use rmcp::transport::streamable_http_server::{
-                    session::local::LocalSessionManager, StreamableHttpServerConfig,
-                    StreamableHttpService,
+                    StreamableHttpServerConfig, StreamableHttpService,
+                    session::local::LocalSessionManager,
                 };
                 use std::sync::Arc;
                 use std::time::Duration;
@@ -911,11 +1036,12 @@ async fn handle_start(
                 };
 
                 // Configure HTTP server with SSE streaming
-                let config = StreamableHttpServerConfig {
-                    sse_keep_alive: Some(Duration::from_secs(15)), // Send keep-alive every 15s
-                    stateful_mode: true, // Enable session management + SSE
-                    cancellation_token: tokio_util::sync::CancellationToken::new(),
-                };
+                let config = StreamableHttpServerConfig::default()
+                    .with_allowed_hosts(codegraph_mcp_server::http_config::allowed_http_hosts(
+                        &host,
+                    ))
+                    .with_sse_keep_alive(Some(Duration::from_secs(15)))
+                    .with_legacy_session_mode(true);
 
                 if atty::is(Stream::Stderr) {
                     eprintln!("📡 Configuring StreamableHTTP with SSE keep-alive (15s)");
@@ -1073,13 +1199,15 @@ async fn handle_index(
     force: bool,
     watch: bool,
     workers: usize,
-    batch_size: usize,
+    batch_size: Option<usize>,
     max_concurrent: usize,
     device: Option<String>,
     max_seq_len: usize,
     symbol_batch_size: Option<usize>,
     symbol_max_concurrent: Option<usize>,
     index_tier: Option<IndexTier>,
+    complete_deferred: bool,
+    stats_json: Option<PathBuf>,
     debug_log: bool,
 ) -> Result<()> {
     let project_root = path.clone().canonicalize().unwrap_or_else(|_| path.clone());
@@ -1119,10 +1247,10 @@ async fn handle_index(
     header_pb.set_style(h_style);
     header_pb.set_message(format!("Indexing project: {}", path.to_string_lossy()));
 
-    // Memory-aware optimization for high-memory systems
+    // Explicit embedding batches override configuration; only workers are memory-tuned.
     let available_memory_gb = estimate_available_memory_gb();
-    let (optimized_batch_size, optimized_workers) =
-        optimize_for_memory(available_memory_gb, batch_size, workers);
+    let embedding_batch_size = batch_size.unwrap_or(config.embedding.batch_size).max(1);
+    let optimized_workers = optimize_workers_for_memory(available_memory_gb, workers);
 
     if available_memory_gb >= 64 {
         multi_progress.println(format!(
@@ -1151,6 +1279,7 @@ async fn handle_index(
     // Configure indexer
     let languages_list = languages.clone().unwrap_or_default();
     let indexer_config = IndexerConfig {
+        complete_deferred,
         languages: languages_list.clone(),
         exclude_patterns: exclude,
         include_patterns: include,
@@ -1158,7 +1287,7 @@ async fn handle_index(
         force_reindex: force,
         watch,
         workers: optimized_workers,
-        batch_size: optimized_batch_size,
+        batch_size: embedding_batch_size,
         max_concurrent,
         device,
         max_seq_len,
@@ -1170,18 +1299,40 @@ async fn handle_index(
     };
 
     // Create indexer
-    let mut indexer = ProjectIndexer::new(indexer_config, config, multi_progress.clone()).await?;
-
     let start_time = std::time::Instant::now();
+    let indexer = ProjectIndexer::new(indexer_config, config, multi_progress.clone()).await?;
 
     // Perform indexing
     let stats = indexer.index_project(&path).await?;
     let elapsed = start_time.elapsed();
 
-    header_pb.finish_with_message("✔ Indexing complete".to_string());
+    if let Some(destination) = stats_json {
+        std::fs::write(destination, serde_json::to_vec_pretty(&stats)?)?;
+    }
+    header_pb.finish_with_message(
+        if stats.complete {
+            "✔ Indexing complete"
+        } else {
+            "✔ Graph ready; inference pending"
+        }
+        .to_string(),
+    );
+    println!(
+        "Stages: graph={}, embeddings={}, semantic={}",
+        stats.graph_complete, stats.embedding_status, stats.semantic_status
+    );
 
     println!();
-    println!("{}", "🎉 INDEXING COMPLETE!".green().bold());
+    println!(
+        "{}",
+        if stats.complete {
+            "🎉 INDEXING COMPLETE!"
+        } else {
+            "GRAPH READY — INFERENCE PENDING"
+        }
+        .green()
+        .bold()
+    );
     println!();
 
     // Performance summary with comprehensive metrics
@@ -1284,9 +1435,9 @@ async fn handle_index(
     println!();
     println!("{}", "⚙️  Configuration Summary".cyan().bold());
     println!(
-        "Workers: {} | Batch Size: {} | Languages: {}",
+        "Workers: {} | Embedding batch row limit: {} | Languages: {}",
         optimized_workers,
-        optimized_batch_size,
+        embedding_batch_size,
         languages_list.join(", ")
     );
     if !stats.embedding_provider.is_empty() {
@@ -1702,13 +1853,13 @@ CODEGRAPH_EMBEDDING_PROVIDER=auto
 # CODEGRAPH_EMBEDDING_DIMENSION=2048
 
 # ============================================================================
-# LLM PROVIDER (for insights, optional)
+# LLM PROVIDER (for the agentic tools)
 # ============================================================================
 # LLM Provider: "ollama", "lmstudio", "anthropic", "openai"
 # CODEGRAPH_LLM_PROVIDER=lmstudio
 
 # LLM Model
-# CODEGRAPH_MODEL=qwen2.5-coder:14b
+# CODEGRAPH_LLM_MODEL=qwen2.5-coder:14b
 
 # Enable LLM insights (context-only mode if disabled)
 # CODEGRAPH_LLM_ENABLED=false
@@ -1858,9 +2009,34 @@ async fn handle_agent_status(json: bool) -> Result<()> {
     let config_mgr = ConfigManager::load().context("Failed to load configuration")?;
     let config = config_mgr.config();
 
-    // Determine context tier
-    let context_window = config.llm.context_window;
+    // Report what the agent will actually use: environment, then [llm] keys, then defaults.
+    let context_window = ConfigManager::agent_context_window();
     let tier = ContextTier::from_context_window(context_window);
+    #[cfg(feature = "ai-enhanced")]
+    let (agent_provider, agent_model) = {
+        use codegraph_mcp_rig::adapter::{RigProvider, get_model_name};
+        let provider = match RigProvider::from_env() {
+            Ok(RigProvider::OpenAI) => "openai".to_string(),
+            Ok(RigProvider::Anthropic) => "anthropic".to_string(),
+            Ok(RigProvider::Ollama) => "ollama".to_string(),
+            Ok(RigProvider::XAI) => "xai".to_string(),
+            Ok(RigProvider::LMStudio) => "lmstudio".to_string(),
+            Ok(RigProvider::OpenAICompatible { base_url }) => {
+                format!("openai-compatible ({base_url})")
+            }
+            Err(_) => "not configured".to_string(),
+        };
+        (provider, get_model_name())
+    };
+    #[cfg(not(feature = "ai-enhanced"))]
+    let (agent_provider, agent_model) = (
+        config.llm.provider.clone(),
+        config
+            .llm
+            .model
+            .clone()
+            .unwrap_or_else(|| "auto-detected".to_string()),
+    );
 
     // Determine prompt verbosity based on tier
     let prompt_verbosity = match tier {
@@ -1872,10 +2048,10 @@ async fn handle_agent_status(json: bool) -> Result<()> {
 
     // Get tier-specific parameters
     let (max_steps, base_limit, default_max_tokens) = match tier {
-        ContextTier::Small => (5, 10, 2048),
-        ContextTier::Medium => (10, 25, 4096),
-        ContextTier::Large => (15, 50, 8192),
-        ContextTier::Massive => (20, 100, 16384),
+        ContextTier::Small => (3, 10, 2048),
+        ContextTier::Medium => (5, 25, 4096),
+        ContextTier::Large => (6, 50, 8192),
+        ContextTier::Massive => (8, 100, 16384),
     };
 
     // Get max output tokens (config override or tier default)
@@ -1925,8 +2101,8 @@ async fn handle_agent_status(json: bool) -> Result<()> {
         // JSON output
         let output = serde_json::json!({
             "llm": {
-                "provider": config.llm.provider,
-                "model": config.llm.model.as_deref().unwrap_or("auto-detected"),
+                "provider": agent_provider,
+                "model": agent_model,
                 "enabled": config.llm.enabled,
             },
             "context": {
@@ -1985,16 +2161,8 @@ async fn handle_agent_status(json: bool) -> Result<()> {
 
         // LLM Configuration
         println!("{}", "🤖 LLM Configuration".green().bold());
-        println!("   Provider: {}", config.llm.provider.yellow());
-        println!(
-            "   Model: {}",
-            config
-                .llm
-                .model
-                .as_deref()
-                .unwrap_or("auto-detected")
-                .yellow()
-        );
+        println!("   Provider: {}", agent_provider.yellow());
+        println!("   Model: {}", agent_model.yellow());
         println!(
             "   Status: {}",
             if config.llm.enabled {
@@ -2081,8 +2249,9 @@ async fn handle_db_check(namespace: Option<String>, database: Option<String>) ->
         config.database = db;
     }
 
+    let target = config.connection.clone();
     let _storage = SurrealDbStorage::new(config).await?;
-    println!("✓ SurrealDB connectivity verified");
+    println!("✓ SurrealDB connectivity verified ({})", target);
     Ok(())
 }
 
@@ -2134,41 +2303,16 @@ fn estimate_available_memory_gb() -> usize {
     16 // Default assumption if detection fails
 }
 
-/// Optimize batch size and workers based on available memory and embedding provider
-fn optimize_for_memory(
-    memory_gb: usize,
-    default_batch_size: usize,
-    default_workers: usize,
-) -> (usize, usize) {
-    let embedding_provider = std::env::var("CODEGRAPH_EMBEDDING_PROVIDER").unwrap_or_default();
+fn parse_positive_batch_size(value: &str) -> std::result::Result<usize, String> {
+    value
+        .parse::<std::num::NonZeroUsize>()
+        .map(std::num::NonZeroUsize::get)
+        .map_err(|error| error.to_string())
+}
 
-    let optimized_batch_size = if default_batch_size == 100 {
-        // Default value
-        if embedding_provider == "ollama" {
-            // Ollama models work better with smaller batches for stability
-            match memory_gb {
-                128.. => 64,    // 128GB+: Even high-memory boxes benefit from modest batches with Ollama
-                96..=127 => 64, // 96-127GB: Keep batches capped for GPU/CPU stability
-                64..=95 => 48,  // 64-95GB: Slightly leaner batch for steady throughput
-                32..=63 => 32,  // 32-63GB: Conservative batch to prevent throttling
-                16..=31 => 24,  // 16-31GB: Small batch keeps latency predictable
-                _ => 16,        // <16GB: Minimal batch on constrained systems
-            }
-        } else {
-            // ONNX/OpenAI/LM Studio: Reasonable batches to avoid throttling
-            match memory_gb {
-                128.. => 256,    // 128GB+: Maximum safe batch size
-                64..=127 => 128, // 64-127GB: Large batch for good throughput
-                32..=63 => 64,   // 32-63GB: Medium batch size
-                16..=31 => 32,   // 16-31GB: Conservative batch size
-                _ => 16,         // <16GB: Minimal batch to avoid memory pressure
-            }
-        }
-    } else {
-        default_batch_size // User specified - respect their choice
-    };
-
-    let optimized_workers = if default_workers == 4 {
+/// Optimize worker count based on available memory.
+fn optimize_workers_for_memory(memory_gb: usize, default_workers: usize) -> usize {
+    if default_workers == 4 {
         // Default value
         match memory_gb {
             128.. => 16,    // 128GB+: Maximum parallelism
@@ -2181,9 +2325,7 @@ fn optimize_for_memory(
         }
     } else {
         default_workers // User specified - respect their choice
-    };
-
-    (optimized_batch_size, optimized_workers)
+    }
 }
 
 #[derive(Clone)]
@@ -2317,16 +2459,77 @@ mod cli_command_tests {
     use clap::CommandFactory;
 
     #[test]
+    fn indexing_batch_size_preserves_explicit_values_and_rejects_zero() {
+        let cli = Cli::try_parse_from(["codegraph", "index", "."]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Index {
+                batch_size: None,
+                ..
+            }
+        ));
+        for size in [100, 512, 4096] {
+            let value = size.to_string();
+            let cli =
+                Cli::try_parse_from(["codegraph", "index", "--batch-size", &value, "."]).unwrap();
+            assert!(
+                matches!(cli.command, Commands::Index { batch_size: Some(actual), .. } if actual == size)
+            );
+        }
+        assert!(Cli::try_parse_from(["codegraph", "index", "--batch-size", "0", "."]).is_err());
+    }
+
+    #[test]
     fn removed_subcommands_are_absent() {
         let cmd = Cli::command();
         let names: Vec<_> = cmd
             .get_subcommands()
             .map(|s| s.get_name().to_string())
             .collect();
-        for removed in ["stats", "clean", "perf", "code", "test", "init"] {
+        for removed in ["stats", "clean", "perf", "code", "test"] {
             assert!(
                 !names.iter().any(|n| n == removed),
                 "unexpected subcommand still present: {removed}"
+            );
+        }
+        for added in ["init", "agent", "hooks"] {
+            assert!(names.iter().any(|name| name == added));
+        }
+    }
+
+    #[test]
+    fn directory_commands_recurse_by_default_and_accept_explicit_root_only_scans() {
+        for command in ["index", "estimate"] {
+            for (flag, expected) in [
+                (None, true),
+                (Some("-r"), true),
+                (Some("--recursive"), true),
+                (Some("--no-recursive"), false),
+            ] {
+                let mut arguments = vec!["codegraph", command, "--languages", "Rust"];
+                if let Some(flag) = flag {
+                    arguments.push(flag);
+                }
+                arguments.push(".");
+                let cli = Cli::try_parse_from(arguments).unwrap();
+                let (recursive, no_recursive) = match cli.command {
+                    Commands::Index {
+                        recursive,
+                        no_recursive,
+                        ..
+                    }
+                    | Commands::Estimate {
+                        recursive,
+                        no_recursive,
+                        ..
+                    } => (recursive, no_recursive),
+                    _ => unreachable!(),
+                };
+                assert_eq!(recursive && !no_recursive, expected, "{command}: {flag:?}");
+            }
+            assert!(
+                Cli::try_parse_from(["codegraph", command, "--recursive", "--no-recursive", ".",])
+                    .is_err()
             );
         }
     }
@@ -2334,7 +2537,7 @@ mod cli_command_tests {
 
 #[cfg(feature = "daemon")]
 async fn handle_daemon_stop(path: PathBuf) -> Result<()> {
-    use nix::sys::signal::{kill, Signal};
+    use nix::sys::signal::{Signal, kill};
     use nix::unistd::Pid;
 
     let project_root = std::fs::canonicalize(&path)

@@ -5,12 +5,12 @@ use codegraph_core::config_manager::CodeGraphConfig;
 use codegraph_graph::GraphFunctions;
 use codegraph_mcp_core::debug_logger::DebugLogger;
 use codegraph_mcp_core::error::{McpError, Result};
-use codegraph_vector::reranking::{factory::create_reranker, RerankDocument, Reranker};
 use codegraph_vector::EmbeddingGenerator;
+use codegraph_vector::reranking::{RerankDocument, Reranker, factory::create_reranker};
 use lru::LruCache;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tracing::{debug, info};
@@ -72,17 +72,14 @@ const DEFAULT_MAX_RESULT_BYTES: usize = 200_000;
 
 impl GraphToolExecutor {
     /// Create a new tool executor with shared EmbeddingGenerator
-    /// Uses CODEGRAPH_CONTEXT_WINDOW env var to derive max result size
+    /// Derives max result size from the agent's context window (environment, then
+    /// `[llm] context_window` in the config file, then the default)
     pub fn new(
         graph_functions: Arc<GraphFunctions>,
         config: Arc<CodeGraphConfig>,
         embedding_generator: Arc<EmbeddingGenerator>,
     ) -> Self {
-        // Read context window from environment to derive max result bytes
-        let context_window = std::env::var("CODEGRAPH_CONTEXT_WINDOW")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(128_000);
+        let context_window = codegraph_core::config_manager::ConfigManager::agent_context_window();
 
         Self::with_context_window(graph_functions, config, embedding_generator, context_window)
     }

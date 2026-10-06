@@ -12,7 +12,7 @@ DEFINE TABLE calls TYPE RELATION IN nodes OUT nodes SCHEMAFULL
   PERMISSIONS FULL;
 
 DEFINE FIELD weight ON calls TYPE float DEFAULT 1f PERMISSIONS FULL;
-DEFINE FIELD metadata ON calls FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+DEFINE FIELD metadata ON calls TYPE option<object> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD created_at ON calls TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
 
 -- Imports relationship: module/file imports another module/file
@@ -21,7 +21,7 @@ DEFINE TABLE imports TYPE RELATION IN nodes OUT nodes SCHEMAFULL
   PERMISSIONS FULL;
 
 DEFINE FIELD weight ON imports TYPE float DEFAULT 1f PERMISSIONS FULL;
-DEFINE FIELD metadata ON imports FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+DEFINE FIELD metadata ON imports TYPE option<object> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD created_at ON imports TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
 
 -- Uses relationship: code uses a type/variable/constant
@@ -30,7 +30,7 @@ DEFINE TABLE uses TYPE RELATION IN nodes OUT nodes SCHEMAFULL
   PERMISSIONS FULL;
 
 DEFINE FIELD weight ON uses TYPE float DEFAULT 1f PERMISSIONS FULL;
-DEFINE FIELD metadata ON uses FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+DEFINE FIELD metadata ON uses TYPE option<object> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD created_at ON uses TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
 
 -- Extends relationship: class/interface extends another
@@ -39,7 +39,7 @@ DEFINE TABLE extends TYPE RELATION IN nodes OUT nodes SCHEMAFULL
   PERMISSIONS FULL;
 
 DEFINE FIELD weight ON extends TYPE float DEFAULT 1f PERMISSIONS FULL;
-DEFINE FIELD metadata ON extends FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+DEFINE FIELD metadata ON extends TYPE option<object> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD created_at ON extends TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
 
 -- Implements relationship: class implements interface/protocol
@@ -48,7 +48,7 @@ DEFINE TABLE implements TYPE RELATION IN nodes OUT nodes SCHEMAFULL
   PERMISSIONS FULL;
 
 DEFINE FIELD weight ON implements TYPE float DEFAULT 1f PERMISSIONS FULL;
-DEFINE FIELD metadata ON implements FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+DEFINE FIELD metadata ON implements TYPE option<object> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD created_at ON implements TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
 
 -- References relationship: code references another element
@@ -57,7 +57,7 @@ DEFINE TABLE references TYPE RELATION IN nodes OUT nodes SCHEMAFULL
   PERMISSIONS FULL;
 
 DEFINE FIELD weight ON references TYPE float DEFAULT 1f PERMISSIONS FULL;
-DEFINE FIELD metadata ON references FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+DEFINE FIELD metadata ON references TYPE option<object> FLEXIBLE PERMISSIONS FULL;
 DEFINE FIELD created_at ON references TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
 
 -- ------------------------------

@@ -164,16 +164,19 @@ impl Reranker for JinaReranker {
                         }
                     } else {
                         let status = response.status();
-                        if let Ok(api_error) = response.json::<JinaApiError>().await {
-                            let error_msg = api_error
-                                .detail
-                                .or(api_error.message)
-                                .unwrap_or_else(|| "Unknown error".to_string());
-                            last_error =
-                                Some(anyhow::anyhow!("Jina rerank API error: {}", error_msg));
-                        } else {
-                            last_error =
-                                Some(anyhow::anyhow!("Jina rerank API error: HTTP {}", status));
+                        match response.json::<JinaApiError>().await {
+                            Ok(api_error) => {
+                                let error_msg = api_error
+                                    .detail
+                                    .or(api_error.message)
+                                    .unwrap_or_else(|| "Unknown error".to_string());
+                                last_error =
+                                    Some(anyhow::anyhow!("Jina rerank API error: {}", error_msg));
+                            }
+                            _ => {
+                                last_error =
+                                    Some(anyhow::anyhow!("Jina rerank API error: HTTP {}", status));
+                            }
                         }
                     }
                 }

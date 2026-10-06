@@ -2,7 +2,7 @@
 // ABOUTME: Builds agents with graph tools and appropriate system prompts
 
 #[allow(unused_imports)]
-use crate::adapter::{get_context_window, get_model_name, RigLLMAdapter, RigProvider};
+use crate::adapter::{RigLLMAdapter, RigProvider, get_context_window, get_model_name};
 use crate::agent::api::RigAgentTrait;
 #[allow(unused_imports)]
 use crate::agent::lats::LatsAgent;
@@ -16,18 +16,34 @@ use crate::agent::react::OpenAIAgent;
 use crate::agent::react::XAIAgent;
 #[allow(unused_imports)]
 use crate::agent::reflexion::ReflexionAgent;
-use crate::prompts::{get_max_turns, get_tier_system_prompt, AnalysisType};
+use crate::prompts::{AnalysisType, build_system_prompt, get_max_turns};
 #[allow(unused_imports)] // Used when provider features are enabled
 use crate::tools::GraphToolFactory;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use codegraph_mcp_core::agent_architecture::AgentArchitecture;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_tools::GraphToolExecutor;
-#[allow(unused_imports)] // Used when provider features are enabled
-use rig::client::CompletionClient;
+use rig::{DynModel, operation::Completion};
 use std::sync::Arc;
 #[allow(unused_imports)] // Used when provider features are enabled
 use tracing::info;
+
+/// Selects the agent to run: `react` (default, alias `rig`), `lats`, or `reflexion`.
+pub const AGENT_ARCHITECTURE_ENV: &str = "CODEGRAPH_AGENT_ARCHITECTURE";
+
+/// Read the agent selection from its env value; unset or invalid means the default.
+fn select_architecture(value: Option<&str>) -> Option<AgentArchitecture> {
+    let value = value.map(str::trim).filter(|v| !v.is_empty())?;
+    let architecture = AgentArchitecture::parse(value);
+    if architecture.is_none() {
+        tracing::warn!(
+            value,
+            "Invalid {} value (expected react, lats, or reflexion); using react",
+            AGENT_ARCHITECTURE_ENV
+        );
+    }
+    architecture
+}
 
 /// Builder for creating Rig-based code analysis agents
 pub struct RigAgentBuilder {
@@ -69,12 +85,7 @@ impl RigAgentBuilder {
 
     /// Detect architecture from environment only
     fn detect_architecture_from_env() -> Option<AgentArchitecture> {
-        if let Ok(arch_str) = std::env::var("CODEGRAPH_AGENT_ARCHITECTURE") {
-            if let Some(arch) = AgentArchitecture::parse(&arch_str) {
-                return Some(arch);
-            }
-        }
-        None
+        select_architecture(std::env::var(AGENT_ARCHITECTURE_ENV).ok().as_deref())
     }
 
     /// Set the analysis type for this agent
@@ -113,7 +124,7 @@ impl RigAgentBuilder {
 
     /// Get the system prompt for the current configuration
     pub fn system_prompt(&self) -> String {
-        get_tier_system_prompt(self.analysis_type, self.tier)
+        build_system_prompt(self.analysis_type, self.tier, self.max_turns)
     }
 
     /// Get max output tokens, respecting MCP_CODE_AGENT_MAX_OUTPUT_TOKENS env var
@@ -135,22 +146,12 @@ impl RigAgentBuilder {
         self.tier.max_output_tokens()
     }
 
-    /// Resolve architecture using heuristic if not explicitly set
+    /// Resolve architecture, defaulting to ReAct when none was set explicitly.
+    ///
+    /// LATS is opt-in via [`AGENT_ARCHITECTURE_ENV`] or [`Self::architecture`]: its expansion step reasons
+    /// without calling graph tools, so its answers are not grounded in the index.
     fn resolve_architecture(&self) -> AgentArchitecture {
-        if let Some(arch) = self.architecture {
-            return arch;
-        }
-
-        // Heuristic: Use LATS for complex/deep analysis types
-        match self.analysis_type {
-            AnalysisType::ArchitectureAnalysis |
-            AnalysisType::ComplexityAnalysis |
-            AnalysisType::SemanticQuestion => {
-                info!("Selecting LATS architecture for complex analysis: {:?}", self.analysis_type);
-                AgentArchitecture::LATS
-            },
-            _ => AgentArchitecture::ReAct,
-        }
+        self.architecture.unwrap_or(AgentArchitecture::ReAct)
     }
 
     /// Build agent for the detected provider and architecture
@@ -189,41 +190,57 @@ impl RigAgentBuilder {
         }
     }
 
+    // Without any provider feature every arm returns early.
+    #[allow(unreachable_code)]
     fn build_lats(self, provider: RigProvider) -> Result<Box<dyn RigAgentTrait>> {
+        tracing::warn!(
+            "LATS agent selected: it searches over reasoning steps without calling graph tools, \
+             so answers are not grounded in the index. Use react for grounded answers."
+        );
         let model_name = get_model_name();
-        let factory = GraphToolFactory::new(self.executor.clone());
 
-        match provider {
+        // LATS only needs plain completions, so every provider with a client works.
+        let model: DynModel<Completion> = match provider {
             #[cfg(feature = "openai")]
-            RigProvider::OpenAI => {
-                let client = RigLLMAdapter::openai_client();
-                let model = client.completion_model(&model_name);
-                Ok(Box::new(LatsAgent {
-                    model,
-                    factory,
-                    max_turns: self.max_turns,
-                    tier: self.tier,
-                }))
-            }
+            RigProvider::OpenAI => RigLLMAdapter::openai_client()?
+                .completion(&model_name)
+                .into(),
             #[cfg(feature = "anthropic")]
-            RigProvider::Anthropic => {
-                let client = RigLLMAdapter::anthropic_client();
-                let model = client.completion_model(&model_name);
-                Ok(Box::new(LatsAgent {
-                    model,
-                    factory,
-                    max_turns: self.max_turns,
-                    tier: self.tier,
-                }))
+            RigProvider::Anthropic => RigLLMAdapter::anthropic_client()?
+                .completion(&model_name)
+                .into(),
+            #[cfg(feature = "ollama")]
+            RigProvider::Ollama => RigLLMAdapter::ollama_client()?
+                .completion(&model_name)
+                .into(),
+            #[cfg(feature = "xai")]
+            RigProvider::XAI => RigLLMAdapter::xai_client()?.completion(&model_name).into(),
+            #[cfg(feature = "openai")]
+            RigProvider::LMStudio => RigLLMAdapter::lmstudio_client()?
+                .completion(&model_name)
+                .into(),
+            #[cfg(feature = "openai")]
+            RigProvider::OpenAICompatible { ref base_url } => {
+                RigLLMAdapter::openai_compatible_client(base_url)?
+                    .completion(&model_name)
+                    .into()
             }
-            // Add other providers as needed, mostly mimicking the above pattern
-             #[allow(unreachable_patterns)]
+            #[allow(unreachable_patterns)]
             _ => {
                 let _ = model_name;
-                let _ = factory;
-                Err(anyhow!("LATS not yet supported for provider {:?}", provider))
-            },
-        }
+                return Err(anyhow!(
+                    "Provider {:?} not enabled in build features",
+                    provider
+                ));
+            }
+        };
+
+        Ok(Box::new(LatsAgent {
+            model,
+            factory: GraphToolFactory::new(self.executor.clone()),
+            max_turns: self.max_turns,
+            tier: self.tier,
+        }))
     }
 
     fn build_reflexion(self, provider: RigProvider) -> Result<Box<dyn RigAgentTrait>> {
@@ -239,14 +256,13 @@ impl RigAgentBuilder {
 
     #[cfg(feature = "openai")]
     fn build_openai_react(self) -> Result<OpenAIAgent> {
-        let client = RigLLMAdapter::openai_client();
+        let client = RigLLMAdapter::openai_client()?;
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = client
-            .agent(&model)
+        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
             .preamble(&system_prompt)
             .max_tokens(max_output_tokens)
             .tool(factory.transitive_dependencies())
@@ -269,14 +285,13 @@ impl RigAgentBuilder {
 
     #[cfg(feature = "anthropic")]
     fn build_anthropic_react(self) -> Result<AnthropicAgent> {
-        let client = RigLLMAdapter::anthropic_client();
+        let client = RigLLMAdapter::anthropic_client()?;
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = client
-            .agent(&model)
+        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
             .preamble(&system_prompt)
             .max_tokens(max_output_tokens)
             .tool(factory.transitive_dependencies())
@@ -299,13 +314,12 @@ impl RigAgentBuilder {
 
     #[cfg(feature = "ollama")]
     fn build_ollama_react(self) -> Result<OllamaAgent> {
-        let client = RigLLMAdapter::ollama_client();
+        let client = RigLLMAdapter::ollama_client()?;
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = client
-            .agent(&model)
+        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
             .preamble(&system_prompt)
             .tool(factory.transitive_dependencies())
             .tool(factory.circular_dependencies())
@@ -327,14 +341,13 @@ impl RigAgentBuilder {
 
     #[cfg(feature = "xai")]
     fn build_xai_react(self) -> Result<XAIAgent> {
-        let client = RigLLMAdapter::xai_client();
+        let client = RigLLMAdapter::xai_client()?;
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = client
-            .agent(&model)
+        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
             .preamble(&system_prompt)
             .max_tokens(max_output_tokens)
             .tool(factory.transitive_dependencies())
@@ -357,14 +370,13 @@ impl RigAgentBuilder {
 
     #[cfg(feature = "openai")]
     fn build_lmstudio_react(self) -> Result<OpenAIAgent> {
-        let client = RigLLMAdapter::lmstudio_client();
+        let client = RigLLMAdapter::lmstudio_client()?;
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = client
-            .agent(&model)
+        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
             .preamble(&system_prompt)
             .max_tokens(max_output_tokens)
             .tool(factory.transitive_dependencies())
@@ -387,14 +399,13 @@ impl RigAgentBuilder {
 
     #[cfg(feature = "openai")]
     fn build_openai_compatible_react(self, base_url: &str) -> Result<OpenAIAgent> {
-        let client = RigLLMAdapter::openai_compatible_client(base_url);
+        let client = RigLLMAdapter::openai_compatible_client(base_url)?;
         let model = get_model_name();
         let system_prompt = self.system_prompt();
         let max_output_tokens = self.get_max_output_tokens();
         let factory = GraphToolFactory::new(self.executor);
 
-        let agent = client
-            .agent(&model)
+        let agent = rig_agent::AgentBuilder::new(client.completion(&model))
             .preamble(&system_prompt)
             .max_tokens(max_output_tokens)
             .tool(factory.transitive_dependencies())
@@ -413,5 +424,37 @@ impl RigAgentBuilder {
             max_turns: self.max_turns,
             tier: self.tier,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_architecture_env_selects_agent() {
+        assert_eq!(
+            select_architecture(Some("lats")),
+            Some(AgentArchitecture::LATS)
+        );
+        assert_eq!(
+            select_architecture(Some(" Reflexion ")),
+            Some(AgentArchitecture::Reflexion)
+        );
+        assert_eq!(
+            select_architecture(Some("react")),
+            Some(AgentArchitecture::ReAct)
+        );
+        assert_eq!(
+            select_architecture(Some("rig")),
+            Some(AgentArchitecture::Rig)
+        );
+    }
+
+    #[test]
+    fn test_architecture_env_unset_or_invalid_uses_default() {
+        assert_eq!(select_architecture(None), None);
+        assert_eq!(select_architecture(Some("")), None);
+        assert_eq!(select_architecture(Some("tree")), None);
     }
 }

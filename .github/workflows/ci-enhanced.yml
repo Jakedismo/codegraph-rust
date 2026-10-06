@@ -20,9 +20,7 @@ on:
           - stable
           - beta
           - nightly
-          - '1.70.0'
-          - '1.75.0'
-          - '1.80.0'
+          - '1.95.0'
 
 env:
   CARGO_TERM_COLOR: always
@@ -184,7 +182,7 @@ jobs:
           
           # MSRV (Minimum Supported Rust Version)
           - os: ubuntu-latest
-            rust: '1.70.0'
+            rust: '1.95.0'
             target: x86_64-unknown-linux-gnu
             features: ''
             

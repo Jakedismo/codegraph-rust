@@ -7,7 +7,7 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ArchitectureStats {
     pub package_cycles_detected: usize,
     pub boundary_violations_added: usize,
@@ -32,65 +32,128 @@ pub fn analyze_architecture(
     nodes: &[CodeNode],
     edges: &mut Vec<EdgeRelationship>,
 ) -> Result<ArchitectureStats> {
+    use codegraph_core::artifact_cache::{ArtifactCache, fingerprint};
+    let packages: std::collections::BTreeMap<_, _> = nodes
+        .iter()
+        .filter(|node| node.node_type == Some(NodeType::Other("package".into())))
+        .map(|node| {
+            (
+                node.id,
+                (&node.name, node.metadata.attributes.get("qualified_name")),
+            )
+        })
+        .collect();
+    let mut dependencies: Vec<_> = edges
+        .iter()
+        .filter(|edge| edge.edge_type == EdgeType::Other("depends_on".into()))
+        .map(|edge| (edge.from, &edge.to, &edge.metadata))
+        .collect();
+    dependencies.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+    let boundary_path = project_root.join("codegraph.boundaries.toml");
+    let boundary_text = match std::fs::read_to_string(boundary_path) {
+        Ok(text) => Some(text),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+    let key = fingerprint(&("architecture-v2", packages, dependencies, &boundary_text))?;
+    let cache = ArtifactCache::new(
+        project_root.join(".codegraph/index-cache"),
+        "architecture-v2",
+    );
+    if let Some((stats, additions)) = cache.get::<(ArchitectureStats, Vec<EdgeRelationship>)>(&key)
+    {
+        edges.extend(additions);
+        return Ok(stats);
+    }
+    let before = edges.len();
+    let stats = analyze_uncached(
+        nodes,
+        edges,
+        boundary_text
+            .as_deref()
+            .map(toml::from_str)
+            .transpose()?
+            .unwrap_or_default(),
+    )?;
+    if let Err(error) = cache.put(&key, &(stats, &edges[before..])) {
+        tracing::debug!("Architecture cache unavailable: {error}");
+    }
+    Ok(stats)
+}
+
+fn analyze_uncached(
+    nodes: &[CodeNode],
+    edges: &mut Vec<EdgeRelationship>,
+    boundary: BoundaryConfig,
+) -> Result<ArchitectureStats> {
     let mut stats = ArchitectureStats::default();
 
     stats.package_cycles_detected = count_package_cycles(nodes, edges);
 
-    let boundary = read_boundary_config(project_root).unwrap_or_default();
     if boundary.deny.is_empty() {
         return Ok(stats);
     }
 
-    let mut packages_by_name: HashMap<String, NodeId> = HashMap::new();
+    let mut packages_by_name: HashMap<String, Vec<NodeId>> = HashMap::new();
+    let names_by_id: HashMap<_, _> = nodes
+        .iter()
+        .map(|node| (node.id, node.name.to_string()))
+        .collect();
     for n in nodes {
         if n.node_type == Some(NodeType::Other("package".to_string())) {
-            packages_by_name.insert(n.name.to_string(), n.id);
+            packages_by_name
+                .entry(n.name.to_string())
+                .or_default()
+                .push(n.id);
         }
     }
 
     let mut depends: HashSet<(NodeId, String)> = HashSet::new();
     for e in edges.iter() {
         if e.edge_type == EdgeType::Other("depends_on".to_string()) {
-            depends.insert((e.from, e.to.to_string()));
+            let name = e
+                .metadata
+                .get("target_node_id")
+                .and_then(|id| id.parse::<NodeId>().ok())
+                .and_then(|id| names_by_id.get(&id))
+                .cloned()
+                .unwrap_or_else(|| e.to.clone());
+            depends.insert((e.from, name));
         }
     }
 
     for rule in boundary.deny {
-        let Some(&from_id) = packages_by_name.get(&rule.from) else {
+        let Some(from_ids) = packages_by_name.get(&rule.from) else {
             continue;
         };
-        if !depends.contains(&(from_id, rule.to.clone())) {
-            continue;
-        }
+        for &from_id in from_ids {
+            if !depends.contains(&(from_id, rule.to.clone())) {
+                continue;
+            }
 
-        let mut metadata: HashMap<String, String> = HashMap::new();
-        metadata.insert("analyzer".to_string(), "architecture_boundary".to_string());
-        metadata.insert("analyzer_confidence".to_string(), "1.0".to_string());
-        if let Some(reason) = rule.reason {
-            metadata.insert("boundary_reason".to_string(), reason);
-        }
-        metadata.insert(
-            "boundary_rule".to_string(),
-            format!("deny:{}->{}", rule.from, rule.to),
-        );
+            let mut metadata: HashMap<String, String> = HashMap::new();
+            metadata.insert("analyzer".to_string(), "architecture_boundary".to_string());
+            metadata.insert("analyzer_confidence".to_string(), "1.0".to_string());
+            if let Some(reason) = rule.reason.clone() {
+                metadata.insert("boundary_reason".to_string(), reason);
+            }
+            metadata.insert(
+                "boundary_rule".to_string(),
+                format!("deny:{}->{}", rule.from, rule.to),
+            );
 
-        edges.push(EdgeRelationship {
-            from: from_id,
-            to: rule.to,
-            edge_type: EdgeType::Other("violates_boundary".to_string()),
-            metadata,
-            span: None,
-        });
-        stats.boundary_violations_added += 1;
+            edges.push(EdgeRelationship {
+                from: from_id,
+                to: rule.to.clone(),
+                edge_type: EdgeType::Other("violates_boundary".to_string()),
+                metadata,
+                span: None,
+            });
+            stats.boundary_violations_added += 1;
+        }
     }
 
     Ok(stats)
-}
-
-fn read_boundary_config(project_root: &Path) -> Option<BoundaryConfig> {
-    let path = project_root.join("codegraph.boundaries.toml");
-    let content = std::fs::read_to_string(path).ok()?;
-    toml::from_str(&content).ok()
 }
 
 fn count_package_cycles(nodes: &[CodeNode], edges: &[EdgeRelationship]) -> usize {
@@ -114,7 +177,12 @@ fn count_package_cycles(nodes: &[CodeNode], edges: &[EdgeRelationship]) -> usize
         if !package_names.contains_key(&e.from) {
             continue;
         }
-        let Some(&to_id) = package_id_by_name.get(e.to.as_str()) else {
+        let target = e
+            .metadata
+            .get("target_node_id")
+            .and_then(|id| id.parse::<NodeId>().ok())
+            .or_else(|| package_id_by_name.get(e.to.as_str()).copied());
+        let Some(to_id) = target else {
             continue;
         };
         adj.entry(e.from).or_default().push(to_id);
@@ -143,7 +211,7 @@ fn count_package_cycles(nodes: &[CodeNode], edges: &[EdgeRelationship]) -> usize
         stack.push(v);
         on_stack.insert(v);
 
-        for w in adj.get(&v).cloned().unwrap_or_default() {
+        for w in adj.get(&v).into_iter().flatten().copied() {
             if !indices.contains_key(&w) {
                 strongconnect(w, index, indices, lowlink, stack, on_stack, adj, cycles);
                 let lw = *lowlink.get(&w).unwrap();

@@ -10,8 +10,8 @@ use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom, Write};
 #[cfg(feature = "persistent")]
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryPoolConfig {
@@ -262,6 +262,7 @@ impl MemoryOptimizer {
 
         // Create the file
         let mut file = OpenOptions::new()
+            .read(true)
             .create(true)
             .write(true)
             .truncate(true)

@@ -3,6 +3,11 @@
 
 use std::path::PathBuf;
 
+/// v2 defines functions with OVERWRITE; compare against the plain form.
+fn normalize(schema: &str) -> String {
+    schema.replace("DEFINE FUNCTION OVERWRITE ", "DEFINE FUNCTION ")
+}
+
 fn assert_schema_has_no_expression_if_followed_by_let(label: &str, schema: &str) {
     let needles = ["THEN (", "THEN("];
 
@@ -28,15 +33,10 @@ fn assert_schema_has_no_expression_if_followed_by_let(label: &str, schema: &str)
 
 #[test]
 fn schema_defines_project_scoped_indexes() {
-    let schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
-        .join("schema")
-        .join("codegraph.surql");
-
-    let schema = std::fs::read_to_string(&schema_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {}", schema_path.display(), e));
-
+        .join("schema");
     let expectations = [
         "DEFINE INDEX idx_nodes_project_file ON nodes FIELDS project_id, file_path",
         "DEFINE INDEX idx_chunks_project ON chunks FIELDS project_id",
@@ -44,15 +44,22 @@ fn schema_defines_project_scoped_indexes() {
         "DEFINE FIELD project_id ON edges",
         "DEFINE INDEX idx_edges_project ON edges FIELDS project_id",
         "DEFINE INDEX idx_edges_project_type ON edges FIELDS project_id, edge_type",
-        "DEFINE FUNCTION fn::edge_types() { RETURN ['calls', 'defines', 'imports', 'uses', 'extends', 'implements', 'references', 'contains', 'belongs_to', 'depends_on', 'exports', 'reexports', 'enables', 'generates', 'flows_to', 'returns', 'captures', 'mutates', 'violates_boundary', 'documents', 'specifies']; }",
+        "DEFINE FUNCTION fn::edge_types() {",
+        "['calls', 'defines', 'imports', 'uses', 'extends', 'implements', 'references', 'contains', 'belongs_to', 'depends_on', 'exports', 'reexports', 'enables', 'generates', 'flows_to', 'returns', 'captures', 'mutates', 'violates_boundary', 'documents', 'specifies']",
     ];
-
-    for needle in expectations {
-        assert!(
-            schema.contains(needle),
-            "schema missing expected definition: {}",
-            needle
+    for file in ["codegraph.surql", "codegraph_v2.surql"] {
+        let schema_path = base.join(file);
+        let schema = normalize(
+            &std::fs::read_to_string(&schema_path)
+                .unwrap_or_else(|e| panic!("failed to read {}: {}", schema_path.display(), e)),
         );
+        for needle in expectations {
+            assert!(
+                schema.contains(needle),
+                "{file} missing expected definition: {}",
+                needle
+            );
+        }
     }
 }
 
@@ -97,7 +104,11 @@ fn schemas_define_graph_tool_functions() {
 
     let schemas = [
         ("main", base.join("codegraph.surql")),
-        ("experimental", base.join("codegraph_graph_experimental.surql")),
+        (
+            "experimental",
+            base.join("codegraph_graph_experimental.surql"),
+        ),
+        ("v2", base.join("codegraph_v2.surql")),
     ];
 
     let required_functions = [
@@ -114,8 +125,10 @@ fn schemas_define_graph_tool_functions() {
     ];
 
     for (label, path) in schemas {
-        let schema = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+        let schema = normalize(
+            &std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e)),
+        );
 
         for needle in required_functions {
             assert!(

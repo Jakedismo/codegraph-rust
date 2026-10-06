@@ -2,7 +2,7 @@
 // ABOUTME: JSON schemas for agentic tool calling - defines parameters and descriptions for LLM consumption
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 
 /// Tool schema for LLM function calling
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,9 +1,9 @@
 use crate::heartbeat::HeartbeatManager;
-use codegraph_mcp_core::{message::JsonRpcMessage, McpError, Result};
-use futures::{stream::SplitSink, SinkExt, StreamExt};
+use codegraph_mcp_core::{McpError, Result, message::JsonRpcMessage};
+use futures::{SinkExt, StreamExt, stream::SplitSink};
 use std::{sync::Arc, time::Duration};
-use tokio::sync::{broadcast, RwLock};
-use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage, WebSocketStream};
+use tokio::sync::{RwLock, broadcast};
+use tokio_tungstenite::{WebSocketStream, connect_async, tungstenite::Message as WsMessage};
 use tracing::{error, warn};
 use url::Url;
 

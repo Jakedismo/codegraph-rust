@@ -4,6 +4,17 @@ How to get the most out of CodeGraph when working with AI coding assistants.
 
 ---
 
+## CLI access for code agents
+
+Run the four public tools directly with `codegraph agent context|impact|architecture|quality`.
+For example, `codegraph agent context "Where is configuration loaded?" --focus search`.
+`codegraph init /path/to/project` offers project-local Claude/Codex hooks, adds
+CodeGraph-first guidance to both `AGENTS.md` and `CLAUDE.md`, then indexes recursively.
+Use `--hooks claude|codex|both|none` for an explicit choice and `--no-index` for setup only.
+Use `codegraph agent instructions` for standalone guidance, and `codegraph hooks install`
+for opt-in project-local Claude Code/Codex hooks. See [the agentic CLI guide](AGENTIC_CLI.md)
+for build features, project selection, output, and setup.
+
 ## Getting Started with Your AI Assistant
 
 ### Step 1: Initialize the Session

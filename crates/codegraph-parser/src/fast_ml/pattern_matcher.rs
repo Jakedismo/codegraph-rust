@@ -103,14 +103,16 @@ impl PatternMatcher {
             ("php:implements ", EdgeType::Implements),
         ];
 
-        let patterns: Vec<String> = pattern_configs.iter().map(|(p, _)| p.to_string()).collect();
+        let patterns: Vec<String> = pattern_configs
+            .iter()
+            .map(|(p, _)| p.split_once(':').unwrap().1.to_string())
+            .collect();
         let pattern_metadata: Vec<(String, EdgeType)> = pattern_configs
             .iter()
             .map(|(p, e)| (p.to_string(), e.clone()))
             .collect();
 
         let automaton = AhoCorasickBuilder::new()
-            .match_kind(aho_corasick::MatchKind::LeftmostLongest)
             .build(&patterns)
             .expect("Failed to build Aho-Corasick automaton");
 
@@ -126,13 +128,16 @@ impl PatternMatcher {
     }
 
     /// Enhance extraction result with pattern-based edges AND node enrichment (50-500ns per file)
-    pub fn enhance_extraction(
+    pub fn enhance_extraction(&self, result: ExtractionResult, content: &str) -> ExtractionResult {
+        self.enhance_with_policy(result, content, Default::default())
+    }
+
+    pub fn enhance_with_policy(
         &self,
         mut result: ExtractionResult,
         content: &str,
+        policy: crate::languages::ExtractionPolicy,
     ) -> ExtractionResult {
-        // Prefix content with language marker to gate matches (e.g., "rust:", "py:")
-        let mut gated_content = String::with_capacity(content.len() + 8);
         let lang_prefix = match result.nodes.first().and_then(|n| n.language.as_ref()) {
             Some(codegraph_core::Language::Rust) => "rust:",
             Some(codegraph_core::Language::TypeScript) => "ts:",
@@ -147,11 +152,16 @@ impl PatternMatcher {
             Some(codegraph_core::Language::Php) => "php:",
             _ => "",
         };
-        gated_content.push_str(lang_prefix);
-        gated_content.push_str(content);
-
-        // Find all pattern matches in content (SIMD-accelerated, sub-microsecond)
-        let matches: Vec<_> = self.automaton.find_iter(&gated_content).collect();
+        // Language is a metadata filter, not a prefix on the whole source. A prefix
+        // only matched the first keyword and missed every subsequent line.
+        let matches: Vec<_> = self
+            .automaton
+            .find_overlapping_iter(content)
+            .filter(|m| {
+                let (name, edge_type) = &self.patterns[m.pattern().as_usize()];
+                !lang_prefix.is_empty() && name.starts_with(lang_prefix) && policy.allows(edge_type)
+            })
+            .collect();
 
         if matches.is_empty() {
             return result;
@@ -188,13 +198,13 @@ impl PatternMatcher {
                     .iter()
                     .max_by_key(|n| n.content.as_ref().map(|c| c.len()).unwrap_or(0))
             })
-            .cloned();
+            .map(|node| node.id);
 
         // Generate edges based on pattern frequency (top-k per file, capped per pattern)
         if let Some(rep) = representative_node {
             // Sort patterns by count desc
             let mut freq: Vec<(usize, usize)> = pattern_counts.into_iter().collect();
-            freq.sort_by(|a, b| b.1.cmp(&a.1));
+            freq.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
             let top_k = 5usize;
             let max_edges_per_file = 25usize;
             let max_per_pattern = 5usize;
@@ -219,7 +229,7 @@ impl PatternMatcher {
                             break;
                         }
                         new_edges.push(EdgeRelationship {
-                            from: rep.id,
+                            from: rep,
                             to: pattern_name.clone(),
                             edge_type: edge_type.clone(),
                             metadata: metadata.clone(),
@@ -282,6 +292,35 @@ impl Default for PatternMatcher {
 mod tests {
     use super::*;
     use codegraph_core::{CodeNode, Language};
+
+    #[test]
+    fn matches_later_lines_and_filters_other_languages_and_tiers() {
+        let matcher = PatternMatcher::new();
+        let mut node = CodeNode::new_test();
+        node.language = Some(Language::Rust);
+        let result = ExtractionResult {
+            nodes: vec![node],
+            edges: vec![],
+        };
+        let content = "// heading\n    pub fn a() {}\n    impl Trait for A {}\n    import x\n";
+        let full = matcher.enhance_extraction(result.clone(), content);
+        assert!(full.edges.iter().any(|edge| edge.to == "rust:pub fn"));
+        assert!(full.edges.iter().any(|edge| edge.to == "rust:impl "));
+        assert!(full.edges.iter().all(|edge| edge.to.starts_with("rust:")));
+        let fast = matcher.enhance_with_policy(
+            result,
+            content,
+            crate::languages::ExtractionPolicy {
+                uses: false,
+                references: false,
+            },
+        );
+        assert!(
+            fast.edges
+                .iter()
+                .all(|edge| edge.edge_type != EdgeType::Uses)
+        );
+    }
 
     #[test]
     fn test_pattern_matching_speed() {

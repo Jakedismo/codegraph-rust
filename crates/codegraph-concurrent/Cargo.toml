@@ -1,7 +1,8 @@
 [package]
 name = "codegraph-concurrent"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
@@ -16,7 +17,7 @@ async-trait = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
-loom = "0.7"
+loom = "0.7.2"
 
 [features]
 loom = []

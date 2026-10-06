@@ -1,128 +1,37 @@
-# CodeGraph Configuration Files
+# CodeGraph configuration
 
-## Important: Configuration Directory Migration
+`example.toml` in this directory is the reference configuration file. Copy it to one of:
 
-**As of the latest version, CodeGraph uses `~/.codegraph` as the primary configuration directory.**
+- `./.codegraph.toml` in a project (used when present), or
+- `~/.codegraph/config.toml` for all projects (`codegraph config init` creates this file with
+  every default written out).
 
-### New Location: `~/.codegraph`
+A `.env` file in the working directory (then `~/.codegraph.env`) and `CODEGRAPH_*` environment
+variables override the config file. `../.env.example` lists the environment variables.
 
-All user-level configuration files should now be placed in:
+## What the config file controls
 
-```
-~/.codegraph/
-```
+| Section | Effect |
+| --- | --- |
+| `[embedding]` | Embedding provider, model, dimension, batch size and provider URLs used by indexing and search. |
+| `[llm]` | Provider, model, context window and endpoint URLs for the agentic tools. Environment variables win over these keys; `enabled = false` makes the agent ignore the section; API keys come from the environment only. |
+| `[indexing]` | Default indexing tier (`fast`, `balanced`, `full`). |
+| `[daemon]` | File-watcher behaviour for `codegraph start --watch` and `codegraph daemon`. |
 
-This provides a centralized, uniform location for all CodeGraph configuration across your system.
+The loader also accepts `[rerank]`, `[performance]` and `[logging]`, but nothing outside
+`codegraph config show` / `agent-status` reads them at present. Unknown sections and keys are
+ignored silently.
 
-### Why the Change?
+Storage is not configured here. Each project uses an embedded store at
+`<project>/.codegraph/db`; set `CODEGRAPH_SURREALDB_URL` to use a SurrealDB server instead.
 
-- **Centralized**: All CodeGraph configs in one place, regardless of project
-- **User-level**: Configurations follow you across different projects
-- **Standard practice**: Follows Unix/Linux convention for user configuration
-- **Cleaner projects**: Keeps project directories focused on code
-
-### Migration
-
-To migrate your existing configurations:
-
-```bash
-# Create the directory
-mkdir -p ~/.codegraph
-
-# Copy existing configs
-cp config/*.toml ~/.codegraph/
-
-# Or symlink for development (keeps backward compatibility)
-ln -s $(pwd)/config ~/.codegraph
-```
-
-### Backward Compatibility
-
-CodeGraph maintains backward compatibility by checking directories in this order:
-
-1. **`~/.codegraph/`** (Primary)
-2. **`./config/`** (This directory - fallback)
-3. **Current directory** (last resort)
-
-If `~/.codegraph` exists, it will be used. Otherwise, CodeGraph falls back to `./config/`.
-
-## Configuration Files in This Directory
-
-This directory contains **example configuration files** that can be copied to `~/.codegraph/`:
-
-- `default.toml` - Base configuration example
-- `surrealdb_example.toml` - SurrealDB configuration
-- `example_embedding.toml` - Embedding provider configuration
-- `example_performance.toml` - Performance tuning
-- `production.toml` - Production settings example
-
-## Quick Start
-
-### 1. Initialize User Config
+## Checking what is in effect
 
 ```bash
-# Create ~/.codegraph with default configs
-mkdir -p ~/.codegraph
-cp config/default.toml ~/.codegraph/
+codegraph config show          # merged configuration
+codegraph config agent-status  # provider, model, context tier the agent will use
+codegraph config validate
 ```
 
-### 2. Customize Your Configuration
-
-```bash
-# Edit your user config
-nano ~/.codegraph/default.toml
-
-# Or create environment-specific configs
-cp ~/.codegraph/default.toml ~/.codegraph/development.toml
-cp ~/.codegraph/default.toml ~/.codegraph/production.toml
-```
-
-### 3. Set Environment
-
-```bash
-export APP_ENV=development  # Loads ~/.codegraph/development.toml
-# or
-export APP_ENV=production   # Loads ~/.codegraph/production.toml
-```
-
-## Environment Variables
-
-Override any config value using environment variables:
-
-```bash
-# Database backend
-export CODEGRAPH__DATABASE__BACKEND=surrealdb
-
-# SurrealDB connection
-export CODEGRAPH__DATABASE__SURREALDB__CONNECTION=ws://localhost:8000
-
-# Server port
-export CODEGRAPH__SERVER__PORT=8080
-```
-
-## Further Documentation
-
-- **[Full Configuration Guide](../docs/CONFIGURATION_GUIDE.md)** - Complete configuration documentation
-- **[SurrealDB Guide](../docs/SURREALDB_GUIDE.md)** - SurrealDB-specific configuration
-- **[Environment Variables](../docs/CONFIGURATION_GUIDE.md#environment-variables)** - Full list of env vars
-
-## Development
-
-For development, you can continue using this `./config` directory, but we recommend migrating to `~/.codegraph` for consistency:
-
-```bash
-# Option 1: Copy to ~/.codegraph
-mkdir -p ~/.codegraph && cp config/*.toml ~/.codegraph/
-
-# Option 2: Symlink (for active development)
-ln -s $(pwd)/config ~/.codegraph
-
-# Option 3: Keep using ./config (backward compatible)
-# CodeGraph will use ./config if ~/.codegraph doesn't exist
-```
-
-## Need Help?
-
-- Check the [Configuration Guide](../docs/CONFIGURATION_GUIDE.md)
-- See example configs in this directory
-- Use `CODEGRAPH__LOGGING__LEVEL=debug` to see which config directory is being used
+See `../docs/INSTALLATION_GUIDE.md#configuration` and `../docs/AI_PROVIDERS.md` for
+per-provider examples.

@@ -135,18 +135,22 @@ async fn test_configuration_manager() {
     assert_eq!(current.performance.mode, PerformanceMode::Balanced);
 
     // Test switching performance mode
-    assert!(manager
-        .switch_performance_mode(PerformanceMode::HighSpeed)
-        .await
-        .is_ok());
+    assert!(
+        manager
+            .switch_performance_mode(PerformanceMode::HighSpeed)
+            .await
+            .is_ok()
+    );
     let updated = manager.get_config().await;
     assert_eq!(updated.performance.mode, PerformanceMode::HighSpeed);
 
     // Test switching embedding preset
-    assert!(manager
-        .switch_embedding_preset("local-minilm")
-        .await
-        .is_ok());
+    assert!(
+        manager
+            .switch_embedding_preset("local-minilm")
+            .await
+            .is_ok()
+    );
     let updated = manager.get_config().await;
     assert_eq!(updated.embedding.dimension, 384);
 }
@@ -159,20 +163,31 @@ async fn test_runtime_switching_disabled() {
     let manager = ConfigurationManager::new(config);
 
     // Should fail when runtime switching is disabled
-    assert!(manager
-        .switch_performance_mode(PerformanceMode::HighSpeed)
-        .await
-        .is_err());
-    assert!(manager
-        .switch_embedding_preset("openai-small")
-        .await
-        .is_err());
+    assert!(
+        manager
+            .switch_performance_mode(PerformanceMode::HighSpeed)
+            .await
+            .is_err()
+    );
+    assert!(
+        manager
+            .switch_embedding_preset("openai-small")
+            .await
+            .is_err()
+    );
 }
 
 #[test]
 fn test_environment_overrides() {
-    std::env::set_var("CODEGRAPH_EMBEDDING_PROVIDER", "openai");
-    std::env::set_var("CODEGRAPH_PERFORMANCE_MODE", "high_speed");
+    if !test_env::run(
+        concat!(module_path!(), "::test_environment_overrides"),
+        &[
+            ("CODEGRAPH_EMBEDDING_PROVIDER", Some("openai")),
+            ("CODEGRAPH_PERFORMANCE_MODE", Some("high_speed")),
+        ],
+    ) {
+        return;
+    }
 
     let mut config = AdvancedConfig::default();
     config.apply_environment_overrides();
@@ -184,8 +199,6 @@ fn test_environment_overrides() {
     assert_eq!(config.performance.mode, PerformanceMode::HighSpeed);
 
     // Clean up
-    std::env::remove_var("CODEGRAPH_EMBEDDING_PROVIDER");
-    std::env::remove_var("CODEGRAPH_PERFORMANCE_MODE");
 }
 
 #[test]
@@ -211,4 +224,12 @@ fn test_performance_mode_descriptions() {
     assert!(!PerformanceMode::HighSpeed.description().is_empty());
     assert!(!PerformanceMode::UltraFast.description().is_empty());
     assert!(!PerformanceMode::Custom.description().is_empty());
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

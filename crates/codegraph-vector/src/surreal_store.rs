@@ -3,7 +3,7 @@
 
 use async_trait::async_trait;
 use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId, Result, VectorStore};
-use codegraph_graph::{surreal_embedding_column_for_dimension, SurrealDbStorage};
+use codegraph_graph::{SurrealDbStorage, surreal_embedding_column_for_dimension};
 use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 
@@ -129,7 +129,7 @@ fn normalize_surreal_node_id(raw_id: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_surreal_node_id, SurrealVectorBackend, SurrealVectorStore};
+    use super::{SurrealVectorBackend, SurrealVectorStore, normalize_surreal_node_id};
     use async_trait::async_trait;
     use codegraph_core::{CodeNode, NodeId, Result, VectorStore};
     use parking_lot::Mutex;

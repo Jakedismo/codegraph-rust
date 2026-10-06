@@ -3,8 +3,14 @@ pub mod connection;
 pub mod estimation;
 pub mod heartbeat;
 pub mod indexer;
+pub mod policy;
+mod reconciliation;
+mod resolution;
+#[cfg(any(test, feature = "ai-enhanced"))]
+mod semantic_scoring;
 pub mod transport;
 pub mod utils;
+mod writer;
 
 pub use codegraph_mcp_core::context_aware_limits;
 pub use codegraph_mcp_core::{
@@ -21,8 +27,8 @@ pub use codegraph_mcp_core::{
 pub use codegraph_mcp_tools::{CacheStats, GraphToolExecutor, GraphToolSchemas, ToolSchema};
 pub use connection::*;
 pub use estimation::{
-    build_symbol_index, EmbeddingThroughputConfig, RepositoryEstimate, RepositoryEstimator,
-    TimeEstimates,
+    EmbeddingThroughputConfig, RepositoryEstimate, RepositoryEstimator, TimeEstimates,
+    build_symbol_index,
 };
 pub use heartbeat::*;
 pub use indexer::{IndexStats, IndexerConfig, ProjectIndexer};

@@ -1,10 +1,137 @@
-// ABOUTME: Adapter for creating Rig providers from environment variables
-// ABOUTME: Maps CODEGRAPH_LLM_PROVIDER to appropriate Rig provider clients
+// ABOUTME: Resolves the agent's LLM provider, model and endpoints and builds Rig clients.
+// ABOUTME: Each setting comes from the environment, then the config file's [llm] keys, then a default.
 
-use anyhow::{anyhow, Result};
-#[allow(unused_imports)] // Used when provider features are enabled
-use rig::client::ProviderClient;
+use anyhow::{Result, anyhow};
+use codegraph_core::config_manager::{ConfigManager, ExplicitLlmSettings};
 use std::env;
+
+/// Where settings are looked up: an environment reader and the `[llm]` keys the user
+/// wrote in the config file. Environment values win, so existing setups are unchanged.
+struct Sources<'a> {
+    env: &'a dyn Fn(&str) -> Option<String>,
+    file: &'a ExplicitLlmSettings,
+}
+
+fn process_env(name: &str) -> Option<String> {
+    env::var(name).ok().filter(|v| !v.trim().is_empty())
+}
+
+impl Sources<'_> {
+    fn first_env(&self, names: &[&str]) -> Option<String> {
+        names.iter().find_map(|name| (self.env)(name))
+    }
+
+    fn provider(&self) -> Result<RigProvider> {
+        if let Some(name) = self
+            .first_env(&["CODEGRAPH_LLM_PROVIDER"])
+            .or_else(|| self.file.provider.clone())
+        {
+            return self.provider_from_name(&name);
+        }
+
+        // Fall back to API key detection
+        if self.first_env(&["XAI_API_KEY"]).is_some() {
+            return Ok(RigProvider::XAI);
+        }
+        if self.first_env(&["ANTHROPIC_API_KEY"]).is_some() {
+            return Ok(RigProvider::Anthropic);
+        }
+        if self.first_env(&["OPENAI_API_KEY"]).is_some() {
+            return Ok(RigProvider::OpenAI);
+        }
+        if self
+            .first_env(&["OLLAMA_API_URL", "OLLAMA_API_BASE_URL", "OLLAMA_HOST"])
+            .is_some()
+            || self.file.ollama_url.is_some()
+        {
+            return Ok(RigProvider::Ollama);
+        }
+
+        Err(anyhow!(
+            "No LLM provider configured. Set CODEGRAPH_LLM_PROVIDER, add [llm] provider to the \
+             config file, or provide API keys."
+        ))
+    }
+
+    fn provider_from_name(&self, name: &str) -> Result<RigProvider> {
+        match name.to_lowercase().as_str() {
+            "openai" => Ok(RigProvider::OpenAI),
+            "anthropic" => Ok(RigProvider::Anthropic),
+            "ollama" => Ok(RigProvider::Ollama),
+            "xai" => Ok(RigProvider::XAI),
+            "lmstudio" => Ok(RigProvider::LMStudio),
+            "openai-compatible" => Ok(RigProvider::OpenAICompatible {
+                base_url: self.openai_compatible_url(),
+            }),
+            _ => Err(anyhow!(
+                "Unknown provider: {}. Supported: openai, anthropic, ollama, xai, lmstudio, openai-compatible",
+                name
+            )),
+        }
+    }
+
+    fn model(&self) -> String {
+        self.first_env(&[
+            "CODEGRAPH_LLM_MODEL",
+            "CODEGRAPH_AGENT_MODEL",
+            "CODEGRAPH_MODEL",
+        ])
+        .or_else(|| self.file.model.clone())
+        .unwrap_or_else(|| default_model(self.provider().ok().as_ref()))
+    }
+
+    #[cfg(any(feature = "ollama", test))]
+    fn ollama_url(&self) -> String {
+        self.first_env(&["OLLAMA_API_BASE_URL", "OLLAMA_API_URL", "OLLAMA_HOST"])
+            .or_else(|| self.file.ollama_url.clone())
+            .unwrap_or_else(|| "http://localhost:11434".to_string())
+    }
+
+    #[cfg(any(feature = "openai", test))]
+    fn lmstudio_url(&self) -> String {
+        self.first_env(&["LMSTUDIO_URL", "CODEGRAPH_LMSTUDIO_URL"])
+            .or_else(|| self.file.lmstudio_url.as_deref().map(with_v1_suffix))
+            .unwrap_or_else(|| "http://localhost:1234/v1".to_string())
+    }
+
+    fn openai_compatible_url(&self) -> String {
+        self.first_env(&["CODEGRAPH_OPENAI_COMPATIBLE_URL", "OPENAI_COMPATIBLE_URL"])
+            .or_else(|| self.file.openai_compatible_url.clone())
+            .unwrap_or_else(|| "http://localhost:1234/v1".to_string())
+    }
+}
+
+/// The config file documents LM Studio's server root; its OpenAI-compatible API is under `/v1`.
+#[cfg(any(feature = "openai", test))]
+fn with_v1_suffix(url: &str) -> String {
+    let trimmed = url.trim_end_matches('/');
+    if trimmed.ends_with("/v1") {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}/v1")
+    }
+}
+
+fn default_model(provider: Option<&RigProvider>) -> String {
+    match provider {
+        Some(RigProvider::OpenAI) => "gpt-4o".to_string(),
+        Some(RigProvider::Anthropic) => "claude-sonnet-4-20250514".to_string(),
+        Some(RigProvider::Ollama) => "llama3.2".to_string(),
+        Some(RigProvider::XAI) => "grok-3-latest".to_string(),
+        Some(RigProvider::LMStudio) => "default".to_string(),
+        Some(RigProvider::OpenAICompatible { .. }) => "default".to_string(),
+        None => "gpt-4o".to_string(),
+    }
+}
+
+/// Run `f` against the process environment and the config file's `[llm]` keys.
+fn with_sources<T>(f: impl FnOnce(&Sources<'_>) -> T) -> T {
+    let file = ConfigManager::explicit_llm_settings();
+    f(&Sources {
+        env: &process_env,
+        file: &file,
+    })
+}
 
 /// Supported LLM providers for Rig agents
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,76 +150,22 @@ pub enum RigProvider {
 }
 
 impl RigProvider {
-    /// Detect provider from environment variables
-    /// Priority: CODEGRAPH_LLM_PROVIDER > API key presence
+    /// Detect the provider.
+    /// Priority: CODEGRAPH_LLM_PROVIDER > `[llm] provider` in the config file > API key presence
     pub fn from_env() -> Result<Self> {
-        // Check explicit provider setting
-        if let Ok(provider) = env::var("CODEGRAPH_LLM_PROVIDER") {
-            return Self::from_name(&provider);
-        }
-
-        // Fall back to API key detection
-        if env::var("XAI_API_KEY").is_ok() {
-            return Ok(Self::XAI);
-        }
-        if env::var("ANTHROPIC_API_KEY").is_ok() {
-            return Ok(Self::Anthropic);
-        }
-        if env::var("OPENAI_API_KEY").is_ok() {
-            return Ok(Self::OpenAI);
-        }
-        if env::var("OLLAMA_API_URL").is_ok()
-            || env::var("OLLAMA_API_BASE_URL").is_ok()
-            || env::var("OLLAMA_HOST").is_ok()
-        {
-            return Ok(Self::Ollama);
-        }
-
-        Err(anyhow!(
-            "No LLM provider configured. Set CODEGRAPH_LLM_PROVIDER or provide API keys."
-        ))
+        with_sources(|sources| sources.provider())
     }
 
     /// Parse provider from name string
     pub fn from_name(name: &str) -> Result<Self> {
-        match name.to_lowercase().as_str() {
-            "openai" => Ok(Self::OpenAI),
-            "anthropic" => Ok(Self::Anthropic),
-            "ollama" => Ok(Self::Ollama),
-            "xai" => Ok(Self::XAI),
-            "lmstudio" => Ok(Self::LMStudio),
-            "openai-compatible" => {
-                let base_url = env::var("CODEGRAPH_OPENAI_COMPATIBLE_URL")
-                    .or_else(|_| env::var("OPENAI_COMPATIBLE_URL"))
-                    .unwrap_or_else(|_| "http://localhost:1234/v1".to_string());
-                Ok(Self::OpenAICompatible { base_url })
-            }
-            _ => Err(anyhow!(
-                "Unknown provider: {}. Supported: openai, anthropic, ollama, xai, lmstudio, openai-compatible",
-                name
-            )),
-        }
+        with_sources(|sources| sources.provider_from_name(name))
     }
 }
 
-/// Get the model name from environment
+/// Get the model name: CODEGRAPH_LLM_MODEL, CODEGRAPH_AGENT_MODEL, CODEGRAPH_MODEL,
+/// then `[llm] model` in the config file, then the provider's default.
 pub fn get_model_name() -> String {
-    env::var("CODEGRAPH_LLM_MODEL")
-        .or_else(|_| env::var("CODEGRAPH_AGENT_MODEL"))
-        .unwrap_or_else(|_| default_model_for_provider())
-}
-
-/// Get default model based on detected provider
-fn default_model_for_provider() -> String {
-    match RigProvider::from_env() {
-        Ok(RigProvider::OpenAI) => "gpt-4o".to_string(),
-        Ok(RigProvider::Anthropic) => "claude-sonnet-4-20250514".to_string(),
-        Ok(RigProvider::Ollama) => "llama3.2".to_string(),
-        Ok(RigProvider::XAI) => "grok-3-latest".to_string(),
-        Ok(RigProvider::LMStudio) => "default".to_string(),
-        Ok(RigProvider::OpenAICompatible { .. }) => "default".to_string(),
-        Err(_) => "gpt-4o".to_string(),
-    }
+    with_sources(|sources| sources.model())
 }
 
 /// Get maximum turns for tool loop from environment
@@ -105,14 +178,10 @@ pub fn get_max_turns() -> usize {
         .unwrap_or(8)
 }
 
-/// Get context window size from environment (for tier detection)
-/// Checks CODEGRAPH_CONTEXT_WINDOW first, then CODEGRAPH_LLM_CONTEXT_WINDOW for compatibility
+/// Get context window size (for tier detection): CODEGRAPH_CONTEXT_WINDOW, then
+/// CODEGRAPH_LLM_CONTEXT_WINDOW, then `[llm] context_window` in the config file, then 128K.
 pub fn get_context_window() -> usize {
-    env::var("CODEGRAPH_CONTEXT_WINDOW")
-        .or_else(|_| env::var("CODEGRAPH_LLM_CONTEXT_WINDOW"))
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(128_000) // Default to 128K
+    ConfigManager::agent_context_window()
 }
 
 /// LLM adapter for creating Rig-compatible providers
@@ -121,66 +190,60 @@ pub struct RigLLMAdapter;
 impl RigLLMAdapter {
     /// Create OpenAI client from environment
     #[cfg(feature = "openai")]
-    pub fn openai_client() -> rig::providers::openai::Client {
-        rig::providers::openai::Client::from_env()
+    pub fn openai_client() -> Result<rig::providers::openai::OpenAI> {
+        Ok(rig::providers::openai::OpenAI::from_env()?)
     }
 
     /// Create Anthropic client from environment
     #[cfg(feature = "anthropic")]
-    pub fn anthropic_client() -> rig::providers::anthropic::Client {
-        rig::providers::anthropic::Client::from_env()
+    pub fn anthropic_client() -> Result<rig::providers::anthropic::Anthropic> {
+        Ok(rig::providers::anthropic::Anthropic::from_env()?)
     }
 
     /// Create Ollama client from environment
     #[cfg(feature = "ollama")]
-    pub fn ollama_client() -> rig::providers::ollama::Client {
-        // Set OLLAMA_API_BASE_URL if not set (rig expects this specific env var)
-        if env::var("OLLAMA_API_BASE_URL").is_err() {
-            let base_url = env::var("OLLAMA_API_URL")
-                .or_else(|_| env::var("OLLAMA_HOST"))
-                .unwrap_or_else(|_| "http://localhost:11434".to_string());
-            env::set_var("OLLAMA_API_BASE_URL", &base_url);
+    pub fn ollama_client() -> Result<rig::providers::ollama::Ollama> {
+        let base_url = with_sources(|sources| sources.ollama_url());
+        let mut config = rig::providers::ollama::OllamaConfig::new().with_base_url(base_url);
+        if let Ok(api_key) = env::var("OLLAMA_API_KEY") {
+            config = config.with_api_key(api_key);
         }
-        rig::providers::ollama::Client::from_env()
+        Ok(config.client())
     }
 
     /// Create xAI client from environment (native rig xAI provider)
     #[cfg(feature = "xai")]
-    pub fn xai_client() -> rig::providers::xai::Client {
-        rig::providers::xai::Client::from_env()
+    pub fn xai_client() -> Result<rig::providers::openai::OpenAI> {
+        Ok(rig::providers::xai::from_env()?)
     }
 
     /// Create LM Studio client (uses OpenAI-compatible API)
-    /// Sets OPENAI_API_KEY and OPENAI_BASE_URL for rig's OpenAI client
+    /// Uses explicit client settings without changing the process environment.
     #[cfg(feature = "openai")]
-    pub fn lmstudio_client() -> rig::providers::openai::Client {
-        let base_url = env::var("LMSTUDIO_URL")
-            .or_else(|_| env::var("CODEGRAPH_LMSTUDIO_URL"))
-            .unwrap_or_else(|_| "http://localhost:1234/v1".to_string());
+    pub fn lmstudio_client() -> Result<rig::providers::openai::OpenAI> {
+        let base_url = with_sources(|sources| sources.lmstudio_url());
 
         // LM Studio doesn't require API key but OpenAI client needs something
         let api_key = env::var("LMSTUDIO_API_KEY").unwrap_or_else(|_| "lm-studio".to_string());
 
-        // Set environment variables for rig's from_env()
-        env::set_var("OPENAI_API_KEY", &api_key);
-        env::set_var("OPENAI_BASE_URL", &base_url);
-
-        rig::providers::openai::Client::from_env()
+        Ok(rig::providers::openai::OpenAIConfig::new(api_key)
+            .with_base_url(base_url)
+            .with_route(rig::providers::openai::wire::Route::Chat)
+            .client())
     }
 
     /// Create OpenAI-compatible client with custom base URL
-    /// Sets OPENAI_API_KEY and OPENAI_BASE_URL for rig's OpenAI client
+    /// Uses explicit client settings without changing the process environment.
     #[cfg(feature = "openai")]
-    pub fn openai_compatible_client(base_url: &str) -> rig::providers::openai::Client {
+    pub fn openai_compatible_client(base_url: &str) -> Result<rig::providers::openai::OpenAI> {
         let api_key = env::var("OPENAI_COMPATIBLE_API_KEY")
             .or_else(|_| env::var("OPENAI_API_KEY"))
             .unwrap_or_else(|_| "no-key".to_string());
 
-        // Set environment variables for rig's from_env()
-        env::set_var("OPENAI_API_KEY", &api_key);
-        env::set_var("OPENAI_BASE_URL", base_url);
-
-        rig::providers::openai::Client::from_env()
+        Ok(rig::providers::openai::OpenAIConfig::new(api_key)
+            .with_base_url(base_url)
+            .with_route(rig::providers::openai::wire::Route::Chat)
+            .client())
     }
 
     /// Get the detected provider
@@ -235,16 +298,121 @@ mod tests {
         assert!(RigProvider::from_name("unknown").is_err());
     }
 
+    fn sources_with<'a>(
+        env: &'a dyn Fn(&str) -> Option<String>,
+        file: &'a ExplicitLlmSettings,
+    ) -> Sources<'a> {
+        Sources { env, file }
+    }
+
+    #[test]
+    fn test_config_file_fills_in_when_env_is_silent() {
+        let file = ExplicitLlmSettings {
+            provider: Some("anthropic".into()),
+            model: Some("claude-sonnet-4".into()),
+            lmstudio_url: Some("http://studio:1234/".into()),
+            ..Default::default()
+        };
+        let no_env = |_: &str| None;
+        let sources = sources_with(&no_env, &file);
+        assert_eq!(sources.provider().unwrap(), RigProvider::Anthropic);
+        assert_eq!(sources.model(), "claude-sonnet-4");
+        assert_eq!(sources.lmstudio_url(), "http://studio:1234/v1");
+        assert_eq!(sources.ollama_url(), "http://localhost:11434");
+    }
+
+    #[test]
+    fn test_env_wins_over_config_file() {
+        let file = ExplicitLlmSettings {
+            provider: Some("anthropic".into()),
+            model: Some("claude-sonnet-4".into()),
+            ollama_url: Some("http://file:11434".into()),
+            ..Default::default()
+        };
+        let env = |name: &str| match name {
+            "CODEGRAPH_LLM_PROVIDER" => Some("ollama".to_string()),
+            "CODEGRAPH_MODEL" => Some("from-codegraph-model".to_string()),
+            "OLLAMA_HOST" => Some("http://env:11434".to_string()),
+            _ => None,
+        };
+        let sources = sources_with(&env, &file);
+        assert_eq!(sources.provider().unwrap(), RigProvider::Ollama);
+        assert_eq!(sources.model(), "from-codegraph-model");
+        assert_eq!(sources.ollama_url(), "http://env:11434");
+
+        let specific = |name: &str| match name {
+            "CODEGRAPH_LLM_MODEL" => Some("llm-model".to_string()),
+            "CODEGRAPH_MODEL" => Some("generic".to_string()),
+            _ => None,
+        };
+        assert_eq!(sources_with(&specific, &file).model(), "llm-model");
+    }
+
+    #[test]
+    fn test_api_key_detection_survives_without_explicit_provider() {
+        // An empty [llm] table must not turn the config default ("lmstudio") into a choice.
+        let file = ExplicitLlmSettings::default();
+        let env = |name: &str| (name == "ANTHROPIC_API_KEY").then(|| "key".to_string());
+        let sources = sources_with(&env, &file);
+        assert_eq!(sources.provider().unwrap(), RigProvider::Anthropic);
+        assert_eq!(sources.model(), "claude-sonnet-4-20250514");
+
+        let no_env = |_: &str| None;
+        assert!(sources_with(&no_env, &file).provider().is_err());
+    }
+
+    #[test]
+    fn test_openai_compatible_url_from_config_file() {
+        let file = ExplicitLlmSettings {
+            provider: Some("openai-compatible".into()),
+            openai_compatible_url: Some("http://gateway/v1".into()),
+            ..Default::default()
+        };
+        let no_env = |_: &str| None;
+        assert_eq!(
+            sources_with(&no_env, &file).provider().unwrap(),
+            RigProvider::OpenAICompatible {
+                base_url: "http://gateway/v1".into()
+            }
+        );
+    }
+
     #[test]
     fn test_default_max_turns() {
         // Without env var, should return 8 (conservative default)
-        std::env::remove_var("CODEGRAPH_AGENT_MAX_STEPS");
+        if !test_env::run(
+            concat!(module_path!(), "::test_default_max_turns"),
+            &[("CODEGRAPH_AGENT_MAX_STEPS", None)],
+        ) {
+            return;
+        }
         assert_eq!(get_max_turns(), 8);
     }
 
     #[test]
     fn test_default_context_window() {
-        std::env::remove_var("CODEGRAPH_LLM_CONTEXT_WINDOW");
+        if !test_env::run(
+            concat!(module_path!(), "::test_default_context_window"),
+            &[
+                ("CODEGRAPH_CONTEXT_WINDOW", None),
+                ("CODEGRAPH_LLM_CONTEXT_WINDOW", None),
+                // Keep a developer's own config file out of the test.
+                (
+                    "CODEGRAPH_CONFIG_PATH",
+                    Some("/nonexistent/codegraph-test.toml"),
+                ),
+            ],
+        ) {
+            return;
+        }
         assert_eq!(get_context_window(), 128_000);
     }
+}
+
+#[cfg(test)]
+mod test_env {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/support/env.rs"
+    ));
 }

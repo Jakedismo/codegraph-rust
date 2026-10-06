@@ -599,7 +599,8 @@ impl SemanticAnalyzer {
                         .end_line
                         .unwrap_or(node.location.line)
                         .saturating_sub(1) as usize;
-                    let end_col0 = node.location.end_column.unwrap_or(node.location.column) as usize;
+                    let end_col0 =
+                        node.location.end_column.unwrap_or(node.location.column) as usize;
 
                     semantic_affected.push(AffectedNode {
                         node_id: format!("semantic:{}:{}", node_kind, node.id),
@@ -655,15 +656,21 @@ mod tests {
         let old_content = "fn main() {\n    println!(\"Hello\");\n}";
         let new_content = "fn main() {\n    println!(\"Hello, World!\");\n}";
 
-        let regions = parser.compute_changed_regions(old_content, new_content).unwrap();
+        let regions = parser
+            .compute_changed_regions(old_content, new_content)
+            .unwrap();
 
         assert!(!regions.is_empty());
-        assert!(regions
-            .iter()
-            .any(|r| matches!(r.change_type, ChangeType::Delete)));
-        assert!(regions
-            .iter()
-            .any(|r| matches!(r.change_type, ChangeType::Insert)));
+        assert!(
+            regions
+                .iter()
+                .any(|r| matches!(r.change_type, ChangeType::Delete))
+        );
+        assert!(
+            regions
+                .iter()
+                .any(|r| matches!(r.change_type, ChangeType::Insert))
+        );
     }
 
     #[tokio::test]

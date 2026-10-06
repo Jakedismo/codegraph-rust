@@ -4,7 +4,7 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 

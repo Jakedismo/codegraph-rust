@@ -11,7 +11,7 @@ NAMESPACE="${SURREAL_NAMESPACE:-ouroboros}"
 DATABASE="${SURREAL_DATABASE:-codegraph}"
 USERNAME="${SURREAL_USER:-root}"
 PASSWORD="${SURREAL_PASSWORD:-root}"
-SCHEMA_FILE="codegraph.surql"
+SCHEMA_FILE="codegraph_v2.surql"
 
 # Colors for output
 RED='\033[0;31m'
@@ -32,7 +32,7 @@ OPTIONS:
     -d, --database NAME     Database name (default: codegraph)
     -u, --username USER     Username for authentication (default: root)
     -p, --password PASS     Password for authentication (default: root)
-    -s, --schema FILE       Schema file to apply (default: codegraph.surql)
+    -s, --schema FILE       Schema file to apply (default: codegraph_v2.surql)
     -m, --migrate           Apply migrations from migrations/ directory
     -h, --help              Show this help message
 

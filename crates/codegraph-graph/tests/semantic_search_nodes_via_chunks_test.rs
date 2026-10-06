@@ -7,7 +7,7 @@ use std::{env, str::FromStr};
 
 use anyhow::{Context, Result};
 use serde_json::Value;
-use surrealdb::{engine::local::Mem, Surreal};
+use surrealdb::{Surreal, engine::local::Mem};
 
 fn env_flag_enabled(name: &str) -> bool {
     env::var(name)
@@ -57,8 +57,8 @@ async fn vector_scores_surface_in_hybrid_search() -> Result<()> {
         DEFINE FIELD start_line ON nodes TYPE option<int> PERMISSIONS FULL;
         DEFINE FIELD end_line ON nodes TYPE option<int> PERMISSIONS FULL;
         DEFINE FIELD metadata ON nodes TYPE option<object> PERMISSIONS FULL;
-        DEFINE INDEX idx_nodes_content ON nodes FIELDS content SEARCH ANALYZER code_analyzer;
-        DEFINE INDEX idx_nodes_name ON nodes FIELDS name SEARCH ANALYZER code_analyzer;
+        DEFINE INDEX idx_nodes_content ON nodes FIELDS content FULLTEXT ANALYZER code_analyzer;
+        DEFINE INDEX idx_nodes_name ON nodes FIELDS name FULLTEXT ANALYZER code_analyzer;
 
         DEFINE TABLE chunks SCHEMALESS PERMISSIONS FULL;
         DEFINE FIELD project_id ON chunks TYPE string PERMISSIONS FULL;
@@ -86,15 +86,15 @@ async fn vector_scores_surface_in_hybrid_search() -> Result<()> {
     db.query(
         r#"
         DEFINE FUNCTION fn::parse_record_id($table: string, $input: any) {
-            IF type::is::record($input) { RETURN $input; };
+            IF type::is_record($input) { RETURN $input; };
             LET $str = <string>$input;
             LET $after_prefix = IF string::starts_with($str, $table + ':') THEN string::slice($str, string::len($table) + 1) ELSE $str END;
             LET $clean_id = IF string::starts_with($after_prefix, '⟨') AND string::ends_with($after_prefix, '⟩') THEN string::slice($after_prefix, 1, string::len($after_prefix) - 2) ELSE $after_prefix END;
-            RETURN type::thing($table, $clean_id);
+            RETURN type::record($table, $clean_id);
         } PERMISSIONS FULL;
 
         DEFINE FUNCTION fn::node_info($node_id: any) {
-            IF $node_id = NONE OR !type::is::record($node_id) { RETURN NONE; };
+            IF $node_id = NONE OR !type::is_record($node_id) { RETURN NONE; };
             LET $res = (SELECT <string>id AS id, name, node_type AS kind, language, content, metadata, { end_line: end_line, file_path: file_path, start_line: start_line } AS location, file_path, start_line, end_line FROM ONLY $node_id);
             RETURN $res;
         } PERMISSIONS FULL;

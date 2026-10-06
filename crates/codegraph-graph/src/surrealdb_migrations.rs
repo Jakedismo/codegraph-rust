@@ -1,7 +1,8 @@
 use codegraph_core::{CodeGraphError, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use surrealdb::{engine::any::Any, Surreal};
+use surrealdb::types::SurrealValue;
+use surrealdb::{Surreal, engine::any::Any};
 use tracing::{info, warn};
 
 /// Migration record stored in database
@@ -107,7 +108,7 @@ impl MigrationRunner {
             CodeGraphError::Database(format!("Failed to get schema version: {}", e))
         })?;
 
-        #[derive(Deserialize)]
+        #[derive(Serialize, Deserialize, surrealdb::types::SurrealValue)]
         struct VersionRecord {
             version: u32,
         }
@@ -338,7 +339,11 @@ impl MigrationRunner {
         let combined = sql_statements.join("\n");
         let mut hasher = Sha256::new();
         hasher.update(combined.as_bytes());
-        format!("{:x}", hasher.finalize())
+        hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
     }
 
     /// Create a new migration file template
@@ -403,3 +408,5 @@ mod tests {
         assert!(template.contains("DOWN Migration"));
     }
 }
+
+crate::impl_surreal_serde!(MigrationRecord, MigrationStatus);

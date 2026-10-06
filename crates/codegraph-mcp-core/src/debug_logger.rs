@@ -233,22 +233,22 @@ impl DebugLogger {
 /// Macro for convenient debug logging
 #[macro_export]
 macro_rules! debug_log {
-    (tool_start, $tool:expr, $params:expr) => {
+    (tool_start, $tool:expr_2021, $params:expr_2021) => {
         $crate::debug_logger::DebugLogger::log_tool_start($tool, $params);
     };
-    (tool_finish, $tool:expr, $result:expr) => {
+    (tool_finish, $tool:expr_2021, $result:expr_2021) => {
         $crate::debug_logger::DebugLogger::log_tool_finish($tool, $result);
     };
-    (tool_error, $tool:expr, $params:expr, $error:expr) => {
+    (tool_error, $tool:expr_2021, $params:expr_2021, $error:expr_2021) => {
         $crate::debug_logger::DebugLogger::log_tool_error($tool, $params, $error);
     };
-    (reasoning, $step:expr, $thought:expr, $action:expr) => {
+    (reasoning, $step:expr_2021, $thought:expr_2021, $action:expr_2021) => {
         $crate::debug_logger::DebugLogger::log_reasoning_step($step, $thought, $action);
     };
-    (agent_start, $query:expr, $type:expr, $tier:expr) => {
+    (agent_start, $query:expr_2021, $type:expr_2021, $tier:expr_2021) => {
         $crate::debug_logger::DebugLogger::log_agent_start($query, $type, $tier);
     };
-    (agent_finish, $success:expr, $output:expr, $error:expr) => {
+    (agent_finish, $success:expr_2021, $output:expr_2021, $error:expr_2021) => {
         $crate::debug_logger::DebugLogger::log_agent_finish($success, $output, $error);
     };
 }
@@ -265,9 +265,18 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         // reset global logger to avoid cross-test accumulation
         *DEBUG_LOGGER.lock().unwrap() = None;
-        std::env::set_var("CODEGRAPH_DEBUG", "1");
-        std::env::set_var("CODEGRAPH_DEBUG_DIR", &dir);
-        DebugLogger::init();
+        let path = dir.join("test.jsonl");
+        *DEBUG_LOGGER.lock().unwrap() = Some(DebugLogger {
+            file: Some(
+                OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&path)
+                    .unwrap(),
+            ),
+            enabled: true,
+            log_path: path,
+        });
         let path = DebugLogger::current_log_path().expect("log path");
         // ensure empty file for the test
         std::fs::OpenOptions::new()

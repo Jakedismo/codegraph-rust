@@ -2,12 +2,14 @@
 name = "codegraph-vector"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 description = "Vector storage and similarity search using FAISS for CodeGraph"
 
 [dependencies]
 codegraph-core = { workspace = true }
+codegraph-parser = { workspace = true }
 codegraph-graph = { path = "../codegraph-graph", features = ["surrealdb"] }
 ndarray = { workspace = true, optional = true }
 serde = { workspace = true }
@@ -29,25 +31,29 @@ crossbeam-channel = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 num_cpus = { workspace = true }
-unicode-normalization = "0.1"
+unicode-normalization = "0.1.25"
+text-splitter = "0.33.0"
+tiktoken-rs = { version = "0.12.0", optional = true }
 
 # Local embeddings (Candle) - optional via feature
-candle-core = { version = "0.9.1", optional = true, default-features = false, features = ["metal"] }
-candle-nn = { version = "0.9.1", optional = true, default-features = false }
-candle-transformers = { version = "0.9.1", optional = true, default-features = false }
+candle-core = { version = "0.11.0", optional = true, default-features = false }
+candle-nn = { version = "0.11.0", optional = true, default-features = false }
+candle-transformers = { version = "0.11.0", optional = true, default-features = false }
 tokenizers = { workspace = true }  # Always available for token counting in Jina provider
-hf-hub = { version = "0.4", optional = true, default-features = true, features = ["tokio"] }
+hf-hub = { version = "1.0.0", optional = true, default-features = false, features = ["rustls-tls"] }
 lru = { workspace = true }
 
 # OpenAI API client
 reqwest = { workspace = true, optional = true }
 
 # ONNX Runtime provider (optional)
-ort = { version = "2.0.0-rc.10", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries"] }
-semchunk-rs = { workspace = true }
+ort = { version = "2.0.0-rc.13", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries", "tls-native", "copy-dylibs", "api-27"] }
 fxhash = "0.2.1"
 
 
+
+[target.'cfg(target_os = "macos")'.dependencies]
+candle-core = { version = "0.11.0", optional = true, default-features = false, features = ["metal"] }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
@@ -56,7 +62,7 @@ approx = { workspace = true }
 criterion = { workspace = true }
 fastrand = { workspace = true }
 tracing-subscriber = { workspace = true }
-dotenvy = "0.15"
+dotenvy = "0.15.7"
 
 
 
@@ -64,7 +70,7 @@ dotenvy = "0.15"
 # Minimal defaults; opt-in providers from dependents
 default = []
 persistent = ["dep:memmap2", "dep:flate2"]
-openai = ["dep:reqwest"]
+openai = ["dep:reqwest", "dep:tiktoken-rs"]
 local-embeddings = [
     "dep:candle-core",
     "dep:candle-nn",
@@ -72,7 +78,7 @@ local-embeddings = [
     "dep:hf-hub",
 ]
 onnx = ["dep:ort", "dep:hf-hub", "dep:ndarray"]
-onnx-coreml = ["onnx"]
+onnx-coreml = ["onnx", "ort/coreml"]
 ollama = ["dep:reqwest"]
 jina = ["dep:reqwest"]
 lmstudio = ["dep:reqwest"]

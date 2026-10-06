@@ -4,17 +4,84 @@ use chrono::{DateTime, Utc};
 use codegraph_core::{CodeGraphError, CodeNode, GraphStore, NodeId, Result};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::env;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
+use surrealdb::types::SurrealValue;
 use surrealdb::{
+    Error as SurrealError, Surreal,
     engine::any::Any,
     opt::auth::{Database, Root},
-    Error as SurrealError, Surreal,
 };
 use tracing::{debug, info, warn};
+
+/// Bundled schemas, applied automatically to a fresh embedded store. v2 is the default;
+/// CODEGRAPH_SCHEMA=v1 selects the original file.
+const BUNDLED_SCHEMA_MAIN: &str = include_str!("../../../schema/codegraph.surql");
+const BUNDLED_SCHEMA_EXPERIMENTAL: &str =
+    include_str!("../../../schema/codegraph_graph_experimental.surql");
+const BUNDLED_SCHEMA_V2: &str = include_str!("../../../schema/codegraph_v2.surql");
+
+/// Directory under the project root that holds the embedded store.
+pub const EMBEDDED_DB_DIR: &str = ".codegraph";
+/// Name of the embedded store inside [`EMBEDDED_DB_DIR`].
+pub const EMBEDDED_DB_NAME: &str = "db";
+
+/// Namespace and database used for embedded stores (one store per project,
+/// so these never need to vary).
+const EMBEDDED_NAMESPACE: &str = "codegraph";
+const EMBEDDED_DATABASE: &str = "codegraph";
+const EMBEDDED_GRAPH_DATABASE: &str = "codegraph_graph";
+
+/// Connection schemes handled by an in-process engine rather than a server.
+const EMBEDDED_SCHEMES: [&str; 4] = ["surrealkv://", "file://", "rocksdb://", "mem://"];
+
+/// True when the connection string opens an in-process engine.
+pub fn is_embedded_connection(connection: &str) -> bool {
+    EMBEDDED_SCHEMES
+        .iter()
+        .any(|scheme| connection.starts_with(scheme))
+}
+
+/// True for in-process engines backed by a directory. These lock the
+/// directory, so a process must share one handle per store, and they get
+/// the bundled schema on first open. `mem://` is excluded: every open is a
+/// fresh, empty database, which tests rely on.
+fn is_persistent_embedded_connection(connection: &str) -> bool {
+    is_embedded_connection(connection) && !connection.starts_with("mem://")
+}
+
+/// Handles to embedded stores already opened by this process, keyed by connection string.
+static EMBEDDED_HANDLES: OnceLock<tokio::sync::Mutex<HashMap<String, Surreal<Any>>>> =
+    OnceLock::new();
+
+/// Drop top-level `null` keys from batch payloads. A JSON `null` binds as
+/// SurrealQL `NULL`, which `option<T>` fields reject; a missing key reads as
+/// `NONE`, which they accept.
+fn strip_null_fields(payloads: Vec<JsonValue>) -> Vec<JsonValue> {
+    payloads
+        .into_iter()
+        .map(|mut payload| {
+            if let JsonValue::Object(map) = &mut payload {
+                map.retain(|_, v| !v.is_null());
+            }
+            payload
+        })
+        .collect()
+}
+
+fn env_flag(name: &str) -> bool {
+    env::var(name)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn env_value(name: &str) -> Option<String> {
+    env::var(name).ok().filter(|v| !v.trim().is_empty())
+}
 
 /// SurrealDB storage implementation with flexible schema support
 #[derive(Clone)]
@@ -38,42 +105,82 @@ pub struct SurrealDbConfig {
     pub cache_enabled: bool,
 }
 
-impl Default for SurrealDbConfig {
-    fn default() -> Self {
-        let connection = env::var("CODEGRAPH_SURREALDB_URL")
-            .unwrap_or_else(|_| "ws://localhost:3004".to_string());
+impl SurrealDbConfig {
+    /// Connection settings for a project.
+    ///
+    /// With `CODEGRAPH_SURREALDB_URL` set, this targets that server using the
+    /// `CODEGRAPH_SURREALDB_*` settings. Otherwise it opens the project's own
+    /// embedded SurrealKV store at `<project_root>/.codegraph/db`.
+    pub fn for_project(project_root: &Path) -> Self {
+        match env_value("CODEGRAPH_SURREALDB_URL") {
+            Some(connection) => Self::remote(connection),
+            None => Self::embedded(project_root),
+        }
+    }
+
+    /// Settings for the embedded store under `project_root`.
+    pub fn embedded(project_root: &Path) -> Self {
+        let root = project_root
+            .canonicalize()
+            .unwrap_or_else(|_| project_root.to_path_buf());
+        Self {
+            connection: format!("surrealkv://{}", Self::embedded_db_path(&root).display()),
+            namespace: EMBEDDED_NAMESPACE.to_string(),
+            database: if env_flag("CODEGRAPH_USE_GRAPH_SCHEMA") {
+                EMBEDDED_GRAPH_DATABASE.to_string()
+            } else {
+                EMBEDDED_DATABASE.to_string()
+            },
+            username: None,
+            password: None,
+            strict_mode: false,
+            auto_migrate: true,
+            cache_enabled: true,
+        }
+    }
+
+    /// Where the embedded store for `project_root` lives.
+    pub fn embedded_db_path(project_root: &Path) -> PathBuf {
+        project_root.join(EMBEDDED_DB_DIR).join(EMBEDDED_DB_NAME)
+    }
+
+    /// Settings for a SurrealDB server, with namespace, database and
+    /// credentials taken from the `CODEGRAPH_SURREALDB_*` variables.
+    pub fn remote(connection: String) -> Self {
         let namespace =
-            env::var("CODEGRAPH_SURREALDB_NAMESPACE").unwrap_or_else(|_| "ouroboros".to_string());
+            env_value("CODEGRAPH_SURREALDB_NAMESPACE").unwrap_or_else(|| "ouroboros".to_string());
 
         // Optional toggle to point at experimental graph schema DB without changing table names.
-        let use_graph_db = env::var("CODEGRAPH_USE_GRAPH_SCHEMA")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-        let graph_db = env::var("CODEGRAPH_GRAPH_DB_DATABASE")
-            .unwrap_or_else(|_| "codegraph_graph".to_string());
-
-        let database = if use_graph_db {
-            graph_db
+        let database = if env_flag("CODEGRAPH_USE_GRAPH_SCHEMA") {
+            env_value("CODEGRAPH_GRAPH_DB_DATABASE")
+                .unwrap_or_else(|| EMBEDDED_GRAPH_DATABASE.to_string())
         } else {
-            env::var("CODEGRAPH_SURREALDB_DATABASE").unwrap_or_else(|_| "codegraph".to_string())
+            env_value("CODEGRAPH_SURREALDB_DATABASE").unwrap_or_else(|| "codegraph".to_string())
         };
-        let username = env::var("CODEGRAPH_SURREALDB_USERNAME")
-            .ok()
-            .filter(|value| !value.trim().is_empty());
-        let password = env::var("CODEGRAPH_SURREALDB_PASSWORD")
-            .ok()
-            .filter(|value| !value.trim().is_empty());
 
         Self {
             connection,
             namespace,
             database,
-            username,
-            password,
+            username: env_value("CODEGRAPH_SURREALDB_USERNAME"),
+            password: env_value("CODEGRAPH_SURREALDB_PASSWORD"),
             strict_mode: false,
             auto_migrate: true,
             cache_enabled: true,
         }
+    }
+
+    /// True when this configuration opens an in-process engine.
+    pub fn is_embedded(&self) -> bool {
+        is_embedded_connection(&self.connection)
+    }
+}
+
+impl Default for SurrealDbConfig {
+    /// Settings for the project in the current working directory (see [`Self::for_project`]).
+    fn default() -> Self {
+        let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        Self::for_project(&cwd)
     }
 }
 
@@ -94,6 +201,72 @@ pub struct OrphanCleanupStats {
 }
 
 impl SurrealDbStorage {
+    /// Reconcile stale identities against the complete prepared project catalog.
+    /// Unchanged nodes retain incoming relationships and vectors.
+    pub async fn reconcile_catalog(
+        &self,
+        project: &str,
+        nodes: Vec<String>,
+        edges: Vec<String>,
+        chunks: Vec<String>,
+        files: Vec<String>,
+    ) -> Result<()> {
+        self.db.query(r#"
+            BEGIN TRANSACTION;
+            LET $node_ids = $nodes.map(|$id| type::record('nodes', $id));
+            LET $edge_ids = $edges.map(|$id| type::record('edges', $id));
+            LET $chunk_ids = $chunks.map(|$id| type::record('chunks', $id));
+            DELETE symbol_embeddings WHERE project_id = $project AND node_id != NONE AND node_id NOT IN $node_ids;
+            DELETE edges WHERE project_id = $project AND (id NOT IN $edge_ids OR from NOT IN $node_ids OR to NOT IN $node_ids);
+            DELETE chunks WHERE project_id = $project AND (id NOT IN $chunk_ids OR parent_node NOT IN $node_ids);
+            DELETE nodes WHERE project_id = $project AND id NOT IN $node_ids;
+            DELETE file_metadata WHERE project_id = $project AND file_path NOT IN $files;
+            COMMIT TRANSACTION;
+        "#).bind(("project", project.to_string())).bind(("nodes", nodes)).bind(("edges", edges))
+            .bind(("chunks", chunks)).bind(("files", files)).await
+            .map_err(|e| CodeGraphError::Database(format!("Catalog reconciliation failed: {e}")))?
+            .check().map_err(|e| CodeGraphError::Database(format!("Catalog reconciliation statement failed: {e}")))?;
+        Ok(())
+    }
+
+    pub fn disable_ingestion_cache(&mut self) {
+        self.config.cache_enabled = false;
+        self.node_cache.clear();
+    }
+
+    /// Delete dependent rows before nodes, with native record IDs and project scope.
+    /// One transaction prevents partial cleanup when a statement fails.
+    pub async fn delete_data_for_files(
+        &self,
+        project_id: &str,
+        file_paths: &[String],
+    ) -> Result<()> {
+        if file_paths.is_empty() {
+            return Ok(());
+        }
+        self.db.query(r#"
+            BEGIN TRANSACTION;
+            LET $ids = SELECT VALUE id FROM nodes WHERE project_id = $project_id AND file_path IN $file_paths;
+            DELETE symbol_embeddings WHERE project_id = $project_id AND node_id IN $ids;
+            DELETE edges WHERE project_id = $project_id AND (from IN $ids OR to IN $ids);
+            DELETE chunks WHERE project_id = $project_id AND parent_node IN $ids;
+            DELETE nodes WHERE project_id = $project_id AND file_path IN $file_paths;
+            DELETE file_metadata WHERE project_id = $project_id AND file_path IN $file_paths;
+            COMMIT TRANSACTION;
+        "#).bind(("project_id", project_id.to_string())).bind(("file_paths", file_paths.to_vec()))
+            .await.map_err(|e| CodeGraphError::Database(format!("File cleanup failed: {e}")))?
+            .check().map_err(|e| CodeGraphError::Database(format!("File cleanup returned error: {e}")))?;
+        self.node_cache.retain(|_, node| {
+            node.metadata
+                .attributes
+                .get("project_id")
+                .map(String::as_str)
+                != Some(project_id)
+                || !file_paths.contains(&node.location.file_path)
+        });
+        Ok(())
+    }
+
     /// Get the underlying SurrealDB connection
     /// This is useful for advanced operations like graph functions
     pub fn db(&self) -> Arc<Surreal<Any>> {
@@ -107,30 +280,12 @@ impl SurrealDbStorage {
             config.connection
         );
 
-        // Connect to SurrealDB
-        let db: Surreal<Any> = Surreal::init();
-        db.connect(&config.connection)
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to connect: {}", e)))?;
-
-        // Authenticate if credentials provided
-        if let (Some(username), Some(password)) = (&config.username, &config.password) {
-            let auth_result = if config.connection.starts_with("wss://") {
-                // Prefer database-scoped auth for hosted / cloud setups
-                db.signin(Database {
-                    namespace: &config.namespace,
-                    database: &config.database,
-                    username,
-                    password,
-                })
-                .await
-            } else {
-                db.signin(Root { username, password }).await
-            };
-
-            auth_result
-                .map_err(|e| CodeGraphError::Database(format!("Authentication failed: {}", e)))?;
-        }
+        let persistent_embedded = is_persistent_embedded_connection(&config.connection);
+        let db = if persistent_embedded {
+            Self::open_embedded(&config).await?
+        } else {
+            Self::connect_remote(&config).await?
+        };
 
         // Select namespace and database
         db.use_ns(&config.namespace)
@@ -140,6 +295,10 @@ impl SurrealDbStorage {
                 CodeGraphError::Database(format!("Failed to select namespace/database: {}", e))
             })?;
 
+        if persistent_embedded && config.auto_migrate {
+            Self::ensure_bundled_schema(&db).await?;
+        }
+
         let storage = Self {
             db: Arc::new(db),
             config: config.clone(),
@@ -147,8 +306,183 @@ impl SurrealDbStorage {
             schema_version: Arc::new(std::sync::RwLock::new(0)),
         };
 
-        info!("SurrealDB storage initialized successfully (schema management disabled)");
+        info!("SurrealDB storage initialized successfully");
         Ok(storage)
+    }
+
+    /// Connect to a SurrealDB server (or a fresh `mem://` engine) and authenticate if credentials are set.
+    async fn connect_remote(config: &SurrealDbConfig) -> Result<Surreal<Any>> {
+        let db: Surreal<Any> = Surreal::init();
+        db.connect(&config.connection)
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("Failed to connect: {}", e)))?;
+
+        if let (Some(username), Some(password)) = (&config.username, &config.password) {
+            let auth_result = if config.connection.starts_with("wss://") {
+                // Prefer database-scoped auth for hosted / cloud setups
+                db.signin(Database {
+                    namespace: config.namespace.clone(),
+                    database: config.database.clone(),
+                    username: username.clone(),
+                    password: password.clone(),
+                })
+                .await
+            } else {
+                db.signin(Root {
+                    username: username.clone(),
+                    password: password.clone(),
+                })
+                .await
+            };
+
+            auth_result
+                .map_err(|e| CodeGraphError::Database(format!("Authentication failed: {}", e)))?;
+        }
+
+        Ok(db)
+    }
+
+    /// Open an embedded store, reusing the handle if this process already has it open.
+    ///
+    /// The engine locks its directory, so a second open of the same path from
+    /// this process would fail; a second open from another process does fail.
+    async fn open_embedded(config: &SurrealDbConfig) -> Result<Surreal<Any>> {
+        let handles = EMBEDDED_HANDLES.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()));
+        let mut handles = handles.lock().await;
+
+        if let Some(db) = handles.get(&config.connection) {
+            debug!(
+                "Reusing embedded SurrealDB handle for {}",
+                config.connection
+            );
+            return Ok(db.clone());
+        }
+
+        if let Some(path) = config.connection.strip_prefix("surrealkv://") {
+            if let Some(parent) = Path::new(path).parent() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    CodeGraphError::Database(format!(
+                        "Failed to create {}: {}",
+                        parent.display(),
+                        e
+                    ))
+                })?;
+                Self::write_gitignore(parent);
+            }
+        }
+
+        let db: Surreal<Any> = Surreal::init();
+        db.connect(&config.connection).await.map_err(|e| {
+            let message = e.to_string();
+            if message.contains("already locked") {
+                CodeGraphError::Database(format!(
+                    "The embedded database {} is open in another process. Stop the other \
+                     codegraph process (for example a running `codegraph start`) or set \
+                     CODEGRAPH_SURREALDB_URL to use a shared SurrealDB server. ({})",
+                    config.connection, message
+                ))
+            } else {
+                CodeGraphError::Database(format!("Failed to open embedded database: {}", message))
+            }
+        })?;
+
+        handles.insert(config.connection.clone(), db.clone());
+        Ok(db)
+    }
+
+    /// Keep the store out of version control: `.codegraph/.gitignore` ignoring everything.
+    fn write_gitignore(dir: &Path) {
+        let gitignore = dir.join(".gitignore");
+        if gitignore.exists() {
+            return;
+        }
+        if let Err(e) = std::fs::write(&gitignore, "*\n") {
+            warn!("Could not write {}: {}", gitignore.display(), e);
+        }
+    }
+
+    /// Apply the bundled schema to a store that has none, and warn when the
+    /// store was created from a different schema revision.
+    async fn ensure_bundled_schema(db: &Surreal<Any>) -> Result<()> {
+        let (name, schema) = if env_flag("CODEGRAPH_USE_GRAPH_SCHEMA") {
+            ("experimental", BUNDLED_SCHEMA_EXPERIMENTAL)
+        } else if env_value("CODEGRAPH_SCHEMA").is_some_and(|v| v.eq_ignore_ascii_case("v1")) {
+            ("main", BUNDLED_SCHEMA_MAIN)
+        } else {
+            ("v2", BUNDLED_SCHEMA_V2)
+        };
+        let checksum = Sha256::digest(schema.as_bytes())
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>();
+
+        if Self::has_table(db, "nodes").await? {
+            Self::check_schema_checksum(db, name, &checksum).await;
+            return Ok(());
+        }
+
+        info!("Applying bundled {} schema to new embedded database", name);
+        let schema = crate::vector_indexes::VectorIndexMode::from_env()?.initial_schema(schema);
+        db.query(schema)
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("Schema parsing failed: {}", e)))?
+            .check()
+            .map_err(|e| CodeGraphError::Database(format!("Schema application failed: {}", e)))?;
+
+        db.query(
+            "CREATE schema_versions:bundled SET version = 0, name = $name, checksum = $checksum, \
+             description = 'Bundled schema applied on first open';",
+        )
+        .bind(("name", name.to_string()))
+        .bind(("checksum", checksum))
+        .await
+        .map_err(|e| CodeGraphError::Database(format!("Failed to record schema: {}", e)))?
+        .check()
+        .map_err(|e| CodeGraphError::Database(format!("Failed to record schema: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn has_table(db: &Surreal<Any>, table: &str) -> Result<bool> {
+        let mut response = db
+            .query("INFO FOR DB")
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("INFO FOR DB failed: {}", e)))?;
+        let info: Option<JsonValue> = response
+            .take(0)
+            .map_err(|e| CodeGraphError::Database(format!("INFO FOR DB unreadable: {}", e)))?;
+        Ok(info
+            .and_then(|v| v.get("tables").cloned())
+            .and_then(|t| t.get(table).cloned())
+            .is_some())
+    }
+
+    async fn check_schema_checksum(db: &Surreal<Any>, name: &str, checksum: &str) {
+        let recorded = async {
+            let mut response = db
+                .query("SELECT name, checksum FROM schema_versions:bundled")
+                .await
+                .ok()?;
+            let rows: Vec<JsonValue> = response.take(0).ok()?;
+            let row = rows.into_iter().next()?;
+            Some((
+                row.get("name")?.as_str()?.to_string(),
+                row.get("checksum")?.as_str()?.to_string(),
+            ))
+        }
+        .await;
+
+        match recorded {
+            Some((recorded_name, recorded_checksum))
+                if recorded_name == name && recorded_checksum == checksum => {}
+            Some((recorded_name, _)) => warn!(
+                "Embedded database was created from the {} schema at a different revision than \
+                 this binary bundles ({}). The stored schema stays in use; to switch, stop all \
+                 codegraph processes, delete <project>/.codegraph/db and run `codegraph index` again.",
+                recorded_name, name
+            ),
+            None => debug!("Embedded database has no bundled-schema record; skipping check"),
+        }
     }
 
     /// Initialize database schema with flexible design (unused when schema managed externally)
@@ -311,7 +645,7 @@ impl SurrealDbStorage {
             .await
             .map_err(|e| CodeGraphError::Database(format!("HNSW search failed: {}", e)))?;
 
-        #[derive(Deserialize)]
+        #[derive(Serialize, Deserialize, surrealdb::types::SurrealValue)]
         struct SearchResult {
             id: String,
             score: f64,
@@ -398,7 +732,7 @@ impl SurrealDbStorage {
             .await
             .map_err(|e| CodeGraphError::Database(format!("Filtered HNSW search failed: {}", e)))?;
 
-        #[derive(Deserialize)]
+        #[derive(Serialize, Deserialize, surrealdb::types::SurrealValue)]
         struct SearchResult {
             id: String,
             score: f64,
@@ -429,10 +763,13 @@ impl SurrealDbStorage {
         if self.config.cache_enabled {
             for id_str in ids {
                 if let Ok(id) = NodeId::parse_str(id_str) {
-                    if let Some(cached) = self.node_cache.get(&id) {
-                        nodes.push(cached.clone());
-                    } else {
-                        missing_ids.push(id_str.clone());
+                    match self.node_cache.get(&id) {
+                        Some(cached) => {
+                            nodes.push(cached.clone());
+                        }
+                        _ => {
+                            missing_ids.push(id_str.clone());
+                        }
                     }
                 }
             }
@@ -474,7 +811,8 @@ impl SurrealDbStorage {
         let metadata = if node.metadata.attributes.is_empty() {
             None
         } else {
-            let metadata_json = serde_json::to_value(&node.metadata.attributes).unwrap_or(JsonValue::Null);
+            let metadata_json =
+                serde_json::to_value(&node.metadata.attributes).unwrap_or(JsonValue::Null);
             let compressed = codegraph_core::compress_json(&metadata_json);
             Some(JsonValue::String(compressed))
         };
@@ -502,9 +840,10 @@ impl SurrealDbStorage {
 
         let embedding_model = node.metadata.attributes.get("embedding_model").cloned();
 
-        let content = node.content.as_ref().map(|c| {
-            codegraph_core::compress_to_string(&c)
-        });
+        let content = node
+            .content
+            .as_ref()
+            .map(|c| codegraph_core::compress_to_string(&c));
 
         Ok(SurrealNodeRecord {
             id: node.id.to_string(),
@@ -546,14 +885,23 @@ impl SurrealDbStorage {
             records.push(self.node_to_surreal(node)?);
         }
 
+        let record_count = records.len();
         self.db
             .query(UPSERT_NODES_QUERY)
-            .bind(("data", records.clone()))
+            .bind(("data", records))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!(
                     "Failed to upsert node batch ({} items): {}",
-                    records.len(),
+                    record_count,
+                    truncate_surreal_error(&e)
+                ))
+            })?
+            .check()
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Node batch upsert returned error ({} items): {}",
+                    record_count,
                     truncate_surreal_error(&e)
                 ))
             })?;
@@ -591,12 +939,19 @@ impl SurrealDbStorage {
 
         self.db
             .query(UPSERT_EDGES_QUERY)
-            .bind(("data", payloads))
+            .bind(("data", strip_null_fields(payloads)))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!(
                     "Failed to upsert edge batch ({} items): {}",
                     edges.len(),
+                    truncate_surreal_error(&e)
+                ))
+            })?
+            .check()
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Edge batch upsert returned error: {}",
                     truncate_surreal_error(&e)
                 ))
             })?;
@@ -620,6 +975,13 @@ impl SurrealDbStorage {
                 CodeGraphError::Database(format!(
                     "Failed to upsert symbol embedding batch ({} items): {}",
                     records.len(),
+                    truncate_surreal_error(&e)
+                ))
+            })?
+            .check()
+            .map_err(|e| {
+                CodeGraphError::Database(format!(
+                    "Symbol batch upsert returned error: {}",
                     truncate_surreal_error(&e)
                 ))
             })?;
@@ -789,6 +1151,7 @@ impl SurrealDbStorage {
             return Ok(());
         }
 
+        let mut by_column: std::collections::BTreeMap<&str, Vec<JsonValue>> = Default::default();
         for record in records {
             let column = normalized_embedding_column(record.column).ok_or_else(|| {
                 CodeGraphError::Database(format!(
@@ -796,21 +1159,29 @@ impl SurrealDbStorage {
                     record.column
                 ))
             })?;
-
+            by_column
+                .entry(column)
+                .or_default()
+                .push(json!({ "id": record.id, "embedding": record.embedding }));
+        }
+        for (column, payload) in by_column {
             let query = format!(
-                "UPDATE type::thing('nodes', $id) SET {} = $embedding, updated_at = time::now();",
-                column
+                "FOR $doc IN $data {{ UPDATE type::record('nodes', $doc.id) SET {column} = $doc.embedding RETURN NONE; }}"
             );
-
             self.db
                 .query(query)
-                .bind(("id", record.id.clone()))
-                .bind(("embedding", record.embedding.clone()))
+                .bind(("data", payload))
                 .await
                 .map_err(|e| {
                     CodeGraphError::Database(format!(
-                        "Failed to update node embedding {}: {}",
-                        record.id,
+                        "Node embedding batch failed: {}",
+                        truncate_surreal_error(&e)
+                    ))
+                })?
+                .check()
+                .map_err(|e| {
+                    CodeGraphError::Database(format!(
+                        "Node embedding batch returned error: {}",
                         truncate_surreal_error(&e)
                     ))
                 })?;
@@ -930,7 +1301,7 @@ impl SurrealDbStorage {
 
     pub async fn upsert_project_metadata(&self, record: ProjectMetadataRecord) -> Result<()> {
         let query = r#"
-            UPSERT type::thing('project_metadata', $id) SET
+            UPSERT type::record('project_metadata', $id) SET
                 project_id = $pid,
                 name = $name,
                 root_path = $root,
@@ -962,7 +1333,7 @@ impl SurrealDbStorage {
             .bind(("ver", record.codegraph_version))
             .bind(("org", record.organization_id))
             .bind(("dom", record.domain))
-            .bind(("meta", json!({})))
+            .bind(("meta", record.metadata))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!("Failed to upsert project metadata: {}", e))
@@ -978,7 +1349,7 @@ impl SurrealDbStorage {
     /// Upsert single file metadata record
     pub async fn upsert_file_metadata(&self, record: &FileMetadataRecord) -> Result<()> {
         let query = r#"
-            UPSERT type::thing('file_metadata', $id) SET
+            UPSERT type::record('file_metadata', $id) SET
                 file_path = $file_path,
                 project_id = $project_id,
                 content_hash = $content_hash,
@@ -1024,25 +1395,35 @@ impl SurrealDbStorage {
             return Ok(());
         }
 
-        // Use SET syntax (like nodes/edges) instead of CONTENT to avoid ID conflicts
-        // Cast datetime strings to SurrealDB datetime type using <datetime>
         let query = r#"
-            LET $batch = $data;
-            FOR $doc IN $batch {
-                UPSERT type::thing('file_metadata', $doc.id) SET
-                    file_path = $doc.file_path,
-                    project_id = $doc.project_id,
-                    content_hash = $doc.content_hash,
-                    modified_at = IF $doc.modified_at != NONE THEN <datetime>$doc.modified_at ELSE time::now() END,
-                    file_size = $doc.file_size,
-                    last_indexed_at = IF $doc.last_indexed_at != NONE THEN <datetime>$doc.last_indexed_at ELSE time::now() END,
-                    node_count = $doc.node_count,
-                    edge_count = $doc.edge_count,
-                    language = $doc.language,
-                    parse_errors = $doc.parse_errors,
-                    updated_at = time::now();
-            }
-        "#;
+LET $batch = array::map($data, |$doc| {
+    id: type::record('file_metadata', $doc.id),
+    file_path: $doc.file_path,
+    project_id: $doc.project_id,
+    content_hash: $doc.content_hash,
+    modified_at: <datetime>$doc.modified_at,
+    file_size: $doc.file_size,
+    last_indexed_at: <datetime>$doc.last_indexed_at,
+    node_count: $doc.node_count,
+    edge_count: $doc.edge_count,
+    language: $doc.language,
+    parse_errors: $doc.parse_errors,
+    updated_at: time::now(),
+});
+INSERT INTO file_metadata $batch ON DUPLICATE KEY UPDATE
+    file_path = $input.file_path,
+    project_id = $input.project_id,
+    content_hash = $input.content_hash,
+    modified_at = $input.modified_at,
+    file_size = $input.file_size,
+    last_indexed_at = $input.last_indexed_at,
+    node_count = $input.node_count,
+    edge_count = $input.edge_count,
+    language = $input.language,
+    parse_errors = $input.parse_errors,
+    updated_at = $input.updated_at
+RETURN NONE;
+"#;
 
         let payloads: Vec<JsonValue> = records
             .iter()
@@ -1065,7 +1446,7 @@ impl SurrealDbStorage {
 
         self.db
             .query(query)
-            .bind(("data", payloads))
+            .bind(("data", strip_null_fields(payloads)))
             .await
             .map_err(|e| {
                 CodeGraphError::Database(format!(
@@ -1082,164 +1463,8 @@ impl SurrealDbStorage {
                 ))
             })?;
 
-        let project_id = records[0].project_id.clone();
-
-        // Verify writes with retry and diagnostics
-        let written = self
-            .verify_project_file_count(
-                &project_id,
-                records.len(),
-                3,
-                std::time::Duration::from_millis(50),
-            )
-            .await?;
-
-        if written < records.len() {
-            // Fallback: attempt per-record upserts to ensure persistence and surface exact error
-            warn!(
-                "File metadata batch upsert verification shortfall: wrote {} of {}. Falling back to per-record upsert.",
-                written,
-                records.len()
-            );
-            for record in records {
-                self.upsert_file_metadata(record).await.map_err(|e| {
-                    CodeGraphError::Database(format!(
-                        "File metadata fallback upsert failed for {}: {}",
-                        record.file_path, e
-                    ))
-                })?;
-            }
-
-            // Re-verify after fallback
-            self.verify_project_file_count(
-                &project_id,
-                records.len(),
-                3,
-                std::time::Duration::from_millis(100),
-            )
-            .await?;
-        }
-
         debug!("Batch upserted {} file metadata records", records.len());
         Ok(())
-    }
-
-    async fn verify_project_file_count(
-        &self,
-        project_id: &str,
-        expected: usize,
-        attempts: usize,
-        delay: std::time::Duration,
-    ) -> Result<usize> {
-        if let Ok(reached) = verify_with_retry(expected, attempts, delay, || async {
-            self.get_project_file_count(project_id).await
-        })
-        .await
-        {
-            return Ok(reached);
-        }
-
-        let last_count = self.get_project_file_count(project_id).await.unwrap_or(0);
-        let samples = self
-            .sample_file_paths(project_id, 5)
-            .await
-            .unwrap_or_default();
-        Err(CodeGraphError::Database(format!(
-            "File metadata count {} is less than expected {} for project {}. Sample file_paths: {:?}",
-            last_count, expected, project_id, samples
-        )))
-    }
-
-    async fn get_project_file_count(&self, project_id: &str) -> Result<i64> {
-        // Primary: use COUNT grouped to avoid serialization issues with VALUE count() in Surreal.
-        let mut resp = self
-            .db
-            .query(
-                "SELECT count() AS count FROM file_metadata WHERE project_id = $project_id GROUP ALL;",
-            )
-            .bind(("project_id", project_id.to_string()))
-            .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!(
-                    "Failed to query file_metadata count: {}",
-                    truncate_surreal_error(&e)
-                ))
-            })?;
-
-        let rows: Vec<JsonValue> = resp.take(0).map_err(|e| {
-            CodeGraphError::Database(format!(
-                "Failed to extract file_metadata count row: {}",
-                truncate_surreal_error(&e)
-            ))
-        })?;
-
-        if let Some(count) = rows
-            .first()
-            .and_then(|r| r.get("count"))
-            .and_then(|v| v.as_i64())
-        {
-            return Ok(count);
-        }
-
-        // Fallback: enumerate rows to derive count directly if count() shape is unexpected.
-        let mut fallback = self
-            .db
-            .query(
-                "SELECT file_path FROM file_metadata WHERE project_id = $project_id LIMIT 200000;",
-            )
-            .bind(("project_id", project_id.to_string()))
-            .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!(
-                    "Failed to fetch file_metadata rows for fallback count: {}",
-                    truncate_surreal_error(&e)
-                ))
-            })?;
-
-        let rows: Vec<JsonValue> = fallback.take(0).map_err(|e| {
-            CodeGraphError::Database(format!(
-                "Failed to extract file_metadata rows for fallback count: {}",
-                truncate_surreal_error(&e)
-            ))
-        })?;
-
-        Ok(rows.len() as i64)
-    }
-
-    async fn sample_file_paths(&self, project_id: &str, limit: usize) -> Result<Vec<String>> {
-        let mut resp = self
-            .db
-            .query(
-                "SELECT file_path FROM file_metadata WHERE project_id = $project_id LIMIT $limit",
-            )
-            .bind(("project_id", project_id.to_string()))
-            .bind(("limit", limit as i64))
-            .await
-            .map_err(|e| {
-                CodeGraphError::Database(format!(
-                    "Failed to fetch sample file_metadata rows: {}",
-                    truncate_surreal_error(&e)
-                ))
-            })?;
-
-        let rows: Vec<JsonValue> = resp.take(0).map_err(|e| {
-            CodeGraphError::Database(format!(
-                "Failed to extract sample file_metadata rows: {}",
-                truncate_surreal_error(&e)
-            ))
-        })?;
-
-        let mut paths = Vec::new();
-        for row in rows {
-            if let Some(path) = row
-                .get("file_path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-            {
-                paths.push(path);
-            }
-        }
-        Ok(paths)
     }
 
     /// Get all file metadata for a project
@@ -1328,36 +1553,14 @@ impl SurrealDbStorage {
 
     /// Delete all edges where from or to node belongs to project
     pub async fn delete_edges_for_project(&self, project_id: &str) -> Result<usize> {
-        // First get all node IDs for the project
-        let query = "SELECT VALUE id FROM nodes WHERE project_id = $project_id";
         let mut result = self
             .db
-            .query(query)
+            .query("DELETE edges WHERE project_id = $project_id RETURN BEFORE")
             .bind(("project_id", project_id.to_string()))
             .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to query node IDs: {}", e)))?;
-
-        let node_ids: Vec<String> = result.take(0).unwrap_or_default();
-
-        if node_ids.is_empty() {
-            return Ok(0);
-        }
-
-        // Delete edges where from or to is in node_ids
-        let delete_query = r#"
-            LET $node_ids = $ids;
-            DELETE edges WHERE
-                string::split(string::trim(from), ':')[1] IN $node_ids OR
-                string::split(string::trim(to), ':')[1] IN $node_ids
-            RETURN BEFORE
-        "#;
-
-        let mut result = self
-            .db
-            .query(delete_query)
-            .bind(("ids", node_ids))
-            .await
-            .map_err(|e| CodeGraphError::Database(format!("Failed to delete edges: {}", e)))?;
+            .map_err(|e| CodeGraphError::Database(format!("Failed to delete edges: {e}")))?
+            .check()
+            .map_err(|e| CodeGraphError::Database(format!("Edge deletion returned error: {e}")))?;
 
         let deleted: Vec<HashMap<String, JsonValue>> = result.take(0).unwrap_or_default();
         let count = deleted.len();
@@ -1430,25 +1633,33 @@ impl SurrealDbStorage {
     /// Clean slate: Delete ALL data for a project (nodes, edges, chunks, embeddings, file metadata)
     /// Used when --force flag is set
     pub async fn clean_project_data(&self, project_id: &str) -> Result<()> {
-        info!(
-            "🧹 Starting clean slate deletion for project: {}",
-            project_id
-        );
-
-        // Delete in order: edges first, then chunks (both reference nodes), then nodes, then metadata
-        let edges_deleted = self.delete_edges_for_project(project_id).await?;
-        let chunks_deleted = self.delete_chunks_for_project(project_id).await?;
-        let nodes_deleted = self.delete_nodes_for_project(project_id).await?;
-        let symbols_deleted = self
-            .delete_symbol_embeddings_for_project(project_id)
-            .await?;
-        let files_deleted = self.delete_file_metadata_for_project(project_id).await?;
-
-        info!(
-            "🧹 Clean slate complete: {} edges, {} chunks, {} nodes, {} symbols, {} files deleted",
-            edges_deleted, chunks_deleted, nodes_deleted, symbols_deleted, files_deleted
-        );
-
+        self.db
+            .query(
+                r#"
+            BEGIN TRANSACTION;
+            DELETE edges WHERE project_id = $project;
+            DELETE chunks WHERE project_id = $project;
+            DELETE symbol_embeddings WHERE project_id = $project;
+            DELETE nodes WHERE project_id = $project;
+            DELETE file_metadata WHERE project_id = $project;
+            DELETE project_metadata WHERE project_id = $project;
+            COMMIT TRANSACTION;
+        "#,
+            )
+            .bind(("project", project_id.to_string()))
+            .await
+            .map_err(|e| CodeGraphError::Database(format!("Project cleanup failed: {e}")))?
+            .check()
+            .map_err(|e| {
+                CodeGraphError::Database(format!("Project cleanup returned error: {e}"))
+            })?;
+        self.node_cache.retain(|_, node| {
+            node.metadata
+                .attributes
+                .get("project_id")
+                .map(String::as_str)
+                != Some(project_id)
+        });
         Ok(())
     }
 
@@ -1484,8 +1695,7 @@ impl SurrealDbStorage {
         let edges_deleted = orphan_edges_from.len() + orphan_edges_to.len();
 
         // Delete symbol_embeddings where node doesn't exist
-        let orphan_symbols_query =
-            "DELETE symbol_embeddings WHERE node_id NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
+        let orphan_symbols_query = "DELETE symbol_embeddings WHERE node_id NOT IN (SELECT VALUE id FROM nodes) RETURN BEFORE";
         let mut result = self.db.query(orphan_symbols_query).await.map_err(|e| {
             CodeGraphError::Database(format!("Failed to delete orphan symbol embeddings: {}", e))
         })?;
@@ -1536,7 +1746,7 @@ impl GraphStore for SurrealDbStorage {
         let node_id = id.to_string();
         let result: Option<HashMap<String, JsonValue>> = self
             .db
-            .select(("nodes", &node_id))
+            .select(("nodes", node_id.as_str()))
             .await
             .map_err(|e| CodeGraphError::Database(format!("Failed to get node: {}", e)))?;
 
@@ -1563,7 +1773,7 @@ impl GraphStore for SurrealDbStorage {
 
         let _: Option<HashMap<String, JsonValue>> = self
             .db
-            .update(("nodes", &node_id))
+            .update(("nodes", node_id.as_str()))
             .content(data)
             .await
             .map_err(|e| CodeGraphError::Database(format!("Failed to update node: {}", e)))?;
@@ -1582,7 +1792,7 @@ impl GraphStore for SurrealDbStorage {
         let node_id = id.to_string();
         let _: Option<HashMap<String, JsonValue>> = self
             .db
-            .delete(("nodes", &node_id))
+            .delete(("nodes", node_id.as_str()))
             .await
             .map_err(|e| CodeGraphError::Database(format!("Failed to delete node: {}", e)))?;
 
@@ -1622,7 +1832,11 @@ fn symbol_embedding_record_id(project_id: &str, normalized_symbol: &str) -> Stri
     hasher.update(project_id.as_bytes());
     hasher.update(b":");
     hasher.update(normalized_symbol.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()
 }
 
 pub struct SymbolEmbeddingUpsert<'a> {
@@ -1638,7 +1852,7 @@ pub struct SymbolEmbeddingUpsert<'a> {
     pub metadata: Option<JsonValue>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolEmbeddingRecord {
     pub id: String,
     pub symbol: String,
@@ -1821,8 +2035,9 @@ impl<'a> From<&SymbolEmbeddingUpsert<'a>> for SymbolEmbeddingRecord {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ProjectMetadataRecord {
+    pub metadata: JsonValue,
     pub project_id: String,
     pub name: String,
     pub root_path: String,
@@ -1858,11 +2073,15 @@ impl FileMetadataRecord {
         hasher.update(self.project_id.as_bytes());
         hasher.update(b":");
         hasher.update(self.file_path.as_bytes());
-        format!("{:x}", hasher.finalize())
+        hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct SurrealNodeRecord {
     id: String,
     name: String,
@@ -1951,7 +2170,7 @@ pub fn surreal_embedding_column_for_dimension(dim: usize) -> &'static str {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NodeEmbeddingRecord {
     pub id: String,
     pub column: &'static str,
@@ -1959,7 +2178,7 @@ pub struct NodeEmbeddingRecord {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkEmbeddingRecord {
     pub id: String,
     pub parent_node: String,
@@ -1980,6 +2199,17 @@ pub struct ChunkEmbeddingRecord {
 }
 
 impl ChunkEmbeddingRecord {
+    pub fn identity(parent_node: &str, chunk_index: usize) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(parent_node.as_bytes());
+        hasher.update(b":");
+        hasher.update(chunk_index.to_le_bytes());
+        hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
     pub fn new(
         parent_node: &str,
         chunk_index: usize,
@@ -1990,7 +2220,7 @@ impl ChunkEmbeddingRecord {
         project_id: &str,
     ) -> Self {
         let embedding_vec: Vec<f64> = embedding.iter().map(|&f| f as f64).collect();
-        
+
         // Use Base64 encoding for compression to satisfy String type
         let text_val = codegraph_core::compress_to_string(&text);
 
@@ -2088,13 +2318,7 @@ impl ChunkEmbeddingRecord {
             _ => (None, None, None, None, None, None, None, None),
         };
 
-        let id = {
-            let mut hasher = Sha256::new();
-            hasher.update(parent_node.as_bytes());
-            hasher.update(b":");
-            hasher.update(chunk_index.to_le_bytes());
-            format!("{:x}", hasher.finalize())
-        };
+        let id = Self::identity(parent_node, chunk_index);
 
         Self {
             id,
@@ -2118,100 +2342,163 @@ impl ChunkEmbeddingRecord {
 }
 
 const UPSERT_NODES_QUERY: &str = r#"
-LET $batch = $data;
-FOR $doc IN $batch {
-    UPSERT type::thing('nodes', $doc.id) SET
-        name = $doc.name,
-        node_type = $doc.node_type,
-        language = $doc.language,
-        content = $doc.content,
-        file_path = $doc.file_path,
-        start_line = $doc.start_line,
-        end_line = $doc.end_line,
-        embedding_384 = $doc.embedding_384,
-        embedding_768 = $doc.embedding_768,
-        embedding_1024 = $doc.embedding_1024,
-        embedding_1536 = $doc.embedding_1536,
-        embedding_2048 = $doc.embedding_2048,
-        embedding_2560 = $doc.embedding_2560,
-        embedding_3072 = $doc.embedding_3072,
-        embedding_4096 = $doc.embedding_4096,
-        embedding_model = $doc.embedding_model,
-        complexity = $doc.complexity,
-        metadata = $doc.metadata,
-        project_id = $doc.project_id,
-        organization_id = $doc.organization_id,
-        repository_url = $doc.repository_url,
-        domain = $doc.domain,
-        chunk_count = $doc.chunk_count,
-        updated_at = time::now();
-}
+LET $batch = array::map($data, |$doc| {
+    id: type::record('nodes', $doc.id),
+    name: $doc.name,
+    node_type: $doc.node_type,
+    language: $doc.language,
+    content: $doc.content,
+    file_path: $doc.file_path,
+    start_line: $doc.start_line,
+    end_line: $doc.end_line,
+    embedding_384: $doc.embedding_384,
+    embedding_768: $doc.embedding_768,
+    embedding_1024: $doc.embedding_1024,
+    embedding_1536: $doc.embedding_1536,
+    embedding_2048: $doc.embedding_2048,
+    embedding_2560: $doc.embedding_2560,
+    embedding_3072: $doc.embedding_3072,
+    embedding_4096: $doc.embedding_4096,
+    embedding_model: $doc.embedding_model,
+    complexity: $doc.complexity,
+    metadata: $doc.metadata,
+    project_id: $doc.project_id,
+    organization_id: $doc.organization_id,
+    repository_url: $doc.repository_url,
+    domain: $doc.domain,
+    chunk_count: $doc.chunk_count,
+    updated_at: time::now(),
+});
+INSERT INTO nodes $batch ON DUPLICATE KEY UPDATE
+    name = $input.name,
+    node_type = $input.node_type,
+    language = $input.language,
+    content = $input.content,
+    file_path = $input.file_path,
+    start_line = $input.start_line,
+    end_line = $input.end_line,
+    embedding_384 = $input.embedding_384,
+    embedding_768 = $input.embedding_768,
+    embedding_1024 = $input.embedding_1024,
+    embedding_1536 = $input.embedding_1536,
+    embedding_2048 = $input.embedding_2048,
+    embedding_2560 = $input.embedding_2560,
+    embedding_3072 = $input.embedding_3072,
+    embedding_4096 = $input.embedding_4096,
+    embedding_model = $input.embedding_model,
+    complexity = $input.complexity,
+    metadata = $input.metadata,
+    project_id = $input.project_id,
+    organization_id = $input.organization_id,
+    repository_url = $input.repository_url,
+    domain = $input.domain,
+    chunk_count = $input.chunk_count,
+    updated_at = $input.updated_at
+RETURN NONE;
 "#;
 
 const UPSERT_EDGES_QUERY: &str = r#"
-LET $batch = $data;
-FOR $doc IN $batch {
-    UPSERT type::thing('edges', $doc.id) SET
-        from = type::thing('nodes', $doc.from),
-        to = type::thing('nodes', $doc.to),
-        edge_type = $doc.edge_type,
-        weight = $doc.weight,
-        metadata = $doc.metadata,
-        project_id = $doc.project_id,
-        created_at = time::now();
-}
+LET $batch = array::map($data, |$doc| {
+    id: type::record('edges', $doc.id),
+    from: type::record('nodes', $doc.from),
+    to: type::record('nodes', $doc.to),
+    edge_type: $doc.edge_type,
+    weight: $doc.weight,
+    metadata: $doc.metadata,
+    project_id: $doc.project_id,
+});
+INSERT INTO edges $batch ON DUPLICATE KEY UPDATE
+    from = $input.from,
+    to = $input.to,
+    edge_type = $input.edge_type,
+    weight = $input.weight,
+    metadata = $input.metadata,
+    project_id = $input.project_id
+RETURN NONE;
 "#;
 
 const UPSERT_SYMBOL_EMBEDDINGS_QUERY: &str = r#"
-LET $batch = $data;
-FOR $doc IN $batch {
-    LET $node_rec = if $doc.node_id != NONE { type::thing('nodes', $doc.node_id) } else { NONE };
-    LET $edge_rec = if $doc.source_edge_id != NONE { type::thing('edges', $doc.source_edge_id) } else { NONE };
-    UPSERT type::thing('symbol_embeddings', $doc.id) SET
-        symbol = $doc.symbol,
-        normalized_symbol = $doc.normalized_symbol,
-        project_id = $doc.project_id,
-        organization_id = $doc.organization_id,
-        embedding_384 = $doc.embedding_384,
-        embedding_768 = $doc.embedding_768,
-        embedding_1024 = $doc.embedding_1024,
-        embedding_2048 = $doc.embedding_2048,
-        embedding_2560 = $doc.embedding_2560,
-        embedding_4096 = $doc.embedding_4096,
-        embedding_model = $doc.embedding_model,
-        node_id = $node_rec,
-        source_edge_id = $edge_rec,
-        metadata = $doc.metadata,
-        access_count = $doc.access_count;
-}
+LET $batch = array::map($data, |$doc| {
+    id: type::record('symbol_embeddings', $doc.id),
+    symbol: $doc.symbol,
+    normalized_symbol: $doc.normalized_symbol,
+    project_id: $doc.project_id,
+    organization_id: $doc.organization_id,
+    embedding_384: $doc.embedding_384,
+    embedding_768: $doc.embedding_768,
+    embedding_1024: $doc.embedding_1024,
+    embedding_2048: $doc.embedding_2048,
+    embedding_2560: $doc.embedding_2560,
+    embedding_4096: $doc.embedding_4096,
+    embedding_1536: $doc.embedding_1536,
+    embedding_3072: $doc.embedding_3072,
+    embedding_model: $doc.embedding_model,
+    node_id: if $doc.node_id != NONE { type::record('nodes', $doc.node_id) } else { NONE },
+    source_edge_id: if $doc.source_edge_id != NONE { type::record('edges', $doc.source_edge_id) } else { NONE },
+    metadata: $doc.metadata,
+    access_count: $doc.access_count,
+});
+INSERT INTO symbol_embeddings $batch ON DUPLICATE KEY UPDATE
+    symbol = $input.symbol,
+    normalized_symbol = $input.normalized_symbol,
+    project_id = $input.project_id,
+    organization_id = $input.organization_id,
+    embedding_384 = $input.embedding_384,
+    embedding_768 = $input.embedding_768,
+    embedding_1024 = $input.embedding_1024,
+    embedding_2048 = $input.embedding_2048,
+    embedding_2560 = $input.embedding_2560,
+    embedding_4096 = $input.embedding_4096,
+    embedding_1536 = $input.embedding_1536,
+    embedding_3072 = $input.embedding_3072,
+    embedding_model = $input.embedding_model,
+    node_id = $input.node_id,
+    source_edge_id = $input.source_edge_id,
+    metadata = $input.metadata,
+    access_count = $input.access_count
+RETURN NONE;
 "#;
 
 const UPSERT_CHUNK_EMBEDDINGS_QUERY: &str = r#"
-LET $batch = $data;
-FOR $doc IN $batch {
-    UPSERT type::thing('chunks', $doc.id) SET
-        parent_node = type::thing('nodes', $doc.parent_node),
-        chunk_index = $doc.chunk_index,
-        text = $doc.text,
-        project_id = $doc.project_id,
-        embedding_384 = $doc.embedding_384,
-        embedding_768 = $doc.embedding_768,
-        embedding_1024 = $doc.embedding_1024,
-        embedding_1536 = $doc.embedding_1536,
-        embedding_2048 = $doc.embedding_2048,
-        embedding_2560 = $doc.embedding_2560,
-        embedding_3072 = $doc.embedding_3072,
-        embedding_4096 = $doc.embedding_4096,
-        embedding_model = $doc.embedding_model,
-        created_at = time::now(),
-        updated_at = time::now();
-}
+LET $batch = array::map($data, |$doc| {
+    id: type::record('chunks', $doc.id),
+    parent_node: type::record('nodes', $doc.parent_node),
+    chunk_index: $doc.chunk_index,
+    text: $doc.text,
+    project_id: $doc.project_id,
+    embedding_384: $doc.embedding_384,
+    embedding_768: $doc.embedding_768,
+    embedding_1024: $doc.embedding_1024,
+    embedding_1536: $doc.embedding_1536,
+    embedding_2048: $doc.embedding_2048,
+    embedding_2560: $doc.embedding_2560,
+    embedding_3072: $doc.embedding_3072,
+    embedding_4096: $doc.embedding_4096,
+    embedding_model: $doc.embedding_model,
+    updated_at: time::now(),
+});
+INSERT INTO chunks $batch ON DUPLICATE KEY UPDATE
+    parent_node = $input.parent_node,
+    chunk_index = $input.chunk_index,
+    text = $input.text,
+    project_id = $input.project_id,
+    embedding_384 = $input.embedding_384,
+    embedding_768 = $input.embedding_768,
+    embedding_1024 = $input.embedding_1024,
+    embedding_1536 = $input.embedding_1536,
+    embedding_2048 = $input.embedding_2048,
+    embedding_2560 = $input.embedding_2560,
+    embedding_3072 = $input.embedding_3072,
+    embedding_4096 = $input.embedding_4096,
+    embedding_model = $input.embedding_model,
+    updated_at = $input.updated_at
+RETURN NONE;
 "#;
 
 const INSERT_CHUNK_EMBEDDINGS_QUERY: &str = r#"
 LET $batch = array::map($batch, |$doc| {
-    id: type::thing('chunks', $doc.id),
-    parent_node: type::thing('nodes', $doc.parent_node),
+    id: type::record('chunks', $doc.id),
+    parent_node: type::record('nodes', $doc.parent_node),
     chunk_index: $doc.chunk_index,
     text: $doc.text,
     project_id: $doc.project_id,
@@ -2246,8 +2533,8 @@ RETURN NONE;
 
 const UPSERT_CHUNK_EMBEDDING_SINGLE_QUERY: &str = r#"
 LET $doc = $doc;
-UPSERT type::thing('chunks', $doc.id) SET
-    parent_node = type::thing('nodes', $doc.parent_node),
+UPSERT type::record('chunks', $doc.id) SET
+    parent_node = type::record('nodes', $doc.parent_node),
     chunk_index = $doc.chunk_index,
     text = $doc.text,
     project_id = $doc.project_id,
@@ -2260,7 +2547,6 @@ UPSERT type::thing('chunks', $doc.id) SET
     embedding_3072 = $doc.embedding_3072,
     embedding_4096 = $doc.embedding_4096,
     embedding_model = $doc.embedding_model,
-    created_at = time::now(),
     updated_at = time::now();
 "#;
 
@@ -2272,39 +2558,6 @@ fn truncate_surreal_error(e: &SurrealError) -> String {
         msg.push_str("…");
     }
     msg
-}
-
-async fn verify_with_retry<F, Fut>(
-    expected: usize,
-    attempts: usize,
-    delay: std::time::Duration,
-    mut get_count: F,
-) -> Result<usize>
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<i64>>,
-{
-    if attempts == 0 {
-        return Err(CodeGraphError::Database(
-            "verify_with_retry requires at least one attempt".to_string(),
-        ));
-    }
-
-    for attempt in 1..=attempts {
-        let count = get_count().await?;
-        if count >= expected as i64 {
-            return Ok(count as usize);
-        }
-
-        if attempt < attempts {
-            tokio::time::sleep(delay).await;
-        }
-    }
-
-    Err(CodeGraphError::Database(format!(
-        "Count did not reach expected {} after {} attempts",
-        expected, attempts
-    )))
 }
 
 #[allow(dead_code)]
@@ -2368,7 +2621,7 @@ mod tests {
                 DEFINE FIELD codegraph_version ON project_metadata TYPE option<string> PERMISSIONS FULL;
                 DEFINE FIELD organization_id ON project_metadata TYPE option<string> PERMISSIONS FULL;
                 DEFINE FIELD domain ON project_metadata TYPE option<string> PERMISSIONS FULL;
-                DEFINE FIELD metadata ON project_metadata FLEXIBLE TYPE option<object> PERMISSIONS FULL;
+                DEFINE FIELD metadata ON project_metadata TYPE option<object> FLEXIBLE PERMISSIONS FULL;
                 DEFINE FIELD created_at ON project_metadata TYPE datetime DEFAULT time::now() READONLY PERMISSIONS FULL;
                 DEFINE FIELD updated_at ON project_metadata TYPE datetime VALUE time::now() PERMISSIONS FULL;
             "#,
@@ -2381,6 +2634,7 @@ mod tests {
         let project_id = "project-a".to_string();
         storage
             .upsert_project_metadata(ProjectMetadataRecord {
+                metadata: serde_json::json!({}),
                 project_id: project_id.clone(),
                 name: "Project A".to_string(),
                 root_path: "/tmp/project-a".to_string(),
@@ -2426,54 +2680,12 @@ mod tests {
     fn normalized_embedding_column_rejects_unknown_column() {
         assert!(normalized_embedding_column("embedding_9999").is_none());
     }
-
-    #[tokio::test]
-    async fn verify_with_retry_succeeds_on_second_attempt() {
-        let counts = std::sync::Arc::new(std::sync::Mutex::new(vec![1_i64, 4_i64]));
-        let expected = 3usize;
-        let counts_clone = counts.clone();
-        let result = verify_with_retry(
-            expected,
-            3,
-            std::time::Duration::from_millis(1),
-            move || {
-                let counts_inner = counts_clone.clone();
-                async move {
-                    let mut data = counts_inner.lock().unwrap();
-                    let value = data.remove(0);
-                    Ok(value)
-                }
-            },
-        )
-        .await;
-
-        assert!(result.is_ok(), "expected success on second attempt");
-        assert_eq!(result.unwrap(), 4);
-    }
-
-    #[tokio::test]
-    async fn verify_with_retry_fails_after_attempts() {
-        let counts = std::sync::Arc::new(std::sync::Mutex::new(vec![1_i64, 1_i64, 2_i64]));
-        let expected = 5usize;
-        let counts_clone = counts.clone();
-        let result = verify_with_retry(
-            expected,
-            3,
-            std::time::Duration::from_millis(1),
-            move || {
-                let counts_inner = counts_clone.clone();
-                async move {
-                    let mut data = counts_inner.lock().unwrap();
-                    let value = data.remove(0);
-                    Ok(value)
-                }
-            },
-        )
-        .await;
-
-        assert!(
-            result.is_err(),
-            "should fail when counts never reach expected"
-        );
-    }
 }
+
+crate::impl_surreal_serde!(
+    SchemaVersion,
+    SymbolEmbeddingRecord,
+    FileMetadataRecord,
+    SurrealNodeRecord,
+    ChunkEmbeddingRecord
+);

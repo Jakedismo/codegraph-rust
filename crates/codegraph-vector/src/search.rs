@@ -508,11 +508,7 @@ impl SemanticSearch {
                 score += 1.0;
             }
         }
-        if denom == 0.0 {
-            0.0
-        } else {
-            score / denom
-        }
+        if denom == 0.0 { 0.0 } else { score / denom }
     }
 }
 

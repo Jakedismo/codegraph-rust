@@ -1,8 +1,7 @@
 use codegraph_core::{CodeNode, Language, Location, NodeType};
-use criterion::{
-    black_box, criterion_group, criterion_main, Bencher, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{Bencher, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use serde_json;
+use std::hint::black_box;
 
 fn gen_node(i: usize) -> CodeNode {
     CodeNode::new(

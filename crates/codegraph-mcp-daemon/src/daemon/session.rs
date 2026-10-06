@@ -6,7 +6,7 @@ use chrono::Utc;
 use codegraph_parser::{BatchedChanges, FileChangeEvent, FileSystemWatcher};
 use std::path::PathBuf;
 use std::time::Duration;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 
 use super::config::WatchConfig;
 use super::status::SessionMetrics;
@@ -22,9 +22,6 @@ pub struct WatchSession {
 
     /// Session metrics
     metrics: SessionMetrics,
-
-    /// Configuration
-    config: WatchConfig,
 
     /// Indexer for re-indexing changed files
     indexer: Option<ProjectIndexer>,
@@ -64,7 +61,6 @@ impl WatchSession {
             project_root: config.project_root.clone(),
             watcher,
             metrics: SessionMetrics::new(),
-            config,
             indexer: None,
         })
     }
@@ -102,63 +98,30 @@ impl WatchSession {
         let mut indexed = 0u64;
         let mut deleted = 0u64;
 
-        for change in batch.changes {
+        for change in &batch.changes {
             match change {
-                FileChangeEvent::Created(_file_id, metadata) => {
-                    debug!("File created: {:?}", metadata.path);
-                    if self.should_index(&metadata.path) {
-                        match self.reindex_file(&metadata.path).await {
-                            Ok(_) => indexed += 1,
-                            Err(e) => {
-                                error!("Failed to index new file {:?}: {}", metadata.path, e);
-                                self.metrics.record_error();
-                            }
-                        }
+                FileChangeEvent::Created(_, metadata)
+                | FileChangeEvent::Modified(_, metadata, _) => {
+                    if self
+                        .indexer
+                        .as_ref()
+                        .is_some_and(|indexer| indexer.should_reconcile(&metadata.path))
+                    {
+                        indexed += 1;
                     }
                 }
-                FileChangeEvent::Modified(_file_id, new_metadata, old_metadata) => {
-                    debug!(
-                        "File modified: {:?} (hash changed: {} -> {})",
-                        new_metadata.path, old_metadata.content_hash, new_metadata.content_hash
-                    );
-                    if self.should_index(&new_metadata.path) {
-                        match self.reindex_file(&new_metadata.path).await {
-                            Ok(_) => indexed += 1,
-                            Err(e) => {
-                                error!("Failed to reindex file {:?}: {}", new_metadata.path, e);
-                                self.metrics.record_error();
-                            }
-                        }
-                    }
+                FileChangeEvent::Deleted(_, _) => deleted += 1,
+                FileChangeEvent::Renamed(_, _, _) => {
+                    indexed += 1;
+                    deleted += 1;
                 }
-                FileChangeEvent::Deleted(_file_id, metadata) => {
-                    debug!("File deleted: {:?}", metadata.path);
-                    match self.delete_file_data(&metadata.path).await {
-                        Ok(_) => deleted += 1,
-                        Err(e) => {
-                            error!("Failed to delete data for {:?}: {}", metadata.path, e);
-                            self.metrics.record_error();
-                        }
-                    }
-                }
-                FileChangeEvent::Renamed(from_id, to_id, metadata) => {
-                    debug!("File renamed: {} -> {}", from_id.0, to_id.0);
-                    // Delete old data, reindex with new path
-                    let old_path = PathBuf::from(&from_id.0);
-                    let _ = self.delete_file_data(&old_path).await;
-
-                    if self.should_index(&metadata.path) {
-                        match self.reindex_file(&metadata.path).await {
-                            Ok(_) => {
-                                deleted += 1;
-                                indexed += 1;
-                            }
-                            Err(e) => {
-                                error!("Failed to reindex renamed file {:?}: {}", metadata.path, e);
-                                self.metrics.record_error();
-                            }
-                        }
-                    }
+            }
+        }
+        if indexed + deleted > 0 {
+            if let Some(indexer) = &self.indexer {
+                if let Err(error) = indexer.reconcile_project(&self.project_root, false).await {
+                    self.metrics.record_error();
+                    return Err(error.context("Watch batch reconciliation failed"));
                 }
             }
         }
@@ -176,70 +139,6 @@ impl WatchSession {
         );
 
         Ok((indexed, deleted))
-    }
-
-    /// Check if a file should be indexed based on configuration
-    fn should_index(&self, path: &std::path::Path) -> bool {
-        // Check language filter
-        if !self.config.indexer.languages.is_empty() {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                let ext_lower = ext.to_lowercase();
-                let matches_language = self.config.indexer.languages.iter().any(|lang: &String| {
-                    match lang.to_lowercase().as_str() {
-                        "rust" => ext_lower == "rs",
-                        "python" => ext_lower == "py",
-                        "typescript" => ext_lower == "ts" || ext_lower == "tsx",
-                        "javascript" => ext_lower == "js" || ext_lower == "jsx",
-                        "go" => ext_lower == "go",
-                        "java" => ext_lower == "java",
-                        "cpp" | "c++" => {
-                            ext_lower == "cpp" || ext_lower == "hpp" || ext_lower == "cc"
-                        }
-                        "c" => ext_lower == "c" || ext_lower == "h",
-                        _ => false,
-                    }
-                });
-                if !matches_language {
-                    return false;
-                }
-            }
-        }
-
-        // Check exclude patterns
-        for pattern in &self.config.indexer.exclude_patterns {
-            if glob_match::glob_match(pattern, &path.to_string_lossy()) {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    /// Re-index a single file
-    async fn reindex_file(&self, path: &std::path::Path) -> Result<()> {
-        // The indexer handles upsert semantics - no duplicates created
-        if let Some(indexer) = &self.indexer {
-            indexer
-                .index_single_file(path)
-                .await
-                .with_context(|| format!("Failed to reindex {:?}", path))?;
-        } else {
-            warn!("No indexer set, skipping reindex of {:?}", path);
-        }
-        Ok(())
-    }
-
-    /// Delete all data for a file
-    async fn delete_file_data(&self, path: &std::path::Path) -> Result<()> {
-        if let Some(indexer) = &self.indexer {
-            indexer
-                .delete_file_data(path)
-                .await
-                .with_context(|| format!("Failed to delete data for {:?}", path))?;
-        } else {
-            warn!("No indexer set, skipping delete for {:?}", path);
-        }
-        Ok(())
     }
 
     /// Stop the watch session

@@ -1,7 +1,7 @@
 #[cfg(feature = "local-embeddings")]
 use crate::{
     prep::chunker::{
-        aggregate_chunk_embeddings, build_chunk_plan, ChunkPlan, ChunkerConfig, SanitizeMode,
+        ChunkPlan, ChunkerConfig, SanitizeMode, aggregate_chunk_embeddings, build_chunk_plan,
     },
     providers::{
         BatchConfig, EmbeddingMetrics, EmbeddingProvider, MemoryUsage, ProviderCharacteristics,
@@ -20,7 +20,7 @@ use candle_core::IndexOp;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config as BertConfig};
-use hf_hub::api::tokio::Api;
+use hf_hub::HFClient as Api;
 use tokenizers::Tokenizer;
 
 /// Configuration for local embedding models
@@ -108,20 +108,31 @@ impl LocalEmbeddingProvider {
         // Download model files from HuggingFace Hub
         let api = Api::new()
             .map_err(|e| CodeGraphError::External(format!("HuggingFace Hub error: {}", e)))?;
-        let repo = api.model(config.model_name.clone());
+        let (owner, name) = config
+            .model_name
+            .split_once('/')
+            .unwrap_or(("", config.model_name.as_str()));
+        let repo = api.model(owner, name);
 
         // Load tokenizer
         info!("Loading tokenizer...");
-        let tokenizer_filename = repo.get("tokenizer.json").await.map_err(|e| {
-            CodeGraphError::External(format!("Failed to download tokenizer: {}", e))
-        })?;
+        let tokenizer_filename = repo
+            .download_file()
+            .filename("tokenizer.json")
+            .send()
+            .await
+            .map_err(|e| {
+                CodeGraphError::External(format!("Failed to download tokenizer: {}", e))
+            })?;
         let tokenizer = Tokenizer::from_file(tokenizer_filename)
             .map_err(|e| CodeGraphError::External(format!("Failed to load tokenizer: {}", e)))?;
 
         // Load model configuration
         info!("Loading model configuration...");
         let config_filename = repo
-            .get("config.json")
+            .download_file()
+            .filename("config.json")
+            .send()
             .await
             .map_err(|e| CodeGraphError::External(format!("Failed to download config: {}", e)))?;
         let bert_config: BertConfig = serde_json::from_str(
@@ -131,11 +142,21 @@ impl LocalEmbeddingProvider {
 
         // Load model weights (prefer safetensors if available)
         info!("Loading model weights...");
-        let weights_filename = match repo.get("model.safetensors").await {
+        let weights_filename = match repo
+            .download_file()
+            .filename("model.safetensors")
+            .send()
+            .await
+        {
             Ok(p) => p,
-            Err(_) => repo.get("pytorch_model.bin").await.map_err(|e| {
-                CodeGraphError::External(format!("Failed to download model weights: {}", e))
-            })?,
+            Err(_) => repo
+                .download_file()
+                .filename("pytorch_model.bin")
+                .send()
+                .await
+                .map_err(|e| {
+                    CodeGraphError::External(format!("Failed to download model weights: {}", e))
+                })?,
         };
 
         let weights = if weights_filename.to_string_lossy().ends_with(".safetensors") {
@@ -151,7 +172,17 @@ impl LocalEmbeddingProvider {
 
         // Build model
         info!("Building BERT model...");
-        let vs = VarBuilder::from_tensors(weights, DType::F32, &device);
+        let dtype = match std::env::var("CODEGRAPH_LOCAL_DTYPE").as_deref() {
+            Ok("f16") => DType::F16,
+            Ok("bf16") => DType::BF16,
+            _ => DType::F32,
+        };
+        let weights = weights
+            .into_iter()
+            .map(|(name, tensor)| tensor.to_dtype(dtype).map(|tensor| (name, tensor)))
+            .collect::<candle_core::Result<std::collections::HashMap<_, _>>>()
+            .map_err(|e| CodeGraphError::Vector(e.to_string()))?;
+        let vs = VarBuilder::from_tensors(weights, dtype, &device);
         let model = BertModel::load(vs, &bert_config)
             .map_err(|e| CodeGraphError::External(format!("Failed to load BERT model: {}", e)))?;
 
@@ -183,7 +214,7 @@ impl LocalEmbeddingProvider {
             .smart_split(smart_split)
     }
 
-    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> Result<ChunkPlan> {
         build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
     }
 
@@ -553,6 +584,20 @@ impl LocalEmbeddingProvider {
 #[cfg(feature = "local-embeddings")]
 #[async_trait]
 impl EmbeddingProvider for LocalEmbeddingProvider {
+    fn tokenizer(&self) -> Option<Arc<Tokenizer>> {
+        Some(self.tokenizer.clone())
+    }
+    async fn generate_prepared_texts(
+        &self,
+        texts: &[String],
+        config: &BatchConfig,
+    ) -> Result<Vec<Vec<f32>>> {
+        let mut output = Vec::with_capacity(texts.len());
+        for batch in texts.chunks(config.batch_size.max(1)) {
+            output.extend(self.process_batch(batch.to_vec()).await?);
+        }
+        Ok(output)
+    }
     async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
         let config = BatchConfig::default();
         let (mut embeddings, _) = self
@@ -582,7 +627,7 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
         }
 
         let start_time = Instant::now();
-        let plan = self.build_plan_for_nodes(nodes);
+        let plan = self.build_plan_for_nodes(nodes)?;
         debug!(
             "Local chunk planner: {} nodes -> {} chunks (avg {:.2} chunks/node)",
             plan.stats.total_nodes,
