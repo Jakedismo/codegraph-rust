@@ -77,7 +77,7 @@ DEFINE FUNCTION fn::calculate_coupling_metrics($project_id: string, $node_id: st
     LET $efferent = array::len($dependencies_info);
     LET $total = $afferent + $efferent;
     LET $instability = IF $total > 0 THEN
-        math::round(($efferent / $total) * 1000000f) / 1000000f
+        math::round((<float>$efferent / <float>$total) * 1000000f) / 1000000f
     ELSE
         0f
     END;

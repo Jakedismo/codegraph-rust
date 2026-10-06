@@ -455,7 +455,8 @@ DEFINE FUNCTION OVERWRITE fn::calculate_coupling_metrics($project_id: string, $n
     LET $afferent = array::len($dependents_info);
     LET $efferent = array::len($dependencies_info);
     LET $total = $afferent + $efferent;
-    LET $instability = IF $total > 0 THEN math::round(($efferent / $total) * 1000000f) / 1000000f ELSE 0f END;
+    -- Cast before dividing: integer division would truncate the ratio to 0.
+    LET $instability = IF $total > 0 THEN math::round((<float>$efferent / <float>$total) * 1000000f) / 1000000f ELSE 0f END;
 
     RETURN {
         dependencies: $dependencies_info,
@@ -492,26 +493,32 @@ DEFINE FUNCTION OVERWRITE fn::detect_circular_dependencies($project_id: string, 
     );
 } PERMISSIONS FULL;
 
--- Degree per node from two indexed GROUP BY queries; node records and per-type breakdowns are
--- only fetched for the hubs that pass the threshold.
+-- Hub nodes by total degree. Two indexed GROUP BY queries rank nodes by incoming and by
+-- outgoing degree; the 500 strongest of each form the candidate set, and exact degrees are
+-- then counted for those candidates only. Merging the whole project's degree lists with
+-- array::concat fails on large graphs (its output is limited to 1 MiB), so the only merge here
+-- is over the bounded candidate rows. A node must rank in the top 500 of one direction to be
+-- considered, which holds in practice for any node that belongs among the 50 returned.
 DEFINE FUNCTION OVERWRITE fn::get_hub_nodes($project_id: string, $min_degree: int) {
     LET $threshold = IF $min_degree != NONE AND $min_degree > 0 THEN $min_degree ELSE 5 END;
 
-    LET $incoming = (SELECT `to` AS node_id, count() AS count FROM edges WHERE project_id = $project_id AND edge_type INSIDE $dependency_edge_types GROUP BY `to`);
-    LET $outgoing = (SELECT `from` AS node_id, count() AS count FROM edges WHERE project_id = $project_id AND edge_type INSIDE $dependency_edge_types GROUP BY `from`);
+    LET $top_in = (SELECT VALUE node_id FROM (SELECT `to` AS node_id, count() AS degree FROM edges WHERE project_id = $project_id AND edge_type INSIDE $dependency_edge_types GROUP BY `to`) ORDER BY degree DESC LIMIT 500);
+    LET $top_out = (SELECT VALUE node_id FROM (SELECT `from` AS node_id, count() AS degree FROM edges WHERE project_id = $project_id AND edge_type INSIDE $dependency_edge_types GROUP BY `from`) ORDER BY degree DESC LIMIT 500);
+    LET $candidates = array::union($top_in, $top_out);
+    IF array::len($candidates) = 0 { RETURN []; };
 
-    LET $degrees = (
-        SELECT node_id, math::sum(afferent) AS afferent_degree, math::sum(efferent) AS efferent_degree
-        FROM array::concat(
-            $incoming.map(|$r| { node_id: $r.node_id, afferent: $r.count, efferent: 0 }),
-            $outgoing.map(|$r| { node_id: $r.node_id, afferent: 0, efferent: $r.count })
-        )
-        GROUP BY node_id
-    );
-
+    LET $afferent = (SELECT `to` AS node_id, count() AS degree FROM edges WHERE project_id = $project_id AND edge_type INSIDE $dependency_edge_types AND `to` INSIDE $candidates GROUP BY `to`);
+    LET $efferent = (SELECT `from` AS node_id, count() AS degree FROM edges WHERE project_id = $project_id AND edge_type INSIDE $dependency_edge_types AND `from` INSIDE $candidates GROUP BY `from`);
     LET $hubs = (
         SELECT node_id, afferent_degree, efferent_degree, afferent_degree + efferent_degree AS total_degree
-        FROM $degrees
+        FROM (
+            SELECT node_id, math::sum(afferent) AS afferent_degree, math::sum(efferent) AS efferent_degree
+            FROM array::concat(
+                $afferent.map(|$r| { node_id: $r.node_id, afferent: $r.degree, efferent: 0 }),
+                $efferent.map(|$r| { node_id: $r.node_id, afferent: 0, efferent: $r.degree })
+            )
+            GROUP BY node_id
+        )
         WHERE afferent_degree + efferent_degree >= $threshold
         ORDER BY total_degree DESC
         LIMIT 50
@@ -553,7 +560,7 @@ DEFINE FUNCTION OVERWRITE fn::get_complexity_hotspots($project_id: string, $min_
         SELECT
             <string>id AS id, name, kind, language, file_path, start_line, end_line, complexity,
             afferent_coupling, efferent_coupling,
-            (IF afferent_coupling + efferent_coupling > 0 THEN math::round((efferent_coupling / (afferent_coupling + efferent_coupling)) * 10000f) / 10000f ELSE 0f END) AS instability,
+            (IF afferent_coupling + efferent_coupling > 0 THEN math::round((<float>efferent_coupling / <float>(afferent_coupling + efferent_coupling)) * 10000f) / 10000f ELSE 0f END) AS instability,
             complexity * (afferent_coupling + 1) AS risk_score
         FROM (
             SELECT *,

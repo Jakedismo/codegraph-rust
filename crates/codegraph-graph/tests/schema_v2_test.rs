@@ -189,6 +189,9 @@ async fn v2_graph_functions() {
     .await;
     assert_eq!(coupling["metrics"]["afferent_coupling"], 3, "{coupling}"); // c calls, d imports, b calls (e6)
     assert_eq!(coupling["metrics"]["efferent_coupling"], 1);
+    // 1 outgoing of 4 total. Integer division would report 0.0 here.
+    assert_eq!(coupling["metrics"]["instability"], 0.25, "{coupling}");
+    assert_eq!(coupling["metrics"]["coupling_category"], "stable");
     assert_eq!(coupling["node"]["name"], "parse_config");
 
     let hubs = call(
@@ -205,6 +208,15 @@ async fn v2_graph_functions() {
         .collect();
     assert_eq!(hub_names[0], "parse_config", "{hubs}");
     assert_eq!(hubs[0]["total_degree"], 4);
+    assert_eq!(hubs[0]["afferent_degree"], 3);
+    assert_eq!(hubs[0]["efferent_degree"], 1);
+    let none = call(
+        &db,
+        "RETURN fn::get_hub_nodes($p, 100)",
+        vec![("p", p.clone())],
+    )
+    .await;
+    assert_eq!(none.as_array().unwrap().len(), 0, "{none}");
     assert!(
         hubs[0]["incoming_by_type"]
             .as_array()
@@ -222,6 +234,7 @@ async fn v2_graph_functions() {
     assert_eq!(hotspots[0]["name"], "parse_config", "{hotspots}");
     assert_eq!(hotspots[0]["afferent_coupling"], 3);
     assert_eq!(hotspots[0]["risk_score"], 48.0);
+    assert_eq!(hotspots[0]["instability"], 0.25, "{hotspots}");
     assert!(
         hotspots
             .as_array()
