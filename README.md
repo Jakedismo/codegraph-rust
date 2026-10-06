@@ -538,7 +538,8 @@ the historical entry remains a record of that run.
 | Indexing tier | LLM / request model | Evaluation date | CLI response checks | Manual accuracy findings |
 |---------------|-----|-----------------|---------------------|--------------------------|
 | `fast` | `gpt-6-luna` (confirmed by the project owner; not captured by the runner) | 2026-10-06 | 8/8 `OK` | Mixed: useful findings, incomplete answers and at least two source-confirmed incorrect answers; no overall accuracy score assigned |
-| `balanced` | `gpt-6-luna` (explicit request model) | 2026-10-06 | 8/8 `OK` | Useful configuration/cache/call-chain answers and public-method list; incorrect direct-caller classification, incomplete hub results and metric caveats; no overall accuracy score assigned |
+| `balanced` (original) | `gpt-6-luna` (explicit request model) | 2026-10-06 | 8/8 `OK` | Useful configuration/cache/call-chain answers and public-method list; incorrect direct-caller classification, incomplete hub results and metric caveats; no overall accuracy score assigned |
+| `balanced` (refreshed) | `gpt-6-luna` (explicit request model) | 2026-10-06 | 8/8 `OK` | Hub ranking, ratio arithmetic and wrapper explanation fixed; prompt/cache/call-chain coverage incomplete, one API method omitted; API case takes 587.5 seconds; no overall accuracy score assigned |
 | `full` | `gpt-6-luna` (explicit request model) | 2026-10-06 | 7/8 `OK`, 1 `TIMEOUT` | Source-aligned configuration, cache, call-chain and public-API answers with verified locations; weak substitute for the missing symbol; hub ranking unavailable and instability values unreliable; the tier-aware prompt case timed out twice; no overall accuracy score assigned |
 
 **`OK` measures command/response success, not factual correctness.** It means the
@@ -578,7 +579,7 @@ with 1,024-dimensional vectors and a resolved 32,768-token serving context.
 [Full balanced answers, run details and source review](docs/evaluations/balanced-cli-2026-10-06.md)
 are retained separately from the README summary.
 
-Source review of the explicit-model balanced answers found:
+Source review of the original explicit-model balanced answers found:
 
 - **Configuration, prompts and cache (cases 1–3): useful source-aligned explanations.**
   The answers covered multiple configuration systems, dotenv/TOML precedence, the
@@ -611,20 +612,51 @@ Source review of the explicit-model balanced answers found:
   a heuristic, not a calibrated failure probability or a guaranteed global risk
   ranking; incoming edge counts also need not equal distinct caller counts.
 
+The refreshed balanced run `20261006_151920_418410` again explicitly requested
+`gpt-6-luna`. All eight cases returned `OK` in **1,053.3 seconds**, with **131 tool
+calls** and **177 summed locations**. It used the newly ingested index (238 files,
+21,832 nodes, 43,266 edges, 23,387 chunks), Jina `jina-embeddings-v5-text-small`
+(1,024 dimensions), a 512-token AST chunk policy and the current 600-second deadline.
+[The refreshed review and all eight new answers](docs/evaluations/balanced-cli-2026-10-06.md#refreshed-balanced-run-1519-utc)
+are preserved alongside the original run.
+
+- **Verified improvements:** The architecture case returns hub rankings without
+  the former `array::concat` failure; all seven displayed instability ratios match
+  Ce/(Ca+Ce) after rounding. The API answer correctly describes Rig adapters as
+  indirect consumers through `CountingExecutor`. No graph-tool failures or Jina
+  422 errors are logged in the eight commands.
+- **Remaining accuracy/coverage gaps:** The prompt answer omits default round
+  budgets and prompt-builder details; the cache answer cannot establish successful
+  insertion/truncation and omits eviction/clearing; the call chain stops at
+  `RigExecutor::new` before tool dispatch. These details were covered by the original
+  balanced answers. The API list omits `graph_functions`, and the absent-symbol
+  answer has one incorrect import line. Hotspot arithmetic checks out, but the
+  answer omits the candidate-scope and incoming-edge-row qualifications.
+- **Remaining latency:** The API command takes **587.5 seconds**. A **510.6-second**
+  logged gap after its first completed search occurs before the next tool call,
+  during the agent/model turn. The provider-side cause is unestablished. Eight
+  successful responses do not establish that latency is resolved.
+- **Comparison limits:** This run changes embeddings, chunk policy, binary, index
+  contents, result limits and deadline. Earlier evaluation documents containing
+  answers to these same questions were retrieved in cases 1–4. It is an operational
+  smoke test with source review, not a held-out accuracy benchmark or a controlled
+  measurement of tier effects.
+
 The full run `20261006_060847_378162` also selected `gpt-6-luna` explicitly. Seven
 commands returned answers and case 2 (tier-aware prompts) hit the 300-second deadline;
 the run took **648.4 seconds** including that timeout. The stored index reported
 238 files, 34,494 nodes, 104,224 edges and 34,494 chunks, marked complete with
 embedding and semantic stages ready, and includes dataflow, LSP, module and
-documentation analyzer output. Embedding settings match the balanced run.
+documentation analyzer output. Embedding settings match the original balanced run.
 [Full answers, run details and source review](docs/evaluations/full-cli-2026-10-06.md)
 are retained separately.
 
 After this evaluation, the default whole-agent CLI deadline and the shared CLI/HTTP
 test-case deadlines increased from 300 to **600 seconds**. `--timeout-secs` still
-overrides the CLI budget. The table records the original 300-second run; no accuracy
-or response-success improvement is claimed until a new evaluation is run. The
-recorded stall occurred while awaiting a model response after graph calls returned.
+overrides the CLI budget. The original full-tier table entry retains that 300-second
+deadline; a complete full-tier rerun is still pending. The refreshed balanced results
+above use 600 seconds. The recorded stall occurred while awaiting a model response
+after graph calls returned.
 
 Source review of the full-tier answers found:
 
@@ -636,7 +668,8 @@ Source review of the full-tier answers found:
   misses, post-truncation insertion, eviction and clearing, with one line range off
   by a function. The call-chain answer follows the AI-enabled workflow rather than
   the feature-disabled stub. The API answer lists all ten public methods and, unlike
-  the balanced answer, correctly describes the Rig adapters as indirect callers
+  the original balanced answer, correctly describes the Rig adapters as indirect
+  callers
   through [`CountingExecutor`](crates/codegraph-mcp-rig/src/tools/counting_executor.rs#L39).
 - **Tier-aware prompts (case 2): no answer.** The command timed out in the run and in
   a single-case rerun. In both, the agent finished its tool calls within a minute and
@@ -670,9 +703,11 @@ the fixes returned `OK` in 79 and 106 seconds, with a hub ranking and non-zero
 instability; the other cases were not re-run. See the
 [follow-up section](docs/evaluations/full-cli-2026-10-06.md#follow-up-causes-found-and-fixed).
 
-All seven completed full-tier cases and all eight balanced cases logged typed-answer parse warnings; the server synthesized
-structured evidence from tool traces instead. The runner accepted the resulting
-JSON responses. Neither those fallbacks nor inner-tool errors are a factual accuracy
+All seven completed original full-tier cases and all eight original balanced cases
+logged typed-answer parse warnings; the server synthesized structured evidence from
+tool traces instead. The runner accepted the resulting JSON responses. The refreshed
+balanced run also uses synthesized highlights for prose answers; the fallback now
+logs at `DEBUG`. Neither those fallbacks nor inner-tool errors are a factual accuracy
 score. The initial balanced diagnostic run `20261006_041408_086869` is retained
 separately because it did not explicitly select the intended request model.
 
@@ -688,8 +723,8 @@ Set `CODEGRAPH_LLM_MODEL` explicitly for reproducible agent comparisons. These l
 identify configured/requested models; the runner does not attest provider-side routing.
 
 These observations do not isolate the effect of indexing tier from model reasoning
-or establish a numerical accuracy rate. The three runs also differ in checkout,
-installed binary and file count.
+or establish a numerical accuracy rate. The runs also differ in checkout,
+installed binary, file count, embedding/input policies, result limits and deadlines.
 For subsequent comparisons, keep questions, model, agent context budget and inference
 settings consistent; record the source revision and index configuration, and disclose
 changes between runs. Review source locations, active conditional code, completeness
