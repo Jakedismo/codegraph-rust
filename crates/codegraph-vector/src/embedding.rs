@@ -85,6 +85,7 @@ impl EmbeddingGenerator {
         if let Some(tokenizer) = engine.tokenizer() {
             self.tokenizer = tokenizer;
         }
+        self.model_config.max_tokens = engine.max_input_tokens().saturating_sub(2).max(1);
         self.advanced = Some(engine);
     }
 
@@ -103,6 +104,22 @@ impl EmbeddingGenerator {
     }
 
     fn chunker_config(&self) -> ChunkerConfig {
+        let config = self.base_chunker_config();
+        #[cfg(feature = "openai")]
+        if self.model_config.model_name.starts_with("text-embedding-") {
+            if let Ok(bpe) = tiktoken_rs::bpe_for_model(&self.model_config.model_name) {
+                let mut config = config;
+                config.token_counter = Some((
+                    format!("tiktoken-0.12:{}", self.model_config.model_name),
+                    Arc::new(move |text| bpe.encode_ordinary(text).len()),
+                ));
+                return config;
+            }
+        }
+        config
+    }
+
+    fn base_chunker_config(&self) -> ChunkerConfig {
         // Allow skipping chunking for speed with env flag
         let skip_chunking = std::env::var("CODEGRAPH_EMBEDDING_SKIP_CHUNKING")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -111,7 +128,9 @@ impl EmbeddingGenerator {
         let max_tokens_env = std::env::var("CODEGRAPH_CHUNK_MAX_TOKENS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok());
-        let max_tokens = max_tokens_env.unwrap_or(self.model_config.max_tokens);
+        let max_tokens = max_tokens_env
+            .unwrap_or(self.model_config.max_tokens)
+            .clamp(1, self.model_config.max_tokens.max(1));
         let overlap_tokens = std::env::var("CODEGRAPH_CHUNK_OVERLAP_TOKENS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
@@ -122,7 +141,7 @@ impl EmbeddingGenerator {
             .unwrap_or(true);
 
         if skip_chunking {
-            ChunkerConfig::new(u32::MAX as usize)
+            ChunkerConfig::new(max_tokens)
                 .sanitize_mode(SanitizeMode::AsciiFastPath)
                 .cache_capacity(2048)
                 .overlap_tokens(0)
@@ -399,136 +418,151 @@ impl EmbeddingGenerator {
 
     /// Construct an EmbeddingGenerator from a CodeGraphConfig
     /// This enables TOML configuration file support in addition to environment variables
-    pub async fn with_config(config: &codegraph_core::CodeGraphConfig) -> Self {
-        // Allow env override for batch size (applies across providers)
-        let mut embedding_config = config.embedding.clone();
-        if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
-            if let Ok(parsed) = val.parse::<usize>() {
-                embedding_config.batch_size = parsed.clamp(1, 2048);
+    pub fn with_config(
+        config: &codegraph_core::CodeGraphConfig,
+    ) -> futures::future::BoxFuture<'_, Self> {
+        Box::pin(async move {
+            // Allow env override for batch size (applies across providers)
+            let mut embedding_config = config.embedding.clone();
+            if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
+                if let Ok(parsed) = val.parse::<usize>() {
+                    embedding_config.batch_size = parsed.clamp(1, 2048);
+                }
             }
-        }
-        #[allow(unused_mut)]
-        let mut base = Self::new(ModelConfig {
-            dimension: embedding_config.dimension,
-            max_tokens: 512, // Default, could be added to config if needed
-            model_name: embedding_config
+            let model_name = embedding_config
                 .model
                 .clone()
-                .unwrap_or_else(|| "auto".to_string()),
-        });
+                .unwrap_or_else(|| "auto".into());
+            let max_tokens = if model_name.starts_with("text-embedding-") {
+                8191
+            } else {
+                512
+            };
+            #[allow(unused_mut)]
+            let mut base = Self::new(ModelConfig {
+                dimension: embedding_config.dimension,
+                max_tokens,
+                model_name,
+            });
 
-        let provider = embedding_config.provider.to_lowercase();
-        tracing::info!(
-            "🔍 EmbeddingGenerator::with_config called with provider='{}', model={:?}, dimension={}",
-            provider,
-            embedding_config.model,
-            embedding_config.dimension
-        );
+            let provider = embedding_config.provider.to_lowercase();
+            tracing::info!(
+                "🔍 EmbeddingGenerator::with_config called with provider='{}', model={:?}, dimension={}",
+                provider,
+                embedding_config.model,
+                embedding_config.dimension
+            );
 
-        if provider == "ollama" {
-            tracing::info!("🎯 Provider matches 'ollama', attempting to initialize...");
-            #[cfg(feature = "ollama")]
-            {
-                tracing::info!("✅ 'ollama' feature is ENABLED");
-                let ollama_config = crate::ollama_embedding_provider::OllamaEmbeddingConfig::from(
-                    &embedding_config,
-                );
-                tracing::info!(
-                    "🔧 Created OllamaEmbeddingConfig: model='{}', url='{}'",
-                    ollama_config.model_name,
-                    ollama_config.base_url
-                );
-                let ollama_provider =
-                    crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(ollama_config);
-
-                tracing::info!("🔍 Checking Ollama availability...");
-                match ollama_provider.check_availability().await {
-                    Ok(true) => {
-                        use crate::providers::EmbeddingProvider;
-                        tracing::info!(
-                            "✅ Ollama {} available for embeddings (from config)",
-                            ollama_provider.provider_name()
+            if provider == "ollama" {
+                tracing::info!("🎯 Provider matches 'ollama', attempting to initialize...");
+                #[cfg(feature = "ollama")]
+                {
+                    tracing::info!("✅ 'ollama' feature is ENABLED");
+                    let ollama_config =
+                        crate::ollama_embedding_provider::OllamaEmbeddingConfig::from(
+                            &embedding_config,
                         );
-                        base.model_config.dimension = ollama_provider.embedding_dimension();
-                        base.ollama_provider = Some(ollama_provider);
-                        tracing::info!("✅ ollama_provider successfully set!");
-                    }
-                    Ok(false) => {
-                        use crate::providers::EmbeddingProvider;
-                        tracing::error!(
-                            "❌ Ollama model {} not found. Install with: ollama pull <model>",
-                            ollama_provider.provider_name()
-                        );
-                    }
-                    Err(e) => {
-                        tracing::error!("❌ Failed to connect to Ollama for embeddings: {}", e);
-                    }
-                }
-            }
-            #[cfg(not(feature = "ollama"))]
-            {
-                tracing::error!("❌ 'ollama' feature is NOT ENABLED - cannot use Ollama provider!");
-            }
-        } else if provider == "jina" {
-            #[cfg(feature = "jina")]
-            {
-                let jina_config = crate::jina_provider::JinaConfig::from(&embedding_config);
-                match crate::jina_provider::JinaEmbeddingProvider::new(jina_config) {
-                    Ok(provider) => {
-                        tracing::info!("✅ Jina embeddings initialized (from config)");
-                        base.model_config.dimension = provider.embedding_dimension();
-                        base.jina_provider = Some(provider);
-                    }
-                    Err(e) => {
-                        tracing::error!("❌ Failed to initialize Jina embeddings: {}", e);
-                        tracing::error!(
-                            "   Make sure jina_api_key is set in config or JINA_API_KEY env var"
-                        );
-                    }
-                }
-            }
-        } else if provider == "lmstudio" {
-            #[cfg(feature = "lmstudio")]
-            {
-                let lmstudio_config =
-                    crate::lmstudio_embedding_provider::LmStudioEmbeddingConfig::from(
-                        &embedding_config,
+                    tracing::info!(
+                        "🔧 Created OllamaEmbeddingConfig: model='{}', url='{}'",
+                        ollama_config.model_name,
+                        ollama_config.base_url
                     );
-                match crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider::new(
-                    lmstudio_config,
-                ) {
-                    Ok(provider) => {
-                        tracing::info!("🔍 Checking LM Studio availability...");
-                        if provider.check_availability().await {
+                    let ollama_provider =
+                        crate::ollama_embedding_provider::OllamaEmbeddingProvider::new(
+                            ollama_config,
+                        );
+
+                    tracing::info!("🔍 Checking Ollama availability...");
+                    match ollama_provider.check_availability().await {
+                        Ok(true) => {
                             use crate::providers::EmbeddingProvider;
-                            tracing::info!("✅ LM Studio embeddings initialized (from config)");
-                            base.model_config.dimension = provider.embedding_dimension();
-                            base.lmstudio_provider = Some(provider);
-                        } else {
-                            tracing::error!(
-                                "❌ LM Studio not available at {}",
-                                embedding_config.lmstudio_url
+                            tracing::info!(
+                                "✅ Ollama {} available for embeddings (from config)",
+                                ollama_provider.provider_name()
                             );
+                            base.model_config.dimension = ollama_provider.embedding_dimension();
+                            base.ollama_provider = Some(ollama_provider);
+                            tracing::info!("✅ ollama_provider successfully set!");
+                        }
+                        Ok(false) => {
+                            use crate::providers::EmbeddingProvider;
                             tracing::error!(
-                                "   Make sure LM Studio is running with an embedding model loaded"
+                                "❌ Ollama model {} not found. Install with: ollama pull <model>",
+                                ollama_provider.provider_name()
+                            );
+                        }
+                        Err(e) => {
+                            tracing::error!("❌ Failed to connect to Ollama for embeddings: {}", e);
+                        }
+                    }
+                }
+                #[cfg(not(feature = "ollama"))]
+                {
+                    tracing::error!(
+                        "❌ 'ollama' feature is NOT ENABLED - cannot use Ollama provider!"
+                    );
+                }
+            } else if provider == "jina" {
+                #[cfg(feature = "jina")]
+                {
+                    let jina_config = crate::jina_provider::JinaConfig::from(&embedding_config);
+                    match crate::jina_provider::JinaEmbeddingProvider::new(jina_config) {
+                        Ok(provider) => {
+                            tracing::info!("✅ Jina embeddings initialized (from config)");
+                            base.model_config.dimension = provider.embedding_dimension();
+                            base.jina_provider = Some(provider);
+                        }
+                        Err(e) => {
+                            tracing::error!("❌ Failed to initialize Jina embeddings: {}", e);
+                            tracing::error!(
+                                "   Make sure jina_api_key is set in config or JINA_API_KEY env var"
                             );
                         }
                     }
-                    Err(e) => {
-                        tracing::error!("❌ Failed to initialize LM Studio embeddings: {}", e);
+                }
+            } else if provider == "lmstudio" {
+                #[cfg(feature = "lmstudio")]
+                {
+                    let lmstudio_config =
+                        crate::lmstudio_embedding_provider::LmStudioEmbeddingConfig::from(
+                            &embedding_config,
+                        );
+                    match crate::lmstudio_embedding_provider::LmStudioEmbeddingProvider::new(
+                        lmstudio_config,
+                    ) {
+                        Ok(provider) => {
+                            tracing::info!("🔍 Checking LM Studio availability...");
+                            if provider.check_availability().await {
+                                use crate::providers::EmbeddingProvider;
+                                tracing::info!("✅ LM Studio embeddings initialized (from config)");
+                                base.model_config.dimension = provider.embedding_dimension();
+                                base.lmstudio_provider = Some(provider);
+                            } else {
+                                tracing::error!(
+                                    "❌ LM Studio not available at {}",
+                                    embedding_config.lmstudio_url
+                                );
+                                tracing::error!(
+                                    "   Make sure LM Studio is running with an embedding model loaded"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("❌ Failed to initialize LM Studio embeddings: {}", e);
+                        }
                     }
                 }
+                #[cfg(not(feature = "lmstudio"))]
+                {
+                    tracing::error!(
+                        "❌ 'lmstudio' feature is NOT ENABLED - cannot use LM Studio provider!"
+                    );
+                }
             }
-            #[cfg(not(feature = "lmstudio"))]
-            {
-                tracing::error!(
-                    "❌ 'lmstudio' feature is NOT ENABLED - cannot use LM Studio provider!"
-                );
-            }
-        }
-        // Add other providers (ONNX, local, etc.) as needed following the same pattern
+            // Add other providers (ONNX, local, etc.) as needed following the same pattern
 
-        base
+            base
+        })
     }
 
     pub async fn generate_embedding(&self, node: &CodeNode) -> Result<Vec<f32>> {
@@ -674,6 +708,12 @@ impl EmbeddingGenerator {
                     CodeGraphError::Vector(format!("Invalid provider tokenizer: {e}"))
                 })?);
         }
+        let mut tokenizer = self.tokenizer.as_ref().clone();
+        tokenizer
+            .with_truncation(None)
+            .map_err(|error| CodeGraphError::Vector(error.to_string()))?;
+        tokenizer.with_padding(None);
+        self.tokenizer = Arc::new(tokenizer);
         let namespace = codegraph_core::artifact_cache::fingerprint(&(
             "prepared-v2",
             identity,
@@ -712,6 +752,14 @@ impl EmbeddingGenerator {
                 .embed(
                     texts,
                     |text| {
+                        #[cfg(feature = "openai")]
+                        if self.model_config.model_name.starts_with("text-embedding-") {
+                            if let Ok(bpe) =
+                                tiktoken_rs::bpe_for_model(&self.model_config.model_name)
+                            {
+                                return bpe.encode_ordinary(text).len();
+                            }
+                        }
                         self.tokenizer
                             .encode(text, false)
                             .map_or(text.len(), |tokens| tokens.len())

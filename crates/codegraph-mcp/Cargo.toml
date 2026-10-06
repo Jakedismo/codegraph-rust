@@ -49,6 +49,8 @@ walkdir = "2.5.0"
 regex = { workspace = true }
 rapidfuzz = "0.5.0"
 tree-sitter = { workspace = true }
+scip = "0.10.0"
+protobuf = "3.7.2"
 rayon = { workspace = true }
 num_cpus = { workspace = true }
 

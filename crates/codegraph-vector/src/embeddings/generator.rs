@@ -546,6 +546,24 @@ impl AdvancedEmbeddingGenerator {
             .await
     }
 
+    pub fn max_input_tokens(&self) -> usize {
+        self.config
+            .local
+            .as_ref()
+            .map(|config| config.max_sequence_length)
+            .or_else(|| {
+                self.config
+                    .onnx
+                    .as_ref()
+                    .map(|config| config.max_sequence_length)
+            })
+            .unwrap_or(if self.config.openai.is_some() {
+                8191
+            } else {
+                512
+            })
+    }
+
     pub fn tokenizer(&self) -> Option<Arc<tokenizers::Tokenizer>> {
         self.pipeline
             .as_ref()

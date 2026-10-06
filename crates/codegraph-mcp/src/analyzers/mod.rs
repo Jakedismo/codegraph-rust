@@ -11,6 +11,7 @@ pub mod docs_contracts;
 pub mod enrichment;
 pub mod lsp;
 pub mod module_linker;
+pub mod scip;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AnalyzerSettings {

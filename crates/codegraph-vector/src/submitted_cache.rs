@@ -134,7 +134,14 @@ impl SubmittedCache {
             guards.push(lock.lock_owned().await);
         }
         let artifacts = self.artifacts.clone();
-        let disk_keys: Vec<_> = unique.keys().cloned().collect();
+        let disk_keys: Vec<_> = {
+            let memory = self.memory.lock();
+            unique
+                .keys()
+                .filter(|key| !memory.peek(*key).is_some_and(|entry| self.valid(entry)))
+                .cloned()
+                .collect()
+        };
         let disk: BTreeMap<String, Entry> = tokio::task::spawn_blocking(move || {
             disk_keys
                 .into_iter()
@@ -151,7 +158,12 @@ impl SubmittedCache {
         let mut output = BTreeMap::new();
         let mut misses = Vec::new();
         for (key, text) in unique {
-            let memory = self.memory.lock().get(&key).cloned();
+            let memory = self
+                .memory
+                .lock()
+                .get(&key)
+                .filter(|entry| self.valid(entry))
+                .cloned();
             if let Some(entry) = memory
                 .or_else(|| disk.get(&key).cloned())
                 .filter(|entry| self.valid(entry))
