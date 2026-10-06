@@ -747,7 +747,10 @@ impl CodeGraphMCPServer {
                     serde_json::to_value(AgenticOutput::CodeSearch(o)).ok()
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to parse CodeSearchOutput: {}", e);
+                    tracing::debug!(
+                        "Answer is not typed CodeSearchOutput JSON ({}); using tool traces",
+                        e
+                    );
                     None
                 }
             },
@@ -758,7 +761,10 @@ impl CodeGraphMCPServer {
                         serde_json::to_value(AgenticOutput::DependencyAnalysis(o)).ok()
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to parse DependencyAnalysisOutput: {}", e);
+                        tracing::debug!(
+                            "Answer is not typed DependencyAnalysisOutput JSON ({}); using tool traces",
+                            e
+                        );
                         None
                     }
                 }
@@ -770,7 +776,10 @@ impl CodeGraphMCPServer {
                         serde_json::to_value(AgenticOutput::CallChain(o)).ok()
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to parse CallChainOutput: {}", e);
+                        tracing::debug!(
+                            "Answer is not typed CallChainOutput JSON ({}); using tool traces",
+                            e
+                        );
                         None
                     }
                 }
@@ -782,7 +791,10 @@ impl CodeGraphMCPServer {
                         serde_json::to_value(AgenticOutput::ArchitectureAnalysis(o)).ok()
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to parse ArchitectureAnalysisOutput: {}", e);
+                        tracing::debug!(
+                            "Answer is not typed ArchitectureAnalysisOutput JSON ({}); using tool traces",
+                            e
+                        );
                         None
                     }
                 }
@@ -794,7 +806,10 @@ impl CodeGraphMCPServer {
                         serde_json::to_value(AgenticOutput::APISurface(o)).ok()
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to parse APISurfaceOutput: {}", e);
+                        tracing::debug!(
+                            "Answer is not typed APISurfaceOutput JSON ({}); using tool traces",
+                            e
+                        );
                         None
                     }
                 }
@@ -806,7 +821,10 @@ impl CodeGraphMCPServer {
                         serde_json::to_value(AgenticOutput::ContextBuilder(o)).ok()
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to parse ContextBuilderOutput: {}", e);
+                        tracing::debug!(
+                            "Answer is not typed ContextBuilderOutput JSON ({}); using tool traces",
+                            e
+                        );
                         None
                     }
                 }
@@ -818,7 +836,10 @@ impl CodeGraphMCPServer {
                         serde_json::to_value(AgenticOutput::SemanticQuestion(o)).ok()
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to parse SemanticQuestionOutput: {}", e);
+                        tracing::debug!(
+                            "Answer is not typed SemanticQuestionOutput JSON ({}); using tool traces",
+                            e
+                        );
                         None
                     }
                 }
@@ -830,7 +851,10 @@ impl CodeGraphMCPServer {
                         serde_json::to_value(AgenticOutput::ComplexityAnalysis(o)).ok()
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to parse ComplexityAnalysisOutput: {}", e);
+                        tracing::debug!(
+                            "Answer is not typed ComplexityAnalysisOutput JSON ({}); using tool traces",
+                            e
+                        );
                         None
                     }
                 }

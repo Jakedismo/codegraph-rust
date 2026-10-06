@@ -56,6 +56,8 @@ Request: "What breaks if I change the signature of load_config?"
 
 You have at most {max_turns} rounds of tool calls, and the run fails if you ask for more. Once you have used them, write the answer from the evidence you have and list any gaps.
 
+Tool results also share a size budget for the run. Long code and documents arrive as a leading snippet marked `content_truncated`, with the file path and line range for the rest. If a result carries a `_budget` note, later items were dropped or the budget is used up: stop searching and answer from what you have.
+
 # Answer format
 
 {answer_format}"#,
