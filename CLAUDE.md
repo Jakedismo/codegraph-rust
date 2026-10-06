@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-CodeGraph indexes a codebase into a SurrealDB knowledge graph (AST nodes, edges, chunk embeddings) and serves it to AI clients over MCP as four agentic tools (`agentic_context`, `agentic_impact`, `agentic_architecture`, `agentic_quality`). It is a Rust workspace of 13 crates under `crates/`; the single shipped binary is `codegraph`, built from `crates/codegraph-mcp-server/src/bin/codegraph.rs`.
+CodeGraph indexes a codebase into a SurrealDB knowledge graph (AST nodes, edges, chunk embeddings) and serves it to AI clients over MCP as four agentic tools (`agentic_context`, `agentic_impact`, `agentic_architecture`, `agentic_quality`). It is a Rust workspace of 12 crates under `crates/`; the single shipped binary is `codegraph`, built from `crates/codegraph-mcp-server/src/bin/codegraph.rs`.
 
 ## Commands
 
@@ -72,9 +72,9 @@ Project init runs before application configuration or the async runtime. `projec
 Dependencies point downward; do not add upward imports (they create cycles):
 
 - `codegraph-core`: types, config, `CodeNode`. Everything depends on it.
-- `codegraph-parser` (tree-sitter) and `codegraph-graph` (SurrealDB storage) depend only on core. `codegraph-vector` (embedding providers, reranking) sits on graph. `codegraph-ai` (LLM providers) sits on graph + vector.
+- `codegraph-parser` (tree-sitter) and `codegraph-graph` (SurrealDB storage) depend only on core. `codegraph-vector` (embedding providers, reranking) sits on graph.
 - `codegraph-mcp-core`: shared MCP types (`ContextTier`, `AgentArchitecture`), on core only. `codegraph-mcp-tools` (inner graph tools) adds graph + vector.
-- On top of mcp-tools / ai / graph: `codegraph-mcp-rig` (the agent backend, built on the Rig framework) and `codegraph-mcp` (indexer + analyzers). Neither depends on the other.
+- On top of mcp-tools / graph: `codegraph-mcp-rig` (the agent backend, built on the Rig framework) and `codegraph-mcp` (indexer + analyzers). Neither depends on the other.
 - `codegraph-mcp-daemon` (file watching) depends on `codegraph-mcp`.
 - `codegraph-mcp-server` (CLI, stdio/HTTP transports, MCP tool entrypoints) is the only crate that depends on everything.
 - `codegraph-concurrent` and `codegraph-zerocopy` are standalone utility crates.

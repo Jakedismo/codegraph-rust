@@ -24,7 +24,6 @@ Explore the interactive [Architecture Diagram](architecture-visualization.html) 
 ### Processing & AI
 - [codegraph-parser](crates/codegraph-parser/README.md): Tree-sitter parsing and unified extraction.
 - [codegraph-vector](crates/codegraph-vector/README.md): Embeddings and chunking.
-- [codegraph-ai](crates/codegraph-ai/README.md): LLM provider abstractions.
 - [codegraph-cache](crates/codegraph-cache/README.md): Caching and read-ahead mechanisms.
 - [codegraph-concurrent](crates/codegraph-concurrent/README.md): Concurrency primitives.
 

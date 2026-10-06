@@ -42,7 +42,7 @@ cargo fmt
 - MCP server and tool entrypoints: `crates/codegraph-mcp-server/src/official_server.rs`
 - Agent system prompt (per tier and analysis type): `crates/codegraph-mcp-rig/src/prompts/tier_prompts.rs`
 - Graph tool descriptions the agent reads: `crates/codegraph-mcp-rig/src/tools/graph_tools.rs`
-- LLM providers: `crates/codegraph-ai/src/`
+- Agent LLM provider, model and endpoint resolution: `crates/codegraph-mcp-rig/src/adapter/llm_adapter.rs`
 
 ## Adding a new language
 

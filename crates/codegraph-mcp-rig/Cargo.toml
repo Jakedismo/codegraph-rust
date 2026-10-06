@@ -28,7 +28,6 @@ rig-agent = "0.43.0"
 codegraph-core = { path = "../codegraph-core" }
 codegraph-mcp-core = { path = "../codegraph-mcp-core" }
 codegraph-mcp-tools = { path = "../codegraph-mcp-tools" }
-codegraph-ai = { path = "../codegraph-ai" }
 codegraph-graph = { path = "../codegraph-graph" }
 
 # Async runtime

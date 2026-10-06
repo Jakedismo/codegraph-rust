@@ -27,10 +27,10 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+#[cfg(feature = "ai-enhanced")]
+use crate::agentic_schemas::AgenticOutput;
 use crate::agentic_tools::AgenticTool;
 use crate::prompts::{INITIAL_INSTRUCTIONS, INITIAL_INSTRUCTIONS_PROMPT_NAME};
-#[cfg(feature = "ai-enhanced")]
-use codegraph_ai::agentic_schemas::AgenticOutput;
 use codegraph_mcp_core::analysis::AnalysisType;
 use codegraph_mcp_core::context_aware_limits::ContextTier;
 use codegraph_mcp_core::debug_logger::DebugLogger;
@@ -727,7 +727,7 @@ impl CodeGraphMCPServer {
         let framework_name = "Rig";
 
         // Parse structured output from answer field (contains JSON schema)
-        use codegraph_ai::agentic_schemas::*;
+        use crate::agentic_schemas::*;
 
         // Try to parse the answer as structured output first
         tracing::debug!(

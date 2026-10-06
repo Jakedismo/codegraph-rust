@@ -62,7 +62,6 @@ codegraph-core = { workspace = true }
 codegraph-parser = { workspace = true }
 codegraph-graph = { workspace = true, features = ["surrealdb"] }
 codegraph-vector = { workspace = true, optional = true, default-features = false }
-codegraph-ai = { workspace = true, optional = true }  # Re-enabled for AI-powered symbol resolution
 tokenizers = { workspace = true }  # Qwen2.5-Coder tokenizer for accurate token counting
 # codegraph-api not used directly here; avoid pulling heavy deps
 ## core-rag-mcp-server intentionally not linked to keep binary lean
@@ -90,4 +89,4 @@ embeddings-jina = ["embeddings", "codegraph-vector/jina"]
 embeddings-lmstudio = ["embeddings", "codegraph-vector/lmstudio"]
 cloud = ["embeddings-jina", "codegraph-graph/surrealdb"]
 server-http = []
-ai-enhanced = ["dep:codegraph-ai", "embeddings", "codegraph-ai/openai-compatible"]
+ai-enhanced = ["embeddings"]

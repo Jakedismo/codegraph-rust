@@ -1,11 +1,8 @@
 // ABOUTME: JSON schemas for structured agentic tool outputs enforcing file paths
 // ABOUTME: Combines freeform analysis with structured component/dependency data
 
-use schemars::{JsonSchema, schema_for};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
-use crate::llm_provider::{JsonSchema as LLMJsonSchema, ResponseFormat};
 
 /// Common file location reference with line number
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -275,105 +272,9 @@ impl AgenticOutput {
     }
 }
 
-/// Helper to convert schemars schema to JSON value
-fn schema_to_json_value<T: JsonSchema>() -> Value {
-    let schema = schema_for!(T);
-    serde_json::to_value(schema).expect("Failed to serialize schema")
-}
-
-/// Generate ResponseFormat for code search
-pub fn code_search_response_format() -> ResponseFormat {
-    ResponseFormat::JsonSchema {
-        json_schema: LLMJsonSchema {
-            name: "code_search_output".to_string(),
-            schema: schema_to_json_value::<CodeSearchOutput>(),
-            strict: true,
-        },
-    }
-}
-
-/// Generate ResponseFormat for dependency analysis
-pub fn dependency_analysis_response_format() -> ResponseFormat {
-    ResponseFormat::JsonSchema {
-        json_schema: LLMJsonSchema {
-            name: "dependency_analysis_output".to_string(),
-            schema: schema_to_json_value::<DependencyAnalysisOutput>(),
-            strict: true,
-        },
-    }
-}
-
-/// Generate ResponseFormat for call chain analysis
-pub fn call_chain_response_format() -> ResponseFormat {
-    ResponseFormat::JsonSchema {
-        json_schema: LLMJsonSchema {
-            name: "call_chain_output".to_string(),
-            schema: schema_to_json_value::<CallChainOutput>(),
-            strict: true,
-        },
-    }
-}
-
-/// Generate ResponseFormat for architecture analysis
-pub fn architecture_analysis_response_format() -> ResponseFormat {
-    ResponseFormat::JsonSchema {
-        json_schema: LLMJsonSchema {
-            name: "architecture_analysis_output".to_string(),
-            schema: schema_to_json_value::<ArchitectureAnalysisOutput>(),
-            strict: true,
-        },
-    }
-}
-
-/// Generate ResponseFormat for API surface analysis
-pub fn api_surface_response_format() -> ResponseFormat {
-    ResponseFormat::JsonSchema {
-        json_schema: LLMJsonSchema {
-            name: "api_surface_output".to_string(),
-            schema: schema_to_json_value::<APISurfaceOutput>(),
-            strict: true,
-        },
-    }
-}
-
-/// Generate ResponseFormat for context builder
-pub fn context_builder_response_format() -> ResponseFormat {
-    ResponseFormat::JsonSchema {
-        json_schema: LLMJsonSchema {
-            name: "context_builder_output".to_string(),
-            schema: schema_to_json_value::<ContextBuilderOutput>(),
-            strict: true,
-        },
-    }
-}
-
-/// Generate ResponseFormat for semantic question
-pub fn semantic_question_response_format() -> ResponseFormat {
-    ResponseFormat::JsonSchema {
-        json_schema: LLMJsonSchema {
-            name: "semantic_question_output".to_string(),
-            schema: schema_to_json_value::<SemanticQuestionOutput>(),
-            strict: true,
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // FIXME: These tests need updating for current schemars API
-    // #[test]
-    // fn test_code_search_schema() {
-    //     let root_schema = schemars::schema_for!(CodeSearchOutput);
-    //     // Schema validation tests disabled - schemars API changed
-    // }
-
-    // #[test]
-    // fn test_file_location_required_fields() {
-    //     let root_schema = schemars::schema_for!(FileLocation);
-    //     // Schema validation tests disabled - schemars API changed
-    // }
 
     #[test]
     fn test_analysis_extraction() {

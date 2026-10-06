@@ -10,7 +10,6 @@ members = [
     "crates/codegraph-graph",
     "crates/codegraph-zerocopy",
 
-    "crates/codegraph-ai",
     "crates/codegraph-mcp-core",
     "crates/codegraph-mcp-tools",
     "crates/codegraph-mcp-rig",
@@ -37,17 +36,14 @@ repository = "https://github.com/codegraph/embedding-system"
 # Minimal build for MCP server development (fastest build times)
 mcp-minimal = [
     "ai-enhanced",
-    "embeddings-ollama",
-    "codegraph-ai/anthropic"
+    "embeddings-ollama"
 ]
 
 # MCP development with LM Studio support
 mcp-lmstudio = [
     "ai-enhanced",
     "embeddings-ollama",
-    "embeddings-lmstudio",
-    "codegraph-ai/anthropic",
-    "codegraph-ai/openai-compatible"
+    "embeddings-lmstudio"
 ]
 
 # Full local stack (no cloud dependencies)
@@ -56,8 +52,7 @@ local-stack = [
     "ai-enhanced",
     "embeddings-ollama",
     "embeddings-lmstudio",
-    "embeddings-local",
-    "codegraph-ai/openai-compatible"
+    "embeddings-local"
 ]
 
 # Cloud-enabled build
@@ -66,8 +61,6 @@ cloud-enabled = [
     "ai-enhanced",
     "cloud",
     "embeddings-jina",
-    "codegraph-ai/anthropic",
-    "codegraph-ai/openai-llm",
     "server-http"
 ]
 
@@ -82,9 +75,6 @@ full = [
     "embeddings-ollama",
     "embeddings-jina",
     "embeddings-lmstudio",
-    "codegraph-ai/anthropic",
-    "codegraph-ai/openai-llm",
-    "codegraph-ai/openai-compatible",
     "server-http"
 ]
 
@@ -208,7 +198,6 @@ tower-http = "0.7.1"
 hyper = "1.11.1"
 http-body-util = "0.1.5"
 http = "1.5.0"
-prometheus = { version = "0.14.0", features = ["process"] }
 
 # OpenAPI / Swagger documentation for Axum
 utoipa = { version = "6.0.0", features = ["axum_extras", "uuid", "chrono"] }
@@ -268,7 +257,6 @@ codegraph-mcp = { path = "crates/codegraph-mcp" }
 
 codegraph-zerocopy = { path = "crates/codegraph-zerocopy" }
 
-codegraph-ai = { path = "crates/codegraph-ai" }
 
 
 # Development dependencies

@@ -3,6 +3,7 @@
 
 pub mod agent_cli;
 pub mod agent_hooks;
+pub mod agentic_schemas;
 pub mod agentic_tools;
 #[cfg(feature = "server-http")]
 pub mod http_config;
