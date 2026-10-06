@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot, watch};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use url::Url;
 
 pub fn encode_lsp_message(body: &str) -> Vec<u8> {
@@ -98,6 +98,24 @@ pub struct LspClient {
 }
 
 const STDERR_TAIL_BYTES: usize = 4096;
+const LSP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const CONTENT_MODIFIED_BACKOFF: [Duration; 5] = [
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(400),
+    Duration::from_millis(800),
+    Duration::from_millis(1600),
+];
+
+#[derive(Debug, thiserror::Error)]
+#[error("LSP error: {0}")]
+struct LspResponseError(JsonValue);
+
+impl LspResponseError {
+    fn is_content_modified(&self) -> bool {
+        self.0.get("code").and_then(JsonValue::as_i64) == Some(-32801)
+    }
+}
 
 struct LspDiagnostics {
     command: PathBuf,
@@ -404,7 +422,7 @@ impl LspClient {
                 {
                     let result = json.get("error").map_or_else(
                         || Ok(json.get("result").cloned().unwrap_or(JsonValue::Null)),
-                        |error| Err(anyhow!("LSP error: {error}")),
+                        |error| Err(LspResponseError(error.clone()).into()),
                     );
                     let _ = tx.send(result);
                 }
@@ -474,7 +492,89 @@ impl LspClient {
     }
 
     pub async fn request(&self, method: &str, params: JsonValue) -> Result<JsonValue> {
+        self.request_with_timeout(method, params, LSP_REQUEST_TIMEOUT)
+            .await
+    }
+
+    async fn request_with_timeout(
+        &self,
+        method: &str,
+        params: JsonValue,
+        timeout: Duration,
+    ) -> Result<JsonValue> {
         let _permit = self.requests.acquire().await?;
+        // These reads use immutable indexing snapshots. A workspace reload can invalidate
+        // rust-analyzer's in-flight analysis without changing the source or request position.
+        // Retry only ContentModified, never cancellation, initialization or other RPC errors.
+        let retryable = matches!(
+            method,
+            "textDocument/documentSymbol" | "textDocument/definition"
+        );
+        let uri = params["textDocument"]["uri"].as_str();
+        let document = uri.and_then(|uri| self.documents.get(uri).map(|entry| entry.clone()));
+        let description =
+            uri.map_or_else(|| method.to_owned(), |uri| format!("{method} for {uri}"));
+        let mut retries = 0;
+        let mut last_content_modified: Option<anyhow::Error> = None;
+        // One deadline covers enqueueing, all attempts and backoff, rather than resetting
+        // the 30-second timeout on each retry. Keep the concurrency permit while retrying.
+        let result = tokio::time::timeout(timeout, async {
+            loop {
+                if retries > 0
+                    && uri.and_then(|uri| self.documents.get(uri).map(|entry| entry.clone()))
+                        != document
+                {
+                    return Err(last_content_modified
+                        .take()
+                        .expect("a retry follows ContentModified")
+                        .context("Document changed while retrying; indexing positions are stale"));
+                }
+                let error = match self.request_once(method, params.clone()).await {
+                    Ok(result) => return Ok(result),
+                    Err(error) => error,
+                };
+                if !retryable
+                    || !error
+                        .downcast_ref::<LspResponseError>()
+                        .is_some_and(LspResponseError::is_content_modified)
+                {
+                    return Err(error);
+                }
+                let Some(delay) = CONTENT_MODIFIED_BACKOFF.get(retries) else {
+                    return Err(
+                        error.context(format!("ContentModified persisted after {retries} retries"))
+                    );
+                };
+                debug!(
+                    method,
+                    uri,
+                    retry = retries + 1,
+                    delay_ms = delay.as_millis(),
+                    "Retrying LSP ContentModified response"
+                );
+                last_content_modified = Some(error);
+                tokio::time::sleep(*delay).await;
+                retries += 1;
+            }
+        })
+        .await;
+        let result = match result {
+            Ok(result) => result,
+            Err(_) => {
+                let message = format!("LSP request timed out after {timeout:?}: {description}");
+                Err(match last_content_modified {
+                    Some(error) => error.context(message),
+                    None => anyhow!(message),
+                })
+            }
+        };
+        result.map_err(|error| {
+            let message = format!("LSP request failed: {description}: {error:#}");
+            error.context(message)
+        })
+    }
+
+    async fn request_once(&self, method: &str, params: JsonValue) -> Result<JsonValue> {
         if self.diagnostics.stopped.load(Ordering::Acquire) {
             return Err(self
                 .diagnostics
@@ -518,14 +618,8 @@ impl LspClient {
                 .await);
         }
 
-        // 30s timeout for individual requests
-        match tokio::time::timeout(Duration::from_secs(30), rx).await {
-            Ok(res) => Ok(res.map_err(|_| anyhow!("LSP response channel closed"))??),
-            Err(_) => {
-                self.pending_requests.remove(&id);
-                Err(anyhow!("LSP request timed out: {}", method))
-            }
-        }
+        rx.await
+            .map_err(|_| anyhow!("LSP response channel closed"))?
     }
 
     pub async fn notify(&self, method: &str, params: JsonValue) -> Result<()> {
@@ -1240,8 +1334,160 @@ while True:
         pool.clear().await;
     }
 
+    async fn error_response_server(project: &Path) -> LspClient {
+        let script = project.join("error_server.py");
+        std::fs::write(
+            &script,
+            r#"
+import sys,json
+def send(value):
+    body=json.dumps(value).encode()
+    sys.stdout.buffer.write(('Content-Length: %d\r\n\r\n'%len(body)).encode()+body)
+    sys.stdout.buffer.flush()
+counts={}
+request_ids=set()
+while True:
+    line=sys.stdin.buffer.readline()
+    if not line: break
+    length=int(line.decode().split(':')[1]); sys.stdin.buffer.readline()
+    msg=json.loads(sys.stdin.buffer.read(length)); method=msg.get('method')
+    if 'id' not in msg: continue
+    assert msg['id'] not in request_ids
+    request_ids.add(msg['id'])
+    if method=='initialize':
+        send({'jsonrpc':'2.0','id':msg['id'],'result':{'capabilities':{}}})
+    elif method=='test/counts':
+        send({'jsonrpc':'2.0','id':msg['id'],'result':counts})
+    else:
+        uri=msg['params']['textDocument']['uri']
+        key=method+'|'+uri
+        counts[key]=counts.get(key,0)+1
+        if uri.endswith('/hang.rs'): continue
+        code=-32602 if uri.endswith('/invalid.rs') else -32800 if uri.endswith('/cancelled.rs') else -32801
+        send({'jsonrpc':'2.0','id':msg['id'],'error':{'code':code,'message':'content modified','data':{'uri':uri}}})
+"#,
+        )
+        .unwrap();
+        let uri = Url::from_directory_path(std::fs::canonicalize(project).unwrap())
+            .unwrap()
+            .to_string();
+        LspClient::start(
+            Path::new("python3"),
+            &["-u", script.to_str().unwrap()],
+            &uri,
+        )
+        .await
+        .unwrap()
+    }
+
     #[tokio::test]
-    async fn warm_server_answers_client_requests_and_deduplicates_definition_positions() {
+    async fn content_modified_retries_are_bounded_and_other_errors_are_not_retried() {
+        let project = tempfile::tempdir().unwrap();
+        let client = error_response_server(project.path()).await;
+        for (method, file, code, attempts) in [
+            ("textDocument/documentSymbol", "invalid.rs", -32602, 1),
+            ("textDocument/definition", "cancelled.rs", -32800, 1),
+            ("test/mutate", "mutation.rs", -32801, 1),
+            ("textDocument/definition", "persistent.rs", -32801, 6),
+        ] {
+            let uri = format!("file:///test/{file}");
+            let error = client
+                .request(
+                    method,
+                    serde_json::json!({"textDocument": {"uri": uri}, "position": {"line": 0, "character": 3}}),
+                )
+                .await
+                .unwrap_err();
+            let response = &error.downcast_ref::<LspResponseError>().unwrap().0;
+            assert_eq!(response["code"], code);
+            assert_eq!(response["data"]["uri"], uri);
+            let message = error.to_string();
+            assert!(message.contains(method), "{message}");
+            assert!(message.contains(&uri), "{message}");
+            assert!(message.contains(&code.to_string()), "{message}");
+            if attempts > 1 {
+                assert!(message.contains("persisted after 5 retries"), "{message}");
+            }
+            let counts = client
+                .request("test/counts", JsonValue::Null)
+                .await
+                .unwrap();
+            assert_eq!(counts[format!("{method}|{uri}")], attempts);
+            assert!(client.pending_requests.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn request_deadline_covers_backoff_and_cleans_up_unanswered_requests() {
+        let project = tempfile::tempdir().unwrap();
+        let client = error_response_server(project.path()).await;
+        let permits = client.requests.available_permits();
+        for file in ["persistent.rs", "hang.rs"] {
+            let uri = format!("file:///test/{file}");
+            let started = Instant::now();
+            let error = client
+                .request_with_timeout(
+                    "textDocument/documentSymbol",
+                    serde_json::json!({"textDocument": {"uri": uri}}),
+                    Duration::from_millis(40),
+                )
+                .await
+                .unwrap_err();
+            let message = error.to_string();
+            assert!(message.contains("timed out"), "{message}");
+            assert!(message.contains(&uri), "{message}");
+            assert!(started.elapsed() < Duration::from_secs(1));
+            if file == "persistent.rs" {
+                assert!(error.downcast_ref::<LspResponseError>().is_some());
+            }
+            assert!(client.pending_requests.is_empty());
+            assert_eq!(client.requests.available_permits(), permits);
+            let counts = client
+                .request("test/counts", JsonValue::Null)
+                .await
+                .unwrap();
+            assert_eq!(counts[format!("textDocument/documentSymbol|{uri}")], 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn changed_document_is_not_retried_with_stale_positions() {
+        let project = tempfile::tempdir().unwrap();
+        let client = error_response_server(project.path()).await;
+        let uri = "file:///test/changed.rs";
+        client
+            .documents
+            .insert(uri.to_owned(), ("original".into(), 1));
+        let (response, ()) = tokio::join!(
+            client.request(
+                "textDocument/definition",
+                serde_json::json!({"textDocument": {"uri": uri}, "position": {"line": 0, "character": 3}}),
+            ),
+            async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                client
+                    .notify(
+                        "textDocument/didChange",
+                        serde_json::json!({"textDocument": {"uri": uri, "version": 2}, "contentChanges": [{"text": "changed"}]}),
+                    )
+                    .await
+                    .unwrap();
+                client.documents.insert(uri.to_owned(), ("changed".into(), 2));
+            }
+        );
+        let error = response.unwrap_err();
+        assert!(error.to_string().contains("indexing positions are stale"));
+        assert!(error.downcast_ref::<LspResponseError>().is_some());
+        let counts = client
+            .request("test/counts", JsonValue::Null)
+            .await
+            .unwrap();
+        assert_eq!(counts[format!("textDocument/definition|{uri}")], 1);
+        assert!(client.pending_requests.is_empty());
+    }
+
+    #[tokio::test]
+    async fn warm_server_retries_content_modified_and_deduplicates_definition_positions() {
         use codegraph_core::{EdgeType, Language, Location, NodeType, Span};
         let dir = tempfile::tempdir().unwrap();
         let script = dir.path().join("server.py");
@@ -1251,13 +1497,26 @@ def send(value):
     body=json.dumps(value).encode()
     sys.stdout.buffer.write(('Content-Length: %d\r\n\r\n'%len(body)).encode()+body)
     sys.stdout.buffer.flush()
-counts={'definitions':0,'opens':0,'changes':0}
+counts={'symbols':0,'definitions':0,'opens':0,'changes':0}
+attempts={}
+request_ids=set()
 parallel=[]
 while True:
     line=sys.stdin.buffer.readline()
     if not line: break
     length=int(line.decode().split(':')[1]); sys.stdin.buffer.readline()
     msg=json.loads(sys.stdin.buffer.read(length)); method=msg.get('method')
+    if method and 'id' in msg:
+        assert msg['id'] not in request_ids
+        request_ids.add(msg['id'])
+    if method in ('textDocument/documentSymbol','textDocument/definition'):
+        key=(method,json.dumps(msg['params'],sort_keys=True))
+        attempts[key]=attempts.get(key,0)+1
+        counter='symbols' if method=='textDocument/documentSymbol' else 'definitions'
+        counts[counter]+=1
+        if attempts[key]==1:
+            send({'jsonrpc':'2.0','id':msg['id'],'error':{'code':-32801,'message':'workspace reloading'}})
+            continue
     if method=='initialize':
         initialize=msg['id']; root=msg['params']['rootUri']
         send({'jsonrpc':'2.0','id':'configuration','method':'workspace/configuration','params':{'items':[{}]}})
@@ -1266,9 +1525,10 @@ while True:
         send({'jsonrpc':'2.0','id':initialize,'result':{'capabilities':{}}})
     elif method=='textDocument/didOpen': counts['opens']+=1
     elif method=='textDocument/didChange': counts['changes']+=1
-    elif method=='textDocument/documentSymbol': send({'jsonrpc':'2.0','id':msg['id'],'result':[]})
+    elif method=='textDocument/documentSymbol':
+        name='caller' if msg['params']['textDocument']['uri'].endswith('/caller.rs') else 'target'
+        send({'jsonrpc':'2.0','id':msg['id'],'result':[{'name':name,'kind':12,'range':{'start':{'line':0,'character':0},'end':{'line':0,'character':30}}}]})
     elif method=='textDocument/definition':
-        counts['definitions']+=1
         send({'jsonrpc':'2.0','id':msg['id'],'result':{'uri':root.rstrip('/')+'/target.rs','range':{'start':{'line':0,'character':3},'end':{'line':0,'character':9}}}})
     elif method=='test/counts': send({'jsonrpc':'2.0','id':msg['id'],'result':counts})
     elif method=='test/parallel':
@@ -1324,7 +1584,7 @@ while True:
         let pool = LspPool::default();
         let args = ["-u", script.to_str().unwrap()];
         for _ in 0..2 {
-            enrich_async(
+            let stats = enrich_async(
                 &pool,
                 Some(&sources),
                 Path::new("python3"),
@@ -1339,6 +1599,8 @@ while True:
             )
             .await
             .unwrap();
+            assert_eq!(stats.nodes_enriched, 2);
+            assert_eq!(stats.edges_resolved, 2);
         }
         assert!(
             edges
@@ -1356,8 +1618,11 @@ while True:
             .request("test/counts", JsonValue::Null)
             .await
             .unwrap();
-        assert_eq!(counts["definitions"], 2);
+        assert_eq!(counts["symbols"], 6);
+        assert_eq!(counts["definitions"], 3);
         assert_eq!(counts["opens"], 2);
+        assert_eq!(counts["changes"], 0);
+        assert!(client.pending_requests.is_empty());
         let (a, b) = tokio::join!(
             client.request("test/parallel", JsonValue::Null),
             client.request("test/parallel", JsonValue::Null)

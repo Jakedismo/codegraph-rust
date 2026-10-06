@@ -91,7 +91,10 @@ Required tools by language:
 - C/C++: `clangd`
 
 Warm language-server sessions retain versioned documents and deduplicate/pipeline
-definition requests. Requests fail after 30 seconds; `CODEGRAPH_LSP_REQUESTS` bounds
+definition requests. Symbol and definition requests retry transient `ContentModified`
+(`-32801`) responses up to five times with backoff within one 30-second deadline.
+Changed document versions, exhausted retries and other errors still fail indexing,
+with the request method and file URI in the diagnostic. `CODEGRAPH_LSP_REQUESTS` bounds
 outstanding requests per server (default 32). `CODEGRAPH_ANALYZERS=0` disables analyzers
 independently of tier. `CODEGRAPH_SCIP_INDEX=/path/index.scip` can substitute a compiler
 index for LSP; source validation and sidecar requirements are described in the

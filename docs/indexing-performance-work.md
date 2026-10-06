@@ -172,6 +172,14 @@ sizes for CLI overrides (100/512), conflicting dotenv aliases and TOML fallback.
    while existing non-colliding SHA node IDs remain unchanged.
 
 `CODEGRAPH_LSP_REQUESTS` bounds outstanding requests per server (default 32).
+Symbol/definition reads retry `ContentModified` (`-32801`) up to five times with
+100/200/400/800/1600 ms backoff and fresh request IDs. One 30-second deadline covers
+enqueueing, all attempts and backoff after acquiring the request permit; retries
+retain that permit and leave the versioned document open. A changed document
+hash/version aborts recovery rather than reusing stale positions. Other RPC errors,
+cancellation and exhausted retries propagate with method/file context and the
+original error payload. Mock-server tests cover recovery without losing symbols or
+deduplicated edges, bounded failures, version changes and timeout cleanup.
 `CODEGRAPH_PARSER_TIMEOUT_SECS` sets the small-file timeout (default 10 seconds),
 scaled by three/six for medium/large files. AST extraction after parsing remains
 bounded by worker permits even if its timeout expires.

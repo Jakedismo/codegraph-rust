@@ -102,7 +102,17 @@ In addition to AST + FastML extraction, the indexing pipeline runs analyzer stag
 LSP resolution is inherently dependent on external tooling and workspace size. To keep indexing observable and avoid indefinite hangs:
 
 - Indexing emits periodic progress for LSP resolution (count-oriented, no per-file noise at info level).
-- The per-request LSP timeout can be configured via `CODEGRAPH_LSP_REQUEST_TIMEOUT_SECS` (default `600`, minimum `5`).
+- Each admitted LSP request has a 30-second deadline covering enqueueing, response
+  waits and any retries. `CODEGRAPH_LSP_REQUESTS` bounds concurrent requests per
+  server (default 32).
+- Symbol and definition requests retry only `ContentModified` (`-32801`), up to
+  five times with 100/200/400/800/1600 ms backoff. This error can reflect an internal
+  workspace-state change while a request is running; see the
+  [LSP cancellation guidance](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#cancelRequest).
+  Retries use fresh IDs and unchanged parameters without reopening documents. If
+  the tracked document hash/version changes, indexing fails rather than reusing
+  stale positions. Exhausted retries, cancellation and other RPC errors propagate
+  with the method, file URI and original server error.
 
 ### Project-level resolution (cross-file)
 

@@ -75,6 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rust LSP preflight detects broken rustup `rust-analyzer` shims before analysis.
   Servers start in the project directory, report a bounded stderr tail on failure,
   replace stopped pooled sessions and use UTF-16 definition positions.
+- LSP symbol/definition requests recover from transient `ContentModified` (`-32801`)
+  responses instead of aborting balanced/full indexing immediately. Up to five
+  retries use fresh request IDs and backoff within one 30-second deadline, without
+  reopening documents or changing source positions. Changed document versions and
+  persistent/other errors still fail with the method, file URI and original error.
 - Database statement/flush failures and language-server output closure propagate
   instead of leaving a successful completion marker. Backend/dimension selection,
   disabled analyzers, pending-stage resumption and mutable-model invalidation retain
