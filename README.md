@@ -431,6 +431,27 @@ The same settings can live in the `[llm]` section of a config file instead (see
 [Configuration](#configuration)); environment variables win. `.env.example` lists every
 supported variable, and [AI_PROVIDERS.md](docs/AI_PROVIDERS.md) has per-provider examples.
 
+For Jina v5 embeddings, use the supported retrieval tasks:
+
+```bash
+CODEGRAPH_EMBEDDING_PROVIDER=jina
+CODEGRAPH_EMBEDDING_MODEL=jina-embeddings-v5-text-small
+CODEGRAPH_EMBEDDING_DIMENSION=1024
+JINA_API_KEY=...
+JINA_API_TASK=retrieval.passage
+JINA_TRUNCATE=true
+JINA_NORMALIZED=true
+```
+
+An explicit `JINA_API_TASK=retrieval.query` is honored too. `JINA_API_TASK` takes
+precedence over legacy `JINA_TASK` and TOML `[embedding] jina_task`. Unset tasks
+default to `retrieval.passage` for v3/v5 and `code.passage` for v4; searches use the
+matching query task. V5 supports retrieval, text-matching, classification and
+clustering tasks, as described in [Jina's API schemas](https://github.com/jina-ai/meta-prompt/blob/main/v12.txt).
+Permanent embedding API errors such as HTTP 422 fail immediately with their details;
+transient failures retain retries. Reindex after changing task or request options
+to replace vectors generated with the previous policy.
+
 ### 3. Database
 
 There is nothing to start. SurrealDB runs embedded inside `codegraph`, and each project gets

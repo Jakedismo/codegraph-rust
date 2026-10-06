@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 **Fixed - Jina task configuration and v5 requests**
+
+- Indexing now honors `JINA_API_TASK`, ahead of legacy `JINA_TASK` and TOML
+  `jina_task`; previously the config-backed caller ignored it and sent `code.query`.
+- Unset tasks select a supported passage task for v3/v4/v5. Search queries use
+  the matching query task, preserving symmetric tasks such as classification;
+  v5 no longer receives a hardcoded v4 `code.query`.
+- Batch, query and health requests share task/flag serialization. `JINA_NORMALIZED`
+  defaults to true for v3/v5/CLIP v2 and is omitted for v4. V5 small/nano report
+  1024/768 dimensions, and request options invalidate cached embeddings.
+- Unsupported known task/model pairs fail initialization. Permanent embedding
+  API errors, including HTTP 422, fail once with their status and details;
+  transient failures retain bounded retries. Query calls now share batch retry
+  and rate-limit handling, and the duplicate request-delay sleep is removed.
+- Offline mock API tests cover request bodies, task pairing, dimensions,
+  retry behavior, cache identity and the shipped CLI's dotenv/TOML precedence.
+
 ### 🐛 **Fixed - Agent context growth and graph functions on large indexes**
 
 - **Tool results are bounded for the model.** Long `content` arrives as a snippet (`content_truncated`, default 2,000 characters, `CODEGRAPH_TOOL_CONTENT_CHARS`), one result is capped at 200 KB regardless of the configured window, and each agent run has a tool-result budget (about a third of the window, 48-600 KB, `CODEGRAPH_AGENT_RESULT_BUDGET_BYTES`). Previously one search on a full-tier index could return 228 KB and a run had no total limit, which stalled the model call.

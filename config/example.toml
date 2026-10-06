@@ -17,7 +17,7 @@ batch_size = 64                        # max texts per request; env and --batch-
 ollama_url = "http://localhost:11434"
 # lmstudio_url = "http://localhost:1234"
 # jina_api_base = "https://api.jina.ai/v1"
-# jina_task = "code.passage"
+# jina_task = "auto"                     # v4: code.passage; v3/v5: retrieval.passage; JINA_API_TASK overrides
 # jina_late_chunking = false
 
 # LLM for the agentic tools. Each key is used unless the matching environment variable

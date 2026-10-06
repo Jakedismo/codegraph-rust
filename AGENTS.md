@@ -45,6 +45,15 @@ policy must invalidate chunk, prepared-vector and reconciliation caches. Provide
 initialization/chunk-planning APIs return `Result`; preserve error propagation.
 Use isolated fixtures and mock HTTP services to validate these contracts.
 
+Jina indexing resolves `JINA_API_TASK`, legacy `JINA_TASK`, TOML `jina_task`, then
+the model-aware `auto` passage default, in that order. Preserve explicit tasks;
+pair passage/query tasks without hardcoding v4's `code.query` for v5. Batch, query
+and health requests share the payload builder. Send `normalized` only for models
+that support it; include actual task/request options in cache identities. Known
+invalid task/model pairs fail initialization; permanent embedding HTTP errors
+(including 422) must not retry. Offline Jina provider tests and
+`index_cli_integration` cover payloads, dotenv precedence and transient retries.
+
 Semantic scoring caches raw-vector norms and parallelizes independent targets in the shared worker-limited CPU pool through `spawn_blocking`. Preserve candidate order, scalar floating-point summation/division, the 0.75 threshold and 1e-6 tie rule; vector normalization or parallel dot-product reductions can change decisions. `semantic_scoring` tests and the offline `semantic_scoring_benchmark` compare node IDs and score bits against the frozen scalar reference. Resolution timings in `phase_ms` separate matching, inference, scoring and writes.
 
 Bound parser workers, retained source bytes, queued writer payloads and provider concurrency independently. Database errors and flush acknowledgements must propagate. Reconcile stale project-scoped records and validate final inputs before persisting readiness. Graph completion, pending/off inference and vector-index readiness are separate states; do not mark a failed or deferred stage complete.

@@ -91,7 +91,7 @@ Create either `./.codegraph.toml` (project-local) or `~/.codegraph/config.toml` 
 provider = "jina"
 model = "jina-embeddings-v4"
 jina_api_base = "https://api.jina.ai/v1"
-jina_task = "code.query"
+jina_task = "code.passage"
 jina_late_chunking = true
 dimension = 2048
 batch_size = 64
@@ -160,15 +160,41 @@ Requirements:
 
 Config inputs:
 
-- `embedding.model` (e.g. `jina-embeddings-v4`)
+- `embedding.model` (e.g. `jina-embeddings-v4` or `jina-embeddings-v5-text-small`)
 - `embedding.jina_api_base` (default `https://api.jina.ai/v1`)
-- `embedding.jina_task` (commonly `code.query`)
+- `embedding.jina_task` (default `auto`: v4 uses `code.passage`, v3/v5 use `retrieval.passage`)
 - `embedding.jina_late_chunking` (default is provider-dependent; set explicitly if you care)
 
 Optional env tuning (provider-specific):
 
 - `JINA_MAX_TOKENS`, `JINA_MAX_TEXTS`, `JINA_REQUEST_DELAY_MS`
-- `JINA_LATE_CHUNKING`, `JINA_TRUNCATE`
+- `JINA_API_TASK` overrides legacy `JINA_TASK`, then TOML `embedding.jina_task`.
+  Explicit tasks are preserved. Search queries pair `code.passage` with `code.query`
+  and `retrieval.passage` with `retrieval.query`; symmetric tasks keep their task.
+- `JINA_LATE_CHUNKING`, `JINA_TRUNCATE`, `JINA_NORMALIZED` (normalization defaults to
+  true for v3/v5/CLIP v2; the request omits it for v4)
+
+For v5 text models, use `retrieval.query`, `retrieval.passage`, `text-matching`,
+`classification` or `clustering`; `code.query` / `code.passage` belong to v4.
+The v5 small model returns 1024 dimensions, and nano returns 768. See
+[Jina's API model schemas](https://github.com/jina-ai/meta-prompt/blob/main/v12.txt).
+Known unsupported task/model pairs fail during provider initialization. Embedding
+HTTP 400/401/403/422 errors fail without retries and retain the response detail;
+408/429, server failures and transport errors retain bounded retries.
+
+```bash
+CODEGRAPH_EMBEDDING_PROVIDER=jina
+CODEGRAPH_EMBEDDING_MODEL=jina-embeddings-v5-text-small
+CODEGRAPH_EMBEDDING_DIMENSION=1024
+JINA_API_KEY=...
+JINA_API_TASK=retrieval.passage
+JINA_TRUNCATE=true
+JINA_NORMALIZED=true
+```
+
+`JINA_API_TASK=retrieval.query` is also honored for indexing if explicitly selected.
+Task, normalization, truncation and late-chunking changes invalidate cached Jina
+vectors; reindex to replace vectors generated with a previous request policy.
 
 ### `embedding.provider = "openai"` (remote)
 
